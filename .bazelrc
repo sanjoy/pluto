@@ -1,0 +1,2 @@
+build --@rules_cuda//cuda:compiler=nvcc
+build --@rules_cuda//cuda:archs=compute_90:sm_90

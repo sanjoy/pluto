@@ -187,6 +187,8 @@
     "https://bcr.bazel.build/modules/rules_cc/0.2.4/MODULE.bazel": "1ff1223dfd24f3ecf8f028446d4a27608aa43c3f41e346d22838a4223980b8cc",
     "https://bcr.bazel.build/modules/rules_cc/0.2.8/MODULE.bazel": "f1df20f0bf22c28192a794f29b501ee2018fa37a3862a1a2132ae2940a23a642",
     "https://bcr.bazel.build/modules/rules_cc/0.2.9/MODULE.bazel": "34263f1dca62ea664265438cef714d7db124c03e1ed55ebb4f1dc860164308d1",
+    "https://bcr.bazel.build/modules/rules_cuda/0.3.0/MODULE.bazel": "46123ed5d0133b178bba7dc3a338f4fc5f5aee501171ac72e36c5c8ec1f47b8a",
+    "https://bcr.bazel.build/modules/rules_cuda/0.3.0/source.json": "15f7869652f5bcae8ab115f0eaab40b086a6435555997cc96e2cea47852741b6",
     "https://bcr.bazel.build/modules/rules_foreign_cc/0.9.0/MODULE.bazel": "c9e8c682bf75b0e7c704166d79b599f93b72cfca5ad7477df596947891feeef6",
     "https://bcr.bazel.build/modules/rules_fuzzing/0.5.2/MODULE.bazel": "40c97d1144356f52905566c55811f13b299453a14ac7769dfba2ac38192337a8",
     "https://bcr.bazel.build/modules/rules_go/0.41.0/MODULE.bazel": "55861d8e8bb0e62cbd2896f60ff303f62ffcb0eddb74ecb0e5c0cbe36fc292c8",
@@ -301,6 +303,37 @@
           "androidsdk": {
             "repoRuleId": "@@rules_android+//rules/android_sdk_repository:rule.bzl%_android_sdk_repository",
             "attributes": {}
+          }
+        }
+      }
+    },
+    "@@rules_cuda+//cuda:extensions.bzl%toolchain": {
+      "general": {
+        "bzlTransitiveDigest": "VwIWEj8D73DorVwNuEHsDY+BjUiDJaPiJ89rsxxHpT4=",
+        "usagesDigest": "PkVDUtdZarrtRqyHY8CgcJHIdhsG/g3kE0F0eImz2/Q=",
+        "recordedInputs": [
+          "REPO_MAPPING:bazel_features+,bazel_features_globals bazel_features++version_extension+bazel_features_globals",
+          "REPO_MAPPING:bazel_features+,bazel_features_version bazel_features++version_extension+bazel_features_version",
+          "REPO_MAPPING:bazel_tools,rules_cc rules_cc+",
+          "REPO_MAPPING:rules_cc+,bazel_features bazel_features+",
+          "REPO_MAPPING:rules_cc+,bazel_skylib bazel_skylib+",
+          "REPO_MAPPING:rules_cc+,bazel_tools bazel_tools",
+          "REPO_MAPPING:rules_cc+,cc_compatibility_proxy rules_cc++compatibility_proxy+cc_compatibility_proxy",
+          "REPO_MAPPING:rules_cc+,platforms platforms",
+          "REPO_MAPPING:rules_cc+,rules_cc rules_cc+",
+          "REPO_MAPPING:rules_cc++compatibility_proxy+cc_compatibility_proxy,rules_cc rules_cc+",
+          "REPO_MAPPING:rules_cuda+,bazel_tools bazel_tools",
+          "REPO_MAPPING:rules_cuda+,rules_cc rules_cc+"
+        ],
+        "generatedRepoSpecs": {
+          "cuda": {
+            "repoRuleId": "@@rules_cuda+//cuda/private:repositories.bzl%cuda_toolkit",
+            "attributes": {
+              "components_mapping": {},
+              "nvcc_version": "",
+              "toolkit_path": "/usr/local/cuda",
+              "version": ""
+            }
           }
         }
       }
