@@ -1,2 +1,5 @@
+build --cxxopt=-std=c++17
 build --@rules_cuda//cuda:compiler=nvcc
 build --@rules_cuda//cuda:archs=compute_90:sm_90
+test --test_env=PLUTO_GPT2_TOKENIZER_DIR
+test --test_env=PLUTO_FINEWEB_PARQUET_DIR

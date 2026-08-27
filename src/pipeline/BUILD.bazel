@@ -1,0 +1,31 @@
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+
+cc_test(
+    name = "tokenized_parquet_test",
+    size = "small",
+    srcs = ["tokenized_parquet_test.cc"],
+    data = ["//src/parquet:testdata/fineweb_sample.parquet"],
+    tags = ["requires-tokenizer"],
+    deps = [
+        "//src/parquet:fineweb_parquet_reader",
+        "//src/tokenizer:detokenizer",
+        "//src/tokenizer:tokenizer",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "fineweb_integration_test",
+    size = "small",
+    srcs = ["fineweb_integration_test.cc"],
+    tags = [
+        "integration",
+        "requires-dataset",
+    ],
+    deps = [
+        "//src/parquet:fineweb_parquet_reader",
+        "//src/tokenizer:detokenizer",
+        "//src/tokenizer:tokenizer",
+        "@googletest//:gtest_main",
+    ],
+)
