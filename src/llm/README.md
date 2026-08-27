@@ -11,7 +11,7 @@ backward passes compute input gradients and apply their configured SGD update. A
 tree-shaped `Tape` stores forward intermediates for nested `ComposedLayer` and
 `RepeatedLayer` instances. Parameters are untyped, reference-counted GPU
 `Buffer`s and every allocation and kernel launch uses the layer's CUDA stream.
-`SimpleLlmConfig::dense_repetitions` controls the number of repeated composed
+`ShakespeareLlmConfig::dense_repetitions` controls the number of repeated composed
 dense blocks in the factory-built predictor.
 
 The implemented numeric policy keeps FP32 master weights for stable SGD and

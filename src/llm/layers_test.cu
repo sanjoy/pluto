@@ -11,7 +11,7 @@
 #include "gtest/gtest.h"
 #include "src/gpu/buffer.h"
 #include "src/llm/layer.h"
-#include "src/llm/simple_llm.h"
+#include "src/llm/shakespeare_llm.h"
 
 namespace pluto::llm {
 namespace {
@@ -140,14 +140,14 @@ TEST_F(LayersTest, IdentityDenseLayerHasIdentityForwardAndBackward) {
 }
 
 TEST_F(LayersTest, FactoryBuildsAComposedTrainableModel) {
-  auto model = CreateSimpleLlm(DataType::FP16, 1.0f, stream_);
+  auto model = CreateShakespeareLlm(DataType::FP16, 1.0f, stream_);
   ASSERT_TRUE(model.ok()) << model.status();
   // Embedding table, dense matrix, and dense bias.
   EXPECT_EQ((*model)->weights().size(), 3u);
 
-  SimpleLlmConfig deeper_config;
+  ShakespeareLlmConfig deeper_config;
   deeper_config.dense_repetitions = 2;
-  auto deeper_model = CreateSimpleLlm(deeper_config, stream_);
+  auto deeper_model = CreateShakespeareLlm(deeper_config, stream_);
   ASSERT_TRUE(deeper_model.ok()) << deeper_model.status();
   // One embedding plus a matrix and bias for each repeated composed block.
   EXPECT_EQ((*deeper_model)->weights().size(), 5u);

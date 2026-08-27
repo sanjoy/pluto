@@ -28,9 +28,9 @@ cuda_library(
 )
 
 cc_library(
-    name = "simple_llm",
-    srcs = ["simple_llm.cc"],
-    hdrs = ["simple_llm.h"],
+    name = "shakespeare_llm_lib",
+    srcs = ["shakespeare_llm.cc"],
+    hdrs = ["shakespeare_llm.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":layers",
@@ -42,11 +42,11 @@ cc_library(
 
 cc_binary(
     name = "shakespeare_llm",
-    srcs = ["shakespeare_llm.cc"],
+    srcs = ["shakespeare_main.cc"],
     data = ["//testdata:shakespeare.txt"],
     deps = [
         ":layers",
-        ":simple_llm",
+        ":shakespeare_llm_lib",
         "//src/gpu:buffer",
         "//src/tokenization:plain_text_tokenizer",
         "@abseil-cpp//absl/flags:flag",
@@ -62,7 +62,7 @@ cc_test(
     name = "shakespeare_llm_test",
     size = "large",
     timeout = "long",
-    srcs = ["shakespeare_llm.cc"],
+    srcs = ["shakespeare_main.cc"],
     args = [
         "--eval_batches=16",
         "--generation_tokens=40",
@@ -74,7 +74,7 @@ cc_test(
     tags = ["requires-gpu"],
     deps = [
         ":layers",
-        ":simple_llm",
+        ":shakespeare_llm_lib",
         "//src/gpu:buffer",
         "//src/tokenization:plain_text_tokenizer",
         "@abseil-cpp//absl/flags:flag",
@@ -95,7 +95,7 @@ cuda_test(
     tags = ["requires-gpu"],
     deps = [
         ":layers",
-        ":simple_llm",
+        ":shakespeare_llm_lib",
         "//src/gpu:buffer",
         "@cuda//:cuda_runtime",
         "@googletest//:gtest_main",
