@@ -11,7 +11,6 @@
 #include "gtest/gtest.h"
 #include "src/gpu/buffer.h"
 #include "src/llm/layer.h"
-#include "src/llm/shakespeare_llm.h"
 
 namespace pluto::llm {
 namespace {
@@ -33,9 +32,98 @@ class LayersTest : public testing::Test {
 };
 
 TEST_F(LayersTest, RejectsFp8UntilScalingIsSpecified) {
-  auto layer = EmbeddingLookupLayer::Create(DataType::FP8, 0.1f, stream_);
+  auto layer = EmbeddingLookupLayer::Create(
+      kVocabularySize, kModelWidth, DataType::FP8, 0.1f, stream_);
   EXPECT_FALSE(layer.ok());
   EXPECT_EQ(layer.status().code(), absl::StatusCode::kUnimplemented);
+}
+
+TEST_F(LayersTest, RejectsInvalidEmbeddingDimensions) {
+  auto embedding = EmbeddingLookupLayer::Create(
+      0, kModelWidth, DataType::FP16, 0.1f, stream_);
+  EXPECT_FALSE(embedding.ok());
+  EXPECT_EQ(embedding.status().code(), absl::StatusCode::kInvalidArgument);
+}
+
+TEST_F(LayersTest, LanguageModelingHeadUsesEmbeddingWeightTranspose) {
+  auto embedding = EmbeddingLookupLayer::Create(
+      kVocabularySize, kModelWidth, DataType::FP16, 0.25f, stream_);
+  ASSERT_TRUE(embedding.ok()) << embedding.status();
+  EXPECT_EQ((*embedding)->vocab_size(), kVocabularySize);
+  EXPECT_EQ((*embedding)->embedding_dim(), kModelWidth);
+  auto head = LanguageModelingHeadLayer::Create(embedding->get());
+  ASSERT_TRUE(head.ok()) << head.status();
+  ASSERT_EQ((*embedding)->weights().size(), 1u);
+  ASSERT_EQ((*head)->weights().size(), 1u);
+  EXPECT_EQ((*head)->weights().front().data(), (*embedding)->weight().data());
+
+  std::vector<float> table(kVocabularySize * kModelWidth, 0.0f);
+  table[3 * kModelWidth + 5] = 2.0f;
+  table[7 * kModelWidth + 5] = 3.0f;
+  ASSERT_EQ(cudaMemcpyAsync((*embedding)->weights().front().data(),
+                            table.data(), table.size() * sizeof(float),
+                            cudaMemcpyHostToDevice, stream_),
+            cudaSuccess);
+  std::vector<int> tokens(kBatchSize, 3);
+  auto token_buffer = Buffer::Allocate(tokens.size() * sizeof(int), stream_);
+  ASSERT_TRUE(token_buffer.ok()) << token_buffer.status();
+  ASSERT_EQ(cudaMemcpyAsync(token_buffer->data(), tokens.data(),
+                            token_buffer->size_bytes(), cudaMemcpyHostToDevice,
+                            stream_),
+            cudaSuccess);
+
+  Tape embedding_tape;
+  BufferVec embedding_inputs = {*token_buffer};
+  auto hidden = (*embedding)->fwd(embedding_inputs, &embedding_tape);
+  ASSERT_TRUE(hidden.ok()) << hidden.status();
+  Tape head_tape;
+  BufferVec head_inputs = {*hidden};
+  auto logits = (*head)->fwd(head_inputs, &head_tape);
+  ASSERT_TRUE(logits.ok()) << logits.status();
+
+  std::vector<float> output_gradient(kBatchSize * kVocabularySize, 0.0f);
+  output_gradient[7] = 1.0f;
+  auto gradient_buffer =
+      Buffer::Allocate(output_gradient.size() * sizeof(float), stream_);
+  ASSERT_TRUE(gradient_buffer.ok()) << gradient_buffer.status();
+  ASSERT_EQ(cudaMemcpyAsync(gradient_buffer->data(), output_gradient.data(),
+                            gradient_buffer->size_bytes(),
+                            cudaMemcpyHostToDevice, stream_),
+            cudaSuccess);
+  BufferVec head_gradients = {*gradient_buffer};
+  auto hidden_gradient =
+      (*head)->bwd(head_gradients, std::move(head_tape));
+  ASSERT_TRUE(hidden_gradient.ok()) << hidden_gradient.status();
+  ASSERT_EQ(hidden_gradient->size(), 1u);
+
+  std::vector<float> host_logits(kVocabularySize);
+  std::vector<float> host_hidden_gradient(kModelWidth);
+  std::vector<float> updated_table(table.size());
+  ASSERT_EQ(cudaMemcpyAsync(host_logits.data(), logits->data(),
+                            host_logits.size() * sizeof(float),
+                            cudaMemcpyDeviceToHost, stream_),
+            cudaSuccess);
+  ASSERT_EQ(cudaMemcpyAsync(host_hidden_gradient.data(),
+                            hidden_gradient->front().data(),
+                            host_hidden_gradient.size() * sizeof(float),
+                            cudaMemcpyDeviceToHost, stream_),
+            cudaSuccess);
+  ASSERT_EQ(cudaMemcpyAsync(updated_table.data(), (*embedding)->weight().data(),
+                            updated_table.size() * sizeof(float),
+                            cudaMemcpyDeviceToHost, stream_),
+            cudaSuccess);
+  ASSERT_EQ(cudaStreamSynchronize(stream_), cudaSuccess);
+
+  EXPECT_FLOAT_EQ(host_logits[3], 4.0f);
+  EXPECT_FLOAT_EQ(host_logits[7], 6.0f);
+  EXPECT_FLOAT_EQ(host_hidden_gradient[5], 3.0f);
+  EXPECT_FLOAT_EQ(updated_table[7 * kModelWidth + 5], 2.5f);
+}
+
+TEST_F(LayersTest, LanguageModelingHeadRejectsNullEmbedding) {
+  auto head = LanguageModelingHeadLayer::Create(nullptr);
+  EXPECT_FALSE(head.ok());
+  EXPECT_EQ(head.status().code(), absl::StatusCode::kInvalidArgument);
 }
 
 TEST_F(LayersTest, CrossEntropyForwardAndBackwardMatchUniformSoftmax) {
@@ -137,20 +225,6 @@ TEST_F(LayersTest, IdentityDenseLayerHasIdentityForwardAndBackward) {
     EXPECT_NEAR(host_input_gradient[index], output_gradient[index], 1e-6f)
         << index;
   }
-}
-
-TEST_F(LayersTest, FactoryBuildsAComposedTrainableModel) {
-  auto model = CreateShakespeareLlm(DataType::FP16, 1.0f, stream_);
-  ASSERT_TRUE(model.ok()) << model.status();
-  // Embedding table, dense matrix, and dense bias.
-  EXPECT_EQ((*model)->weights().size(), 3u);
-
-  ShakespeareLlmConfig deeper_config;
-  deeper_config.dense_repetitions = 2;
-  auto deeper_model = CreateShakespeareLlm(deeper_config, stream_);
-  ASSERT_TRUE(deeper_model.ok()) << deeper_model.status();
-  // One embedding plus a matrix and bias for each repeated composed block.
-  EXPECT_EQ((*deeper_model)->weights().size(), 5u);
 }
 
 TEST_F(LayersTest, RepeatedLayerCollectsIndependentChildWeights) {

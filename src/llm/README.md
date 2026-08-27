@@ -11,8 +11,10 @@ backward passes compute input gradients and apply their configured SGD update. A
 tree-shaped `Tape` stores forward intermediates for nested `ComposedLayer` and
 `RepeatedLayer` instances. Parameters are untyped, reference-counted GPU
 `Buffer`s and every allocation and kernel launch uses the layer's CUDA stream.
-`ShakespeareLlmConfig::dense_repetitions` controls the number of repeated composed
-dense blocks in the factory-built predictor.
+The language-modeling head ties its vocabulary projection to the embedding
+table instead of allocating a second parameter.
+The Shakespeare-specific topology is assembled directly in the training binary;
+the reusable library contains only generic layers and GPU kernels.
 
 The implemented numeric policy keeps FP32 master weights for stable SGD and
 rounds operands through FP16 at cuTile compute boundaries. `DataType::FP8` is

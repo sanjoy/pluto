@@ -23,32 +23,69 @@ inline constexpr int kBatchSize = 256;
 inline constexpr int kModelWidth = 256;
 inline constexpr int kVocabularySize = 256;
 
-// Maps a batch of int32 token IDs to a batch of kModelWidth logits. The table is
-// stored as FP32 master weights; the forward kernel rounds values through FP16
-// before they are consumed. Backward atomically applies SGD because a batch may
+// Maps a batch of int32 token IDs to embedding vectors. The table is stored as
+// one FP32 master weight; the forward kernel rounds values through FP16 before
+// they are consumed. Backward atomically applies SGD because a batch may
 // contain the same token more than once.
 class EmbeddingLookupLayer final : public Layer {
  public:
   static absl::StatusOr<std::unique_ptr<EmbeddingLookupLayer>> Create(
-      DataType data_type, float learning_rate, cudaStream_t stream);
+      int vocab_size, int embedding_dim, DataType data_type,
+      float learning_rate, cudaStream_t stream);
+
+  // Initializes the rectangular table to the identity on its main diagonal.
+  // This is useful for tied byte-level models, where an all-zero table would
+  // make both sides of the initial E * E^T projection have zero gradient.
+  absl::Status InitializeIdentity();
 
   absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs,
                               Tape* tape) override;
   absl::StatusOr<BufferVec> bwd(
       absl::Span<const Buffer> output_gradients, Tape tape) override;
   absl::Span<Buffer> weights() override {
-    return absl::MakeSpan(weights_);
+    return absl::MakeSpan(&weight_, 1);
   }
   DataType output_type() const override { return output_type_; }
 
- private:
-  EmbeddingLookupLayer(DataType data_type, float learning_rate,
-                       cudaStream_t stream, Buffer table);
+  int vocab_size() const { return vocab_size_; }
+  int embedding_dim() const { return embedding_dim_; }
+  const Buffer& weight() const { return weight_; }
 
+ private:
+  EmbeddingLookupLayer(int vocab_size, int embedding_dim, DataType data_type,
+                       float learning_rate, cudaStream_t stream, Buffer weight);
+
+  friend class LanguageModelingHeadLayer;
+
+  int vocab_size_;
+  int embedding_dim_;
   DataType output_type_;
   float learning_rate_;
   cudaStream_t stream_;
-  BufferVec weights_;
+  Buffer weight_;
+};
+
+// Projects hidden states to vocabulary logits using the transpose of an
+// existing embedding table. The pointer is non-owning: the embedding must
+// outlive this layer. Returning the same Buffer from weights() makes the
+// parameter sharing explicit to model introspection as well as to the kernels.
+class LanguageModelingHeadLayer final : public Layer {
+ public:
+  static absl::StatusOr<std::unique_ptr<LanguageModelingHeadLayer>> Create(
+      EmbeddingLookupLayer* embedding);
+
+  absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs,
+                              Tape* tape) override;
+  absl::StatusOr<BufferVec> bwd(
+      absl::Span<const Buffer> output_gradients, Tape tape) override;
+  absl::Span<Buffer> weights() override { return embedding_->weights(); }
+  DataType output_type() const override { return embedding_->output_type(); }
+
+ private:
+  explicit LanguageModelingHeadLayer(EmbeddingLookupLayer* embedding)
+      : embedding_(embedding) {}
+
+  EmbeddingLookupLayer* embedding_;
 };
 
 // A bias-bearing kModelWidth x kModelWidth dense layer. Matrix products are
