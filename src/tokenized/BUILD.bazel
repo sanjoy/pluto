@@ -1,0 +1,69 @@
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+
+cc_library(
+    name = "document_file",
+    srcs = ["document_file.cc"],
+    hdrs = ["document_file.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "document_file_test",
+    size = "small",
+    srcs = ["document_file_test.cc"],
+    deps = [
+        ":document_file",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "fineweb_converter",
+    srcs = ["fineweb_converter.cc"],
+    hdrs = ["fineweb_converter.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":document_file",
+        "//src/parquet:fineweb_parquet_reader",
+        "//src/tokenizer:tokenizer",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/strings",
+    ],
+)
+
+cc_test(
+    name = "fineweb_converter_test",
+    size = "small",
+    srcs = ["fineweb_converter_test.cc"],
+    data = ["//src/parquet:testdata/fineweb_sample.parquet"],
+    tags = ["requires-tokenizer"],
+    deps = [
+        ":document_file",
+        ":fineweb_converter",
+        "//src/tokenizer:detokenizer",
+        "//src/tokenizer:tokenizer",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "tokenize_fineweb",
+    srcs = ["tokenize_fineweb.cc"],
+    deps = [
+        ":fineweb_converter",
+        "//src/tokenizer:tokenizer",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+    ],
+)

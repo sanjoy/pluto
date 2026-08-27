@@ -27,6 +27,43 @@ The immutable parsed model is shared by encoder and decoder instances in the
 same process. Encoding has a bounded, thread-safe BPE cache. Encoding and
 decoding preserve UTF-8 input byte-for-byte and recognize GPT-2's EOS token.
 
+## Tokenized-document files
+
+The public target `//src/tokenized:document_file` provides
+`pluto::tokenized::DocumentFileReader` and `DocumentFileWriter`. The format
+contains one length table followed by packed token IDs:
+
+```text
+uint32_le document_count
+uint32_le document_lengths[document_count]
+uint16_le token_ids[sum(document_lengths)]
+```
+
+All integers are explicitly little-endian. The reader validates that the
+length table and payload exactly describe the file, builds document offsets
+once, and uses `pread()` so independent reads can run concurrently. The writer
+keeps only the length table and a 1 MiB payload buffer in memory. It writes
+through a temporary file in the destination directory and atomically publishes
+the result only when every declared document has been supplied.
+
+The `//src/tokenized:fineweb_converter` library composes this format with the
+GPT-2 tokenizer and the projected-text Parquet reader. The
+`//src/tokenized:tokenize_fineweb` binary discovers every `.parquet` file in
+an input directory and writes a matching `.tokenized` file. For example,
+`000_00000.parquet` becomes `000_00000.tokenized`.
+
+```bash
+bazel run //src/tokenized:tokenize_fineweb -- \
+  --input_dir=/home/ubuntu/datasets/raw/sample/10BT \
+  --output_dir=/home/ubuntu/datasets/tokenized/10BT \
+  --tokenizer_dir=/home/ubuntu/datasets/tokenizer/gpt2
+```
+
+By default the binary converts multiple shards in parallel, uses 1,000-row
+batches, and skips outputs that already exist. Use `--jobs=N` to control
+parallelism, `--batch_size=N` to tune memory use, or `--overwrite` to replace
+completed outputs. Partial outputs are never published.
+
 ## FineWeb Parquet reader
 
 The public target `//src/parquet:fineweb_parquet_reader` provides
@@ -59,12 +96,14 @@ export PLUTO_FINEWEB_PARQUET_DIR=/path/to/datasets/raw/sample/10BT
 
 bazel test //src/tokenizer:tokenizer_test
 bazel test //src/parquet:fineweb_parquet_reader_test
+bazel test //src/tokenized:document_file_test
+bazel test //src/tokenized:fineweb_converter_test
 bazel test //src/pipeline:tokenized_parquet_test
 bazel test //src/pipeline:fineweb_integration_test
 ```
 
-The Parquet unit test uses a 5 KiB checked-in fixture and crosses a row-group
-boundary. Regenerate it after intentional format changes with:
+The Parquet and converter tests use a 5 KiB checked-in fixture and cross a
+row-group boundary. Regenerate it after intentional format changes with:
 
 ```bash
 /path/to/python-with-pyarrow src/parquet/testdata/generate_fixture.py
