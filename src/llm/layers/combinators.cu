@@ -1,0 +1,180 @@
+#include "src/llm/layers/combinators.h"
+
+#include <cuda_fp16.h>
+#include <cuda_runtime.h>
+#include <cuda_tile.h>
+
+#include <algorithm>
+#include <cmath>
+#include <cstddef>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
+#include "src/gpu/buffer.h"
+#include "src/llm/layers/internal.h"
+
+namespace pluto::llm {
+
+using internal::CudaStatus;
+using internal::ElementCount;
+using internal::kDenseTile;
+using internal::MatrixRows;
+using internal::TileCount;
+using internal::ValidateBuffer;
+using internal::ValidateFp16;
+using internal::ValidateTiledExtent;
+
+namespace {
+__tile_global__ void AddKernel(const float* __restrict__ left,
+                                const float* __restrict__ right,
+                                int elements,
+                                float* __restrict__ output) {
+  namespace ct = cuda::tiles;
+  using namespace ct::literals;
+
+  auto left_view = ct::partition_view{
+      ct::tensor_span{left, ct::extents{elements}}, ct::shape{16_ic}};
+  auto right_view = ct::partition_view{
+      ct::tensor_span{right, ct::extents{elements}}, ct::shape{16_ic}};
+  auto output_view = ct::partition_view{
+      ct::tensor_span{output, ct::extents{elements}}, ct::shape{16_ic}};
+  const int block = ct::bid().x;
+  output_view.store(left_view.load(block) + right_view.load(block), block);
+}
+
+
+}  // namespace
+
+ResidualLayer::ResidualLayer(std::unique_ptr<Layer> layer)
+    : layer_(std::move(layer)) {
+  for (Buffer& weight : layer_->weights()) weights_.push_back(weight);
+}
+
+absl::StatusOr<Buffer> ResidualLayer::fwd(
+    absl::Span<const Buffer> inputs, Tape* tape) {
+  if (inputs.size() != 1 || tape == nullptr) {
+    return absl::InvalidArgumentError(
+        "ResidualLayer fwd expects one input and a non-null tape");
+  }
+  Tape child_tape;
+  auto branch = layer_->fwd(inputs, &child_tape);
+  if (!branch.ok()) return branch.status();
+  if (branch->size_bytes() != inputs[0].size_bytes() ||
+      branch->stream() != inputs[0].stream()) {
+    return absl::InvalidArgumentError(
+        "ResidualLayer branch changed the activation shape or stream");
+  }
+  auto output = Buffer::Allocate(inputs[0].size_bytes(), inputs[0].stream());
+  if (!output.ok()) return output.status();
+  auto elements = ElementCount(inputs[0], sizeof(float), inputs[0].stream(),
+                               "residual input");
+  if (!elements.ok()) return elements.status();
+  if (auto status = ValidateTiledExtent(*elements, "residual element count");
+      !status.ok()) return status;
+  tape->intermediates = {inputs[0]};
+  tape->children = {std::move(child_tape)};
+  AddKernel<<<TileCount(*elements), 1, 0, inputs[0].stream()>>>(
+      static_cast<const float*>(inputs[0].data()),
+      static_cast<const float*>(branch->data()),
+      *elements,
+      static_cast<float*>(output->data()));
+  if (auto status = CudaStatus(cudaGetLastError(), "AddKernel(residual) launch");
+      !status.ok()) {
+    return status;
+  }
+  return *std::move(output);
+}
+
+absl::StatusOr<BufferVec> ResidualLayer::bwd(
+    absl::Span<const Buffer> output_gradients, Tape tape) {
+  if (output_gradients.size() != 1 || tape.intermediates.size() != 1 ||
+      tape.children.size() != 1) {
+    return absl::InvalidArgumentError(
+        "ResidualLayer bwd received an incompatible gradient or tape");
+  }
+  auto branch_gradient =
+      layer_->bwd(output_gradients, std::move(tape.children[0]));
+  if (!branch_gradient.ok()) return branch_gradient.status();
+  if (branch_gradient->size() != 1 ||
+      branch_gradient->front().size_bytes() !=
+          output_gradients[0].size_bytes()) {
+    return absl::InvalidArgumentError(
+        "ResidualLayer branch returned an incompatible input gradient");
+  }
+  auto input_gradient = Buffer::Allocate(output_gradients[0].size_bytes(),
+                                         output_gradients[0].stream());
+  if (!input_gradient.ok()) return input_gradient.status();
+  auto elements = ElementCount(output_gradients[0], sizeof(float),
+                               output_gradients[0].stream(),
+                               "residual output gradient");
+  if (!elements.ok()) return elements.status();
+  AddKernel<<<TileCount(*elements), 1, 0, output_gradients[0].stream()>>>(
+      static_cast<const float*>(output_gradients[0].data()),
+      static_cast<const float*>(branch_gradient->front().data()),
+      *elements,
+      static_cast<float*>(input_gradient->data()));
+  if (auto status = CudaStatus(cudaGetLastError(),
+                               "AddKernel(residual gradient) launch");
+      !status.ok()) {
+    return status;
+  }
+  return BufferVec{*std::move(input_gradient)};
+}
+
+ComposedLayer::ComposedLayer(DataType data_type,
+                             std::vector<std::unique_ptr<Layer>> layers)
+    : output_type_(data_type), layers_(std::move(layers)) {
+  for (const auto& layer : layers_) {
+    for (Buffer& weight : layer->weights()) weights_.push_back(weight);
+  }
+}
+
+absl::StatusOr<Buffer> ComposedLayer::fwd(absl::Span<const Buffer> inputs,
+                                           Tape* tape) {
+  if (inputs.size() != 1 || tape == nullptr) {
+    return absl::InvalidArgumentError(
+        "ComposedLayer fwd expects one input and a non-null tape");
+  }
+  tape->intermediates.clear();
+  tape->children.clear();
+  Buffer activation = inputs.front();
+  for (auto& layer : layers_) {
+    Tape child_tape;
+    BufferVec child_inputs = {activation};
+    auto output = layer->fwd(child_inputs, &child_tape);
+    if (!output.ok()) return output.status();
+    activation = *std::move(output);
+    tape->children.push_back(std::move(child_tape));
+  }
+  return activation;
+}
+
+absl::StatusOr<BufferVec> ComposedLayer::bwd(
+    absl::Span<const Buffer> output_gradients, Tape tape) {
+  if (output_gradients.size() != 1 || tape.children.size() != layers_.size()) {
+    return absl::InvalidArgumentError(
+        "ComposedLayer bwd received an incompatible gradient or tape");
+  }
+  Buffer gradient = output_gradients.front();
+  for (size_t index = layers_.size(); index-- > 0;) {
+    BufferVec child_gradients = {gradient};
+    auto input_gradients = layers_[index]->bwd(
+        child_gradients, std::move(tape.children[index]));
+    if (!input_gradients.ok()) return input_gradients.status();
+    if (index == 0 && input_gradients->empty()) return BufferVec{};
+    if (input_gradients->size() != 1) {
+      return absl::InternalError(
+          "a composed unary layer returned multiple input gradients");
+    }
+    gradient = input_gradients->front();
+  }
+  return BufferVec{gradient};
+}
+
+}  // namespace pluto::llm

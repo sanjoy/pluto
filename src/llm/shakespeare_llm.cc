@@ -1,7 +1,6 @@
 #include <cuda_runtime.h>
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -22,7 +21,13 @@
 #include "absl/strings/str_cat.h"
 #include "src/gpu/buffer.h"
 #include "src/llm/layer.h"
-#include "src/llm/layers.h"
+#include "src/llm/layers/attention.h"
+#include "src/llm/layers/combinators.h"
+#include "src/llm/layers/cross_entropy_loss.h"
+#include "src/llm/layers/embedding.h"
+#include "src/llm/layers/fully_connected.h"
+#include "src/llm/layers/gelu.h"
+#include "src/llm/layers/norm.h"
 #include "src/tokenization/plain_text_tokenizer.h"
 
 ABSL_FLAG(std::string, corpus, "",
@@ -39,6 +44,14 @@ ABSL_FLAG(bool, interactive, true,
 ABSL_FLAG(int, generation_tokens, 300,
           "Bytes generated after each prompt");
 ABSL_FLAG(double, temperature, 0.8, "Sampling temperature");
+ABSL_FLAG(int, batch_size, 256,
+          "Token rows per training batch; must be a multiple of 16");
+ABSL_FLAG(int, model_width, 256,
+          "Transformer hidden width; must be a multiple of 16");
+ABSL_FLAG(int, context_length, 16,
+          "Tokens per training sequence; must divide batch_size");
+ABSL_FLAG(int, attention_heads, 4,
+          "Attention heads; each head dimension must be a multiple of 16");
 
 namespace pluto::llm {
 namespace {
@@ -46,9 +59,45 @@ namespace {
 using tokenization::PlainTextTokenizer;
 
 constexpr int kTransformerBlockCount = 12;
-// GPT-2 scales residual projections by 1/sqrt(2 * layer_count) so variance
-// does not grow with depth.
-constexpr float kResidualProjectionScale = 0.2041241452f;
+
+// All data/model dimensions live in this binary-level configuration. Layers
+// retain only the dimensions inherent to their own weights and infer the batch
+// row count from their input buffers.
+struct ModelConfig {
+  int batch_size;
+  int model_width;
+  int vocabulary_size;
+  int context_length;
+  int attention_heads;
+
+  int sequence_batch_size() const { return batch_size / context_length; }
+
+  absl::Status Validate() const {
+    if (batch_size <= 0 || batch_size % 16 != 0) {
+      return absl::InvalidArgumentError(
+          "batch_size must be a positive multiple of 16");
+    }
+    if (context_length <= 0 || batch_size % context_length != 0) {
+      return absl::InvalidArgumentError(
+          "context_length must be positive and divide batch_size");
+    }
+    if (model_width <= 0 || model_width % 16 != 0) {
+      return absl::InvalidArgumentError(
+          "model_width must be a positive multiple of 16");
+    }
+    if (vocabulary_size <= 0 || vocabulary_size % 16 != 0) {
+      return absl::InvalidArgumentError(
+          "vocabulary_size must be a positive multiple of 16");
+    }
+    if (attention_heads <= 0 || model_width % attention_heads != 0 ||
+        (model_width / attention_heads) % 16 != 0) {
+      return absl::InvalidArgumentError(
+          "attention_heads must divide model_width and produce a head "
+          "dimension that is a multiple of 16");
+    }
+    return absl::OkStatus();
+  }
+};
 
 absl::Status CudaStatus(cudaError_t error, const char* operation) {
   if (error == cudaSuccess) return absl::OkStatus();
@@ -58,24 +107,32 @@ absl::Status CudaStatus(cudaError_t error, const char* operation) {
 }
 
 absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateTransformerBlock(
-    DataType output_type, float learning_rate, cudaStream_t stream) {
+    const ModelConfig& config, DataType output_type, float learning_rate,
+    cudaStream_t stream) {
+  // GPT-2 scales residual projections by 1/sqrt(2 * layer_count) so variance
+  // does not grow with depth.
+  const float residual_projection_scale =
+      1.0f / std::sqrt(2.0f * kTransformerBlockCount);
   auto attention_norm =
-      LayerNormLayer::Create(kModelWidth, 1e-5f, output_type, stream);
+      LayerNormLayer::Create(config.model_width, 1e-5f, output_type, stream);
   if (!attention_norm.ok()) return attention_norm.status();
   auto qkv_projection =
-      FullyConnectedLayer::Create(output_type, learning_rate, stream);
+      FullyConnectedLayer::Create(config.model_width, output_type,
+                                  learning_rate, stream);
   if (!qkv_projection.ok()) return qkv_projection.status();
   if (auto status = (*qkv_projection)->InitializeIdentity(); !status.ok()) {
     return status;
   }
   auto attention = AttentionLayer::Create(
-      kContextLength, kAttentionHeads, kModelWidth, output_type, stream);
+      config.context_length, config.attention_heads, config.model_width,
+      output_type, stream);
   if (!attention.ok()) return attention.status();
   auto attention_projection =
-      FullyConnectedLayer::Create(output_type, learning_rate, stream);
+      FullyConnectedLayer::Create(config.model_width, output_type,
+                                  learning_rate, stream);
   if (!attention_projection.ok()) return attention_projection.status();
   if (auto status = (*attention_projection)->InitializeIdentity(
-          kResidualProjectionScale);
+          residual_projection_scale);
       !status.ok()) {
     return status;
   }
@@ -86,10 +143,11 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateTransformerBlock(
   attention_layers.push_back(std::move(*attention_projection));
 
   auto mlp_norm =
-      LayerNormLayer::Create(kModelWidth, 1e-5f, output_type, stream);
+      LayerNormLayer::Create(config.model_width, 1e-5f, output_type, stream);
   if (!mlp_norm.ok()) return mlp_norm.status();
   auto mlp_input =
-      FullyConnectedLayer::Create(output_type, learning_rate, stream);
+      FullyConnectedLayer::Create(config.model_width, output_type,
+                                  learning_rate, stream);
   if (!mlp_input.ok()) return mlp_input.status();
   if (auto status = (*mlp_input)->InitializeIdentity(); !status.ok()) {
     return status;
@@ -97,10 +155,11 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateTransformerBlock(
   auto gelu = GeluLayer::Create(output_type, stream);
   if (!gelu.ok()) return gelu.status();
   auto mlp_output =
-      FullyConnectedLayer::Create(output_type, learning_rate, stream);
+      FullyConnectedLayer::Create(config.model_width, output_type,
+                                  learning_rate, stream);
   if (!mlp_output.ok()) return mlp_output.status();
   if (auto status =
-          (*mlp_output)->InitializeIdentity(kResidualProjectionScale);
+          (*mlp_output)->InitializeIdentity(residual_projection_scale);
       !status.ok()) {
     return status;
   }
@@ -124,10 +183,11 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateTransformerBlock(
 // Constructs the model here because its topology is specific to this training
 // binary. Generic layer implementations remain in //src/llm:layers.
 absl::StatusOr<std::unique_ptr<Layer>> CreateShakespeareLlm(
-    DataType output_type, float learning_rate, cudaStream_t stream) {
+    const ModelConfig& config, DataType output_type, float learning_rate,
+    cudaStream_t stream) {
   auto embedding =
-      EmbeddingLookupLayer::Create(kVocabularySize, kModelWidth, output_type,
-                                   learning_rate, stream);
+      EmbeddingLookupLayer::Create(config.vocabulary_size, config.model_width,
+                                   output_type, learning_rate, stream);
   if (!embedding.ok()) return embedding.status();
   // GPT-2 uses small initial embeddings. A scaled identity is deterministic,
   // breaks the tied E * E^T zero-gradient symmetry, and keeps the final
@@ -138,7 +198,8 @@ absl::StatusOr<std::unique_ptr<Layer>> CreateShakespeareLlm(
   EmbeddingLookupLayer* embedding_ptr = embedding->get();
 
   auto positions = PositionEmbeddingLayer::Create(
-      kContextLength, kModelWidth, output_type, learning_rate, stream);
+      config.context_length, config.model_width, output_type, learning_rate,
+      stream);
   if (!positions.ok()) return positions.status();
 
   // Each block is independently parameterized. The compact variant retains
@@ -147,13 +208,14 @@ absl::StatusOr<std::unique_ptr<Layer>> CreateShakespeareLlm(
   std::vector<std::unique_ptr<ComposedLayer>> blocks;
   blocks.reserve(kTransformerBlockCount);
   for (int index = 0; index < kTransformerBlockCount; ++index) {
-    auto block = CreateTransformerBlock(output_type, learning_rate, stream);
+    auto block =
+        CreateTransformerBlock(config, output_type, learning_rate, stream);
     if (!block.ok()) return block.status();
     blocks.push_back(std::move(*block));
   }
 
   auto final_norm =
-      LayerNormLayer::Create(kModelWidth, 1e-5f, output_type, stream);
+      LayerNormLayer::Create(config.model_width, 1e-5f, output_type, stream);
   if (!final_norm.ok()) return final_norm.status();
 
   auto head = LanguageModelingHeadLayer::Create(embedding_ptr);
@@ -208,8 +270,8 @@ absl::StatusOr<std::string> LoadCorpus() {
   return ReadFile("testdata/shakespeare.txt");
 }
 
-absl::Status CopyBatch(const std::array<int, kBatchSize>& tokens,
-                       const std::array<int, kBatchSize>& targets,
+absl::Status CopyBatch(const std::vector<int>& tokens,
+                       const std::vector<int>& targets,
                        const Buffer& token_buffer, const Buffer& target_buffer,
                        cudaStream_t stream) {
   if (auto status = CudaStatus(
@@ -227,29 +289,29 @@ absl::Status CopyBatch(const std::array<int, kBatchSize>& tokens,
 }
 
 absl::StatusOr<double> Evaluate(
-    Layer& model, CrossEntropyLossLayer& loss_layer,
+    const ModelConfig& config, Layer& model, CrossEntropyLossLayer& loss_layer,
     const std::vector<uint32_t>& corpus_tokens, int eval_batches,
     const Buffer& token_buffer, const Buffer& target_buffer,
     cudaStream_t stream) {
   if (eval_batches <= 0) {
     return absl::InvalidArgumentError("eval_batches must be positive");
   }
-  std::array<int, kBatchSize> tokens{};
-  std::array<int, kBatchSize> targets{};
-  std::array<float, kBatchSize> losses{};
+  std::vector<int> tokens(config.batch_size);
+  std::vector<int> targets(config.batch_size);
+  std::vector<float> losses(config.batch_size);
   double total = 0.0;
   const size_t sequence_start_count =
-      corpus_tokens.size() - kContextLength;
+      corpus_tokens.size() - config.context_length;
 
   for (int batch = 0; batch < eval_batches; ++batch) {
-    for (int sequence = 0; sequence < kSequenceBatchSize; ++sequence) {
+    for (int sequence = 0; sequence < config.sequence_batch_size(); ++sequence) {
       const size_t ordinal =
-          static_cast<size_t>(batch) * kSequenceBatchSize + sequence;
+          static_cast<size_t>(batch) * config.sequence_batch_size() + sequence;
       const size_t start =
           (ordinal * sequence_start_count) /
-          (static_cast<size_t>(eval_batches) * kSequenceBatchSize);
-      for (int position = 0; position < kContextLength; ++position) {
-        const int row = sequence * kContextLength + position;
+          (static_cast<size_t>(eval_batches) * config.sequence_batch_size());
+      for (int position = 0; position < config.context_length; ++position) {
+        const int row = sequence * config.context_length + position;
         tokens[row] = static_cast<int>(corpus_tokens[start + position]);
         targets[row] =
             static_cast<int>(corpus_tokens[start + position + 1]);
@@ -283,10 +345,11 @@ absl::StatusOr<double> Evaluate(
     }
     for (float loss : losses) total += loss;
   }
-  return total / (static_cast<double>(eval_batches) * kBatchSize);
+  return total / (static_cast<double>(eval_batches) * config.batch_size);
 }
 
-absl::Status Train(Layer& model, CrossEntropyLossLayer& loss_layer,
+absl::Status Train(const ModelConfig& config, Layer& model,
+                   CrossEntropyLossLayer& loss_layer,
                    const std::vector<uint32_t>& corpus_tokens, int steps,
                    int seed, const Buffer& token_buffer,
                    const Buffer& target_buffer, cudaStream_t stream) {
@@ -295,16 +358,16 @@ absl::Status Train(Layer& model, CrossEntropyLossLayer& loss_layer,
   }
   std::mt19937 random(seed);
   std::uniform_int_distribution<size_t> sequence_start(
-      0, corpus_tokens.size() - kContextLength - 1);
-  std::array<int, kBatchSize> tokens{};
-  std::array<int, kBatchSize> targets{};
-  std::array<float, kBatchSize> losses{};
+      0, corpus_tokens.size() - config.context_length - 1);
+  std::vector<int> tokens(config.batch_size);
+  std::vector<int> targets(config.batch_size);
+  std::vector<float> losses(config.batch_size);
 
   for (int step = 0; step < steps; ++step) {
-    for (int sequence = 0; sequence < kSequenceBatchSize; ++sequence) {
+    for (int sequence = 0; sequence < config.sequence_batch_size(); ++sequence) {
       const size_t start = sequence_start(random);
-      for (int position = 0; position < kContextLength; ++position) {
-        const int row = sequence * kContextLength + position;
+      for (int position = 0; position < config.context_length; ++position) {
+        const int row = sequence * config.context_length + position;
         tokens[row] = static_cast<int>(corpus_tokens[start + position]);
         targets[row] =
             static_cast<int>(corpus_tokens[start + position + 1]);
@@ -346,7 +409,7 @@ absl::Status Train(Layer& model, CrossEntropyLossLayer& loss_layer,
       }
       double mean = 0.0;
       for (float loss : losses) mean += loss;
-      mean /= kBatchSize;
+      mean /= config.batch_size;
       std::cout << "step " << step + 1 << "/" << steps
                 << ", batch loss: " << mean << '\n';
     }
@@ -355,26 +418,27 @@ absl::Status Train(Layer& model, CrossEntropyLossLayer& loss_layer,
                     "cudaStreamSynchronize(after training)");
 }
 
-absl::StatusOr<std::array<float, kVocabularySize>> Predict(
-    Layer& model, const std::vector<uint32_t>& context,
+absl::StatusOr<std::vector<float>> Predict(
+    const ModelConfig& config, Layer& model,
+    const std::vector<uint32_t>& context,
     const Buffer& token_buffer, cudaStream_t stream) {
   if (context.empty()) {
     return absl::InvalidArgumentError("prediction context must not be empty");
   }
   const size_t context_size =
-      std::min(context.size(), static_cast<size_t>(kContextLength));
+      std::min(context.size(), static_cast<size_t>(config.context_length));
   const size_t context_start = context.size() - context_size;
-  std::array<int, kBatchSize> repeated_context{};
-  for (int sequence = 0; sequence < kSequenceBatchSize; ++sequence) {
+  std::vector<int> repeated_context(config.batch_size);
+  for (int sequence = 0; sequence < config.sequence_batch_size(); ++sequence) {
     for (size_t position = 0; position < context_size; ++position) {
-      repeated_context[sequence * kContextLength + position] =
+      repeated_context[sequence * config.context_length + position] =
           static_cast<int>(context[context_start + position]);
     }
     // These rows are causally invisible to the selected output row. Filling
-    // them still gives every fixed-shape kernel valid token IDs.
-    for (size_t position = context_size; position < kContextLength;
-         ++position) {
-      repeated_context[sequence * kContextLength + position] =
+    // them still gives every kernel valid token IDs.
+    for (size_t position = context_size;
+         position < static_cast<size_t>(config.context_length); ++position) {
+      repeated_context[sequence * config.context_length + position] =
           static_cast<int>(context.back());
     }
   }
@@ -390,11 +454,11 @@ absl::StatusOr<std::array<float, kVocabularySize>> Predict(
   BufferVec inputs = {token_buffer};
   auto logits = model.fwd(inputs, &tape);
   if (!logits.ok()) return logits.status();
-  std::array<float, kVocabularySize> host_logits{};
+  std::vector<float> host_logits(config.vocabulary_size);
   const size_t output_row = context_size - 1;
   const auto* selected_logits =
       static_cast<const float*>(logits->data()) +
-      output_row * kVocabularySize;
+      output_row * config.vocabulary_size;
   if (auto status = CudaStatus(
           cudaMemcpyAsync(host_logits.data(), selected_logits,
                           host_logits.size() * sizeof(float),
@@ -412,8 +476,9 @@ absl::StatusOr<std::array<float, kVocabularySize>> Predict(
 }
 
 absl::StatusOr<std::string> Generate(
-    Layer& model, const PlainTextTokenizer& tokenizer,
-    const std::array<bool, kVocabularySize>& observed, std::string prompt,
+    const ModelConfig& config, Layer& model,
+    const PlainTextTokenizer& tokenizer, const std::vector<bool>& observed,
+    std::string prompt,
     int generation_tokens, double temperature, std::mt19937* random,
     const Buffer& token_buffer, cudaStream_t stream) {
   if (generation_tokens < 0 || temperature <= 0.0) {
@@ -427,11 +492,11 @@ absl::StatusOr<std::string> Generate(
   generated.reserve(generation_tokens);
 
   for (int index = 0; index < generation_tokens; ++index) {
-    auto logits = Predict(model, context, token_buffer, stream);
+    auto logits = Predict(config, model, context, token_buffer, stream);
     if (!logits.ok()) return logits.status();
     const float maximum = *std::max_element(logits->begin(), logits->end());
-    std::array<double, kVocabularySize> probabilities{};
-    for (int token = 0; token < kVocabularySize; ++token) {
+    std::vector<double> probabilities(config.vocabulary_size);
+    for (int token = 0; token < config.vocabulary_size; ++token) {
       if (observed[token]) {
         probabilities[token] =
             std::exp(((*logits)[token] - maximum) / temperature);
@@ -450,27 +515,36 @@ absl::Status Run(cudaStream_t stream) {
   auto corpus = LoadCorpus();
   if (!corpus.ok()) return corpus.status();
   const PlainTextTokenizer tokenizer;
+  const ModelConfig config{
+      .batch_size = absl::GetFlag(FLAGS_batch_size),
+      .model_width = absl::GetFlag(FLAGS_model_width),
+      .vocabulary_size = static_cast<int>(tokenizer.vocab_size()),
+      .context_length = absl::GetFlag(FLAGS_context_length),
+      .attention_heads = absl::GetFlag(FLAGS_attention_heads),
+  };
+  if (auto status = config.Validate(); !status.ok()) return status;
   const std::vector<uint32_t> corpus_tokens = tokenizer.Encode(*corpus);
-  if (corpus_tokens.size() <= kContextLength) {
+  if (corpus_tokens.size() <= static_cast<size_t>(config.context_length)) {
     return absl::InvalidArgumentError(
         "the training corpus must be longer than the model context");
   }
-  std::array<bool, kVocabularySize> observed{};
+  std::vector<bool> observed(config.vocabulary_size);
   for (uint32_t token : corpus_tokens) observed[token] = true;
 
   auto model = CreateShakespeareLlm(
-      DataType::FP16,
+      config, DataType::FP16,
       static_cast<float>(absl::GetFlag(FLAGS_learning_rate)), stream);
   if (!model.ok()) return model.status();
-  auto loss_layer = CrossEntropyLossLayer::Create(DataType::FP16, stream);
+  auto loss_layer = CrossEntropyLossLayer::Create(
+      config.vocabulary_size, DataType::FP16, stream);
   if (!loss_layer.ok()) return loss_layer.status();
-  auto token_buffer = Buffer::Allocate(kBatchSize * sizeof(int), stream);
+  auto token_buffer = Buffer::Allocate(config.batch_size * sizeof(int), stream);
   if (!token_buffer.ok()) return token_buffer.status();
-  auto target_buffer = Buffer::Allocate(kBatchSize * sizeof(int), stream);
+  auto target_buffer = Buffer::Allocate(config.batch_size * sizeof(int), stream);
   if (!target_buffer.ok()) return target_buffer.status();
 
   const int eval_batches = absl::GetFlag(FLAGS_eval_batches);
-  auto initial_loss = Evaluate(**model, **loss_layer, corpus_tokens,
+  auto initial_loss = Evaluate(config, **model, **loss_layer, corpus_tokens,
                                eval_batches, *token_buffer, *target_buffer,
                                stream);
   if (!initial_loss.ok()) return initial_loss.status();
@@ -479,14 +553,15 @@ absl::Status Run(cudaStream_t stream) {
             << ", initial loss: " << *initial_loss << '\n';
 
   if (auto status =
-          Train(**model, **loss_layer, corpus_tokens,
+          Train(config, **model, **loss_layer, corpus_tokens,
                 absl::GetFlag(FLAGS_steps), absl::GetFlag(FLAGS_seed),
                 *token_buffer, *target_buffer, stream);
       !status.ok()) {
     return status;
   }
-  auto final_loss = Evaluate(**model, **loss_layer, corpus_tokens, eval_batches,
-                             *token_buffer, *target_buffer, stream);
+  auto final_loss = Evaluate(config, **model, **loss_layer, corpus_tokens,
+                             eval_batches, *token_buffer, *target_buffer,
+                             stream);
   if (!final_loss.ok()) return final_loss.status();
   std::cout << "final evaluation loss: " << *final_loss << '\n';
   const double target_loss = absl::GetFlag(FLAGS_target_loss);
@@ -501,7 +576,7 @@ absl::Status Run(cudaStream_t stream) {
   }
 
   std::mt19937 random(absl::GetFlag(FLAGS_seed) + 1);
-  auto sample = Generate(**model, tokenizer, observed, "To be",
+  auto sample = Generate(config, **model, tokenizer, observed, "To be",
                          std::min(120,
                                   absl::GetFlag(FLAGS_generation_tokens)),
                          absl::GetFlag(FLAGS_temperature), &random,
@@ -516,7 +591,7 @@ absl::Status Run(cudaStream_t stream) {
     std::cout << "> " << std::flush;
     if (!std::getline(std::cin, prompt)) break;
     auto completion = Generate(
-        **model, tokenizer, observed, prompt,
+        config, **model, tokenizer, observed, prompt,
         absl::GetFlag(FLAGS_generation_tokens),
         absl::GetFlag(FLAGS_temperature), &random, *token_buffer, stream);
     if (!completion.ok()) return completion.status();

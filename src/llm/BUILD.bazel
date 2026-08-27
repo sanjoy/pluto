@@ -1,28 +1,56 @@
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
-load("@rules_cuda//cuda:defs.bzl", "cuda_library", "cuda_test")
+load("//src/llm:layers/defs.bzl", "layer_library", "layer_test")
 
-cuda_library(
-    name = "layers",
-    srcs = ["layers.cu"],
-    hdrs = [
-        "layer.h",
-        "layers.h",
-    ],
-    copts = [
-        "--enable-tile",
-        "-std=c++20",
-    ],
-    host_copts = ["-std=c++20"],
+cc_library(
+    name = "layer",
+    hdrs = ["layer.h"],
     visibility = ["//visibility:public"],
     deps = [
         "//src/gpu:buffer",
         "@abseil-cpp//absl/container:inlined_vector",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
-        "@abseil-cpp//absl/strings",
         "@abseil-cpp//absl/types:span",
         "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_library(
+    name = "layer_internal",
+    hdrs = ["layers/internal.h"],
+    visibility = ["//src/llm:__subpackages__"],
+    deps = [
+        ":layer",
+        "//src/gpu:buffer",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+layer_library("attention")
+layer_library("combinators")
+layer_library("cross_entropy_loss")
+layer_library("embedding")
+layer_library("fully_connected")
+layer_library("gelu")
+layer_library("norm")
+
+# Compatibility aggregate for binaries that use several layer families.
+cc_library(
+    name = "layers",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":attention",
+        ":combinators",
+        ":cross_entropy_loss",
+        ":embedding",
+        ":fully_connected",
+        ":gelu",
+        ":norm",
     ],
 )
 
@@ -71,17 +99,33 @@ cc_test(
     ],
 )
 
-cuda_test(
-    name = "layers_test",
-    size = "small",
-    srcs = ["layers_test.cu"],
-    copts = ["-std=c++20"],
-    host_copts = ["-std=c++20"],
-    tags = ["requires-gpu"],
+cc_library(
+    name = "layer_test_util",
+    testonly = True,
+    hdrs = ["layers/test_util.h"],
     deps = [
-        ":layers",
-        "//src/gpu:buffer",
         "@cuda//:cuda_runtime",
-        "@googletest//:gtest_main",
+        "@googletest//:gtest",
+    ],
+)
+
+layer_test("attention")
+layer_test("combinators", [":fully_connected"])
+layer_test("cross_entropy_loss")
+layer_test("embedding")
+layer_test("fully_connected")
+layer_test("gelu")
+layer_test("norm")
+
+test_suite(
+    name = "layers_test",
+    tests = [
+        ":attention_test",
+        ":combinators_test",
+        ":cross_entropy_loss_test",
+        ":embedding_test",
+        ":fully_connected_test",
+        ":gelu_test",
+        ":norm_test",
     ],
 )
