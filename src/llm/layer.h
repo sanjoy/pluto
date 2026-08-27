@@ -28,12 +28,6 @@ struct Tape {
 };
 
 // A differentiable GPU layer.
-//
-// The original API sketch had no explicit input to fwd() and no output
-// gradient to bwd(). Those values cannot be inferred in a reusable composed
-// layer, so this interface makes both explicit and uses StatusOr for allocation
-// and kernel-launch failures. Every returned Buffer remains tied to the layer's
-// CUDA stream through the underlying ref-counted gpu::Buffer abstraction.
 class Layer {
  public:
   virtual ~Layer() = default;
