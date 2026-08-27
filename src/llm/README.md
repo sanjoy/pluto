@@ -1,9 +1,10 @@
 # Minimal cuTile language model
 
-This directory contains a small differentiable layer API and a byte-level
-bigram language model. It is intentionally a learning/toolchain fixture rather
-than a production transformer: fixed 256-by-256 tensors make compilation and
-GPU test runtime predictable, yet the model performs real cross-entropy
+This directory contains a small differentiable layer API and a byte-level,
+scaled-down GPT-2. It is intentionally a learning/toolchain fixture rather than
+a production transformer: each 256-row activation holds 16 independent
+16-token contexts, and the 256-wide model uses 12 pre-norm transformer blocks
+with four 64-wide attention heads. The model performs real cross-entropy
 forward/backward passes and learns Shakespeare's next-byte distribution.
 
 `Layer` receives explicit input buffers and an explicit output gradient. Leaf
@@ -15,6 +16,16 @@ The language-modeling head ties its vocabulary projection to the embedding
 table instead of allocating a second parameter.
 The Shakespeare-specific topology is assembled directly in the training binary;
 the reusable library contains only generic layers and GPU kernels.
+
+`AttentionLayer` is backed by causal FlashAttention implemented in cuTile C++.
+Each query streams over its visible keys, updates an online maximum and softmax
+normalizer, and accumulates values without materializing an attention matrix.
+Backward likewise recomputes probabilities and accumulates Q/K/V gradients.
+The compact GPT-2 uses learned token and position embeddings, 12 independently
+parameterized pre-norm attention/GELU blocks with residual connections, a final
+layer normalization, and a tied language-modeling head. Q/K/V share a
+projection within each block and the MLP stays model-width rather than
+expanding 4x, keeping the GPU integration test to a few seconds.
 
 The implemented numeric policy keeps FP32 master weights for stable SGD and
 rounds operands through FP16 at cuTile compute boundaries. `DataType::FP8` is

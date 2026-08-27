@@ -192,6 +192,292 @@ __tile_global__ void LanguageModelingHeadWeightUpdateKernel(
                    dimension_tile);
 }
 
+__tile_global__ void PositionEmbeddingForwardKernel(
+    const float* __restrict__ input, const float* __restrict__ positions,
+    float* __restrict__ output) {
+  namespace ct = cuda::tiles;
+  using namespace ct::literals;
+
+  auto input_view = ct::partition_view{
+      ct::tensor_span{input, ct::extents{256_ic, 256_ic}},
+      ct::shape{1_ic, 256_ic}};
+  auto position_view = ct::partition_view{
+      ct::tensor_span{positions, ct::extents{16_ic, 256_ic}},
+      ct::shape{1_ic, 256_ic}};
+  auto output_view = ct::partition_view{
+      ct::tensor_span{output, ct::extents{256_ic, 256_ic}},
+      ct::shape{1_ic, 256_ic}};
+
+  const int row = ct::bid().x;
+  output_view.store(input_view.load(row, 0) +
+                        position_view.load(row % kContextLength, 0),
+                    row, 0);
+}
+
+__tile_global__ void PositionEmbeddingBackwardKernel(
+    const float* __restrict__ output_gradient, float learning_rate,
+    float* __restrict__ positions) {
+  namespace ct = cuda::tiles;
+  using namespace ct::literals;
+
+  auto gradient_view = ct::partition_view{
+      ct::tensor_span{output_gradient, ct::extents{256_ic, 256_ic}},
+      ct::shape{1_ic, 256_ic}};
+  const int row = ct::bid().x;
+  auto offsets = ct::iota<ct::tile<int, ct::shape<1, 256>>>();
+  auto pointers = positions + (row % kContextLength) * kModelWidth + offsets;
+  ct::atomic_sub<ct::memory_order::relaxed>(
+      pointers, gradient_view.load(row, 0) * learning_rate);
+}
+
+// One program handles one query and one head. Keys and values are streamed
+// through registers while an online maximum and normalizer keep the softmax
+// stable. No score/probability matrix is written to global memory.
+__tile_global__ void FlashAttentionForwardKernel(
+    const float* __restrict__ input, float* __restrict__ output) {
+  namespace ct = cuda::tiles;
+  using namespace ct::literals;
+
+  auto input_view = ct::partition_view{
+      ct::tensor_span{input, ct::extents{256_ic, 256_ic}},
+      ct::shape{1_ic, 64_ic}};
+  auto output_view = ct::partition_view{
+      ct::tensor_span{output, ct::extents{256_ic, 256_ic}},
+      ct::shape{1_ic, 64_ic}};
+
+  const int block = ct::bid().x;
+  const int row = block / kAttentionHeads;
+  const int head = block % kAttentionHeads;
+  const int sequence_start = (row / kContextLength) * kContextLength;
+  const int query_position = row % kContextLength;
+  constexpr float kScale = 0.125f;
+
+  auto query = ct::element_cast<float>(
+      ct::element_cast<__half>(input_view.load(row, head)));
+  auto maximum =
+      ct::full<ct::tile<float, ct::shape<1, 1>>>(-3.402823466e+38f);
+  auto normalizer = ct::zeros<ct::tile<float, ct::shape<1, 1>>>();
+  auto accumulator = ct::zeros<ct::tile<float, ct::shape<1, 64>>>();
+
+  for (int key_position = 0; key_position <= query_position; ++key_position) {
+    const int key_row = sequence_start + key_position;
+    auto key = ct::element_cast<float>(
+        ct::element_cast<__half>(input_view.load(key_row, head)));
+    auto value = key;
+    auto score = ct::sum(query * key, 1_ic) * kScale;
+    auto new_maximum = ct::max(maximum, score);
+    auto old_scale = ct::exp(maximum - new_maximum);
+    auto new_scale = ct::exp(score - new_maximum);
+    accumulator = accumulator * old_scale + value * new_scale;
+    normalizer = normalizer * old_scale + new_scale;
+    maximum = new_maximum;
+  }
+  output_view.store(accumulator / normalizer, row, head);
+}
+
+// FlashAttention backward recomputes the causal softmax probabilities instead
+// of loading a saved quadratic matrix. Q, K, and V alias the same activation,
+// so their three contributions are atomically accumulated into one gradient.
+__tile_global__ void FlashAttentionBackwardKernel(
+    const float* __restrict__ input, const float* __restrict__ output,
+    const float* __restrict__ output_gradient,
+    float* __restrict__ input_gradient) {
+  namespace ct = cuda::tiles;
+  using namespace ct::literals;
+
+  auto input_view = ct::partition_view{
+      ct::tensor_span{input, ct::extents{256_ic, 256_ic}},
+      ct::shape{1_ic, 64_ic}};
+  auto output_view = ct::partition_view{
+      ct::tensor_span{output, ct::extents{256_ic, 256_ic}},
+      ct::shape{1_ic, 64_ic}};
+  auto gradient_view = ct::partition_view{
+      ct::tensor_span{output_gradient, ct::extents{256_ic, 256_ic}},
+      ct::shape{1_ic, 64_ic}};
+
+  const int block = ct::bid().x;
+  const int row = block / kAttentionHeads;
+  const int head = block % kAttentionHeads;
+  const int sequence_start = (row / kContextLength) * kContextLength;
+  const int query_position = row % kContextLength;
+  constexpr float kScale = 0.125f;
+
+  auto query = ct::element_cast<float>(
+      ct::element_cast<__half>(input_view.load(row, head)));
+  auto output_row = output_view.load(row, head);
+  auto d_output = gradient_view.load(row, head);
+  auto delta = ct::sum(d_output * output_row, 1_ic);
+  auto maximum =
+      ct::full<ct::tile<float, ct::shape<1, 1>>>(-3.402823466e+38f);
+  auto normalizer = ct::zeros<ct::tile<float, ct::shape<1, 1>>>();
+
+  for (int key_position = 0; key_position <= query_position; ++key_position) {
+    const int key_row = sequence_start + key_position;
+    auto key = ct::element_cast<float>(
+        ct::element_cast<__half>(input_view.load(key_row, head)));
+    auto score = ct::sum(query * key, 1_ic) * kScale;
+    auto new_maximum = ct::max(maximum, score);
+    normalizer = normalizer * ct::exp(maximum - new_maximum) +
+                 ct::exp(score - new_maximum);
+    maximum = new_maximum;
+  }
+
+  auto offsets = ct::iota<ct::tile<int, ct::shape<1, 64>>>();
+  auto query_gradient_pointers =
+      input_gradient + row * kModelWidth + head * kAttentionHeadDimension +
+      offsets;
+  for (int key_position = 0; key_position <= query_position; ++key_position) {
+    const int key_row = sequence_start + key_position;
+    auto key = ct::element_cast<float>(
+        ct::element_cast<__half>(input_view.load(key_row, head)));
+    auto score = ct::sum(query * key, 1_ic) * kScale;
+    auto probability = ct::exp(score - maximum) / normalizer;
+    auto d_score =
+        probability * (ct::sum(d_output * key, 1_ic) - delta);
+    auto key_gradient_pointers =
+        input_gradient +
+        key_row * kModelWidth + head * kAttentionHeadDimension + offsets;
+    ct::atomic_add<ct::memory_order::relaxed>(query_gradient_pointers,
+                                               d_score * key * kScale);
+    ct::atomic_add<ct::memory_order::relaxed>(key_gradient_pointers,
+                                               d_score * query * kScale);
+    ct::atomic_add<ct::memory_order::relaxed>(key_gradient_pointers,
+                                               probability * d_output);
+  }
+}
+
+__tile_global__ void LayerNormForwardKernel(
+    const float* __restrict__ input, float epsilon,
+    float* __restrict__ output) {
+  namespace ct = cuda::tiles;
+  using namespace ct::literals;
+
+  auto input_view = ct::partition_view{
+      ct::tensor_span{input, ct::extents{256_ic, 256_ic}},
+      ct::shape{1_ic, 256_ic}};
+  auto output_view = ct::partition_view{
+      ct::tensor_span{output, ct::extents{256_ic, 256_ic}},
+      ct::shape{1_ic, 256_ic}};
+  const int row = ct::bid().x;
+  auto values = input_view.load(row, 0);
+  auto mean = ct::sum(values, 1_ic) / static_cast<float>(kModelWidth);
+  auto centered = values - mean;
+  auto variance = ct::sum(centered * centered, 1_ic) /
+                  static_cast<float>(kModelWidth);
+  output_view.store(centered * ct::rsqrt(variance + epsilon), row, 0);
+}
+
+__tile_global__ void LayerNormBackwardKernel(
+    const float* __restrict__ input,
+    const float* __restrict__ output_gradient, float epsilon,
+    float* __restrict__ input_gradient) {
+  namespace ct = cuda::tiles;
+  using namespace ct::literals;
+
+  auto input_view = ct::partition_view{
+      ct::tensor_span{input, ct::extents{256_ic, 256_ic}},
+      ct::shape{1_ic, 256_ic}};
+  auto gradient_view = ct::partition_view{
+      ct::tensor_span{output_gradient, ct::extents{256_ic, 256_ic}},
+      ct::shape{1_ic, 256_ic}};
+  auto input_gradient_view = ct::partition_view{
+      ct::tensor_span{input_gradient, ct::extents{256_ic, 256_ic}},
+      ct::shape{1_ic, 256_ic}};
+  const int row = ct::bid().x;
+  auto values = input_view.load(row, 0);
+  auto d_output = gradient_view.load(row, 0);
+  auto mean = ct::sum(values, 1_ic) / static_cast<float>(kModelWidth);
+  auto centered = values - mean;
+  auto inverse_stddev = ct::rsqrt(
+      ct::sum(centered * centered, 1_ic) /
+          static_cast<float>(kModelWidth) +
+      epsilon);
+  auto normalized = centered * inverse_stddev;
+  auto gradient_sum = ct::sum(d_output, 1_ic);
+  auto projected_sum = ct::sum(d_output * normalized, 1_ic);
+  input_gradient_view.store(
+      inverse_stddev *
+          (d_output - gradient_sum / static_cast<float>(kModelWidth) -
+           normalized * projected_sum / static_cast<float>(kModelWidth)),
+      row, 0);
+}
+
+__tile_global__ void GeluForwardKernel(const float* __restrict__ input,
+                                        float* __restrict__ output) {
+  namespace ct = cuda::tiles;
+  using namespace ct::literals;
+
+  auto input_view = ct::partition_view{
+      ct::tensor_span{input, ct::extents{256_ic, 256_ic}},
+      ct::shape{16_ic, 16_ic}};
+  auto output_view = ct::partition_view{
+      ct::tensor_span{output, ct::extents{256_ic, 256_ic}},
+      ct::shape{16_ic, 16_ic}};
+  const int block = ct::bid().x;
+  const int row_tile = block / kDenseTilesPerAxis;
+  const int column_tile = block % kDenseTilesPerAxis;
+  auto x = input_view.load(row_tile, column_tile);
+  constexpr float kSqrtTwoOverPi = 0.7978845608f;
+  auto inner = kSqrtTwoOverPi * (x + 0.044715f * x * x * x);
+  output_view.store(0.5f * x * (1.0f + ct::tanh(inner)), row_tile,
+                    column_tile);
+}
+
+__tile_global__ void GeluBackwardKernel(
+    const float* __restrict__ input,
+    const float* __restrict__ output_gradient,
+    float* __restrict__ input_gradient) {
+  namespace ct = cuda::tiles;
+  using namespace ct::literals;
+
+  auto input_view = ct::partition_view{
+      ct::tensor_span{input, ct::extents{256_ic, 256_ic}},
+      ct::shape{16_ic, 16_ic}};
+  auto gradient_view = ct::partition_view{
+      ct::tensor_span{output_gradient, ct::extents{256_ic, 256_ic}},
+      ct::shape{16_ic, 16_ic}};
+  auto input_gradient_view = ct::partition_view{
+      ct::tensor_span{input_gradient, ct::extents{256_ic, 256_ic}},
+      ct::shape{16_ic, 16_ic}};
+  const int block = ct::bid().x;
+  const int row_tile = block / kDenseTilesPerAxis;
+  const int column_tile = block % kDenseTilesPerAxis;
+  auto x = input_view.load(row_tile, column_tile);
+  constexpr float kSqrtTwoOverPi = 0.7978845608f;
+  auto inner = kSqrtTwoOverPi * (x + 0.044715f * x * x * x);
+  auto tanh_inner = ct::tanh(inner);
+  auto derivative =
+      0.5f * (1.0f + tanh_inner) +
+      0.5f * x * (1.0f - tanh_inner * tanh_inner) * kSqrtTwoOverPi *
+          (1.0f + 3.0f * 0.044715f * x * x);
+  input_gradient_view.store(
+      gradient_view.load(row_tile, column_tile) * derivative, row_tile,
+      column_tile);
+}
+
+__tile_global__ void AddKernel(const float* __restrict__ left,
+                                const float* __restrict__ right,
+                                float* __restrict__ output) {
+  namespace ct = cuda::tiles;
+  using namespace ct::literals;
+
+  auto left_view = ct::partition_view{
+      ct::tensor_span{left, ct::extents{256_ic, 256_ic}},
+      ct::shape{16_ic, 16_ic}};
+  auto right_view = ct::partition_view{
+      ct::tensor_span{right, ct::extents{256_ic, 256_ic}},
+      ct::shape{16_ic, 16_ic}};
+  auto output_view = ct::partition_view{
+      ct::tensor_span{output, ct::extents{256_ic, 256_ic}},
+      ct::shape{16_ic, 16_ic}};
+  const int block = ct::bid().x;
+  const int row_tile = block / kDenseTilesPerAxis;
+  const int column_tile = block % kDenseTilesPerAxis;
+  output_view.store(left_view.load(row_tile, column_tile) +
+                        right_view.load(row_tile, column_tile),
+                    row_tile, column_tile);
+}
+
 __tile_global__ void CrossEntropyForwardKernel(
     const float* __restrict__ logits, const int* __restrict__ targets,
     float* __restrict__ losses) {
@@ -412,11 +698,11 @@ EmbeddingLookupLayer::Create(int vocab_size, int embedding_dim,
       *std::move(weight)));
 }
 
-absl::Status EmbeddingLookupLayer::InitializeIdentity() {
+absl::Status EmbeddingLookupLayer::InitializeIdentity(float scale) {
   std::vector<float> identity(
       static_cast<size_t>(vocab_size_) * embedding_dim_, 0.0f);
   for (int index = 0; index < std::min(vocab_size_, embedding_dim_); ++index) {
-    identity[static_cast<size_t>(index) * embedding_dim_ + index] = 1.0f;
+    identity[static_cast<size_t>(index) * embedding_dim_ + index] = scale;
   }
   return CudaStatus(cudaMemcpyAsync(weight_.data(), identity.data(),
                                     weight_.size_bytes(),
@@ -558,6 +844,378 @@ absl::StatusOr<BufferVec> LanguageModelingHeadLayer::bwd(
   return BufferVec{*std::move(input_gradient)};
 }
 
+PositionEmbeddingLayer::PositionEmbeddingLayer(
+    int context_length, int embedding_dim, DataType data_type,
+    float learning_rate, cudaStream_t stream, Buffer weight)
+    : context_length_(context_length),
+      embedding_dim_(embedding_dim),
+      output_type_(data_type),
+      learning_rate_(learning_rate),
+      stream_(stream),
+      weight_(std::move(weight)) {}
+
+absl::StatusOr<std::unique_ptr<PositionEmbeddingLayer>>
+PositionEmbeddingLayer::Create(int context_length, int embedding_dim,
+                               DataType data_type, float learning_rate,
+                               cudaStream_t stream) {
+  if (auto status = ValidateFp16(data_type); !status.ok()) return status;
+  if (learning_rate < 0.0f) {
+    return absl::InvalidArgumentError("learning rate must be non-negative");
+  }
+  if (context_length != kContextLength || embedding_dim != kModelWidth) {
+    return absl::UnimplementedError(absl::StrCat(
+        "the cuTile position backend currently supports context_length=",
+        kContextLength, " and embedding_dim=", kModelWidth));
+  }
+  auto weight = Buffer::Allocate(
+      static_cast<size_t>(context_length) * embedding_dim * sizeof(float),
+      stream);
+  if (!weight.ok()) return weight.status();
+  if (auto status = CudaStatus(cudaMemsetAsync(weight->data(), 0,
+                                               weight->size_bytes(), stream),
+                               "cudaMemsetAsync(position embedding)");
+      !status.ok()) {
+    return status;
+  }
+  return std::unique_ptr<PositionEmbeddingLayer>(new PositionEmbeddingLayer(
+      context_length, embedding_dim, data_type, learning_rate, stream,
+      *std::move(weight)));
+}
+
+absl::StatusOr<Buffer> PositionEmbeddingLayer::fwd(
+    absl::Span<const Buffer> inputs, Tape* tape) {
+  if (inputs.size() != 1 || tape == nullptr) {
+    return absl::InvalidArgumentError(
+        "PositionEmbeddingLayer fwd expects one input and a non-null tape");
+  }
+  if (auto status = ValidateBuffer(
+          inputs[0], kBatchSize * embedding_dim_ * sizeof(float), stream_,
+          "position-embedding input");
+      !status.ok()) {
+    return status;
+  }
+  auto output = Buffer::Allocate(
+      kBatchSize * embedding_dim_ * sizeof(float), stream_);
+  if (!output.ok()) return output.status();
+  tape->intermediates.clear();
+  tape->children.clear();
+  PositionEmbeddingForwardKernel<<<kBatchSize, 1, 0, stream_>>>(
+      static_cast<const float*>(inputs[0].data()),
+      static_cast<const float*>(weight_.data()),
+      static_cast<float*>(output->data()));
+  if (auto status = CudaStatus(cudaGetLastError(),
+                               "PositionEmbeddingForwardKernel launch");
+      !status.ok()) {
+    return status;
+  }
+  return *std::move(output);
+}
+
+absl::StatusOr<BufferVec> PositionEmbeddingLayer::bwd(
+    absl::Span<const Buffer> output_gradients, Tape tape) {
+  if (output_gradients.size() != 1 || !tape.intermediates.empty() ||
+      !tape.children.empty()) {
+    return absl::InvalidArgumentError(
+        "PositionEmbeddingLayer bwd received an incompatible gradient or "
+        "tape");
+  }
+  if (auto status = ValidateBuffer(
+          output_gradients[0],
+          kBatchSize * embedding_dim_ * sizeof(float), stream_,
+          "position-embedding output gradient");
+      !status.ok()) {
+    return status;
+  }
+  PositionEmbeddingBackwardKernel<<<kBatchSize, 1, 0, stream_>>>(
+      static_cast<const float*>(output_gradients[0].data()), learning_rate_,
+      static_cast<float*>(weight_.data()));
+  if (auto status = CudaStatus(cudaGetLastError(),
+                               "PositionEmbeddingBackwardKernel launch");
+      !status.ok()) {
+    return status;
+  }
+  // The additive path has derivative one and can share the upstream buffer.
+  return BufferVec{output_gradients[0]};
+}
+
+absl::StatusOr<std::unique_ptr<AttentionLayer>> AttentionLayer::Create(
+    int context_length, int num_heads, int embedding_dim, DataType data_type,
+    cudaStream_t stream) {
+  if (auto status = ValidateFp16(data_type); !status.ok()) return status;
+  if (context_length != kContextLength || num_heads != kAttentionHeads ||
+      embedding_dim != kModelWidth) {
+    return absl::UnimplementedError(absl::StrCat(
+        "the FlashAttention specialization requires context_length=",
+        kContextLength, ", num_heads=", kAttentionHeads,
+        ", and embedding_dim=", kModelWidth));
+  }
+  return std::unique_ptr<AttentionLayer>(new AttentionLayer(
+      context_length, num_heads, embedding_dim, data_type, stream));
+}
+
+absl::StatusOr<Buffer> AttentionLayer::fwd(
+    absl::Span<const Buffer> inputs, Tape* tape) {
+  if (inputs.size() != 1 || tape == nullptr) {
+    return absl::InvalidArgumentError(
+        "AttentionLayer fwd expects one input and a non-null tape");
+  }
+  if (auto status = ValidateBuffer(
+          inputs[0], kBatchSize * embedding_dim_ * sizeof(float), stream_,
+          "attention input");
+      !status.ok()) {
+    return status;
+  }
+  auto output = Buffer::Allocate(
+      kBatchSize * embedding_dim_ * sizeof(float), stream_);
+  if (!output.ok()) return output.status();
+  FlashAttentionForwardKernel<<<kBatchSize * num_heads_, 1, 0, stream_>>>(
+      static_cast<const float*>(inputs[0].data()),
+      static_cast<float*>(output->data()));
+  if (auto status = CudaStatus(cudaGetLastError(),
+                               "FlashAttentionForwardKernel launch");
+      !status.ok()) {
+    return status;
+  }
+  tape->intermediates = {inputs[0], *output};
+  tape->children.clear();
+  return *std::move(output);
+}
+
+absl::StatusOr<BufferVec> AttentionLayer::bwd(
+    absl::Span<const Buffer> output_gradients, Tape tape) {
+  if (output_gradients.size() != 1 || tape.intermediates.size() != 2) {
+    return absl::InvalidArgumentError(
+        "AttentionLayer bwd received an incompatible gradient or tape");
+  }
+  const size_t activation_bytes =
+      static_cast<size_t>(kBatchSize) * embedding_dim_ * sizeof(float);
+  if (auto status = ValidateBuffer(output_gradients[0], activation_bytes,
+                                   stream_, "attention output gradient");
+      !status.ok()) {
+    return status;
+  }
+  auto input_gradient = Buffer::Allocate(activation_bytes, stream_);
+  if (!input_gradient.ok()) return input_gradient.status();
+  if (auto status = CudaStatus(
+          cudaMemsetAsync(input_gradient->data(), 0,
+                          input_gradient->size_bytes(), stream_),
+          "cudaMemsetAsync(attention input gradient)");
+      !status.ok()) {
+    return status;
+  }
+  FlashAttentionBackwardKernel<<<kBatchSize * num_heads_, 1, 0, stream_>>>(
+      static_cast<const float*>(tape.intermediates[0].data()),
+      static_cast<const float*>(tape.intermediates[1].data()),
+      static_cast<const float*>(output_gradients[0].data()),
+      static_cast<float*>(input_gradient->data()));
+  if (auto status = CudaStatus(cudaGetLastError(),
+                               "FlashAttentionBackwardKernel launch");
+      !status.ok()) {
+    return status;
+  }
+  return BufferVec{*std::move(input_gradient)};
+}
+
+absl::StatusOr<std::unique_ptr<LayerNormLayer>> LayerNormLayer::Create(
+    int embedding_dim, float epsilon, DataType data_type,
+    cudaStream_t stream) {
+  if (auto status = ValidateFp16(data_type); !status.ok()) return status;
+  if (epsilon <= 0.0f) {
+    return absl::InvalidArgumentError("layer-norm epsilon must be positive");
+  }
+  if (embedding_dim != kModelWidth) {
+    return absl::UnimplementedError(absl::StrCat(
+        "the cuTile layer-norm backend currently supports embedding_dim=",
+        kModelWidth));
+  }
+  return std::unique_ptr<LayerNormLayer>(
+      new LayerNormLayer(embedding_dim, epsilon, data_type, stream));
+}
+
+absl::StatusOr<Buffer> LayerNormLayer::fwd(
+    absl::Span<const Buffer> inputs, Tape* tape) {
+  if (inputs.size() != 1 || tape == nullptr) {
+    return absl::InvalidArgumentError(
+        "LayerNormLayer fwd expects one input and a non-null tape");
+  }
+  const size_t activation_bytes =
+      static_cast<size_t>(kBatchSize) * embedding_dim_ * sizeof(float);
+  if (auto status = ValidateBuffer(inputs[0], activation_bytes, stream_,
+                                   "layer-norm input");
+      !status.ok()) {
+    return status;
+  }
+  auto output = Buffer::Allocate(activation_bytes, stream_);
+  if (!output.ok()) return output.status();
+  tape->intermediates = {inputs[0]};
+  tape->children.clear();
+  LayerNormForwardKernel<<<kBatchSize, 1, 0, stream_>>>(
+      static_cast<const float*>(inputs[0].data()), epsilon_,
+      static_cast<float*>(output->data()));
+  if (auto status = CudaStatus(cudaGetLastError(),
+                               "LayerNormForwardKernel launch");
+      !status.ok()) {
+    return status;
+  }
+  return *std::move(output);
+}
+
+absl::StatusOr<BufferVec> LayerNormLayer::bwd(
+    absl::Span<const Buffer> output_gradients, Tape tape) {
+  if (output_gradients.size() != 1 || tape.intermediates.size() != 1) {
+    return absl::InvalidArgumentError(
+        "LayerNormLayer bwd received an incompatible gradient or tape");
+  }
+  const size_t activation_bytes =
+      static_cast<size_t>(kBatchSize) * embedding_dim_ * sizeof(float);
+  if (auto status = ValidateBuffer(output_gradients[0], activation_bytes,
+                                   stream_, "layer-norm output gradient");
+      !status.ok()) {
+    return status;
+  }
+  auto input_gradient = Buffer::Allocate(activation_bytes, stream_);
+  if (!input_gradient.ok()) return input_gradient.status();
+  LayerNormBackwardKernel<<<kBatchSize, 1, 0, stream_>>>(
+      static_cast<const float*>(tape.intermediates[0].data()),
+      static_cast<const float*>(output_gradients[0].data()), epsilon_,
+      static_cast<float*>(input_gradient->data()));
+  if (auto status = CudaStatus(cudaGetLastError(),
+                               "LayerNormBackwardKernel launch");
+      !status.ok()) {
+    return status;
+  }
+  return BufferVec{*std::move(input_gradient)};
+}
+
+absl::StatusOr<std::unique_ptr<GeluLayer>> GeluLayer::Create(
+    DataType data_type, cudaStream_t stream) {
+  if (auto status = ValidateFp16(data_type); !status.ok()) return status;
+  return std::unique_ptr<GeluLayer>(new GeluLayer(data_type, stream));
+}
+
+absl::StatusOr<Buffer> GeluLayer::fwd(absl::Span<const Buffer> inputs,
+                                       Tape* tape) {
+  if (inputs.size() != 1 || tape == nullptr) {
+    return absl::InvalidArgumentError(
+        "GeluLayer fwd expects one input and a non-null tape");
+  }
+  constexpr size_t kActivationBytes =
+      static_cast<size_t>(kBatchSize) * kModelWidth * sizeof(float);
+  if (auto status = ValidateBuffer(inputs[0], kActivationBytes, stream_,
+                                   "GELU input");
+      !status.ok()) {
+    return status;
+  }
+  auto output = Buffer::Allocate(kActivationBytes, stream_);
+  if (!output.ok()) return output.status();
+  tape->intermediates = {inputs[0]};
+  tape->children.clear();
+  GeluForwardKernel<<<kDenseTilesPerAxis * kDenseTilesPerAxis, 1, 0,
+                      stream_>>>(static_cast<const float*>(inputs[0].data()),
+                                 static_cast<float*>(output->data()));
+  if (auto status = CudaStatus(cudaGetLastError(),
+                               "GeluForwardKernel launch");
+      !status.ok()) {
+    return status;
+  }
+  return *std::move(output);
+}
+
+absl::StatusOr<BufferVec> GeluLayer::bwd(
+    absl::Span<const Buffer> output_gradients, Tape tape) {
+  if (output_gradients.size() != 1 || tape.intermediates.size() != 1) {
+    return absl::InvalidArgumentError(
+        "GeluLayer bwd received an incompatible gradient or tape");
+  }
+  constexpr size_t kActivationBytes =
+      static_cast<size_t>(kBatchSize) * kModelWidth * sizeof(float);
+  if (auto status = ValidateBuffer(output_gradients[0], kActivationBytes,
+                                   stream_, "GELU output gradient");
+      !status.ok()) {
+    return status;
+  }
+  auto input_gradient = Buffer::Allocate(kActivationBytes, stream_);
+  if (!input_gradient.ok()) return input_gradient.status();
+  GeluBackwardKernel<<<kDenseTilesPerAxis * kDenseTilesPerAxis, 1, 0,
+                       stream_>>>(
+      static_cast<const float*>(tape.intermediates[0].data()),
+      static_cast<const float*>(output_gradients[0].data()),
+      static_cast<float*>(input_gradient->data()));
+  if (auto status = CudaStatus(cudaGetLastError(),
+                               "GeluBackwardKernel launch");
+      !status.ok()) {
+    return status;
+  }
+  return BufferVec{*std::move(input_gradient)};
+}
+
+ResidualLayer::ResidualLayer(std::unique_ptr<Layer> layer)
+    : layer_(std::move(layer)) {
+  for (Buffer& weight : layer_->weights()) weights_.push_back(weight);
+}
+
+absl::StatusOr<Buffer> ResidualLayer::fwd(
+    absl::Span<const Buffer> inputs, Tape* tape) {
+  if (inputs.size() != 1 || tape == nullptr) {
+    return absl::InvalidArgumentError(
+        "ResidualLayer fwd expects one input and a non-null tape");
+  }
+  Tape child_tape;
+  auto branch = layer_->fwd(inputs, &child_tape);
+  if (!branch.ok()) return branch.status();
+  if (branch->size_bytes() != inputs[0].size_bytes() ||
+      branch->stream() != inputs[0].stream()) {
+    return absl::InvalidArgumentError(
+        "ResidualLayer branch changed the activation shape or stream");
+  }
+  auto output = Buffer::Allocate(inputs[0].size_bytes(), inputs[0].stream());
+  if (!output.ok()) return output.status();
+  tape->intermediates = {inputs[0]};
+  tape->children = {std::move(child_tape)};
+  AddKernel<<<kDenseTilesPerAxis * kDenseTilesPerAxis, 1, 0,
+              inputs[0].stream()>>>(
+      static_cast<const float*>(inputs[0].data()),
+      static_cast<const float*>(branch->data()),
+      static_cast<float*>(output->data()));
+  if (auto status = CudaStatus(cudaGetLastError(), "AddKernel(residual) launch");
+      !status.ok()) {
+    return status;
+  }
+  return *std::move(output);
+}
+
+absl::StatusOr<BufferVec> ResidualLayer::bwd(
+    absl::Span<const Buffer> output_gradients, Tape tape) {
+  if (output_gradients.size() != 1 || tape.intermediates.size() != 1 ||
+      tape.children.size() != 1) {
+    return absl::InvalidArgumentError(
+        "ResidualLayer bwd received an incompatible gradient or tape");
+  }
+  auto branch_gradient =
+      layer_->bwd(output_gradients, std::move(tape.children[0]));
+  if (!branch_gradient.ok()) return branch_gradient.status();
+  if (branch_gradient->size() != 1 ||
+      branch_gradient->front().size_bytes() !=
+          output_gradients[0].size_bytes()) {
+    return absl::InvalidArgumentError(
+        "ResidualLayer branch returned an incompatible input gradient");
+  }
+  auto input_gradient = Buffer::Allocate(output_gradients[0].size_bytes(),
+                                         output_gradients[0].stream());
+  if (!input_gradient.ok()) return input_gradient.status();
+  AddKernel<<<kDenseTilesPerAxis * kDenseTilesPerAxis, 1, 0,
+              output_gradients[0].stream()>>>(
+      static_cast<const float*>(output_gradients[0].data()),
+      static_cast<const float*>(branch_gradient->front().data()),
+      static_cast<float*>(input_gradient->data()));
+  if (auto status = CudaStatus(cudaGetLastError(),
+                               "AddKernel(residual gradient) launch");
+      !status.ok()) {
+    return status;
+  }
+  return BufferVec{*std::move(input_gradient)};
+}
+
 FullyConnectedLayer::FullyConnectedLayer(DataType data_type,
                                          float learning_rate,
                                          cudaStream_t stream, Buffer matrix,
@@ -594,10 +1252,10 @@ FullyConnectedLayer::Create(DataType data_type, float learning_rate,
       data_type, learning_rate, stream, *std::move(matrix), *std::move(bias)));
 }
 
-absl::Status FullyConnectedLayer::InitializeIdentity() {
+absl::Status FullyConnectedLayer::InitializeIdentity(float scale) {
   std::vector<float> identity(kMatrixElementCount, 0.0f);
   for (int index = 0; index < kModelWidth; ++index) {
-    identity[index * kModelWidth + index] = 1.0f;
+    identity[index * kModelWidth + index] = scale;
   }
   return CudaStatus(cudaMemcpyAsync(weights_[0].data(), identity.data(),
                                     weights_[0].size_bytes(),

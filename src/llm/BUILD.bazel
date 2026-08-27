@@ -52,6 +52,7 @@ cc_test(
         "--eval_batches=16",
         "--generation_tokens=40",
         "--interactive=false",
+        "--learning_rate=0.05",
         "--steps=1200",
         "--target_loss=2.8",
     ],

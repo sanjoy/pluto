@@ -126,6 +126,132 @@ TEST_F(LayersTest, LanguageModelingHeadRejectsNullEmbedding) {
   EXPECT_EQ(head.status().code(), absl::StatusCode::kInvalidArgument);
 }
 
+TEST_F(LayersTest, FlashAttentionIsCausalAndHasCorrectSingleTokenGradient) {
+  auto attention = AttentionLayer::Create(
+      kContextLength, kAttentionHeads, kModelWidth, DataType::FP16, stream_);
+  ASSERT_TRUE(attention.ok()) << attention.status();
+
+  std::vector<float> input(kBatchSize * kModelWidth, 0.0f);
+  // Only the first feature of the first head is nonzero. Position zero must
+  // ignore the larger future values, while position one attends to 1 and 2.
+  input[0] = 1.0f;
+  input[kModelWidth] = 2.0f;
+  input[2 * kModelWidth] = 4.0f;
+  auto input_buffer = Buffer::Allocate(input.size() * sizeof(float), stream_);
+  ASSERT_TRUE(input_buffer.ok()) << input_buffer.status();
+  ASSERT_EQ(cudaMemcpyAsync(input_buffer->data(), input.data(),
+                            input_buffer->size_bytes(), cudaMemcpyHostToDevice,
+                            stream_),
+            cudaSuccess);
+
+  Tape tape;
+  BufferVec attention_inputs = {*input_buffer};
+  auto output = (*attention)->fwd(attention_inputs, &tape);
+  ASSERT_TRUE(output.ok()) << output.status();
+
+  std::vector<float> output_gradient(input.size(), 0.0f);
+  output_gradient[0] = 1.0f;
+  auto gradient_buffer =
+      Buffer::Allocate(output_gradient.size() * sizeof(float), stream_);
+  ASSERT_TRUE(gradient_buffer.ok()) << gradient_buffer.status();
+  ASSERT_EQ(cudaMemcpyAsync(gradient_buffer->data(), output_gradient.data(),
+                            gradient_buffer->size_bytes(),
+                            cudaMemcpyHostToDevice, stream_),
+            cudaSuccess);
+  BufferVec attention_gradients = {*gradient_buffer};
+  auto input_gradient =
+      (*attention)->bwd(attention_gradients, std::move(tape));
+  ASSERT_TRUE(input_gradient.ok()) << input_gradient.status();
+  ASSERT_EQ(input_gradient->size(), 1u);
+
+  std::vector<float> host_output(input.size());
+  std::vector<float> host_input_gradient(input.size());
+  ASSERT_EQ(cudaMemcpyAsync(host_output.data(), output->data(),
+                            output->size_bytes(), cudaMemcpyDeviceToHost,
+                            stream_),
+            cudaSuccess);
+  ASSERT_EQ(cudaMemcpyAsync(host_input_gradient.data(),
+                            input_gradient->front().data(),
+                            input_gradient->front().size_bytes(),
+                            cudaMemcpyDeviceToHost, stream_),
+            cudaSuccess);
+  ASSERT_EQ(cudaStreamSynchronize(stream_), cudaSuccess);
+
+  const float first_weight = std::exp(0.25f);
+  const float second_weight = std::exp(0.5f);
+  const float expected_position_one =
+      (first_weight + 2.0f * second_weight) /
+      (first_weight + second_weight);
+  EXPECT_NEAR(host_output[0], 1.0f, 1e-6f);
+  EXPECT_NEAR(host_output[kModelWidth], expected_position_one, 1e-5f);
+  EXPECT_NEAR(host_input_gradient[0], 1.0f, 1e-6f);
+  EXPECT_NEAR(host_input_gradient[kModelWidth], 0.0f, 1e-6f);
+}
+
+TEST_F(LayersTest, LayerNormNormalizesRowsAndRejectsConstantGradient) {
+  auto layer_norm =
+      LayerNormLayer::Create(kModelWidth, 1e-5f, DataType::FP16, stream_);
+  ASSERT_TRUE(layer_norm.ok()) << layer_norm.status();
+
+  std::vector<float> input(kBatchSize * kModelWidth);
+  std::vector<float> output_gradient(input.size(), 1.0f);
+  for (int row = 0; row < kBatchSize; ++row) {
+    for (int column = 0; column < kModelWidth; ++column) {
+      input[row * kModelWidth + column] =
+          static_cast<float>(column) / kModelWidth;
+    }
+  }
+  auto input_buffer = Buffer::Allocate(input.size() * sizeof(float), stream_);
+  auto gradient_buffer =
+      Buffer::Allocate(output_gradient.size() * sizeof(float), stream_);
+  ASSERT_TRUE(input_buffer.ok()) << input_buffer.status();
+  ASSERT_TRUE(gradient_buffer.ok()) << gradient_buffer.status();
+  ASSERT_EQ(cudaMemcpyAsync(input_buffer->data(), input.data(),
+                            input_buffer->size_bytes(), cudaMemcpyHostToDevice,
+                            stream_),
+            cudaSuccess);
+  ASSERT_EQ(cudaMemcpyAsync(gradient_buffer->data(), output_gradient.data(),
+                            gradient_buffer->size_bytes(),
+                            cudaMemcpyHostToDevice, stream_),
+            cudaSuccess);
+
+  Tape tape;
+  BufferVec inputs = {*input_buffer};
+  auto output = (*layer_norm)->fwd(inputs, &tape);
+  ASSERT_TRUE(output.ok()) << output.status();
+  BufferVec gradients = {*gradient_buffer};
+  auto input_gradient =
+      (*layer_norm)->bwd(gradients, std::move(tape));
+  ASSERT_TRUE(input_gradient.ok()) << input_gradient.status();
+
+  std::vector<float> host_output(kModelWidth);
+  std::vector<float> host_input_gradient(kModelWidth);
+  ASSERT_EQ(cudaMemcpyAsync(host_output.data(), output->data(),
+                            host_output.size() * sizeof(float),
+                            cudaMemcpyDeviceToHost, stream_),
+            cudaSuccess);
+  ASSERT_EQ(cudaMemcpyAsync(host_input_gradient.data(),
+                            input_gradient->front().data(),
+                            host_input_gradient.size() * sizeof(float),
+                            cudaMemcpyDeviceToHost, stream_),
+            cudaSuccess);
+  ASSERT_EQ(cudaStreamSynchronize(stream_), cudaSuccess);
+
+  double mean = 0.0;
+  double square_mean = 0.0;
+  for (float value : host_output) {
+    mean += value;
+    square_mean += value * value;
+  }
+  mean /= kModelWidth;
+  square_mean /= kModelWidth;
+  EXPECT_NEAR(mean, 0.0, 1e-5);
+  EXPECT_NEAR(square_mean, 1.0, 2e-4);
+  for (float gradient : host_input_gradient) {
+    EXPECT_NEAR(gradient, 0.0f, 1e-5f);
+  }
+}
+
 TEST_F(LayersTest, CrossEntropyForwardAndBackwardMatchUniformSoftmax) {
   std::vector<float> logits(kBatchSize * kVocabularySize, 0.0f);
   std::vector<int> targets(kBatchSize);

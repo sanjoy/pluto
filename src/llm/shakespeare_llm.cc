@@ -28,8 +28,8 @@
 ABSL_FLAG(std::string, corpus, "",
           "Shakespeare corpus path; defaults to the Bazel testdata runfile");
 ABSL_FLAG(int, steps, 1200, "Number of stochastic-gradient training steps");
-ABSL_FLAG(double, learning_rate, 6.0, "SGD learning rate");
-ABSL_FLAG(double, target_loss, 3.35,
+ABSL_FLAG(double, learning_rate, 0.05, "SGD learning rate");
+ABSL_FLAG(double, target_loss, 2.8,
           "Fail unless held-out average next-byte loss is at most this value");
 ABSL_FLAG(int, eval_batches, 32,
           "Number of fixed batches used for loss evaluation");
@@ -45,11 +45,80 @@ namespace {
 
 using tokenization::PlainTextTokenizer;
 
+constexpr int kTransformerBlockCount = 12;
+// GPT-2 scales residual projections by 1/sqrt(2 * layer_count) so variance
+// does not grow with depth.
+constexpr float kResidualProjectionScale = 0.2041241452f;
+
 absl::Status CudaStatus(cudaError_t error, const char* operation) {
   if (error == cudaSuccess) return absl::OkStatus();
   return absl::InternalError(
       absl::StrCat(operation, " failed: ", cudaGetErrorName(error), ": ",
                    cudaGetErrorString(error)));
+}
+
+absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateTransformerBlock(
+    DataType output_type, float learning_rate, cudaStream_t stream) {
+  auto attention_norm =
+      LayerNormLayer::Create(kModelWidth, 1e-5f, output_type, stream);
+  if (!attention_norm.ok()) return attention_norm.status();
+  auto qkv_projection =
+      FullyConnectedLayer::Create(output_type, learning_rate, stream);
+  if (!qkv_projection.ok()) return qkv_projection.status();
+  if (auto status = (*qkv_projection)->InitializeIdentity(); !status.ok()) {
+    return status;
+  }
+  auto attention = AttentionLayer::Create(
+      kContextLength, kAttentionHeads, kModelWidth, output_type, stream);
+  if (!attention.ok()) return attention.status();
+  auto attention_projection =
+      FullyConnectedLayer::Create(output_type, learning_rate, stream);
+  if (!attention_projection.ok()) return attention_projection.status();
+  if (auto status = (*attention_projection)->InitializeIdentity(
+          kResidualProjectionScale);
+      !status.ok()) {
+    return status;
+  }
+  std::vector<std::unique_ptr<Layer>> attention_layers;
+  attention_layers.push_back(std::move(*attention_norm));
+  attention_layers.push_back(std::move(*qkv_projection));
+  attention_layers.push_back(std::move(*attention));
+  attention_layers.push_back(std::move(*attention_projection));
+
+  auto mlp_norm =
+      LayerNormLayer::Create(kModelWidth, 1e-5f, output_type, stream);
+  if (!mlp_norm.ok()) return mlp_norm.status();
+  auto mlp_input =
+      FullyConnectedLayer::Create(output_type, learning_rate, stream);
+  if (!mlp_input.ok()) return mlp_input.status();
+  if (auto status = (*mlp_input)->InitializeIdentity(); !status.ok()) {
+    return status;
+  }
+  auto gelu = GeluLayer::Create(output_type, stream);
+  if (!gelu.ok()) return gelu.status();
+  auto mlp_output =
+      FullyConnectedLayer::Create(output_type, learning_rate, stream);
+  if (!mlp_output.ok()) return mlp_output.status();
+  if (auto status =
+          (*mlp_output)->InitializeIdentity(kResidualProjectionScale);
+      !status.ok()) {
+    return status;
+  }
+
+  std::vector<std::unique_ptr<Layer>> mlp_layers;
+  mlp_layers.push_back(std::move(*mlp_norm));
+  mlp_layers.push_back(std::move(*mlp_input));
+  mlp_layers.push_back(std::move(*gelu));
+  mlp_layers.push_back(std::move(*mlp_output));
+
+  std::vector<std::unique_ptr<Layer>> block_layers;
+  block_layers.push_back(std::make_unique<ResidualLayer>(
+      std::make_unique<ComposedLayer>(output_type,
+                                      std::move(attention_layers))));
+  block_layers.push_back(std::make_unique<ResidualLayer>(
+      std::make_unique<ComposedLayer>(output_type, std::move(mlp_layers))));
+  return std::make_unique<ComposedLayer>(output_type,
+                                         std::move(block_layers));
 }
 
 // Constructs the model here because its topology is specific to this training
@@ -60,33 +129,42 @@ absl::StatusOr<std::unique_ptr<Layer>> CreateShakespeareLlm(
       EmbeddingLookupLayer::Create(kVocabularySize, kModelWidth, output_type,
                                    learning_rate, stream);
   if (!embedding.ok()) return embedding.status();
-  if (auto status = (*embedding)->InitializeIdentity(); !status.ok()) {
+  // GPT-2 uses small initial embeddings. A scaled identity is deterministic,
+  // breaks the tied E * E^T zero-gradient symmetry, and keeps the final
+  // layer-normalized logits in a stable range.
+  if (auto status = (*embedding)->InitializeIdentity(0.02f); !status.ok()) {
     return status;
   }
   EmbeddingLookupLayer* embedding_ptr = embedding->get();
 
-  // The dense block is a frozen identity. It exercises the compositional cuTile
-  // path while the shared embedding and output-projection weight learns the
-  // byte-level transition model used by the integration test.
-  auto projection = FullyConnectedLayer::Create(output_type, 0.0f, stream);
-  if (!projection.ok()) return projection.status();
-  if (auto status = (*projection)->InitializeIdentity(); !status.ok()) {
-    return status;
+  auto positions = PositionEmbeddingLayer::Create(
+      kContextLength, kModelWidth, output_type, learning_rate, stream);
+  if (!positions.ok()) return positions.status();
+
+  // Each block is independently parameterized. The compact variant retains
+  // GPT-2's 12-block depth, pre-norm residual topology, and causal attention,
+  // but shares Q/K/V within each block and keeps the MLP width-preserving.
+  std::vector<std::unique_ptr<ComposedLayer>> blocks;
+  blocks.reserve(kTransformerBlockCount);
+  for (int index = 0; index < kTransformerBlockCount; ++index) {
+    auto block = CreateTransformerBlock(output_type, learning_rate, stream);
+    if (!block.ok()) return block.status();
+    blocks.push_back(std::move(*block));
   }
 
-  std::vector<std::unique_ptr<Layer>> block_layers;
-  block_layers.push_back(std::move(*projection));
-  std::vector<std::unique_ptr<ComposedLayer>> blocks;
-  blocks.push_back(
-      std::make_unique<ComposedLayer>(output_type, std::move(block_layers)));
+  auto final_norm =
+      LayerNormLayer::Create(kModelWidth, 1e-5f, output_type, stream);
+  if (!final_norm.ok()) return final_norm.status();
 
   auto head = LanguageModelingHeadLayer::Create(embedding_ptr);
   if (!head.ok()) return head.status();
 
   std::vector<std::unique_ptr<Layer>> layers;
   layers.push_back(std::move(*embedding));
+  layers.push_back(std::move(*positions));
   layers.push_back(std::make_unique<RepeatedLayer<ComposedLayer>>(
       output_type, std::move(blocks)));
+  layers.push_back(std::move(*final_norm));
   layers.push_back(std::move(*head));
   return std::unique_ptr<Layer>(
       new ComposedLayer(output_type, std::move(layers)));
@@ -160,17 +238,22 @@ absl::StatusOr<double> Evaluate(
   std::array<int, kBatchSize> targets{};
   std::array<float, kBatchSize> losses{};
   double total = 0.0;
-  const size_t pair_count = corpus_tokens.size() - 1;
+  const size_t sequence_start_count =
+      corpus_tokens.size() - kContextLength;
 
   for (int batch = 0; batch < eval_batches; ++batch) {
-    for (int row = 0; row < kBatchSize; ++row) {
+    for (int sequence = 0; sequence < kSequenceBatchSize; ++sequence) {
       const size_t ordinal =
-          static_cast<size_t>(batch) * kBatchSize + row;
-      const size_t position =
-          (ordinal * pair_count) /
-          (static_cast<size_t>(eval_batches) * kBatchSize);
-      tokens[row] = static_cast<int>(corpus_tokens[position]);
-      targets[row] = static_cast<int>(corpus_tokens[position + 1]);
+          static_cast<size_t>(batch) * kSequenceBatchSize + sequence;
+      const size_t start =
+          (ordinal * sequence_start_count) /
+          (static_cast<size_t>(eval_batches) * kSequenceBatchSize);
+      for (int position = 0; position < kContextLength; ++position) {
+        const int row = sequence * kContextLength + position;
+        tokens[row] = static_cast<int>(corpus_tokens[start + position]);
+        targets[row] =
+            static_cast<int>(corpus_tokens[start + position + 1]);
+      }
     }
     if (auto status = CopyBatch(tokens, targets, token_buffer, target_buffer,
                                 stream);
@@ -211,17 +294,21 @@ absl::Status Train(Layer& model, CrossEntropyLossLayer& loss_layer,
     return absl::InvalidArgumentError("steps must be non-negative");
   }
   std::mt19937 random(seed);
-  std::uniform_int_distribution<size_t> position(0,
-                                                  corpus_tokens.size() - 2);
+  std::uniform_int_distribution<size_t> sequence_start(
+      0, corpus_tokens.size() - kContextLength - 1);
   std::array<int, kBatchSize> tokens{};
   std::array<int, kBatchSize> targets{};
   std::array<float, kBatchSize> losses{};
 
   for (int step = 0; step < steps; ++step) {
-    for (int row = 0; row < kBatchSize; ++row) {
-      const size_t index = position(random);
-      tokens[row] = static_cast<int>(corpus_tokens[index]);
-      targets[row] = static_cast<int>(corpus_tokens[index + 1]);
+    for (int sequence = 0; sequence < kSequenceBatchSize; ++sequence) {
+      const size_t start = sequence_start(random);
+      for (int position = 0; position < kContextLength; ++position) {
+        const int row = sequence * kContextLength + position;
+        tokens[row] = static_cast<int>(corpus_tokens[start + position]);
+        targets[row] =
+            static_cast<int>(corpus_tokens[start + position + 1]);
+      }
     }
     if (auto status = CopyBatch(tokens, targets, token_buffer, target_buffer,
                                 stream);
@@ -269,15 +356,33 @@ absl::Status Train(Layer& model, CrossEntropyLossLayer& loss_layer,
 }
 
 absl::StatusOr<std::array<float, kVocabularySize>> Predict(
-    Layer& model, uint32_t token, const Buffer& token_buffer,
-    cudaStream_t stream) {
-  std::array<int, kBatchSize> repeated_tokens{};
-  repeated_tokens.fill(static_cast<int>(token));
+    Layer& model, const std::vector<uint32_t>& context,
+    const Buffer& token_buffer, cudaStream_t stream) {
+  if (context.empty()) {
+    return absl::InvalidArgumentError("prediction context must not be empty");
+  }
+  const size_t context_size =
+      std::min(context.size(), static_cast<size_t>(kContextLength));
+  const size_t context_start = context.size() - context_size;
+  std::array<int, kBatchSize> repeated_context{};
+  for (int sequence = 0; sequence < kSequenceBatchSize; ++sequence) {
+    for (size_t position = 0; position < context_size; ++position) {
+      repeated_context[sequence * kContextLength + position] =
+          static_cast<int>(context[context_start + position]);
+    }
+    // These rows are causally invisible to the selected output row. Filling
+    // them still gives every fixed-shape kernel valid token IDs.
+    for (size_t position = context_size; position < kContextLength;
+         ++position) {
+      repeated_context[sequence * kContextLength + position] =
+          static_cast<int>(context.back());
+    }
+  }
   if (auto status = CudaStatus(
-          cudaMemcpyAsync(token_buffer.data(), repeated_tokens.data(),
+          cudaMemcpyAsync(token_buffer.data(), repeated_context.data(),
                           token_buffer.size_bytes(), cudaMemcpyHostToDevice,
                           stream),
-          "cudaMemcpyAsync(prompt token)");
+          "cudaMemcpyAsync(prompt context)");
       !status.ok()) {
     return status;
   }
@@ -286,8 +391,12 @@ absl::StatusOr<std::array<float, kVocabularySize>> Predict(
   auto logits = model.fwd(inputs, &tape);
   if (!logits.ok()) return logits.status();
   std::array<float, kVocabularySize> host_logits{};
+  const size_t output_row = context_size - 1;
+  const auto* selected_logits =
+      static_cast<const float*>(logits->data()) +
+      output_row * kVocabularySize;
   if (auto status = CudaStatus(
-          cudaMemcpyAsync(host_logits.data(), logits->data(),
+          cudaMemcpyAsync(host_logits.data(), selected_logits,
                           host_logits.size() * sizeof(float),
                           cudaMemcpyDeviceToHost, stream),
           "cudaMemcpyAsync(prompt logits)");
@@ -313,12 +422,12 @@ absl::StatusOr<std::string> Generate(
   }
   if (prompt.empty()) prompt = "\n";
   std::vector<uint32_t> prompt_tokens = tokenizer.Encode(prompt);
-  uint32_t current = prompt_tokens.back();
+  std::vector<uint32_t> context = prompt_tokens;
   std::vector<uint32_t> generated;
   generated.reserve(generation_tokens);
 
   for (int index = 0; index < generation_tokens; ++index) {
-    auto logits = Predict(model, current, token_buffer, stream);
+    auto logits = Predict(model, context, token_buffer, stream);
     if (!logits.ok()) return logits.status();
     const float maximum = *std::max_element(logits->begin(), logits->end());
     std::array<double, kVocabularySize> probabilities{};
@@ -330,8 +439,9 @@ absl::StatusOr<std::string> Generate(
     }
     std::discrete_distribution<int> sample(probabilities.begin(),
                                             probabilities.end());
-    current = static_cast<uint32_t>(sample(*random));
-    generated.push_back(current);
+    const uint32_t next = static_cast<uint32_t>(sample(*random));
+    context.push_back(next);
+    generated.push_back(next);
   }
   return tokenizer.Decode(generated);
 }
@@ -341,9 +451,9 @@ absl::Status Run(cudaStream_t stream) {
   if (!corpus.ok()) return corpus.status();
   const PlainTextTokenizer tokenizer;
   const std::vector<uint32_t> corpus_tokens = tokenizer.Encode(*corpus);
-  if (corpus_tokens.size() < 2) {
+  if (corpus_tokens.size() <= kContextLength) {
     return absl::InvalidArgumentError(
-        "the training corpus must contain at least two bytes");
+        "the training corpus must be longer than the model context");
   }
   std::array<bool, kVocabularySize> observed{};
   for (uint32_t token : corpus_tokens) observed[token] = true;

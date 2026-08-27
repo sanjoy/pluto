@@ -22,6 +22,12 @@ namespace pluto::llm {
 inline constexpr int kBatchSize = 256;
 inline constexpr int kModelWidth = 256;
 inline constexpr int kVocabularySize = 256;
+inline constexpr int kContextLength = 16;
+inline constexpr int kSequenceBatchSize = kBatchSize / kContextLength;
+inline constexpr int kAttentionHeads = 4;
+inline constexpr int kAttentionHeadDimension = kModelWidth / kAttentionHeads;
+static_assert(kBatchSize % kContextLength == 0);
+static_assert(kModelWidth % kAttentionHeads == 0);
 
 // Maps a batch of int32 token IDs to embedding vectors. The table is stored as
 // one FP32 master weight; the forward kernel rounds values through FP16 before
@@ -36,7 +42,7 @@ class EmbeddingLookupLayer final : public Layer {
   // Initializes the rectangular table to the identity on its main diagonal.
   // This is useful for tied byte-level models, where an all-zero table would
   // make both sides of the initial E * E^T projection have zero gradient.
-  absl::Status InitializeIdentity();
+  absl::Status InitializeIdentity(float scale = 1.0f);
 
   absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs,
                               Tape* tape) override;
@@ -88,6 +94,144 @@ class LanguageModelingHeadLayer final : public Layer {
   EmbeddingLookupLayer* embedding_;
 };
 
+// Adds a learned position vector to each token. The kBatchSize rows are laid
+// out as kSequenceBatchSize consecutive sequences, so positions repeat every
+// context_length rows. Backward returns the activation gradient unchanged and
+// accumulates the position-weight update across sequences.
+class PositionEmbeddingLayer final : public Layer {
+ public:
+  static absl::StatusOr<std::unique_ptr<PositionEmbeddingLayer>> Create(
+      int context_length, int embedding_dim, DataType data_type,
+      float learning_rate, cudaStream_t stream);
+
+  absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs,
+                              Tape* tape) override;
+  absl::StatusOr<BufferVec> bwd(
+      absl::Span<const Buffer> output_gradients, Tape tape) override;
+  absl::Span<Buffer> weights() override {
+    return absl::MakeSpan(&weight_, 1);
+  }
+  DataType output_type() const override { return output_type_; }
+
+ private:
+  PositionEmbeddingLayer(int context_length, int embedding_dim,
+                         DataType data_type, float learning_rate,
+                         cudaStream_t stream, Buffer weight);
+
+  int context_length_;
+  int embedding_dim_;
+  DataType output_type_;
+  float learning_rate_;
+  cudaStream_t stream_;
+  Buffer weight_;
+};
+
+// Causal multi-head self-attention using a fused FlashAttention algorithm.
+// Each query block streams over visible keys, maintains an online softmax, and
+// accumulates values without ever allocating the quadratic attention matrix.
+// Backward recomputes those probabilities and atomically accumulates dQ, dK,
+// and dV into the single input gradient. This scaled implementation uses the
+// input activation as Q, K, and V; surrounding GPT-2 projections can therefore
+// remain ordinary FullyConnectedLayer instances.
+class AttentionLayer final : public Layer {
+ public:
+  static absl::StatusOr<std::unique_ptr<AttentionLayer>> Create(
+      int context_length, int num_heads, int embedding_dim,
+      DataType data_type, cudaStream_t stream);
+
+  absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs,
+                              Tape* tape) override;
+  absl::StatusOr<BufferVec> bwd(
+      absl::Span<const Buffer> output_gradients, Tape tape) override;
+  absl::Span<Buffer> weights() override { return {}; }
+  DataType output_type() const override { return output_type_; }
+
+ private:
+  AttentionLayer(int context_length, int num_heads, int embedding_dim,
+                 DataType data_type, cudaStream_t stream)
+      : context_length_(context_length),
+        num_heads_(num_heads),
+        embedding_dim_(embedding_dim),
+        output_type_(data_type),
+        stream_(stream) {}
+
+  int context_length_;
+  int num_heads_;
+  int embedding_dim_;
+  DataType output_type_;
+  cudaStream_t stream_;
+};
+
+// Per-token layer normalization without affine parameters. Omitting gamma and
+// beta keeps this compact fixture focused on attention while preserving GPT-2's
+// pre-normalization topology.
+class LayerNormLayer final : public Layer {
+ public:
+  static absl::StatusOr<std::unique_ptr<LayerNormLayer>> Create(
+      int embedding_dim, float epsilon, DataType data_type,
+      cudaStream_t stream);
+
+  absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs,
+                              Tape* tape) override;
+  absl::StatusOr<BufferVec> bwd(
+      absl::Span<const Buffer> output_gradients, Tape tape) override;
+  absl::Span<Buffer> weights() override { return {}; }
+  DataType output_type() const override { return output_type_; }
+
+ private:
+  LayerNormLayer(int embedding_dim, float epsilon, DataType data_type,
+                 cudaStream_t stream)
+      : embedding_dim_(embedding_dim),
+        epsilon_(epsilon),
+        output_type_(data_type),
+        stream_(stream) {}
+
+  int embedding_dim_;
+  float epsilon_;
+  DataType output_type_;
+  cudaStream_t stream_;
+};
+
+// Elementwise Gaussian Error Linear Unit used by GPT-2's feed-forward block.
+class GeluLayer final : public Layer {
+ public:
+  static absl::StatusOr<std::unique_ptr<GeluLayer>> Create(
+      DataType data_type, cudaStream_t stream);
+
+  absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs,
+                              Tape* tape) override;
+  absl::StatusOr<BufferVec> bwd(
+      absl::Span<const Buffer> output_gradients, Tape tape) override;
+  absl::Span<Buffer> weights() override { return {}; }
+  DataType output_type() const override { return output_type_; }
+
+ private:
+  GeluLayer(DataType data_type, cudaStream_t stream)
+      : output_type_(data_type), stream_(stream) {}
+
+  DataType output_type_;
+  cudaStream_t stream_;
+};
+
+// Wraps a unary layer as x + layer(x), retaining the child's tape and weights.
+class ResidualLayer final : public Layer {
+ public:
+  explicit ResidualLayer(std::unique_ptr<Layer> layer);
+
+  absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs,
+                              Tape* tape) override;
+  absl::StatusOr<BufferVec> bwd(
+      absl::Span<const Buffer> output_gradients, Tape tape) override;
+  absl::Span<Buffer> weights() override {
+    return absl::MakeSpan(weights_);
+  }
+  DataType output_type() const override { return layer_->output_type(); }
+
+ private:
+  std::unique_ptr<Layer> layer_;
+  std::vector<Buffer> weights_;
+};
+
 // A bias-bearing kModelWidth x kModelWidth dense layer. Matrix products are
 // implemented as 16x16 cuTile MMAs. FP32 master parameters are rounded to FP16
 // at the MMA boundary, which keeps updates stable while exercising FP16 math.
@@ -98,7 +242,7 @@ class FullyConnectedLayer final : public Layer {
 
   // Makes this layer an exact identity at its FP16 compute boundary. Useful
   // when inserting it into a small model without changing its initial logits.
-  absl::Status InitializeIdentity();
+  absl::Status InitializeIdentity(float scale = 1.0f);
 
   absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs,
                               Tape* tape) override;
