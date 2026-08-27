@@ -15,6 +15,8 @@ namespace pluto::gpu {
 // Allocate() queues cudaMallocAsync() on the supplied stream. Copies share the
 // same allocation, address, size, and stream. Destroying the last copy queues
 // cudaFreeAsync() on that same stream, after work previously submitted there.
+// Allocate() rejects the null, legacy-default, and per-thread-default handles;
+// callers must pass a stream returned by cudaStreamCreate*().
 //
 // Buffer does not own its stream. The caller must keep the stream valid until
 // every Buffer copy referring to it has been destroyed. The caller may then

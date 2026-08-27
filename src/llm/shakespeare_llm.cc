@@ -139,11 +139,11 @@ absl::StatusOr<double> Evaluate(
       return status;
     }
     Tape model_tape;
-    Buffers model_inputs = {token_buffer};
+    BufferVec model_inputs = {token_buffer};
     auto logits = model.fwd(model_inputs, &model_tape);
     if (!logits.ok()) return logits.status();
     Tape loss_tape;
-    Buffers loss_inputs = {*logits, target_buffer};
+    BufferVec loss_inputs = {*logits, target_buffer};
     auto device_losses = loss_layer.fwd(loss_inputs, &loss_tape);
     if (!device_losses.ok()) return device_losses.status();
     if (auto status = CudaStatus(
@@ -191,11 +191,11 @@ absl::Status Train(Layer& model, CrossEntropyLossLayer& loss_layer,
     }
 
     Tape model_tape;
-    Buffers model_inputs = {token_buffer};
+    BufferVec model_inputs = {token_buffer};
     auto logits = model.fwd(model_inputs, &model_tape);
     if (!logits.ok()) return logits.status();
     Tape loss_tape;
-    Buffers loss_inputs = {*logits, target_buffer};
+    BufferVec loss_inputs = {*logits, target_buffer};
     auto device_losses = loss_layer.fwd(loss_inputs, &loss_tape);
     if (!device_losses.ok()) return device_losses.status();
     auto logits_gradient = loss_layer.bwd({}, std::move(loss_tape));
@@ -243,7 +243,7 @@ absl::StatusOr<std::array<float, kVocabularySize>> Predict(
     return status;
   }
   Tape tape;
-  Buffers inputs = {token_buffer};
+  BufferVec inputs = {token_buffer};
   auto logits = model.fwd(inputs, &tape);
   if (!logits.ok()) return logits.status();
   std::array<float, kVocabularySize> host_logits{};

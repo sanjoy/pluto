@@ -41,6 +41,15 @@ static_assert(std::is_copy_assignable_v<Buffer>);
 static_assert(std::is_nothrow_move_constructible_v<Buffer>);
 static_assert(std::is_nothrow_move_assignable_v<Buffer>);
 
+TEST(BufferDeathTest, RejectsEveryDefaultCudaStreamHandle) {
+  EXPECT_DEATH((void)Buffer::Allocate(32, nullptr),
+               "explicitly created CUDA stream");
+  EXPECT_DEATH((void)Buffer::Allocate(32, cudaStreamLegacy),
+               "explicitly created CUDA stream");
+  EXPECT_DEATH((void)Buffer::Allocate(32, cudaStreamPerThread),
+               "explicitly created CUDA stream");
+}
+
 TEST_F(BufferTest, CopiesShareStorageUntilTheLastReferenceIsDestroyed) {
   std::optional<Buffer> survivor;
   void* address = nullptr;
@@ -92,19 +101,6 @@ TEST_F(BufferTest, ZeroByteBufferRetainsItsStreamWithoutAllocatingStorage) {
     EXPECT_EQ(copy.stream(), stream_);
   }
   EXPECT_EQ(cudaStreamSynchronize(stream_), cudaSuccess);
-}
-
-TEST_F(BufferTest, DefaultCudaStreamIsAValidBinding) {
-  {
-    auto buffer = Buffer::Allocate(32, nullptr);
-    ASSERT_TRUE(buffer.ok()) << buffer.status();
-    EXPECT_NE(buffer->data(), nullptr);
-    EXPECT_EQ(buffer->size_bytes(), 32u);
-    EXPECT_EQ(buffer->stream(), nullptr);
-    ASSERT_EQ(cudaMemsetAsync(buffer->data(), 0, buffer->size_bytes(), nullptr),
-              cudaSuccess);
-  }
-  EXPECT_EQ(cudaStreamSynchronize(nullptr), cudaSuccess);
 }
 
 }  // namespace

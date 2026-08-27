@@ -276,7 +276,7 @@ __tile_global__ void DenseBiasUpdateKernel(
 EmbeddingLookupLayer::EmbeddingLookupLayer(DataType data_type,
                                            float learning_rate,
                                            cudaStream_t stream, Buffer table)
-    : data_type_(data_type),
+    : output_type_(data_type),
       learning_rate_(learning_rate),
       stream_(stream),
       weights_{std::move(table)} {}
@@ -328,7 +328,7 @@ absl::StatusOr<Buffer> EmbeddingLookupLayer::fwd(
   return *std::move(output);
 }
 
-absl::StatusOr<Buffers> EmbeddingLookupLayer::bwd(
+absl::StatusOr<BufferVec> EmbeddingLookupLayer::bwd(
     absl::Span<const Buffer> output_gradients, Tape tape) {
   if (output_gradients.size() != 1 || tape.intermediates.size() != 1) {
     return absl::InvalidArgumentError(
@@ -351,14 +351,14 @@ absl::StatusOr<Buffers> EmbeddingLookupLayer::bwd(
     return status;
   }
   // Integer token IDs are not differentiable.
-  return Buffers{};
+  return BufferVec{};
 }
 
 FullyConnectedLayer::FullyConnectedLayer(DataType data_type,
                                          float learning_rate,
                                          cudaStream_t stream, Buffer matrix,
                                          Buffer bias)
-    : data_type_(data_type),
+    : output_type_(data_type),
       learning_rate_(learning_rate),
       stream_(stream),
       weights_{std::move(matrix), std::move(bias)} {}
@@ -433,7 +433,7 @@ absl::StatusOr<Buffer> FullyConnectedLayer::fwd(
   return *std::move(output);
 }
 
-absl::StatusOr<Buffers> FullyConnectedLayer::bwd(
+absl::StatusOr<BufferVec> FullyConnectedLayer::bwd(
     absl::Span<const Buffer> output_gradients, Tape tape) {
   if (output_gradients.size() != 1 || tape.intermediates.size() != 1) {
     return absl::InvalidArgumentError(
@@ -469,7 +469,7 @@ absl::StatusOr<Buffers> FullyConnectedLayer::bwd(
       !status.ok()) {
     return status;
   }
-  return Buffers{*std::move(input_gradient)};
+  return BufferVec{*std::move(input_gradient)};
 }
 
 absl::StatusOr<std::unique_ptr<CrossEntropyLossLayer>>
@@ -514,7 +514,7 @@ absl::StatusOr<Buffer> CrossEntropyLossLayer::fwd(
   return *std::move(losses);
 }
 
-absl::StatusOr<Buffers> CrossEntropyLossLayer::bwd(
+absl::StatusOr<BufferVec> CrossEntropyLossLayer::bwd(
     absl::Span<const Buffer> output_gradients, Tape tape) {
   if (!output_gradients.empty() || tape.intermediates.size() != 2) {
     return absl::InvalidArgumentError(
@@ -533,12 +533,12 @@ absl::StatusOr<Buffers> CrossEntropyLossLayer::bwd(
       !status.ok()) {
     return status;
   }
-  return Buffers{*std::move(logits_gradient)};
+  return BufferVec{*std::move(logits_gradient)};
 }
 
 ComposedLayer::ComposedLayer(DataType data_type,
                              std::vector<std::unique_ptr<Layer>> layers)
-    : data_type_(data_type), layers_(std::move(layers)) {
+    : output_type_(data_type), layers_(std::move(layers)) {
   for (const auto& layer : layers_) {
     for (Buffer& weight : layer->weights()) weights_.push_back(weight);
   }
@@ -555,7 +555,7 @@ absl::StatusOr<Buffer> ComposedLayer::fwd(absl::Span<const Buffer> inputs,
   Buffer activation = inputs.front();
   for (auto& layer : layers_) {
     Tape child_tape;
-    Buffers child_inputs = {activation};
+    BufferVec child_inputs = {activation};
     auto output = layer->fwd(child_inputs, &child_tape);
     if (!output.ok()) return output.status();
     activation = *std::move(output);
@@ -564,7 +564,7 @@ absl::StatusOr<Buffer> ComposedLayer::fwd(absl::Span<const Buffer> inputs,
   return activation;
 }
 
-absl::StatusOr<Buffers> ComposedLayer::bwd(
+absl::StatusOr<BufferVec> ComposedLayer::bwd(
     absl::Span<const Buffer> output_gradients, Tape tape) {
   if (output_gradients.size() != 1 || tape.children.size() != layers_.size()) {
     return absl::InvalidArgumentError(
@@ -572,18 +572,18 @@ absl::StatusOr<Buffers> ComposedLayer::bwd(
   }
   Buffer gradient = output_gradients.front();
   for (size_t index = layers_.size(); index-- > 0;) {
-    Buffers child_gradients = {gradient};
+    BufferVec child_gradients = {gradient};
     auto input_gradients = layers_[index]->bwd(
         child_gradients, std::move(tape.children[index]));
     if (!input_gradients.ok()) return input_gradients.status();
-    if (index == 0 && input_gradients->empty()) return Buffers{};
+    if (index == 0 && input_gradients->empty()) return BufferVec{};
     if (input_gradients->size() != 1) {
       return absl::InternalError(
           "a composed unary layer returned multiple input gradients");
     }
     gradient = input_gradients->front();
   }
-  return Buffers{gradient};
+  return BufferVec{gradient};
 }
 
 }  // namespace pluto::llm

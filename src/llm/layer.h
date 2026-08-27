@@ -12,7 +12,7 @@
 namespace pluto::llm {
 
 using Buffer = gpu::Buffer;
-using Buffers = absl::InlinedVector<Buffer, 2>;
+using BufferVec = absl::InlinedVector<Buffer, 2>;
 
 enum class DataType {
   FP16,
@@ -23,7 +23,7 @@ enum class DataType {
 // repeated layers keep each child's private intermediates without imposing a
 // layout convention on unrelated layer implementations.
 struct Tape {
-  Buffers intermediates;
+  BufferVec intermediates;
   std::vector<Tape> children;
 };
 
@@ -34,10 +34,10 @@ class Layer {
 
   virtual absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs,
                                       Tape* tape) = 0;
-  virtual absl::StatusOr<Buffers> bwd(
+  virtual absl::StatusOr<BufferVec> bwd(
       absl::Span<const Buffer> output_gradients, Tape tape) = 0;
   virtual absl::Span<Buffer> weights() = 0;
-  virtual DataType data_type() const = 0;
+  virtual DataType output_type() const = 0;
 };
 
 }  // namespace pluto::llm

@@ -34,21 +34,21 @@ class EmbeddingLookupLayer final : public Layer {
 
   absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs,
                               Tape* tape) override;
-  absl::StatusOr<Buffers> bwd(
+  absl::StatusOr<BufferVec> bwd(
       absl::Span<const Buffer> output_gradients, Tape tape) override;
   absl::Span<Buffer> weights() override {
-    return absl::Span<Buffer>(weights_.data(), weights_.size());
+    return absl::MakeSpan(weights_);
   }
-  DataType data_type() const override { return data_type_; }
+  DataType output_type() const override { return output_type_; }
 
  private:
   EmbeddingLookupLayer(DataType data_type, float learning_rate,
                        cudaStream_t stream, Buffer table);
 
-  DataType data_type_;
+  DataType output_type_;
   float learning_rate_;
   cudaStream_t stream_;
-  Buffers weights_;
+  BufferVec weights_;
 };
 
 // A bias-bearing kModelWidth x kModelWidth dense layer. Matrix products are
@@ -65,21 +65,21 @@ class FullyConnectedLayer final : public Layer {
 
   absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs,
                               Tape* tape) override;
-  absl::StatusOr<Buffers> bwd(
+  absl::StatusOr<BufferVec> bwd(
       absl::Span<const Buffer> output_gradients, Tape tape) override;
   absl::Span<Buffer> weights() override {
-    return absl::Span<Buffer>(weights_.data(), weights_.size());
+    return absl::MakeSpan(weights_);
   }
-  DataType data_type() const override { return data_type_; }
+  DataType output_type() const override { return output_type_; }
 
  private:
   FullyConnectedLayer(DataType data_type, float learning_rate,
                       cudaStream_t stream, Buffer matrix, Buffer bias);
 
-  DataType data_type_;
+  DataType output_type_;
   float learning_rate_;
   cudaStream_t stream_;
-  Buffers weights_;
+  BufferVec weights_;
 };
 
 // Computes one cross-entropy value per batch element. fwd() takes two inputs:
@@ -93,16 +93,16 @@ class CrossEntropyLossLayer final : public Layer {
 
   absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs,
                               Tape* tape) override;
-  absl::StatusOr<Buffers> bwd(
+  absl::StatusOr<BufferVec> bwd(
       absl::Span<const Buffer> output_gradients, Tape tape) override;
   absl::Span<Buffer> weights() override { return {}; }
-  DataType data_type() const override { return data_type_; }
+  DataType output_type() const override { return output_type_; }
 
  private:
   CrossEntropyLossLayer(DataType data_type, cudaStream_t stream)
-      : data_type_(data_type), stream_(stream) {}
+      : output_type_(data_type), stream_(stream) {}
 
-  DataType data_type_;
+  DataType output_type_;
   cudaStream_t stream_;
 };
 
@@ -115,15 +115,15 @@ class ComposedLayer final : public Layer {
 
   absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs,
                               Tape* tape) override;
-  absl::StatusOr<Buffers> bwd(
+  absl::StatusOr<BufferVec> bwd(
       absl::Span<const Buffer> output_gradients, Tape tape) override;
   absl::Span<Buffer> weights() override {
-    return absl::Span<Buffer>(weights_.data(), weights_.size());
+    return absl::MakeSpan(weights_);
   }
-  DataType data_type() const override { return data_type_; }
+  DataType output_type() const override { return output_type_; }
 
  private:
-  DataType data_type_;
+  DataType output_type_;
   std::vector<std::unique_ptr<Layer>> layers_;
   std::vector<Buffer> weights_;
 };
@@ -136,7 +136,7 @@ class RepeatedLayer final : public Layer {
  public:
   RepeatedLayer(DataType data_type,
                 std::vector<std::unique_ptr<LayerToRepeat>> layers)
-      : data_type_(data_type), layers_(std::move(layers)) {
+      : output_type_(data_type), layers_(std::move(layers)) {
     for (const auto& layer : layers_) {
       for (Buffer& weight : layer->weights()) weights_.push_back(weight);
     }
@@ -153,7 +153,7 @@ class RepeatedLayer final : public Layer {
     Buffer activation = inputs.front();
     for (auto& layer : layers_) {
       Tape child_tape;
-      Buffers child_inputs = {activation};
+      BufferVec child_inputs = {activation};
       auto output = layer->fwd(child_inputs, &child_tape);
       if (!output.ok()) return output.status();
       activation = *std::move(output);
@@ -162,7 +162,7 @@ class RepeatedLayer final : public Layer {
     return activation;
   }
 
-  absl::StatusOr<Buffers> bwd(
+  absl::StatusOr<BufferVec> bwd(
       absl::Span<const Buffer> output_gradients, Tape tape) override {
     if (output_gradients.size() != 1 ||
         tape.children.size() != layers_.size()) {
@@ -171,7 +171,7 @@ class RepeatedLayer final : public Layer {
     }
     Buffer gradient = output_gradients.front();
     for (size_t index = layers_.size(); index-- > 0;) {
-      Buffers child_gradients = {gradient};
+      BufferVec child_gradients = {gradient};
       auto inputs = layers_[index]->bwd(
           child_gradients, std::move(tape.children[index]));
       if (!inputs.ok()) return inputs.status();
@@ -181,16 +181,16 @@ class RepeatedLayer final : public Layer {
       }
       gradient = inputs->front();
     }
-    return Buffers{gradient};
+    return BufferVec{gradient};
   }
 
   absl::Span<Buffer> weights() override {
-    return absl::Span<Buffer>(weights_.data(), weights_.size());
+    return absl::MakeSpan(weights_);
   }
-  DataType data_type() const override { return data_type_; }
+  DataType output_type() const override { return output_type_; }
 
  private:
-  DataType data_type_;
+  DataType output_type_;
   std::vector<std::unique_ptr<LayerToRepeat>> layers_;
   std::vector<Buffer> weights_;
 };

@@ -59,7 +59,7 @@ TEST_F(LayersTest, CrossEntropyForwardAndBackwardMatchUniformSoftmax) {
   auto loss_layer = CrossEntropyLossLayer::Create(DataType::FP16, stream_);
   ASSERT_TRUE(loss_layer.ok()) << loss_layer.status();
   Tape tape;
-  Buffers loss_inputs = {*logits_buffer, *target_buffer};
+  BufferVec loss_inputs = {*logits_buffer, *target_buffer};
   auto losses = (*loss_layer)->fwd(loss_inputs, &tape);
   ASSERT_TRUE(losses.ok()) << losses.status();
   auto gradients = (*loss_layer)->bwd({}, std::move(tape));
@@ -110,10 +110,10 @@ TEST_F(LayersTest, IdentityDenseLayerHasIdentityForwardAndBackward) {
   ASSERT_TRUE(dense.ok()) << dense.status();
   ASSERT_TRUE((*dense)->InitializeIdentity().ok());
   Tape tape;
-  Buffers dense_inputs = {*input_buffer};
+  BufferVec dense_inputs = {*input_buffer};
   auto output = (*dense)->fwd(dense_inputs, &tape);
   ASSERT_TRUE(output.ok()) << output.status();
-  Buffers dense_gradients = {*gradient_buffer};
+  BufferVec dense_gradients = {*gradient_buffer};
   auto input_gradients =
       (*dense)->bwd(dense_gradients, std::move(tape));
   ASSERT_TRUE(input_gradients.ok()) << input_gradients.status();

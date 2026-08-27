@@ -2,6 +2,7 @@
 
 #include <cuda_runtime_api.h>
 
+#include <cassert>
 #include <cstdio>
 #include <memory>
 #include <utility>
@@ -49,6 +50,17 @@ Buffer::Buffer(std::shared_ptr<Allocation> allocation)
 
 absl::StatusOr<Buffer> Buffer::Allocate(size_t size_bytes,
                                          cudaStream_t stream) {
+  const bool has_explicit_stream =
+      stream != nullptr && stream != cudaStreamLegacy &&
+      stream != cudaStreamPerThread;
+  assert(has_explicit_stream &&
+         "Buffer requires an explicitly created CUDA stream");
+  // Keep the invariant in optimized builds where assert() may be compiled out.
+  if (!has_explicit_stream) {
+    return absl::InvalidArgumentError(
+        "Buffer requires an explicitly created CUDA stream");
+  }
+
   // Create the control block first so that a later host allocation failure
   // cannot leak a successfully allocated device pointer.
   auto allocation = std::make_shared<Allocation>();
