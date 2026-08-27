@@ -1,4 +1,4 @@
-#include "src/tokenized/document_file.h"
+#include "src/tokenization/document_file.h"
 
 #include <cstdint>
 #include <filesystem>

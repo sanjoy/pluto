@@ -1,0 +1,45 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cuda//cuda:defs.bzl", "cuda_test")
+
+cc_library(
+    name = "buffer",
+    srcs = ["buffer.cc"],
+    hdrs = ["buffer.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cuda_test(
+    name = "buffer_test",
+    size = "small",
+    srcs = ["buffer_test.cu"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":buffer",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cuda_test(
+    name = "cutile_test",
+    size = "small",
+    srcs = ["cutile_test.cu"],
+    # CUDA Tile C++ is a C++20 extension and is opt-in in NVCC 13.3.
+    copts = [
+        "--enable-tile",
+        "-std=c++20",
+    ],
+    host_copts = ["-std=c++20"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":buffer",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)

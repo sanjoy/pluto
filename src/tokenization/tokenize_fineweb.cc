@@ -15,8 +15,8 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "src/tokenized/fineweb_converter.h"
-#include "src/tokenizer/tokenizer.h"
+#include "src/tokenization/fineweb_converter.h"
+#include "src/tokenization/tokenizer.h"
 
 ABSL_FLAG(std::string, input_dir, "",
           "Directory containing FineWeb .parquet shards.");

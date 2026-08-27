@@ -1,4 +1,4 @@
-#include "src/tokenizer/gpt2_model.h"
+#include "src/tokenization/gpt2_model.h"
 
 #include <algorithm>
 #include <cctype>

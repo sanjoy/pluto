@@ -5,7 +5,7 @@ exports_files(
     ["testdata/fineweb_sample.parquet"],
     visibility = [
         "//src/pipeline:__pkg__",
-        "//src/tokenized:__pkg__",
+        "//src/tokenization:__pkg__",
     ],
 )
 

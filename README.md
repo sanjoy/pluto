@@ -4,12 +4,50 @@ This repository contains small C++ libraries for the local FineWeb-Edu data
 pipeline. They use Bazel/Bzlmod, C++17, Abseil status types and containers, and
 GoogleTest.
 
+## GPU buffer
+
+The public target `//src/gpu:buffer` provides `pluto::gpu::Buffer`, a small
+untyped CUDA allocation:
+
+```cpp
+auto buffer = pluto::gpu::Buffer::Allocate(byte_count, stream);
+cudaMemsetAsync(buffer->data(), 0, buffer->size_bytes(), buffer->stream());
+```
+
+`Allocate()` queues `cudaMallocAsync()` on the supplied stream. Copying a
+`Buffer` shares its allocation; destroying the final copy queues
+`cudaFreeAsync()` on that same stream. The caller owns the stream and must
+keep it valid until all copies are destroyed. Access from another stream
+requires explicit CUDA event ordering before the final reference is released.
+A zero-byte buffer retains its stream but has a null data pointer.
+
+The Bazel library links the CUDA runtime through `@cuda//:cuda_runtime`. Its
+GPU test launches a kernel through a shared buffer, queues an asynchronous
+device-to-host copy, drops the final reference, and verifies that the
+stream-ordered free does not race the earlier work:
+
+```bash
+bazel test //src/gpu:buffer_test
+```
+
+The `//src/gpu:cutile_test` target is a CUDA Tile C++ toolchain smoke test. It
+uses an `__tile_global__` kernel to add two 128-element vectors in
+eight-element tiles, with one logical tile block per region:
+
+```bash
+bazel test //src/gpu:cutile_test
+```
+
+CUDA Tile C++ requires CUDA 13.3 or newer, C++20, and NVCC's
+`--enable-tile` option. Those language and compiler options are scoped to the
+cuTile target in `src/gpu/BUILD.bazel`; the rest of the project remains C++17.
+
 ## GPT-2 tokenizer libraries
 
 The public targets are:
 
-- `//src/tokenizer:tokenizer` — `pluto::tokenizer::Gpt2Tokenizer`
-- `//src/tokenizer:detokenizer` — `pluto::tokenizer::Gpt2Detokenizer`
+- `//src/tokenization:tokenizer` — `pluto::tokenizer::Gpt2Tokenizer`
+- `//src/tokenization:detokenizer` — `pluto::tokenizer::Gpt2Detokenizer`
 
 Both `Load()` methods take a directory supplied by the caller. No tokenizer
 location is compiled into the libraries. The directory must contain the
@@ -29,7 +67,7 @@ decoding preserve UTF-8 input byte-for-byte and recognize GPT-2's EOS token.
 
 ## Tokenized-document files
 
-The public target `//src/tokenized:document_file` provides
+The public target `//src/tokenization:document_file` provides
 `pluto::tokenized::DocumentFileReader` and `DocumentFileWriter`. The format
 contains one length table followed by packed token IDs:
 
@@ -46,14 +84,14 @@ keeps only the length table and a 1 MiB payload buffer in memory. It writes
 through a temporary file in the destination directory and atomically publishes
 the result only when every declared document has been supplied.
 
-The `//src/tokenized:fineweb_converter` library composes this format with the
+The `//src/tokenization:fineweb_converter` library composes this format with the
 GPT-2 tokenizer and the projected-text Parquet reader. The
-`//src/tokenized:tokenize_fineweb` binary discovers every `.parquet` file in
+`//src/tokenization:tokenize_fineweb` binary discovers every `.parquet` file in
 an input directory and writes a matching `.tokenized` file. For example,
 `000_00000.parquet` becomes `000_00000.tokenized`.
 
 ```bash
-bazel run //src/tokenized:tokenize_fineweb -- \
+bazel run //src/tokenization:tokenize_fineweb -- \
   --input_dir=/home/ubuntu/datasets/raw/sample/10BT \
   --output_dir=/home/ubuntu/datasets/tokenized/10BT \
   --tokenizer_dir=/home/ubuntu/datasets/tokenizer/gpt2
@@ -94,10 +132,10 @@ checked-in `.bazelrc` forwards into Bazel's test environment:
 export PLUTO_GPT2_TOKENIZER_DIR=/path/to/datasets/tokenizer/gpt2
 export PLUTO_FINEWEB_PARQUET_DIR=/path/to/datasets/raw/sample/10BT
 
-bazel test //src/tokenizer:tokenizer_test
+bazel test //src/tokenization:tokenizer_test
 bazel test //src/parquet:fineweb_parquet_reader_test
-bazel test //src/tokenized:document_file_test
-bazel test //src/tokenized:fineweb_converter_test
+bazel test //src/tokenization:document_file_test
+bazel test //src/tokenization:fineweb_converter_test
 bazel test //src/pipeline:tokenized_parquet_test
 bazel test //src/pipeline:fineweb_integration_test
 ```

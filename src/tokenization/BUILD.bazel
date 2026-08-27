@@ -3,6 +3,62 @@ load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 
 cc_library(
+    name = "gpt2_model",
+    srcs = ["gpt2_model.cc"],
+    hdrs = ["gpt2_model.h"],
+    visibility = ["//src/tokenization:__pkg__"],
+    deps = [
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/synchronization",
+    ],
+)
+
+cc_library(
+    name = "tokenizer",
+    srcs = ["tokenizer.cc"],
+    hdrs = ["tokenizer.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":gpt2_model",
+        "@abseil-cpp//absl/base:core_headers",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/synchronization",
+        "@re2//:re2",
+    ],
+)
+
+cc_library(
+    name = "detokenizer",
+    srcs = ["detokenizer.cc"],
+    hdrs = ["detokenizer.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":gpt2_model",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "tokenizer_test",
+    size = "small",
+    srcs = ["tokenizer_test.cc"],
+    tags = ["requires-tokenizer"],
+    deps = [
+        ":detokenizer",
+        ":tokenizer",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "document_file",
     srcs = ["document_file.cc"],
     hdrs = ["document_file.h"],
@@ -32,8 +88,8 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":document_file",
+        ":tokenizer",
         "//src/parquet:fineweb_parquet_reader",
-        "//src/tokenizer:tokenizer",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/strings",
     ],
@@ -46,10 +102,10 @@ cc_test(
     data = ["//src/parquet:testdata/fineweb_sample.parquet"],
     tags = ["requires-tokenizer"],
     deps = [
+        ":detokenizer",
         ":document_file",
         ":fineweb_converter",
-        "//src/tokenizer:detokenizer",
-        "//src/tokenizer:tokenizer",
+        ":tokenizer",
         "@googletest//:gtest_main",
     ],
 )
@@ -59,7 +115,7 @@ cc_binary(
     srcs = ["tokenize_fineweb.cc"],
     deps = [
         ":fineweb_converter",
-        "//src/tokenizer:tokenizer",
+        ":tokenizer",
         "@abseil-cpp//absl/flags:flag",
         "@abseil-cpp//absl/flags:parse",
         "@abseil-cpp//absl/status",

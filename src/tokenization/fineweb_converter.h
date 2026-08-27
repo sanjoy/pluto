@@ -5,7 +5,7 @@
 #include <filesystem>
 
 #include "absl/status/status.h"
-#include "src/tokenizer/tokenizer.h"
+#include "src/tokenization/tokenizer.h"
 
 namespace pluto::tokenized {
 
