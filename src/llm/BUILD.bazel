@@ -1,0 +1,103 @@
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+load("@rules_cuda//cuda:defs.bzl", "cuda_library", "cuda_test")
+
+cuda_library(
+    name = "layers",
+    srcs = ["layers.cu"],
+    hdrs = [
+        "layer.h",
+        "layers.h",
+    ],
+    copts = [
+        "--enable-tile",
+        "-std=c++20",
+    ],
+    host_copts = ["-std=c++20"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/gpu:buffer",
+        "@abseil-cpp//absl/container:inlined_vector",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_library(
+    name = "simple_llm",
+    srcs = ["simple_llm.cc"],
+    hdrs = ["simple_llm.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":layers",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_binary(
+    name = "shakespeare_llm",
+    srcs = ["shakespeare_llm.cc"],
+    data = ["//testdata:shakespeare.txt"],
+    deps = [
+        ":layers",
+        ":simple_llm",
+        "//src/gpu:buffer",
+        "//src/tokenization:plain_text_tokenizer",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_test(
+    name = "shakespeare_llm_test",
+    size = "large",
+    timeout = "long",
+    srcs = ["shakespeare_llm.cc"],
+    args = [
+        "--eval_batches=16",
+        "--generation_tokens=40",
+        "--interactive=false",
+        "--steps=1200",
+        "--target_loss=2.8",
+    ],
+    data = ["//testdata:shakespeare.txt"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":layers",
+        ":simple_llm",
+        "//src/gpu:buffer",
+        "//src/tokenization:plain_text_tokenizer",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cuda_test(
+    name = "layers_test",
+    size = "small",
+    srcs = ["layers_test.cu"],
+    copts = ["-std=c++20"],
+    host_copts = ["-std=c++20"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":layers",
+        ":simple_llm",
+        "//src/gpu:buffer",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)

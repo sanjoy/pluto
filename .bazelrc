@@ -1,4 +1,6 @@
-build --cxxopt=-std=c++17
+# cuTile C++ requires C++20. Keep every host translation unit, including
+# Abseil, on the same language-mode ABI as CUDA sources that include Abseil.
+build --cxxopt=-std=c++20
 build --@rules_cuda//cuda:compiler=nvcc
 build --@rules_cuda//cuda:archs=compute_90:sm_90
 test --test_env=PLUTO_GPT2_TOKENIZER_DIR

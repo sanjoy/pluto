@@ -34,6 +34,29 @@ cc_library(
 )
 
 cc_library(
+    name = "plain_text_tokenizer",
+    srcs = ["plain_text_tokenizer.cc"],
+    hdrs = ["plain_text_tokenizer.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "plain_text_tokenizer_test",
+    size = "small",
+    srcs = ["plain_text_tokenizer_test.cc"],
+    deps = [
+        ":plain_text_tokenizer",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "detokenizer",
     srcs = ["detokenizer.cc"],
     hdrs = ["detokenizer.h"],
