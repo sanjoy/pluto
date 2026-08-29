@@ -9,6 +9,7 @@
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "gtest/gtest.h"
+#include "src/common/status_macros.h"
 #include "src/gpu/buffer.h"
 #include "src/llm/layer.h"
 #include "src/llm/layers/test_util.h"
@@ -45,45 +46,42 @@ absl::StatusOr<std::unique_ptr<TestLayer>> MakeTestLayer(
 absl::StatusOr<std::unique_ptr<ComposedLayer>> BuildTestComposition(
     int* evaluations, Layer** first, Layer** last) {
   ComposedLayerBuilder builder;
-  ADD_LAYER_OR_RETURN_ERROR(builder,
-                            MakeTestLayer(DataType::FP16, evaluations));
+  RETURN_IF_ERROR(
+      builder.add(MakeTestLayer(DataType::FP16, evaluations)));
   *first = builder.back();
-  ADD_LAYER_OR_RETURN_ERROR(builder,
-                            MakeTestLayer(DataType::FP8, evaluations));
+  RETURN_IF_ERROR(builder.add(MakeTestLayer(DataType::FP8, evaluations)));
   *last = builder.back();
   return builder.create();
 }
 
 absl::Status BuildWithFactoryError(int* evaluations, bool* reached_end) {
   ComposedLayerBuilder builder;
-  ADD_LAYER_OR_RETURN_ERROR(builder,
-                            MakeTestLayer(DataType::FP16, evaluations));
-  ADD_LAYER_OR_RETURN_ERROR(
-      builder, ([&]() -> absl::StatusOr<std::unique_ptr<TestLayer>> {
+  RETURN_IF_ERROR(
+      builder.add(MakeTestLayer(DataType::FP16, evaluations)));
+  RETURN_IF_ERROR(
+      builder.add(([&]() -> absl::StatusOr<std::unique_ptr<TestLayer>> {
         ++*evaluations;
         return absl::NotFoundError("missing layer");
-      })());
+      })()));
   *reached_end = true;
   return absl::OkStatus();
 }
 
 absl::Status BuildWithNullLayer() {
   ComposedLayerBuilder builder;
-  ADD_LAYER_OR_RETURN_ERROR(
-      builder, absl::StatusOr<std::unique_ptr<TestLayer>>(
-                   std::unique_ptr<TestLayer>()));
+  RETURN_IF_ERROR(builder.add(
+      absl::StatusOr<std::unique_ptr<TestLayer>>(
+          std::unique_ptr<TestLayer>())));
   return absl::OkStatus();
 }
 
 absl::StatusOr<std::unique_ptr<ComposedLayer>> BuildDenseComposition(
     cudaStream_t stream) {
   ComposedLayerBuilder builder;
-  ADD_LAYER_OR_RETURN_ERROR(
-      builder, FullyConnectedLayer::Create(
-                   kTestModelWidth, DataType::FP16, 0.0f, stream));
-  ADD_LAYER_OR_RETURN_ERROR(
-      builder, FullyConnectedLayer::Create(
-                   kTestModelWidth, DataType::FP16, 0.0f, stream));
+  RETURN_IF_ERROR(builder.add(FullyConnectedLayer::Create(
+      kTestModelWidth, DataType::FP16, 0.0f, stream)));
+  RETURN_IF_ERROR(builder.add(FullyConnectedLayer::Create(
+      kTestModelWidth, DataType::FP16, 0.0f, stream)));
   return builder.create();
 }
 
@@ -102,7 +100,7 @@ TEST(ComposedLayerBuilderTest, BackIsStableAndCreateInfersFinalOutputType) {
   EXPECT_EQ((*composed)->output_type(), DataType::FP8);
 }
 
-TEST(ComposedLayerBuilderTest, MacroPropagatesFactoryErrorExactlyOnce) {
+TEST(ComposedLayerBuilderTest, AddPropagatesFactoryErrorExactlyOnce) {
   int evaluations = 0;
   bool reached_end = false;
   const absl::Status status =

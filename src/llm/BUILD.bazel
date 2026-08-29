@@ -114,6 +114,7 @@ cc_library(
 layer_test("attention")
 layer_test("combinators", [
     ":fully_connected",
+    "//src/common:status_macros",
     "@abseil-cpp//absl/status",
     "@abseil-cpp//absl/status:statusor",
     "@abseil-cpp//absl/types:span",

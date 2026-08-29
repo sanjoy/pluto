@@ -17,9 +17,9 @@ The language-modeling head ties its vocabulary projection to the embedding
 table instead of allocating a second parameter.
 The Shakespeare-specific topology is assembled directly in the training binary;
 the reusable library contains only generic layers and GPU kernels.
-`ComposedLayerBuilder` keeps that assembly linear, and
-`ADD_LAYER_OR_RETURN_ERROR` propagates fallible layer-factory results while
-transferring successful layers into the composition.
+`ComposedLayerBuilder` keeps that assembly linear: its `add` overload accepts
+fallible layer-factory results, propagating errors while transferring successful
+layers into the composition.
 
 Reusable layers are split by responsibility under `src/llm/layers/`:
 embedding and the tied language-modeling head, attention, normalization, GELU,

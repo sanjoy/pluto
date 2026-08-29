@@ -2,13 +2,13 @@
 #define PLUTO_SRC_LLM_LAYERS_COMBINATORS_H_
 
 #include <memory>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "src/common/status_macros.h"
 #include "src/llm/layer.h"
 
 namespace pluto::llm {
@@ -59,9 +59,21 @@ class ComposedLayer final : public Layer {
 // and after create() transfers the children into the resulting layer.
 class ComposedLayerBuilder final {
  public:
-  // Adds a child to the end of the composition. A null child is rejected so
-  // back() and create() never expose an invalid layer.
+  // Adds an infallibly-created child to the end of the composition. A null
+  // child is rejected so back() and create() never expose an invalid layer.
   absl::Status add(std::unique_ptr<Layer> layer);
+
+  // Propagates a failed layer factory, or transfers its successful result into
+  // the composition. Accepting the concrete LayerType preserves convenient
+  // calls such as `RETURN_IF_ERROR(builder.add(MyLayer::Create(...)))`.
+  template <class LayerType>
+  absl::Status add(
+      absl::StatusOr<std::unique_ptr<LayerType>> layer_or_error) {
+    static_assert(std::is_base_of_v<Layer, LayerType>,
+                  "ComposedLayerBuilder children must derive from Layer");
+    if (!layer_or_error.ok()) return layer_or_error.status();
+    return add(std::move(layer_or_error).value());
+  }
 
   // Returns the most recently added child, or nullptr when the builder is
   // empty. The builder or created ComposedLayer retains ownership.
@@ -77,23 +89,5 @@ class ComposedLayerBuilder final {
 };
 
 }  // namespace pluto::llm
-
-#define PLUTO_LLM_COMBINATORS_CONCAT_INNER_(left, right) left##right
-#define PLUTO_LLM_COMBINATORS_CONCAT_(left, right) \
-  PLUTO_LLM_COMBINATORS_CONCAT_INNER_(left, right)
-
-#define PLUTO_LLM_ADD_LAYER_OR_RETURN_ERROR_IMPL_(layer, builder, expression) \
-  ASSIGN_OR_RETURN(auto layer, (expression));                                 \
-  RETURN_IF_ERROR((builder).add(std::move(layer)))
-
-// Evaluates a StatusOr-producing layer factory once, returns its error from
-// the current function, or transfers its layer into `builder`. Use the macro as
-// a complete statement with a trailing semicolon. builder.back() can then
-// recover the concrete layer with a cast when construction needs to configure
-// that known layer before adding the next child.
-#define ADD_LAYER_OR_RETURN_ERROR(builder, expression)                     \
-  PLUTO_LLM_ADD_LAYER_OR_RETURN_ERROR_IMPL_(                               \
-      PLUTO_LLM_COMBINATORS_CONCAT_(pluto_composed_layer, __COUNTER__),    \
-      builder, expression)
 
 #endif  // PLUTO_SRC_LLM_LAYERS_COMBINATORS_H_

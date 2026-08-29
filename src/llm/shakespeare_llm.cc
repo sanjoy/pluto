@@ -115,46 +115,34 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateTransformerBlock(
   const float residual_projection_scale =
       1.0f / std::sqrt(2.0f * kTransformerBlockCount);
   ComposedLayerBuilder attention_builder;
-  ADD_LAYER_OR_RETURN_ERROR(
-      attention_builder,
-      LayerNormLayer::Create(config.model_width, 1e-5f, output_type, stream));
-  ADD_LAYER_OR_RETURN_ERROR(
-      attention_builder,
-      FullyConnectedLayer::Create(config.model_width, output_type,
-                                  learning_rate, stream));
+  RETURN_IF_ERROR(attention_builder.add(LayerNormLayer::Create(
+      config.model_width, 1e-5f, output_type, stream)));
+  RETURN_IF_ERROR(attention_builder.add(FullyConnectedLayer::Create(
+      config.model_width, output_type, learning_rate, stream)));
   auto* qkv_projection =
       static_cast<FullyConnectedLayer*>(attention_builder.back());
   RETURN_IF_ERROR(qkv_projection->InitializeIdentity());
-  ADD_LAYER_OR_RETURN_ERROR(
-      attention_builder,
-      AttentionLayer::Create(config.context_length, config.attention_heads,
-                             config.model_width, output_type, stream));
-  ADD_LAYER_OR_RETURN_ERROR(
-      attention_builder,
-      FullyConnectedLayer::Create(config.model_width, output_type,
-                                  learning_rate, stream));
+  RETURN_IF_ERROR(attention_builder.add(AttentionLayer::Create(
+      config.context_length, config.attention_heads, config.model_width,
+      output_type, stream)));
+  RETURN_IF_ERROR(attention_builder.add(FullyConnectedLayer::Create(
+      config.model_width, output_type, learning_rate, stream)));
   auto* attention_projection =
       static_cast<FullyConnectedLayer*>(attention_builder.back());
   RETURN_IF_ERROR(
       attention_projection->InitializeIdentity(residual_projection_scale));
 
   ComposedLayerBuilder mlp_builder;
-  ADD_LAYER_OR_RETURN_ERROR(
-      mlp_builder,
-      LayerNormLayer::Create(config.model_width, 1e-5f, output_type, stream));
-  ADD_LAYER_OR_RETURN_ERROR(
-      mlp_builder,
-      FullyConnectedLayer::Create(config.model_width, output_type,
-                                  learning_rate, stream));
+  RETURN_IF_ERROR(mlp_builder.add(LayerNormLayer::Create(
+      config.model_width, 1e-5f, output_type, stream)));
+  RETURN_IF_ERROR(mlp_builder.add(FullyConnectedLayer::Create(
+      config.model_width, output_type, learning_rate, stream)));
   auto* mlp_input =
       static_cast<FullyConnectedLayer*>(mlp_builder.back());
   RETURN_IF_ERROR(mlp_input->InitializeIdentity());
-  ADD_LAYER_OR_RETURN_ERROR(mlp_builder,
-                            GeluLayer::Create(output_type, stream));
-  ADD_LAYER_OR_RETURN_ERROR(
-      mlp_builder,
-      FullyConnectedLayer::Create(config.model_width, output_type,
-                                  learning_rate, stream));
+  RETURN_IF_ERROR(mlp_builder.add(GeluLayer::Create(output_type, stream)));
+  RETURN_IF_ERROR(mlp_builder.add(FullyConnectedLayer::Create(
+      config.model_width, output_type, learning_rate, stream)));
   auto* mlp_output =
       static_cast<FullyConnectedLayer*>(mlp_builder.back());
   RETURN_IF_ERROR(
@@ -176,37 +164,33 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateShakespeareLlm(
     const ModelConfig& config, DataType output_type, float learning_rate,
     cudaStream_t stream) {
   ComposedLayerBuilder builder;
-  ADD_LAYER_OR_RETURN_ERROR(
-      builder,
-      EmbeddingLookupLayer::Create(config.vocabulary_size, config.model_width,
-                                   output_type, learning_rate, stream));
+  RETURN_IF_ERROR(builder.add(EmbeddingLookupLayer::Create(
+      config.vocabulary_size, config.model_width, output_type, learning_rate,
+      stream)));
   auto* embedding = static_cast<EmbeddingLookupLayer*>(builder.back());
   // GPT-2 uses small initial embeddings. A scaled identity is deterministic,
   // breaks the tied E * E^T zero-gradient symmetry, and keeps the final
   // layer-normalized logits in a stable range.
   RETURN_IF_ERROR(embedding->InitializeIdentity(0.02f));
 
-  ADD_LAYER_OR_RETURN_ERROR(
-      builder,
-      PositionEmbeddingLayer::Create(config.context_length, config.model_width,
-                                     output_type, learning_rate, stream));
+  RETURN_IF_ERROR(builder.add(PositionEmbeddingLayer::Create(
+      config.context_length, config.model_width, output_type, learning_rate,
+      stream)));
 
   // Each block is independently parameterized and participates directly in
   // the model's sequential composition. The compact variant retains GPT-2's
   // 12-block depth, pre-norm residual topology, and causal attention, but
   // shares Q/K/V within each block and keeps the MLP width-preserving.
   for (int index = 0; index < kTransformerBlockCount; ++index) {
-    ADD_LAYER_OR_RETURN_ERROR(
-        builder,
-        CreateTransformerBlock(config, output_type, learning_rate, stream));
+    RETURN_IF_ERROR(builder.add(
+        CreateTransformerBlock(config, output_type, learning_rate, stream)));
   }
 
-  ADD_LAYER_OR_RETURN_ERROR(
-      builder,
-      LayerNormLayer::Create(config.model_width, 1e-5f, output_type, stream));
+  RETURN_IF_ERROR(builder.add(LayerNormLayer::Create(
+      config.model_width, 1e-5f, output_type, stream)));
 
-  ADD_LAYER_OR_RETURN_ERROR(
-      builder, LanguageModelingHeadLayer::Create(embedding));
+  RETURN_IF_ERROR(
+      builder.add(LanguageModelingHeadLayer::Create(embedding)));
 
   return builder.create();
 }
