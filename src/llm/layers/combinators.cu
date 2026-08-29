@@ -171,4 +171,33 @@ absl::StatusOr<BufferVec> ComposedLayer::bwd(
   return BufferVec{gradient};
 }
 
+absl::Status ComposedLayerBuilder::add(std::unique_ptr<Layer> layer) {
+  if (layer == nullptr) {
+    return absl::InvalidArgumentError(
+        "ComposedLayerBuilder cannot add a null layer");
+  }
+  layers_.push_back(std::move(layer));
+  return absl::OkStatus();
+}
+
+Layer* ComposedLayerBuilder::back() {
+  return layers_.empty() ? nullptr : layers_.back().get();
+}
+
+const Layer* ComposedLayerBuilder::back() const {
+  return layers_.empty() ? nullptr : layers_.back().get();
+}
+
+absl::StatusOr<std::unique_ptr<ComposedLayer>>
+ComposedLayerBuilder::create() {
+  if (layers_.empty()) {
+    return absl::FailedPreconditionError(
+        "cannot create an empty ComposedLayer");
+  }
+  const DataType output_type = layers_.back()->output_type();
+  std::vector<std::unique_ptr<Layer>> layers;
+  layers.swap(layers_);
+  return std::make_unique<ComposedLayer>(output_type, std::move(layers));
+}
+
 }  // namespace pluto::llm

@@ -1,7 +1,6 @@
 #ifndef PLUTO_SRC_LLM_LAYERS_COMBINATORS_H_
 #define PLUTO_SRC_LLM_LAYERS_COMBINATORS_H_
 
-#include <cstddef>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -55,73 +54,46 @@ class ComposedLayer final : public Layer {
   std::vector<Buffer> weights_;
 };
 
-// Repeats a concrete Layer type while retaining ordinary Layer polymorphism.
-// Each repetition has independent parameters; callers that want tied weights
-// can instead pass one layer explicitly from a custom composite.
-template <class LayerToRepeat>
-class RepeatedLayer final : public Layer {
+// Incrementally assembles a ComposedLayer while retaining ownership of every
+// child. Pointers returned by back() remain valid when more children are added
+// and after create() transfers the children into the resulting layer.
+class ComposedLayerBuilder final {
  public:
-  RepeatedLayer(DataType data_type,
-                std::vector<std::unique_ptr<LayerToRepeat>> layers)
-      : output_type_(data_type), layers_(std::move(layers)) {
-    for (const auto& layer : layers_) {
-      for (Buffer& weight : layer->weights()) weights_.push_back(weight);
-    }
-  }
+  // Adds a child to the end of the composition. A null child is rejected so
+  // back() and create() never expose an invalid layer.
+  absl::Status add(std::unique_ptr<Layer> layer);
 
-  absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs,
-                              Tape* tape) override {
-    if (inputs.size() != 1) {
-      return absl::InvalidArgumentError(
-          "RepeatedLayer fwd expects one activation buffer");
-    }
-    tape->intermediates.clear();
-    tape->children.clear();
-    Buffer activation = inputs.front();
-    for (auto& layer : layers_) {
-      Tape child_tape;
-      BufferVec child_inputs = {activation};
-      ASSIGN_OR_RETURN(auto output, layer->fwd(child_inputs, &child_tape));
-      activation = std::move(output);
-      tape->children.push_back(std::move(child_tape));
-    }
-    return activation;
-  }
+  // Returns the most recently added child, or nullptr when the builder is
+  // empty. The builder or created ComposedLayer retains ownership.
+  Layer* back();
+  const Layer* back() const;
 
-  absl::StatusOr<BufferVec> bwd(
-      absl::Span<const Buffer> output_gradients, Tape tape) override {
-    if (output_gradients.size() != 1 ||
-        tape.children.size() != layers_.size()) {
-      return absl::InvalidArgumentError(
-          "RepeatedLayer bwd received an incompatible gradient or tape");
-    }
-    Buffer gradient = output_gradients.front();
-    for (size_t index = layers_.size(); index-- > 0;) {
-      BufferVec child_gradients = {gradient};
-      ASSIGN_OR_RETURN(auto inputs,
-                       layers_[index]->bwd(
-                           child_gradients,
-                           std::move(tape.children[index])));
-      if (inputs.size() != 1) {
-        return absl::InternalError(
-            "a repeated unary layer returned multiple input gradients");
-      }
-      gradient = inputs.front();
-    }
-    return BufferVec{gradient};
-  }
-
-  absl::Span<Buffer> weights() override {
-    return absl::MakeSpan(weights_);
-  }
-  DataType output_type() const override { return output_type_; }
+  // Consumes the accumulated children. The composed output type is inferred
+  // from the final child. Building an empty composition is an error.
+  absl::StatusOr<std::unique_ptr<ComposedLayer>> create();
 
  private:
-  DataType output_type_;
-  std::vector<std::unique_ptr<LayerToRepeat>> layers_;
-  std::vector<Buffer> weights_;
+  std::vector<std::unique_ptr<Layer>> layers_;
 };
 
 }  // namespace pluto::llm
+
+#define PLUTO_LLM_COMBINATORS_CONCAT_INNER_(left, right) left##right
+#define PLUTO_LLM_COMBINATORS_CONCAT_(left, right) \
+  PLUTO_LLM_COMBINATORS_CONCAT_INNER_(left, right)
+
+#define PLUTO_LLM_ADD_LAYER_OR_RETURN_ERROR_IMPL_(layer, builder, expression) \
+  ASSIGN_OR_RETURN(auto layer, (expression));                                 \
+  RETURN_IF_ERROR((builder).add(std::move(layer)))
+
+// Evaluates a StatusOr-producing layer factory once, returns its error from
+// the current function, or transfers its layer into `builder`. Use the macro as
+// a complete statement with a trailing semicolon. builder.back() can then
+// recover the concrete layer with a cast when construction needs to configure
+// that known layer before adding the next child.
+#define ADD_LAYER_OR_RETURN_ERROR(builder, expression)                     \
+  PLUTO_LLM_ADD_LAYER_OR_RETURN_ERROR_IMPL_(                               \
+      PLUTO_LLM_COMBINATORS_CONCAT_(pluto_composed_layer, __COUNTER__),    \
+      builder, expression)
 
 #endif  // PLUTO_SRC_LLM_LAYERS_COMBINATORS_H_

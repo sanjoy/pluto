@@ -11,12 +11,15 @@ forward/backward passes, and learns Shakespeare's next-byte distribution.
 `Layer` receives explicit input buffers and an explicit output gradient. Leaf
 backward passes compute input gradients and apply their configured SGD update. A
 tree-shaped `Tape` stores forward intermediates for nested `ComposedLayer` and
-`RepeatedLayer` instances. Parameters are untyped, reference-counted GPU
-`Buffer`s and every allocation and kernel launch uses the layer's CUDA stream.
+`ResidualLayer` instances. Parameters are untyped, reference-counted GPU
+`Buffer`s, and every allocation and kernel launch uses the layer's CUDA stream.
 The language-modeling head ties its vocabulary projection to the embedding
 table instead of allocating a second parameter.
 The Shakespeare-specific topology is assembled directly in the training binary;
 the reusable library contains only generic layers and GPU kernels.
+`ComposedLayerBuilder` keeps that assembly linear, and
+`ADD_LAYER_OR_RETURN_ERROR` propagates fallible layer-factory results while
+transferring successful layers into the composition.
 
 Reusable layers are split by responsibility under `src/llm/layers/`:
 embedding and the tied language-modeling head, attention, normalization, GELU,

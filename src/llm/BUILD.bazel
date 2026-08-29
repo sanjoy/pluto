@@ -112,7 +112,12 @@ cc_library(
 )
 
 layer_test("attention")
-layer_test("combinators", [":fully_connected"])
+layer_test("combinators", [
+    ":fully_connected",
+    "@abseil-cpp//absl/status",
+    "@abseil-cpp//absl/status:statusor",
+    "@abseil-cpp//absl/types:span",
+])
 layer_test("cross_entropy_loss")
 layer_test("embedding")
 layer_test("fully_connected")

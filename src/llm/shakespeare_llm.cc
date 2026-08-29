@@ -114,106 +114,101 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateTransformerBlock(
   // does not grow with depth.
   const float residual_projection_scale =
       1.0f / std::sqrt(2.0f * kTransformerBlockCount);
-  ASSIGN_OR_RETURN(
-      auto attention_norm,
+  ComposedLayerBuilder attention_builder;
+  ADD_LAYER_OR_RETURN_ERROR(
+      attention_builder,
       LayerNormLayer::Create(config.model_width, 1e-5f, output_type, stream));
-  ASSIGN_OR_RETURN(auto qkv_projection,
-                   FullyConnectedLayer::Create(config.model_width, output_type,
-                                               learning_rate, stream));
+  ADD_LAYER_OR_RETURN_ERROR(
+      attention_builder,
+      FullyConnectedLayer::Create(config.model_width, output_type,
+                                  learning_rate, stream));
+  auto* qkv_projection =
+      static_cast<FullyConnectedLayer*>(attention_builder.back());
   RETURN_IF_ERROR(qkv_projection->InitializeIdentity());
-  ASSIGN_OR_RETURN(
-      auto attention,
+  ADD_LAYER_OR_RETURN_ERROR(
+      attention_builder,
       AttentionLayer::Create(config.context_length, config.attention_heads,
                              config.model_width, output_type, stream));
-  ASSIGN_OR_RETURN(auto attention_projection,
-                   FullyConnectedLayer::Create(config.model_width, output_type,
-                                               learning_rate, stream));
+  ADD_LAYER_OR_RETURN_ERROR(
+      attention_builder,
+      FullyConnectedLayer::Create(config.model_width, output_type,
+                                  learning_rate, stream));
+  auto* attention_projection =
+      static_cast<FullyConnectedLayer*>(attention_builder.back());
   RETURN_IF_ERROR(
       attention_projection->InitializeIdentity(residual_projection_scale));
-  std::vector<std::unique_ptr<Layer>> attention_layers;
-  attention_layers.push_back(std::move(attention_norm));
-  attention_layers.push_back(std::move(qkv_projection));
-  attention_layers.push_back(std::move(attention));
-  attention_layers.push_back(std::move(attention_projection));
 
-  ASSIGN_OR_RETURN(
-      auto mlp_norm,
+  ComposedLayerBuilder mlp_builder;
+  ADD_LAYER_OR_RETURN_ERROR(
+      mlp_builder,
       LayerNormLayer::Create(config.model_width, 1e-5f, output_type, stream));
-  ASSIGN_OR_RETURN(auto mlp_input,
-                   FullyConnectedLayer::Create(config.model_width, output_type,
-                                               learning_rate, stream));
+  ADD_LAYER_OR_RETURN_ERROR(
+      mlp_builder,
+      FullyConnectedLayer::Create(config.model_width, output_type,
+                                  learning_rate, stream));
+  auto* mlp_input =
+      static_cast<FullyConnectedLayer*>(mlp_builder.back());
   RETURN_IF_ERROR(mlp_input->InitializeIdentity());
-  ASSIGN_OR_RETURN(auto gelu, GeluLayer::Create(output_type, stream));
-  ASSIGN_OR_RETURN(auto mlp_output,
-                   FullyConnectedLayer::Create(config.model_width, output_type,
-                                               learning_rate, stream));
+  ADD_LAYER_OR_RETURN_ERROR(mlp_builder,
+                            GeluLayer::Create(output_type, stream));
+  ADD_LAYER_OR_RETURN_ERROR(
+      mlp_builder,
+      FullyConnectedLayer::Create(config.model_width, output_type,
+                                  learning_rate, stream));
+  auto* mlp_output =
+      static_cast<FullyConnectedLayer*>(mlp_builder.back());
   RETURN_IF_ERROR(
       mlp_output->InitializeIdentity(residual_projection_scale));
 
-  std::vector<std::unique_ptr<Layer>> mlp_layers;
-  mlp_layers.push_back(std::move(mlp_norm));
-  mlp_layers.push_back(std::move(mlp_input));
-  mlp_layers.push_back(std::move(gelu));
-  mlp_layers.push_back(std::move(mlp_output));
-
-  std::vector<std::unique_ptr<Layer>> block_layers;
-  block_layers.push_back(std::make_unique<ResidualLayer>(
-      std::make_unique<ComposedLayer>(output_type,
-                                      std::move(attention_layers))));
-  block_layers.push_back(std::make_unique<ResidualLayer>(
-      std::make_unique<ComposedLayer>(output_type, std::move(mlp_layers))));
-  return std::make_unique<ComposedLayer>(output_type,
-                                         std::move(block_layers));
+  ASSIGN_OR_RETURN(auto attention, attention_builder.create());
+  ASSIGN_OR_RETURN(auto mlp, mlp_builder.create());
+  ComposedLayerBuilder block_builder;
+  RETURN_IF_ERROR(block_builder.add(
+      std::make_unique<ResidualLayer>(std::move(attention))));
+  RETURN_IF_ERROR(
+      block_builder.add(std::make_unique<ResidualLayer>(std::move(mlp))));
+  return block_builder.create();
 }
 
 // Constructs the model here because its topology is specific to this training
 // binary. Generic layer implementations remain in //src/llm:layers.
-absl::StatusOr<std::unique_ptr<Layer>> CreateShakespeareLlm(
+absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateShakespeareLlm(
     const ModelConfig& config, DataType output_type, float learning_rate,
     cudaStream_t stream) {
-  ASSIGN_OR_RETURN(
-      auto embedding,
+  ComposedLayerBuilder builder;
+  ADD_LAYER_OR_RETURN_ERROR(
+      builder,
       EmbeddingLookupLayer::Create(config.vocabulary_size, config.model_width,
                                    output_type, learning_rate, stream));
+  auto* embedding = static_cast<EmbeddingLookupLayer*>(builder.back());
   // GPT-2 uses small initial embeddings. A scaled identity is deterministic,
   // breaks the tied E * E^T zero-gradient symmetry, and keeps the final
   // layer-normalized logits in a stable range.
   RETURN_IF_ERROR(embedding->InitializeIdentity(0.02f));
-  EmbeddingLookupLayer* embedding_ptr = embedding.get();
 
-  ASSIGN_OR_RETURN(
-      auto positions,
+  ADD_LAYER_OR_RETURN_ERROR(
+      builder,
       PositionEmbeddingLayer::Create(config.context_length, config.model_width,
                                      output_type, learning_rate, stream));
 
-  // Each block is independently parameterized. The compact variant retains
-  // GPT-2's 12-block depth, pre-norm residual topology, and causal attention,
-  // but shares Q/K/V within each block and keeps the MLP width-preserving.
-  std::vector<std::unique_ptr<ComposedLayer>> blocks;
-  blocks.reserve(kTransformerBlockCount);
+  // Each block is independently parameterized and participates directly in
+  // the model's sequential composition. The compact variant retains GPT-2's
+  // 12-block depth, pre-norm residual topology, and causal attention, but
+  // shares Q/K/V within each block and keeps the MLP width-preserving.
   for (int index = 0; index < kTransformerBlockCount; ++index) {
-    ASSIGN_OR_RETURN(
-        auto block,
+    ADD_LAYER_OR_RETURN_ERROR(
+        builder,
         CreateTransformerBlock(config, output_type, learning_rate, stream));
-    blocks.push_back(std::move(block));
   }
 
-  ASSIGN_OR_RETURN(
-      auto final_norm,
+  ADD_LAYER_OR_RETURN_ERROR(
+      builder,
       LayerNormLayer::Create(config.model_width, 1e-5f, output_type, stream));
 
-  ASSIGN_OR_RETURN(auto head,
-                   LanguageModelingHeadLayer::Create(embedding_ptr));
+  ADD_LAYER_OR_RETURN_ERROR(
+      builder, LanguageModelingHeadLayer::Create(embedding));
 
-  std::vector<std::unique_ptr<Layer>> layers;
-  layers.push_back(std::move(embedding));
-  layers.push_back(std::move(positions));
-  layers.push_back(std::make_unique<RepeatedLayer<ComposedLayer>>(
-      output_type, std::move(blocks)));
-  layers.push_back(std::move(final_norm));
-  layers.push_back(std::move(head));
-  return std::unique_ptr<Layer>(
-      new ComposedLayer(output_type, std::move(layers)));
+  return builder.create();
 }
 
 absl::StatusOr<std::string> ReadFile(const std::string& path) {
