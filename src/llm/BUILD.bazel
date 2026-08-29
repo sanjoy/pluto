@@ -60,6 +60,7 @@ cc_binary(
     data = ["//testdata:shakespeare.txt"],
     deps = [
         ":layers",
+        "//src/common:status_macros",
         "//src/gpu:buffer",
         "//src/tokenization:plain_text_tokenizer",
         "@abseil-cpp//absl/flags:flag",
@@ -88,6 +89,7 @@ cc_test(
     tags = ["requires-gpu"],
     deps = [
         ":layers",
+        "//src/common:status_macros",
         "//src/gpu:buffer",
         "//src/tokenization:plain_text_tokenizer",
         "@abseil-cpp//absl/flags:flag",

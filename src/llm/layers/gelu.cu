@@ -16,6 +16,7 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "src/common/status_macros.h"
 #include "src/gpu/buffer.h"
 #include "src/llm/layers/internal.h"
 
@@ -82,7 +83,7 @@ __tile_global__ void GeluBackwardKernel(
 
 absl::StatusOr<std::unique_ptr<GeluLayer>> GeluLayer::Create(
     DataType data_type, cudaStream_t stream) {
-  if (auto status = ValidateFp16(data_type); !status.ok()) return status;
+  RETURN_IF_ERROR(ValidateFp16(data_type));
   return std::unique_ptr<GeluLayer>(new GeluLayer(data_type, stream));
 }
 
@@ -92,23 +93,20 @@ absl::StatusOr<Buffer> GeluLayer::fwd(absl::Span<const Buffer> inputs,
     return absl::InvalidArgumentError(
         "GeluLayer fwd expects one input and a non-null tape");
   }
-  auto elements = ElementCount(inputs[0], sizeof(float), stream_, "GELU input");
-  if (!elements.ok()) return elements.status();
-  if (auto status = ValidateTiledExtent(*elements, "GELU element count");
-      !status.ok()) return status;
-  auto output = Buffer::Allocate(inputs[0].size_bytes(), stream_);
-  if (!output.ok()) return output.status();
+  ASSIGN_OR_RETURN(
+      int elements,
+      ElementCount(inputs[0], sizeof(float), stream_, "GELU input"));
+  RETURN_IF_ERROR(ValidateTiledExtent(elements, "GELU element count"));
+  ASSIGN_OR_RETURN(auto output,
+                   Buffer::Allocate(inputs[0].size_bytes(), stream_));
   tape->intermediates = {inputs[0]};
   tape->children.clear();
-  GeluForwardKernel<<<TileCount(*elements), 1, 0, stream_>>>(
-      static_cast<const float*>(inputs[0].data()), *elements,
-      static_cast<float*>(output->data()));
-  if (auto status = CudaStatus(cudaGetLastError(),
-                               "GeluForwardKernel launch");
-      !status.ok()) {
-    return status;
-  }
-  return *std::move(output);
+  GeluForwardKernel<<<TileCount(elements), 1, 0, stream_>>>(
+      static_cast<const float*>(inputs[0].data()), elements,
+      static_cast<float*>(output.data()));
+  RETURN_IF_ERROR(
+      CudaStatus(cudaGetLastError(), "GeluForwardKernel launch"));
+  return std::move(output);
 }
 
 absl::StatusOr<BufferVec> GeluLayer::bwd(
@@ -117,27 +115,23 @@ absl::StatusOr<BufferVec> GeluLayer::bwd(
     return absl::InvalidArgumentError(
         "GeluLayer bwd received an incompatible gradient or tape");
   }
-  auto elements = ElementCount(output_gradients[0], sizeof(float), stream_,
-                               "GELU output gradient");
-  if (!elements.ok()) return elements.status();
-  if (auto status = ValidateBuffer(tape.intermediates[0],
-                                   output_gradients[0].size_bytes(), stream_,
-                                   "GELU saved input");
-      !status.ok()) return status;
-  auto input_gradient = Buffer::Allocate(output_gradients[0].size_bytes(),
-                                         stream_);
-  if (!input_gradient.ok()) return input_gradient.status();
-  GeluBackwardKernel<<<TileCount(*elements), 1, 0, stream_>>>(
+  ASSIGN_OR_RETURN(int elements,
+                   ElementCount(output_gradients[0], sizeof(float), stream_,
+                                "GELU output gradient"));
+  RETURN_IF_ERROR(ValidateBuffer(tape.intermediates[0],
+                                 output_gradients[0].size_bytes(), stream_,
+                                 "GELU saved input"));
+  ASSIGN_OR_RETURN(
+      auto input_gradient,
+      Buffer::Allocate(output_gradients[0].size_bytes(), stream_));
+  GeluBackwardKernel<<<TileCount(elements), 1, 0, stream_>>>(
       static_cast<const float*>(tape.intermediates[0].data()),
       static_cast<const float*>(output_gradients[0].data()),
-      *elements,
-      static_cast<float*>(input_gradient->data()));
-  if (auto status = CudaStatus(cudaGetLastError(),
-                               "GeluBackwardKernel launch");
-      !status.ok()) {
-    return status;
-  }
-  return BufferVec{*std::move(input_gradient)};
+      elements,
+      static_cast<float*>(input_gradient.data()));
+  RETURN_IF_ERROR(
+      CudaStatus(cudaGetLastError(), "GeluBackwardKernel launch"));
+  return BufferVec{std::move(input_gradient)};
 }
 
 

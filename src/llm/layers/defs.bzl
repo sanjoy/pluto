@@ -16,6 +16,7 @@ def layer_library(name):
         deps = [
             ":layer",
             ":layer_internal",
+            "//src/common:status_macros",
             "//src/gpu:buffer",
             "@abseil-cpp//absl/status",
             "@abseil-cpp//absl/status:statusor",

@@ -15,6 +15,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "src/common/status_macros.h"
 #include "src/tokenization/fineweb_converter.h"
 #include "src/tokenization/tokenizer.h"
 
@@ -89,8 +90,7 @@ absl::Status RunConversion() {
     return absl::InvalidArgumentError("--batch_size must be positive");
   }
 
-  auto shards = FindParquetShards(input_dir);
-  if (!shards.ok()) return shards.status();
+  ASSIGN_OR_RETURN(auto shards, FindParquetShards(input_dir));
 
   std::error_code error;
   std::filesystem::create_directories(output_dir, error);
@@ -103,7 +103,7 @@ absl::Status RunConversion() {
   const bool overwrite = absl::GetFlag(FLAGS_overwrite);
   size_t skipped = 0;
   std::vector<WorkItem> work;
-  for (const std::filesystem::path& input : *shards) {
+  for (const std::filesystem::path& input : shards) {
     std::filesystem::path output = output_dir / input.stem();
     output += ".tokenized";
     error.clear();
@@ -138,9 +138,9 @@ absl::Status RunConversion() {
   std::vector<std::unique_ptr<tokenizer::Gpt2Tokenizer>> encoders;
   encoders.reserve(worker_count);
   for (size_t worker = 0; worker < worker_count; ++worker) {
-    auto encoder = tokenizer::Gpt2Tokenizer::Load(tokenizer_dir);
-    if (!encoder.ok()) return encoder.status();
-    encoders.push_back(std::move(*encoder));
+    ASSIGN_OR_RETURN(auto encoder,
+                     tokenizer::Gpt2Tokenizer::Load(tokenizer_dir));
+    encoders.push_back(std::move(encoder));
   }
 
   std::cout << "Converting " << work.size() << " shard(s) with "

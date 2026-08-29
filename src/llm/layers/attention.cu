@@ -16,6 +16,7 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "src/common/status_macros.h"
 #include "src/gpu/buffer.h"
 #include "src/llm/layers/internal.h"
 
@@ -193,7 +194,7 @@ __tile_global__ void FlashAttentionBackwardKernel(
 absl::StatusOr<std::unique_ptr<AttentionLayer>> AttentionLayer::Create(
     int context_length, int num_heads, int embedding_dim, DataType data_type,
     cudaStream_t stream) {
-  if (auto status = ValidateFp16(data_type); !status.ok()) return status;
+  RETURN_IF_ERROR(ValidateFp16(data_type));
   if (context_length <= 0 || num_heads <= 0 || embedding_dim <= 0) {
     return absl::InvalidArgumentError(
         "attention dimensions must all be positive");
@@ -202,9 +203,8 @@ absl::StatusOr<std::unique_ptr<AttentionLayer>> AttentionLayer::Create(
     return absl::InvalidArgumentError(
         "embedding_dim must be divisible by num_heads");
   }
-  if (auto status = ValidateTiledExtent(embedding_dim / num_heads,
-                                        "attention head dimension");
-      !status.ok()) return status;
+  RETURN_IF_ERROR(ValidateTiledExtent(embedding_dim / num_heads,
+                                      "attention head dimension"));
   return std::unique_ptr<AttentionLayer>(new AttentionLayer(
       context_length, num_heads, embedding_dim, data_type, stream));
 }
@@ -215,29 +215,27 @@ absl::StatusOr<Buffer> AttentionLayer::fwd(
     return absl::InvalidArgumentError(
         "AttentionLayer fwd expects one input and a non-null tape");
   }
-  auto rows = MatrixRows(inputs[0], embedding_dim_, stream_, "attention input");
-  if (!rows.ok()) return rows.status();
-  if (*rows % context_length_ != 0) {
+  ASSIGN_OR_RETURN(
+      int rows,
+      MatrixRows(inputs[0], embedding_dim_, stream_, "attention input"));
+  if (rows % context_length_ != 0) {
     return absl::InvalidArgumentError(
         "attention rows must be divisible by context_length");
   }
-  auto output = Buffer::Allocate(inputs[0].size_bytes(), stream_);
-  if (!output.ok()) return output.status();
+  ASSIGN_OR_RETURN(auto output,
+                   Buffer::Allocate(inputs[0].size_bytes(), stream_));
   const int head_dimension = embedding_dim_ / num_heads_;
   const float scale = 1.0f / std::sqrt(static_cast<float>(head_dimension));
   FlashAttentionForwardKernel<<<
-      *rows * num_heads_ * TileCount(head_dimension), 1, 0, stream_>>>(
+      rows * num_heads_ * TileCount(head_dimension), 1, 0, stream_>>>(
       static_cast<const float*>(inputs[0].data()),
-      *rows, context_length_, num_heads_, embedding_dim_, scale,
-      static_cast<float*>(output->data()));
-  if (auto status = CudaStatus(cudaGetLastError(),
-                               "FlashAttentionForwardKernel launch");
-      !status.ok()) {
-    return status;
-  }
-  tape->intermediates = {inputs[0], *output};
+      rows, context_length_, num_heads_, embedding_dim_, scale,
+      static_cast<float*>(output.data()));
+  RETURN_IF_ERROR(CudaStatus(cudaGetLastError(),
+                             "FlashAttentionForwardKernel launch"));
+  tape->intermediates = {inputs[0], output};
   tape->children.clear();
-  return *std::move(output);
+  return std::move(output);
 }
 
 absl::StatusOr<BufferVec> AttentionLayer::bwd(
@@ -246,39 +244,32 @@ absl::StatusOr<BufferVec> AttentionLayer::bwd(
     return absl::InvalidArgumentError(
         "AttentionLayer bwd received an incompatible gradient or tape");
   }
-  auto rows = MatrixRows(output_gradients[0], embedding_dim_, stream_,
-                         "attention output gradient");
-  if (!rows.ok()) return rows.status();
+  ASSIGN_OR_RETURN(int rows,
+                   MatrixRows(output_gradients[0], embedding_dim_, stream_,
+                              "attention output gradient"));
   const size_t activation_bytes = output_gradients[0].size_bytes();
   for (const Buffer& saved : tape.intermediates) {
-    if (auto status = ValidateBuffer(saved, activation_bytes, stream_,
-                                     "attention saved activation");
-        !status.ok()) return status;
+    RETURN_IF_ERROR(ValidateBuffer(saved, activation_bytes, stream_,
+                                   "attention saved activation"));
   }
-  auto input_gradient = Buffer::Allocate(activation_bytes, stream_);
-  if (!input_gradient.ok()) return input_gradient.status();
-  if (auto status = CudaStatus(
-          cudaMemsetAsync(input_gradient->data(), 0,
-                          input_gradient->size_bytes(), stream_),
-          "cudaMemsetAsync(attention input gradient)");
-      !status.ok()) {
-    return status;
-  }
+  ASSIGN_OR_RETURN(auto input_gradient,
+                   Buffer::Allocate(activation_bytes, stream_));
+  RETURN_IF_ERROR(CudaStatus(
+      cudaMemsetAsync(input_gradient.data(), 0, input_gradient.size_bytes(),
+                      stream_),
+      "cudaMemsetAsync(attention input gradient)"));
   const int head_dimension = embedding_dim_ / num_heads_;
   const float scale = 1.0f / std::sqrt(static_cast<float>(head_dimension));
   FlashAttentionBackwardKernel<<<
-      *rows * num_heads_ * TileCount(head_dimension), 1, 0, stream_>>>(
+      rows * num_heads_ * TileCount(head_dimension), 1, 0, stream_>>>(
       static_cast<const float*>(tape.intermediates[0].data()),
       static_cast<const float*>(tape.intermediates[1].data()),
       static_cast<const float*>(output_gradients[0].data()),
-      *rows, context_length_, num_heads_, embedding_dim_, scale,
-      static_cast<float*>(input_gradient->data()));
-  if (auto status = CudaStatus(cudaGetLastError(),
-                               "FlashAttentionBackwardKernel launch");
-      !status.ok()) {
-    return status;
-  }
-  return BufferVec{*std::move(input_gradient)};
+      rows, context_length_, num_heads_, embedding_dim_, scale,
+      static_cast<float*>(input_gradient.data()));
+  RETURN_IF_ERROR(CudaStatus(cudaGetLastError(),
+                             "FlashAttentionBackwardKernel launch"));
+  return BufferVec{std::move(input_gradient)};
 }
 
 

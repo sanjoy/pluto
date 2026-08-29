@@ -13,6 +13,7 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "src/common/status_macros.h"
 
 namespace pluto::tokenizer::internal {
 namespace {
@@ -103,21 +104,18 @@ class JsonCursor {
         case 'r': result.push_back('\r'); break;
         case 't': result.push_back('\t'); break;
         case 'u': {
-          auto code_point = ParseHexQuad();
-          if (!code_point.ok()) return code_point.status();
-          uint32_t scalar = *code_point;
+          ASSIGN_OR_RETURN(uint32_t scalar, ParseHexQuad());
           if (scalar >= 0xd800 && scalar <= 0xdbff) {
             if (position_ + 2 > input_.size() || input_[position_] != '\\' ||
                 input_[position_ + 1] != 'u') {
               return JsonError(position_, "high surrogate without low surrogate");
             }
             position_ += 2;
-            auto low = ParseHexQuad();
-            if (!low.ok()) return low.status();
-            if (*low < 0xdc00 || *low > 0xdfff) {
+            ASSIGN_OR_RETURN(uint32_t low, ParseHexQuad());
+            if (low < 0xdc00 || low > 0xdfff) {
               return JsonError(position_, "invalid low surrogate");
             }
-            scalar = 0x10000 + ((scalar - 0xd800) << 10) + (*low - 0xdc00);
+            scalar = 0x10000 + ((scalar - 0xd800) << 10) + (low - 0xdc00);
           } else if (scalar >= 0xdc00 && scalar <= 0xdfff) {
             return JsonError(position_, "unexpected low surrogate");
           }
@@ -158,24 +156,19 @@ class JsonCursor {
         while (true) {
           auto key = ParseString();
           if (!key.ok()) return key.status();
-          auto status = Expect(':');
-          if (!status.ok()) return status;
-          status = SkipValue();
-          if (!status.ok()) return status;
+          RETURN_IF_ERROR(Expect(':'));
+          RETURN_IF_ERROR(SkipValue());
           if (Consume('}')) return absl::OkStatus();
-          status = Expect(',');
-          if (!status.ok()) return status;
+          RETURN_IF_ERROR(Expect(','));
         }
       }
       case '[': {
         ++position_;
         if (Consume(']')) return absl::OkStatus();
         while (true) {
-          auto status = SkipValue();
-          if (!status.ok()) return status;
+          RETURN_IF_ERROR(SkipValue());
           if (Consume(']')) return absl::OkStatus();
-          status = Expect(',');
-          if (!status.ok()) return status;
+          RETURN_IF_ERROR(Expect(','));
         }
       }
       default: {
@@ -217,29 +210,23 @@ class JsonCursor {
 
 absl::Status ParseVocabulary(JsonCursor* cursor,
                              absl::flat_hash_map<std::string, int>* vocab) {
-  auto status = cursor->Expect('{');
-  if (!status.ok()) return status;
+  RETURN_IF_ERROR(cursor->Expect('{'));
   if (cursor->Consume('}')) return absl::OkStatus();
   while (true) {
-    auto token = cursor->ParseString();
-    if (!token.ok()) return token.status();
-    status = cursor->Expect(':');
-    if (!status.ok()) return status;
-    auto id = cursor->ParseNonnegativeInt();
-    if (!id.ok()) return id.status();
-    if (!vocab->emplace(std::move(*token), *id).second) {
+    ASSIGN_OR_RETURN(auto token, cursor->ParseString());
+    RETURN_IF_ERROR(cursor->Expect(':'));
+    ASSIGN_OR_RETURN(int id, cursor->ParseNonnegativeInt());
+    if (!vocab->emplace(std::move(token), id).second) {
       return JsonError(cursor->position(), "duplicate vocabulary token");
     }
     if (cursor->Consume('}')) return absl::OkStatus();
-    status = cursor->Expect(',');
-    if (!status.ok()) return status;
+    RETURN_IF_ERROR(cursor->Expect(','));
   }
 }
 
 absl::Status ParseMerges(JsonCursor* cursor,
                          absl::flat_hash_map<std::string, int>* ranks) {
-  auto status = cursor->Expect('[');
-  if (!status.ok()) return status;
+  RETURN_IF_ERROR(cursor->Expect('['));
   if (cursor->Consume(']')) return absl::OkStatus();
 
   int rank = 0;
@@ -248,54 +235,45 @@ absl::Status ParseMerges(JsonCursor* cursor,
     std::string right;
     if (cursor->Peek() == '[') {
       cursor->Consume('[');
-      auto parsed_left = cursor->ParseString();
-      if (!parsed_left.ok()) return parsed_left.status();
-      status = cursor->Expect(',');
-      if (!status.ok()) return status;
-      auto parsed_right = cursor->ParseString();
-      if (!parsed_right.ok()) return parsed_right.status();
-      left = std::move(*parsed_left);
-      right = std::move(*parsed_right);
-      status = cursor->Expect(']');
-      if (!status.ok()) return status;
+      ASSIGN_OR_RETURN(left, cursor->ParseString());
+      RETURN_IF_ERROR(cursor->Expect(','));
+      ASSIGN_OR_RETURN(right, cursor->ParseString());
+      RETURN_IF_ERROR(cursor->Expect(']'));
     } else {
       // Older tokenizer.json files encode a merge as one space-separated
       // string. GPT-2 alphabet symbols themselves never contain ASCII space.
-      auto merge = cursor->ParseString();
-      if (!merge.ok()) return merge.status();
-      const size_t separator = merge->find(' ');
+      ASSIGN_OR_RETURN(auto merge, cursor->ParseString());
+      const size_t separator = merge.find(' ');
       if (separator == std::string::npos) {
         return JsonError(cursor->position(), "merge is not a token pair");
       }
-      left = merge->substr(0, separator);
-      right = merge->substr(separator + 1);
+      left = merge.substr(0, separator);
+      right = merge.substr(separator + 1);
     }
     ranks->emplace(MergeKey(left, right), rank++);
 
     if (cursor->Consume(']')) return absl::OkStatus();
-    status = cursor->Expect(',');
-    if (!status.ok()) return status;
+    RETURN_IF_ERROR(cursor->Expect(','));
   }
 }
 
 absl::Status ParseModel(JsonCursor* cursor,
                         absl::flat_hash_map<std::string, int>* vocab,
                         absl::flat_hash_map<std::string, int>* ranks) {
-  auto status = cursor->Expect('{');
-  if (!status.ok()) return status;
+  RETURN_IF_ERROR(cursor->Expect('{'));
   if (cursor->Consume('}')) return absl::OkStatus();
   while (true) {
-    auto key = cursor->ParseString();
-    if (!key.ok()) return key.status();
-    status = cursor->Expect(':');
-    if (!status.ok()) return status;
-    if (*key == "vocab") status = ParseVocabulary(cursor, vocab);
-    else if (*key == "merges") status = ParseMerges(cursor, ranks);
-    else status = cursor->SkipValue();
-    if (!status.ok()) return status;
+    ASSIGN_OR_RETURN(auto key, cursor->ParseString());
+    RETURN_IF_ERROR(cursor->Expect(':'));
+    if (key == "vocab") {
+      RETURN_IF_ERROR(ParseVocabulary(cursor, vocab));
+    } else if (key == "merges") {
+      RETURN_IF_ERROR(ParseMerges(cursor, ranks));
+    } else {
+      RETURN_IF_ERROR(cursor->SkipValue());
+    }
     if (cursor->Consume('}')) return absl::OkStatus();
-    status = cursor->Expect(',');
-    if (!status.ok()) return status;
+    RETURN_IF_ERROR(cursor->Expect(','));
   }
 }
 
@@ -303,26 +281,21 @@ absl::Status ParseTokenizerJson(
     absl::string_view json, absl::flat_hash_map<std::string, int>* vocab,
     absl::flat_hash_map<std::string, int>* ranks) {
   JsonCursor cursor(json);
-  auto status = cursor.Expect('{');
-  if (!status.ok()) return status;
+  RETURN_IF_ERROR(cursor.Expect('{'));
   if (cursor.Consume('}')) return JsonError(0, "missing model");
 
   bool found_model = false;
   while (true) {
-    auto key = cursor.ParseString();
-    if (!key.ok()) return key.status();
-    status = cursor.Expect(':');
-    if (!status.ok()) return status;
-    if (*key == "model") {
-      status = ParseModel(&cursor, vocab, ranks);
+    ASSIGN_OR_RETURN(auto key, cursor.ParseString());
+    RETURN_IF_ERROR(cursor.Expect(':'));
+    if (key == "model") {
+      RETURN_IF_ERROR(ParseModel(&cursor, vocab, ranks));
       found_model = true;
     } else {
-      status = cursor.SkipValue();
+      RETURN_IF_ERROR(cursor.SkipValue());
     }
-    if (!status.ok()) return status;
     if (cursor.Consume('}')) break;
-    status = cursor.Expect(',');
-    if (!status.ok()) return status;
+    RETURN_IF_ERROR(cursor.Expect(','));
   }
   if (!found_model || vocab->empty() || ranks->empty()) {
     return JsonError(cursor.position(), "missing byte-level BPE model");
@@ -438,12 +411,11 @@ absl::StatusOr<std::shared_ptr<const Gpt2Model>> Gpt2Model::Load(
     }
   }
 
-  auto json = ReadFile(directory / "tokenizer.json");
-  if (!json.ok()) return json.status();
+  ASSIGN_OR_RETURN(auto json, ReadFile(directory / "tokenizer.json"));
 
   std::shared_ptr<Gpt2Model> model(new Gpt2Model);
-  auto status = ParseTokenizerJson(*json, &model->encoder_, &model->merge_ranks_);
-  if (!status.ok()) return status;
+  RETURN_IF_ERROR(
+      ParseTokenizerJson(json, &model->encoder_, &model->merge_ranks_));
 
   int maximum_id = -1;
   for (const auto& [token, id] : model->encoder_) maximum_id = std::max(maximum_id, id);

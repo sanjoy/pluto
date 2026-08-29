@@ -16,6 +16,7 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "src/common/status_macros.h"
 #include "src/gpu/buffer.h"
 #include "src/llm/layers/internal.h"
 
@@ -121,12 +122,11 @@ __tile_global__ void LayerNormBackwardKernel(
 absl::StatusOr<std::unique_ptr<LayerNormLayer>> LayerNormLayer::Create(
     int embedding_dim, float epsilon, DataType data_type,
     cudaStream_t stream) {
-  if (auto status = ValidateFp16(data_type); !status.ok()) return status;
+  RETURN_IF_ERROR(ValidateFp16(data_type));
   if (epsilon <= 0.0f) {
     return absl::InvalidArgumentError("layer-norm epsilon must be positive");
   }
-  if (auto status = ValidateTiledExtent(embedding_dim, "embedding_dim");
-      !status.ok()) return status;
+  RETURN_IF_ERROR(ValidateTiledExtent(embedding_dim, "embedding_dim"));
   return std::unique_ptr<LayerNormLayer>(
       new LayerNormLayer(embedding_dim, epsilon, data_type, stream));
 }
@@ -137,24 +137,21 @@ absl::StatusOr<Buffer> LayerNormLayer::fwd(
     return absl::InvalidArgumentError(
         "LayerNormLayer fwd expects one input and a non-null tape");
   }
-  auto rows = MatrixRows(inputs[0], embedding_dim_, stream_,
-                         "layer-norm input");
-  if (!rows.ok()) return rows.status();
+  ASSIGN_OR_RETURN(int rows,
+                   MatrixRows(inputs[0], embedding_dim_, stream_,
+                              "layer-norm input"));
   const size_t activation_bytes = inputs[0].size_bytes();
-  auto output = Buffer::Allocate(activation_bytes, stream_);
-  if (!output.ok()) return output.status();
+  ASSIGN_OR_RETURN(auto output,
+                   Buffer::Allocate(activation_bytes, stream_));
   tape->intermediates = {inputs[0]};
   tape->children.clear();
-  LayerNormForwardKernel<<<*rows * TileCount(embedding_dim_), 1, 0, stream_>>>(
-      static_cast<const float*>(inputs[0].data()), *rows, embedding_dim_,
+  LayerNormForwardKernel<<<rows * TileCount(embedding_dim_), 1, 0, stream_>>>(
+      static_cast<const float*>(inputs[0].data()), rows, embedding_dim_,
       epsilon_,
-      static_cast<float*>(output->data()));
-  if (auto status = CudaStatus(cudaGetLastError(),
-                               "LayerNormForwardKernel launch");
-      !status.ok()) {
-    return status;
-  }
-  return *std::move(output);
+      static_cast<float*>(output.data()));
+  RETURN_IF_ERROR(
+      CudaStatus(cudaGetLastError(), "LayerNormForwardKernel launch"));
+  return std::move(output);
 }
 
 absl::StatusOr<BufferVec> LayerNormLayer::bwd(
@@ -163,27 +160,23 @@ absl::StatusOr<BufferVec> LayerNormLayer::bwd(
     return absl::InvalidArgumentError(
         "LayerNormLayer bwd received an incompatible gradient or tape");
   }
-  auto rows = MatrixRows(output_gradients[0], embedding_dim_, stream_,
-                         "layer-norm output gradient");
-  if (!rows.ok()) return rows.status();
+  ASSIGN_OR_RETURN(int rows,
+                   MatrixRows(output_gradients[0], embedding_dim_, stream_,
+                              "layer-norm output gradient"));
   const size_t activation_bytes = output_gradients[0].size_bytes();
-  if (auto status = ValidateBuffer(tape.intermediates[0], activation_bytes,
-                                   stream_, "layer-norm saved input");
-      !status.ok()) return status;
-  auto input_gradient = Buffer::Allocate(activation_bytes, stream_);
-  if (!input_gradient.ok()) return input_gradient.status();
-  LayerNormBackwardKernel<<<*rows * TileCount(embedding_dim_), 1, 0,
+  RETURN_IF_ERROR(ValidateBuffer(tape.intermediates[0], activation_bytes,
+                                 stream_, "layer-norm saved input"));
+  ASSIGN_OR_RETURN(auto input_gradient,
+                   Buffer::Allocate(activation_bytes, stream_));
+  LayerNormBackwardKernel<<<rows * TileCount(embedding_dim_), 1, 0,
                             stream_>>>(
       static_cast<const float*>(tape.intermediates[0].data()),
-      static_cast<const float*>(output_gradients[0].data()), *rows,
+      static_cast<const float*>(output_gradients[0].data()), rows,
       embedding_dim_, epsilon_,
-      static_cast<float*>(input_gradient->data()));
-  if (auto status = CudaStatus(cudaGetLastError(),
-                               "LayerNormBackwardKernel launch");
-      !status.ok()) {
-    return status;
-  }
-  return BufferVec{*std::move(input_gradient)};
+      static_cast<float*>(input_gradient.data()));
+  RETURN_IF_ERROR(
+      CudaStatus(cudaGetLastError(), "LayerNormBackwardKernel launch"));
+  return BufferVec{std::move(input_gradient)};
 }
 
 

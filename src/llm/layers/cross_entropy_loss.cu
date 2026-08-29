@@ -16,6 +16,7 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "src/common/status_macros.h"
 #include "src/gpu/buffer.h"
 #include "src/llm/layers/internal.h"
 
@@ -116,9 +117,8 @@ __tile_global__ void CrossEntropyBackwardKernel(
 absl::StatusOr<std::unique_ptr<CrossEntropyLossLayer>>
 CrossEntropyLossLayer::Create(int vocabulary_size, DataType data_type,
                               cudaStream_t stream) {
-  if (auto status = ValidateFp16(data_type); !status.ok()) return status;
-  if (auto status = ValidateTiledExtent(vocabulary_size, "vocabulary_size");
-      !status.ok()) return status;
+  RETURN_IF_ERROR(ValidateFp16(data_type));
+  RETURN_IF_ERROR(ValidateTiledExtent(vocabulary_size, "vocabulary_size"));
   return std::unique_ptr<CrossEntropyLossLayer>(
       new CrossEntropyLossLayer(vocabulary_size, data_type, stream));
 }
@@ -130,29 +130,25 @@ absl::StatusOr<Buffer> CrossEntropyLossLayer::fwd(
         "CrossEntropyLossLayer fwd expects logits, targets, and a non-null "
         "tape");
   }
-  auto rows = MatrixRows(inputs[0], vocabulary_size_, stream_,
-                         "cross-entropy logits");
-  if (!rows.ok()) return rows.status();
-  if (auto status = ValidateBuffer(
-          inputs[1], static_cast<size_t>(*rows) * sizeof(int), stream_,
-          "cross-entropy targets");
-      !status.ok()) return status;
-  auto losses = Buffer::Allocate(static_cast<size_t>(*rows) * sizeof(float),
-                                 stream_);
-  if (!losses.ok()) return losses.status();
+  ASSIGN_OR_RETURN(int rows,
+                   MatrixRows(inputs[0], vocabulary_size_, stream_,
+                              "cross-entropy logits"));
+  RETURN_IF_ERROR(ValidateBuffer(
+      inputs[1], static_cast<size_t>(rows) * sizeof(int), stream_,
+      "cross-entropy targets"));
+  ASSIGN_OR_RETURN(
+      auto losses,
+      Buffer::Allocate(static_cast<size_t>(rows) * sizeof(float), stream_));
   tape->intermediates = {inputs[0], inputs[1]};
   tape->children.clear();
-  CrossEntropyForwardKernel<<<*rows, 1, 0, stream_>>>(
+  CrossEntropyForwardKernel<<<rows, 1, 0, stream_>>>(
       static_cast<const float*>(inputs[0].data()),
       static_cast<const int*>(inputs[1].data()),
-      *rows, vocabulary_size_,
-      static_cast<float*>(losses->data()));
-  if (auto status = CudaStatus(cudaGetLastError(),
-                               "CrossEntropyForwardKernel launch");
-      !status.ok()) {
-    return status;
-  }
-  return *std::move(losses);
+      rows, vocabulary_size_,
+      static_cast<float*>(losses.data()));
+  RETURN_IF_ERROR(CudaStatus(cudaGetLastError(),
+                             "CrossEntropyForwardKernel launch"));
+  return std::move(losses);
 }
 
 absl::StatusOr<BufferVec> CrossEntropyLossLayer::bwd(
@@ -162,28 +158,24 @@ absl::StatusOr<BufferVec> CrossEntropyLossLayer::bwd(
         "terminal CrossEntropyLossLayer bwd expects no upstream gradient and "
         "a matching tape");
   }
-  auto rows = MatrixRows(tape.intermediates[0], vocabulary_size_, stream_,
-                         "cross-entropy saved logits");
-  if (!rows.ok()) return rows.status();
-  if (auto status = ValidateBuffer(
-          tape.intermediates[1], static_cast<size_t>(*rows) * sizeof(int),
-          stream_, "cross-entropy saved targets");
-      !status.ok()) return status;
-  auto logits_gradient = Buffer::Allocate(tape.intermediates[0].size_bytes(),
-                                          stream_);
-  if (!logits_gradient.ok()) return logits_gradient.status();
-  CrossEntropyBackwardKernel<<<*rows * TileCount(vocabulary_size_), 1, 0,
+  ASSIGN_OR_RETURN(int rows,
+                   MatrixRows(tape.intermediates[0], vocabulary_size_, stream_,
+                              "cross-entropy saved logits"));
+  RETURN_IF_ERROR(ValidateBuffer(
+      tape.intermediates[1], static_cast<size_t>(rows) * sizeof(int), stream_,
+      "cross-entropy saved targets"));
+  ASSIGN_OR_RETURN(
+      auto logits_gradient,
+      Buffer::Allocate(tape.intermediates[0].size_bytes(), stream_));
+  CrossEntropyBackwardKernel<<<rows * TileCount(vocabulary_size_), 1, 0,
                                stream_>>>(
       static_cast<const float*>(tape.intermediates[0].data()),
       static_cast<const int*>(tape.intermediates[1].data()),
-      *rows, vocabulary_size_,
-      static_cast<float*>(logits_gradient->data()));
-  if (auto status = CudaStatus(cudaGetLastError(),
-                               "CrossEntropyBackwardKernel launch");
-      !status.ok()) {
-    return status;
-  }
-  return BufferVec{*std::move(logits_gradient)};
+      rows, vocabulary_size_,
+      static_cast<float*>(logits_gradient.data()));
+  RETURN_IF_ERROR(CudaStatus(cudaGetLastError(),
+                             "CrossEntropyBackwardKernel launch"));
+  return BufferVec{std::move(logits_gradient)};
 }
 
 

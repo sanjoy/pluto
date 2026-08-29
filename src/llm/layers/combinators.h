@@ -9,6 +9,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "src/common/status_macros.h"
 #include "src/llm/layer.h"
 
 namespace pluto::llm {
@@ -80,9 +81,8 @@ class RepeatedLayer final : public Layer {
     for (auto& layer : layers_) {
       Tape child_tape;
       BufferVec child_inputs = {activation};
-      auto output = layer->fwd(child_inputs, &child_tape);
-      if (!output.ok()) return output.status();
-      activation = *std::move(output);
+      ASSIGN_OR_RETURN(auto output, layer->fwd(child_inputs, &child_tape));
+      activation = std::move(output);
       tape->children.push_back(std::move(child_tape));
     }
     return activation;
@@ -98,14 +98,15 @@ class RepeatedLayer final : public Layer {
     Buffer gradient = output_gradients.front();
     for (size_t index = layers_.size(); index-- > 0;) {
       BufferVec child_gradients = {gradient};
-      auto inputs = layers_[index]->bwd(
-          child_gradients, std::move(tape.children[index]));
-      if (!inputs.ok()) return inputs.status();
-      if (inputs->size() != 1) {
+      ASSIGN_OR_RETURN(auto inputs,
+                       layers_[index]->bwd(
+                           child_gradients,
+                           std::move(tape.children[index])));
+      if (inputs.size() != 1) {
         return absl::InternalError(
             "a repeated unary layer returned multiple input gradients");
       }
-      gradient = inputs->front();
+      gradient = inputs.front();
     }
     return BufferVec{gradient};
   }

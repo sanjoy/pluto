@@ -8,16 +8,16 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "src/common/status_macros.h"
 #include "src/tokenization/gpt2_model.h"
 
 namespace pluto::tokenizer {
 
 absl::StatusOr<std::unique_ptr<Gpt2Detokenizer>> Gpt2Detokenizer::Load(
     const std::filesystem::path& directory) {
-  auto model = internal::Gpt2Model::Load(directory);
-  if (!model.ok()) return model.status();
+  ASSIGN_OR_RETURN(auto model, internal::Gpt2Model::Load(directory));
   return std::unique_ptr<Gpt2Detokenizer>(
-      new Gpt2Detokenizer(std::move(*model)));
+      new Gpt2Detokenizer(std::move(model)));
 }
 
 absl::StatusOr<std::string> Gpt2Detokenizer::Decode(
@@ -34,13 +34,12 @@ absl::StatusOr<std::string> Gpt2Detokenizer::Decode(
   decoded.reserve(byte_encoded.size());
   absl::string_view remaining = byte_encoded;
   while (!remaining.empty()) {
-    auto code_point = internal::ConsumeUtf8(&remaining);
-    if (!code_point.ok()) return code_point.status();
-    if (*code_point >= model_->byte_decoder().size() ||
-        model_->byte_decoder()[*code_point] < 0) {
+    ASSIGN_OR_RETURN(char32_t code_point, internal::ConsumeUtf8(&remaining));
+    if (code_point >= model_->byte_decoder().size() ||
+        model_->byte_decoder()[code_point] < 0) {
       return absl::DataLossError("token contains a non-GPT-2 byte scalar");
     }
-    decoded.push_back(static_cast<char>(model_->byte_decoder()[*code_point]));
+    decoded.push_back(static_cast<char>(model_->byte_decoder()[code_point]));
   }
   return decoded;
 }

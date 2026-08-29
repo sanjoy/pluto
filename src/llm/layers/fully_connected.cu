@@ -16,6 +16,7 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "src/common/status_macros.h"
 #include "src/gpu/buffer.h"
 #include "src/llm/layers/internal.h"
 
@@ -174,33 +175,26 @@ FullyConnectedLayer::FullyConnectedLayer(
 absl::StatusOr<std::unique_ptr<FullyConnectedLayer>>
 FullyConnectedLayer::Create(int model_width, DataType data_type,
                             float learning_rate, cudaStream_t stream) {
-  if (auto status = ValidateFp16(data_type); !status.ok()) return status;
+  RETURN_IF_ERROR(ValidateFp16(data_type));
   if (learning_rate < 0.0f) {
     return absl::InvalidArgumentError("learning rate must be non-negative");
   }
-  if (auto status = ValidateTiledExtent(model_width, "model_width");
-      !status.ok()) return status;
+  RETURN_IF_ERROR(ValidateTiledExtent(model_width, "model_width"));
   const size_t matrix_elements =
       static_cast<size_t>(model_width) * model_width;
-  auto matrix = Buffer::Allocate(matrix_elements * sizeof(float), stream);
-  if (!matrix.ok()) return matrix.status();
-  auto bias = Buffer::Allocate(model_width * sizeof(float), stream);
-  if (!bias.ok()) return bias.status();
-  if (auto status = CudaStatus(cudaMemsetAsync(matrix->data(), 0,
-                                               matrix->size_bytes(), stream),
-                               "cudaMemsetAsync(dense matrix)");
-      !status.ok()) {
-    return status;
-  }
-  if (auto status = CudaStatus(
-          cudaMemsetAsync(bias->data(), 0, bias->size_bytes(), stream),
-          "cudaMemsetAsync(dense bias)");
-      !status.ok()) {
-    return status;
-  }
+  ASSIGN_OR_RETURN(auto matrix,
+                   Buffer::Allocate(matrix_elements * sizeof(float), stream));
+  ASSIGN_OR_RETURN(
+      auto bias, Buffer::Allocate(model_width * sizeof(float), stream));
+  RETURN_IF_ERROR(CudaStatus(
+      cudaMemsetAsync(matrix.data(), 0, matrix.size_bytes(), stream),
+      "cudaMemsetAsync(dense matrix)"));
+  RETURN_IF_ERROR(CudaStatus(
+      cudaMemsetAsync(bias.data(), 0, bias.size_bytes(), stream),
+      "cudaMemsetAsync(dense bias)"));
   return std::unique_ptr<FullyConnectedLayer>(new FullyConnectedLayer(
-      model_width, data_type, learning_rate, stream, *std::move(matrix),
-      *std::move(bias)));
+      model_width, data_type, learning_rate, stream, std::move(matrix),
+      std::move(bias)));
 }
 
 absl::Status FullyConnectedLayer::InitializeIdentity(float scale) {
@@ -221,28 +215,23 @@ absl::StatusOr<Buffer> FullyConnectedLayer::fwd(
     return absl::InvalidArgumentError(
         "FullyConnectedLayer fwd expects one input and a non-null tape");
   }
-  auto rows = MatrixRows(inputs[0], model_width_, stream_, "dense input");
-  if (!rows.ok()) return rows.status();
-  if (auto status = ValidateTiledExtent(*rows, "dense rows"); !status.ok()) {
-    return status;
-  }
-  auto output = Buffer::Allocate(inputs[0].size_bytes(), stream_);
-  if (!output.ok()) return output.status();
+  ASSIGN_OR_RETURN(
+      int rows, MatrixRows(inputs[0], model_width_, stream_, "dense input"));
+  RETURN_IF_ERROR(ValidateTiledExtent(rows, "dense rows"));
+  ASSIGN_OR_RETURN(auto output,
+                   Buffer::Allocate(inputs[0].size_bytes(), stream_));
   tape->intermediates = {inputs[0]};
   tape->children.clear();
-  DenseForwardKernel<<<TileCount(*rows) * TileCount(model_width_), 1, 0,
+  DenseForwardKernel<<<TileCount(rows) * TileCount(model_width_), 1, 0,
                        stream_>>>(
       static_cast<const float*>(inputs[0].data()),
       static_cast<const float*>(weights_[0].data()),
       static_cast<const float*>(weights_[1].data()),
-      *rows, model_width_,
-      static_cast<float*>(output->data()));
-  if (auto status = CudaStatus(cudaGetLastError(),
-                               "DenseForwardKernel launch");
-      !status.ok()) {
-    return status;
-  }
-  return *std::move(output);
+      rows, model_width_,
+      static_cast<float*>(output.data()));
+  RETURN_IF_ERROR(
+      CudaStatus(cudaGetLastError(), "DenseForwardKernel launch"));
+  return std::move(output);
 }
 
 absl::StatusOr<BufferVec> FullyConnectedLayer::bwd(
@@ -251,40 +240,36 @@ absl::StatusOr<BufferVec> FullyConnectedLayer::bwd(
     return absl::InvalidArgumentError(
         "FullyConnectedLayer bwd received an incompatible gradient or tape");
   }
-  auto rows = MatrixRows(output_gradients[0], model_width_, stream_,
-                         "dense output gradient");
-  if (!rows.ok()) return rows.status();
-  if (auto status = ValidateBuffer(tape.intermediates[0],
-                                   output_gradients[0].size_bytes(), stream_,
-                                   "dense saved input");
-      !status.ok()) return status;
-  auto input_gradient = Buffer::Allocate(output_gradients[0].size_bytes(),
-                                         stream_);
-  if (!input_gradient.ok()) return input_gradient.status();
-  DenseInputGradientKernel<<<TileCount(*rows) * TileCount(model_width_), 1, 0,
+  ASSIGN_OR_RETURN(int rows,
+                   MatrixRows(output_gradients[0], model_width_, stream_,
+                              "dense output gradient"));
+  RETURN_IF_ERROR(ValidateBuffer(tape.intermediates[0],
+                                 output_gradients[0].size_bytes(), stream_,
+                                 "dense saved input"));
+  ASSIGN_OR_RETURN(
+      auto input_gradient,
+      Buffer::Allocate(output_gradients[0].size_bytes(), stream_));
+  DenseInputGradientKernel<<<TileCount(rows) * TileCount(model_width_), 1, 0,
                              stream_>>>(
       static_cast<const float*>(output_gradients[0].data()),
       static_cast<const float*>(weights_[0].data()),
-      *rows, model_width_,
-      static_cast<float*>(input_gradient->data()));
+      rows, model_width_,
+      static_cast<float*>(input_gradient.data()));
   if (learning_rate_ != 0.0f) {
     DenseWeightUpdateKernel<<<TileCount(model_width_) * TileCount(model_width_),
                               1, 0, stream_>>>(
         static_cast<const float*>(tape.intermediates[0].data()),
         static_cast<const float*>(output_gradients[0].data()), learning_rate_,
-        *rows, model_width_,
+        rows, model_width_,
         static_cast<float*>(weights_[0].data()));
     DenseBiasUpdateKernel<<<TileCount(model_width_), 1, 0, stream_>>>(
         static_cast<const float*>(output_gradients[0].data()), learning_rate_,
-        *rows, model_width_,
+        rows, model_width_,
         static_cast<float*>(weights_[1].data()));
   }
-  if (auto status = CudaStatus(cudaGetLastError(),
-                               "dense backward kernel launch");
-      !status.ok()) {
-    return status;
-  }
-  return BufferVec{*std::move(input_gradient)};
+  RETURN_IF_ERROR(
+      CudaStatus(cudaGetLastError(), "dense backward kernel launch"));
+  return BufferVec{std::move(input_gradient)};
 }
 
 

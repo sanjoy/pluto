@@ -14,6 +14,7 @@
 #include "absl/synchronization/mutex.h"
 #include "re2/re2.h"
 #include "re2/stringpiece.h"
+#include "src/common/status_macros.h"
 #include "src/tokenization/gpt2_model.h"
 
 namespace pluto::tokenizer {
@@ -95,9 +96,8 @@ absl::StatusOr<std::vector<std::string>> SplitUtf8(absl::string_view text) {
 
 absl::StatusOr<std::unique_ptr<Gpt2Tokenizer>> Gpt2Tokenizer::Load(
     const std::filesystem::path& directory) {
-  auto model = internal::Gpt2Model::Load(directory);
-  if (!model.ok()) return model.status();
-  return std::unique_ptr<Gpt2Tokenizer>(new Gpt2Tokenizer(std::move(*model)));
+  ASSIGN_OR_RETURN(auto model, internal::Gpt2Model::Load(directory));
+  return std::unique_ptr<Gpt2Tokenizer>(new Gpt2Tokenizer(std::move(model)));
 }
 
 absl::StatusOr<std::vector<int>> Gpt2Tokenizer::ApplyBpe(
@@ -108,9 +108,7 @@ absl::StatusOr<std::vector<int>> Gpt2Tokenizer::ApplyBpe(
     if (cached != cache_.end()) return cached->second;
   }
 
-  auto split = SplitUtf8(token);
-  if (!split.ok()) return split.status();
-  std::vector<std::string> symbols = std::move(*split);
+  ASSIGN_OR_RETURN(std::vector<std::string> symbols, SplitUtf8(token));
 
   while (symbols.size() > 1) {
     int best_rank = std::numeric_limits<int>::max();
@@ -160,12 +158,10 @@ absl::StatusOr<std::vector<int>> Gpt2Tokenizer::ApplyBpe(
 
 absl::Status Gpt2Tokenizer::EncodeOrdinary(absl::string_view text,
                                            std::vector<int>* output) const {
-  auto pieces = PreTokenize(text);
-  if (!pieces.ok()) return pieces.status();
-  for (absl::string_view piece : *pieces) {
-    auto ids = ApplyBpe(ByteEncode(piece, *model_));
-    if (!ids.ok()) return ids.status();
-    output->insert(output->end(), ids->begin(), ids->end());
+  ASSIGN_OR_RETURN(auto pieces, PreTokenize(text));
+  for (absl::string_view piece : pieces) {
+    ASSIGN_OR_RETURN(auto ids, ApplyBpe(ByteEncode(piece, *model_)));
+    output->insert(output->end(), ids.begin(), ids.end());
   }
   return absl::OkStatus();
 }
@@ -177,8 +173,8 @@ absl::StatusOr<std::vector<int>> Gpt2Tokenizer::Encode(
   while (begin < text.size()) {
     const size_t special = text.find(model_->eos_token(), begin);
     const size_t end = special == absl::string_view::npos ? text.size() : special;
-    auto status = EncodeOrdinary(text.substr(begin, end - begin), &output);
-    if (!status.ok()) return status;
+    RETURN_IF_ERROR(
+        EncodeOrdinary(text.substr(begin, end - begin), &output));
     if (special == absl::string_view::npos) break;
     output.push_back(model_->eos_token_id());
     begin = special + model_->eos_token().size();

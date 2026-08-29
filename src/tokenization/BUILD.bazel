@@ -8,6 +8,7 @@ cc_library(
     hdrs = ["gpt2_model.h"],
     visibility = ["//src/tokenization:__pkg__"],
     deps = [
+        "//src/common:status_macros",
         "@abseil-cpp//absl/container:flat_hash_map",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
@@ -23,6 +24,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":gpt2_model",
+        "//src/common:status_macros",
         "@abseil-cpp//absl/base:core_headers",
         "@abseil-cpp//absl/container:flat_hash_map",
         "@abseil-cpp//absl/status",
@@ -63,6 +65,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":gpt2_model",
+        "//src/common:status_macros",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/types:span",
@@ -87,6 +90,7 @@ cc_library(
     hdrs = ["document_file.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//src/common:status_macros",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings",
@@ -112,6 +116,7 @@ cc_library(
     deps = [
         ":document_file",
         ":tokenizer",
+        "//src/common:status_macros",
         "//src/parquet:fineweb_parquet_reader",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/strings",
@@ -139,6 +144,7 @@ cc_binary(
     deps = [
         ":fineweb_converter",
         ":tokenizer",
+        "//src/common:status_macros",
         "@abseil-cpp//absl/flags:flag",
         "@abseil-cpp//absl/flags:parse",
         "@abseil-cpp//absl/status",

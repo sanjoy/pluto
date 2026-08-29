@@ -16,6 +16,7 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "src/common/status_macros.h"
 #include "src/gpu/buffer.h"
 #include "src/llm/layers/internal.h"
 
@@ -256,26 +257,23 @@ absl::StatusOr<std::unique_ptr<EmbeddingLookupLayer>>
 EmbeddingLookupLayer::Create(int vocab_size, int embedding_dim,
                              DataType data_type, float learning_rate,
                              cudaStream_t stream) {
-  if (auto status = ValidateFp16(data_type); !status.ok()) return status;
+  RETURN_IF_ERROR(ValidateFp16(data_type));
   if (learning_rate < 0.0f) {
     return absl::InvalidArgumentError("learning rate must be non-negative");
   }
-  if (auto status = ValidateTiledExtent(vocab_size, "vocab_size");
-      !status.ok()) return status;
-  if (auto status = ValidateTiledExtent(embedding_dim, "embedding_dim");
-      !status.ok()) return status;
-  auto weight = Buffer::Allocate(
-      static_cast<size_t>(vocab_size) * embedding_dim * sizeof(float), stream);
-  if (!weight.ok()) return weight.status();
-  if (auto status = CudaStatus(cudaMemsetAsync(weight->data(), 0,
-                                               weight->size_bytes(), stream),
-                               "cudaMemsetAsync(embedding table)");
-      !status.ok()) {
-    return status;
-  }
+  RETURN_IF_ERROR(ValidateTiledExtent(vocab_size, "vocab_size"));
+  RETURN_IF_ERROR(ValidateTiledExtent(embedding_dim, "embedding_dim"));
+  ASSIGN_OR_RETURN(
+      auto weight,
+      Buffer::Allocate(
+          static_cast<size_t>(vocab_size) * embedding_dim * sizeof(float),
+          stream));
+  RETURN_IF_ERROR(CudaStatus(
+      cudaMemsetAsync(weight.data(), 0, weight.size_bytes(), stream),
+      "cudaMemsetAsync(embedding table)"));
   return std::unique_ptr<EmbeddingLookupLayer>(new EmbeddingLookupLayer(
       vocab_size, embedding_dim, data_type, learning_rate, stream,
-      *std::move(weight)));
+      std::move(weight)));
 }
 
 absl::Status EmbeddingLookupLayer::InitializeIdentity(float scale) {
@@ -296,25 +294,24 @@ absl::StatusOr<Buffer> EmbeddingLookupLayer::fwd(
     return absl::InvalidArgumentError(
         "EmbeddingLookupLayer fwd expects one input and a non-null tape");
   }
-  auto rows = ElementCount(inputs[0], sizeof(int), stream_,
-                           "embedding token input");
-  if (!rows.ok()) return rows.status();
-  auto output = Buffer::Allocate(
-      static_cast<size_t>(*rows) * embedding_dim_ * sizeof(float), stream_);
-  if (!output.ok()) return output.status();
+  ASSIGN_OR_RETURN(int rows,
+                   ElementCount(inputs[0], sizeof(int), stream_,
+                                "embedding token input"));
+  ASSIGN_OR_RETURN(
+      auto output,
+      Buffer::Allocate(
+          static_cast<size_t>(rows) * embedding_dim_ * sizeof(float),
+          stream_));
   tape->intermediates = {inputs[0]};
   tape->children.clear();
-  EmbeddingForwardKernel<<<*rows * TileCount(embedding_dim_), 1, 0, stream_>>>(
+  EmbeddingForwardKernel<<<rows * TileCount(embedding_dim_), 1, 0, stream_>>>(
       static_cast<const int*>(inputs[0].data()),
       static_cast<const float*>(weight_.data()),
-      *rows, vocab_size_, embedding_dim_,
-      static_cast<float*>(output->data()));
-  if (auto status = CudaStatus(cudaGetLastError(),
-                               "EmbeddingForwardKernel launch");
-      !status.ok()) {
-    return status;
-  }
-  return *std::move(output);
+      rows, vocab_size_, embedding_dim_,
+      static_cast<float*>(output.data()));
+  RETURN_IF_ERROR(
+      CudaStatus(cudaGetLastError(), "EmbeddingForwardKernel launch"));
+  return std::move(output);
 }
 
 absl::StatusOr<BufferVec> EmbeddingLookupLayer::bwd(
@@ -323,24 +320,20 @@ absl::StatusOr<BufferVec> EmbeddingLookupLayer::bwd(
     return absl::InvalidArgumentError(
         "EmbeddingLookupLayer bwd received an incompatible gradient or tape");
   }
-  auto rows = ElementCount(tape.intermediates[0], sizeof(int), stream_,
-                           "embedding token input");
-  if (!rows.ok()) return rows.status();
-  if (auto status = ValidateBuffer(
-          output_gradients[0],
-          static_cast<size_t>(*rows) * embedding_dim_ * sizeof(float), stream_,
-          "embedding output gradient");
-      !status.ok()) return status;
-  EmbeddingBackwardKernel<<<*rows * TileCount(embedding_dim_), 1, 0, stream_>>>(
+  ASSIGN_OR_RETURN(int rows,
+                   ElementCount(tape.intermediates[0], sizeof(int), stream_,
+                                "embedding token input"));
+  RETURN_IF_ERROR(ValidateBuffer(
+      output_gradients[0],
+      static_cast<size_t>(rows) * embedding_dim_ * sizeof(float), stream_,
+      "embedding output gradient"));
+  EmbeddingBackwardKernel<<<rows * TileCount(embedding_dim_), 1, 0, stream_>>>(
       static_cast<const int*>(tape.intermediates[0].data()),
-      static_cast<const float*>(output_gradients[0].data()), *rows,
+      static_cast<const float*>(output_gradients[0].data()), rows,
       embedding_dim_, learning_rate_,
       static_cast<float*>(weight_.data()));
-  if (auto status = CudaStatus(cudaGetLastError(),
-                               "EmbeddingBackwardKernel launch");
-      !status.ok()) {
-    return status;
-  }
+  RETURN_IF_ERROR(
+      CudaStatus(cudaGetLastError(), "EmbeddingBackwardKernel launch"));
   // Integer token IDs are not differentiable.
   return BufferVec{};
 }
@@ -361,30 +354,28 @@ absl::StatusOr<Buffer> LanguageModelingHeadLayer::fwd(
     return absl::InvalidArgumentError(
         "LanguageModelingHeadLayer fwd expects one input and a non-null tape");
   }
-  auto rows = MatrixRows(inputs[0], embedding_->embedding_dim_,
-                         embedding_->stream_, "language-modeling-head input");
-  if (!rows.ok()) return rows.status();
-  if (auto status = ValidateTiledExtent(*rows, "language-modeling-head rows");
-      !status.ok()) return status;
-  auto output = Buffer::Allocate(
-      static_cast<size_t>(*rows) * embedding_->vocab_size_ * sizeof(float),
-      embedding_->stream_);
-  if (!output.ok()) return output.status();
+  ASSIGN_OR_RETURN(
+      int rows,
+      MatrixRows(inputs[0], embedding_->embedding_dim_, embedding_->stream_,
+                 "language-modeling-head input"));
+  RETURN_IF_ERROR(ValidateTiledExtent(rows, "language-modeling-head rows"));
+  ASSIGN_OR_RETURN(
+      auto output,
+      Buffer::Allocate(
+          static_cast<size_t>(rows) * embedding_->vocab_size_ * sizeof(float),
+          embedding_->stream_));
   tape->intermediates = {inputs[0]};
   tape->children.clear();
   LanguageModelingHeadForwardKernel<<<
-      TileCount(*rows) * TileCount(embedding_->vocab_size_), 1, 0,
+      TileCount(rows) * TileCount(embedding_->vocab_size_), 1, 0,
       embedding_->stream_>>>(
       static_cast<const float*>(inputs[0].data()),
       static_cast<const float*>(embedding_->weight_.data()),
-      *rows, embedding_->vocab_size_, embedding_->embedding_dim_,
-      static_cast<float*>(output->data()));
-  if (auto status = CudaStatus(cudaGetLastError(),
-                               "LanguageModelingHeadForwardKernel launch");
-      !status.ok()) {
-    return status;
-  }
-  return *std::move(output);
+      rows, embedding_->vocab_size_, embedding_->embedding_dim_,
+      static_cast<float*>(output.data()));
+  RETURN_IF_ERROR(CudaStatus(cudaGetLastError(),
+                             "LanguageModelingHeadForwardKernel launch"));
+  return std::move(output);
 }
 
 absl::StatusOr<BufferVec> LanguageModelingHeadLayer::bwd(
@@ -394,27 +385,28 @@ absl::StatusOr<BufferVec> LanguageModelingHeadLayer::bwd(
         "LanguageModelingHeadLayer bwd received an incompatible gradient or "
         "tape");
   }
-  auto rows = MatrixRows(output_gradients[0], embedding_->vocab_size_,
-                         embedding_->stream_,
-                         "language-modeling-head output gradient");
-  if (!rows.ok()) return rows.status();
-  if (auto status = ValidateBuffer(
-          tape.intermediates[0],
-          static_cast<size_t>(*rows) * embedding_->embedding_dim_ *
+  ASSIGN_OR_RETURN(
+      int rows,
+      MatrixRows(output_gradients[0], embedding_->vocab_size_,
+                 embedding_->stream_,
+                 "language-modeling-head output gradient"));
+  RETURN_IF_ERROR(ValidateBuffer(
+      tape.intermediates[0],
+      static_cast<size_t>(rows) * embedding_->embedding_dim_ * sizeof(float),
+      embedding_->stream_, "language-modeling-head saved input"));
+  ASSIGN_OR_RETURN(
+      auto input_gradient,
+      Buffer::Allocate(
+          static_cast<size_t>(rows) * embedding_->embedding_dim_ *
               sizeof(float),
-          embedding_->stream_, "language-modeling-head saved input");
-      !status.ok()) return status;
-  auto input_gradient = Buffer::Allocate(
-      static_cast<size_t>(*rows) * embedding_->embedding_dim_ * sizeof(float),
-      embedding_->stream_);
-  if (!input_gradient.ok()) return input_gradient.status();
+          embedding_->stream_));
   LanguageModelingHeadInputGradientKernel<<<
-      TileCount(*rows) * TileCount(embedding_->embedding_dim_), 1, 0,
+      TileCount(rows) * TileCount(embedding_->embedding_dim_), 1, 0,
       embedding_->stream_>>>(
       static_cast<const float*>(output_gradients[0].data()),
       static_cast<const float*>(embedding_->weight_.data()),
-      *rows, embedding_->vocab_size_, embedding_->embedding_dim_,
-      static_cast<float*>(input_gradient->data()));
+      rows, embedding_->vocab_size_, embedding_->embedding_dim_,
+      static_cast<float*>(input_gradient.data()));
   if (embedding_->learning_rate_ != 0.0f) {
     LanguageModelingHeadWeightUpdateKernel<<<
         TileCount(embedding_->vocab_size_) *
@@ -422,16 +414,13 @@ absl::StatusOr<BufferVec> LanguageModelingHeadLayer::bwd(
         1, 0, embedding_->stream_>>>(
         static_cast<const float*>(tape.intermediates[0].data()),
         static_cast<const float*>(output_gradients[0].data()),
-        embedding_->learning_rate_, *rows, embedding_->vocab_size_,
+        embedding_->learning_rate_, rows, embedding_->vocab_size_,
         embedding_->embedding_dim_,
         static_cast<float*>(embedding_->weight_.data()));
   }
-  if (auto status = CudaStatus(cudaGetLastError(),
-                               "language-modeling-head backward launch");
-      !status.ok()) {
-    return status;
-  }
-  return BufferVec{*std::move(input_gradient)};
+  RETURN_IF_ERROR(CudaStatus(cudaGetLastError(),
+                             "language-modeling-head backward launch"));
+  return BufferVec{std::move(input_gradient)};
 }
 
 PositionEmbeddingLayer::PositionEmbeddingLayer(
@@ -448,28 +437,25 @@ absl::StatusOr<std::unique_ptr<PositionEmbeddingLayer>>
 PositionEmbeddingLayer::Create(int context_length, int embedding_dim,
                                DataType data_type, float learning_rate,
                                cudaStream_t stream) {
-  if (auto status = ValidateFp16(data_type); !status.ok()) return status;
+  RETURN_IF_ERROR(ValidateFp16(data_type));
   if (learning_rate < 0.0f) {
     return absl::InvalidArgumentError("learning rate must be non-negative");
   }
   if (context_length <= 0) {
     return absl::InvalidArgumentError("context_length must be positive");
   }
-  if (auto status = ValidateTiledExtent(embedding_dim, "embedding_dim");
-      !status.ok()) return status;
-  auto weight = Buffer::Allocate(
-      static_cast<size_t>(context_length) * embedding_dim * sizeof(float),
-      stream);
-  if (!weight.ok()) return weight.status();
-  if (auto status = CudaStatus(cudaMemsetAsync(weight->data(), 0,
-                                               weight->size_bytes(), stream),
-                               "cudaMemsetAsync(position embedding)");
-      !status.ok()) {
-    return status;
-  }
+  RETURN_IF_ERROR(ValidateTiledExtent(embedding_dim, "embedding_dim"));
+  ASSIGN_OR_RETURN(
+      auto weight,
+      Buffer::Allocate(
+          static_cast<size_t>(context_length) * embedding_dim * sizeof(float),
+          stream));
+  RETURN_IF_ERROR(CudaStatus(
+      cudaMemsetAsync(weight.data(), 0, weight.size_bytes(), stream),
+      "cudaMemsetAsync(position embedding)"));
   return std::unique_ptr<PositionEmbeddingLayer>(new PositionEmbeddingLayer(
       context_length, embedding_dim, data_type, learning_rate, stream,
-      *std::move(weight)));
+      std::move(weight)));
 }
 
 absl::StatusOr<Buffer> PositionEmbeddingLayer::fwd(
@@ -478,25 +464,22 @@ absl::StatusOr<Buffer> PositionEmbeddingLayer::fwd(
     return absl::InvalidArgumentError(
         "PositionEmbeddingLayer fwd expects one input and a non-null tape");
   }
-  auto rows = MatrixRows(inputs[0], embedding_dim_, stream_,
-                         "position-embedding input");
-  if (!rows.ok()) return rows.status();
-  auto output = Buffer::Allocate(inputs[0].size_bytes(), stream_);
-  if (!output.ok()) return output.status();
+  ASSIGN_OR_RETURN(int rows,
+                   MatrixRows(inputs[0], embedding_dim_, stream_,
+                              "position-embedding input"));
+  ASSIGN_OR_RETURN(auto output,
+                   Buffer::Allocate(inputs[0].size_bytes(), stream_));
   tape->intermediates.clear();
   tape->children.clear();
-  PositionEmbeddingForwardKernel<<<*rows * TileCount(embedding_dim_), 1, 0,
+  PositionEmbeddingForwardKernel<<<rows * TileCount(embedding_dim_), 1, 0,
                                    stream_>>>(
       static_cast<const float*>(inputs[0].data()),
       static_cast<const float*>(weight_.data()),
-      *rows, context_length_, embedding_dim_,
-      static_cast<float*>(output->data()));
-  if (auto status = CudaStatus(cudaGetLastError(),
-                               "PositionEmbeddingForwardKernel launch");
-      !status.ok()) {
-    return status;
-  }
-  return *std::move(output);
+      rows, context_length_, embedding_dim_,
+      static_cast<float*>(output.data()));
+  RETURN_IF_ERROR(CudaStatus(cudaGetLastError(),
+                             "PositionEmbeddingForwardKernel launch"));
+  return std::move(output);
 }
 
 absl::StatusOr<BufferVec> PositionEmbeddingLayer::bwd(
@@ -507,19 +490,16 @@ absl::StatusOr<BufferVec> PositionEmbeddingLayer::bwd(
         "PositionEmbeddingLayer bwd received an incompatible gradient or "
         "tape");
   }
-  auto rows = MatrixRows(output_gradients[0], embedding_dim_, stream_,
-                         "position-embedding output gradient");
-  if (!rows.ok()) return rows.status();
-  PositionEmbeddingBackwardKernel<<<*rows * TileCount(embedding_dim_), 1, 0,
+  ASSIGN_OR_RETURN(int rows,
+                   MatrixRows(output_gradients[0], embedding_dim_, stream_,
+                              "position-embedding output gradient"));
+  PositionEmbeddingBackwardKernel<<<rows * TileCount(embedding_dim_), 1, 0,
                                     stream_>>>(
       static_cast<const float*>(output_gradients[0].data()), learning_rate_,
-      *rows, context_length_, embedding_dim_,
+      rows, context_length_, embedding_dim_,
       static_cast<float*>(weight_.data()));
-  if (auto status = CudaStatus(cudaGetLastError(),
-                               "PositionEmbeddingBackwardKernel launch");
-      !status.ok()) {
-    return status;
-  }
+  RETURN_IF_ERROR(CudaStatus(cudaGetLastError(),
+                             "PositionEmbeddingBackwardKernel launch"));
   // The additive path has derivative one and can share the upstream buffer.
   return BufferVec{output_gradients[0]};
 }

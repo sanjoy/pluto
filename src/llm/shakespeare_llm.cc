@@ -19,6 +19,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "src/common/status_macros.h"
 #include "src/gpu/buffer.h"
 #include "src/llm/layer.h"
 #include "src/llm/layers/attention.h"
@@ -113,62 +114,47 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateTransformerBlock(
   // does not grow with depth.
   const float residual_projection_scale =
       1.0f / std::sqrt(2.0f * kTransformerBlockCount);
-  auto attention_norm =
-      LayerNormLayer::Create(config.model_width, 1e-5f, output_type, stream);
-  if (!attention_norm.ok()) return attention_norm.status();
-  auto qkv_projection =
-      FullyConnectedLayer::Create(config.model_width, output_type,
-                                  learning_rate, stream);
-  if (!qkv_projection.ok()) return qkv_projection.status();
-  if (auto status = (*qkv_projection)->InitializeIdentity(); !status.ok()) {
-    return status;
-  }
-  auto attention = AttentionLayer::Create(
-      config.context_length, config.attention_heads, config.model_width,
-      output_type, stream);
-  if (!attention.ok()) return attention.status();
-  auto attention_projection =
-      FullyConnectedLayer::Create(config.model_width, output_type,
-                                  learning_rate, stream);
-  if (!attention_projection.ok()) return attention_projection.status();
-  if (auto status = (*attention_projection)->InitializeIdentity(
-          residual_projection_scale);
-      !status.ok()) {
-    return status;
-  }
+  ASSIGN_OR_RETURN(
+      auto attention_norm,
+      LayerNormLayer::Create(config.model_width, 1e-5f, output_type, stream));
+  ASSIGN_OR_RETURN(auto qkv_projection,
+                   FullyConnectedLayer::Create(config.model_width, output_type,
+                                               learning_rate, stream));
+  RETURN_IF_ERROR(qkv_projection->InitializeIdentity());
+  ASSIGN_OR_RETURN(
+      auto attention,
+      AttentionLayer::Create(config.context_length, config.attention_heads,
+                             config.model_width, output_type, stream));
+  ASSIGN_OR_RETURN(auto attention_projection,
+                   FullyConnectedLayer::Create(config.model_width, output_type,
+                                               learning_rate, stream));
+  RETURN_IF_ERROR(
+      attention_projection->InitializeIdentity(residual_projection_scale));
   std::vector<std::unique_ptr<Layer>> attention_layers;
-  attention_layers.push_back(std::move(*attention_norm));
-  attention_layers.push_back(std::move(*qkv_projection));
-  attention_layers.push_back(std::move(*attention));
-  attention_layers.push_back(std::move(*attention_projection));
+  attention_layers.push_back(std::move(attention_norm));
+  attention_layers.push_back(std::move(qkv_projection));
+  attention_layers.push_back(std::move(attention));
+  attention_layers.push_back(std::move(attention_projection));
 
-  auto mlp_norm =
-      LayerNormLayer::Create(config.model_width, 1e-5f, output_type, stream);
-  if (!mlp_norm.ok()) return mlp_norm.status();
-  auto mlp_input =
-      FullyConnectedLayer::Create(config.model_width, output_type,
-                                  learning_rate, stream);
-  if (!mlp_input.ok()) return mlp_input.status();
-  if (auto status = (*mlp_input)->InitializeIdentity(); !status.ok()) {
-    return status;
-  }
-  auto gelu = GeluLayer::Create(output_type, stream);
-  if (!gelu.ok()) return gelu.status();
-  auto mlp_output =
-      FullyConnectedLayer::Create(config.model_width, output_type,
-                                  learning_rate, stream);
-  if (!mlp_output.ok()) return mlp_output.status();
-  if (auto status =
-          (*mlp_output)->InitializeIdentity(residual_projection_scale);
-      !status.ok()) {
-    return status;
-  }
+  ASSIGN_OR_RETURN(
+      auto mlp_norm,
+      LayerNormLayer::Create(config.model_width, 1e-5f, output_type, stream));
+  ASSIGN_OR_RETURN(auto mlp_input,
+                   FullyConnectedLayer::Create(config.model_width, output_type,
+                                               learning_rate, stream));
+  RETURN_IF_ERROR(mlp_input->InitializeIdentity());
+  ASSIGN_OR_RETURN(auto gelu, GeluLayer::Create(output_type, stream));
+  ASSIGN_OR_RETURN(auto mlp_output,
+                   FullyConnectedLayer::Create(config.model_width, output_type,
+                                               learning_rate, stream));
+  RETURN_IF_ERROR(
+      mlp_output->InitializeIdentity(residual_projection_scale));
 
   std::vector<std::unique_ptr<Layer>> mlp_layers;
-  mlp_layers.push_back(std::move(*mlp_norm));
-  mlp_layers.push_back(std::move(*mlp_input));
-  mlp_layers.push_back(std::move(*gelu));
-  mlp_layers.push_back(std::move(*mlp_output));
+  mlp_layers.push_back(std::move(mlp_norm));
+  mlp_layers.push_back(std::move(mlp_input));
+  mlp_layers.push_back(std::move(gelu));
+  mlp_layers.push_back(std::move(mlp_output));
 
   std::vector<std::unique_ptr<Layer>> block_layers;
   block_layers.push_back(std::make_unique<ResidualLayer>(
@@ -185,22 +171,20 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateTransformerBlock(
 absl::StatusOr<std::unique_ptr<Layer>> CreateShakespeareLlm(
     const ModelConfig& config, DataType output_type, float learning_rate,
     cudaStream_t stream) {
-  auto embedding =
+  ASSIGN_OR_RETURN(
+      auto embedding,
       EmbeddingLookupLayer::Create(config.vocabulary_size, config.model_width,
-                                   output_type, learning_rate, stream);
-  if (!embedding.ok()) return embedding.status();
+                                   output_type, learning_rate, stream));
   // GPT-2 uses small initial embeddings. A scaled identity is deterministic,
   // breaks the tied E * E^T zero-gradient symmetry, and keeps the final
   // layer-normalized logits in a stable range.
-  if (auto status = (*embedding)->InitializeIdentity(0.02f); !status.ok()) {
-    return status;
-  }
-  EmbeddingLookupLayer* embedding_ptr = embedding->get();
+  RETURN_IF_ERROR(embedding->InitializeIdentity(0.02f));
+  EmbeddingLookupLayer* embedding_ptr = embedding.get();
 
-  auto positions = PositionEmbeddingLayer::Create(
-      config.context_length, config.model_width, output_type, learning_rate,
-      stream);
-  if (!positions.ok()) return positions.status();
+  ASSIGN_OR_RETURN(
+      auto positions,
+      PositionEmbeddingLayer::Create(config.context_length, config.model_width,
+                                     output_type, learning_rate, stream));
 
   // Each block is independently parameterized. The compact variant retains
   // GPT-2's 12-block depth, pre-norm residual topology, and causal attention,
@@ -208,26 +192,26 @@ absl::StatusOr<std::unique_ptr<Layer>> CreateShakespeareLlm(
   std::vector<std::unique_ptr<ComposedLayer>> blocks;
   blocks.reserve(kTransformerBlockCount);
   for (int index = 0; index < kTransformerBlockCount; ++index) {
-    auto block =
-        CreateTransformerBlock(config, output_type, learning_rate, stream);
-    if (!block.ok()) return block.status();
-    blocks.push_back(std::move(*block));
+    ASSIGN_OR_RETURN(
+        auto block,
+        CreateTransformerBlock(config, output_type, learning_rate, stream));
+    blocks.push_back(std::move(block));
   }
 
-  auto final_norm =
-      LayerNormLayer::Create(config.model_width, 1e-5f, output_type, stream);
-  if (!final_norm.ok()) return final_norm.status();
+  ASSIGN_OR_RETURN(
+      auto final_norm,
+      LayerNormLayer::Create(config.model_width, 1e-5f, output_type, stream));
 
-  auto head = LanguageModelingHeadLayer::Create(embedding_ptr);
-  if (!head.ok()) return head.status();
+  ASSIGN_OR_RETURN(auto head,
+                   LanguageModelingHeadLayer::Create(embedding_ptr));
 
   std::vector<std::unique_ptr<Layer>> layers;
-  layers.push_back(std::move(*embedding));
-  layers.push_back(std::move(*positions));
+  layers.push_back(std::move(embedding));
+  layers.push_back(std::move(positions));
   layers.push_back(std::make_unique<RepeatedLayer<ComposedLayer>>(
       output_type, std::move(blocks)));
-  layers.push_back(std::move(*final_norm));
-  layers.push_back(std::move(*head));
+  layers.push_back(std::move(final_norm));
+  layers.push_back(std::move(head));
   return std::unique_ptr<Layer>(
       new ComposedLayer(output_type, std::move(layers)));
 }
@@ -274,14 +258,11 @@ absl::Status CopyBatch(const std::vector<int>& tokens,
                        const std::vector<int>& targets,
                        const Buffer& token_buffer, const Buffer& target_buffer,
                        cudaStream_t stream) {
-  if (auto status = CudaStatus(
-          cudaMemcpyAsync(token_buffer.data(), tokens.data(),
-                          token_buffer.size_bytes(), cudaMemcpyHostToDevice,
-                          stream),
-          "cudaMemcpyAsync(tokens)");
-      !status.ok()) {
-    return status;
-  }
+  RETURN_IF_ERROR(CudaStatus(
+      cudaMemcpyAsync(token_buffer.data(), tokens.data(),
+                      token_buffer.size_bytes(), cudaMemcpyHostToDevice,
+                      stream),
+      "cudaMemcpyAsync(tokens)"));
   return CudaStatus(cudaMemcpyAsync(target_buffer.data(), targets.data(),
                                     target_buffer.size_bytes(),
                                     cudaMemcpyHostToDevice, stream),
@@ -317,32 +298,22 @@ absl::StatusOr<double> Evaluate(
             static_cast<int>(corpus_tokens[start + position + 1]);
       }
     }
-    if (auto status = CopyBatch(tokens, targets, token_buffer, target_buffer,
-                                stream);
-        !status.ok()) {
-      return status;
-    }
+    RETURN_IF_ERROR(
+        CopyBatch(tokens, targets, token_buffer, target_buffer, stream));
     Tape model_tape;
     BufferVec model_inputs = {token_buffer};
-    auto logits = model.fwd(model_inputs, &model_tape);
-    if (!logits.ok()) return logits.status();
+    ASSIGN_OR_RETURN(auto logits, model.fwd(model_inputs, &model_tape));
     Tape loss_tape;
-    BufferVec loss_inputs = {*logits, target_buffer};
-    auto device_losses = loss_layer.fwd(loss_inputs, &loss_tape);
-    if (!device_losses.ok()) return device_losses.status();
-    if (auto status = CudaStatus(
-            cudaMemcpyAsync(losses.data(), device_losses->data(),
-                            device_losses->size_bytes(), cudaMemcpyDeviceToHost,
-                            stream),
-            "cudaMemcpyAsync(evaluation losses)");
-        !status.ok()) {
-      return status;
-    }
-    if (auto status = CudaStatus(cudaStreamSynchronize(stream),
-                                 "cudaStreamSynchronize(evaluation)");
-        !status.ok()) {
-      return status;
-    }
+    BufferVec loss_inputs = {logits, target_buffer};
+    ASSIGN_OR_RETURN(auto device_losses,
+                     loss_layer.fwd(loss_inputs, &loss_tape));
+    RETURN_IF_ERROR(CudaStatus(
+        cudaMemcpyAsync(losses.data(), device_losses.data(),
+                        device_losses.size_bytes(), cudaMemcpyDeviceToHost,
+                        stream),
+        "cudaMemcpyAsync(evaluation losses)"));
+    RETURN_IF_ERROR(CudaStatus(cudaStreamSynchronize(stream),
+                               "cudaStreamSynchronize(evaluation)"));
     for (float loss : losses) total += loss;
   }
   return total / (static_cast<double>(eval_batches) * config.batch_size);
@@ -373,40 +344,29 @@ absl::Status Train(const ModelConfig& config, Layer& model,
             static_cast<int>(corpus_tokens[start + position + 1]);
       }
     }
-    if (auto status = CopyBatch(tokens, targets, token_buffer, target_buffer,
-                                stream);
-        !status.ok()) {
-      return status;
-    }
+    RETURN_IF_ERROR(
+        CopyBatch(tokens, targets, token_buffer, target_buffer, stream));
 
     Tape model_tape;
     BufferVec model_inputs = {token_buffer};
-    auto logits = model.fwd(model_inputs, &model_tape);
-    if (!logits.ok()) return logits.status();
+    ASSIGN_OR_RETURN(auto logits, model.fwd(model_inputs, &model_tape));
     Tape loss_tape;
-    BufferVec loss_inputs = {*logits, target_buffer};
-    auto device_losses = loss_layer.fwd(loss_inputs, &loss_tape);
-    if (!device_losses.ok()) return device_losses.status();
-    auto logits_gradient = loss_layer.bwd({}, std::move(loss_tape));
-    if (!logits_gradient.ok()) return logits_gradient.status();
-    auto input_gradient =
-        model.bwd(*logits_gradient, std::move(model_tape));
+    BufferVec loss_inputs = {logits, target_buffer};
+    ASSIGN_OR_RETURN(auto device_losses,
+                     loss_layer.fwd(loss_inputs, &loss_tape));
+    ASSIGN_OR_RETURN(auto logits_gradient,
+                     loss_layer.bwd({}, std::move(loss_tape)));
+    auto input_gradient = model.bwd(logits_gradient, std::move(model_tape));
     if (!input_gradient.ok()) return input_gradient.status();
 
     if ((step + 1) % 200 == 0 || step + 1 == steps) {
-      if (auto status = CudaStatus(
-              cudaMemcpyAsync(losses.data(), device_losses->data(),
-                              device_losses->size_bytes(),
-                              cudaMemcpyDeviceToHost, stream),
-              "cudaMemcpyAsync(training losses)");
-          !status.ok()) {
-        return status;
-      }
-      if (auto status = CudaStatus(cudaStreamSynchronize(stream),
-                                   "cudaStreamSynchronize(training)");
-          !status.ok()) {
-        return status;
-      }
+      RETURN_IF_ERROR(CudaStatus(
+          cudaMemcpyAsync(losses.data(), device_losses.data(),
+                          device_losses.size_bytes(), cudaMemcpyDeviceToHost,
+                          stream),
+          "cudaMemcpyAsync(training losses)"));
+      RETURN_IF_ERROR(CudaStatus(cudaStreamSynchronize(stream),
+                                 "cudaStreamSynchronize(training)"));
       double mean = 0.0;
       for (float loss : losses) mean += loss;
       mean /= config.batch_size;
@@ -442,36 +402,26 @@ absl::StatusOr<std::vector<float>> Predict(
           static_cast<int>(context.back());
     }
   }
-  if (auto status = CudaStatus(
-          cudaMemcpyAsync(token_buffer.data(), repeated_context.data(),
-                          token_buffer.size_bytes(), cudaMemcpyHostToDevice,
-                          stream),
-          "cudaMemcpyAsync(prompt context)");
-      !status.ok()) {
-    return status;
-  }
+  RETURN_IF_ERROR(CudaStatus(
+      cudaMemcpyAsync(token_buffer.data(), repeated_context.data(),
+                      token_buffer.size_bytes(), cudaMemcpyHostToDevice,
+                      stream),
+      "cudaMemcpyAsync(prompt context)"));
   Tape tape;
   BufferVec inputs = {token_buffer};
-  auto logits = model.fwd(inputs, &tape);
-  if (!logits.ok()) return logits.status();
+  ASSIGN_OR_RETURN(auto logits, model.fwd(inputs, &tape));
   std::vector<float> host_logits(config.vocabulary_size);
   const size_t output_row = context_size - 1;
   const auto* selected_logits =
-      static_cast<const float*>(logits->data()) +
+      static_cast<const float*>(logits.data()) +
       output_row * config.vocabulary_size;
-  if (auto status = CudaStatus(
-          cudaMemcpyAsync(host_logits.data(), selected_logits,
-                          host_logits.size() * sizeof(float),
-                          cudaMemcpyDeviceToHost, stream),
-          "cudaMemcpyAsync(prompt logits)");
-      !status.ok()) {
-    return status;
-  }
-  if (auto status = CudaStatus(cudaStreamSynchronize(stream),
-                               "cudaStreamSynchronize(prompt)");
-      !status.ok()) {
-    return status;
-  }
+  RETURN_IF_ERROR(CudaStatus(
+      cudaMemcpyAsync(host_logits.data(), selected_logits,
+                      host_logits.size() * sizeof(float),
+                      cudaMemcpyDeviceToHost, stream),
+      "cudaMemcpyAsync(prompt logits)"));
+  RETURN_IF_ERROR(CudaStatus(cudaStreamSynchronize(stream),
+                             "cudaStreamSynchronize(prompt)"));
   return host_logits;
 }
 
@@ -492,14 +442,14 @@ absl::StatusOr<std::string> Generate(
   generated.reserve(generation_tokens);
 
   for (int index = 0; index < generation_tokens; ++index) {
-    auto logits = Predict(config, model, context, token_buffer, stream);
-    if (!logits.ok()) return logits.status();
-    const float maximum = *std::max_element(logits->begin(), logits->end());
+    ASSIGN_OR_RETURN(auto logits,
+                     Predict(config, model, context, token_buffer, stream));
+    const float maximum = *std::max_element(logits.begin(), logits.end());
     std::vector<double> probabilities(config.vocabulary_size);
     for (int token = 0; token < config.vocabulary_size; ++token) {
       if (observed[token]) {
         probabilities[token] =
-            std::exp(((*logits)[token] - maximum) / temperature);
+            std::exp((logits[token] - maximum) / temperature);
       }
     }
     std::discrete_distribution<int> sample(probabilities.begin(),
@@ -512,8 +462,7 @@ absl::StatusOr<std::string> Generate(
 }
 
 absl::Status Run(cudaStream_t stream) {
-  auto corpus = LoadCorpus();
-  if (!corpus.ok()) return corpus.status();
+  ASSIGN_OR_RETURN(auto corpus, LoadCorpus());
   const PlainTextTokenizer tokenizer;
   const ModelConfig config{
       .batch_size = absl::GetFlag(FLAGS_batch_size),
@@ -522,8 +471,8 @@ absl::Status Run(cudaStream_t stream) {
       .context_length = absl::GetFlag(FLAGS_context_length),
       .attention_heads = absl::GetFlag(FLAGS_attention_heads),
   };
-  if (auto status = config.Validate(); !status.ok()) return status;
-  const std::vector<uint32_t> corpus_tokens = tokenizer.Encode(*corpus);
+  RETURN_IF_ERROR(config.Validate());
+  const std::vector<uint32_t> corpus_tokens = tokenizer.Encode(corpus);
   if (corpus_tokens.size() <= static_cast<size_t>(config.context_length)) {
     return absl::InvalidArgumentError(
         "the training corpus must be longer than the model context");
@@ -531,58 +480,56 @@ absl::Status Run(cudaStream_t stream) {
   std::vector<bool> observed(config.vocabulary_size);
   for (uint32_t token : corpus_tokens) observed[token] = true;
 
-  auto model = CreateShakespeareLlm(
-      config, DataType::FP16,
-      static_cast<float>(absl::GetFlag(FLAGS_learning_rate)), stream);
-  if (!model.ok()) return model.status();
-  auto loss_layer = CrossEntropyLossLayer::Create(
-      config.vocabulary_size, DataType::FP16, stream);
-  if (!loss_layer.ok()) return loss_layer.status();
-  auto token_buffer = Buffer::Allocate(config.batch_size * sizeof(int), stream);
-  if (!token_buffer.ok()) return token_buffer.status();
-  auto target_buffer = Buffer::Allocate(config.batch_size * sizeof(int), stream);
-  if (!target_buffer.ok()) return target_buffer.status();
+  ASSIGN_OR_RETURN(
+      auto model,
+      CreateShakespeareLlm(
+          config, DataType::FP16,
+          static_cast<float>(absl::GetFlag(FLAGS_learning_rate)), stream));
+  ASSIGN_OR_RETURN(
+      auto loss_layer,
+      CrossEntropyLossLayer::Create(config.vocabulary_size, DataType::FP16,
+                                    stream));
+  ASSIGN_OR_RETURN(
+      auto token_buffer,
+      Buffer::Allocate(config.batch_size * sizeof(int), stream));
+  ASSIGN_OR_RETURN(
+      auto target_buffer,
+      Buffer::Allocate(config.batch_size * sizeof(int), stream));
 
   const int eval_batches = absl::GetFlag(FLAGS_eval_batches);
-  auto initial_loss = Evaluate(config, **model, **loss_layer, corpus_tokens,
-                               eval_batches, *token_buffer, *target_buffer,
-                               stream);
-  if (!initial_loss.ok()) return initial_loss.status();
+  ASSIGN_OR_RETURN(double initial_loss,
+                   Evaluate(config, *model, *loss_layer, corpus_tokens,
+                            eval_batches, token_buffer, target_buffer, stream));
   std::cout << "corpus bytes: " << corpus_tokens.size()
             << ", vocabulary: " << tokenizer.vocab_size()
-            << ", initial loss: " << *initial_loss << '\n';
+            << ", initial loss: " << initial_loss << '\n';
 
-  if (auto status =
-          Train(config, **model, **loss_layer, corpus_tokens,
-                absl::GetFlag(FLAGS_steps), absl::GetFlag(FLAGS_seed),
-                *token_buffer, *target_buffer, stream);
-      !status.ok()) {
-    return status;
-  }
-  auto final_loss = Evaluate(config, **model, **loss_layer, corpus_tokens,
-                             eval_batches, *token_buffer, *target_buffer,
-                             stream);
-  if (!final_loss.ok()) return final_loss.status();
-  std::cout << "final evaluation loss: " << *final_loss << '\n';
+  RETURN_IF_ERROR(Train(config, *model, *loss_layer, corpus_tokens,
+                        absl::GetFlag(FLAGS_steps), absl::GetFlag(FLAGS_seed),
+                        token_buffer, target_buffer, stream));
+  ASSIGN_OR_RETURN(double final_loss,
+                   Evaluate(config, *model, *loss_layer, corpus_tokens,
+                            eval_batches, token_buffer, target_buffer, stream));
+  std::cout << "final evaluation loss: " << final_loss << '\n';
   const double target_loss = absl::GetFlag(FLAGS_target_loss);
-  if (*final_loss > target_loss) {
+  if (final_loss > target_loss) {
     return absl::FailedPreconditionError(
         absl::StrCat("model did not reach target loss ", target_loss,
-                     "; final loss was ", *final_loss));
+                     "; final loss was ", final_loss));
   }
-  if (*final_loss >= *initial_loss) {
+  if (final_loss >= initial_loss) {
     return absl::FailedPreconditionError(
         "training did not reduce evaluation loss");
   }
 
   std::mt19937 random(absl::GetFlag(FLAGS_seed) + 1);
-  auto sample = Generate(config, **model, tokenizer, observed, "To be",
-                         std::min(120,
-                                  absl::GetFlag(FLAGS_generation_tokens)),
-                         absl::GetFlag(FLAGS_temperature), &random,
-                         *token_buffer, stream);
-  if (!sample.ok()) return sample.status();
-  std::cout << "sample:\nTo be" << *sample << "\n";
+  ASSIGN_OR_RETURN(
+      auto sample,
+      Generate(config, *model, tokenizer, observed, "To be",
+               std::min(120, absl::GetFlag(FLAGS_generation_tokens)),
+               absl::GetFlag(FLAGS_temperature), &random, token_buffer,
+               stream));
+  std::cout << "sample:\nTo be" << sample << "\n";
 
   if (!absl::GetFlag(FLAGS_interactive)) return absl::OkStatus();
   std::cout << "\nEnter a prompt (Ctrl-C or Ctrl-D to quit).\n";
@@ -590,12 +537,13 @@ absl::Status Run(cudaStream_t stream) {
   while (true) {
     std::cout << "> " << std::flush;
     if (!std::getline(std::cin, prompt)) break;
-    auto completion = Generate(
-        config, **model, tokenizer, observed, prompt,
-        absl::GetFlag(FLAGS_generation_tokens),
-        absl::GetFlag(FLAGS_temperature), &random, *token_buffer, stream);
-    if (!completion.ok()) return completion.status();
-    std::cout << prompt << *completion << "\n";
+    ASSIGN_OR_RETURN(
+        auto completion,
+        Generate(config, *model, tokenizer, observed, prompt,
+                 absl::GetFlag(FLAGS_generation_tokens),
+                 absl::GetFlag(FLAGS_temperature), &random, token_buffer,
+                 stream));
+    std::cout << prompt << completion << "\n";
   }
   return absl::OkStatus();
 }

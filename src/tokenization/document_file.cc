@@ -19,6 +19,7 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "src/common/status_macros.h"
 
 namespace pluto::tokenized {
 namespace {
@@ -133,8 +134,7 @@ absl::StatusOr<std::unique_ptr<DocumentFileReader>> DocumentFileReader::Open(
   impl->file_size = static_cast<uint64_t>(attributes.st_size);
 
   uint8_t count_bytes[4];
-  auto status = ReadExactly(impl->file_descriptor, 0, count_bytes);
-  if (!status.ok()) return status;
+  RETURN_IF_ERROR(ReadExactly(impl->file_descriptor, 0, count_bytes));
   const uint32_t document_count = LoadLittle32(count_bytes);
   const uint64_t header_size = 4 + 4 * static_cast<uint64_t>(document_count);
   if (header_size > impl->file_size) {
@@ -143,9 +143,8 @@ absl::StatusOr<std::unique_ptr<DocumentFileReader>> DocumentFileReader::Open(
 
   std::vector<uint8_t> encoded_lengths(
       4 * static_cast<size_t>(document_count));
-  status = ReadExactly(impl->file_descriptor, 4,
-                       absl::MakeSpan(encoded_lengths));
-  if (!status.ok()) return status;
+  RETURN_IF_ERROR(ReadExactly(impl->file_descriptor, 4,
+                              absl::MakeSpan(encoded_lengths)));
   impl->lengths.resize(document_count);
   impl->offsets.resize(static_cast<size_t>(document_count) + 1);
   impl->offsets[0] = header_size;
@@ -179,14 +178,12 @@ absl::StatusOr<uint32_t> DocumentFileReader::document_length(
 
 absl::StatusOr<std::vector<uint16_t>> DocumentFileReader::ReadDocument(
     uint32_t index) const {
-  auto length = document_length(index);
-  if (!length.ok()) return length.status();
-  std::vector<uint8_t> encoded(2 * static_cast<size_t>(*length));
-  auto status = ReadExactly(impl_->file_descriptor, impl_->offsets[index],
-                            absl::MakeSpan(encoded));
-  if (!status.ok()) return status;
+  ASSIGN_OR_RETURN(uint32_t length, document_length(index));
+  std::vector<uint8_t> encoded(2 * static_cast<size_t>(length));
+  RETURN_IF_ERROR(ReadExactly(impl_->file_descriptor, impl_->offsets[index],
+                              absl::MakeSpan(encoded)));
 
-  std::vector<uint16_t> tokens(*length);
+  std::vector<uint16_t> tokens(length);
   for (size_t token = 0; token < tokens.size(); ++token) {
     tokens[token] = LoadLittle16(encoded.data() + 2 * token);
   }
@@ -270,8 +267,7 @@ absl::Status DocumentFileWriter::AddDocument(
   impl_->lengths.push_back(static_cast<uint32_t>(token_ids.size()));
   for (const uint16_t token : token_ids) {
     if (impl_->payload.size() + 2 > kPayloadBufferSize) {
-      auto status = impl_->FlushPayload();
-      if (!status.ok()) return status;
+      RETURN_IF_ERROR(impl_->FlushPayload());
     }
     impl_->payload.push_back(static_cast<uint8_t>(token));
     impl_->payload.push_back(static_cast<uint8_t>(token >> 8));
@@ -290,15 +286,13 @@ absl::Status DocumentFileWriter::Close() {
                      impl_->lengths.size()));
   }
 
-  auto status = impl_->FlushPayload();
-  if (!status.ok()) return status;
+  RETURN_IF_ERROR(impl_->FlushPayload());
   std::vector<uint8_t> header(4 + 4 * impl_->lengths.size());
   StoreLittle32(impl_->expected_documents, header.data());
   for (size_t index = 0; index < impl_->lengths.size(); ++index) {
     StoreLittle32(impl_->lengths[index], header.data() + 4 + 4 * index);
   }
-  status = PwriteExactly(impl_->file_descriptor, 0, header);
-  if (!status.ok()) return status;
+  RETURN_IF_ERROR(PwriteExactly(impl_->file_descriptor, 0, header));
   if (close(impl_->file_descriptor) != 0) {
     impl_->file_descriptor = -1;
     return absl::ErrnoToStatus(errno, "cannot close tokenized-document file");

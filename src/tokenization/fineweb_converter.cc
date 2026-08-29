@@ -9,6 +9,7 @@
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "src/common/status_macros.h"
 #include "src/parquet/fineweb_parquet_reader.h"
 #include "src/tokenization/document_file.h"
 
@@ -83,8 +84,7 @@ absl::Status ConvertFineWebParquetFile(
         }
         token_ids.push_back(static_cast<uint16_t>(token_id));
       }
-      const absl::Status status = (*writer)->AddDocument(token_ids);
-      if (!status.ok()) return status;
+      RETURN_IF_ERROR((*writer)->AddDocument(token_ids));
     }
     first += static_cast<int64_t>(count);
   }
