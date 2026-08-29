@@ -107,6 +107,18 @@ absl::Status CudaStatus(cudaError_t error, const char* operation) {
                    cudaGetErrorString(error)));
 }
 
+// Builds one pre-norm, GPT-2-style transformer block. Given an input x, the
+// block applies these two residual branches in sequence:
+//
+//   attention: x <- x + W_o CausalAttention(W_qkv LayerNorm(x))
+//   MLP:       x <- x + W_2 GELU(W_1 LayerNorm(x))
+//
+// CausalAttention is the fused FlashAttention layer. Its single projected
+// activation supplies Q, K, and V, so this scaled-down model shares their
+// projection rather than creating three matrices. The MLP is also
+// width-preserving instead of expanding to GPT-2's usual four-times width.
+// Both residual-output projections are scaled at initialization to keep
+// activation variance stable across the model's 12 blocks.
 absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateTransformerBlock(
     const ModelConfig& config, DataType output_type, float learning_rate,
     cudaStream_t stream) {
@@ -298,6 +310,25 @@ absl::StatusOr<double> Evaluate(
   return total / (static_cast<double>(eval_batches) * config.batch_size);
 }
 
+// Runs stochastic next-token training and updates the model in place.
+//
+// `config` defines the batch, sequence, vocabulary, and model dimensions.
+// `model` maps token IDs to vocabulary logits; its backward pass applies the
+// parameter updates using the learning rate supplied when it was constructed.
+// `loss_layer` computes one cross-entropy value per token and seeds the logits
+// gradient. `corpus_tokens` is the complete host-resident tokenized corpus.
+// `steps` is the number of randomly sampled batches, while `seed` makes their
+// starting offsets reproducible.
+//
+// `token_buffer` and `target_buffer` are reusable GPU staging allocations,
+// each containing `config.batch_size` native `int` values. They are interpreted
+// as flattened [config.sequence_batch_size(), config.context_length] arrays:
+// token_buffer holds each input sequence and target_buffer holds the same
+// sequence shifted forward by one token. Reusing these buffers avoids a device
+// allocation on every step. They must belong to `stream`, which orders the
+// host-to-device copies, forward/backward kernels, and final synchronization.
+// Buffer is reference-counted, so Train borrows these handles without taking
+// ownership of the underlying allocations.
 absl::Status Train(const ModelConfig& config, Layer& model,
                    CrossEntropyLossLayer& loss_layer,
                    const std::vector<uint32_t>& corpus_tokens, int steps,
