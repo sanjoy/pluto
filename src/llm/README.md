@@ -57,6 +57,18 @@ Train and then prompt the model (end input with Ctrl-C or Ctrl-D):
 bazel run //src/llm:shakespeare_llm -- --steps=1200
 ```
 
+The corpus is split chronologically into training and held-out test portions,
+and the binary reports both losses before and after training. To keep training
+until an exact zero training-evaluation loss, with `--steps` as a hard cap:
+
+```sh
+bazel run //src/llm:shakespeare_llm -- \
+  --train_until_loss=0 --steps=100000 --training_eval_interval=200
+```
+
+`--eval_batches` controls the deterministic sample size used for each training
+and test evaluation. `--test_fraction` controls the held-out suffix size.
+
 The model dimensions can be changed without recompiling, for example:
 
 ```sh

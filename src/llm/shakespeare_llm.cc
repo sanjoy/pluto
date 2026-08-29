@@ -38,7 +38,14 @@ ABSL_FLAG(double, learning_rate, 0.05, "SGD learning rate");
 ABSL_FLAG(double, target_loss, 2.8,
           "Fail unless held-out average next-byte loss is at most this value");
 ABSL_FLAG(int, eval_batches, 32,
-          "Number of fixed batches used for loss evaluation");
+          "Number of fixed batches used for each train/test loss evaluation");
+ABSL_FLAG(double, test_fraction, 0.1,
+          "Fraction of the corpus reserved as contiguous held-out test data");
+ABSL_FLAG(double, train_until_loss, -1.0,
+          "When nonnegative, stop once training loss reaches this value; "
+          "--steps remains the hard iteration cap");
+ABSL_FLAG(int, training_eval_interval, 200,
+          "Steps between training-loss checks and progress reports");
 ABSL_FLAG(int, seed, 17, "Deterministic training and sampling seed");
 ABSL_FLAG(bool, interactive, true,
           "Read prompts after training; disabled by the Bazel test");
@@ -98,6 +105,53 @@ struct ModelConfig {
     }
     return absl::OkStatus();
   }
+};
+
+struct CorpusSplit {
+  std::vector<uint32_t> training;
+  std::vector<uint32_t> test;
+};
+
+// Preserves temporal order: the prefix is used for fitting and the suffix is
+// held out. Keeping the split contiguous prevents near-identical overlapping
+// context windows from leaking across a randomized example-level split.
+absl::StatusOr<CorpusSplit> SplitCorpus(
+    const std::vector<uint32_t>& corpus_tokens, double test_fraction,
+    int context_length) {
+  if (!std::isfinite(test_fraction) || test_fraction <= 0.0 ||
+      test_fraction >= 1.0) {
+    return absl::InvalidArgumentError(
+        "test_fraction must be finite and strictly between zero and one");
+  }
+  const size_t training_size = static_cast<size_t>(
+      static_cast<double>(corpus_tokens.size()) * (1.0 - test_fraction));
+  const size_t minimum_size = static_cast<size_t>(context_length) + 1;
+  if (training_size < minimum_size ||
+      corpus_tokens.size() - training_size < minimum_size) {
+    return absl::InvalidArgumentError(
+        "both corpus splits must contain more tokens than context_length");
+  }
+  return CorpusSplit{
+      .training = std::vector<uint32_t>(corpus_tokens.begin(),
+                                       corpus_tokens.begin() + training_size),
+      .test = std::vector<uint32_t>(corpus_tokens.begin() + training_size,
+                                   corpus_tokens.end()),
+  };
+}
+
+struct TrainingOptions {
+  int max_steps;
+  int seed;
+  int evaluation_batches;
+  int evaluation_interval;
+  // A negative value disables loss-based early stopping. Zero requests exact
+  // zero according to the FP32 cross-entropy evaluation.
+  double stop_loss;
+};
+
+struct TrainingResult {
+  int steps_completed;
+  bool reached_stop_loss;
 };
 
 absl::Status CudaStatus(cudaError_t error, const char* operation) {
@@ -316,9 +370,11 @@ absl::StatusOr<double> Evaluate(
 // `model` maps token IDs to vocabulary logits; its backward pass applies the
 // parameter updates using the learning rate supplied when it was constructed.
 // `loss_layer` computes one cross-entropy value per token and seeds the logits
-// gradient. `corpus_tokens` is the complete host-resident tokenized corpus.
-// `steps` is the number of randomly sampled batches, while `seed` makes their
-// starting offsets reproducible.
+// gradient. `training_tokens` is the host-resident training split. `options`
+// supplies the random seed, the maximum number of updates, and the deterministic
+// training-evaluation schedule used for optional loss-based early stopping.
+// `initial_training_loss` avoids repeating the evaluation already performed by
+// Run() and permits an immediate zero-step stop.
 //
 // `token_buffer` and `target_buffer` are reusable GPU staging allocations,
 // each containing `config.batch_size` native `int` values. They are interpreted
@@ -329,29 +385,44 @@ absl::StatusOr<double> Evaluate(
 // host-to-device copies, forward/backward kernels, and final synchronization.
 // Buffer is reference-counted, so Train borrows these handles without taking
 // ownership of the underlying allocations.
-absl::Status Train(const ModelConfig& config, Layer& model,
-                   CrossEntropyLossLayer& loss_layer,
-                   const std::vector<uint32_t>& corpus_tokens, int steps,
-                   int seed, const Buffer& token_buffer,
-                   const Buffer& target_buffer, cudaStream_t stream) {
-  if (steps < 0) {
-    return absl::InvalidArgumentError("steps must be non-negative");
+absl::StatusOr<TrainingResult> Train(
+    const ModelConfig& config, Layer& model,
+    CrossEntropyLossLayer& loss_layer,
+    const std::vector<uint32_t>& training_tokens,
+    const TrainingOptions& options, double initial_training_loss,
+    const Buffer& token_buffer, const Buffer& target_buffer,
+    cudaStream_t stream) {
+  if (options.max_steps < 0) {
+    return absl::InvalidArgumentError("max_steps must be non-negative");
   }
-  std::mt19937 random(seed);
+  if (options.evaluation_batches <= 0 || options.evaluation_interval <= 0) {
+    return absl::InvalidArgumentError(
+        "training evaluation counts must be positive");
+  }
+  if (!std::isfinite(options.stop_loss)) {
+    return absl::InvalidArgumentError("train_until_loss must be finite");
+  }
+  if (options.stop_loss >= 0.0 &&
+      initial_training_loss <= options.stop_loss) {
+    std::cout << "training loss already reached " << options.stop_loss
+              << "; no updates needed\n";
+    return TrainingResult{.steps_completed = 0, .reached_stop_loss = true};
+  }
+  std::mt19937 random(options.seed);
   std::uniform_int_distribution<size_t> sequence_start(
-      0, corpus_tokens.size() - config.context_length - 1);
+      0, training_tokens.size() - config.context_length - 1);
   std::vector<int> tokens(config.batch_size);
   std::vector<int> targets(config.batch_size);
   std::vector<float> losses(config.batch_size);
 
-  for (int step = 0; step < steps; ++step) {
+  for (int step = 0; step < options.max_steps; ++step) {
     for (int sequence = 0; sequence < config.sequence_batch_size(); ++sequence) {
       const size_t start = sequence_start(random);
       for (int position = 0; position < config.context_length; ++position) {
         const int row = sequence * config.context_length + position;
-        tokens[row] = static_cast<int>(corpus_tokens[start + position]);
+        tokens[row] = static_cast<int>(training_tokens[start + position]);
         targets[row] =
-            static_cast<int>(corpus_tokens[start + position + 1]);
+            static_cast<int>(training_tokens[start + position + 1]);
       }
     }
     RETURN_IF_ERROR(
@@ -369,7 +440,10 @@ absl::Status Train(const ModelConfig& config, Layer& model,
     auto input_gradient = model.bwd(logits_gradient, std::move(model_tape));
     if (!input_gradient.ok()) return input_gradient.status();
 
-    if ((step + 1) % 200 == 0 || step + 1 == steps) {
+    const bool evaluate =
+        (step + 1) % options.evaluation_interval == 0 ||
+        step + 1 == options.max_steps;
+    if (evaluate) {
       RETURN_IF_ERROR(CudaStatus(
           cudaMemcpyAsync(losses.data(), device_losses.data(),
                           device_losses.size_bytes(), cudaMemcpyDeviceToHost,
@@ -380,12 +454,28 @@ absl::Status Train(const ModelConfig& config, Layer& model,
       double mean = 0.0;
       for (float loss : losses) mean += loss;
       mean /= config.batch_size;
-      std::cout << "step " << step + 1 << "/" << steps
+      std::cout << "step " << step + 1 << "/" << options.max_steps
                 << ", batch loss: " << mean << '\n';
+
+      if (options.stop_loss >= 0.0) {
+        ASSIGN_OR_RETURN(
+            double training_loss,
+            Evaluate(config, model, loss_layer, training_tokens,
+                     options.evaluation_batches, token_buffer, target_buffer,
+                     stream));
+        std::cout << "training evaluation loss after step " << step + 1
+                  << ": " << training_loss << '\n';
+        if (training_loss <= options.stop_loss) {
+          return TrainingResult{.steps_completed = step + 1,
+                                .reached_stop_loss = true};
+        }
+      }
     }
   }
-  return CudaStatus(cudaStreamSynchronize(stream),
-                    "cudaStreamSynchronize(after training)");
+  RETURN_IF_ERROR(CudaStatus(cudaStreamSynchronize(stream),
+                             "cudaStreamSynchronize(after training)"));
+  return TrainingResult{.steps_completed = options.max_steps,
+                        .reached_stop_loss = false};
 }
 
 absl::StatusOr<std::vector<float>> Predict(
@@ -487,6 +577,10 @@ absl::Status Run(cudaStream_t stream) {
     return absl::InvalidArgumentError(
         "the training corpus must be longer than the model context");
   }
+  ASSIGN_OR_RETURN(
+      auto corpus_split,
+      SplitCorpus(corpus_tokens, absl::GetFlag(FLAGS_test_fraction),
+                  config.context_length));
   std::vector<bool> observed(config.vocabulary_size);
   for (uint32_t token : corpus_tokens) observed[token] = true;
 
@@ -507,29 +601,64 @@ absl::Status Run(cudaStream_t stream) {
       Buffer::Allocate(config.batch_size * sizeof(int), stream));
 
   const int eval_batches = absl::GetFlag(FLAGS_eval_batches);
-  ASSIGN_OR_RETURN(double initial_loss,
-                   Evaluate(config, *model, *loss_layer, corpus_tokens,
-                            eval_batches, token_buffer, target_buffer, stream));
-  std::cout << "corpus bytes: " << corpus_tokens.size()
-            << ", vocabulary: " << tokenizer.vocab_size()
-            << ", initial loss: " << initial_loss << '\n';
+  ASSIGN_OR_RETURN(
+      double initial_training_loss,
+      Evaluate(config, *model, *loss_layer, corpus_split.training,
+               eval_batches, token_buffer, target_buffer, stream));
+  ASSIGN_OR_RETURN(
+      double initial_test_loss,
+      Evaluate(config, *model, *loss_layer, corpus_split.test, eval_batches,
+               token_buffer, target_buffer, stream));
+  std::cout << "corpus tokens: " << corpus_tokens.size()
+            << " (training: " << corpus_split.training.size()
+            << ", test: " << corpus_split.test.size()
+            << "), vocabulary: " << tokenizer.vocab_size() << '\n'
+            << "initial training loss: " << initial_training_loss << '\n'
+            << "initial test loss: " << initial_test_loss << '\n';
 
-  RETURN_IF_ERROR(Train(config, *model, *loss_layer, corpus_tokens,
-                        absl::GetFlag(FLAGS_steps), absl::GetFlag(FLAGS_seed),
-                        token_buffer, target_buffer, stream));
-  ASSIGN_OR_RETURN(double final_loss,
-                   Evaluate(config, *model, *loss_layer, corpus_tokens,
-                            eval_batches, token_buffer, target_buffer, stream));
-  std::cout << "final evaluation loss: " << final_loss << '\n';
+  const TrainingOptions training_options{
+      .max_steps = absl::GetFlag(FLAGS_steps),
+      .seed = absl::GetFlag(FLAGS_seed),
+      .evaluation_batches = eval_batches,
+      .evaluation_interval = absl::GetFlag(FLAGS_training_eval_interval),
+      .stop_loss = absl::GetFlag(FLAGS_train_until_loss),
+  };
+  ASSIGN_OR_RETURN(
+      auto training_result,
+      Train(config, *model, *loss_layer, corpus_split.training,
+            training_options, initial_training_loss, token_buffer,
+            target_buffer, stream));
+  ASSIGN_OR_RETURN(
+      double final_training_loss,
+      Evaluate(config, *model, *loss_layer, corpus_split.training,
+               eval_batches, token_buffer, target_buffer, stream));
+  ASSIGN_OR_RETURN(
+      double final_test_loss,
+      Evaluate(config, *model, *loss_layer, corpus_split.test, eval_batches,
+               token_buffer, target_buffer, stream));
+  std::cout << "completed training steps: " << training_result.steps_completed
+            << '\n'
+            << "final training loss: " << final_training_loss << '\n'
+            << "final test loss: " << final_test_loss << '\n';
+
+  if (training_options.stop_loss >= 0.0 &&
+      (!training_result.reached_stop_loss ||
+       final_training_loss > training_options.stop_loss)) {
+    return absl::FailedPreconditionError(absl::StrCat(
+        "training loss did not reach ", training_options.stop_loss, " within ",
+        training_options.max_steps, " steps; final training loss was ",
+        final_training_loss));
+  }
   const double target_loss = absl::GetFlag(FLAGS_target_loss);
-  if (final_loss > target_loss) {
+  if (final_test_loss > target_loss) {
     return absl::FailedPreconditionError(
         absl::StrCat("model did not reach target loss ", target_loss,
-                     "; final loss was ", final_loss));
+                     "; final test loss was ", final_test_loss));
   }
-  if (final_loss >= initial_loss) {
+  if (training_result.steps_completed > 0 &&
+      final_training_loss >= initial_training_loss) {
     return absl::FailedPreconditionError(
-        "training did not reduce evaluation loss");
+        "training did not reduce training loss");
   }
 
   std::mt19937 random(absl::GetFlag(FLAGS_seed) + 1);

@@ -101,6 +101,37 @@ cc_test(
     ],
 )
 
+# Exercises loss-based early stopping without paying for a training step: the
+# freshly initialized cross entropy is below this deliberately loose target.
+cc_test(
+    name = "shakespeare_llm_early_stop_test",
+    size = "medium",
+    timeout = "moderate",
+    srcs = ["shakespeare_llm.cc"],
+    args = [
+        "--eval_batches=1",
+        "--generation_tokens=0",
+        "--interactive=false",
+        "--steps=10",
+        "--target_loss=10",
+        "--train_until_loss=10",
+    ],
+    data = ["//testdata:shakespeare.txt"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":layers",
+        "//src/common:status_macros",
+        "//src/gpu:buffer",
+        "//src/tokenization:plain_text_tokenizer",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
 cc_library(
     name = "layer_test_util",
     testonly = True,
