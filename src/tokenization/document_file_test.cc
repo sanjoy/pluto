@@ -52,8 +52,8 @@ TEST(DocumentFileTest, UsesTheDocumentedLittleEndianLayout) {
   ASSERT_TRUE((*writer)->Close().ok());
 
   std::ifstream input(path, std::ios::binary);
-  const std::vector<uint8_t> actual{
-      std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+  const std::vector<uint8_t> actual{std::istreambuf_iterator<char>(input),
+                                    std::istreambuf_iterator<char>()};
   const std::vector<uint8_t> expected = {
       0x02, 0x00, 0x00, 0x00,  // document count
       0x02, 0x00, 0x00, 0x00,  // first length
@@ -78,10 +78,9 @@ TEST(DocumentFileTest, DoesNotPublishAnIncompleteFile) {
 TEST(DocumentFileTest, RejectsTruncatedPayload) {
   const std::filesystem::path path =
       std::filesystem::path(testing::TempDir()) / "truncated.tokenized";
-  const char bytes[] = {
-      0x01, 0x00, 0x00, 0x00,  // one document
-      0x02, 0x00, 0x00, 0x00,  // claims two tokens
-      0x01, 0x00};              // only one token
+  const char bytes[] = {0x01, 0x00, 0x00, 0x00,  // one document
+                        0x02, 0x00, 0x00, 0x00,  // claims two tokens
+                        0x01, 0x00};             // only one token
   std::ofstream(path, std::ios::binary).write(bytes, sizeof(bytes));
   EXPECT_FALSE(DocumentFileReader::Open(path).ok());
 }

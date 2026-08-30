@@ -22,9 +22,9 @@ namespace {
 
 absl::Status CudaStatus(cudaError_t error, const char* operation) {
   if (error == cudaSuccess) return absl::OkStatus();
-  return absl::InternalError(
-      absl::StrCat(operation, " failed: ", cudaGetErrorName(error), ": ",
-                   cudaGetErrorString(error)));
+  return absl::InternalError(absl::StrCat(operation,
+                                          " failed: ", cudaGetErrorName(error),
+                                          ": ", cudaGetErrorString(error)));
 }
 
 absl::Status ValidateBatch(const TokenBatch& batch) {
@@ -68,8 +68,7 @@ absl::Status ValidateTrainingOptions(const TrainingOptions& options) {
   if (options.max_steps < 0) {
     return absl::InvalidArgumentError("max_steps must be non-negative");
   }
-  if (options.evaluation_interval <= 0 ||
-      options.evaluation_batches <= 0) {
+  if (options.evaluation_interval <= 0 || options.evaluation_batches <= 0) {
     return absl::InvalidArgumentError(
         "training evaluation counts must be positive");
   }
@@ -105,8 +104,7 @@ absl::StatusOr<double> Evaluate(const Layer& model, const Layer& loss_layer,
     Tape loss_tape;
     BufferVec loss_inputs = {output, batch.targets};
     ASSIGN_OR_RETURN(auto losses, loss_layer.fwd(loss_inputs, &loss_tape));
-    ASSIGN_OR_RETURN(double batch_sum,
-                     CopyLossSum(losses, batch.batch_size));
+    ASSIGN_OR_RETURN(double batch_sum, CopyLossSum(losses, batch.batch_size));
     loss_sum += batch_sum;
     token_count += batch.batch_size;
   }
@@ -133,8 +131,7 @@ absl::StatusOr<TrainingResult> Train(Layer& model, Layer& loss_layer,
                    EvaluationOptions{.batches = options.evaluation_batches}));
     }
     if (initial_loss <= options.stop_loss) {
-      return TrainingResult{.steps_completed = 0,
-                            .reached_stop_loss = true};
+      return TrainingResult{.steps_completed = 0, .reached_stop_loss = true};
     }
   }
 

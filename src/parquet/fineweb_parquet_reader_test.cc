@@ -28,8 +28,9 @@ TEST(FineWebParquetReaderTest, ReadsMetadataAndProjectedText) {
 
   auto text = (*reader)->ReadTextRows(0, 3);
   ASSERT_TRUE(text.ok()) << text.status();
-  EXPECT_EQ(*text, (std::vector<std::string>{
-                       "Hello, world!", "The quick brown fox.", "naïve café 🌍"}));
+  EXPECT_EQ(*text,
+            (std::vector<std::string>{"Hello, world!", "The quick brown fox.",
+                                      "naïve café 🌍"}));
 }
 
 TEST(FineWebParquetReaderTest, ReadsAllColumnsAcrossRowGroups) {

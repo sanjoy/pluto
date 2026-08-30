@@ -35,8 +35,7 @@ using internal::ValidateTiledExtent;
 namespace {
 template <class Element>
 __tile_global__ void AddKernel(const Element* __restrict__ left,
-                               const Element* __restrict__ right,
-                               int elements,
+                               const Element* __restrict__ right, int elements,
                                Element* __restrict__ output) {
   namespace ct = ::cuda::tiles;
   using namespace ct::literals;
@@ -53,7 +52,6 @@ __tile_global__ void AddKernel(const Element* __restrict__ left,
   output_view.store(ct::element_cast<Element>(sum), block);
 }
 
-
 }  // namespace
 
 ResidualLayer::ResidualLayer(std::unique_ptr<Layer> layer)
@@ -64,8 +62,8 @@ ResidualLayer::ResidualLayer(std::unique_ptr<Layer> layer)
   }
 }
 
-absl::StatusOr<Buffer> ResidualLayer::fwd(
-    absl::Span<const Buffer> inputs, Tape* tape) const {
+absl::StatusOr<Buffer> ResidualLayer::fwd(absl::Span<const Buffer> inputs,
+                                          Tape* tape) const {
   if (inputs.size() != 1 || tape == nullptr) {
     return absl::InvalidArgumentError(
         "ResidualLayer fwd expects one input and a non-null tape");
@@ -77,20 +75,17 @@ absl::StatusOr<Buffer> ResidualLayer::fwd(
     return absl::InvalidArgumentError(
         "ResidualLayer branch changed the activation shape or stream");
   }
+  ASSIGN_OR_RETURN(auto output, Buffer::Allocate(inputs[0].size_bytes(),
+                                                 inputs[0].stream()));
   ASSIGN_OR_RETURN(
-      auto output,
-      Buffer::Allocate(inputs[0].size_bytes(), inputs[0].stream()));
-  ASSIGN_OR_RETURN(int elements,
-                   ElementCount(
-                       inputs[0],
-                       internal::ActivationElementBytes(output_type()),
-                       inputs[0].stream(), "residual input"));
+      int elements,
+      ElementCount(inputs[0], internal::ActivationElementBytes(output_type()),
+                   inputs[0].stream(), "residual input"));
   RETURN_IF_ERROR(ValidateTiledExtent(elements, "residual element count"));
   tape->intermediates = {inputs[0]};
   tape->children = {std::move(child_tape)};
   if (output_type() == DataType::BF16) {
-    AddKernel<__nv_bfloat16><<<TileCount(elements), 1, 0,
-                               inputs[0].stream()>>>(
+    AddKernel<__nv_bfloat16><<<TileCount(elements), 1, 0, inputs[0].stream()>>>(
         static_cast<const __nv_bfloat16*>(inputs[0].data()),
         static_cast<const __nv_bfloat16*>(branch.data()), elements,
         static_cast<__nv_bfloat16*>(output.data()));
@@ -100,8 +95,7 @@ absl::StatusOr<Buffer> ResidualLayer::fwd(
         static_cast<const float*>(branch.data()), elements,
         static_cast<float*>(output.data()));
   }
-  RETURN_IF_ERROR(
-      CudaStatus(cudaGetLastError(), "AddKernel(residual) launch"));
+  RETURN_IF_ERROR(CudaStatus(cudaGetLastError(), "AddKernel(residual) launch"));
   return std::move(output);
 }
 
@@ -112,30 +106,26 @@ absl::StatusOr<BufferVec> ResidualLayer::bwd(
     return absl::InvalidArgumentError(
         "ResidualLayer bwd received an incompatible gradient or tape");
   }
-  ASSIGN_OR_RETURN(
-      auto branch_gradient,
-      layer_->bwd(output_gradients, std::move(tape.children[0])));
-  if (branch_gradient.size() != 1 ||
-      branch_gradient.front().size_bytes() !=
-          output_gradients[0].size_bytes()) {
+  ASSIGN_OR_RETURN(auto branch_gradient,
+                   layer_->bwd(output_gradients, std::move(tape.children[0])));
+  if (branch_gradient.size() != 1 || branch_gradient.front().size_bytes() !=
+                                         output_gradients[0].size_bytes()) {
     return absl::InvalidArgumentError(
         "ResidualLayer branch returned an incompatible input gradient");
   }
+  ASSIGN_OR_RETURN(auto input_gradient,
+                   Buffer::Allocate(output_gradients[0].size_bytes(),
+                                    output_gradients[0].stream()));
   ASSIGN_OR_RETURN(
-      auto input_gradient,
-      Buffer::Allocate(output_gradients[0].size_bytes(),
-                       output_gradients[0].stream()));
-  ASSIGN_OR_RETURN(int elements,
-                   ElementCount(output_gradients[0], sizeof(float),
-                                output_gradients[0].stream(),
-                                "residual output gradient"));
-  AddKernel<float><<<TileCount(elements), 1, 0,
-                     output_gradients[0].stream()>>>(
+      int elements,
+      ElementCount(output_gradients[0], sizeof(float),
+                   output_gradients[0].stream(), "residual output gradient"));
+  AddKernel<float><<<TileCount(elements), 1, 0, output_gradients[0].stream()>>>(
       static_cast<const float*>(output_gradients[0].data()),
       static_cast<const float*>(branch_gradient.front().data()), elements,
       static_cast<float*>(input_gradient.data()));
-  RETURN_IF_ERROR(CudaStatus(cudaGetLastError(),
-                             "AddKernel(residual gradient) launch"));
+  RETURN_IF_ERROR(
+      CudaStatus(cudaGetLastError(), "AddKernel(residual gradient) launch"));
   return BufferVec{std::move(input_gradient)};
 }
 
@@ -151,7 +141,7 @@ ComposedLayer::ComposedLayer(DataType data_type,
 }
 
 absl::StatusOr<Buffer> ComposedLayer::fwd(absl::Span<const Buffer> inputs,
-                                           Tape* tape) const {
+                                          Tape* tape) const {
   if (inputs.size() != 1 || tape == nullptr) {
     return absl::InvalidArgumentError(
         "ComposedLayer fwd expects one input and a non-null tape");
@@ -178,10 +168,9 @@ absl::StatusOr<BufferVec> ComposedLayer::bwd(
   Buffer gradient = output_gradients.front();
   for (size_t index = layers_.size(); index-- > 0;) {
     BufferVec child_gradients = {gradient};
-    ASSIGN_OR_RETURN(auto input_gradients,
-                     layers_[index]->bwd(
-                         child_gradients,
-                         std::move(tape.children[index])));
+    ASSIGN_OR_RETURN(
+        auto input_gradients,
+        layers_[index]->bwd(child_gradients, std::move(tape.children[index])));
     if (index == 0 && input_gradients.empty()) return BufferVec{};
     if (input_gradients.size() != 1) {
       return absl::InternalError(
@@ -209,8 +198,7 @@ const Layer* ComposedLayerBuilder::back() const {
   return layers_.empty() ? nullptr : layers_.back().get();
 }
 
-absl::StatusOr<std::unique_ptr<ComposedLayer>>
-ComposedLayerBuilder::create() {
+absl::StatusOr<std::unique_ptr<ComposedLayer>> ComposedLayerBuilder::create() {
   if (layers_.empty()) {
     return absl::FailedPreconditionError(
         "cannot create an empty ComposedLayer");

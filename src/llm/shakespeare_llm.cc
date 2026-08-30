@@ -61,8 +61,7 @@ ABSL_FLAG(int, training_eval_interval, 100,
 ABSL_FLAG(int, seed, 17, "Deterministic initialization and sampling seed");
 ABSL_FLAG(bool, interactive, true,
           "Read prompts after training; disabled by the Bazel tests");
-ABSL_FLAG(int, generation_tokens, 300,
-          "Tokens generated after each prompt");
+ABSL_FLAG(int, generation_tokens, 300, "Tokens generated after each prompt");
 ABSL_FLAG(double, temperature, 0.8, "Sampling temperature");
 ABSL_FLAG(int, batch_size, 1024,
           "Token rows per batch; must be a multiple of context length 1024");
@@ -130,19 +129,18 @@ absl::StatusOr<CorpusSplit> SplitCorpus(const std::vector<int>& corpus_tokens,
         "both corpus splits must contain more than 1024 GPT-2 tokens");
   }
   return CorpusSplit{
-      .training =
-          std::vector<int>(corpus_tokens.begin(),
-                           corpus_tokens.begin() + training_size),
+      .training = std::vector<int>(corpus_tokens.begin(),
+                                   corpus_tokens.begin() + training_size),
       .test = std::vector<int>(corpus_tokens.begin() + training_size,
-                              corpus_tokens.end()),
+                               corpus_tokens.end()),
   };
 }
 
 absl::Status CudaStatus(cudaError_t error, const char* operation) {
   if (error == cudaSuccess) return absl::OkStatus();
-  return absl::InternalError(
-      absl::StrCat(operation, " failed: ", cudaGetErrorName(error), ": ",
-                   cudaGetErrorString(error)));
+  return absl::InternalError(absl::StrCat(operation,
+                                          " failed: ", cudaGetErrorName(error),
+                                          ": ", cudaGetErrorString(error)));
 }
 
 // Builds one pre-LayerNorm GPT-2 transformer block:
@@ -187,23 +185,21 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateTransformerBlock(
       kModelWidth, kLayerNormEpsilon, output_type, stream)));
   RETURN_IF_ERROR(mlp_builder.add(FullyConnectedLayer::Create(
       kModelWidth, kFeedForwardWidth, output_type, stream)));
-  auto* mlp_input =
-      static_cast<FullyConnectedLayer*>(mlp_builder.back());
-  RETURN_IF_ERROR(mlp_input->InitializeNormal(
-      kInitializationStandardDeviation, seed_base + 3));
+  auto* mlp_input = static_cast<FullyConnectedLayer*>(mlp_builder.back());
+  RETURN_IF_ERROR(mlp_input->InitializeNormal(kInitializationStandardDeviation,
+                                              seed_base + 3));
   RETURN_IF_ERROR(mlp_builder.add(GeluLayer::Create(output_type, stream)));
   RETURN_IF_ERROR(mlp_builder.add(FullyConnectedLayer::Create(
       kFeedForwardWidth, kModelWidth, output_type, stream)));
-  auto* mlp_output =
-      static_cast<FullyConnectedLayer*>(mlp_builder.back());
-  RETURN_IF_ERROR(mlp_output->InitializeNormal(
-      residual_standard_deviation, seed_base + 4));
+  auto* mlp_output = static_cast<FullyConnectedLayer*>(mlp_builder.back());
+  RETURN_IF_ERROR(
+      mlp_output->InitializeNormal(residual_standard_deviation, seed_base + 4));
 
   ASSIGN_OR_RETURN(auto attention, attention_builder.create());
   ASSIGN_OR_RETURN(auto mlp, mlp_builder.create());
   ComposedLayerBuilder block_builder;
-  RETURN_IF_ERROR(block_builder.add(
-      std::make_unique<ResidualLayer>(std::move(attention))));
+  RETURN_IF_ERROR(
+      block_builder.add(std::make_unique<ResidualLayer>(std::move(attention))));
   RETURN_IF_ERROR(
       block_builder.add(std::make_unique<ResidualLayer>(std::move(mlp))));
   return block_builder.create();
@@ -219,18 +215,18 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateShakespeareLlm(
   RETURN_IF_ERROR(builder.add(EmbeddingLookupLayer::Create(
       kVocabularySize, kModelWidth, output_type, stream)));
   auto* embedding = static_cast<EmbeddingLookupLayer*>(builder.back());
-  RETURN_IF_ERROR(embedding->InitializeNormal(
-      kInitializationStandardDeviation, static_cast<uint64_t>(seed)));
+  RETURN_IF_ERROR(embedding->InitializeNormal(kInitializationStandardDeviation,
+                                              static_cast<uint64_t>(seed)));
 
   RETURN_IF_ERROR(builder.add(PositionEmbeddingLayer::Create(
       kContextLength, kModelWidth, output_type, stream)));
   auto* positions = static_cast<PositionEmbeddingLayer*>(builder.back());
-  RETURN_IF_ERROR(positions->InitializeNormal(
-      kInitializationStandardDeviation, static_cast<uint64_t>(seed) + 1));
+  RETURN_IF_ERROR(positions->InitializeNormal(kInitializationStandardDeviation,
+                                              static_cast<uint64_t>(seed) + 1));
 
   for (int index = 0; index < kTransformerBlockCount; ++index) {
-    RETURN_IF_ERROR(builder.add(
-        CreateTransformerBlock(output_type, seed, index, stream)));
+    RETURN_IF_ERROR(
+        builder.add(CreateTransformerBlock(output_type, seed, index, stream)));
   }
 
   RETURN_IF_ERROR(builder.add(LayerNormLayer::Create(
@@ -284,10 +280,11 @@ absl::StatusOr<std::filesystem::path> TokenizerDirectory() {
       "tokenizer directory");
 }
 
-absl::StatusOr<std::vector<float>> Predict(
-    const ModelConfig& config, const Layer& model,
-    const std::vector<int>& context, const Buffer& token_buffer,
-    cudaStream_t stream) {
+absl::StatusOr<std::vector<float>> Predict(const ModelConfig& config,
+                                           const Layer& model,
+                                           const std::vector<int>& context,
+                                           const Buffer& token_buffer,
+                                           cudaStream_t stream) {
   if (context.empty()) {
     return absl::InvalidArgumentError("prediction context must not be empty");
   }
@@ -295,8 +292,7 @@ absl::StatusOr<std::vector<float>> Predict(
       std::min(context.size(), static_cast<size_t>(kContextLength));
   const size_t context_start = context.size() - context_size;
   std::vector<int> repeated_context(config.batch_size);
-  for (int sequence = 0; sequence < config.sequence_batch_size();
-       ++sequence) {
+  for (int sequence = 0; sequence < config.sequence_batch_size(); ++sequence) {
     for (size_t position = 0; position < context_size; ++position) {
       repeated_context[sequence * kContextLength + position] =
           context[context_start + position];
@@ -307,24 +303,23 @@ absl::StatusOr<std::vector<float>> Predict(
       repeated_context[sequence * kContextLength + position] = context.back();
     }
   }
-  RETURN_IF_ERROR(CudaStatus(
-      cudaMemcpyAsync(token_buffer.data(), repeated_context.data(),
-                      token_buffer.size_bytes(), cudaMemcpyHostToDevice,
-                      stream),
-      "cudaMemcpyAsync(prompt context)"));
+  RETURN_IF_ERROR(
+      CudaStatus(cudaMemcpyAsync(token_buffer.data(), repeated_context.data(),
+                                 token_buffer.size_bytes(),
+                                 cudaMemcpyHostToDevice, stream),
+                 "cudaMemcpyAsync(prompt context)"));
   Tape tape;
   BufferVec inputs = {token_buffer};
   ASSIGN_OR_RETURN(auto logits, model.fwd(inputs, &tape));
   std::vector<float> host_logits(kVocabularySize);
   const size_t output_row = context_size - 1;
-  const auto* selected_logits =
-      static_cast<const float*>(logits.data()) +
-      output_row * config.padded_vocabulary_size();
-  RETURN_IF_ERROR(CudaStatus(
-      cudaMemcpyAsync(host_logits.data(), selected_logits,
-                      host_logits.size() * sizeof(float),
-                      cudaMemcpyDeviceToHost, stream),
-      "cudaMemcpyAsync(prompt logits)"));
+  const auto* selected_logits = static_cast<const float*>(logits.data()) +
+                                output_row * config.padded_vocabulary_size();
+  RETURN_IF_ERROR(
+      CudaStatus(cudaMemcpyAsync(host_logits.data(), selected_logits,
+                                 host_logits.size() * sizeof(float),
+                                 cudaMemcpyDeviceToHost, stream),
+                 "cudaMemcpyAsync(prompt logits)"));
   RETURN_IF_ERROR(CudaStatus(cudaStreamSynchronize(stream),
                              "cudaStreamSynchronize(prompt)"));
   return host_logits;
@@ -334,8 +329,7 @@ absl::StatusOr<std::string> Generate(
     const ModelConfig& config, const Layer& model,
     const Gpt2Tokenizer& tokenizer, const Gpt2Detokenizer& detokenizer,
     std::string prompt, int generation_tokens, double temperature,
-    std::mt19937& random,
-    const Buffer& token_buffer, cudaStream_t stream) {
+    std::mt19937& random, const Buffer& token_buffer, cudaStream_t stream) {
   if (generation_tokens < 0 || temperature <= 0.0) {
     return absl::InvalidArgumentError(
         "generation_tokens must be non-negative and temperature positive");
@@ -351,11 +345,10 @@ absl::StatusOr<std::string> Generate(
     const float maximum = *std::max_element(logits.begin(), logits.end());
     std::vector<double> probabilities(kVocabularySize);
     for (int token = 0; token < kVocabularySize; ++token) {
-      probabilities[token] =
-          std::exp((logits[token] - maximum) / temperature);
+      probabilities[token] = std::exp((logits[token] - maximum) / temperature);
     }
     std::discrete_distribution<int> sample(probabilities.begin(),
-                                            probabilities.end());
+                                           probabilities.end());
     const int next = sample(random);
     context.push_back(next);
     generated.push_back(next);
@@ -384,20 +377,18 @@ absl::Status Run(cudaStream_t stream) {
       auto corpus_split,
       SplitCorpus(corpus_tokens, absl::GetFlag(FLAGS_test_fraction)));
 
-  ASSIGN_OR_RETURN(auto model,
-                   CreateShakespeareLlm(DataType::BF16,
-                                        absl::GetFlag(FLAGS_seed), stream));
-  ASSIGN_OR_RETURN(auto loss_layer,
-                   CrossEntropyLossLayer::Create(kVocabularySize,
-                                                 DataType::BF16, stream));
+  ASSIGN_OR_RETURN(
+      auto model,
+      CreateShakespeareLlm(DataType::BF16, absl::GetFlag(FLAGS_seed), stream));
+  ASSIGN_OR_RETURN(
+      auto loss_layer,
+      CrossEntropyLossLayer::Create(kVocabularySize, DataType::BF16, stream));
   const AdamWConfig optimizer_config{
-      .learning_rate =
-          static_cast<float>(absl::GetFlag(FLAGS_learning_rate)),
+      .learning_rate = static_cast<float>(absl::GetFlag(FLAGS_learning_rate)),
       .beta1 = static_cast<float>(absl::GetFlag(FLAGS_adam_beta1)),
       .beta2 = static_cast<float>(absl::GetFlag(FLAGS_adam_beta2)),
       .epsilon = static_cast<float>(absl::GetFlag(FLAGS_adam_epsilon)),
-      .weight_decay =
-          static_cast<float>(absl::GetFlag(FLAGS_weight_decay)),
+      .weight_decay = static_cast<float>(absl::GetFlag(FLAGS_weight_decay)),
   };
   ASSIGN_OR_RETURN(auto optimizer,
                    Optimizer::Create(*model, optimizer_config, stream));
@@ -413,18 +404,15 @@ absl::Status Run(cudaStream_t stream) {
       .order = InMemoryDataSetOrder::kSequential,
       .seed = static_cast<uint64_t>(absl::GetFlag(FLAGS_seed)),
   };
-  ASSIGN_OR_RETURN(
-      auto training_data,
-      InMemoryDataSetIterator::Create(corpus_split.training,
-                                      training_data_options, stream));
-  ASSIGN_OR_RETURN(
-      auto training_evaluation_data,
-      InMemoryDataSetIterator::Create(corpus_split.training,
-                                      evaluation_data_options, stream));
-  ASSIGN_OR_RETURN(
-      auto test_evaluation_data,
-      InMemoryDataSetIterator::Create(corpus_split.test,
-                                      evaluation_data_options, stream));
+  ASSIGN_OR_RETURN(auto training_data,
+                   InMemoryDataSetIterator::Create(
+                       corpus_split.training, training_data_options, stream));
+  ASSIGN_OR_RETURN(auto training_evaluation_data,
+                   InMemoryDataSetIterator::Create(
+                       corpus_split.training, evaluation_data_options, stream));
+  ASSIGN_OR_RETURN(auto test_evaluation_data,
+                   InMemoryDataSetIterator::Create(
+                       corpus_split.test, evaluation_data_options, stream));
   // Generation only needs model inputs; train/eval staging is owned by the
   // dataset iterators above.
   ASSIGN_OR_RETURN(auto token_buffer,
@@ -432,14 +420,12 @@ absl::Status Run(cudaStream_t stream) {
 
   const int eval_batches = absl::GetFlag(FLAGS_eval_batches);
   const EvaluationOptions evaluation_options{.batches = eval_batches};
-  ASSIGN_OR_RETURN(
-      double initial_training_loss,
-      Evaluate(*model, *loss_layer, *training_evaluation_data,
-               evaluation_options));
+  ASSIGN_OR_RETURN(double initial_training_loss,
+                   Evaluate(*model, *loss_layer, *training_evaluation_data,
+                            evaluation_options));
   ASSIGN_OR_RETURN(
       double initial_test_loss,
-      Evaluate(*model, *loss_layer, *test_evaluation_data,
-               evaluation_options));
+      Evaluate(*model, *loss_layer, *test_evaluation_data, evaluation_options));
   std::cout << "model: GPT-2 vocabulary=" << kVocabularySize
             << ", context=" << kContextLength
             << ", layers=" << kTransformerBlockCount
@@ -462,16 +448,13 @@ absl::Status Run(cudaStream_t stream) {
   };
   ASSIGN_OR_RETURN(
       auto training_result,
-      Train(*model, *loss_layer, *optimizer, *training_data,
-            training_options));
-  ASSIGN_OR_RETURN(
-      double final_training_loss,
-      Evaluate(*model, *loss_layer, *training_evaluation_data,
-               evaluation_options));
+      Train(*model, *loss_layer, *optimizer, *training_data, training_options));
+  ASSIGN_OR_RETURN(double final_training_loss,
+                   Evaluate(*model, *loss_layer, *training_evaluation_data,
+                            evaluation_options));
   ASSIGN_OR_RETURN(
       double final_test_loss,
-      Evaluate(*model, *loss_layer, *test_evaluation_data,
-               evaluation_options));
+      Evaluate(*model, *loss_layer, *test_evaluation_data, evaluation_options));
   std::cout << "completed training steps: " << training_result.steps_completed
             << '\n'
             << "final training loss: " << final_training_loss << '\n'
@@ -480,10 +463,10 @@ absl::Status Run(cudaStream_t stream) {
   if (training_options.stop_loss >= 0.0 &&
       (!training_result.reached_stop_loss ||
        final_training_loss > training_options.stop_loss)) {
-    return absl::FailedPreconditionError(absl::StrCat(
-        "training loss did not reach ", training_options.stop_loss, " within ",
-        training_options.max_steps, " steps; final training loss was ",
-        final_training_loss));
+    return absl::FailedPreconditionError(
+        absl::StrCat("training loss did not reach ", training_options.stop_loss,
+                     " within ", training_options.max_steps,
+                     " steps; final training loss was ", final_training_loss));
   }
   const double target_loss = absl::GetFlag(FLAGS_target_loss);
   if (target_loss >= 0.0 && final_test_loss > target_loss) {
@@ -502,8 +485,7 @@ absl::Status Run(cudaStream_t stream) {
       auto sample,
       Generate(config, *model, *tokenizer, *detokenizer, "To be",
                std::min(120, absl::GetFlag(FLAGS_generation_tokens)),
-               absl::GetFlag(FLAGS_temperature), random, token_buffer,
-               stream));
+               absl::GetFlag(FLAGS_temperature), random, token_buffer, stream));
   std::cout << "sample:\nTo be" << sample << "\n";
 
   if (!absl::GetFlag(FLAGS_interactive)) return absl::OkStatus();
@@ -512,12 +494,11 @@ absl::Status Run(cudaStream_t stream) {
   while (true) {
     std::cout << "> " << std::flush;
     if (!std::getline(std::cin, prompt)) break;
-    ASSIGN_OR_RETURN(
-        auto completion,
-        Generate(config, *model, *tokenizer, *detokenizer, prompt,
-                 absl::GetFlag(FLAGS_generation_tokens),
-                 absl::GetFlag(FLAGS_temperature), random, token_buffer,
-                 stream));
+    ASSIGN_OR_RETURN(auto completion,
+                     Generate(config, *model, *tokenizer, *detokenizer, prompt,
+                              absl::GetFlag(FLAGS_generation_tokens),
+                              absl::GetFlag(FLAGS_temperature), random,
+                              token_buffer, stream));
     std::cout << prompt << completion << "\n";
   }
   return absl::OkStatus();

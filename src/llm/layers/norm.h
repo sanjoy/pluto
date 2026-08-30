@@ -20,13 +20,11 @@ class LayerNormLayer final : public Layer {
       cudaStream_t stream);
 
   absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs,
-                              Tape* tape) const override;
-  absl::StatusOr<BufferVec> bwd(
-      absl::Span<const Buffer> output_gradients, Tape tape) override;
+                             Tape* tape) const override;
+  absl::StatusOr<BufferVec> bwd(absl::Span<const Buffer> output_gradients,
+                                Tape tape) override;
   absl::Span<Buffer> weights() override { return absl::MakeSpan(weights_); }
-  absl::Span<Buffer> gradients() override {
-    return absl::MakeSpan(gradients_);
-  }
+  absl::Span<Buffer> gradients() override { return absl::MakeSpan(gradients_); }
   DataType output_type() const override { return output_type_; }
 
  private:
@@ -55,29 +53,25 @@ class LayerNormLayerReference final : public LayerReference {
       int embedding_dim, float epsilon, DataType data_type);
 
   absl::StatusOr<HostBuffer> fwd(absl::Span<const HostBuffer> inputs,
-                                  ReferenceTape* tape) override;
+                                 ReferenceTape* tape) override;
   absl::StatusOr<HostBufferVec> bwd(
       absl::Span<const HostBuffer> output_gradients,
       ReferenceTape tape) override;
-  absl::Span<HostBuffer> weights() override {
-    return absl::MakeSpan(weights_);
-  }
+  absl::Span<HostBuffer> weights() override { return absl::MakeSpan(weights_); }
   absl::Span<HostBuffer> gradients() override {
     return absl::MakeSpan(gradients_);
   }
   DataType output_type() const override { return output_type_; }
 
  private:
-  LayerNormLayerReference(int embedding_dim, float epsilon,
-                          DataType data_type, HostBuffer gamma,
-                          HostBuffer beta, HostBuffer gamma_gradient,
-                          HostBuffer beta_gradient)
+  LayerNormLayerReference(int embedding_dim, float epsilon, DataType data_type,
+                          HostBuffer gamma, HostBuffer beta,
+                          HostBuffer gamma_gradient, HostBuffer beta_gradient)
       : embedding_dim_(embedding_dim),
         epsilon_(epsilon),
         output_type_(data_type),
         weights_{std::move(gamma), std::move(beta)},
-        gradients_{std::move(gamma_gradient),
-                   std::move(beta_gradient)} {}
+        gradients_{std::move(gamma_gradient), std::move(beta_gradient)} {}
 
   int embedding_dim_;
   float epsilon_;

@@ -14,14 +14,12 @@ namespace pluto::cuda {
 namespace {
 
 absl::Status CudaAllocationError(cudaError_t error, size_t size_bytes) {
-  const absl::StatusCode code =
-      error == cudaErrorMemoryAllocation
-          ? absl::StatusCode::kResourceExhausted
-          : absl::StatusCode::kInternal;
-  return absl::Status(
-      code, absl::StrCat("cudaMallocAsync(", size_bytes, ") failed: ",
-                         cudaGetErrorName(error), ": ",
-                         cudaGetErrorString(error)));
+  const absl::StatusCode code = error == cudaErrorMemoryAllocation
+                                    ? absl::StatusCode::kResourceExhausted
+                                    : absl::StatusCode::kInternal;
+  return absl::Status(code, absl::StrCat("cudaMallocAsync(", size_bytes,
+                                         ") failed: ", cudaGetErrorName(error),
+                                         ": ", cudaGetErrorString(error)));
 }
 
 }  // namespace
@@ -49,10 +47,10 @@ Buffer::Buffer(std::shared_ptr<Allocation> allocation)
     : allocation_(std::move(allocation)) {}
 
 absl::StatusOr<Buffer> Buffer::Allocate(size_t size_bytes,
-                                         cudaStream_t stream) {
-  const bool has_explicit_stream =
-      stream != nullptr && stream != cudaStreamLegacy &&
-      stream != cudaStreamPerThread;
+                                        cudaStream_t stream) {
+  const bool has_explicit_stream = stream != nullptr &&
+                                   stream != cudaStreamLegacy &&
+                                   stream != cudaStreamPerThread;
   assert(has_explicit_stream &&
          "Buffer requires an explicitly created CUDA stream");
   // Keep the invariant in optimized builds where assert() may be compiled out.

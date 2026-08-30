@@ -38,8 +38,8 @@ TEST_F(LayersTest, IdentityDenseLayerHasIdentityForwardAndBackward) {
                             cudaMemcpyHostToDevice, stream_),
             cudaSuccess);
 
-  auto dense = FullyConnectedLayer::Create(
-      kTestModelWidth, DataType::FP16, stream_);
+  auto dense =
+      FullyConnectedLayer::Create(kTestModelWidth, DataType::FP16, stream_);
   ASSERT_TRUE(dense.ok()) << dense.status();
   ASSERT_TRUE((*dense)->InitializeIdentity().ok());
   Tape tape;
@@ -47,17 +47,16 @@ TEST_F(LayersTest, IdentityDenseLayerHasIdentityForwardAndBackward) {
   auto output = (*dense)->fwd(dense_inputs, &tape);
   ASSERT_TRUE(output.ok()) << output.status();
   BufferVec dense_gradients = {*gradient_buffer};
-  auto input_gradients =
-      (*dense)->bwd(dense_gradients, std::move(tape));
+  auto input_gradients = (*dense)->bwd(dense_gradients, std::move(tape));
   ASSERT_TRUE(input_gradients.ok()) << input_gradients.status();
   ASSERT_EQ(input_gradients->size(), 1u);
 
   std::vector<float> host_output(input.size());
   std::vector<float> host_input_gradient(input.size());
-  ASSERT_EQ(cudaMemcpyAsync(host_output.data(), output->data(),
-                            output->size_bytes(), cudaMemcpyDeviceToHost,
-                            stream_),
-            cudaSuccess);
+  ASSERT_EQ(
+      cudaMemcpyAsync(host_output.data(), output->data(), output->size_bytes(),
+                      cudaMemcpyDeviceToHost, stream_),
+      cudaSuccess);
   ASSERT_EQ(cudaMemcpyAsync(host_input_gradient.data(),
                             input_gradients->front().data(),
                             input_gradients->front().size_bytes(),
@@ -74,8 +73,8 @@ TEST_F(LayersTest, IdentityDenseLayerHasIdentityForwardAndBackward) {
 
 TEST_F(LayersTest, RectangularProjectionUsesDistinctInputAndOutputWidths) {
   constexpr int kOutputWidth = 48;
-  auto dense = FullyConnectedLayer::Create(
-      kTestModelWidth, kOutputWidth, DataType::FP16, stream_);
+  auto dense = FullyConnectedLayer::Create(kTestModelWidth, kOutputWidth,
+                                           DataType::FP16, stream_);
   ASSERT_TRUE(dense.ok()) << dense.status();
   ASSERT_EQ((*dense)->input_dim(), kTestModelWidth);
   ASSERT_EQ((*dense)->output_dim(), kOutputWidth);
@@ -96,10 +95,10 @@ TEST_F(LayersTest, RectangularProjectionUsesDistinctInputAndOutputWidths) {
   auto output = (*dense)->fwd(inputs, &tape);
   ASSERT_TRUE(output.ok()) << output.status();
   std::vector<float> host_output(kTestBatchSize * kOutputWidth);
-  ASSERT_EQ(cudaMemcpyAsync(host_output.data(), output->data(),
-                            output->size_bytes(), cudaMemcpyDeviceToHost,
-                            stream_),
-            cudaSuccess);
+  ASSERT_EQ(
+      cudaMemcpyAsync(host_output.data(), output->data(), output->size_bytes(),
+                      cudaMemcpyDeviceToHost, stream_),
+      cudaSuccess);
   ASSERT_EQ(cudaStreamSynchronize(stream_), cudaSuccess);
 
   for (int row = 0; row < kTestBatchSize; ++row) {

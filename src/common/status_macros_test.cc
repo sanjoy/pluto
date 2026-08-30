@@ -32,9 +32,8 @@ absl::StatusOr<int> AssignExisting(absl::StatusOr<int> result) {
 }
 
 absl::StatusOr<std::unique_ptr<int>> AssignMoveOnly() {
-  ASSIGN_OR_RETURN(auto value,
-                   absl::StatusOr<std::unique_ptr<int>>(
-                       std::make_unique<int>(42)));
+  ASSIGN_OR_RETURN(auto value, absl::StatusOr<std::unique_ptr<int>>(
+                                   std::make_unique<int>(42)));
   return value;
 }
 

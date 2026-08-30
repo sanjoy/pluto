@@ -53,12 +53,12 @@ class FineWebParquetReader final {
   // Reads exactly `count` rows starting at the zero-based row index `first`.
   // Crossing row-group boundaries is supported. Out-of-range requests fail.
   absl::StatusOr<std::vector<FineWebRecord>> ReadRows(int64_t first,
-                                                       size_t count) const;
+                                                      size_t count) const;
 
   // Projection optimized for tokenizer pipelines: other columns are never read
   // or decompressed.
   absl::StatusOr<std::vector<std::string>> ReadTextRows(int64_t first,
-                                                         size_t count) const;
+                                                        size_t count) const;
 
  private:
   struct Impl;

@@ -36,7 +36,7 @@ class Layer {
   virtual ~Layer() = default;
 
   virtual absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs,
-                                      Tape* tape) const = 0;
+                                     Tape* tape) const = 0;
   virtual absl::StatusOr<BufferVec> bwd(
       absl::Span<const Buffer> output_gradients, Tape tape) = 0;
   virtual absl::Span<Buffer> weights() = 0;
@@ -62,11 +62,10 @@ class LayerReference {
  public:
   virtual ~LayerReference() = default;
 
-  virtual absl::StatusOr<HostBuffer> fwd(
-      absl::Span<const HostBuffer> inputs, ReferenceTape* tape) = 0;
+  virtual absl::StatusOr<HostBuffer> fwd(absl::Span<const HostBuffer> inputs,
+                                         ReferenceTape* tape) = 0;
   virtual absl::StatusOr<HostBufferVec> bwd(
-      absl::Span<const HostBuffer> output_gradients,
-      ReferenceTape tape) = 0;
+      absl::Span<const HostBuffer> output_gradients, ReferenceTape tape) = 0;
   virtual absl::Span<HostBuffer> weights() = 0;
   virtual absl::Span<HostBuffer> gradients() { return {}; }
   virtual DataType output_type() const = 0;

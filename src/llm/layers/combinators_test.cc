@@ -12,8 +12,8 @@
 #include "src/common/status_macros.h"
 #include "src/cuda/buffer.h"
 #include "src/llm/layer.h"
-#include "src/llm/layers/test_util.h"
 #include "src/llm/layers/fully_connected.h"
+#include "src/llm/layers/test_util.h"
 
 namespace pluto::llm {
 namespace {
@@ -37,8 +37,8 @@ class TestLayer final : public Layer {
   DataType output_type_;
 };
 
-absl::StatusOr<std::unique_ptr<TestLayer>> MakeTestLayer(
-    DataType output_type, int* evaluations) {
+absl::StatusOr<std::unique_ptr<TestLayer>> MakeTestLayer(DataType output_type,
+                                                         int* evaluations) {
   ++*evaluations;
   return std::make_unique<TestLayer>(output_type);
 }
@@ -46,8 +46,7 @@ absl::StatusOr<std::unique_ptr<TestLayer>> MakeTestLayer(
 absl::StatusOr<std::unique_ptr<ComposedLayer>> BuildTestComposition(
     int* evaluations, Layer** first, Layer** last) {
   ComposedLayerBuilder builder;
-  RETURN_IF_ERROR(
-      builder.add(MakeTestLayer(DataType::FP16, evaluations)));
+  RETURN_IF_ERROR(builder.add(MakeTestLayer(DataType::FP16, evaluations)));
   *first = builder.back();
   RETURN_IF_ERROR(builder.add(MakeTestLayer(DataType::FP8, evaluations)));
   *last = builder.back();
@@ -56,8 +55,7 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> BuildTestComposition(
 
 absl::Status BuildWithFactoryError(int* evaluations, bool* reached_end) {
   ComposedLayerBuilder builder;
-  RETURN_IF_ERROR(
-      builder.add(MakeTestLayer(DataType::FP16, evaluations)));
+  RETURN_IF_ERROR(builder.add(MakeTestLayer(DataType::FP16, evaluations)));
   RETURN_IF_ERROR(
       builder.add(([&]() -> absl::StatusOr<std::unique_ptr<TestLayer>> {
         ++*evaluations;
@@ -69,19 +67,18 @@ absl::Status BuildWithFactoryError(int* evaluations, bool* reached_end) {
 
 absl::Status BuildWithNullLayer() {
   ComposedLayerBuilder builder;
-  RETURN_IF_ERROR(builder.add(
-      absl::StatusOr<std::unique_ptr<TestLayer>>(
-          std::unique_ptr<TestLayer>())));
+  RETURN_IF_ERROR(builder.add(absl::StatusOr<std::unique_ptr<TestLayer>>(
+      std::unique_ptr<TestLayer>())));
   return absl::OkStatus();
 }
 
 absl::StatusOr<std::unique_ptr<ComposedLayer>> BuildDenseComposition(
     cudaStream_t stream) {
   ComposedLayerBuilder builder;
-  RETURN_IF_ERROR(builder.add(FullyConnectedLayer::Create(
-      kTestModelWidth, DataType::FP16, stream)));
-  RETURN_IF_ERROR(builder.add(FullyConnectedLayer::Create(
-      kTestModelWidth, DataType::FP16, stream)));
+  RETURN_IF_ERROR(builder.add(
+      FullyConnectedLayer::Create(kTestModelWidth, DataType::FP16, stream)));
+  RETURN_IF_ERROR(builder.add(
+      FullyConnectedLayer::Create(kTestModelWidth, DataType::FP16, stream)));
   return builder.create();
 }
 
@@ -103,8 +100,7 @@ TEST(ComposedLayerBuilderTest, BackIsStableAndCreateInfersFinalOutputType) {
 TEST(ComposedLayerBuilderTest, AddPropagatesFactoryErrorExactlyOnce) {
   int evaluations = 0;
   bool reached_end = false;
-  const absl::Status status =
-      BuildWithFactoryError(&evaluations, &reached_end);
+  const absl::Status status = BuildWithFactoryError(&evaluations, &reached_end);
 
   EXPECT_EQ(status.code(), absl::StatusCode::kNotFound);
   EXPECT_EQ(status.message(), "missing layer");
@@ -131,7 +127,6 @@ TEST_F(LayersTest, CreatedCompositionCollectsChildWeights) {
   EXPECT_EQ((*composed)->weights().size(), 4u);
   EXPECT_EQ((*composed)->gradients().size(), 4u);
 }
-
 
 }  // namespace
 }  // namespace pluto::llm

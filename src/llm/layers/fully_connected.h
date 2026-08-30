@@ -19,8 +19,7 @@ namespace pluto::llm {
 class FullyConnectedLayer final : public Layer {
  public:
   static absl::StatusOr<std::unique_ptr<FullyConnectedLayer>> Create(
-      int input_dim, int output_dim, DataType data_type,
-      cudaStream_t stream);
+      int input_dim, int output_dim, DataType data_type, cudaStream_t stream);
   static absl::StatusOr<std::unique_ptr<FullyConnectedLayer>> Create(
       int model_width, DataType data_type, cudaStream_t stream) {
     return Create(model_width, model_width, data_type, stream);
@@ -32,13 +31,11 @@ class FullyConnectedLayer final : public Layer {
   absl::Status InitializeNormal(float standard_deviation, uint64_t seed);
 
   absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs,
-                              Tape* tape) const override;
-  absl::StatusOr<BufferVec> bwd(
-      absl::Span<const Buffer> output_gradients, Tape tape) override;
+                             Tape* tape) const override;
+  absl::StatusOr<BufferVec> bwd(absl::Span<const Buffer> output_gradients,
+                                Tape tape) override;
   absl::Span<Buffer> weights() override { return absl::MakeSpan(weights_); }
-  absl::Span<Buffer> gradients() override {
-    return absl::MakeSpan(gradients_);
-  }
+  absl::Span<Buffer> gradients() override { return absl::MakeSpan(gradients_); }
   DataType output_type() const override { return output_type_; }
 
   int input_dim() const { return input_dim_; }
@@ -71,14 +68,12 @@ class FullyConnectedLayerReference final : public LayerReference {
   absl::Status InitializeIdentity(float scale = 1.0f);
   absl::Status InitializeNormal(float standard_deviation, uint64_t seed);
 
-  absl::StatusOr<HostBuffer> fwd(
-      absl::Span<const HostBuffer> inputs, ReferenceTape* tape) override;
+  absl::StatusOr<HostBuffer> fwd(absl::Span<const HostBuffer> inputs,
+                                 ReferenceTape* tape) override;
   absl::StatusOr<HostBufferVec> bwd(
       absl::Span<const HostBuffer> output_gradients,
       ReferenceTape tape) override;
-  absl::Span<HostBuffer> weights() override {
-    return absl::MakeSpan(weights_);
-  }
+  absl::Span<HostBuffer> weights() override { return absl::MakeSpan(weights_); }
   absl::Span<HostBuffer> gradients() override {
     return absl::MakeSpan(gradients_);
   }
@@ -96,8 +91,7 @@ class FullyConnectedLayerReference final : public LayerReference {
         output_dim_(output_dim),
         output_type_(data_type),
         weights_{std::move(matrix), std::move(bias)},
-        gradients_{std::move(matrix_gradient),
-                   std::move(bias_gradient)} {}
+        gradients_{std::move(matrix_gradient), std::move(bias_gradient)} {}
 
   int input_dim_;
   int output_dim_;

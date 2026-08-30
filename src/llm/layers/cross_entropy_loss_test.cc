@@ -30,12 +30,12 @@ TEST_F(LayersTest, CrossEntropyForwardAndBackwardMatchUniformSoftmax) {
                             stream_),
             cudaSuccess);
   ASSERT_EQ(cudaMemcpyAsync(target_buffer->data(), targets.data(),
-                            target_buffer->size_bytes(),
-                            cudaMemcpyHostToDevice, stream_),
+                            target_buffer->size_bytes(), cudaMemcpyHostToDevice,
+                            stream_),
             cudaSuccess);
 
-  auto loss_layer = CrossEntropyLossLayer::Create(
-      kTestVocabularySize, DataType::FP16, stream_);
+  auto loss_layer = CrossEntropyLossLayer::Create(kTestVocabularySize,
+                                                  DataType::FP16, stream_);
   ASSERT_TRUE(loss_layer.ok()) << loss_layer.status();
   Tape tape;
   BufferVec loss_inputs = {*logits_buffer, *target_buffer};
@@ -47,10 +47,10 @@ TEST_F(LayersTest, CrossEntropyForwardAndBackwardMatchUniformSoftmax) {
 
   std::vector<float> host_losses(kTestBatchSize);
   std::vector<float> host_gradients(logits.size());
-  ASSERT_EQ(cudaMemcpyAsync(host_losses.data(), losses->data(),
-                            losses->size_bytes(), cudaMemcpyDeviceToHost,
-                            stream_),
-            cudaSuccess);
+  ASSERT_EQ(
+      cudaMemcpyAsync(host_losses.data(), losses->data(), losses->size_bytes(),
+                      cudaMemcpyDeviceToHost, stream_),
+      cudaSuccess);
   ASSERT_EQ(cudaMemcpyAsync(host_gradients.data(), gradients->front().data(),
                             gradients->front().size_bytes(),
                             cudaMemcpyDeviceToHost, stream_),
@@ -61,18 +61,17 @@ TEST_F(LayersTest, CrossEntropyForwardAndBackwardMatchUniformSoftmax) {
               1e-5f);
   EXPECT_NEAR(host_gradients[0],
               (1.0f / kTestVocabularySize - 1.0f) / kTestBatchSize, 1e-6f);
-  EXPECT_NEAR(host_gradients[1],
-              1.0f / (kTestVocabularySize * kTestBatchSize), 1e-7f);
+  EXPECT_NEAR(host_gradients[1], 1.0f / (kTestVocabularySize * kTestBatchSize),
+              1e-7f);
 }
 
 TEST_F(LayersTest, IgnoresPaddedVocabularyColumns) {
   constexpr int kLogicalVocabularySize = 17;
   constexpr int kPaddedVocabularySize = 32;
-  std::vector<float> logits(
-      kTestBatchSize * kPaddedVocabularySize, 0.0f);
+  std::vector<float> logits(kTestBatchSize * kPaddedVocabularySize, 0.0f);
   for (int row = 0; row < kTestBatchSize; ++row) {
-    for (int token = kLogicalVocabularySize;
-         token < kPaddedVocabularySize; ++token) {
+    for (int token = kLogicalVocabularySize; token < kPaddedVocabularySize;
+         ++token) {
       logits[row * kPaddedVocabularySize + token] = -3.402823466e+38f;
     }
   }
@@ -86,11 +85,11 @@ TEST_F(LayersTest, IgnoresPaddedVocabularyColumns) {
                             stream_),
             cudaSuccess);
   ASSERT_EQ(cudaMemcpyAsync(target_buffer->data(), targets.data(),
-                            target_buffer->size_bytes(),
-                            cudaMemcpyHostToDevice, stream_),
+                            target_buffer->size_bytes(), cudaMemcpyHostToDevice,
+                            stream_),
             cudaSuccess);
-  auto loss_layer = CrossEntropyLossLayer::Create(
-      kLogicalVocabularySize, DataType::BF16, stream_);
+  auto loss_layer = CrossEntropyLossLayer::Create(kLogicalVocabularySize,
+                                                  DataType::BF16, stream_);
   ASSERT_TRUE(loss_layer.ok()) << loss_layer.status();
   EXPECT_EQ((*loss_layer)->padded_vocab_size(), kPaddedVocabularySize);
   Tape tape;
@@ -98,14 +97,13 @@ TEST_F(LayersTest, IgnoresPaddedVocabularyColumns) {
   auto losses = (*loss_layer)->fwd(inputs, &tape);
   ASSERT_TRUE(losses.ok()) << losses.status();
   std::vector<float> host_losses(kTestBatchSize);
-  ASSERT_EQ(cudaMemcpyAsync(host_losses.data(), losses->data(),
-                            losses->size_bytes(), cudaMemcpyDeviceToHost,
-                            stream_),
-            cudaSuccess);
+  ASSERT_EQ(
+      cudaMemcpyAsync(host_losses.data(), losses->data(), losses->size_bytes(),
+                      cudaMemcpyDeviceToHost, stream_),
+      cudaSuccess);
   ASSERT_EQ(cudaStreamSynchronize(stream_), cudaSuccess);
   EXPECT_NEAR(host_losses[0], std::log(17.0f), 1e-5f);
 }
-
 
 }  // namespace
 }  // namespace pluto::llm

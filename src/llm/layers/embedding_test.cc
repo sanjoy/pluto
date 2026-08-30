@@ -24,8 +24,8 @@ TEST_F(LayersTest, RejectsFp8UntilScalingIsSpecified) {
 }
 
 TEST_F(LayersTest, RejectsInvalidEmbeddingDimensions) {
-  auto embedding = EmbeddingLookupLayer::Create(
-      0, kTestModelWidth, DataType::FP16, stream_);
+  auto embedding =
+      EmbeddingLookupLayer::Create(0, kTestModelWidth, DataType::FP16, stream_);
   EXPECT_FALSE(embedding.ok());
   EXPECT_EQ(embedding.status().code(), absl::StatusCode::kInvalidArgument);
 }
@@ -66,7 +66,8 @@ TEST_F(LayersTest, LanguageModelingHeadUsesEmbeddingWeightTranspose) {
   auto logits = (*head)->fwd(head_inputs, &head_tape);
   ASSERT_TRUE(logits.ok()) << logits.status();
 
-  std::vector<float> output_gradient(kTestBatchSize * kTestVocabularySize, 0.0f);
+  std::vector<float> output_gradient(kTestBatchSize * kTestVocabularySize,
+                                     0.0f);
   output_gradient[7] = 1.0f;
   auto gradient_buffer =
       Buffer::Allocate(output_gradient.size() * sizeof(float), stream_);
@@ -76,8 +77,7 @@ TEST_F(LayersTest, LanguageModelingHeadUsesEmbeddingWeightTranspose) {
                             cudaMemcpyHostToDevice, stream_),
             cudaSuccess);
   BufferVec head_gradients = {*gradient_buffer};
-  auto hidden_gradient =
-      (*head)->bwd(head_gradients, std::move(head_tape));
+  auto hidden_gradient = (*head)->bwd(head_gradients, std::move(head_tape));
   ASSERT_TRUE(hidden_gradient.ok()) << hidden_gradient.status();
   ASSERT_EQ(hidden_gradient->size(), 1u);
 
@@ -94,11 +94,11 @@ TEST_F(LayersTest, LanguageModelingHeadUsesEmbeddingWeightTranspose) {
                             host_hidden_gradient.size() * sizeof(float),
                             cudaMemcpyDeviceToHost, stream_),
             cudaSuccess);
-  ASSERT_EQ(cudaMemcpyAsync(unchanged_table.data(),
-                            (*embedding)->weight().data(),
-                            unchanged_table.size() * sizeof(float),
-                            cudaMemcpyDeviceToHost, stream_),
-            cudaSuccess);
+  ASSERT_EQ(
+      cudaMemcpyAsync(unchanged_table.data(), (*embedding)->weight().data(),
+                      unchanged_table.size() * sizeof(float),
+                      cudaMemcpyDeviceToHost, stream_),
+      cudaSuccess);
   ASSERT_EQ(cudaMemcpyAsync(table_gradient.data(),
                             (*embedding)->gradients().front().data(),
                             table_gradient.size() * sizeof(float),
@@ -131,8 +131,7 @@ TEST_F(LayersTest, Bf16HeadMasksPhysicalVocabularyPadding) {
   auto head = LanguageModelingHeadLayer::Create(embedding->get());
   ASSERT_TRUE(head.ok()) << head.status();
 
-  std::vector<float> table(
-      kPaddedVocabularySize * kTestModelWidth, 0.0f);
+  std::vector<float> table(kPaddedVocabularySize * kTestModelWidth, 0.0f);
   table[3 * kTestModelWidth + 5] = 2.0f;
   ASSERT_EQ(cudaMemcpyAsync((*embedding)->weights().front().data(),
                             table.data(), table.size() * sizeof(float),
@@ -166,8 +165,8 @@ TEST_F(LayersTest, Bf16HeadMasksPhysicalVocabularyPadding) {
             cudaSuccess);
   ASSERT_EQ(cudaStreamSynchronize(stream_), cudaSuccess);
   EXPECT_FLOAT_EQ(host_logits[3], 4.0f);
-  for (int token = kLogicalVocabularySize;
-       token < kPaddedVocabularySize; ++token) {
+  for (int token = kLogicalVocabularySize; token < kPaddedVocabularySize;
+       ++token) {
     EXPECT_LT(host_logits[token], -1e30f);
   }
 }
@@ -198,10 +197,10 @@ TEST_F(LayersTest, PositionEmbeddingRepeatsAtRuntimeContextLength) {
   auto output = (*positions)->fwd(inputs, &tape);
   ASSERT_TRUE(output.ok()) << output.status();
   std::vector<float> host_output(input.size());
-  ASSERT_EQ(cudaMemcpyAsync(host_output.data(), output->data(),
-                            output->size_bytes(), cudaMemcpyDeviceToHost,
-                            stream_),
-            cudaSuccess);
+  ASSERT_EQ(
+      cudaMemcpyAsync(host_output.data(), output->data(), output->size_bytes(),
+                      cudaMemcpyDeviceToHost, stream_),
+      cudaSuccess);
   ASSERT_EQ(cudaStreamSynchronize(stream_), cudaSuccess);
 
   for (int row = 0; row < kTestBatchSize; ++row) {

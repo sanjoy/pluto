@@ -121,15 +121,18 @@ absl::StatusOr<std::unique_ptr<DocumentFileReader>> DocumentFileReader::Open(
   std::unique_ptr<Impl> impl(new Impl);
   impl->file_descriptor = open(path.c_str(), O_RDONLY | O_CLOEXEC);
   if (impl->file_descriptor < 0) {
-    return absl::ErrnoToStatus(errno, absl::StrCat("cannot open ", path.string()));
+    return absl::ErrnoToStatus(errno,
+                               absl::StrCat("cannot open ", path.string()));
   }
 
   struct stat attributes {};
   if (fstat(impl->file_descriptor, &attributes) != 0) {
-    return absl::ErrnoToStatus(errno, absl::StrCat("cannot stat ", path.string()));
+    return absl::ErrnoToStatus(errno,
+                               absl::StrCat("cannot stat ", path.string()));
   }
   if (attributes.st_size < 4) {
-    return absl::DataLossError("tokenized-document file is shorter than its header");
+    return absl::DataLossError(
+        "tokenized-document file is shorter than its header");
   }
   impl->file_size = static_cast<uint64_t>(attributes.st_size);
 
@@ -138,21 +141,23 @@ absl::StatusOr<std::unique_ptr<DocumentFileReader>> DocumentFileReader::Open(
   const uint32_t document_count = LoadLittle32(count_bytes);
   const uint64_t header_size = 4 + 4 * static_cast<uint64_t>(document_count);
   if (header_size > impl->file_size) {
-    return absl::DataLossError("document-length table extends past end of file");
+    return absl::DataLossError(
+        "document-length table extends past end of file");
   }
 
-  std::vector<uint8_t> encoded_lengths(
-      4 * static_cast<size_t>(document_count));
-  RETURN_IF_ERROR(ReadExactly(impl->file_descriptor, 4,
-                              absl::MakeSpan(encoded_lengths)));
+  std::vector<uint8_t> encoded_lengths(4 * static_cast<size_t>(document_count));
+  RETURN_IF_ERROR(
+      ReadExactly(impl->file_descriptor, 4, absl::MakeSpan(encoded_lengths)));
   impl->lengths.resize(document_count);
   impl->offsets.resize(static_cast<size_t>(document_count) + 1);
   impl->offsets[0] = header_size;
   for (uint32_t index = 0; index < document_count; ++index) {
     impl->lengths[index] = LoadLittle32(encoded_lengths.data() + 4 * index);
-    const uint64_t token_bytes = 2 * static_cast<uint64_t>(impl->lengths[index]);
+    const uint64_t token_bytes =
+        2 * static_cast<uint64_t>(impl->lengths[index]);
     if (token_bytes > impl->file_size - impl->offsets[index]) {
-      return absl::DataLossError("document token payload extends past end of file");
+      return absl::DataLossError(
+          "document token payload extends past end of file");
     }
     impl->offsets[index + 1] = impl->offsets[index] + token_bytes;
   }
@@ -232,11 +237,13 @@ absl::StatusOr<std::unique_ptr<DocumentFileWriter>> DocumentFileWriter::Create(
   impl->file_descriptor = mkstemp(writable_name.data());
   if (impl->file_descriptor < 0) {
     return absl::ErrnoToStatus(
-        errno, absl::StrCat("cannot create temporary file for ", path.string()));
+        errno,
+        absl::StrCat("cannot create temporary file for ", path.string()));
   }
   impl->temporary_path = writable_name.data();
   if (fcntl(impl->file_descriptor, F_SETFD, FD_CLOEXEC) != 0) {
-    return absl::ErrnoToStatus(errno, "cannot mark temporary file close-on-exec");
+    return absl::ErrnoToStatus(errno,
+                               "cannot mark temporary file close-on-exec");
   }
 
   const uint64_t header_size = 4 + 4 * static_cast<uint64_t>(num_documents);
@@ -244,7 +251,8 @@ absl::StatusOr<std::unique_ptr<DocumentFileWriter>> DocumentFileWriter::Create(
     return absl::ResourceExhaustedError("document-length table is too large");
   }
   if (ftruncate(impl->file_descriptor, static_cast<off_t>(header_size)) != 0 ||
-      lseek(impl->file_descriptor, static_cast<off_t>(header_size), SEEK_SET) < 0) {
+      lseek(impl->file_descriptor, static_cast<off_t>(header_size), SEEK_SET) <
+          0) {
     return absl::ErrnoToStatus(errno, "cannot reserve document-length table");
   }
 

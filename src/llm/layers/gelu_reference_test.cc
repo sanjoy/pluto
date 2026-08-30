@@ -1,5 +1,3 @@
-#include "src/llm/layers/gelu.h"
-
 #include <cmath>
 #include <cstddef>
 #include <vector>
@@ -7,6 +5,7 @@
 #include "absl/status/status.h"
 #include "gtest/gtest.h"
 #include "src/llm/layer.h"
+#include "src/llm/layers/gelu.h"
 #include "src/llm/layers/reference_test_util.h"
 
 namespace pluto::llm {
@@ -40,15 +39,16 @@ TEST_F(LayerReferenceTest, ForwardAndBackwardMatchAcrossDomainAndTypes) {
           (*reference_layer)->fwd(reference_inputs, &reference_tape);
       ASSERT_TRUE(device_output.ok()) << device_output.status();
       ASSERT_TRUE(reference_output.ok()) << reference_output.status();
-      EXPECT_TRUE(ActivationBuffersNear(*device_output, *reference_output,
-                                        type, 2e-5f, 2e-5f));
+      EXPECT_TRUE(ActivationBuffersNear(*device_output, *reference_output, type,
+                                        2e-5f, 2e-5f));
 
       BufferVec device_gradients = {gradient_pair->device};
       HostBufferVec reference_gradients = {gradient_pair->host};
       auto device_input =
           (*device_layer)->bwd(device_gradients, std::move(device_tape));
-      auto reference_input = (*reference_layer)->bwd(
-          reference_gradients, std::move(reference_tape));
+      auto reference_input =
+          (*reference_layer)
+              ->bwd(reference_gradients, std::move(reference_tape));
       ASSERT_TRUE(device_input.ok()) << device_input.status();
       ASSERT_TRUE(reference_input.ok()) << reference_input.status();
       EXPECT_TRUE(FloatBuffersNear(device_input->front(),

@@ -22,13 +22,13 @@ namespace {
 class FakeModel final : public Layer {
  public:
   absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs,
-                              Tape* tape) const override {
+                             Tape* tape) const override {
     ++forward_calls;
     return inputs[0];
   }
 
-  absl::StatusOr<BufferVec> bwd(
-      absl::Span<const Buffer> output_gradients, Tape tape) override {
+  absl::StatusOr<BufferVec> bwd(absl::Span<const Buffer> output_gradients,
+                                Tape tape) override {
     ++backward_calls;
     return BufferVec{};
   }
@@ -44,7 +44,8 @@ class FakeLoss final : public Layer {
  public:
   static absl::StatusOr<std::unique_ptr<FakeLoss>> Create(
       absl::Span<const float> losses, cudaStream_t stream) {
-    auto device_losses = Buffer::Allocate(losses.size() * sizeof(float), stream);
+    auto device_losses =
+        Buffer::Allocate(losses.size() * sizeof(float), stream);
     if (!device_losses.ok()) return device_losses.status();
     auto gradient = Buffer::Allocate(losses.size() * sizeof(float), stream);
     if (!gradient.ok()) return gradient.status();
@@ -59,13 +60,13 @@ class FakeLoss final : public Layer {
   }
 
   absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs,
-                              Tape* tape) const override {
+                             Tape* tape) const override {
     ++forward_calls;
     return losses_;
   }
 
-  absl::StatusOr<BufferVec> bwd(
-      absl::Span<const Buffer> output_gradients, Tape tape) override {
+  absl::StatusOr<BufferVec> bwd(absl::Span<const Buffer> output_gradients,
+                                Tape tape) override {
     ++backward_calls;
     return BufferVec{gradient_};
   }
@@ -142,15 +143,14 @@ TEST_F(TrainerTest, EvaluateAveragesLossesAndResetsDataset) {
   ASSERT_TRUE(loss.ok()) << loss.status();
   ASSERT_TRUE(data.ok()) << data.status();
 
-  auto mean = Evaluate(model, **loss, **data,
-                       EvaluationOptions{.batches = 2});
+  auto mean = Evaluate(model, **loss, **data, EvaluationOptions{.batches = 2});
   ASSERT_TRUE(mean.ok()) << mean.status();
   EXPECT_DOUBLE_EQ(*mean, 2.5);
   EXPECT_EQ(model.forward_calls, 2);
   EXPECT_EQ((*loss)->forward_calls, 2);
 
-  auto repeated = Evaluate(model, **loss, **data,
-                           EvaluationOptions{.batches = 2});
+  auto repeated =
+      Evaluate(model, **loss, **data, EvaluationOptions{.batches = 2});
   ASSERT_TRUE(repeated.ok()) << repeated.status();
   EXPECT_DOUBLE_EQ(*repeated, *mean);
 }
@@ -163,8 +163,8 @@ TEST_F(TrainerTest, TrainRunsForwardBackwardAndOptimizerSteps) {
   ASSERT_TRUE(loss.ok()) << loss.status();
   ASSERT_TRUE(data.ok()) << data.status();
 
-  auto result = Train(model, **loss, optimizer, **data,
-                      TrainingOptions{.max_steps = 3});
+  auto result =
+      Train(model, **loss, optimizer, **data, TrainingOptions{.max_steps = 3});
   ASSERT_TRUE(result.ok()) << result.status();
   EXPECT_EQ(result->steps_completed, 3);
   EXPECT_FALSE(result->reached_stop_loss);
@@ -186,13 +186,13 @@ TEST_F(TrainerTest, StopsBeforeFirstUpdateWhenInitialEvaluationQualifies) {
   ASSERT_TRUE(training_data.ok()) << training_data.status();
   ASSERT_TRUE(evaluation_data.ok()) << evaluation_data.status();
 
-  auto result = Train(
-      model, **loss, optimizer, **training_data,
-      TrainingOptions{.max_steps = 3,
-                      .evaluation_interval = 1,
-                      .evaluation_batches = 1,
-                      .stop_loss = 2.5,
-                      .evaluation_tokens = evaluation_data->get()});
+  auto result =
+      Train(model, **loss, optimizer, **training_data,
+            TrainingOptions{.max_steps = 3,
+                            .evaluation_interval = 1,
+                            .evaluation_batches = 1,
+                            .stop_loss = 2.5,
+                            .evaluation_tokens = evaluation_data->get()});
   ASSERT_TRUE(result.ok()) << result.status();
   EXPECT_EQ(result->steps_completed, 0);
   EXPECT_TRUE(result->reached_stop_loss);
@@ -209,14 +209,14 @@ TEST_F(TrainerTest, StopsAfterUpdateWhenPeriodicEvaluationQualifies) {
   ASSERT_TRUE(training_data.ok()) << training_data.status();
   ASSERT_TRUE(evaluation_data.ok()) << evaluation_data.status();
 
-  auto result = Train(
-      model, **loss, optimizer, **training_data,
-      TrainingOptions{.max_steps = 3,
-                      .evaluation_interval = 1,
-                      .evaluation_batches = 1,
-                      .stop_loss = 2.5,
-                      .evaluation_tokens = evaluation_data->get(),
-                      .initial_loss = 3.0});
+  auto result =
+      Train(model, **loss, optimizer, **training_data,
+            TrainingOptions{.max_steps = 3,
+                            .evaluation_interval = 1,
+                            .evaluation_batches = 1,
+                            .stop_loss = 2.5,
+                            .evaluation_tokens = evaluation_data->get(),
+                            .initial_loss = 3.0});
   ASSERT_TRUE(result.ok()) << result.status();
   EXPECT_EQ(result->steps_completed, 1);
   EXPECT_TRUE(result->reached_stop_loss);
@@ -232,12 +232,11 @@ TEST_F(TrainerTest, RejectsInvalidOptions) {
   ASSERT_TRUE(loss.ok()) << loss.status();
   ASSERT_TRUE(data.ok()) << data.status();
 
-  EXPECT_FALSE(Evaluate(model, **loss, **data,
-                        EvaluationOptions{.batches = 0})
-                   .ok());
-  EXPECT_FALSE(Train(model, **loss, optimizer, **data,
-                     TrainingOptions{.max_steps = -1})
-                   .ok());
+  EXPECT_FALSE(
+      Evaluate(model, **loss, **data, EvaluationOptions{.batches = 0}).ok());
+  EXPECT_FALSE(
+      Train(model, **loss, optimizer, **data, TrainingOptions{.max_steps = -1})
+          .ok());
 }
 
 }  // namespace

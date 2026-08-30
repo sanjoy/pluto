@@ -1,14 +1,14 @@
 #include "src/tokenization/fineweb_converter.h"
 
-#include <cstdlib>
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <string>
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "src/tokenization/document_file.h"
 #include "src/tokenization/detokenizer.h"
+#include "src/tokenization/document_file.h"
 #include "src/tokenization/tokenizer.h"
 
 namespace pluto::tokenized {
@@ -44,7 +44,8 @@ TEST(FineWebConverterTest, ConvertsAndRoundTripsEveryFixtureDocument) {
   FineWebConversionOptions options;
   options.batch_size = 1;
   ASSERT_TRUE(
-      ConvertFineWebParquetFile(FixturePath(), output, **encoder, options).ok());
+      ConvertFineWebParquetFile(FixturePath(), output, **encoder, options)
+          .ok());
 
   auto reader = DocumentFileReader::Open(output);
   ASSERT_TRUE(reader.ok()) << reader.status();
@@ -69,7 +70,8 @@ TEST(FineWebConverterTest, RejectsZeroBatchSizeWithoutPublishingOutput) {
   FineWebConversionOptions options;
   options.batch_size = 0;
   EXPECT_FALSE(
-      ConvertFineWebParquetFile(FixturePath(), output, **encoder, options).ok());
+      ConvertFineWebParquetFile(FixturePath(), output, **encoder, options)
+          .ok());
   EXPECT_FALSE(std::filesystem::exists(output));
 }
 

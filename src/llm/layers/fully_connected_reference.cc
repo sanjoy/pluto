@@ -1,5 +1,3 @@
-#include "src/llm/layers/fully_connected.h"
-
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -14,6 +12,7 @@
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "src/common/status_macros.h"
+#include "src/llm/layers/fully_connected.h"
 #include "src/llm/layers/reference_internal.h"
 
 namespace pluto::llm {
@@ -25,15 +24,14 @@ FullyConnectedLayerReference::Create(int input_dim, int output_dim,
   RETURN_IF_ERROR(ri::ValidateComputeType(data_type));
   RETURN_IF_ERROR(ri::ValidateTiledExtent(input_dim, "input_dim"));
   RETURN_IF_ERROR(ri::ValidateTiledExtent(output_dim, "output_dim"));
-  ASSIGN_OR_RETURN(auto matrix, ri::AllocateFloats(
-                                    static_cast<size_t>(input_dim) * output_dim,
-                                    true));
+  ASSIGN_OR_RETURN(
+      auto matrix,
+      ri::AllocateFloats(static_cast<size_t>(input_dim) * output_dim, true));
   ASSIGN_OR_RETURN(auto bias, ri::AllocateFloats(output_dim, true));
-  ASSIGN_OR_RETURN(auto matrix_gradient,
-                   ri::AllocateFloats(
-                       static_cast<size_t>(input_dim) * output_dim, true));
-  ASSIGN_OR_RETURN(auto bias_gradient,
-                   ri::AllocateFloats(output_dim, true));
+  ASSIGN_OR_RETURN(
+      auto matrix_gradient,
+      ri::AllocateFloats(static_cast<size_t>(input_dim) * output_dim, true));
+  ASSIGN_OR_RETURN(auto bias_gradient, ri::AllocateFloats(output_dim, true));
   return std::unique_ptr<FullyConnectedLayerReference>(
       new FullyConnectedLayerReference(
           input_dim, output_dim, data_type, std::move(matrix), std::move(bias),
@@ -73,14 +71,12 @@ absl::StatusOr<HostBuffer> FullyConnectedLayerReference::fwd(
     return absl::InvalidArgumentError(
         "FullyConnectedLayerReference fwd expects one input and a tape");
   }
-  ASSIGN_OR_RETURN(
-      int rows,
-      ri::ActivationRows(inputs[0], input_dim_, output_type_, "dense input"));
+  ASSIGN_OR_RETURN(int rows, ri::ActivationRows(inputs[0], input_dim_,
+                                                output_type_, "dense input"));
   RETURN_IF_ERROR(ri::ValidateTiledExtent(rows, "dense rows"));
-  ASSIGN_OR_RETURN(
-      auto output,
-      ri::AllocateActivation(static_cast<size_t>(rows) * output_dim_,
-                             output_type_));
+  ASSIGN_OR_RETURN(auto output,
+                   ri::AllocateActivation(
+                       static_cast<size_t>(rows) * output_dim_, output_type_));
   const auto* matrix = static_cast<const float*>(weights_[0].data());
   const auto* bias = static_cast<const float*>(weights_[1].data());
 
@@ -118,15 +114,13 @@ absl::StatusOr<HostBufferVec> FullyConnectedLayerReference::bwd(
     return absl::InvalidArgumentError(
         "FullyConnectedLayerReference bwd received incompatible state");
   }
-  ASSIGN_OR_RETURN(
-      int rows,
-      ri::MatrixRows(output_gradients[0], output_dim_,
-                     "dense output gradient"));
-  RETURN_IF_ERROR(ri::ValidateBuffer(
-      tape.intermediates[0],
-      static_cast<size_t>(rows) * input_dim_ *
-          ri::ActivationElementBytes(output_type_),
-      "dense saved input"));
+  ASSIGN_OR_RETURN(int rows, ri::MatrixRows(output_gradients[0], output_dim_,
+                                            "dense output gradient"));
+  RETURN_IF_ERROR(
+      ri::ValidateBuffer(tape.intermediates[0],
+                         static_cast<size_t>(rows) * input_dim_ *
+                             ri::ActivationElementBytes(output_type_),
+                         "dense saved input"));
   ASSIGN_OR_RETURN(
       auto input_gradient,
       ri::AllocateFloats(static_cast<size_t>(rows) * input_dim_, true));

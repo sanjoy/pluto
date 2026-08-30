@@ -1,5 +1,3 @@
-#include "src/llm/layers/cross_entropy_loss.h"
-
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -11,6 +9,7 @@
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "src/common/status_macros.h"
+#include "src/llm/layers/cross_entropy_loss.h"
 #include "src/llm/layers/reference_internal.h"
 
 namespace pluto::llm {
@@ -34,12 +33,11 @@ absl::StatusOr<HostBuffer> CrossEntropyLossLayerReference::fwd(
     return absl::InvalidArgumentError(
         "CrossEntropyLossLayerReference expects logits, targets, and a tape");
   }
-  ASSIGN_OR_RETURN(int rows,
-                   ri::MatrixRows(inputs[0], padded_vocab_size_,
-                                  "cross-entropy logits"));
-  RETURN_IF_ERROR(ri::ValidateBuffer(
-      inputs[1], static_cast<size_t>(rows) * sizeof(int),
-      "cross-entropy targets"));
+  ASSIGN_OR_RETURN(int rows, ri::MatrixRows(inputs[0], padded_vocab_size_,
+                                            "cross-entropy logits"));
+  RETURN_IF_ERROR(ri::ValidateBuffer(inputs[1],
+                                     static_cast<size_t>(rows) * sizeof(int),
+                                     "cross-entropy targets"));
   ASSIGN_OR_RETURN(auto losses, ri::AllocateFloats(rows));
   const auto* logits = static_cast<const float*>(inputs[0].data());
   const auto* targets = static_cast<const int*>(inputs[1].data());
@@ -52,8 +50,8 @@ absl::StatusOr<HostBuffer> CrossEntropyLossLayerReference::fwd(
     if (targets[row] < 0 || targets[row] >= vocab_size_) {
       return absl::InvalidArgumentError("target token is outside vocabulary");
     }
-    const float* row_logits = logits +
-                              static_cast<size_t>(row) * padded_vocab_size_;
+    const float* row_logits =
+        logits + static_cast<size_t>(row) * padded_vocab_size_;
     float maximum = -std::numeric_limits<float>::infinity();
     for (int token = 0; token < padded_vocab_size_; ++token) {
       maximum = std::max(maximum, row_logits[token]);
@@ -78,20 +76,17 @@ absl::StatusOr<HostBufferVec> CrossEntropyLossLayerReference::bwd(
   ASSIGN_OR_RETURN(int rows,
                    ri::MatrixRows(tape.intermediates[0], padded_vocab_size_,
                                   "cross-entropy saved logits"));
-  RETURN_IF_ERROR(ri::ValidateBuffer(
-      tape.intermediates[1], static_cast<size_t>(rows) * sizeof(int),
-      "cross-entropy saved targets"));
-  ASSIGN_OR_RETURN(auto gradient,
-                   ri::AllocateFloats(static_cast<size_t>(rows) *
-                                      padded_vocab_size_));
-  const auto* logits =
-      static_cast<const float*>(tape.intermediates[0].data());
-  const auto* targets =
-      static_cast<const int*>(tape.intermediates[1].data());
+  RETURN_IF_ERROR(ri::ValidateBuffer(tape.intermediates[1],
+                                     static_cast<size_t>(rows) * sizeof(int),
+                                     "cross-entropy saved targets"));
+  ASSIGN_OR_RETURN(auto gradient, ri::AllocateFloats(static_cast<size_t>(rows) *
+                                                     padded_vocab_size_));
+  const auto* logits = static_cast<const float*>(tape.intermediates[0].data());
+  const auto* targets = static_cast<const int*>(tape.intermediates[1].data());
   auto* d_logits = static_cast<float*>(gradient.data());
   for (int row = 0; row < rows; ++row) {
-    const float* row_logits = logits +
-                              static_cast<size_t>(row) * padded_vocab_size_;
+    const float* row_logits =
+        logits + static_cast<size_t>(row) * padded_vocab_size_;
     float maximum = -std::numeric_limits<float>::infinity();
     for (int token = 0; token < padded_vocab_size_; ++token) {
       maximum = std::max(maximum, row_logits[token]);

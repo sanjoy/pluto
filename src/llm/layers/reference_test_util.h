@@ -35,32 +35,29 @@ inline absl::Status TestCudaStatus(cudaError_t error, const char* operation) {
 }
 
 template <class Element>
-absl::StatusOr<BufferPair> MakeRawBufferPair(
-    absl::Span<const Element> values, cudaStream_t stream) {
+absl::StatusOr<BufferPair> MakeRawBufferPair(absl::Span<const Element> values,
+                                             cudaStream_t stream) {
   static_assert(std::is_trivially_copyable_v<Element>);
   const size_t bytes = values.size() * sizeof(Element);
   ASSIGN_OR_RETURN(auto host, HostBuffer::Allocate(bytes));
   if (bytes != 0) std::memcpy(host.data(), values.data(), bytes);
   ASSIGN_OR_RETURN(auto device, Buffer::Allocate(bytes, stream));
-  RETURN_IF_ERROR(TestCudaStatus(
-      cudaMemcpyAsync(device.data(), host.data(), bytes,
-                      cudaMemcpyHostToDevice, stream),
-      "copy test buffer to device"));
+  RETURN_IF_ERROR(
+      TestCudaStatus(cudaMemcpyAsync(device.data(), host.data(), bytes,
+                                     cudaMemcpyHostToDevice, stream),
+                     "copy test buffer to device"));
   return BufferPair{std::move(device), std::move(host)};
 }
 
 inline absl::StatusOr<BufferPair> MakeActivationBufferPair(
     absl::Span<const float> values, DataType data_type, cudaStream_t stream) {
   RETURN_IF_ERROR(reference_internal::ValidateComputeType(data_type));
-  ASSIGN_OR_RETURN(
-      auto host,
-      reference_internal::AllocateActivation(values.size(), data_type));
+  ASSIGN_OR_RETURN(auto host, reference_internal::AllocateActivation(
+                                  values.size(), data_type));
   for (size_t index = 0; index < values.size(); ++index) {
-    reference_internal::StoreActivation(&host, index, data_type,
-                                        values[index]);
+    reference_internal::StoreActivation(&host, index, data_type, values[index]);
   }
-  ASSIGN_OR_RETURN(auto device,
-                   Buffer::Allocate(host.size_bytes(), stream));
+  ASSIGN_OR_RETURN(auto device, Buffer::Allocate(host.size_bytes(), stream));
   RETURN_IF_ERROR(TestCudaStatus(
       cudaMemcpyAsync(device.data(), host.data(), host.size_bytes(),
                       cudaMemcpyHostToDevice, stream),
@@ -68,8 +65,7 @@ inline absl::StatusOr<BufferPair> MakeActivationBufferPair(
   return BufferPair{std::move(device), std::move(host)};
 }
 
-inline absl::Status SetFloatBufferPair(const Buffer& device,
-                                       HostBuffer* host,
+inline absl::Status SetFloatBufferPair(const Buffer& device, HostBuffer* host,
                                        absl::Span<const float> values,
                                        cudaStream_t stream) {
   const size_t bytes = values.size() * sizeof(float);
@@ -77,10 +73,9 @@ inline absl::Status SetFloatBufferPair(const Buffer& device,
     return absl::InvalidArgumentError("parameter pair has the wrong size");
   }
   std::memcpy(host->data(), values.data(), bytes);
-  return TestCudaStatus(
-      cudaMemcpyAsync(device.data(), values.data(), bytes,
-                      cudaMemcpyHostToDevice, stream),
-      "copy paired parameter to device");
+  return TestCudaStatus(cudaMemcpyAsync(device.data(), values.data(), bytes,
+                                        cudaMemcpyHostToDevice, stream),
+                        "copy paired parameter to device");
 }
 
 inline absl::Status ZeroBufferPair(const Buffer& device, HostBuffer* host,
@@ -121,22 +116,19 @@ inline absl::StatusOr<std::vector<float>> ReadDeviceActivations(
       "copy activation device buffer to host"));
   RETURN_IF_ERROR(TestCudaStatus(cudaStreamSynchronize(stream),
                                  "synchronize reference test"));
-  const size_t elements =
-      buffer.size_bytes() /
-      reference_internal::ActivationElementBytes(data_type);
+  const size_t elements = buffer.size_bytes() /
+                          reference_internal::ActivationElementBytes(data_type);
   std::vector<float> values(elements);
   for (size_t index = 0; index < elements; ++index) {
-    values[index] =
-        reference_internal::LoadActivation(host, index, data_type);
+    values[index] = reference_internal::LoadActivation(host, index, data_type);
   }
   return values;
 }
 
 inline std::vector<float> ReadHostActivations(const HostBuffer& buffer,
                                               DataType data_type) {
-  const size_t elements =
-      buffer.size_bytes() /
-      reference_internal::ActivationElementBytes(data_type);
+  const size_t elements = buffer.size_bytes() /
+                          reference_internal::ActivationElementBytes(data_type);
   std::vector<float> values(elements);
   for (size_t index = 0; index < elements; ++index) {
     values[index] =
@@ -151,8 +143,7 @@ inline testing::AssertionResult VectorsNear(absl::Span<const float> actual,
                                             float relative_tolerance = 0.0f) {
   if (actual.size() != expected.size()) {
     return testing::AssertionFailure()
-           << "size mismatch: " << actual.size() << " vs "
-           << expected.size();
+           << "size mismatch: " << actual.size() << " vs " << expected.size();
   }
   for (size_t index = 0; index < actual.size(); ++index) {
     if (actual[index] == expected[index]) continue;

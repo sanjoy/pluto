@@ -1,5 +1,3 @@
-#include "src/llm/layers/embedding.h"
-
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
@@ -13,6 +11,7 @@
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "src/common/status_macros.h"
+#include "src/llm/layers/embedding.h"
 #include "src/llm/layers/reference_internal.h"
 
 namespace pluto::llm {
@@ -80,10 +79,9 @@ absl::StatusOr<HostBuffer> EmbeddingLookupLayerReference::fwd(
   }
   ASSIGN_OR_RETURN(
       int rows, ri::ElementCount(inputs[0], sizeof(int), "embedding tokens"));
-  ASSIGN_OR_RETURN(
-      auto output,
-      ri::AllocateActivation(static_cast<size_t>(rows) * embedding_dim_,
-                             output_type_));
+  ASSIGN_OR_RETURN(auto output, ri::AllocateActivation(
+                                    static_cast<size_t>(rows) * embedding_dim_,
+                                    output_type_));
   const auto* tokens = static_cast<const int*>(inputs[0].data());
   const auto* table = static_cast<const float*>(weight_.data());
   // A lookup really is just this nested loop. Keeping it scalar also makes
@@ -117,10 +115,8 @@ absl::StatusOr<HostBufferVec> EmbeddingLookupLayerReference::bwd(
       output_gradients[0],
       static_cast<size_t>(rows) * embedding_dim_ * sizeof(float),
       "embedding output gradient"));
-  const auto* tokens =
-      static_cast<const int*>(tape.intermediates[0].data());
-  const auto* d_output =
-      static_cast<const float*>(output_gradients[0].data());
+  const auto* tokens = static_cast<const int*>(tape.intermediates[0].data());
+  const auto* d_output = static_cast<const float*>(output_gradients[0].data());
   auto* d_table = static_cast<float*>(gradient_.data());
   // Repeated tokens add into the same table row, matching device atomics.
   for (int row = 0; row < rows; ++row) {
@@ -150,14 +146,12 @@ absl::StatusOr<HostBuffer> LanguageModelingHeadLayerReference::fwd(
         "LanguageModelingHeadLayerReference fwd expects one input and a tape");
   }
   ASSIGN_OR_RETURN(
-      int rows,
-      ri::ActivationRows(inputs[0], embedding_->embedding_dim_,
-                         embedding_->output_type_, "LM-head input"));
+      int rows, ri::ActivationRows(inputs[0], embedding_->embedding_dim_,
+                                   embedding_->output_type_, "LM-head input"));
   RETURN_IF_ERROR(ri::ValidateTiledExtent(rows, "LM-head rows"));
-  ASSIGN_OR_RETURN(
-      auto logits,
-      ri::AllocateFloats(static_cast<size_t>(rows) *
-                         embedding_->padded_vocab_size_));
+  ASSIGN_OR_RETURN(auto logits,
+                   ri::AllocateFloats(static_cast<size_t>(rows) *
+                                      embedding_->padded_vocab_size_));
   const auto* table = static_cast<const float*>(embedding_->weight_.data());
   auto* output = static_cast<float*>(logits.data());
 
@@ -167,17 +161,18 @@ absl::StatusOr<HostBuffer> LanguageModelingHeadLayerReference::fwd(
     for (int token = 0; token < embedding_->padded_vocab_size_; ++token) {
       float sum = 0.0f;
       for (int column = 0; column < embedding_->embedding_dim_; ++column) {
-        sum += ri::QuantizeMmaOperand(
-                   ri::LoadActivation(
-                       inputs[0], static_cast<size_t>(row) *
-                                          embedding_->embedding_dim_ + column,
-                       embedding_->output_type_),
-                   embedding_->output_type_) *
-               ri::QuantizeMmaOperand(
-                   table[static_cast<size_t>(token) *
-                             embedding_->embedding_dim_ +
-                         column],
-                   embedding_->output_type_);
+        sum +=
+            ri::QuantizeMmaOperand(
+                ri::LoadActivation(
+                    inputs[0],
+                    static_cast<size_t>(row) * embedding_->embedding_dim_ +
+                        column,
+                    embedding_->output_type_),
+                embedding_->output_type_) *
+            ri::QuantizeMmaOperand(
+                table[static_cast<size_t>(token) * embedding_->embedding_dim_ +
+                      column],
+                embedding_->output_type_);
       }
       output[static_cast<size_t>(row) * embedding_->padded_vocab_size_ +
              token] = token < embedding_->vocab_size_
@@ -196,21 +191,18 @@ absl::StatusOr<HostBufferVec> LanguageModelingHeadLayerReference::bwd(
     return absl::InvalidArgumentError(
         "LanguageModelingHeadLayerReference bwd received incompatible state");
   }
-  ASSIGN_OR_RETURN(
-      int rows,
-      ri::MatrixRows(output_gradients[0], embedding_->padded_vocab_size_,
-                     "LM-head output gradient"));
+  ASSIGN_OR_RETURN(int rows, ri::MatrixRows(output_gradients[0],
+                                            embedding_->padded_vocab_size_,
+                                            "LM-head output gradient"));
   RETURN_IF_ERROR(ri::ValidateBuffer(
       tape.intermediates[0],
       static_cast<size_t>(rows) * embedding_->embedding_dim_ *
           ri::ActivationElementBytes(embedding_->output_type_),
       "LM-head saved input"));
-  ASSIGN_OR_RETURN(
-      auto input_gradient,
-      ri::AllocateFloats(static_cast<size_t>(rows) *
-                         embedding_->embedding_dim_));
-  const auto* d_output =
-      static_cast<const float*>(output_gradients[0].data());
+  ASSIGN_OR_RETURN(auto input_gradient,
+                   ri::AllocateFloats(static_cast<size_t>(rows) *
+                                      embedding_->embedding_dim_));
+  const auto* d_output = static_cast<const float*>(output_gradients[0].data());
   const auto* table = static_cast<const float*>(embedding_->weight_.data());
   auto* d_input = static_cast<float*>(input_gradient.data());
   auto* d_table = static_cast<float*>(embedding_->gradient_.data());
@@ -221,37 +213,36 @@ absl::StatusOr<HostBufferVec> LanguageModelingHeadLayerReference::bwd(
     for (int column = 0; column < embedding_->embedding_dim_; ++column) {
       float sum = 0.0f;
       for (int token = 0; token < embedding_->padded_vocab_size_; ++token) {
-        sum += ri::QuantizeMmaOperand(
-                   d_output[static_cast<size_t>(row) *
-                                embedding_->padded_vocab_size_ +
-                            token],
-                   embedding_->output_type_) *
-               ri::QuantizeMmaOperand(
-                   table[static_cast<size_t>(token) *
-                             embedding_->embedding_dim_ +
-                         column],
-                   embedding_->output_type_);
+        sum +=
+            ri::QuantizeMmaOperand(d_output[static_cast<size_t>(row) *
+                                                embedding_->padded_vocab_size_ +
+                                            token],
+                                   embedding_->output_type_) *
+            ri::QuantizeMmaOperand(
+                table[static_cast<size_t>(token) * embedding_->embedding_dim_ +
+                      column],
+                embedding_->output_type_);
       }
-      d_input[static_cast<size_t>(row) * embedding_->embedding_dim_ +
-              column] = sum;
+      d_input[static_cast<size_t>(row) * embedding_->embedding_dim_ + column] =
+          sum;
     }
   }
   for (int token = 0; token < embedding_->padded_vocab_size_; ++token) {
     for (int column = 0; column < embedding_->embedding_dim_; ++column) {
       float sum = 0.0f;
       for (int row = 0; row < rows; ++row) {
-        sum += ri::QuantizeMmaOperand(
-                   d_output[static_cast<size_t>(row) *
-                                embedding_->padded_vocab_size_ +
-                            token],
-                   embedding_->output_type_) *
-               ri::QuantizeMmaOperand(
-                   ri::LoadActivation(
-                       tape.intermediates[0],
-                       static_cast<size_t>(row) * embedding_->embedding_dim_ +
-                           column,
-                       embedding_->output_type_),
-                   embedding_->output_type_);
+        sum +=
+            ri::QuantizeMmaOperand(d_output[static_cast<size_t>(row) *
+                                                embedding_->padded_vocab_size_ +
+                                            token],
+                                   embedding_->output_type_) *
+            ri::QuantizeMmaOperand(
+                ri::LoadActivation(
+                    tape.intermediates[0],
+                    static_cast<size_t>(row) * embedding_->embedding_dim_ +
+                        column,
+                    embedding_->output_type_),
+                embedding_->output_type_);
       }
       d_table[static_cast<size_t>(token) * embedding_->embedding_dim_ +
               column] += sum;
@@ -268,14 +259,13 @@ PositionEmbeddingLayerReference::Create(int context_length, int embedding_dim,
     return absl::InvalidArgumentError("context_length must be positive");
   }
   RETURN_IF_ERROR(ri::ValidateTiledExtent(embedding_dim, "embedding_dim"));
-  const size_t elements =
-      static_cast<size_t>(context_length) * embedding_dim;
+  const size_t elements = static_cast<size_t>(context_length) * embedding_dim;
   ASSIGN_OR_RETURN(auto weight, ri::AllocateFloats(elements, true));
   ASSIGN_OR_RETURN(auto gradient, ri::AllocateFloats(elements, true));
   return std::unique_ptr<PositionEmbeddingLayerReference>(
-      new PositionEmbeddingLayerReference(
-          context_length, embedding_dim, data_type, std::move(weight),
-          std::move(gradient)));
+      new PositionEmbeddingLayerReference(context_length, embedding_dim,
+                                          data_type, std::move(weight),
+                                          std::move(gradient)));
 }
 
 absl::Status PositionEmbeddingLayerReference::InitializeNormal(
@@ -292,10 +282,9 @@ absl::StatusOr<HostBuffer> PositionEmbeddingLayerReference::fwd(
   ASSIGN_OR_RETURN(int rows,
                    ri::ActivationRows(inputs[0], embedding_dim_, output_type_,
                                       "position-embedding input"));
-  ASSIGN_OR_RETURN(auto output,
-                   ri::AllocateActivation(
-                       static_cast<size_t>(rows) * embedding_dim_,
-                       output_type_));
+  ASSIGN_OR_RETURN(auto output, ri::AllocateActivation(
+                                    static_cast<size_t>(rows) * embedding_dim_,
+                                    output_type_));
   const auto* positions = static_cast<const float*>(weight_.data());
   // Position rows repeat independently for each packed sequence.
   for (int row = 0; row < rows; ++row) {
@@ -323,8 +312,7 @@ absl::StatusOr<HostBufferVec> PositionEmbeddingLayerReference::bwd(
   ASSIGN_OR_RETURN(int rows,
                    ri::MatrixRows(output_gradients[0], embedding_dim_,
                                   "position-embedding output gradient"));
-  const auto* d_output =
-      static_cast<const float*>(output_gradients[0].data());
+  const auto* d_output = static_cast<const float*>(output_gradients[0].data());
   auto* d_position = static_cast<float*>(gradient_.data());
   for (int row = 0; row < rows; ++row) {
     for (int column = 0; column < embedding_dim_; ++column) {

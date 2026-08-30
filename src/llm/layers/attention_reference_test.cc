@@ -1,5 +1,3 @@
-#include "src/llm/layers/attention.h"
-
 #include <cmath>
 #include <cstddef>
 #include <tuple>
@@ -8,6 +6,7 @@
 #include "absl/status/status.h"
 #include "gtest/gtest.h"
 #include "src/llm/layer.h"
+#include "src/llm/layers/attention.h"
 #include "src/llm/layers/reference_test_util.h"
 
 namespace pluto::llm {
@@ -53,15 +52,16 @@ TEST_F(LayerReferenceTest, CausalForwardAndBackwardMatchAcrossConfigurations) {
           (*reference_layer)->fwd(reference_inputs, &reference_tape);
       ASSERT_TRUE(device_output.ok()) << device_output.status();
       ASSERT_TRUE(reference_output.ok()) << reference_output.status();
-      EXPECT_TRUE(ActivationBuffersNear(*device_output, *reference_output,
-                                        type, 2e-3f, 2e-3f));
+      EXPECT_TRUE(ActivationBuffersNear(*device_output, *reference_output, type,
+                                        2e-3f, 2e-3f));
 
       BufferVec device_gradients = {gradient_pair->device};
       HostBufferVec reference_gradients = {gradient_pair->host};
       auto device_input =
           (*device_layer)->bwd(device_gradients, std::move(device_tape));
-      auto reference_input = (*reference_layer)->bwd(
-          reference_gradients, std::move(reference_tape));
+      auto reference_input =
+          (*reference_layer)
+              ->bwd(reference_gradients, std::move(reference_tape));
       ASSERT_TRUE(device_input.ok()) << device_input.status();
       ASSERT_TRUE(reference_input.ok()) << reference_input.status();
       ASSERT_EQ(device_input->size(), 1u);
@@ -74,8 +74,7 @@ TEST_F(LayerReferenceTest, CausalForwardAndBackwardMatchAcrossConfigurations) {
 
 TEST_F(LayerReferenceTest, FP8IsRejectedConsistently) {
   auto device = AttentionLayer::Create(4, 2, 32, DataType::FP8, stream_);
-  auto reference =
-      AttentionLayerReference::Create(4, 2, 32, DataType::FP8);
+  auto reference = AttentionLayerReference::Create(4, 2, 32, DataType::FP8);
   ASSERT_FALSE(device.ok());
   ASSERT_FALSE(reference.ok());
   EXPECT_EQ(device.status().code(), absl::StatusCode::kUnimplemented);

@@ -48,8 +48,7 @@ TEST_F(LayersTest, LayerNormNormalizesRowsAndRejectsConstantGradient) {
   auto output = (*layer_norm)->fwd(inputs, &tape);
   ASSERT_TRUE(output.ok()) << output.status();
   BufferVec gradients = {*gradient_buffer};
-  auto input_gradient =
-      (*layer_norm)->bwd(gradients, std::move(tape));
+  auto input_gradient = (*layer_norm)->bwd(gradients, std::move(tape));
   ASSERT_TRUE(input_gradient.ok()) << input_gradient.status();
 
   std::vector<float> host_output(kTestModelWidth);
@@ -79,7 +78,6 @@ TEST_F(LayersTest, LayerNormNormalizesRowsAndRejectsConstantGradient) {
     EXPECT_NEAR(gradient, 0.0f, 1e-5f);
   }
 }
-
 
 }  // namespace
 }  // namespace pluto::llm

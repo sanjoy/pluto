@@ -305,15 +305,16 @@ absl::Status ParseColumnMetadata(CompactReader* reader, ColumnChunk* column) {
             ExpectWireType(field.type, CompactType::kList, "column path"));
         ASSIGN_OR_RETURN(auto list, reader->ReadListHeader());
         if (list.type != CompactType::kBinary || list.size != 1) {
-          return absl::UnimplementedError("only flat one-component columns are supported");
+          return absl::UnimplementedError(
+              "only flat one-component columns are supported");
         }
         ASSIGN_OR_RETURN(absl::string_view name, reader->ReadBinary());
         column->name.assign(name.data(), name.size());
         break;
       }
       case 4: {
-        RETURN_IF_ERROR(ExpectWireType(field.type, CompactType::kI32,
-                                       "compression codec"));
+        RETURN_IF_ERROR(
+            ExpectWireType(field.type, CompactType::kI32, "compression codec"));
         ASSIGN_OR_RETURN(int32_t value, reader->ReadI32());
         column->codec = static_cast<CompressionCodec>(value);
         break;
@@ -346,8 +347,8 @@ absl::Status ParseColumnChunk(CompactReader* reader, ColumnChunk* column) {
     ASSIGN_OR_RETURN(auto field, reader->ReadFieldHeader(&previous_id));
     if (field.type == CompactType::kStop) return absl::OkStatus();
     if (field.id == 3) {
-      RETURN_IF_ERROR(ExpectWireType(field.type, CompactType::kStruct,
-                                     "column metadata"));
+      RETURN_IF_ERROR(
+          ExpectWireType(field.type, CompactType::kStruct, "column metadata"));
       RETURN_IF_ERROR(ParseColumnMetadata(reader, column));
     } else {
       RETURN_IF_ERROR(reader->Skip(field.type));
@@ -403,15 +404,18 @@ absl::StatusOr<FileMetadata> ParseFileMetadata(
   return metadata;
 }
 
-absl::Status ParseDataPageHeader(CompactReader* reader, DataPageHeader* header) {
+absl::Status ParseDataPageHeader(CompactReader* reader,
+                                 DataPageHeader* header) {
   int16_t previous_id = 0;
   while (true) {
     ASSIGN_OR_RETURN(auto field, reader->ReadFieldHeader(&previous_id));
     if (field.type == CompactType::kStop) return absl::OkStatus();
     if (field.id == 1 || field.id == 2) {
       ASSIGN_OR_RETURN(int32_t value, reader->ReadI32());
-      if (field.id == 1) header->num_values = value;
-      else header->encoding = static_cast<Encoding>(value);
+      if (field.id == 1)
+        header->num_values = value;
+      else
+        header->encoding = static_cast<Encoding>(value);
     } else {
       RETURN_IF_ERROR(reader->Skip(field.type));
     }
@@ -426,8 +430,10 @@ absl::Status ParseDictionaryPageHeader(CompactReader* reader,
     if (field.type == CompactType::kStop) return absl::OkStatus();
     if (field.id == 1 || field.id == 2) {
       ASSIGN_OR_RETURN(int32_t value, reader->ReadI32());
-      if (field.id == 1) header->num_values = value;
-      else header->encoding = static_cast<Encoding>(value);
+      if (field.id == 1)
+        header->num_values = value;
+      else
+        header->encoding = static_cast<Encoding>(value);
     } else {
       RETURN_IF_ERROR(reader->Skip(field.type));
     }
@@ -435,7 +441,7 @@ absl::Status ParseDictionaryPageHeader(CompactReader* reader,
 }
 
 absl::StatusOr<PageHeader> ParsePageHeader(absl::Span<const uint8_t> input,
-                                            size_t* bytes_read) {
+                                           size_t* bytes_read) {
   CompactReader reader(input);
   PageHeader header;
   int16_t previous_id = 0;
@@ -444,9 +450,12 @@ absl::StatusOr<PageHeader> ParsePageHeader(absl::Span<const uint8_t> input,
     if (field.type == CompactType::kStop) break;
     if (field.id >= 1 && field.id <= 3) {
       ASSIGN_OR_RETURN(int32_t value, reader.ReadI32());
-      if (field.id == 1) header.type = static_cast<PageType>(value);
-      else if (field.id == 2) header.uncompressed_size = value;
-      else header.compressed_size = value;
+      if (field.id == 1)
+        header.type = static_cast<PageType>(value);
+      else if (field.id == 2)
+        header.uncompressed_size = value;
+      else
+        header.compressed_size = value;
     } else if (field.id == 5) {
       RETURN_IF_ERROR(ParseDataPageHeader(&reader, &header.data));
     } else if (field.id == 7) {
@@ -495,9 +504,12 @@ struct ColumnData {
 
   size_t size() const {
     switch (type) {
-      case PhysicalType::kByteArray: return strings.size();
-      case PhysicalType::kDouble: return doubles.size();
-      case PhysicalType::kInt64: return integers.size();
+      case PhysicalType::kByteArray:
+        return strings.size();
+      case PhysicalType::kDouble:
+        return doubles.size();
+      case PhysicalType::kInt64:
+        return integers.size();
     }
     return 0;
   }
@@ -556,7 +568,7 @@ absl::Status AppendPlain(absl::Span<const uint8_t> bytes, size_t count,
 }
 
 absl::StatusOr<uint64_t> ReadUnsignedVarint(absl::Span<const uint8_t> bytes,
-                                             size_t* position) {
+                                            size_t* position) {
   uint64_t value = 0;
   for (int shift = 0; shift < 64; shift += 7) {
     if (*position >= bytes.size()) {
@@ -589,7 +601,8 @@ absl::StatusOr<std::vector<uint32_t>> DecodeHybrid(
       for (size_t i = 0; i < byte_width; ++i) {
         value |= static_cast<uint32_t>(bytes[position++]) << (8 * i);
       }
-      const size_t append = std::min<uint64_t>(run_length, value_count - values.size());
+      const size_t append =
+          std::min<uint64_t>(run_length, value_count - values.size());
       values.insert(values.end(), append, value);
     } else {
       const uint64_t groups = header >> 1;
@@ -597,7 +610,8 @@ absl::StatusOr<std::vector<uint32_t>> DecodeHybrid(
         return absl::DataLossError("invalid bit-packed run");
       }
       const size_t run_values = static_cast<size_t>(groups) * 8;
-      const size_t packed_bytes = (run_values * static_cast<size_t>(bit_width) + 7) / 8;
+      const size_t packed_bytes =
+          (run_values * static_cast<size_t>(bit_width) + 7) / 8;
       if (packed_bytes > bytes.size() - position) {
         return absl::DataLossError("truncated bit-packed run");
       }
@@ -639,7 +653,8 @@ absl::Status AppendDictionaryValue(const ColumnData& dictionary, uint32_t index,
 absl::Status DecodeDataPage(absl::Span<const uint8_t> bytes,
                             const DataPageHeader& header,
                             const ColumnData& dictionary, ColumnData* output) {
-  if (header.num_values < 0) return absl::DataLossError("invalid data-page count");
+  if (header.num_values < 0)
+    return absl::DataLossError("invalid data-page count");
   const size_t count = static_cast<size_t>(header.num_values);
   if (bytes.size() < 4) return absl::DataLossError("missing definition levels");
 
@@ -677,14 +692,15 @@ absl::Status DecodeDataPage(absl::Span<const uint8_t> bytes,
 }
 
 constexpr std::array<absl::string_view, 10> kColumnNames = {
-    "text", "id", "dump", "url", "file_path", "language",
-    "language_score", "token_count", "score", "int_score"};
+    "text",      "id",       "dump",           "url",
+    "file_path", "language", "language_score", "token_count",
+    "score",     "int_score"};
 constexpr std::array<PhysicalType, 10> kColumnTypes = {
     PhysicalType::kByteArray, PhysicalType::kByteArray,
     PhysicalType::kByteArray, PhysicalType::kByteArray,
     PhysicalType::kByteArray, PhysicalType::kByteArray,
-    PhysicalType::kDouble, PhysicalType::kInt64,
-    PhysicalType::kDouble, PhysicalType::kInt64};
+    PhysicalType::kDouble,    PhysicalType::kInt64,
+    PhysicalType::kDouble,    PhysicalType::kInt64};
 
 absl::Status ValidateMetadata(FileMetadata* metadata, int64_t file_size) {
   int64_t first_row = 0;
@@ -696,15 +712,18 @@ absl::Status ValidateMetadata(FileMetadata* metadata, int64_t file_size) {
     }
     first_row += row_group.num_rows;
     if (row_group.columns.size() != kColumnNames.size()) {
-      return absl::UnimplementedError("file does not have the FineWeb 10-column schema");
+      return absl::UnimplementedError(
+          "file does not have the FineWeb 10-column schema");
     }
     for (size_t i = 0; i < row_group.columns.size(); ++i) {
       const ColumnChunk& column = row_group.columns[i];
       if (column.name != kColumnNames[i] || column.type != kColumnTypes[i]) {
-        return absl::UnimplementedError("file does not match the FineWeb column schema");
+        return absl::UnimplementedError(
+            "file does not match the FineWeb column schema");
       }
       if (column.codec != CompressionCodec::kSnappy) {
-        return absl::UnimplementedError("only Snappy FineWeb columns are supported");
+        return absl::UnimplementedError(
+            "only Snappy FineWeb columns are supported");
       }
       if (column.num_values != row_group.num_rows ||
           column.total_compressed_size <= 0 || column.data_page_offset < 0) {
@@ -755,14 +774,15 @@ struct FineWebParquetReader::Impl {
         if (errno == EINTR) continue;
         return absl::ErrnoToStatus(errno, "pread failed");
       }
-      if (result == 0) return absl::DataLossError("unexpected end of Parquet file");
+      if (result == 0)
+        return absl::DataLossError("unexpected end of Parquet file");
       done += static_cast<size_t>(result);
     }
     return output;
   }
 
   absl::StatusOr<ColumnData> DecodeColumn(const RowGroup& row_group,
-                                           size_t column_index) const {
+                                          size_t column_index) const {
     const ColumnChunk& column = row_group.columns[column_index];
     const int64_t start = column.dictionary_page_offset >= 0
                               ? column.dictionary_page_offset
@@ -783,9 +803,8 @@ struct FineWebParquetReader::Impl {
               remaining.size() - header_size) {
         return absl::DataLossError("page extends beyond column chunk");
       }
-      const auto compressed =
-          remaining.subspan(header_size,
-                            static_cast<size_t>(page.compressed_size));
+      const auto compressed = remaining.subspan(
+          header_size, static_cast<size_t>(page.compressed_size));
       ASSIGN_OR_RETURN(
           auto uncompressed,
           DecompressSnappy(compressed,
@@ -833,25 +852,26 @@ FineWebParquetReader::Open(const std::filesystem::path& path) {
   std::unique_ptr<Impl> impl(new Impl);
   impl->file_descriptor = open(path.c_str(), O_RDONLY | O_CLOEXEC);
   if (impl->file_descriptor < 0) {
-    return absl::ErrnoToStatus(errno, absl::StrCat("cannot open ", path.string()));
+    return absl::ErrnoToStatus(errno,
+                               absl::StrCat("cannot open ", path.string()));
   }
 
   struct stat attributes {};
   if (fstat(impl->file_descriptor, &attributes) != 0) {
-    return absl::ErrnoToStatus(errno, absl::StrCat("cannot stat ", path.string()));
+    return absl::ErrnoToStatus(errno,
+                               absl::StrCat("cannot stat ", path.string()));
   }
   impl->file_size = attributes.st_size;
-  if (impl->file_size < 12) return absl::DataLossError("file is too short for Parquet");
+  if (impl->file_size < 12)
+    return absl::DataLossError("file is too short for Parquet");
 
   ASSIGN_OR_RETURN(auto prefix, impl->ReadRange(0, 4));
-  ASSIGN_OR_RETURN(auto trailer,
-                   impl->ReadRange(impl->file_size - 8, 8));
+  ASSIGN_OR_RETURN(auto trailer, impl->ReadRange(impl->file_size - 8, 8));
   if (prefix != kParquetMagic || trailer.substr(4) != kParquetMagic) {
     return absl::DataLossError("Parquet magic bytes are missing");
   }
 
-  const auto* trailer_bytes =
-      reinterpret_cast<const uint8_t*>(trailer.data());
+  const auto* trailer_bytes = reinterpret_cast<const uint8_t*>(trailer.data());
   const uint32_t footer_size =
       LoadLittle32(absl::Span<const uint8_t>(trailer_bytes, 4));
   if (footer_size > static_cast<uint64_t>(impl->file_size - 12)) {
@@ -860,19 +880,18 @@ FineWebParquetReader::Open(const std::filesystem::path& path) {
   ASSIGN_OR_RETURN(
       auto footer,
       impl->ReadRange(impl->file_size - 8 - footer_size, footer_size));
-  const auto* footer_bytes =
-      reinterpret_cast<const uint8_t*>(footer.data());
-  ASSIGN_OR_RETURN(
-      impl->metadata,
-      ParseFileMetadata(absl::Span<const uint8_t>(footer_bytes,
-                                                   footer.size())));
+  const auto* footer_bytes = reinterpret_cast<const uint8_t*>(footer.data());
+  ASSIGN_OR_RETURN(impl->metadata, ParseFileMetadata(absl::Span<const uint8_t>(
+                                       footer_bytes, footer.size())));
   RETURN_IF_ERROR(ValidateMetadata(&impl->metadata, impl->file_size));
 
   return std::unique_ptr<FineWebParquetReader>(
       new FineWebParquetReader(std::move(impl)));
 }
 
-int64_t FineWebParquetReader::num_rows() const { return impl_->metadata.num_rows; }
+int64_t FineWebParquetReader::num_rows() const {
+  return impl_->metadata.num_rows;
+}
 
 size_t FineWebParquetReader::num_row_groups() const {
   return impl_->metadata.row_groups.size();
@@ -890,8 +909,8 @@ absl::StatusOr<std::vector<std::string>> FineWebParquetReader::ReadTextRows(
     if (group_end <= first) continue;
     if (row_group.first_row >= end) break;
     ASSIGN_OR_RETURN(auto column, impl_->DecodeColumn(row_group, 0));
-    const size_t local_begin =
-        static_cast<size_t>(std::max(first, row_group.first_row) - row_group.first_row);
+    const size_t local_begin = static_cast<size_t>(
+        std::max(first, row_group.first_row) - row_group.first_row);
     const size_t local_end =
         static_cast<size_t>(std::min(end, group_end) - row_group.first_row);
     for (size_t i = local_begin; i < local_end; ++i) {
@@ -919,8 +938,8 @@ absl::StatusOr<std::vector<FineWebRecord>> FineWebParquetReader::ReadRows(
       ASSIGN_OR_RETURN(auto decoded, impl_->DecodeColumn(row_group, column));
       columns.push_back(std::move(decoded));
     }
-    const size_t local_begin =
-        static_cast<size_t>(std::max(first, row_group.first_row) - row_group.first_row);
+    const size_t local_begin = static_cast<size_t>(
+        std::max(first, row_group.first_row) - row_group.first_row);
     const size_t local_end =
         static_cast<size_t>(std::min(end, group_end) - row_group.first_row);
     for (size_t i = local_begin; i < local_end; ++i) {

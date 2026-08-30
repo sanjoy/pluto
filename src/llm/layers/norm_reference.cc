@@ -1,5 +1,3 @@
-#include "src/llm/layers/norm.h"
-
 #include <cmath>
 #include <cstddef>
 #include <memory>
@@ -9,6 +7,7 @@
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "src/common/status_macros.h"
+#include "src/llm/layers/norm.h"
 #include "src/llm/layers/reference_internal.h"
 
 namespace pluto::llm {
@@ -30,10 +29,9 @@ LayerNormLayerReference::Create(int embedding_dim, float epsilon,
   for (int column = 0; column < embedding_dim; ++column) {
     gamma_values[column] = 1.0f;
   }
-  return std::unique_ptr<LayerNormLayerReference>(
-      new LayerNormLayerReference(
-          embedding_dim, epsilon, data_type, std::move(gamma),
-          std::move(beta), std::move(d_gamma), std::move(d_beta)));
+  return std::unique_ptr<LayerNormLayerReference>(new LayerNormLayerReference(
+      embedding_dim, epsilon, data_type, std::move(gamma), std::move(beta),
+      std::move(d_gamma), std::move(d_beta)));
 }
 
 absl::StatusOr<HostBuffer> LayerNormLayerReference::fwd(
@@ -45,10 +43,9 @@ absl::StatusOr<HostBuffer> LayerNormLayerReference::fwd(
   ASSIGN_OR_RETURN(int rows,
                    ri::ActivationRows(inputs[0], embedding_dim_, output_type_,
                                       "layer-norm input"));
-  ASSIGN_OR_RETURN(auto output,
-                   ri::AllocateActivation(
-                       static_cast<size_t>(rows) * embedding_dim_,
-                       output_type_));
+  ASSIGN_OR_RETURN(auto output, ri::AllocateActivation(
+                                    static_cast<size_t>(rows) * embedding_dim_,
+                                    output_type_));
   const auto* gamma = static_cast<const float*>(weights_[0].data());
   const auto* beta = static_cast<const float*>(weights_[1].data());
 
@@ -65,9 +62,9 @@ absl::StatusOr<HostBuffer> LayerNormLayerReference::fwd(
     float variance = 0.0f;
     for (int column = 0; column < embedding_dim_; ++column) {
       const float centered =
-          ri::LoadActivation(
-              inputs[0], static_cast<size_t>(row) * embedding_dim_ + column,
-              output_type_) -
+          ri::LoadActivation(inputs[0],
+                             static_cast<size_t>(row) * embedding_dim_ + column,
+                             output_type_) -
           mean;
       variance += centered * centered;
     }
@@ -93,17 +90,16 @@ absl::StatusOr<HostBufferVec> LayerNormLayerReference::bwd(
     return absl::InvalidArgumentError(
         "LayerNormLayerReference bwd received incompatible state");
   }
-  ASSIGN_OR_RETURN(int rows,
-                   ri::MatrixRows(output_gradients[0], embedding_dim_,
-                                  "layer-norm output gradient"));
-  RETURN_IF_ERROR(ri::ValidateBuffer(
-      tape.intermediates[0],
-      static_cast<size_t>(rows) * embedding_dim_ *
-          ri::ActivationElementBytes(output_type_),
-      "layer-norm saved input"));
-  ASSIGN_OR_RETURN(auto input_gradient,
-                   ri::AllocateFloats(static_cast<size_t>(rows) *
-                                      embedding_dim_));
+  ASSIGN_OR_RETURN(int rows, ri::MatrixRows(output_gradients[0], embedding_dim_,
+                                            "layer-norm output gradient"));
+  RETURN_IF_ERROR(
+      ri::ValidateBuffer(tape.intermediates[0],
+                         static_cast<size_t>(rows) * embedding_dim_ *
+                             ri::ActivationElementBytes(output_type_),
+                         "layer-norm saved input"));
+  ASSIGN_OR_RETURN(
+      auto input_gradient,
+      ri::AllocateFloats(static_cast<size_t>(rows) * embedding_dim_));
   const auto* input_gradient_source =
       static_cast<const float*>(output_gradients[0].data());
   const auto* gamma = static_cast<const float*>(weights_[0].data());
@@ -129,10 +125,9 @@ absl::StatusOr<HostBufferVec> LayerNormLayerReference::bwd(
     float variance = 0.0f;
     for (int column = 0; column < embedding_dim_; ++column) {
       const float centered =
-          ri::LoadActivation(
-              tape.intermediates[0],
-              static_cast<size_t>(row) * embedding_dim_ + column,
-              output_type_) -
+          ri::LoadActivation(tape.intermediates[0],
+                             static_cast<size_t>(row) * embedding_dim_ + column,
+                             output_type_) -
           mean;
       variance += centered * centered;
     }
@@ -160,9 +155,8 @@ absl::StatusOr<HostBufferVec> LayerNormLayerReference::bwd(
           inverse_stddev;
       const float d_normalized = input_gradient_source[index] * gamma[column];
       d_input[index] =
-          inverse_stddev *
-          (d_normalized - gradient_sum / embedding_dim_ -
-           normalized * projected_sum / embedding_dim_);
+          inverse_stddev * (d_normalized - gradient_sum / embedding_dim_ -
+                            normalized * projected_sum / embedding_dim_);
     }
   }
   return HostBufferVec{std::move(input_gradient)};

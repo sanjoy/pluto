@@ -32,16 +32,15 @@ inline size_t ActivationElementBytes(DataType data_type) {
 
 inline absl::Status ValidateTiledExtent(int extent, const char* name) {
   if (extent <= 0 || extent % kDenseTile != 0) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        name, " must be a positive multiple of ", kDenseTile, "; got ",
-        extent));
+    return absl::InvalidArgumentError(
+        absl::StrCat(name, " must be a positive multiple of ", kDenseTile,
+                     "; got ", extent));
   }
   return absl::OkStatus();
 }
 
 inline absl::StatusOr<int> MatrixRows(const Buffer& buffer, int columns,
-                                      cudaStream_t stream,
-                                      const char* name) {
+                                      cudaStream_t stream, const char* name) {
   if (buffer.stream() != stream) {
     return absl::InvalidArgumentError(
         absl::StrCat(name, " belongs to a different CUDA stream"));
@@ -50,8 +49,7 @@ inline absl::StatusOr<int> MatrixRows(const Buffer& buffer, int columns,
   if (columns <= 0 || buffer.size_bytes() == 0 ||
       buffer.size_bytes() % row_bytes != 0) {
     return absl::InvalidArgumentError(absl::StrCat(
-        name, " is not a non-empty float matrix with ", columns,
-        " columns"));
+        name, " is not a non-empty float matrix with ", columns, " columns"));
   }
   const size_t rows = buffer.size_bytes() / row_bytes;
   if (rows > static_cast<size_t>(std::numeric_limits<int>::max())) {
@@ -72,9 +70,9 @@ inline absl::StatusOr<int> ActivationRows(const Buffer& buffer, int columns,
       static_cast<size_t>(columns) * ActivationElementBytes(data_type);
   if (columns <= 0 || buffer.size_bytes() == 0 ||
       buffer.size_bytes() % row_bytes != 0) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        name, " is not a non-empty activation matrix with ", columns,
-        " columns"));
+    return absl::InvalidArgumentError(
+        absl::StrCat(name, " is not a non-empty activation matrix with ",
+                     columns, " columns"));
   }
   const size_t rows = buffer.size_bytes() / row_bytes;
   if (rows > static_cast<size_t>(std::numeric_limits<int>::max())) {
@@ -85,8 +83,7 @@ inline absl::StatusOr<int> ActivationRows(const Buffer& buffer, int columns,
 
 inline absl::StatusOr<int> ElementCount(const Buffer& buffer,
                                         size_t element_bytes,
-                                        cudaStream_t stream,
-                                        const char* name) {
+                                        cudaStream_t stream, const char* name) {
   if (buffer.stream() != stream) {
     return absl::InvalidArgumentError(
         absl::StrCat(name, " belongs to a different CUDA stream"));
@@ -105,9 +102,9 @@ inline absl::StatusOr<int> ElementCount(const Buffer& buffer,
 
 inline absl::Status CudaStatus(cudaError_t error, const char* operation) {
   if (error == cudaSuccess) return absl::OkStatus();
-  return absl::InternalError(
-      absl::StrCat(operation, " failed: ", cudaGetErrorName(error), ": ",
-                   cudaGetErrorString(error)));
+  return absl::InternalError(absl::StrCat(operation,
+                                          " failed: ", cudaGetErrorName(error),
+                                          ": ", cudaGetErrorString(error)));
 }
 
 inline absl::Status ValidateComputeType(DataType data_type) {
@@ -125,13 +122,12 @@ inline absl::Status ValidateFp16(DataType data_type) {
   return ValidateComputeType(data_type);
 }
 
-inline absl::Status ValidateBuffer(const Buffer& buffer,
-                                   size_t expected_bytes,
+inline absl::Status ValidateBuffer(const Buffer& buffer, size_t expected_bytes,
                                    cudaStream_t stream, const char* name) {
   if (buffer.size_bytes() != expected_bytes) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        name, " has ", buffer.size_bytes(), " bytes; expected ",
-        expected_bytes));
+    return absl::InvalidArgumentError(
+        absl::StrCat(name, " has ", buffer.size_bytes(), " bytes; expected ",
+                     expected_bytes));
   }
   if (buffer.stream() != stream) {
     return absl::InvalidArgumentError(

@@ -21,17 +21,18 @@ static_assert(sizeof(int) == sizeof(int32_t));
 
 absl::Status CudaStatus(cudaError_t error, const char* operation) {
   if (error == cudaSuccess) return absl::OkStatus();
-  return absl::InternalError(
-      absl::StrCat(operation, " failed: ", cudaGetErrorName(error), ": ",
-                   cudaGetErrorString(error)));
+  return absl::InternalError(absl::StrCat(operation,
+                                          " failed: ", cudaGetErrorName(error),
+                                          ": ", cudaGetErrorString(error)));
 }
 
 }  // namespace
 
-InMemoryDataSetIterator::InMemoryDataSetIterator(
-    std::vector<int> corpus, InMemoryDataSetOptions options,
-    cudaStream_t stream, cuda::Buffer token_buffer,
-    cuda::Buffer target_buffer)
+InMemoryDataSetIterator::InMemoryDataSetIterator(std::vector<int> corpus,
+                                                 InMemoryDataSetOptions options,
+                                                 cudaStream_t stream,
+                                                 cuda::Buffer token_buffer,
+                                                 cuda::Buffer target_buffer)
     : corpus_(std::move(corpus)),
       options_(options),
       stream_(stream),
@@ -70,17 +71,15 @@ InMemoryDataSetIterator::Create(absl::Span<const int> tokens,
                    cuda::Buffer::Allocate(buffer_bytes, stream));
   ASSIGN_OR_RETURN(auto target_buffer,
                    cuda::Buffer::Allocate(buffer_bytes, stream));
-  return std::unique_ptr<InMemoryDataSetIterator>(
-      new InMemoryDataSetIterator(
-          std::vector<int>(tokens.begin(), tokens.end()), options, stream,
-          std::move(token_buffer), std::move(target_buffer)));
+  return std::unique_ptr<InMemoryDataSetIterator>(new InMemoryDataSetIterator(
+      std::vector<int>(tokens.begin(), tokens.end()), options, stream,
+      std::move(token_buffer), std::move(target_buffer)));
 }
 
 absl::StatusOr<TokenBatch> InMemoryDataSetIterator::Next() {
   const size_t sequence_start_count =
       corpus_.size() - static_cast<size_t>(options_.context_length);
-  const int sequences_per_batch =
-      options_.batch_size / options_.context_length;
+  const int sequences_per_batch = options_.batch_size / options_.context_length;
   for (int sequence = 0; sequence < sequences_per_batch; ++sequence) {
     size_t start;
     if (options_.order == InMemoryDataSetOrder::kRandom) {
@@ -98,16 +97,16 @@ absl::StatusOr<TokenBatch> InMemoryDataSetIterator::Next() {
     }
   }
 
-  RETURN_IF_ERROR(CudaStatus(
-      cudaMemcpyAsync(token_buffer_.data(), host_tokens_.data(),
-                      token_buffer_.size_bytes(), cudaMemcpyHostToDevice,
-                      stream_),
-      "cudaMemcpyAsync(dataset tokens)"));
-  RETURN_IF_ERROR(CudaStatus(
-      cudaMemcpyAsync(target_buffer_.data(), host_targets_.data(),
-                      target_buffer_.size_bytes(), cudaMemcpyHostToDevice,
-                      stream_),
-      "cudaMemcpyAsync(dataset targets)"));
+  RETURN_IF_ERROR(
+      CudaStatus(cudaMemcpyAsync(token_buffer_.data(), host_tokens_.data(),
+                                 token_buffer_.size_bytes(),
+                                 cudaMemcpyHostToDevice, stream_),
+                 "cudaMemcpyAsync(dataset tokens)"));
+  RETURN_IF_ERROR(
+      CudaStatus(cudaMemcpyAsync(target_buffer_.data(), host_targets_.data(),
+                                 target_buffer_.size_bytes(),
+                                 cudaMemcpyHostToDevice, stream_),
+                 "cudaMemcpyAsync(dataset targets)"));
   return TokenBatch{.tokens = token_buffer_,
                     .targets = target_buffer_,
                     .batch_size = options_.batch_size};

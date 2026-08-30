@@ -25,12 +25,12 @@ ABSL_FLAG(std::string, output_dir, "",
           "Directory in which matching .tokenized files are written.");
 ABSL_FLAG(std::string, tokenizer_dir, "",
           "Directory containing the saved GPT-2 tokenizer.json.");
-ABSL_FLAG(int, jobs, 0,
-          "Number of shards to convert concurrently; zero uses available CPUs.");
+ABSL_FLAG(
+    int, jobs, 0,
+    "Number of shards to convert concurrently; zero uses available CPUs.");
 ABSL_FLAG(int, batch_size, 1000,
           "Number of Parquet records decoded per batch.");
-ABSL_FLAG(bool, overwrite, false,
-          "Replace existing .tokenized shard outputs.");
+ABSL_FLAG(bool, overwrite, false, "Replace existing .tokenized shard outputs.");
 
 namespace pluto::tokenized {
 namespace {
@@ -61,8 +61,7 @@ absl::StatusOr<std::vector<std::filesystem::path>> FindParquetShards(
   }
   if (error) {
     return absl::ErrnoToStatus(
-        error.value(),
-        absl::StrCat("cannot enumerate ", directory.string()));
+        error.value(), absl::StrCat("cannot enumerate ", directory.string()));
   }
   std::sort(shards.begin(), shards.end());
   if (shards.empty()) {
@@ -96,8 +95,7 @@ absl::Status RunConversion() {
   std::filesystem::create_directories(output_dir, error);
   if (error) {
     return absl::ErrnoToStatus(
-        error.value(),
-        absl::StrCat("cannot create ", output_dir.string()));
+        error.value(), absl::StrCat("cannot create ", output_dir.string()));
   }
 
   const bool overwrite = absl::GetFlag(FLAGS_overwrite);
@@ -143,8 +141,8 @@ absl::Status RunConversion() {
     encoders.push_back(std::move(encoder));
   }
 
-  std::cout << "Converting " << work.size() << " shard(s) with "
-            << worker_count << " worker(s)";
+  std::cout << "Converting " << work.size() << " shard(s) with " << worker_count
+            << " worker(s)";
   if (skipped != 0) std::cout << "; skipping " << skipped << " existing";
   std::cout << ".\n";
 
@@ -172,10 +170,9 @@ absl::Status RunConversion() {
         if (!status.ok()) {
           std::lock_guard<std::mutex> lock(mutex);
           if (failure.ok()) {
-            failure = absl::Status(
-                status.code(),
-                absl::StrCat(item.input.filename().string(), ": ",
-                             status.message()));
+            failure = absl::Status(status.code(),
+                                   absl::StrCat(item.input.filename().string(),
+                                                ": ", status.message()));
           }
           stop.store(true, std::memory_order_relaxed);
           return;

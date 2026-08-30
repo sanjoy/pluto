@@ -14,7 +14,8 @@ namespace {
 
 std::filesystem::path RequiredDirectory(const char* variable) {
   const char* value = std::getenv(variable);
-  EXPECT_NE(value, nullptr) << "set " << variable << " before running integration tests";
+  EXPECT_NE(value, nullptr)
+      << "set " << variable << " before running integration tests";
   return value == nullptr ? std::filesystem::path() : value;
 }
 
@@ -26,7 +27,8 @@ TEST(FineWebIntegrationTest, SamplesEveryShardAndRoundTripsItsText) {
   ASSERT_TRUE(std::filesystem::is_directory(parquet_directory));
 
   std::vector<std::filesystem::path> shards;
-  for (const auto& entry : std::filesystem::directory_iterator(parquet_directory)) {
+  for (const auto& entry :
+       std::filesystem::directory_iterator(parquet_directory)) {
     if (entry.is_regular_file() && entry.path().extension() == ".parquet") {
       shards.push_back(entry.path());
     }

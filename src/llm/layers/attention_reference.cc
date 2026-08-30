@@ -1,5 +1,3 @@
-#include "src/llm/layers/attention.h"
-
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -12,6 +10,7 @@
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "src/common/status_macros.h"
+#include "src/llm/layers/attention.h"
 #include "src/llm/layers/reference_internal.h"
 
 namespace pluto::llm {
@@ -29,11 +28,10 @@ AttentionLayerReference::Create(int context_length, int num_heads,
     return absl::InvalidArgumentError(
         "embedding_dim must be divisible by num_heads");
   }
-  RETURN_IF_ERROR(ri::ValidateTiledExtent(
-      embedding_dim / num_heads, "attention head dimension"));
-  return std::unique_ptr<AttentionLayerReference>(
-      new AttentionLayerReference(context_length, num_heads, embedding_dim,
-                                  data_type));
+  RETURN_IF_ERROR(ri::ValidateTiledExtent(embedding_dim / num_heads,
+                                          "attention head dimension"));
+  return std::unique_ptr<AttentionLayerReference>(new AttentionLayerReference(
+      context_length, num_heads, embedding_dim, data_type));
 }
 
 absl::StatusOr<HostBuffer> AttentionLayerReference::fwd(
@@ -43,17 +41,15 @@ absl::StatusOr<HostBuffer> AttentionLayerReference::fwd(
         "AttentionLayerReference fwd expects packed Q/K/V and a tape");
   }
   ASSIGN_OR_RETURN(
-      int rows,
-      ri::ActivationRows(inputs[0], 3 * embedding_dim_, output_type_,
-                         "attention packed Q/K/V input"));
+      int rows, ri::ActivationRows(inputs[0], 3 * embedding_dim_, output_type_,
+                                   "attention packed Q/K/V input"));
   if (rows % context_length_ != 0) {
     return absl::InvalidArgumentError(
         "attention rows must be divisible by context_length");
   }
-  ASSIGN_OR_RETURN(
-      auto output,
-      ri::AllocateActivation(static_cast<size_t>(rows) * embedding_dim_,
-                             output_type_));
+  ASSIGN_OR_RETURN(auto output, ri::AllocateActivation(
+                                    static_cast<size_t>(rows) * embedding_dim_,
+                                    output_type_));
   const int head_dim = embedding_dim_ / num_heads_;
   const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim));
   std::vector<float> scores(context_length_);
@@ -75,13 +71,13 @@ absl::StatusOr<HostBuffer> AttentionLayerReference::fwd(
         for (int dim = 0; dim < head_dim; ++dim) {
           const int column = head_start + dim;
           score += ri::LoadActivation(
-                       inputs[0], static_cast<size_t>(row) *
-                                          (3 * embedding_dim_) + column,
+                       inputs[0],
+                       static_cast<size_t>(row) * (3 * embedding_dim_) + column,
                        output_type_) *
                    ri::LoadActivation(
-                       inputs[0], static_cast<size_t>(key_row) *
-                                          (3 * embedding_dim_) +
-                                      embedding_dim_ + column,
+                       inputs[0],
+                       static_cast<size_t>(key_row) * (3 * embedding_dim_) +
+                           embedding_dim_ + column,
                        output_type_);
         }
         scores[key_position] = score * scale;
@@ -101,9 +97,9 @@ absl::StatusOr<HostBuffer> AttentionLayerReference::fwd(
           const int key_row = sequence_start + key_position;
           value += (scores[key_position] / denominator) *
                    ri::LoadActivation(
-                       inputs[0], static_cast<size_t>(key_row) *
-                                          (3 * embedding_dim_) +
-                                      2 * embedding_dim_ + column,
+                       inputs[0],
+                       static_cast<size_t>(key_row) * (3 * embedding_dim_) +
+                           2 * embedding_dim_ + column,
                        output_type_);
         }
         ri::StoreActivation(&output,
@@ -123,27 +119,23 @@ absl::StatusOr<HostBufferVec> AttentionLayerReference::bwd(
     return absl::InvalidArgumentError(
         "AttentionLayerReference bwd received incompatible state");
   }
-  ASSIGN_OR_RETURN(
-      int rows,
-      ri::MatrixRows(output_gradients[0], embedding_dim_,
-                     "attention output gradient"));
-  RETURN_IF_ERROR(ri::ValidateBuffer(
-      tape.intermediates[0],
-      static_cast<size_t>(rows) * 3 * embedding_dim_ *
-          ri::ActivationElementBytes(output_type_),
-      "attention saved Q/K/V"));
-  RETURN_IF_ERROR(ri::ValidateBuffer(
-      tape.intermediates[1],
-      static_cast<size_t>(rows) * embedding_dim_ *
-          ri::ActivationElementBytes(output_type_),
-      "attention saved output"));
+  ASSIGN_OR_RETURN(int rows, ri::MatrixRows(output_gradients[0], embedding_dim_,
+                                            "attention output gradient"));
+  RETURN_IF_ERROR(
+      ri::ValidateBuffer(tape.intermediates[0],
+                         static_cast<size_t>(rows) * 3 * embedding_dim_ *
+                             ri::ActivationElementBytes(output_type_),
+                         "attention saved Q/K/V"));
+  RETURN_IF_ERROR(
+      ri::ValidateBuffer(tape.intermediates[1],
+                         static_cast<size_t>(rows) * embedding_dim_ *
+                             ri::ActivationElementBytes(output_type_),
+                         "attention saved output"));
   ASSIGN_OR_RETURN(
       auto qkv_gradient,
-      ri::AllocateFloats(static_cast<size_t>(rows) * 3 * embedding_dim_,
-                         true));
+      ri::AllocateFloats(static_cast<size_t>(rows) * 3 * embedding_dim_, true));
   auto* d_qkv = static_cast<float*>(qkv_gradient.data());
-  const auto* d_output =
-      static_cast<const float*>(output_gradients[0].data());
+  const auto* d_output = static_cast<const float*>(output_gradients[0].data());
   const int head_dim = embedding_dim_ / num_heads_;
   const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim));
   std::vector<float> probabilities(context_length_);
@@ -165,8 +157,7 @@ absl::StatusOr<HostBufferVec> AttentionLayerReference::bwd(
           const int column = head_start + dim;
           score += ri::LoadActivation(
                        tape.intermediates[0],
-                       static_cast<size_t>(row) * (3 * embedding_dim_) +
-                           column,
+                       static_cast<size_t>(row) * (3 * embedding_dim_) + column,
                        output_type_) *
                    ri::LoadActivation(
                        tape.intermediates[0],
@@ -211,30 +202,27 @@ absl::StatusOr<HostBufferVec> AttentionLayerReference::bwd(
                       2 * embedding_dim_ + column,
                   output_type_);
         }
-        const float d_score = probabilities[key_position] *
-                              (d_probability - delta);
+        const float d_score =
+            probabilities[key_position] * (d_probability - delta);
         for (int dim = 0; dim < head_dim; ++dim) {
           const int column = head_start + dim;
-          const size_t q = static_cast<size_t>(row) *
-                               (3 * embedding_dim_) +
-                           column;
-          const size_t k = static_cast<size_t>(key_row) *
-                               (3 * embedding_dim_) +
+          const size_t q =
+              static_cast<size_t>(row) * (3 * embedding_dim_) + column;
+          const size_t k = static_cast<size_t>(key_row) * (3 * embedding_dim_) +
                            embedding_dim_ + column;
-          const size_t v = static_cast<size_t>(key_row) *
-                               (3 * embedding_dim_) +
+          const size_t v = static_cast<size_t>(key_row) * (3 * embedding_dim_) +
                            2 * embedding_dim_ + column;
-          d_qkv[q] += d_score *
-                      ri::LoadActivation(tape.intermediates[0], k,
-                                         output_type_) *
-                      scale;
-          d_qkv[k] += d_score *
-                      ri::LoadActivation(tape.intermediates[0], q,
-                                         output_type_) *
-                      scale;
-          d_qkv[v] += probabilities[key_position] *
-                      d_output[static_cast<size_t>(row) * embedding_dim_ +
-                               column];
+          d_qkv[q] +=
+              d_score *
+              ri::LoadActivation(tape.intermediates[0], k, output_type_) *
+              scale;
+          d_qkv[k] +=
+              d_score *
+              ri::LoadActivation(tape.intermediates[0], q, output_type_) *
+              scale;
+          d_qkv[v] +=
+              probabilities[key_position] *
+              d_output[static_cast<size_t>(row) * embedding_dim_ + column];
         }
       }
     }

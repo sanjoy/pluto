@@ -1,5 +1,3 @@
-#include "src/llm/layers/combinators.h"
-
 #include <cstddef>
 #include <memory>
 #include <utility>
@@ -9,6 +7,7 @@
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "src/common/status_macros.h"
+#include "src/llm/layers/combinators.h"
 #include "src/llm/layers/reference_internal.h"
 
 namespace pluto::llm {
@@ -45,10 +44,9 @@ absl::StatusOr<HostBuffer> ResidualLayerReference::fwd(
   // The reference operation is deliberately just x[i] + branch[i]. Rounding
   // happens once when the sum is stored in the activation dtype.
   for (int index = 0; index < elements; ++index) {
-    ri::StoreActivation(
-        &output, index, output_type(),
-        ri::LoadActivation(inputs[0], index, output_type()) +
-            ri::LoadActivation(branch, index, output_type()));
+    ri::StoreActivation(&output, index, output_type(),
+                        ri::LoadActivation(inputs[0], index, output_type()) +
+                            ri::LoadActivation(branch, index, output_type()));
   }
   tape->intermediates = {inputs[0]};
   tape->children = {std::move(child_tape)};
@@ -63,8 +61,7 @@ absl::StatusOr<HostBufferVec> ResidualLayerReference::bwd(
         "ResidualLayerReference bwd received incompatible state");
   }
   ASSIGN_OR_RETURN(auto branch_gradients,
-                   layer_->bwd(output_gradients,
-                               std::move(tape.children[0])));
+                   layer_->bwd(output_gradients, std::move(tape.children[0])));
   if (branch_gradients.size() != 1 ||
       branch_gradients[0].size_bytes() != output_gradients[0].size_bytes()) {
     return absl::InvalidArgumentError(
@@ -74,10 +71,8 @@ absl::StatusOr<HostBufferVec> ResidualLayerReference::bwd(
                    ri::ElementCount(output_gradients[0], sizeof(float),
                                     "residual output gradient"));
   ASSIGN_OR_RETURN(auto input_gradient, ri::AllocateFloats(elements));
-  const auto* direct =
-      static_cast<const float*>(output_gradients[0].data());
-  const auto* branch =
-      static_cast<const float*>(branch_gradients[0].data());
+  const auto* direct = static_cast<const float*>(output_gradients[0].data());
+  const auto* branch = static_cast<const float*>(branch_gradients[0].data());
   auto* output = static_cast<float*>(input_gradient.data());
   for (int index = 0; index < elements; ++index) {
     output[index] = direct[index] + branch[index];
@@ -86,11 +81,11 @@ absl::StatusOr<HostBufferVec> ResidualLayerReference::bwd(
 }
 
 ComposedLayerReference::ComposedLayerReference(
-    DataType data_type,
-    std::vector<std::unique_ptr<LayerReference>> layers)
+    DataType data_type, std::vector<std::unique_ptr<LayerReference>> layers)
     : output_type_(data_type), layers_(std::move(layers)) {
   for (const auto& layer : layers_) {
-    for (const HostBuffer& weight : layer->weights()) weights_.push_back(weight);
+    for (const HostBuffer& weight : layer->weights())
+      weights_.push_back(weight);
     for (const HostBuffer& gradient : layer->gradients()) {
       gradients_.push_back(gradient);
     }
@@ -129,8 +124,7 @@ absl::StatusOr<HostBufferVec> ComposedLayerReference::bwd(
     HostBufferVec child_gradients = {gradient};
     ASSIGN_OR_RETURN(
         auto input_gradients,
-        layers_[index]->bwd(child_gradients,
-                            std::move(tape.children[index])));
+        layers_[index]->bwd(child_gradients, std::move(tape.children[index])));
     if (index == 0 && input_gradients.empty()) return HostBufferVec{};
     if (input_gradients.size() != 1) {
       return absl::InternalError(

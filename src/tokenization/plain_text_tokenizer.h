@@ -21,8 +21,7 @@ class PlainTextTokenizer final {
   static constexpr uint32_t kVocabSize = 256;
 
   std::vector<uint32_t> Encode(absl::string_view text) const;
-  absl::StatusOr<std::string> Decode(
-      absl::Span<const uint32_t> tokens) const;
+  absl::StatusOr<std::string> Decode(absl::Span<const uint32_t> tokens) const;
 
   constexpr uint32_t vocab_size() const { return kVocabSize; }
 };

@@ -25,7 +25,7 @@ namespace pluto::cuda {
 class Buffer final {
  public:
   static absl::StatusOr<Buffer> Allocate(size_t size_bytes,
-                                          cudaStream_t stream);
+                                         cudaStream_t stream);
 
   Buffer(const Buffer&) = default;
   Buffer& operator=(const Buffer&) = default;

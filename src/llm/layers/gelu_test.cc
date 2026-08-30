@@ -42,15 +42,15 @@ TEST_F(LayersTest, ZeroHasZeroOutputAndHalfGradient) {
 
   std::vector<float> host_output(kTestBatchSize);
   std::vector<float> host_gradient(kTestBatchSize);
-  ASSERT_EQ(cudaMemcpyAsync(host_output.data(), output->data(),
-                            output->size_bytes(), cudaMemcpyDeviceToHost,
-                            stream_),
-            cudaSuccess);
-  ASSERT_EQ(cudaMemcpyAsync(host_gradient.data(),
-                            input_gradient->front().data(),
-                            input_gradient->front().size_bytes(),
-                            cudaMemcpyDeviceToHost, stream_),
-            cudaSuccess);
+  ASSERT_EQ(
+      cudaMemcpyAsync(host_output.data(), output->data(), output->size_bytes(),
+                      cudaMemcpyDeviceToHost, stream_),
+      cudaSuccess);
+  ASSERT_EQ(
+      cudaMemcpyAsync(host_gradient.data(), input_gradient->front().data(),
+                      input_gradient->front().size_bytes(),
+                      cudaMemcpyDeviceToHost, stream_),
+      cudaSuccess);
   ASSERT_EQ(cudaStreamSynchronize(stream_), cudaSuccess);
 
   for (int index = 0; index < kTestBatchSize; ++index) {

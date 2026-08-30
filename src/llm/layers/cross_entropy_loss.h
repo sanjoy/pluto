@@ -24,9 +24,9 @@ class CrossEntropyLossLayer final : public Layer {
       int vocabulary_size, DataType data_type, cudaStream_t stream);
 
   absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs,
-                              Tape* tape) const override;
-  absl::StatusOr<BufferVec> bwd(
-      absl::Span<const Buffer> output_gradients, Tape tape) override;
+                             Tape* tape) const override;
+  absl::StatusOr<BufferVec> bwd(absl::Span<const Buffer> output_gradients,
+                                Tape tape) override;
   absl::Span<Buffer> weights() override { return {}; }
   DataType output_type() const override { return output_type_; }
 
@@ -35,8 +35,7 @@ class CrossEntropyLossLayer final : public Layer {
 
  private:
   CrossEntropyLossLayer(int vocab_size, int padded_vocab_size,
-                        DataType data_type,
-                        cudaStream_t stream)
+                        DataType data_type, cudaStream_t stream)
       : vocab_size_(vocab_size),
         padded_vocab_size_(padded_vocab_size),
         output_type_(data_type),
@@ -51,11 +50,11 @@ class CrossEntropyLossLayer final : public Layer {
 // Scalar log-sum-exp reference for the terminal cross-entropy operation.
 class CrossEntropyLossLayerReference final : public LayerReference {
  public:
-  static absl::StatusOr<std::unique_ptr<CrossEntropyLossLayerReference>>
-  Create(int vocabulary_size, DataType data_type);
+  static absl::StatusOr<std::unique_ptr<CrossEntropyLossLayerReference>> Create(
+      int vocabulary_size, DataType data_type);
 
   absl::StatusOr<HostBuffer> fwd(absl::Span<const HostBuffer> inputs,
-                                  ReferenceTape* tape) override;
+                                 ReferenceTape* tape) override;
   absl::StatusOr<HostBufferVec> bwd(
       absl::Span<const HostBuffer> output_gradients,
       ReferenceTape tape) override;

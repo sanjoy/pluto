@@ -86,12 +86,10 @@ absl::StatusOr<std::unique_ptr<AdamWOptimizer>> AdamWOptimizer::Create(
       return absl::InvalidArgumentError(
           "AdamW parameters must be matching FP32 buffers on its stream");
     }
-    const int elements =
-        static_cast<int>(weight.size_bytes() / sizeof(float));
+    const int elements = static_cast<int>(weight.size_bytes() / sizeof(float));
     RETURN_IF_ERROR(
         internal::ValidateTiledExtent(elements, "AdamW parameter elements"));
-    ASSIGN_OR_RETURN(auto first,
-                     Buffer::Allocate(weight.size_bytes(), stream));
+    ASSIGN_OR_RETURN(auto first, Buffer::Allocate(weight.size_bytes(), stream));
     ASSIGN_OR_RETURN(auto second,
                      Buffer::Allocate(weight.size_bytes(), stream));
     RETURN_IF_ERROR(internal::CudaStatus(
@@ -149,8 +147,7 @@ absl::Status AdamWOptimizer::Step() {
         inverse_bias_correction1, inverse_bias_correction2, config_.epsilon,
         config_.weight_decay);
   }
-  return internal::CudaStatus(cudaGetLastError(),
-                              "AdamWUpdateKernel launch");
+  return internal::CudaStatus(cudaGetLastError(), "AdamWUpdateKernel launch");
 }
 
 }  // namespace pluto::llm

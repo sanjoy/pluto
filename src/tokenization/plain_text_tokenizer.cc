@@ -9,8 +9,7 @@
 
 namespace pluto::tokenization {
 
-std::vector<uint32_t> PlainTextTokenizer::Encode(
-    absl::string_view text) const {
+std::vector<uint32_t> PlainTextTokenizer::Encode(absl::string_view text) const {
   std::vector<uint32_t> tokens;
   tokens.reserve(text.size());
   for (unsigned char byte : text) tokens.push_back(byte);

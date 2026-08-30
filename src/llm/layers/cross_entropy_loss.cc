@@ -32,9 +32,10 @@ using internal::ValidateFp16;
 using internal::ValidateTiledExtent;
 
 namespace {
-__tile_global__ void CrossEntropyForwardKernel(
-    const float* __restrict__ logits, const int* __restrict__ targets,
-    int rows, int padded_vocab_size, float* __restrict__ losses) {
+__tile_global__ void CrossEntropyForwardKernel(const float* __restrict__ logits,
+                                               const int* __restrict__ targets,
+                                               int rows, int padded_vocab_size,
+                                               float* __restrict__ losses) {
   namespace ct = ::cuda::tiles;
   using namespace ct::literals;
 
@@ -49,19 +50,18 @@ __tile_global__ void CrossEntropyForwardKernel(
   const int row = ct::bid().x;
   const int target = static_cast<int>(target_view.load(row));
   const int vocabulary_tiles = padded_vocab_size / kDenseTile;
-  auto maximum =
-      ct::full<ct::tile<float, ct::shape<1, 1>>>(-3.402823466e+38f);
+  auto maximum = ct::full<ct::tile<float, ct::shape<1, 1>>>(-3.402823466e+38f);
   for (int tile = 0; tile < vocabulary_tiles; ++tile) {
-    maximum = ct::max(maximum,
-                      ct::reduce_max(logits_view.load(row, tile), 1_ic));
+    maximum =
+        ct::max(maximum, ct::reduce_max(logits_view.load(row, tile), 1_ic));
   }
   auto denominator = ct::zeros<ct::tile<float, ct::shape<1, 1>>>();
   auto target_logit = ct::zeros<ct::tile<float, ct::shape<1, 1>>>();
   for (int tile = 0; tile < vocabulary_tiles; ++tile) {
     auto row_logits = logits_view.load(row, tile);
     denominator = denominator + ct::sum(ct::exp(row_logits - maximum), 1_ic);
-    auto token_ids = ct::iota<ct::tile<int, ct::shape<1, 16>>>() +
-                     tile * kDenseTile;
+    auto token_ids =
+        ct::iota<ct::tile<int, ct::shape<1, 16>>>() + tile * kDenseTile;
     auto one_hot = ct::element_cast<float>(token_ids == target);
     target_logit = target_logit + ct::sum(row_logits * one_hot, 1_ic);
   }
@@ -70,8 +70,8 @@ __tile_global__ void CrossEntropyForwardKernel(
 }
 
 __tile_global__ void CrossEntropyBackwardKernel(
-    const float* __restrict__ logits, const int* __restrict__ targets,
-    int rows, int padded_vocab_size, float* __restrict__ logits_gradient) {
+    const float* __restrict__ logits, const int* __restrict__ targets, int rows,
+    int padded_vocab_size, float* __restrict__ logits_gradient) {
   namespace ct = ::cuda::tiles;
   using namespace ct::literals;
 
@@ -89,11 +89,10 @@ __tile_global__ void CrossEntropyBackwardKernel(
   const int row = block / vocabulary_tiles;
   const int output_tile = block % vocabulary_tiles;
   const int target = static_cast<int>(target_view.load(row));
-  auto maximum =
-      ct::full<ct::tile<float, ct::shape<1, 1>>>(-3.402823466e+38f);
+  auto maximum = ct::full<ct::tile<float, ct::shape<1, 1>>>(-3.402823466e+38f);
   for (int tile = 0; tile < vocabulary_tiles; ++tile) {
-    maximum = ct::max(maximum,
-                      ct::reduce_max(logits_view.load(row, tile), 1_ic));
+    maximum =
+        ct::max(maximum, ct::reduce_max(logits_view.load(row, tile), 1_ic));
   }
   auto denominator = ct::zeros<ct::tile<float, ct::shape<1, 1>>>();
   for (int tile = 0; tile < vocabulary_tiles; ++tile) {
@@ -102,15 +101,13 @@ __tile_global__ void CrossEntropyBackwardKernel(
   }
   auto row_logits = logits_view.load(row, output_tile);
   auto exponentials = ct::exp(row_logits - maximum);
-  auto token_ids = ct::iota<ct::tile<int, ct::shape<1, 16>>>() +
-                   output_tile * kDenseTile;
+  auto token_ids =
+      ct::iota<ct::tile<int, ct::shape<1, 16>>>() + output_tile * kDenseTile;
   auto one_hot = ct::element_cast<float>(token_ids == target);
   gradient_view.store(
-      (exponentials / denominator - one_hot) /
-          static_cast<float>(rows),
-      row, output_tile);
+      (exponentials / denominator - one_hot) / static_cast<float>(rows), row,
+      output_tile);
 }
-
 
 }  // namespace
 
@@ -133,12 +130,11 @@ absl::StatusOr<Buffer> CrossEntropyLossLayer::fwd(
         "CrossEntropyLossLayer fwd expects logits, targets, and a non-null "
         "tape");
   }
-  ASSIGN_OR_RETURN(int rows,
-                   MatrixRows(inputs[0], padded_vocab_size_, stream_,
-                              "cross-entropy logits"));
-  RETURN_IF_ERROR(ValidateBuffer(
-      inputs[1], static_cast<size_t>(rows) * sizeof(int), stream_,
-      "cross-entropy targets"));
+  ASSIGN_OR_RETURN(int rows, MatrixRows(inputs[0], padded_vocab_size_, stream_,
+                                        "cross-entropy logits"));
+  RETURN_IF_ERROR(ValidateBuffer(inputs[1],
+                                 static_cast<size_t>(rows) * sizeof(int),
+                                 stream_, "cross-entropy targets"));
   ASSIGN_OR_RETURN(
       auto losses,
       Buffer::Allocate(static_cast<size_t>(rows) * sizeof(float), stream_));
@@ -146,11 +142,10 @@ absl::StatusOr<Buffer> CrossEntropyLossLayer::fwd(
   tape->children.clear();
   CrossEntropyForwardKernel<<<rows, 1, 0, stream_>>>(
       static_cast<const float*>(inputs[0].data()),
-      static_cast<const int*>(inputs[1].data()),
-      rows, padded_vocab_size_,
+      static_cast<const int*>(inputs[1].data()), rows, padded_vocab_size_,
       static_cast<float*>(losses.data()));
-  RETURN_IF_ERROR(CudaStatus(cudaGetLastError(),
-                             "CrossEntropyForwardKernel launch"));
+  RETURN_IF_ERROR(
+      CudaStatus(cudaGetLastError(), "CrossEntropyForwardKernel launch"));
   return std::move(losses);
 }
 
@@ -161,25 +156,23 @@ absl::StatusOr<BufferVec> CrossEntropyLossLayer::bwd(
         "terminal CrossEntropyLossLayer bwd expects no upstream gradient and "
         "a matching tape");
   }
-  ASSIGN_OR_RETURN(int rows,
-                   MatrixRows(tape.intermediates[0], padded_vocab_size_, stream_,
-                              "cross-entropy saved logits"));
-  RETURN_IF_ERROR(ValidateBuffer(
-      tape.intermediates[1], static_cast<size_t>(rows) * sizeof(int), stream_,
-      "cross-entropy saved targets"));
+  ASSIGN_OR_RETURN(
+      int rows, MatrixRows(tape.intermediates[0], padded_vocab_size_, stream_,
+                           "cross-entropy saved logits"));
+  RETURN_IF_ERROR(ValidateBuffer(tape.intermediates[1],
+                                 static_cast<size_t>(rows) * sizeof(int),
+                                 stream_, "cross-entropy saved targets"));
   ASSIGN_OR_RETURN(
       auto logits_gradient,
       Buffer::Allocate(tape.intermediates[0].size_bytes(), stream_));
   CrossEntropyBackwardKernel<<<rows * TileCount(padded_vocab_size_), 1, 0,
                                stream_>>>(
       static_cast<const float*>(tape.intermediates[0].data()),
-      static_cast<const int*>(tape.intermediates[1].data()),
-      rows, padded_vocab_size_,
-      static_cast<float*>(logits_gradient.data()));
-  RETURN_IF_ERROR(CudaStatus(cudaGetLastError(),
-                             "CrossEntropyBackwardKernel launch"));
+      static_cast<const int*>(tape.intermediates[1].data()), rows,
+      padded_vocab_size_, static_cast<float*>(logits_gradient.data()));
+  RETURN_IF_ERROR(
+      CudaStatus(cudaGetLastError(), "CrossEntropyBackwardKernel launch"));
   return BufferVec{std::move(logits_gradient)};
 }
-
 
 }  // namespace pluto::llm

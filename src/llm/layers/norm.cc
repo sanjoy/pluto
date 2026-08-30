@@ -47,16 +47,15 @@ __tile_global__ void LayerNormForwardKernel(
   mean = mean / static_cast<float>(embedding_dim);
   auto variance = ct::zeros<ct::tile<float, ct::shape<1, 1>>>();
   for (int tile = 0; tile < width_tiles; ++tile) {
-    auto centered =
-        ct::element_cast<float>(input_view.load(row, tile)) - mean;
+    auto centered = ct::element_cast<float>(input_view.load(row, tile)) - mean;
     variance = variance + ct::sum(centered * centered, 1_ic);
   }
   variance = variance / static_cast<float>(embedding_dim);
   auto normalized =
       (ct::element_cast<float>(input_view.load(row, output_tile)) - mean) *
       ct::rsqrt(variance + epsilon);
-  auto affine = normalized * gamma_view.load(output_tile) +
-                beta_view.load(output_tile);
+  auto affine =
+      normalized * gamma_view.load(output_tile) + beta_view.load(output_tile);
   output_view.store(ct::element_cast<Activation>(affine), row, output_tile);
 }
 
@@ -90,8 +89,7 @@ __tile_global__ void LayerNormInputGradientKernel(
   mean = mean / static_cast<float>(embedding_dim);
   auto variance = ct::zeros<ct::tile<float, ct::shape<1, 1>>>();
   for (int tile = 0; tile < width_tiles; ++tile) {
-    auto centered =
-        ct::element_cast<float>(input_view.load(row, tile)) - mean;
+    auto centered = ct::element_cast<float>(input_view.load(row, tile)) - mean;
     variance = variance + ct::sum(centered * centered, 1_ic);
   }
   auto inverse_stddev =
@@ -102,11 +100,10 @@ __tile_global__ void LayerNormInputGradientKernel(
     auto normalized =
         (ct::element_cast<float>(input_view.load(row, tile)) - mean) *
         inverse_stddev;
-    auto d_normalized = output_gradient_view.load(row, tile) *
-                        gamma_view.load(tile);
+    auto d_normalized =
+        output_gradient_view.load(row, tile) * gamma_view.load(tile);
     gradient_sum = gradient_sum + ct::sum(d_normalized, 1_ic);
-    projected_sum =
-        projected_sum + ct::sum(d_normalized * normalized, 1_ic);
+    projected_sum = projected_sum + ct::sum(d_normalized * normalized, 1_ic);
   }
   auto normalized =
       (ct::element_cast<float>(input_view.load(row, output_tile)) - mean) *
@@ -147,9 +144,8 @@ __tile_global__ void LayerNormParameterGradientKernel(
   for (int row = 0; row < rows; ++row) {
     auto mean = ct::zeros<ct::tile<float, ct::shape<1, 1>>>();
     for (int tile = 0; tile < width_tiles; ++tile) {
-      mean = mean + ct::sum(
-                        ct::element_cast<float>(input_view.load(row, tile)),
-                        1_ic);
+      mean = mean +
+             ct::sum(ct::element_cast<float>(input_view.load(row, tile)), 1_ic);
     }
     mean = mean / static_cast<float>(embedding_dim);
     auto variance = ct::zeros<ct::tile<float, ct::shape<1, 1>>>();
@@ -165,16 +161,15 @@ __tile_global__ void LayerNormParameterGradientKernel(
     d_gamma = d_gamma + gradient * normalized;
     d_beta = d_beta + gradient;
   }
-  gamma_gradient_view.store(
-      ct::reshape(d_gamma, ct::shape{16_ic}), output_tile);
+  gamma_gradient_view.store(ct::reshape(d_gamma, ct::shape{16_ic}),
+                            output_tile);
   beta_gradient_view.store(ct::reshape(d_beta, ct::shape{16_ic}), output_tile);
 }
 
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<LayerNormLayer>> LayerNormLayer::Create(
-    int embedding_dim, float epsilon, DataType data_type,
-    cudaStream_t stream) {
+    int embedding_dim, float epsilon, DataType data_type, cudaStream_t stream) {
   RETURN_IF_ERROR(internal::ValidateComputeType(data_type));
   if (!(epsilon > 0.0f)) {
     return absl::InvalidArgumentError("layer-norm epsilon must be positive");
@@ -198,20 +193,18 @@ absl::StatusOr<std::unique_ptr<LayerNormLayer>> LayerNormLayer::Create(
   }
   return std::unique_ptr<LayerNormLayer>(new LayerNormLayer(
       embedding_dim, epsilon, data_type, stream, std::move(gamma),
-      std::move(beta), std::move(gamma_gradient),
-      std::move(beta_gradient)));
+      std::move(beta), std::move(gamma_gradient), std::move(beta_gradient)));
 }
 
-absl::StatusOr<Buffer> LayerNormLayer::fwd(
-    absl::Span<const Buffer> inputs, Tape* tape) const {
+absl::StatusOr<Buffer> LayerNormLayer::fwd(absl::Span<const Buffer> inputs,
+                                           Tape* tape) const {
   if (inputs.size() != 1 || tape == nullptr) {
     return absl::InvalidArgumentError(
         "LayerNormLayer fwd expects one input and a non-null tape");
   }
-  ASSIGN_OR_RETURN(
-      int rows,
-      internal::ActivationRows(inputs[0], embedding_dim_, output_type_,
-                               stream_, "layer-norm input"));
+  ASSIGN_OR_RETURN(int rows, internal::ActivationRows(inputs[0], embedding_dim_,
+                                                      output_type_, stream_,
+                                                      "layer-norm input"));
   ASSIGN_OR_RETURN(auto output,
                    Buffer::Allocate(inputs[0].size_bytes(), stream_));
   const int blocks = rows * internal::TileCount(embedding_dim_);
@@ -241,10 +234,9 @@ absl::StatusOr<BufferVec> LayerNormLayer::bwd(
     return absl::InvalidArgumentError(
         "LayerNormLayer bwd received an incompatible gradient or tape");
   }
-  ASSIGN_OR_RETURN(
-      int rows,
-      internal::MatrixRows(output_gradients[0], embedding_dim_, stream_,
-                           "layer-norm output gradient"));
+  ASSIGN_OR_RETURN(int rows,
+                   internal::MatrixRows(output_gradients[0], embedding_dim_,
+                                        stream_, "layer-norm output gradient"));
   RETURN_IF_ERROR(internal::ValidateBuffer(
       tape.intermediates[0],
       static_cast<size_t>(rows) * embedding_dim_ *
@@ -252,41 +244,36 @@ absl::StatusOr<BufferVec> LayerNormLayer::bwd(
       stream_, "layer-norm saved input"));
   ASSIGN_OR_RETURN(
       auto input_gradient,
-      Buffer::Allocate(static_cast<size_t>(rows) * embedding_dim_ *
-                           sizeof(float),
-                       stream_));
+      Buffer::Allocate(
+          static_cast<size_t>(rows) * embedding_dim_ * sizeof(float), stream_));
   const int blocks = rows * internal::TileCount(embedding_dim_);
   if (output_type_ == DataType::BF16) {
     LayerNormInputGradientKernel<__nv_bfloat16><<<blocks, 1, 0, stream_>>>(
         static_cast<const __nv_bfloat16*>(tape.intermediates[0].data()),
         static_cast<const float*>(weights_[0].data()),
         static_cast<const float*>(output_gradients[0].data()), rows,
-        embedding_dim_, epsilon_,
-        static_cast<float*>(input_gradient.data()));
+        embedding_dim_, epsilon_, static_cast<float*>(input_gradient.data()));
     LayerNormParameterGradientKernel<__nv_bfloat16>
         <<<internal::TileCount(embedding_dim_), 1, 0, stream_>>>(
             static_cast<const __nv_bfloat16*>(tape.intermediates[0].data()),
             static_cast<const float*>(output_gradients[0].data()), rows,
-            embedding_dim_, epsilon_,
-            static_cast<float*>(gradients_[0].data()),
+            embedding_dim_, epsilon_, static_cast<float*>(gradients_[0].data()),
             static_cast<float*>(gradients_[1].data()));
   } else {
     LayerNormInputGradientKernel<float><<<blocks, 1, 0, stream_>>>(
         static_cast<const float*>(tape.intermediates[0].data()),
         static_cast<const float*>(weights_[0].data()),
         static_cast<const float*>(output_gradients[0].data()), rows,
-        embedding_dim_, epsilon_,
-        static_cast<float*>(input_gradient.data()));
+        embedding_dim_, epsilon_, static_cast<float*>(input_gradient.data()));
     LayerNormParameterGradientKernel<float>
         <<<internal::TileCount(embedding_dim_), 1, 0, stream_>>>(
             static_cast<const float*>(tape.intermediates[0].data()),
             static_cast<const float*>(output_gradients[0].data()), rows,
-            embedding_dim_, epsilon_,
-            static_cast<float*>(gradients_[0].data()),
+            embedding_dim_, epsilon_, static_cast<float*>(gradients_[0].data()),
             static_cast<float*>(gradients_[1].data()));
   }
-  RETURN_IF_ERROR(internal::CudaStatus(cudaGetLastError(),
-                                       "layer-norm backward launch"));
+  RETURN_IF_ERROR(
+      internal::CudaStatus(cudaGetLastError(), "layer-norm backward launch"));
   return BufferVec{std::move(input_gradient)};
 }
 

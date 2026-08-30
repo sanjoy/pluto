@@ -1,5 +1,3 @@
-#include "src/llm/layers/norm.h"
-
 #include <cmath>
 #include <cstddef>
 #include <tuple>
@@ -8,6 +6,7 @@
 #include "absl/status/status.h"
 #include "gtest/gtest.h"
 #include "src/llm/layer.h"
+#include "src/llm/layers/norm.h"
 #include "src/llm/layers/reference_test_util.h"
 
 namespace pluto::llm {
@@ -17,11 +16,10 @@ TEST_F(LayerReferenceTest, ForwardAndBackwardMatchAcrossShapesAndTypes) {
   for (DataType type : {DataType::FP16, DataType::BF16}) {
     for (const auto [rows, width] :
          {std::tuple{3, 16}, std::tuple{16, 32}, std::tuple{32, 48}}) {
-      SCOPED_TRACE(testing::Message() << "type=" << static_cast<int>(type)
-                                      << " rows=" << rows
-                                      << " width=" << width);
-      auto device_layer =
-          LayerNormLayer::Create(width, 1e-5f, type, stream_);
+      SCOPED_TRACE(testing::Message()
+                   << "type=" << static_cast<int>(type) << " rows=" << rows
+                   << " width=" << width);
+      auto device_layer = LayerNormLayer::Create(width, 1e-5f, type, stream_);
       auto reference_layer =
           LayerNormLayerReference::Create(width, 1e-5f, type);
       ASSERT_TRUE(device_layer.ok()) << device_layer.status();
@@ -34,11 +32,11 @@ TEST_F(LayerReferenceTest, ForwardAndBackwardMatchAcrossShapesAndTypes) {
         gamma[column] = 0.7f + 0.2f * std::cos(column * 0.19f);
         beta[column] = 0.1f * std::sin(column * 0.31f);
       }
-      ASSERT_TRUE(SetFloatBufferPair(device_weights[0],
-                                     &reference_weights[0], gamma, stream_)
+      ASSERT_TRUE(SetFloatBufferPair(device_weights[0], &reference_weights[0],
+                                     gamma, stream_)
                       .ok());
-      ASSERT_TRUE(SetFloatBufferPair(device_weights[1],
-                                     &reference_weights[1], beta, stream_)
+      ASSERT_TRUE(SetFloatBufferPair(device_weights[1], &reference_weights[1],
+                                     beta, stream_)
                       .ok());
 
       std::vector<float> input(static_cast<size_t>(rows) * width);
@@ -64,15 +62,16 @@ TEST_F(LayerReferenceTest, ForwardAndBackwardMatchAcrossShapesAndTypes) {
           (*reference_layer)->fwd(reference_inputs, &reference_tape);
       ASSERT_TRUE(device_output.ok()) << device_output.status();
       ASSERT_TRUE(reference_output.ok()) << reference_output.status();
-      EXPECT_TRUE(ActivationBuffersNear(*device_output, *reference_output,
-                                        type, 3e-3f, 3e-3f));
+      EXPECT_TRUE(ActivationBuffersNear(*device_output, *reference_output, type,
+                                        3e-3f, 3e-3f));
 
       BufferVec device_gradients = {gradient_pair->device};
       HostBufferVec reference_gradients = {gradient_pair->host};
       auto device_input =
           (*device_layer)->bwd(device_gradients, std::move(device_tape));
-      auto reference_input = (*reference_layer)->bwd(
-          reference_gradients, std::move(reference_tape));
+      auto reference_input =
+          (*reference_layer)
+              ->bwd(reference_gradients, std::move(reference_tape));
       ASSERT_TRUE(device_input.ok()) << device_input.status();
       ASSERT_TRUE(reference_input.ok()) << reference_input.status();
       EXPECT_TRUE(FloatBuffersNear(device_input->front(),
@@ -91,8 +90,7 @@ TEST_F(LayerReferenceTest, ForwardAndBackwardMatchAcrossShapesAndTypes) {
 
 TEST_F(LayerReferenceTest, FP8IsRejectedConsistently) {
   auto device = LayerNormLayer::Create(16, 1e-5f, DataType::FP8, stream_);
-  auto reference =
-      LayerNormLayerReference::Create(16, 1e-5f, DataType::FP8);
+  auto reference = LayerNormLayerReference::Create(16, 1e-5f, DataType::FP8);
   ASSERT_FALSE(device.ok());
   ASSERT_FALSE(reference.ok());
   EXPECT_EQ(device.status().code(), absl::StatusCode::kUnimplemented);

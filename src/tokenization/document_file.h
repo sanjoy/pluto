@@ -18,8 +18,8 @@ namespace pluto::tokenized {
 //   uint16_le tokens[sum(document_lengths)]
 //
 // Open() validates the complete shape of the file and builds byte offsets once.
-// ReadDocument() uses pread(), so calls do not share a seek position and may run
-// concurrently.
+// ReadDocument() uses pread(), so calls do not share a seek position and may
+// run concurrently.
 class DocumentFileReader final {
  public:
   static absl::StatusOr<std::unique_ptr<DocumentFileReader>> Open(

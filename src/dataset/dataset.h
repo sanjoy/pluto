@@ -70,8 +70,8 @@ class InMemoryDataSetIterator final : public DataSetIterator {
 
  private:
   InMemoryDataSetIterator(std::vector<int> corpus,
-                          InMemoryDataSetOptions options,
-                          cudaStream_t stream, cuda::Buffer token_buffer,
+                          InMemoryDataSetOptions options, cudaStream_t stream,
+                          cuda::Buffer token_buffer,
                           cuda::Buffer target_buffer);
 
   std::vector<int> corpus_;

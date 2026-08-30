@@ -73,9 +73,10 @@ TEST_F(CuTileTest, AddsOneTilePerLogicalBlock) {
   ASSERT_EQ(cudaMemcpyAsync(left->data(), left_host.data(), sizeof(left_host),
                             cudaMemcpyHostToDevice, stream_),
             cudaSuccess);
-  ASSERT_EQ(cudaMemcpyAsync(right->data(), right_host.data(),
-                            sizeof(right_host), cudaMemcpyHostToDevice, stream_),
-            cudaSuccess);
+  ASSERT_EQ(
+      cudaMemcpyAsync(right->data(), right_host.data(), sizeof(right_host),
+                      cudaMemcpyHostToDevice, stream_),
+      cudaSuccess);
 
   // Tile kernels use ordinary launch syntax, but their block dimension must be
   // one because the tile compiler chooses the physical thread configuration.
@@ -84,10 +85,10 @@ TEST_F(CuTileTest, AddsOneTilePerLogicalBlock) {
       static_cast<const int*>(right->data()),
       static_cast<int*>(output->data()));
   ASSERT_EQ(cudaGetLastError(), cudaSuccess);
-  ASSERT_EQ(cudaMemcpyAsync(output_host.data(), output->data(),
-                            sizeof(output_host), cudaMemcpyDeviceToHost,
-                            stream_),
-            cudaSuccess);
+  ASSERT_EQ(
+      cudaMemcpyAsync(output_host.data(), output->data(), sizeof(output_host),
+                      cudaMemcpyDeviceToHost, stream_),
+      cudaSuccess);
   ASSERT_EQ(cudaStreamSynchronize(stream_), cudaSuccess);
 
   for (int index = 0; index < kElementCount; ++index) {

@@ -38,19 +38,18 @@ inline absl::Status ValidateComputeType(DataType type) {
 
 inline absl::Status ValidateTiledExtent(int extent, const char* name) {
   if (extent <= 0 || extent % kDenseTile != 0) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        name, " must be a positive multiple of ", kDenseTile));
+    return absl::InvalidArgumentError(
+        absl::StrCat(name, " must be a positive multiple of ", kDenseTile));
   }
   return absl::OkStatus();
 }
 
 inline absl::Status ValidateBuffer(const HostBuffer& buffer,
-                                   size_t expected_bytes,
-                                   const char* name) {
+                                   size_t expected_bytes, const char* name) {
   if (buffer.size_bytes() != expected_bytes) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        name, " has ", buffer.size_bytes(), " bytes; expected ",
-        expected_bytes));
+    return absl::InvalidArgumentError(
+        absl::StrCat(name, " has ", buffer.size_bytes(), " bytes; expected ",
+                     expected_bytes));
   }
   return absl::OkStatus();
 }
@@ -76,8 +75,7 @@ inline absl::StatusOr<int> MatrixRows(const HostBuffer& buffer, int columns,
     return absl::InvalidArgumentError(
         absl::StrCat(name, " has an invalid column count"));
   }
-  ASSIGN_OR_RETURN(int elements,
-                   ElementCount(buffer, sizeof(float), name));
+  ASSIGN_OR_RETURN(int elements, ElementCount(buffer, sizeof(float), name));
   if (elements % columns != 0) {
     return absl::InvalidArgumentError(
         absl::StrCat(name, " is not a float matrix"));
@@ -85,16 +83,14 @@ inline absl::StatusOr<int> MatrixRows(const HostBuffer& buffer, int columns,
   return elements / columns;
 }
 
-inline absl::StatusOr<int> ActivationRows(const HostBuffer& buffer,
-                                          int columns, DataType type,
-                                          const char* name) {
+inline absl::StatusOr<int> ActivationRows(const HostBuffer& buffer, int columns,
+                                          DataType type, const char* name) {
   if (columns <= 0) {
     return absl::InvalidArgumentError(
         absl::StrCat(name, " has an invalid column count"));
   }
-  ASSIGN_OR_RETURN(
-      int elements,
-      ElementCount(buffer, ActivationElementBytes(type), name));
+  ASSIGN_OR_RETURN(int elements,
+                   ElementCount(buffer, ActivationElementBytes(type), name));
   if (elements % columns != 0) {
     return absl::InvalidArgumentError(
         absl::StrCat(name, " is not an activation matrix"));
@@ -121,8 +117,7 @@ inline uint16_t FloatToHalf(float value) {
   uint32_t mantissa = bits & 0x7fffffu;
 
   if (exponent == 0xffu) {
-    return static_cast<uint16_t>(
-        sign | (mantissa == 0 ? 0x7c00u : 0x7e00u));
+    return static_cast<uint16_t>(sign | (mantissa == 0 ? 0x7c00u : 0x7e00u));
   }
 
   int half_exponent = static_cast<int>(exponent) - 127 + 15;
@@ -136,8 +131,7 @@ inline uint16_t FloatToHalf(float value) {
     uint32_t rounded = mantissa >> shift;
     const uint32_t remainder = mantissa & ((1u << shift) - 1u);
     const uint32_t halfway = 1u << (shift - 1);
-    if (remainder > halfway ||
-        (remainder == halfway && (rounded & 1u) != 0)) {
+    if (remainder > halfway || (remainder == halfway && (rounded & 1u) != 0)) {
       ++rounded;
     }
     return static_cast<uint16_t>(sign | rounded);
@@ -157,8 +151,7 @@ inline uint16_t FloatToHalf(float value) {
     }
   }
   return static_cast<uint16_t>(
-      sign | (static_cast<uint32_t>(half_exponent) << 10) |
-      rounded_mantissa);
+      sign | (static_cast<uint32_t>(half_exponent) << 10) | rounded_mantissa);
 }
 
 inline float HalfToFloat(uint16_t value) {
@@ -188,9 +181,8 @@ inline float HalfToFloat(uint16_t value) {
 }
 
 inline float QuantizeMmaOperand(float value, DataType type) {
-  return type == DataType::BF16
-             ? Bf16ToFloat(FloatToBf16(value))
-             : HalfToFloat(FloatToHalf(value));
+  return type == DataType::BF16 ? Bf16ToFloat(FloatToBf16(value))
+                                : HalfToFloat(FloatToHalf(value));
 }
 
 inline float LoadActivation(const HostBuffer& buffer, size_t index,
@@ -217,8 +209,7 @@ inline absl::StatusOr<HostBuffer> AllocateActivation(size_t elements,
 
 inline absl::StatusOr<HostBuffer> AllocateFloats(size_t elements,
                                                  bool clear = false) {
-  ASSIGN_OR_RETURN(auto buffer,
-                   HostBuffer::Allocate(elements * sizeof(float)));
+  ASSIGN_OR_RETURN(auto buffer, HostBuffer::Allocate(elements * sizeof(float)));
   if (clear) std::memset(buffer.data(), 0, buffer.size_bytes());
   return buffer;
 }

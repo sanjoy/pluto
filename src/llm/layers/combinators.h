@@ -18,15 +18,11 @@ class ResidualLayer final : public Layer {
   explicit ResidualLayer(std::unique_ptr<Layer> layer);
 
   absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs,
-                              Tape* tape) const override;
-  absl::StatusOr<BufferVec> bwd(
-      absl::Span<const Buffer> output_gradients, Tape tape) override;
-  absl::Span<Buffer> weights() override {
-    return absl::MakeSpan(weights_);
-  }
-  absl::Span<Buffer> gradients() override {
-    return absl::MakeSpan(gradients_);
-  }
+                             Tape* tape) const override;
+  absl::StatusOr<BufferVec> bwd(absl::Span<const Buffer> output_gradients,
+                                Tape tape) override;
+  absl::Span<Buffer> weights() override { return absl::MakeSpan(weights_); }
+  absl::Span<Buffer> gradients() override { return absl::MakeSpan(gradients_); }
   DataType output_type() const override { return layer_->output_type(); }
 
  private:
@@ -39,19 +35,14 @@ class ResidualLayer final : public Layer {
 // cross entropy with labels, intentionally remain outside the predictor.
 class ComposedLayer final : public Layer {
  public:
-  ComposedLayer(DataType data_type,
-                std::vector<std::unique_ptr<Layer>> layers);
+  ComposedLayer(DataType data_type, std::vector<std::unique_ptr<Layer>> layers);
 
   absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs,
-                              Tape* tape) const override;
-  absl::StatusOr<BufferVec> bwd(
-      absl::Span<const Buffer> output_gradients, Tape tape) override;
-  absl::Span<Buffer> weights() override {
-    return absl::MakeSpan(weights_);
-  }
-  absl::Span<Buffer> gradients() override {
-    return absl::MakeSpan(gradients_);
-  }
+                             Tape* tape) const override;
+  absl::StatusOr<BufferVec> bwd(absl::Span<const Buffer> output_gradients,
+                                Tape tape) override;
+  absl::Span<Buffer> weights() override { return absl::MakeSpan(weights_); }
+  absl::Span<Buffer> gradients() override { return absl::MakeSpan(gradients_); }
   DataType output_type() const override { return output_type_; }
 
  private:
@@ -74,8 +65,7 @@ class ComposedLayerBuilder final {
   // the composition. Accepting the concrete LayerType preserves convenient
   // calls such as `RETURN_IF_ERROR(builder.add(MyLayer::Create(...)))`.
   template <class LayerType>
-  absl::Status add(
-      absl::StatusOr<std::unique_ptr<LayerType>> layer_or_error) {
+  absl::Status add(absl::StatusOr<std::unique_ptr<LayerType>> layer_or_error) {
     static_assert(std::is_base_of_v<Layer, LayerType>,
                   "ComposedLayerBuilder children must derive from Layer");
     if (!layer_or_error.ok()) return layer_or_error.status();
@@ -101,13 +91,11 @@ class ResidualLayerReference final : public LayerReference {
  public:
   explicit ResidualLayerReference(std::unique_ptr<LayerReference> layer);
   absl::StatusOr<HostBuffer> fwd(absl::Span<const HostBuffer> inputs,
-                                  ReferenceTape* tape) override;
+                                 ReferenceTape* tape) override;
   absl::StatusOr<HostBufferVec> bwd(
       absl::Span<const HostBuffer> output_gradients,
       ReferenceTape tape) override;
-  absl::Span<HostBuffer> weights() override {
-    return absl::MakeSpan(weights_);
-  }
+  absl::Span<HostBuffer> weights() override { return absl::MakeSpan(weights_); }
   absl::Span<HostBuffer> gradients() override {
     return absl::MakeSpan(gradients_);
   }
@@ -126,13 +114,11 @@ class ComposedLayerReference final : public LayerReference {
   ComposedLayerReference(DataType data_type,
                          std::vector<std::unique_ptr<LayerReference>> layers);
   absl::StatusOr<HostBuffer> fwd(absl::Span<const HostBuffer> inputs,
-                                  ReferenceTape* tape) override;
+                                 ReferenceTape* tape) override;
   absl::StatusOr<HostBufferVec> bwd(
       absl::Span<const HostBuffer> output_gradients,
       ReferenceTape tape) override;
-  absl::Span<HostBuffer> weights() override {
-    return absl::MakeSpan(weights_);
-  }
+  absl::Span<HostBuffer> weights() override { return absl::MakeSpan(weights_); }
   absl::Span<HostBuffer> gradients() override {
     return absl::MakeSpan(gradients_);
   }
@@ -149,8 +135,7 @@ class ComposedLayerReferenceBuilder final {
  public:
   absl::Status add(std::unique_ptr<LayerReference> layer);
   template <class LayerType>
-  absl::Status add(
-      absl::StatusOr<std::unique_ptr<LayerType>> layer_or_error) {
+  absl::Status add(absl::StatusOr<std::unique_ptr<LayerType>> layer_or_error) {
     static_assert(std::is_base_of_v<LayerReference, LayerType>,
                   "reference children must derive from LayerReference");
     if (!layer_or_error.ok()) return layer_or_error.status();

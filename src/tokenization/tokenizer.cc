@@ -77,7 +77,8 @@ std::string ByteEncode(absl::string_view text,
                        const internal::Gpt2Model& model) {
   std::string encoded;
   encoded.reserve(text.size() * 2);
-  for (const unsigned char byte : text) encoded.append(model.byte_encoder()[byte]);
+  for (const unsigned char byte : text)
+    encoded.append(model.byte_encoder()[byte]);
   return encoded;
 }
 
@@ -115,8 +116,8 @@ absl::StatusOr<std::vector<int>> Gpt2Tokenizer::ApplyBpe(
     std::string best_left;
     std::string best_right;
     for (size_t i = 0; i + 1 < symbols.size(); ++i) {
-      const auto rank =
-          model_->merge_ranks().find(internal::MergeKey(symbols[i], symbols[i + 1]));
+      const auto rank = model_->merge_ranks().find(
+          internal::MergeKey(symbols[i], symbols[i + 1]));
       if (rank != model_->merge_ranks().end() && rank->second < best_rank) {
         best_rank = rank->second;
         best_left = symbols[i];
@@ -144,14 +145,16 @@ absl::StatusOr<std::vector<int>> Gpt2Tokenizer::ApplyBpe(
   for (const std::string& symbol : symbols) {
     const auto id = model_->encoder().find(symbol);
     if (id == model_->encoder().end()) {
-      return absl::DataLossError("BPE produced a token absent from the vocabulary");
+      return absl::DataLossError(
+          "BPE produced a token absent from the vocabulary");
     }
     ids.push_back(id->second);
   }
 
   {
     absl::MutexLock lock(cache_mutex_);
-    if (cache_.size() < kMaximumCacheEntries) cache_.emplace(std::move(token), ids);
+    if (cache_.size() < kMaximumCacheEntries)
+      cache_.emplace(std::move(token), ids);
   }
   return ids;
 }
@@ -172,9 +175,9 @@ absl::StatusOr<std::vector<int>> Gpt2Tokenizer::Encode(
   size_t begin = 0;
   while (begin < text.size()) {
     const size_t special = text.find(model_->eos_token(), begin);
-    const size_t end = special == absl::string_view::npos ? text.size() : special;
-    RETURN_IF_ERROR(
-        EncodeOrdinary(text.substr(begin, end - begin), &output));
+    const size_t end =
+        special == absl::string_view::npos ? text.size() : special;
+    RETURN_IF_ERROR(EncodeOrdinary(text.substr(begin, end - begin), &output));
     if (special == absl::string_view::npos) break;
     output.push_back(model_->eos_token_id());
     begin = special + model_->eos_token().size();

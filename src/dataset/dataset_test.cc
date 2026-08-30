@@ -26,9 +26,8 @@ class DataSetTest : public testing::Test {
 
   std::vector<int> CopyToHost(const cuda::Buffer& buffer) {
     std::vector<int> result(buffer.size_bytes() / sizeof(int));
-    EXPECT_EQ(cudaMemcpyAsync(result.data(), buffer.data(),
-                              buffer.size_bytes(), cudaMemcpyDeviceToHost,
-                              stream_),
+    EXPECT_EQ(cudaMemcpyAsync(result.data(), buffer.data(), buffer.size_bytes(),
+                              cudaMemcpyDeviceToHost, stream_),
               cudaSuccess);
     EXPECT_EQ(cudaStreamSynchronize(stream_), cudaSuccess);
     return result;
@@ -97,20 +96,17 @@ TEST_F(DataSetTest, RejectsInvalidShapesAndDefaultStream) {
   const std::vector<int> corpus(10, 1);
   EXPECT_FALSE(InMemoryDataSetIterator::Create(
                    corpus,
-                   InMemoryDataSetOptions{.batch_size = 7,
-                                          .context_length = 4},
+                   InMemoryDataSetOptions{.batch_size = 7, .context_length = 4},
                    stream_)
                    .ok());
   EXPECT_FALSE(InMemoryDataSetIterator::Create(
                    std::vector<int>{1, 2, 3, 4},
-                   InMemoryDataSetOptions{.batch_size = 4,
-                                          .context_length = 4},
+                   InMemoryDataSetOptions{.batch_size = 4, .context_length = 4},
                    stream_)
                    .ok());
   EXPECT_FALSE(InMemoryDataSetIterator::Create(
                    corpus,
-                   InMemoryDataSetOptions{.batch_size = 4,
-                                          .context_length = 2},
+                   InMemoryDataSetOptions{.batch_size = 4, .context_length = 2},
                    nullptr)
                    .ok());
 }
