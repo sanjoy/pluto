@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <utility>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -114,6 +115,112 @@ class PositionEmbeddingLayer final : public Layer {
   cudaStream_t stream_;
   Buffer weight_;
   Buffer gradient_;
+};
+
+class LanguageModelingHeadLayerReference;
+
+// Scalar table lookup reference. Master weights and gradients remain FP32,
+// exactly like the GPU layer, while returned activations use output_type().
+class EmbeddingLookupLayerReference final : public LayerReference {
+ public:
+  static absl::StatusOr<std::unique_ptr<EmbeddingLookupLayerReference>> Create(
+      int vocab_size, int embedding_dim, DataType data_type);
+
+  absl::Status InitializeIdentity(float scale = 1.0f);
+  absl::Status InitializeNormal(float standard_deviation, uint64_t seed);
+  absl::StatusOr<HostBuffer> fwd(absl::Span<const HostBuffer> inputs,
+                                  ReferenceTape* tape) override;
+  absl::StatusOr<HostBufferVec> bwd(
+      absl::Span<const HostBuffer> output_gradients,
+      ReferenceTape tape) override;
+  absl::Span<HostBuffer> weights() override {
+    return absl::MakeSpan(&weight_, 1);
+  }
+  absl::Span<HostBuffer> gradients() override {
+    return absl::MakeSpan(&gradient_, 1);
+  }
+  DataType output_type() const override { return output_type_; }
+  int vocab_size() const { return vocab_size_; }
+  int padded_vocab_size() const { return padded_vocab_size_; }
+  int embedding_dim() const { return embedding_dim_; }
+  const HostBuffer& weight() const { return weight_; }
+
+ private:
+  EmbeddingLookupLayerReference(int vocab_size, int padded_vocab_size,
+                                int embedding_dim, DataType data_type,
+                                HostBuffer weight, HostBuffer gradient)
+      : vocab_size_(vocab_size),
+        padded_vocab_size_(padded_vocab_size),
+        embedding_dim_(embedding_dim),
+        output_type_(data_type),
+        weight_(std::move(weight)),
+        gradient_(std::move(gradient)) {}
+
+  friend class LanguageModelingHeadLayerReference;
+  int vocab_size_;
+  int padded_vocab_size_;
+  int embedding_dim_;
+  DataType output_type_;
+  HostBuffer weight_;
+  HostBuffer gradient_;
+};
+
+// Obvious dense projection using the reference embedding's transposed table.
+class LanguageModelingHeadLayerReference final : public LayerReference {
+ public:
+  static absl::StatusOr<std::unique_ptr<LanguageModelingHeadLayerReference>>
+  Create(EmbeddingLookupLayerReference* embedding);
+  absl::StatusOr<HostBuffer> fwd(absl::Span<const HostBuffer> inputs,
+                                  ReferenceTape* tape) override;
+  absl::StatusOr<HostBufferVec> bwd(
+      absl::Span<const HostBuffer> output_gradients,
+      ReferenceTape tape) override;
+  absl::Span<HostBuffer> weights() override { return embedding_->weights(); }
+  absl::Span<HostBuffer> gradients() override {
+    return embedding_->gradients();
+  }
+  DataType output_type() const override { return embedding_->output_type(); }
+
+ private:
+  explicit LanguageModelingHeadLayerReference(
+      EmbeddingLookupLayerReference* embedding)
+      : embedding_(embedding) {}
+  EmbeddingLookupLayerReference* embedding_;
+};
+
+// Scalar learned-position addition and gradient accumulation reference.
+class PositionEmbeddingLayerReference final : public LayerReference {
+ public:
+  static absl::StatusOr<std::unique_ptr<PositionEmbeddingLayerReference>>
+  Create(int context_length, int embedding_dim, DataType data_type);
+  absl::Status InitializeNormal(float standard_deviation, uint64_t seed);
+  absl::StatusOr<HostBuffer> fwd(absl::Span<const HostBuffer> inputs,
+                                  ReferenceTape* tape) override;
+  absl::StatusOr<HostBufferVec> bwd(
+      absl::Span<const HostBuffer> output_gradients,
+      ReferenceTape tape) override;
+  absl::Span<HostBuffer> weights() override {
+    return absl::MakeSpan(&weight_, 1);
+  }
+  absl::Span<HostBuffer> gradients() override {
+    return absl::MakeSpan(&gradient_, 1);
+  }
+  DataType output_type() const override { return output_type_; }
+
+ private:
+  PositionEmbeddingLayerReference(int context_length, int embedding_dim,
+                                  DataType data_type, HostBuffer weight,
+                                  HostBuffer gradient)
+      : context_length_(context_length),
+        embedding_dim_(embedding_dim),
+        output_type_(data_type),
+        weight_(std::move(weight)),
+        gradient_(std::move(gradient)) {}
+  int context_length_;
+  int embedding_dim_;
+  DataType output_type_;
+  HostBuffer weight_;
+  HostBuffer gradient_;
 };
 
 }  // namespace pluto::llm

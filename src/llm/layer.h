@@ -7,11 +7,14 @@
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "src/cuda/buffer.h"
+#include "src/host/buffer.h"
 
 namespace pluto::llm {
 
 using Buffer = gpu::Buffer;
 using BufferVec = absl::InlinedVector<Buffer, 2>;
+using HostBuffer = host::Buffer;
+using HostBufferVec = absl::InlinedVector<HostBuffer, 2>;
 
 enum class DataType {
   FP16,
@@ -41,6 +44,31 @@ class Layer {
   // Stateless layers return an empty span. Optimizers clear these buffers
   // before backward and update the FP32 master weights after backward.
   virtual absl::Span<Buffer> gradients() { return {}; }
+  virtual DataType output_type() const = 0;
+};
+
+// Saved forward state for the CPU reference graph. It deliberately has the
+// same tree structure as Tape, but owns host buffers so reference execution is
+// independent of CUDA allocation and stream semantics.
+struct ReferenceTape {
+  HostBufferVec intermediates;
+  std::vector<ReferenceTape> children;
+};
+
+// CPU counterpart to Layer. Reference layers favor direct scalar loops over
+// performance; their job is to state the math plainly enough to serve as an
+// executable specification for the cuTile kernels.
+class LayerReference {
+ public:
+  virtual ~LayerReference() = default;
+
+  virtual absl::StatusOr<HostBuffer> fwd(
+      absl::Span<const HostBuffer> inputs, ReferenceTape* tape) = 0;
+  virtual absl::StatusOr<HostBufferVec> bwd(
+      absl::Span<const HostBuffer> output_gradients,
+      ReferenceTape tape) = 0;
+  virtual absl::Span<HostBuffer> weights() = 0;
+  virtual absl::Span<HostBuffer> gradients() { return {}; }
   virtual DataType output_type() const = 0;
 };
 

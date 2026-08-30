@@ -48,4 +48,33 @@ class CrossEntropyLossLayer final : public Layer {
   cudaStream_t stream_;
 };
 
+// Scalar log-sum-exp reference for the terminal cross-entropy operation.
+class CrossEntropyLossLayerReference final : public LayerReference {
+ public:
+  static absl::StatusOr<std::unique_ptr<CrossEntropyLossLayerReference>>
+  Create(int vocabulary_size, DataType data_type);
+
+  absl::StatusOr<HostBuffer> fwd(absl::Span<const HostBuffer> inputs,
+                                  ReferenceTape* tape) override;
+  absl::StatusOr<HostBufferVec> bwd(
+      absl::Span<const HostBuffer> output_gradients,
+      ReferenceTape tape) override;
+  absl::Span<HostBuffer> weights() override { return {}; }
+  DataType output_type() const override { return output_type_; }
+
+  int vocab_size() const { return vocab_size_; }
+  int padded_vocab_size() const { return padded_vocab_size_; }
+
+ private:
+  CrossEntropyLossLayerReference(int vocab_size, int padded_vocab_size,
+                                 DataType data_type)
+      : vocab_size_(vocab_size),
+        padded_vocab_size_(padded_vocab_size),
+        output_type_(data_type) {}
+
+  int vocab_size_;
+  int padded_vocab_size_;
+  DataType output_type_;
+};
+
 }  // namespace pluto::llm

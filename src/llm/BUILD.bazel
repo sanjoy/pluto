@@ -2,7 +2,13 @@ load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("@rules_cuda//cuda:defs.bzl", "cuda_library")
-load("//src/llm:layers/defs.bzl", "layer_library", "layer_test")
+load(
+    "//src/llm:layers/defs.bzl",
+    "layer_library",
+    "layer_reference_library",
+    "layer_reference_test",
+    "layer_test",
+)
 
 cc_library(
     name = "layer",
@@ -10,6 +16,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//src/cuda:buffer",
+        "//src/host:buffer",
         "@abseil-cpp//absl/container:inlined_vector",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
@@ -32,6 +39,20 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "layer_reference_internal",
+    hdrs = ["layers/reference_internal.h"],
+    visibility = ["//src/llm:__subpackages__"],
+    deps = [
+        ":layer",
+        "//src/common:status_macros",
+        "//src/host:buffer",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+    ],
+)
+
 layer_library("attention")
 layer_library("combinators")
 layer_library("cross_entropy_loss")
@@ -39,6 +60,28 @@ layer_library("embedding")
 layer_library("fully_connected")
 layer_library("gelu")
 layer_library("norm")
+
+layer_reference_library("attention")
+layer_reference_library("combinators")
+layer_reference_library("cross_entropy_loss")
+layer_reference_library("embedding")
+layer_reference_library("fully_connected")
+layer_reference_library("gelu")
+layer_reference_library("norm")
+
+cc_library(
+    name = "layer_references",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":attention_reference",
+        ":combinators_reference",
+        ":cross_entropy_loss_reference",
+        ":embedding_reference",
+        ":fully_connected_reference",
+        ":gelu_reference",
+        ":norm_reference",
+    ],
+)
 
 cuda_library(
     name = "optimizer",
@@ -176,6 +219,26 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "layer_reference_test_util",
+    testonly = True,
+    hdrs = ["layers/reference_test_util.h"],
+    deps = [
+        ":layer",
+        ":layer_reference_internal",
+        ":layer_test_util",
+        "//src/common:status_macros",
+        "//src/cuda:buffer",
+        "//src/host:buffer",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest",
+    ],
+)
+
 layer_test("attention")
 layer_test("combinators", [
     ":fully_connected",
@@ -195,6 +258,19 @@ layer_test("optimizer", [
     ":fully_connected",
 ])
 
+layer_reference_test("attention")
+layer_reference_test("combinators", [
+    ":fully_connected",
+    ":fully_connected_reference",
+    ":gelu",
+    ":gelu_reference",
+])
+layer_reference_test("cross_entropy_loss")
+layer_reference_test("embedding")
+layer_reference_test("fully_connected")
+layer_reference_test("gelu")
+layer_reference_test("norm")
+
 test_suite(
     name = "layers_test",
     tests = [
@@ -206,5 +282,18 @@ test_suite(
         ":gelu_test",
         ":norm_test",
         ":optimizer_test",
+    ],
+)
+
+test_suite(
+    name = "layer_references_test",
+    tests = [
+        ":attention_reference_test",
+        ":combinators_reference_test",
+        ":cross_entropy_loss_reference_test",
+        ":embedding_reference_test",
+        ":fully_connected_reference_test",
+        ":gelu_reference_test",
+        ":norm_reference_test",
     ],
 )

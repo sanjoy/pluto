@@ -35,4 +35,23 @@ class GeluLayer final : public Layer {
   cudaStream_t stream_;
 };
 
+class GeluLayerReference final : public LayerReference {
+ public:
+  static absl::StatusOr<std::unique_ptr<GeluLayerReference>> Create(
+      DataType data_type);
+
+  absl::StatusOr<HostBuffer> fwd(
+      absl::Span<const HostBuffer> inputs, ReferenceTape* tape) override;
+  absl::StatusOr<HostBufferVec> bwd(
+      absl::Span<const HostBuffer> output_gradients,
+      ReferenceTape tape) override;
+  absl::Span<HostBuffer> weights() override { return {}; }
+  DataType output_type() const override { return output_type_; }
+
+ private:
+  explicit GeluLayerReference(DataType data_type) : output_type_(data_type) {}
+
+  DataType output_type_;
+};
+
 }  // namespace pluto::llm

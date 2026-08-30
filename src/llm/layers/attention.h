@@ -44,4 +44,35 @@ class AttentionLayer final : public Layer {
   cudaStream_t stream_;
 };
 
+// Scalar causal multi-head attention used as an executable specification for
+// the tiled CUDA implementation. Readability is intentionally favored over
+// speed: it materializes each query row's softmax probabilities.
+class AttentionLayerReference final : public LayerReference {
+ public:
+  static absl::StatusOr<std::unique_ptr<AttentionLayerReference>> Create(
+      int context_length, int num_heads, int embedding_dim,
+      DataType data_type);
+
+  absl::StatusOr<HostBuffer> fwd(absl::Span<const HostBuffer> inputs,
+                                  ReferenceTape* tape) override;
+  absl::StatusOr<HostBufferVec> bwd(
+      absl::Span<const HostBuffer> output_gradients,
+      ReferenceTape tape) override;
+  absl::Span<HostBuffer> weights() override { return {}; }
+  DataType output_type() const override { return output_type_; }
+
+ private:
+  AttentionLayerReference(int context_length, int num_heads,
+                          int embedding_dim, DataType data_type)
+      : context_length_(context_length),
+        num_heads_(num_heads),
+        embedding_dim_(embedding_dim),
+        output_type_(data_type) {}
+
+  int context_length_;
+  int num_heads_;
+  int embedding_dim_;
+  DataType output_type_;
+};
+
 }  // namespace pluto::llm
