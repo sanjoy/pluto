@@ -380,7 +380,7 @@ absl::StatusOr<double> Evaluate(
 // function only borrows the handles and does not own their allocations.
 absl::StatusOr<TrainingResult> Train(
     const ModelConfig& config, Layer& model,
-    CrossEntropyLossLayer& loss_layer, AdamWOptimizer& optimizer,
+    CrossEntropyLossLayer& loss_layer, Optimizer& optimizer,
     const std::vector<int>& training_tokens,
     const TrainingOptions& options, double initial_training_loss,
     const Buffer& token_buffer, const Buffer& target_buffer,
@@ -587,7 +587,7 @@ absl::Status Run(cudaStream_t stream) {
           static_cast<float>(absl::GetFlag(FLAGS_weight_decay)),
   };
   ASSIGN_OR_RETURN(auto optimizer,
-                   AdamWOptimizer::Create(*model, optimizer_config, stream));
+                   Optimizer::Create(*model, optimizer_config, stream));
   ASSIGN_OR_RETURN(
       auto token_buffer,
       Buffer::Allocate(config.batch_size * sizeof(int), stream));

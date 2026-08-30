@@ -115,6 +115,13 @@ absl::StatusOr<std::unique_ptr<AdamWOptimizer>> AdamWOptimizer::Create(
   return optimizer;
 }
 
+absl::StatusOr<std::unique_ptr<Optimizer>> Optimizer::Create(
+    Layer& model, AdamWConfig config, cudaStream_t stream) {
+  ASSIGN_OR_RETURN(auto optimizer,
+                   AdamWOptimizer::Create(model, config, stream));
+  return std::unique_ptr<Optimizer>(std::move(optimizer));
+}
+
 absl::Status AdamWOptimizer::ZeroGrad() {
   for (Buffer& gradient : gradients_) {
     RETURN_IF_ERROR(internal::CudaStatus(

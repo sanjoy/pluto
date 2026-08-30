@@ -20,21 +20,43 @@ struct AdamWConfig {
   float weight_decay = 0.1f;
 };
 
+// Common lifecycle for optimizers that update a Layer's parameter buffers.
+//
+// Create() constructs the default optimizer (currently AdamW) behind this
+// interface. It is necessarily non-virtual because C++ static methods cannot
+// be virtual. Concrete optimizers also expose their algorithm-specific factory
+// so callers can name an implementation explicitly.
+class Optimizer {
+ public:
+  virtual ~Optimizer() = default;
+
+  static absl::StatusOr<std::unique_ptr<Optimizer>> Create(
+      Layer& model, AdamWConfig config, cudaStream_t stream);
+
+  // Clears every unique parameter-gradient accumulator. Call this before the
+  // first backward pass. Step() also clears gradients after applying updates.
+  virtual absl::Status ZeroGrad() = 0;
+
+  // Applies one update using the accumulated gradients and advances step().
+  virtual absl::Status Step() = 0;
+
+  virtual int step() const = 0;
+  virtual size_t parameter_tensor_count() const = 0;
+};
+
 // AdamW over a model's FP32 master weights and FP32 accumulated gradients.
 // Tied parameters are identified by allocation address and receive exactly one
 // optimizer state/update even when multiple layers expose the same weight.
-class AdamWOptimizer final {
+class AdamWOptimizer final : public Optimizer {
  public:
   static absl::StatusOr<std::unique_ptr<AdamWOptimizer>> Create(
       Layer& model, AdamWConfig config, cudaStream_t stream);
 
-  // Clears all unique gradient accumulators. Call before the first backward;
-  // Step() also clears gradients after applying an update.
-  absl::Status ZeroGrad();
-  absl::Status Step();
+  absl::Status ZeroGrad() override;
+  absl::Status Step() override;
 
-  int step() const { return step_; }
-  size_t parameter_tensor_count() const { return weights_.size(); }
+  int step() const override { return step_; }
+  size_t parameter_tensor_count() const override { return weights_.size(); }
 
  private:
   AdamWOptimizer(AdamWConfig config, cudaStream_t stream,

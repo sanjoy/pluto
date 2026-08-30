@@ -45,8 +45,9 @@ focused GPU test.
 
 Layer forward passes receive explicit buffers and save private intermediates
 in a tree-shaped Tape. Backward passes return input gradients and fill FP32
-parameter-gradient buffers. Parameter mutation is intentionally separate:
-AdamWOptimizer owns optimizer state and updates the model after backward.
+parameter-gradient buffers. Parameter mutation is intentionally separate: the
+training loop uses the Optimizer interface, while AdamWOptimizer owns AdamW
+state and updates the model after backward.
 Every allocation, copy, kernel, and asynchronous free uses one explicit
 non-default CUDA stream.
 
