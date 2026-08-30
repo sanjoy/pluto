@@ -5,7 +5,7 @@ load("@rules_cuda//cuda:defs.bzl", "cuda_library", "cuda_test")
 def layer_library(name):
     cuda_library(
         name = name,
-        srcs = ["layers/{}.cu".format(name)],
+        srcs = ["layers/{}.cc".format(name)],
         hdrs = ["layers/{}.h".format(name)],
         copts = [
             "--enable-tile",
@@ -30,7 +30,7 @@ def layer_test(name, extra_deps = []):
     cuda_test(
         name = name + "_test",
         size = "small",
-        srcs = ["layers/{}_test.cu".format(name)],
+        srcs = ["layers/{}_test.cc".format(name)],
         copts = ["-std=c++20"],
         host_copts = ["-std=c++20"],
         tags = ["requires-gpu"],

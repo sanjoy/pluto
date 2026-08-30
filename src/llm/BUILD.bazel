@@ -42,7 +42,7 @@ layer_library("norm")
 
 cuda_library(
     name = "optimizer",
-    srcs = ["optimizer.cu"],
+    srcs = ["optimizer.cc"],
     hdrs = ["optimizer.h"],
     copts = [
         "--enable-tile",

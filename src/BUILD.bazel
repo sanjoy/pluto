@@ -10,6 +10,6 @@ cc_binary(
 cuda_test(
     name = "cuda_test",
     size = "small",
-    srcs = ["cuda_test.cu"],
+    srcs = ["cuda_test.cc"],
     tags = ["requires-gpu"],
 )

@@ -17,7 +17,7 @@ cc_library(
 cuda_test(
     name = "buffer_test",
     size = "small",
-    srcs = ["buffer_test.cu"],
+    srcs = ["buffer_test.cc"],
     tags = ["requires-gpu"],
     deps = [
         ":buffer",
@@ -29,7 +29,7 @@ cuda_test(
 cuda_test(
     name = "cutile_test",
     size = "small",
-    srcs = ["cutile_test.cu"],
+    srcs = ["cutile_test.cc"],
     # CUDA Tile C++ is a C++20 extension and is opt-in in NVCC 13.3.
     copts = [
         "--enable-tile",
