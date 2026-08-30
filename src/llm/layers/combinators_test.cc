@@ -25,11 +25,11 @@ class TestLayer final : public Layer {
   explicit TestLayer(DataType output_type) : output_type_(output_type) {}
 
   absl::StatusOr<Buffer> fwd(absl::Span<const Buffer>, Tape*,
-                             cuda::Executor*) const override {
+                             cuda::Executor&) const override {
     return absl::UnimplementedError("TestLayer has no data path");
   }
   absl::StatusOr<BufferVec> bwd(absl::Span<const Buffer>, Tape,
-                                cuda::Executor*) override {
+                                cuda::Executor&) override {
     return absl::UnimplementedError("TestLayer has no data path");
   }
   absl::Span<Buffer> weights() override { return {}; }
@@ -75,7 +75,7 @@ absl::Status BuildWithNullLayer() {
 }
 
 absl::StatusOr<std::unique_ptr<ComposedLayer>> BuildDenseComposition(
-    cuda::Executor* executor) {
+    cuda::Executor& executor) {
   ComposedLayerBuilder builder;
   RETURN_IF_ERROR(builder.add(
       FullyConnectedLayer::Create(kTestModelWidth, DataType::FP16, executor)));
@@ -122,7 +122,7 @@ TEST(ComposedLayerBuilderTest, RejectsEmptyAndNullLayers) {
 }
 
 TEST_F(LayersTest, CreatedCompositionCollectsChildWeights) {
-  auto composed = BuildDenseComposition(executor_);
+  auto composed = BuildDenseComposition(*executor_);
   ASSERT_TRUE(composed.ok()) << composed.status();
 
   // Each dense child contributes its own matrix and bias.

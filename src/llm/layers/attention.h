@@ -17,18 +17,18 @@ class AttentionLayer final : public Layer {
  public:
   static absl::StatusOr<std::unique_ptr<AttentionLayer>> Create(
       int context_length, int num_heads, int embedding_dim, DataType data_type,
-      cuda::Executor* executor);
+      cuda::Executor& executor);
 
   absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs, Tape* tape,
-                             cuda::Executor* executor) const override;
+                             cuda::Executor& executor) const override;
   absl::StatusOr<BufferVec> bwd(absl::Span<const Buffer> output_gradients,
-                                Tape tape, cuda::Executor* executor) override;
+                                Tape tape, cuda::Executor& executor) override;
   absl::Span<Buffer> weights() override { return {}; }
   DataType output_type() const override { return output_type_; }
 
  private:
   AttentionLayer(int context_length, int num_heads, int embedding_dim,
-                 DataType data_type, cuda::Executor* executor)
+                 DataType data_type, cuda::Executor& executor)
       : context_length_(context_length),
         num_heads_(num_heads),
         embedding_dim_(embedding_dim),
@@ -39,7 +39,7 @@ class AttentionLayer final : public Layer {
   int num_heads_;
   int embedding_dim_;
   DataType output_type_;
-  cuda::Executor* executor_;
+  cuda::Executor& executor_;
 };
 
 // Scalar causal multi-head attention used as an executable specification for

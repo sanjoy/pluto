@@ -18,15 +18,13 @@ class DataSetTest : public testing::Test {
   void SetUp() override {
     auto executor = cuda::Executor::Create();
     ASSERT_TRUE(executor.ok()) << executor.status();
-    executor_storage_ = std::move(*executor);
-    executor_ = executor_storage_.get();
+    executor_ = std::move(*executor);
   }
 
   void TearDown() override {
     if (executor_ == nullptr) return;
     EXPECT_TRUE(executor_->Synchronize().ok());
-    executor_ = nullptr;
-    executor_storage_.reset();
+    executor_.reset();
   }
 
   std::vector<int> CopyToHost(const cuda::Buffer& buffer) {
@@ -38,8 +36,7 @@ class DataSetTest : public testing::Test {
     return result;
   }
 
-  std::unique_ptr<cuda::Executor> executor_storage_;
-  cuda::Executor* executor_ = nullptr;
+  std::unique_ptr<cuda::Executor> executor_;
 };
 
 TEST_F(DataSetTest, SequentialBatchesShiftTargetsAndReset) {
@@ -52,7 +49,7 @@ TEST_F(DataSetTest, SequentialBatchesShiftTargetsAndReset) {
           .context_length = 4,
           .order = InMemoryDataSetOrder::kSequential,
       },
-      executor_);
+      *executor_);
   ASSERT_TRUE(iterator.ok()) << iterator.status();
 
   auto first = (*iterator)->Next();
@@ -85,7 +82,7 @@ TEST_F(DataSetTest, RandomOrderIsDeterministicAcrossReset) {
           .order = InMemoryDataSetOrder::kRandom,
           .seed = 123,
       },
-      executor_);
+      *executor_);
   ASSERT_TRUE(iterator.ok()) << iterator.status();
   auto first = (*iterator)->Next();
   ASSERT_TRUE(first.ok()) << first.status();
@@ -98,22 +95,17 @@ TEST_F(DataSetTest, RandomOrderIsDeterministicAcrossReset) {
   EXPECT_EQ(CopyToHost(reset->tokens), expected);
 }
 
-TEST_F(DataSetTest, RejectsInvalidShapesAndNullExecutor) {
+TEST_F(DataSetTest, RejectsInvalidShapes) {
   const std::vector<int> corpus(10, 1);
   EXPECT_FALSE(InMemoryDataSetIterator::Create(
                    corpus,
                    InMemoryDataSetOptions{.batch_size = 7, .context_length = 4},
-                   executor_)
+                   *executor_)
                    .ok());
   EXPECT_FALSE(InMemoryDataSetIterator::Create(
                    std::vector<int>{1, 2, 3, 4},
                    InMemoryDataSetOptions{.batch_size = 4, .context_length = 4},
-                   executor_)
-                   .ok());
-  EXPECT_FALSE(InMemoryDataSetIterator::Create(
-                   corpus,
-                   InMemoryDataSetOptions{.batch_size = 4, .context_length = 2},
-                   nullptr)
+                   *executor_)
                    .ok());
 }
 

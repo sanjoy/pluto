@@ -15,19 +15,19 @@ class LayerNormLayer final : public Layer {
  public:
   static absl::StatusOr<std::unique_ptr<LayerNormLayer>> Create(
       int embedding_dim, float epsilon, DataType data_type,
-      cuda::Executor* executor);
+      cuda::Executor& executor);
 
   absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs, Tape* tape,
-                             cuda::Executor* executor) const override;
+                             cuda::Executor& executor) const override;
   absl::StatusOr<BufferVec> bwd(absl::Span<const Buffer> output_gradients,
-                                Tape tape, cuda::Executor* executor) override;
+                                Tape tape, cuda::Executor& executor) override;
   absl::Span<Buffer> weights() override { return absl::MakeSpan(weights_); }
   absl::Span<Buffer> gradients() override { return absl::MakeSpan(gradients_); }
   DataType output_type() const override { return output_type_; }
 
  private:
   LayerNormLayer(int embedding_dim, float epsilon, DataType data_type,
-                 cuda::Executor* executor, Buffer gamma, Buffer beta,
+                 cuda::Executor& executor, Buffer gamma, Buffer beta,
                  Buffer gamma_gradient, Buffer beta_gradient)
       : embedding_dim_(embedding_dim),
         epsilon_(epsilon),
@@ -39,7 +39,7 @@ class LayerNormLayer final : public Layer {
   int embedding_dim_;
   float epsilon_;
   DataType output_type_;
-  cuda::Executor* executor_;
+  cuda::Executor& executor_;
   BufferVec weights_;
   BufferVec gradients_;
 };

@@ -30,7 +30,7 @@ absl::Status CudaStatus(cudaError_t error, const char* operation) {
 
 InMemoryDataSetIterator::InMemoryDataSetIterator(std::vector<int> corpus,
                                                  InMemoryDataSetOptions options,
-                                                 cuda::Executor* executor,
+                                                 cuda::Executor& executor,
                                                  cuda::Buffer token_buffer,
                                                  cuda::Buffer target_buffer)
     : corpus_(std::move(corpus)),
@@ -46,11 +46,7 @@ InMemoryDataSetIterator::InMemoryDataSetIterator(std::vector<int> corpus,
 absl::StatusOr<std::unique_ptr<InMemoryDataSetIterator>>
 InMemoryDataSetIterator::Create(absl::Span<const int> tokens,
                                 InMemoryDataSetOptions options,
-                                cuda::Executor* executor) {
-  if (executor == nullptr) {
-    return absl::InvalidArgumentError(
-        "InMemoryDataSetIterator requires a non-null CUDA Executor");
-  }
+                                cuda::Executor& executor) {
   if (options.batch_size <= 0 || options.context_length <= 0 ||
       options.batch_size % options.context_length != 0) {
     return absl::InvalidArgumentError(
@@ -99,12 +95,12 @@ absl::StatusOr<TokenBatch> InMemoryDataSetIterator::Next() {
   RETURN_IF_ERROR(
       CudaStatus(cudaMemcpyAsync(token_buffer_.data(), host_tokens_.data(),
                                  token_buffer_.size_bytes(),
-                                 cudaMemcpyHostToDevice, executor_->stream()),
+                                 cudaMemcpyHostToDevice, executor_.stream()),
                  "cudaMemcpyAsync(dataset tokens)"));
   RETURN_IF_ERROR(
       CudaStatus(cudaMemcpyAsync(target_buffer_.data(), host_targets_.data(),
                                  target_buffer_.size_bytes(),
-                                 cudaMemcpyHostToDevice, executor_->stream()),
+                                 cudaMemcpyHostToDevice, executor_.stream()),
                  "cudaMemcpyAsync(dataset targets)"));
   return TokenBatch{.tokens = token_buffer_,
                     .targets = target_buffer_,

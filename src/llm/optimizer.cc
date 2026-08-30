@@ -53,11 +53,7 @@ __tile_global__ void AdamWUpdateKernel(
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<AdamWOptimizer>> AdamWOptimizer::Create(
-    Layer& model, AdamWConfig config, cuda::Executor* executor) {
-  if (executor == nullptr) {
-    return absl::InvalidArgumentError(
-        "AdamWOptimizer requires a non-null CUDA Executor");
-  }
+    Layer& model, AdamWConfig config, cuda::Executor& executor) {
   if (!(config.learning_rate > 0.0f) || config.beta1 < 0.0f ||
       config.beta1 >= 1.0f || config.beta2 < 0.0f || config.beta2 >= 1.0f ||
       !(config.epsilon > 0.0f) || config.weight_decay < 0.0f) {
@@ -79,7 +75,7 @@ absl::StatusOr<std::unique_ptr<AdamWOptimizer>> AdamWOptimizer::Create(
     Buffer& weight = model_weights[index];
     Buffer& gradient = model_gradients[index];
     if (!seen.insert(weight.data()).second) continue;
-    if (weight.executor() != executor || gradient.executor() != executor ||
+    if (&weight.executor() != &executor || &gradient.executor() != &executor ||
         weight.size_bytes() != gradient.size_bytes() ||
         weight.size_bytes() % sizeof(float) != 0) {
       return absl::InvalidArgumentError(
@@ -93,12 +89,11 @@ absl::StatusOr<std::unique_ptr<AdamWOptimizer>> AdamWOptimizer::Create(
     ASSIGN_OR_RETURN(auto second,
                      Buffer::Allocate(weight.size_bytes(), executor));
     RETURN_IF_ERROR(internal::CudaStatus(
-        cudaMemsetAsync(first.data(), 0, first.size_bytes(),
-                        executor->stream()),
+        cudaMemsetAsync(first.data(), 0, first.size_bytes(), executor.stream()),
         "cudaMemsetAsync(AdamW first moment)"));
     RETURN_IF_ERROR(internal::CudaStatus(
         cudaMemsetAsync(second.data(), 0, second.size_bytes(),
-                        executor->stream()),
+                        executor.stream()),
         "cudaMemsetAsync(AdamW second moment)"));
     weights.push_back(weight);
     gradients.push_back(gradient);
@@ -116,7 +111,7 @@ absl::StatusOr<std::unique_ptr<AdamWOptimizer>> AdamWOptimizer::Create(
 }
 
 absl::StatusOr<std::unique_ptr<Optimizer>> Optimizer::Create(
-    Layer& model, AdamWConfig config, cuda::Executor* executor) {
+    Layer& model, AdamWConfig config, cuda::Executor& executor) {
   ASSIGN_OR_RETURN(auto optimizer,
                    AdamWOptimizer::Create(model, config, executor));
   return std::unique_ptr<Optimizer>(std::move(optimizer));
@@ -126,7 +121,7 @@ absl::Status AdamWOptimizer::ZeroGrad() {
   for (Buffer& gradient : gradients_) {
     RETURN_IF_ERROR(internal::CudaStatus(
         cudaMemsetAsync(gradient.data(), 0, gradient.size_bytes(),
-                        executor_->stream()),
+                        executor_.stream()),
         "cudaMemsetAsync(AdamW gradient)"));
   }
   return absl::OkStatus();
@@ -142,7 +137,7 @@ absl::Status AdamWOptimizer::Step() {
     const int elements =
         static_cast<int>(weights_[index].size_bytes() / sizeof(float));
     AdamWUpdateKernel<<<internal::TileCount(elements), 1, 0,
-                        executor_->stream()>>>(
+                        executor_.stream()>>>(
         static_cast<float*>(weights_[index].data()),
         static_cast<float*>(gradients_[index].data()),
         static_cast<float*>(first_moments_[index].data()),

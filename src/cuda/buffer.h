@@ -18,7 +18,7 @@ namespace pluto::cuda {
 // until every Buffer copy referring to it has been destroyed.
 class Buffer final {
  public:
-  static absl::StatusOr<Buffer> Allocate(size_t size_bytes, Executor* executor);
+  static absl::StatusOr<Buffer> Allocate(size_t size_bytes, Executor& executor);
 
   Buffer(const Buffer&) = default;
   Buffer& operator=(const Buffer&) = default;
@@ -30,7 +30,7 @@ class Buffer final {
   // lifetime management, but gives the bytes no type or interpretation.
   void* data() const;
   size_t size_bytes() const;
-  Executor* executor() const;
+  Executor& executor() const;
 
  private:
   struct Allocation;

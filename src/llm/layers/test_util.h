@@ -20,19 +20,16 @@ class LayersTest : public testing::Test {
   void SetUp() override {
     auto executor = cuda::Executor::Create();
     ASSERT_TRUE(executor.ok()) << executor.status();
-    executor_storage_ = std::move(*executor);
-    executor_ = executor_storage_.get();
+    executor_ = std::move(*executor);
   }
 
   void TearDown() override {
     if (executor_ == nullptr) return;
     EXPECT_TRUE(executor_->Synchronize().ok());
-    executor_ = nullptr;
-    executor_storage_.reset();
+    executor_.reset();
   }
 
-  std::unique_ptr<cuda::Executor> executor_storage_;
-  cuda::Executor* executor_ = nullptr;
+  std::unique_ptr<cuda::Executor> executor_;
 };
 
 }  // namespace pluto::llm

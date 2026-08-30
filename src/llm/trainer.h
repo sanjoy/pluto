@@ -52,7 +52,7 @@ struct TrainingResult {
 // repeated calls measure the same batches.
 absl::StatusOr<double> Evaluate(const Layer& model, const Layer& loss_layer,
                                 DataSetIterator& eval_tokens,
-                                cuda::Executor* executor,
+                                cuda::Executor& executor,
                                 const EvaluationOptions& options);
 
 // Runs a conventional forward/loss/backward/update training loop.
@@ -65,7 +65,7 @@ absl::StatusOr<double> Evaluate(const Layer& model, const Layer& loss_layer,
 absl::StatusOr<TrainingResult> Train(Layer& model, Layer& loss_layer,
                                      Optimizer& optimizer,
                                      DataSetIterator& training_tokens,
-                                     cuda::Executor* executor,
+                                     cuda::Executor& executor,
                                      const TrainingOptions& options);
 
 }  // namespace pluto::llm

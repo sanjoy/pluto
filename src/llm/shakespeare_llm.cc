@@ -155,7 +155,7 @@ absl::Status CudaStatus(cudaError_t error, const char* operation) {
 // dropout layers appear. Each block is independently parameterized.
 absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateTransformerBlock(
     DataType output_type, int initialization_seed, int block_index,
-    cuda::Executor* executor) {
+    cuda::Executor& executor) {
   const float residual_standard_deviation =
       kInitializationStandardDeviation /
       std::sqrt(2.0f * kTransformerBlockCount);
@@ -211,7 +211,7 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateTransformerBlock(
 // Parameters are FP32 master weights, reductions/statistics remain FP32, and
 // the terminal projection reuses the token embedding table.
 absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateShakespeareLlm(
-    DataType output_type, int seed, cuda::Executor* executor) {
+    DataType output_type, int seed, cuda::Executor& executor) {
   ComposedLayerBuilder builder;
   RETURN_IF_ERROR(builder.add(EmbeddingLookupLayer::Create(
       kVocabularySize, kModelWidth, output_type, executor)));
@@ -285,8 +285,8 @@ absl::StatusOr<std::vector<float>> Predict(const ModelConfig& config,
                                            const Layer& model,
                                            const std::vector<int>& context,
                                            const Buffer& token_buffer,
-                                           cuda::Executor* executor) {
-  if (executor == nullptr || token_buffer.executor() != executor) {
+                                           cuda::Executor& executor) {
+  if (&token_buffer.executor() != &executor) {
     return absl::InvalidArgumentError(
         "prediction requires its token buffer's CUDA Executor");
   }
@@ -311,7 +311,7 @@ absl::StatusOr<std::vector<float>> Predict(const ModelConfig& config,
   RETURN_IF_ERROR(
       CudaStatus(cudaMemcpyAsync(token_buffer.data(), repeated_context.data(),
                                  token_buffer.size_bytes(),
-                                 cudaMemcpyHostToDevice, executor->stream()),
+                                 cudaMemcpyHostToDevice, executor.stream()),
                  "cudaMemcpyAsync(prompt context)"));
   Tape tape;
   BufferVec inputs = {token_buffer};
@@ -323,9 +323,9 @@ absl::StatusOr<std::vector<float>> Predict(const ModelConfig& config,
   RETURN_IF_ERROR(
       CudaStatus(cudaMemcpyAsync(host_logits.data(), selected_logits,
                                  host_logits.size() * sizeof(float),
-                                 cudaMemcpyDeviceToHost, executor->stream()),
+                                 cudaMemcpyDeviceToHost, executor.stream()),
                  "cudaMemcpyAsync(prompt logits)"));
-  RETURN_IF_ERROR(executor->Synchronize());
+  RETURN_IF_ERROR(executor.Synchronize());
   return host_logits;
 }
 
@@ -336,7 +336,7 @@ absl::StatusOr<std::string> Generate(const ModelConfig& config,
                                      std::string prompt, int generation_tokens,
                                      double temperature, std::mt19937& random,
                                      const Buffer& token_buffer,
-                                     cuda::Executor* executor) {
+                                     cuda::Executor& executor) {
   if (generation_tokens < 0 || temperature <= 0.0) {
     return absl::InvalidArgumentError(
         "generation_tokens must be non-negative and temperature positive");
@@ -363,10 +363,7 @@ absl::StatusOr<std::string> Generate(const ModelConfig& config,
   return detokenizer.Decode(generated);
 }
 
-absl::Status Run(cuda::Executor* executor) {
-  if (executor == nullptr) {
-    return absl::InvalidArgumentError("Run requires a CUDA Executor");
-  }
+absl::Status Run(cuda::Executor& executor) {
   ASSIGN_OR_RETURN(auto corpus, LoadCorpus());
   ASSIGN_OR_RETURN(auto tokenizer_directory, TokenizerDirectory());
   ASSIGN_OR_RETURN(auto tokenizer, Gpt2Tokenizer::Load(tokenizer_directory));
@@ -530,7 +527,7 @@ int main(int argc, char** argv) {
     std::cerr << executor.status() << '\n';
     return 1;
   }
-  const absl::Status status = pluto::llm::Run(executor->get());
+  const absl::Status status = pluto::llm::Run(**executor);
   // Run() destroys every Buffer, queueing stream-ordered frees before this
   // synchronization. Executor destruction then releases the native stream.
   const absl::Status sync_status = (*executor)->Synchronize();

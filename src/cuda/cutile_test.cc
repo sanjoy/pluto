@@ -45,19 +45,16 @@ class CuTileTest : public testing::Test {
   void SetUp() override {
     auto executor = Executor::Create();
     ASSERT_TRUE(executor.ok()) << executor.status();
-    executor_storage_ = std::move(*executor);
-    executor_ = executor_storage_.get();
+    executor_ = std::move(*executor);
   }
 
   void TearDown() override {
     if (executor_ == nullptr) return;
     EXPECT_TRUE(executor_->Synchronize().ok());
-    executor_ = nullptr;
-    executor_storage_.reset();
+    executor_.reset();
   }
 
-  std::unique_ptr<Executor> executor_storage_;
-  Executor* executor_ = nullptr;
+  std::unique_ptr<Executor> executor_;
 };
 
 TEST_F(CuTileTest, AddsOneTilePerLogicalBlock) {
@@ -69,9 +66,9 @@ TEST_F(CuTileTest, AddsOneTilePerLogicalBlock) {
     right_host[index] = 3 * index + 7;
   }
 
-  auto left = Buffer::Allocate(sizeof(left_host), executor_);
-  auto right = Buffer::Allocate(sizeof(right_host), executor_);
-  auto output = Buffer::Allocate(sizeof(output_host), executor_);
+  auto left = Buffer::Allocate(sizeof(left_host), *executor_);
+  auto right = Buffer::Allocate(sizeof(right_host), *executor_);
+  auto output = Buffer::Allocate(sizeof(output_host), *executor_);
   ASSERT_TRUE(left.ok()) << left.status();
   ASSERT_TRUE(right.ok()) << right.status();
   ASSERT_TRUE(output.ok()) << output.status();

@@ -63,18 +63,14 @@ __tile_global__ void GeluBackwardKernel(
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<GeluLayer>> GeluLayer::Create(
-    DataType data_type, cuda::Executor* executor) {
-  if (executor == nullptr) {
-    return absl::InvalidArgumentError(
-        "GeluLayer requires a non-null CUDA Executor");
-  }
+    DataType data_type, cuda::Executor& executor) {
   RETURN_IF_ERROR(internal::ValidateComputeType(data_type));
   return std::unique_ptr<GeluLayer>(new GeluLayer(data_type, executor));
 }
 
 absl::StatusOr<Buffer> GeluLayer::fwd(absl::Span<const Buffer> inputs,
                                       Tape* tape,
-                                      cuda::Executor* executor) const {
+                                      cuda::Executor& executor) const {
   RETURN_IF_ERROR(internal::ValidateExecutor(executor_, executor, "GeluLayer"));
   if (inputs.size() != 1 || tape == nullptr) {
     return absl::InvalidArgumentError(
@@ -93,12 +89,12 @@ absl::StatusOr<Buffer> GeluLayer::fwd(absl::Span<const Buffer> inputs,
   tape->children.clear();
   if (output_type_ == DataType::BF16) {
     GeluForwardKernel<__nv_bfloat16>
-        <<<internal::TileCount(elements), 1, 0, executor->stream()>>>(
+        <<<internal::TileCount(elements), 1, 0, executor.stream()>>>(
             static_cast<const __nv_bfloat16*>(inputs[0].data()), elements,
             static_cast<__nv_bfloat16*>(output.data()));
   } else {
     GeluForwardKernel<float>
-        <<<internal::TileCount(elements), 1, 0, executor->stream()>>>(
+        <<<internal::TileCount(elements), 1, 0, executor.stream()>>>(
             static_cast<const float*>(inputs[0].data()), elements,
             static_cast<float*>(output.data()));
   }
@@ -109,7 +105,7 @@ absl::StatusOr<Buffer> GeluLayer::fwd(absl::Span<const Buffer> inputs,
 
 absl::StatusOr<BufferVec> GeluLayer::bwd(
     absl::Span<const Buffer> output_gradients, Tape tape,
-    cuda::Executor* executor) {
+    cuda::Executor& executor) {
   RETURN_IF_ERROR(internal::ValidateExecutor(executor_, executor, "GeluLayer"));
   if (output_gradients.size() != 1 || tape.intermediates.size() != 1) {
     return absl::InvalidArgumentError(
@@ -129,13 +125,13 @@ absl::StatusOr<BufferVec> GeluLayer::bwd(
                        executor));
   if (output_type_ == DataType::BF16) {
     GeluBackwardKernel<__nv_bfloat16>
-        <<<internal::TileCount(elements), 1, 0, executor->stream()>>>(
+        <<<internal::TileCount(elements), 1, 0, executor.stream()>>>(
             static_cast<const __nv_bfloat16*>(tape.intermediates[0].data()),
             static_cast<const float*>(output_gradients[0].data()), elements,
             static_cast<float*>(input_gradient.data()));
   } else {
     GeluBackwardKernel<float>
-        <<<internal::TileCount(elements), 1, 0, executor->stream()>>>(
+        <<<internal::TileCount(elements), 1, 0, executor.stream()>>>(
             static_cast<const float*>(tape.intermediates[0].data()),
             static_cast<const float*>(output_gradients[0].data()), elements,
             static_cast<float*>(input_gradient.data()));

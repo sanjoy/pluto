@@ -23,7 +23,7 @@ TEST_F(LayerReferenceTest, ResidualCompositionAndBuildersMatchBothPasses) {
                    << "type=" << static_cast<int>(type) << " rows=" << rows
                    << " width=" << width);
       auto device_dense =
-          FullyConnectedLayer::Create(width, width, type, executor_);
+          FullyConnectedLayer::Create(width, width, type, *executor_);
       auto reference_dense =
           FullyConnectedLayerReference::Create(width, width, type);
       ASSERT_TRUE(device_dense.ok()) << device_dense.status();
@@ -40,11 +40,11 @@ TEST_F(LayerReferenceTest, ResidualCompositionAndBuildersMatchBothPasses) {
       auto reference_dense_weights = (*reference_dense)->weights();
       ASSERT_TRUE(SetFloatBufferPair(device_dense_weights[0],
                                      &reference_dense_weights[0], matrix,
-                                     executor_)
+                                     *executor_)
                       .ok());
       ASSERT_TRUE(SetFloatBufferPair(device_dense_weights[1],
                                      &reference_dense_weights[1], bias,
-                                     executor_)
+                                     *executor_)
                       .ok());
 
       ComposedLayerBuilder device_builder;
@@ -59,7 +59,7 @@ TEST_F(LayerReferenceTest, ResidualCompositionAndBuildersMatchBothPasses) {
                       .ok());
       ASSERT_NE(device_builder.back(), nullptr);
       ASSERT_NE(reference_builder.back(), nullptr);
-      ASSERT_TRUE(device_builder.add(GeluLayer::Create(type, executor_)).ok());
+      ASSERT_TRUE(device_builder.add(GeluLayer::Create(type, *executor_)).ok());
       ASSERT_TRUE(reference_builder.add(GeluLayerReference::Create(type)).ok());
       auto device_model = device_builder.create();
       auto reference_model = reference_builder.create();
@@ -74,8 +74,8 @@ TEST_F(LayerReferenceTest, ResidualCompositionAndBuildersMatchBothPasses) {
         input[index] = 0.5f * std::sin(static_cast<float>(index) * 0.1f);
         gradient[index] = 0.2f * std::cos(static_cast<float>(index) * 0.13f);
       }
-      auto input_pair = MakeActivationBufferPair(input, type, executor_);
-      auto gradient_pair = MakeRawBufferPair<float>(gradient, executor_);
+      auto input_pair = MakeActivationBufferPair(input, type, *executor_);
+      auto gradient_pair = MakeRawBufferPair<float>(gradient, *executor_);
       ASSERT_TRUE(input_pair.ok()) << input_pair.status();
       ASSERT_TRUE(gradient_pair.ok()) << gradient_pair.status();
       Tape device_tape;
@@ -83,7 +83,7 @@ TEST_F(LayerReferenceTest, ResidualCompositionAndBuildersMatchBothPasses) {
       BufferVec device_inputs = {input_pair->device};
       HostBufferVec reference_inputs = {input_pair->host};
       auto device_output =
-          (*device_model)->fwd(device_inputs, &device_tape, executor_);
+          (*device_model)->fwd(device_inputs, &device_tape, *executor_);
       auto reference_output =
           (*reference_model)->fwd(reference_inputs, &reference_tape);
       ASSERT_TRUE(device_output.ok()) << device_output.status();
@@ -95,7 +95,7 @@ TEST_F(LayerReferenceTest, ResidualCompositionAndBuildersMatchBothPasses) {
       HostBufferVec reference_gradients = {gradient_pair->host};
       auto device_input =
           (*device_model)
-              ->bwd(device_gradients, std::move(device_tape), executor_);
+              ->bwd(device_gradients, std::move(device_tape), *executor_);
       auto reference_input =
           (*reference_model)
               ->bwd(reference_gradients, std::move(reference_tape));
@@ -121,7 +121,7 @@ TEST_F(LayerReferenceTest, BuildersPropagateFP8Rejection) {
   ComposedLayerBuilder device_builder;
   ComposedLayerReferenceBuilder reference_builder;
   const absl::Status device_status =
-      device_builder.add(GeluLayer::Create(DataType::FP8, executor_));
+      device_builder.add(GeluLayer::Create(DataType::FP8, *executor_));
   const absl::Status reference_status =
       reference_builder.add(GeluLayerReference::Create(DataType::FP8));
   EXPECT_EQ(device_status.code(), absl::StatusCode::kUnimplemented);

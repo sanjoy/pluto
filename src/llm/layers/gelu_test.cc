@@ -13,14 +13,15 @@ namespace pluto::llm {
 namespace {
 
 TEST_F(LayersTest, ZeroHasZeroOutputAndHalfGradient) {
-  auto gelu = GeluLayer::Create(DataType::FP16, executor_);
+  auto gelu = GeluLayer::Create(DataType::FP16, *executor_);
   ASSERT_TRUE(gelu.ok()) << gelu.status();
 
   std::vector<float> input(kTestBatchSize, 0.0f);
   std::vector<float> output_gradient(kTestBatchSize, 1.0f);
-  auto input_buffer = Buffer::Allocate(input.size() * sizeof(float), executor_);
+  auto input_buffer =
+      Buffer::Allocate(input.size() * sizeof(float), *executor_);
   auto gradient_buffer =
-      Buffer::Allocate(output_gradient.size() * sizeof(float), executor_);
+      Buffer::Allocate(output_gradient.size() * sizeof(float), *executor_);
   ASSERT_TRUE(input_buffer.ok()) << input_buffer.status();
   ASSERT_TRUE(gradient_buffer.ok()) << gradient_buffer.status();
   ASSERT_EQ(cudaMemcpyAsync(input_buffer->data(), input.data(),
@@ -34,10 +35,10 @@ TEST_F(LayersTest, ZeroHasZeroOutputAndHalfGradient) {
 
   Tape tape;
   BufferVec inputs = {*input_buffer};
-  auto output = (*gelu)->fwd(inputs, &tape, executor_);
+  auto output = (*gelu)->fwd(inputs, &tape, *executor_);
   ASSERT_TRUE(output.ok()) << output.status();
   BufferVec gradients = {*gradient_buffer};
-  auto input_gradient = (*gelu)->bwd(gradients, std::move(tape), executor_);
+  auto input_gradient = (*gelu)->bwd(gradients, std::move(tape), *executor_);
   ASSERT_TRUE(input_gradient.ok()) << input_gradient.status();
 
   std::vector<float> host_output(kTestBatchSize);
@@ -60,16 +61,16 @@ TEST_F(LayersTest, ZeroHasZeroOutputAndHalfGradient) {
 }
 
 TEST_F(LayersTest, RejectsExecutionOnADifferentExecutor) {
-  auto gelu = GeluLayer::Create(DataType::FP16, executor_);
+  auto gelu = GeluLayer::Create(DataType::FP16, *executor_);
   ASSERT_TRUE(gelu.ok()) << gelu.status();
-  auto input = Buffer::Allocate(kTestBatchSize * sizeof(float), executor_);
+  auto input = Buffer::Allocate(kTestBatchSize * sizeof(float), *executor_);
   ASSERT_TRUE(input.ok()) << input.status();
   auto other_executor = cuda::Executor::Create();
   ASSERT_TRUE(other_executor.ok()) << other_executor.status();
 
   Tape tape;
   BufferVec inputs = {*input};
-  const auto output = (*gelu)->fwd(inputs, &tape, other_executor->get());
+  const auto output = (*gelu)->fwd(inputs, &tape, **other_executor);
   EXPECT_FALSE(output.ok());
   EXPECT_EQ(output.status().code(), absl::StatusCode::kInvalidArgument);
 }

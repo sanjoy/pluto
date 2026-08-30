@@ -39,12 +39,9 @@ inline absl::Status ValidateTiledExtent(int extent, const char* name) {
   return absl::OkStatus();
 }
 
-inline absl::Status ValidateExecutor(cuda::Executor* expected,
-                                     cuda::Executor* actual, const char* name) {
-  if (actual == nullptr) {
-    return absl::InvalidArgumentError("CUDA Executor must not be null");
-  }
-  if (actual != expected) {
+inline absl::Status ValidateExecutor(cuda::Executor& expected,
+                                     cuda::Executor& actual, const char* name) {
+  if (&actual != &expected) {
     return absl::InvalidArgumentError(
         absl::StrCat(name, " was created for a different CUDA Executor"));
   }
@@ -52,12 +49,9 @@ inline absl::Status ValidateExecutor(cuda::Executor* expected,
 }
 
 inline absl::StatusOr<int> MatrixRows(const Buffer& buffer, int columns,
-                                      cuda::Executor* executor,
+                                      cuda::Executor& executor,
                                       const char* name) {
-  if (executor == nullptr) {
-    return absl::InvalidArgumentError("CUDA Executor must not be null");
-  }
-  if (buffer.executor() != executor) {
+  if (&buffer.executor() != &executor) {
     return absl::InvalidArgumentError(
         absl::StrCat(name, " belongs to a different CUDA Executor"));
   }
@@ -76,12 +70,9 @@ inline absl::StatusOr<int> MatrixRows(const Buffer& buffer, int columns,
 
 inline absl::StatusOr<int> ActivationRows(const Buffer& buffer, int columns,
                                           DataType data_type,
-                                          cuda::Executor* executor,
+                                          cuda::Executor& executor,
                                           const char* name) {
-  if (executor == nullptr) {
-    return absl::InvalidArgumentError("CUDA Executor must not be null");
-  }
-  if (buffer.executor() != executor) {
+  if (&buffer.executor() != &executor) {
     return absl::InvalidArgumentError(
         absl::StrCat(name, " belongs to a different CUDA Executor"));
   }
@@ -102,12 +93,9 @@ inline absl::StatusOr<int> ActivationRows(const Buffer& buffer, int columns,
 
 inline absl::StatusOr<int> ElementCount(const Buffer& buffer,
                                         size_t element_bytes,
-                                        cuda::Executor* executor,
+                                        cuda::Executor& executor,
                                         const char* name) {
-  if (executor == nullptr) {
-    return absl::InvalidArgumentError("CUDA Executor must not be null");
-  }
-  if (buffer.executor() != executor) {
+  if (&buffer.executor() != &executor) {
     return absl::InvalidArgumentError(
         absl::StrCat(name, " belongs to a different CUDA Executor"));
   }
@@ -146,16 +134,13 @@ inline absl::Status ValidateFp16(DataType data_type) {
 }
 
 inline absl::Status ValidateBuffer(const Buffer& buffer, size_t expected_bytes,
-                                   cuda::Executor* executor, const char* name) {
-  if (executor == nullptr) {
-    return absl::InvalidArgumentError("CUDA Executor must not be null");
-  }
+                                   cuda::Executor& executor, const char* name) {
   if (buffer.size_bytes() != expected_bytes) {
     return absl::InvalidArgumentError(
         absl::StrCat(name, " has ", buffer.size_bytes(), " bytes; expected ",
                      expected_bytes));
   }
-  if (buffer.executor() != executor) {
+  if (&buffer.executor() != &executor) {
     return absl::InvalidArgumentError(
         absl::StrCat(name, " belongs to a different CUDA Executor"));
   }

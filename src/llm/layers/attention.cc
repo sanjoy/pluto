@@ -182,11 +182,7 @@ __tile_global__ void FlashAttentionBackwardKernel(
 
 absl::StatusOr<std::unique_ptr<AttentionLayer>> AttentionLayer::Create(
     int context_length, int num_heads, int embedding_dim, DataType data_type,
-    cuda::Executor* executor) {
-  if (executor == nullptr) {
-    return absl::InvalidArgumentError(
-        "AttentionLayer requires a non-null CUDA Executor");
-  }
+    cuda::Executor& executor) {
   RETURN_IF_ERROR(internal::ValidateComputeType(data_type));
   if (context_length <= 0 || num_heads <= 0 || embedding_dim <= 0) {
     return absl::InvalidArgumentError(
@@ -204,7 +200,7 @@ absl::StatusOr<std::unique_ptr<AttentionLayer>> AttentionLayer::Create(
 
 absl::StatusOr<Buffer> AttentionLayer::fwd(absl::Span<const Buffer> inputs,
                                            Tape* tape,
-                                           cuda::Executor* executor) const {
+                                           cuda::Executor& executor) const {
   RETURN_IF_ERROR(
       internal::ValidateExecutor(executor_, executor, "AttentionLayer"));
   if (inputs.size() != 1 || tape == nullptr) {
@@ -228,12 +224,12 @@ absl::StatusOr<Buffer> AttentionLayer::fwd(absl::Span<const Buffer> inputs,
   const float scale = 1.0f / std::sqrt(static_cast<float>(head_dimension));
   if (output_type_ == DataType::BF16) {
     FlashAttentionForwardKernel<__nv_bfloat16>
-        <<<blocks, 1, 0, executor->stream()>>>(
+        <<<blocks, 1, 0, executor.stream()>>>(
             static_cast<const __nv_bfloat16*>(inputs[0].data()), rows,
             context_length_, num_heads_, embedding_dim_, scale,
             static_cast<__nv_bfloat16*>(output.data()));
   } else {
-    FlashAttentionForwardKernel<float><<<blocks, 1, 0, executor->stream()>>>(
+    FlashAttentionForwardKernel<float><<<blocks, 1, 0, executor.stream()>>>(
         static_cast<const float*>(inputs[0].data()), rows, context_length_,
         num_heads_, embedding_dim_, scale, static_cast<float*>(output.data()));
   }
@@ -246,7 +242,7 @@ absl::StatusOr<Buffer> AttentionLayer::fwd(absl::Span<const Buffer> inputs,
 
 absl::StatusOr<BufferVec> AttentionLayer::bwd(
     absl::Span<const Buffer> output_gradients, Tape tape,
-    cuda::Executor* executor) {
+    cuda::Executor& executor) {
   RETURN_IF_ERROR(
       internal::ValidateExecutor(executor_, executor, "AttentionLayer"));
   if (output_gradients.size() != 1 || tape.intermediates.size() != 2) {
@@ -272,21 +268,21 @@ absl::StatusOr<BufferVec> AttentionLayer::bwd(
                                     executor));
   RETURN_IF_ERROR(internal::CudaStatus(
       cudaMemsetAsync(qkv_gradient.data(), 0, qkv_gradient.size_bytes(),
-                      executor->stream()),
+                      executor.stream()),
       "cudaMemsetAsync(attention Q/K/V gradient)"));
   const int head_dimension = embedding_dim_ / num_heads_;
   const int blocks = rows * num_heads_ * internal::TileCount(head_dimension);
   const float scale = 1.0f / std::sqrt(static_cast<float>(head_dimension));
   if (output_type_ == DataType::BF16) {
     FlashAttentionBackwardKernel<__nv_bfloat16>
-        <<<blocks, 1, 0, executor->stream()>>>(
+        <<<blocks, 1, 0, executor.stream()>>>(
             static_cast<const __nv_bfloat16*>(tape.intermediates[0].data()),
             static_cast<const __nv_bfloat16*>(tape.intermediates[1].data()),
             static_cast<const float*>(output_gradients[0].data()), rows,
             context_length_, num_heads_, embedding_dim_, scale,
             static_cast<float*>(qkv_gradient.data()));
   } else {
-    FlashAttentionBackwardKernel<float><<<blocks, 1, 0, executor->stream()>>>(
+    FlashAttentionBackwardKernel<float><<<blocks, 1, 0, executor.stream()>>>(
         static_cast<const float*>(tape.intermediates[0].data()),
         static_cast<const float*>(tape.intermediates[1].data()),
         static_cast<const float*>(output_gradients[0].data()), rows,

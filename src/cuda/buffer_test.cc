@@ -26,19 +26,16 @@ class BufferTest : public testing::Test {
   void SetUp() override {
     auto executor = Executor::Create();
     ASSERT_TRUE(executor.ok()) << executor.status();
-    executor_storage_ = std::move(*executor);
-    executor_ = executor_storage_.get();
+    executor_ = std::move(*executor);
   }
 
   void TearDown() override {
     if (executor_ == nullptr) return;
     EXPECT_TRUE(executor_->Synchronize().ok());
-    executor_ = nullptr;
-    executor_storage_.reset();
+    executor_.reset();
   }
 
-  std::unique_ptr<Executor> executor_storage_;
-  Executor* executor_ = nullptr;
+  std::unique_ptr<Executor> executor_;
 };
 
 static_assert(std::is_copy_constructible_v<Buffer>);
@@ -46,24 +43,20 @@ static_assert(std::is_copy_assignable_v<Buffer>);
 static_assert(std::is_nothrow_move_constructible_v<Buffer>);
 static_assert(std::is_nothrow_move_assignable_v<Buffer>);
 
-TEST(BufferDeathTest, RejectsNullExecutor) {
-  EXPECT_DEATH((void)Buffer::Allocate(32, nullptr), "non-null CUDA Executor");
-}
-
 TEST_F(BufferTest, CopiesShareStorageUntilTheLastReferenceIsDestroyed) {
   std::optional<Buffer> survivor;
   void* address = nullptr;
   {
-    auto original = Buffer::Allocate(kByteCount, executor_);
+    auto original = Buffer::Allocate(kByteCount, *executor_);
     ASSERT_TRUE(original.ok()) << original.status();
     ASSERT_NE(original->data(), nullptr);
     EXPECT_EQ(original->size_bytes(), kByteCount);
-    EXPECT_EQ(original->executor(), executor_);
+    EXPECT_EQ(&original->executor(), executor_.get());
 
     Buffer copy = *original;
     EXPECT_EQ(copy.data(), original->data());
     EXPECT_EQ(copy.size_bytes(), original->size_bytes());
-    EXPECT_EQ(copy.executor(), original->executor());
+    EXPECT_EQ(&copy.executor(), &original->executor());
     address = copy.data();
     survivor.emplace(copy);
   }
@@ -90,15 +83,15 @@ TEST_F(BufferTest, CopiesShareStorageUntilTheLastReferenceIsDestroyed) {
 
 TEST_F(BufferTest, ZeroByteBufferRetainsItsExecutorWithoutAllocatingStorage) {
   {
-    auto buffer = Buffer::Allocate(0, executor_);
+    auto buffer = Buffer::Allocate(0, *executor_);
     ASSERT_TRUE(buffer.ok()) << buffer.status();
     EXPECT_EQ(buffer->data(), nullptr);
     EXPECT_EQ(buffer->size_bytes(), 0u);
-    EXPECT_EQ(buffer->executor(), executor_);
+    EXPECT_EQ(&buffer->executor(), executor_.get());
 
     Buffer copy = *buffer;
     EXPECT_EQ(copy.data(), nullptr);
-    EXPECT_EQ(copy.executor(), executor_);
+    EXPECT_EQ(&copy.executor(), executor_.get());
   }
   EXPECT_TRUE(executor_->Synchronize().ok());
 }

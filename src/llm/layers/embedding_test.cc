@@ -18,21 +18,21 @@ namespace {
 
 TEST_F(LayersTest, RejectsFp8UntilScalingIsSpecified) {
   auto layer = EmbeddingLookupLayer::Create(
-      kTestVocabularySize, kTestModelWidth, DataType::FP8, executor_);
+      kTestVocabularySize, kTestModelWidth, DataType::FP8, *executor_);
   EXPECT_FALSE(layer.ok());
   EXPECT_EQ(layer.status().code(), absl::StatusCode::kUnimplemented);
 }
 
 TEST_F(LayersTest, RejectsInvalidEmbeddingDimensions) {
   auto embedding = EmbeddingLookupLayer::Create(0, kTestModelWidth,
-                                                DataType::FP16, executor_);
+                                                DataType::FP16, *executor_);
   EXPECT_FALSE(embedding.ok());
   EXPECT_EQ(embedding.status().code(), absl::StatusCode::kInvalidArgument);
 }
 
 TEST_F(LayersTest, LanguageModelingHeadUsesEmbeddingWeightTranspose) {
   auto embedding = EmbeddingLookupLayer::Create(
-      kTestVocabularySize, kTestModelWidth, DataType::FP16, executor_);
+      kTestVocabularySize, kTestModelWidth, DataType::FP16, *executor_);
   ASSERT_TRUE(embedding.ok()) << embedding.status();
   EXPECT_EQ((*embedding)->vocab_size(), kTestVocabularySize);
   EXPECT_EQ((*embedding)->embedding_dim(), kTestModelWidth);
@@ -50,7 +50,7 @@ TEST_F(LayersTest, LanguageModelingHeadUsesEmbeddingWeightTranspose) {
                             cudaMemcpyHostToDevice, executor_->stream()),
             cudaSuccess);
   std::vector<int> tokens(kTestBatchSize, 3);
-  auto token_buffer = Buffer::Allocate(tokens.size() * sizeof(int), executor_);
+  auto token_buffer = Buffer::Allocate(tokens.size() * sizeof(int), *executor_);
   ASSERT_TRUE(token_buffer.ok()) << token_buffer.status();
   ASSERT_EQ(cudaMemcpyAsync(token_buffer->data(), tokens.data(),
                             token_buffer->size_bytes(), cudaMemcpyHostToDevice,
@@ -59,18 +59,19 @@ TEST_F(LayersTest, LanguageModelingHeadUsesEmbeddingWeightTranspose) {
 
   Tape embedding_tape;
   BufferVec embedding_inputs = {*token_buffer};
-  auto hidden = (*embedding)->fwd(embedding_inputs, &embedding_tape, executor_);
+  auto hidden =
+      (*embedding)->fwd(embedding_inputs, &embedding_tape, *executor_);
   ASSERT_TRUE(hidden.ok()) << hidden.status();
   Tape head_tape;
   BufferVec head_inputs = {*hidden};
-  auto logits = (*head)->fwd(head_inputs, &head_tape, executor_);
+  auto logits = (*head)->fwd(head_inputs, &head_tape, *executor_);
   ASSERT_TRUE(logits.ok()) << logits.status();
 
   std::vector<float> output_gradient(kTestBatchSize * kTestVocabularySize,
                                      0.0f);
   output_gradient[7] = 1.0f;
   auto gradient_buffer =
-      Buffer::Allocate(output_gradient.size() * sizeof(float), executor_);
+      Buffer::Allocate(output_gradient.size() * sizeof(float), *executor_);
   ASSERT_TRUE(gradient_buffer.ok()) << gradient_buffer.status();
   ASSERT_EQ(cudaMemcpyAsync(gradient_buffer->data(), output_gradient.data(),
                             gradient_buffer->size_bytes(),
@@ -78,7 +79,7 @@ TEST_F(LayersTest, LanguageModelingHeadUsesEmbeddingWeightTranspose) {
             cudaSuccess);
   BufferVec head_gradients = {*gradient_buffer};
   auto hidden_gradient =
-      (*head)->bwd(head_gradients, std::move(head_tape), executor_);
+      (*head)->bwd(head_gradients, std::move(head_tape), *executor_);
   ASSERT_TRUE(hidden_gradient.ok()) << hidden_gradient.status();
   ASSERT_EQ(hidden_gradient->size(), 1u);
 
@@ -126,7 +127,7 @@ TEST_F(LayersTest, Bf16HeadMasksPhysicalVocabularyPadding) {
   constexpr int kLogicalVocabularySize = 17;
   constexpr int kPaddedVocabularySize = 32;
   auto embedding = EmbeddingLookupLayer::Create(
-      kLogicalVocabularySize, kTestModelWidth, DataType::BF16, executor_);
+      kLogicalVocabularySize, kTestModelWidth, DataType::BF16, *executor_);
   ASSERT_TRUE(embedding.ok()) << embedding.status();
   EXPECT_EQ((*embedding)->padded_vocab_size(), kPaddedVocabularySize);
   auto head = LanguageModelingHeadLayer::Create(embedding->get());
@@ -139,7 +140,7 @@ TEST_F(LayersTest, Bf16HeadMasksPhysicalVocabularyPadding) {
                             cudaMemcpyHostToDevice, executor_->stream()),
             cudaSuccess);
   std::vector<int> tokens(kTestBatchSize, 3);
-  auto token_buffer = Buffer::Allocate(tokens.size() * sizeof(int), executor_);
+  auto token_buffer = Buffer::Allocate(tokens.size() * sizeof(int), *executor_);
   ASSERT_TRUE(token_buffer.ok()) << token_buffer.status();
   ASSERT_EQ(cudaMemcpyAsync(token_buffer->data(), tokens.data(),
                             token_buffer->size_bytes(), cudaMemcpyHostToDevice,
@@ -148,13 +149,14 @@ TEST_F(LayersTest, Bf16HeadMasksPhysicalVocabularyPadding) {
 
   Tape embedding_tape;
   BufferVec embedding_inputs = {*token_buffer};
-  auto hidden = (*embedding)->fwd(embedding_inputs, &embedding_tape, executor_);
+  auto hidden =
+      (*embedding)->fwd(embedding_inputs, &embedding_tape, *executor_);
   ASSERT_TRUE(hidden.ok()) << hidden.status();
   EXPECT_EQ(hidden->size_bytes(),
             kTestBatchSize * kTestModelWidth * sizeof(uint16_t));
   Tape head_tape;
   BufferVec head_inputs = {*hidden};
-  auto logits = (*head)->fwd(head_inputs, &head_tape, executor_);
+  auto logits = (*head)->fwd(head_inputs, &head_tape, *executor_);
   ASSERT_TRUE(logits.ok()) << logits.status();
   EXPECT_EQ(logits->size_bytes(),
             kTestBatchSize * kPaddedVocabularySize * sizeof(float));
@@ -174,7 +176,7 @@ TEST_F(LayersTest, Bf16HeadMasksPhysicalVocabularyPadding) {
 
 TEST_F(LayersTest, PositionEmbeddingRepeatsAtRuntimeContextLength) {
   auto positions = PositionEmbeddingLayer::Create(
-      kTestContextLength, kTestModelWidth, DataType::FP16, executor_);
+      kTestContextLength, kTestModelWidth, DataType::FP16, *executor_);
   ASSERT_TRUE(positions.ok()) << positions.status();
 
   std::vector<float> weight(kTestContextLength * kTestModelWidth, 0.0f);
@@ -186,7 +188,8 @@ TEST_F(LayersTest, PositionEmbeddingRepeatsAtRuntimeContextLength) {
                             cudaMemcpyHostToDevice, executor_->stream()),
             cudaSuccess);
   std::vector<float> input(kTestBatchSize * kTestModelWidth, 0.0f);
-  auto input_buffer = Buffer::Allocate(input.size() * sizeof(float), executor_);
+  auto input_buffer =
+      Buffer::Allocate(input.size() * sizeof(float), *executor_);
   ASSERT_TRUE(input_buffer.ok()) << input_buffer.status();
   ASSERT_EQ(cudaMemcpyAsync(input_buffer->data(), input.data(),
                             input_buffer->size_bytes(), cudaMemcpyHostToDevice,
@@ -195,7 +198,7 @@ TEST_F(LayersTest, PositionEmbeddingRepeatsAtRuntimeContextLength) {
 
   Tape tape;
   BufferVec inputs = {*input_buffer};
-  auto output = (*positions)->fwd(inputs, &tape, executor_);
+  auto output = (*positions)->fwd(inputs, &tape, *executor_);
   ASSERT_TRUE(output.ok()) << output.status();
   std::vector<float> host_output(input.size());
   ASSERT_EQ(

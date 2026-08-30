@@ -19,12 +19,12 @@ namespace pluto::llm {
 class CrossEntropyLossLayer final : public Layer {
  public:
   static absl::StatusOr<std::unique_ptr<CrossEntropyLossLayer>> Create(
-      int vocabulary_size, DataType data_type, cuda::Executor* executor);
+      int vocabulary_size, DataType data_type, cuda::Executor& executor);
 
   absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs, Tape* tape,
-                             cuda::Executor* executor) const override;
+                             cuda::Executor& executor) const override;
   absl::StatusOr<BufferVec> bwd(absl::Span<const Buffer> output_gradients,
-                                Tape tape, cuda::Executor* executor) override;
+                                Tape tape, cuda::Executor& executor) override;
   absl::Span<Buffer> weights() override { return {}; }
   DataType output_type() const override { return output_type_; }
 
@@ -33,7 +33,7 @@ class CrossEntropyLossLayer final : public Layer {
 
  private:
   CrossEntropyLossLayer(int vocab_size, int padded_vocab_size,
-                        DataType data_type, cuda::Executor* executor)
+                        DataType data_type, cuda::Executor& executor)
       : vocab_size_(vocab_size),
         padded_vocab_size_(padded_vocab_size),
         output_type_(data_type),
@@ -42,7 +42,7 @@ class CrossEntropyLossLayer final : public Layer {
   int vocab_size_;
   int padded_vocab_size_;
   DataType output_type_;
-  cuda::Executor* executor_;
+  cuda::Executor& executor_;
 };
 
 // Scalar log-sum-exp reference for the terminal cross-entropy operation.

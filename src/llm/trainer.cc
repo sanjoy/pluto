@@ -27,11 +27,7 @@ absl::Status CudaStatus(cudaError_t error, const char* operation) {
                                           ": ", cudaGetErrorString(error)));
 }
 
-absl::Status ValidateBatch(const TokenBatch& batch, cuda::Executor* executor) {
-  if (executor == nullptr) {
-    return absl::InvalidArgumentError(
-        "training and evaluation require a non-null CUDA Executor");
-  }
+absl::Status ValidateBatch(const TokenBatch& batch, cuda::Executor& executor) {
   if (batch.batch_size <= 0) {
     return absl::InvalidArgumentError("dataset returned an empty batch");
   }
@@ -42,8 +38,8 @@ absl::Status ValidateBatch(const TokenBatch& batch, cuda::Executor* executor) {
     return absl::InvalidArgumentError(
         "dataset token buffers do not match batch_size");
   }
-  if (batch.tokens.executor() != executor ||
-      batch.targets.executor() != executor) {
+  if (&batch.tokens.executor() != &executor ||
+      &batch.targets.executor() != &executor) {
     return absl::InvalidArgumentError(
         "dataset token buffers must belong to the supplied CUDA Executor");
   }
@@ -51,23 +47,23 @@ absl::Status ValidateBatch(const TokenBatch& batch, cuda::Executor* executor) {
 }
 
 absl::StatusOr<double> CopyLossSum(const Buffer& losses, int expected_count,
-                                   cuda::Executor* executor) {
+                                   cuda::Executor& executor) {
   if (expected_count <= 0 ||
       losses.size_bytes() !=
           static_cast<size_t>(expected_count) * sizeof(float)) {
     return absl::InvalidArgumentError(
         "loss layer must return one FP32 value per batch token");
   }
-  if (losses.executor() != executor) {
+  if (&losses.executor() != &executor) {
     return absl::InvalidArgumentError(
         "loss buffer belongs to a different CUDA Executor");
   }
   std::vector<float> host_losses(expected_count);
   RETURN_IF_ERROR(CudaStatus(
       cudaMemcpyAsync(host_losses.data(), losses.data(), losses.size_bytes(),
-                      cudaMemcpyDeviceToHost, executor->stream()),
+                      cudaMemcpyDeviceToHost, executor.stream()),
       "cudaMemcpyAsync(evaluation losses)"));
-  RETURN_IF_ERROR(executor->Synchronize());
+  RETURN_IF_ERROR(executor.Synchronize());
   double total = 0.0;
   for (float loss : host_losses) total += loss;
   return total;
@@ -96,12 +92,8 @@ absl::Status ValidateTrainingOptions(const TrainingOptions& options) {
 
 absl::StatusOr<double> Evaluate(const Layer& model, const Layer& loss_layer,
                                 DataSetIterator& eval_tokens,
-                                cuda::Executor* executor,
+                                cuda::Executor& executor,
                                 const EvaluationOptions& options) {
-  if (executor == nullptr) {
-    return absl::InvalidArgumentError(
-        "Evaluate requires a non-null CUDA Executor");
-  }
   if (options.batches <= 0) {
     return absl::InvalidArgumentError("evaluation batches must be positive");
   }
@@ -131,12 +123,8 @@ absl::StatusOr<double> Evaluate(const Layer& model, const Layer& loss_layer,
 absl::StatusOr<TrainingResult> Train(Layer& model, Layer& loss_layer,
                                      Optimizer& optimizer,
                                      DataSetIterator& training_tokens,
-                                     cuda::Executor* executor,
+                                     cuda::Executor& executor,
                                      const TrainingOptions& options) {
-  if (executor == nullptr) {
-    return absl::InvalidArgumentError(
-        "Train requires a non-null CUDA Executor");
-  }
   RETURN_IF_ERROR(ValidateTrainingOptions(options));
   DataSetIterator& evaluation_tokens = options.evaluation_tokens == nullptr
                                            ? training_tokens
@@ -199,7 +187,7 @@ absl::StatusOr<TrainingResult> Train(Layer& model, Layer& loss_layer,
       }
     }
   }
-  RETURN_IF_ERROR(executor->Synchronize());
+  RETURN_IF_ERROR(executor.Synchronize());
   return TrainingResult{.steps_completed = options.max_steps,
                         .reached_stop_loss = false};
 }

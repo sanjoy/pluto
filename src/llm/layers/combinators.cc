@@ -64,11 +64,7 @@ ResidualLayer::ResidualLayer(std::unique_ptr<Layer> layer)
 
 absl::StatusOr<Buffer> ResidualLayer::fwd(absl::Span<const Buffer> inputs,
                                           Tape* tape,
-                                          cuda::Executor* executor) const {
-  if (executor == nullptr) {
-    return absl::InvalidArgumentError(
-        "ResidualLayer requires a non-null CUDA Executor");
-  }
+                                          cuda::Executor& executor) const {
   if (inputs.size() != 1 || tape == nullptr) {
     return absl::InvalidArgumentError(
         "ResidualLayer fwd expects one input and a non-null tape");
@@ -76,7 +72,7 @@ absl::StatusOr<Buffer> ResidualLayer::fwd(absl::Span<const Buffer> inputs,
   Tape child_tape;
   ASSIGN_OR_RETURN(auto branch, layer_->fwd(inputs, &child_tape, executor));
   if (branch.size_bytes() != inputs[0].size_bytes() ||
-      branch.executor() != executor || inputs[0].executor() != executor) {
+      &branch.executor() != &executor || &inputs[0].executor() != &executor) {
     return absl::InvalidArgumentError(
         "ResidualLayer branch changed the activation shape or executor");
   }
@@ -90,12 +86,12 @@ absl::StatusOr<Buffer> ResidualLayer::fwd(absl::Span<const Buffer> inputs,
   tape->intermediates = {inputs[0]};
   tape->children = {std::move(child_tape)};
   if (output_type() == DataType::BF16) {
-    AddKernel<__nv_bfloat16><<<TileCount(elements), 1, 0, executor->stream()>>>(
+    AddKernel<__nv_bfloat16><<<TileCount(elements), 1, 0, executor.stream()>>>(
         static_cast<const __nv_bfloat16*>(inputs[0].data()),
         static_cast<const __nv_bfloat16*>(branch.data()), elements,
         static_cast<__nv_bfloat16*>(output.data()));
   } else {
-    AddKernel<float><<<TileCount(elements), 1, 0, executor->stream()>>>(
+    AddKernel<float><<<TileCount(elements), 1, 0, executor.stream()>>>(
         static_cast<const float*>(inputs[0].data()),
         static_cast<const float*>(branch.data()), elements,
         static_cast<float*>(output.data()));
@@ -106,11 +102,7 @@ absl::StatusOr<Buffer> ResidualLayer::fwd(absl::Span<const Buffer> inputs,
 
 absl::StatusOr<BufferVec> ResidualLayer::bwd(
     absl::Span<const Buffer> output_gradients, Tape tape,
-    cuda::Executor* executor) {
-  if (executor == nullptr) {
-    return absl::InvalidArgumentError(
-        "ResidualLayer requires a non-null CUDA Executor");
-  }
+    cuda::Executor& executor) {
   if (output_gradients.size() != 1 || tape.intermediates.size() != 1 ||
       tape.children.size() != 1) {
     return absl::InvalidArgumentError(
@@ -130,7 +122,7 @@ absl::StatusOr<BufferVec> ResidualLayer::bwd(
   ASSIGN_OR_RETURN(int elements,
                    ElementCount(output_gradients[0], sizeof(float), executor,
                                 "residual output gradient"));
-  AddKernel<float><<<TileCount(elements), 1, 0, executor->stream()>>>(
+  AddKernel<float><<<TileCount(elements), 1, 0, executor.stream()>>>(
       static_cast<const float*>(output_gradients[0].data()),
       static_cast<const float*>(branch_gradient.front().data()), elements,
       static_cast<float*>(input_gradient.data()));
@@ -152,11 +144,7 @@ ComposedLayer::ComposedLayer(DataType data_type,
 
 absl::StatusOr<Buffer> ComposedLayer::fwd(absl::Span<const Buffer> inputs,
                                           Tape* tape,
-                                          cuda::Executor* executor) const {
-  if (executor == nullptr) {
-    return absl::InvalidArgumentError(
-        "ComposedLayer requires a non-null CUDA Executor");
-  }
+                                          cuda::Executor& executor) const {
   if (inputs.size() != 1 || tape == nullptr) {
     return absl::InvalidArgumentError(
         "ComposedLayer fwd expects one input and a non-null tape");
@@ -177,11 +165,7 @@ absl::StatusOr<Buffer> ComposedLayer::fwd(absl::Span<const Buffer> inputs,
 
 absl::StatusOr<BufferVec> ComposedLayer::bwd(
     absl::Span<const Buffer> output_gradients, Tape tape,
-    cuda::Executor* executor) {
-  if (executor == nullptr) {
-    return absl::InvalidArgumentError(
-        "ComposedLayer requires a non-null CUDA Executor");
-  }
+    cuda::Executor& executor) {
   if (output_gradients.size() != 1 || tape.children.size() != layers_.size()) {
     return absl::InvalidArgumentError(
         "ComposedLayer bwd received an incompatible gradient or tape");

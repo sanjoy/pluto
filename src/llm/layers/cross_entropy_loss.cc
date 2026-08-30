@@ -113,11 +113,7 @@ __tile_global__ void CrossEntropyBackwardKernel(
 
 absl::StatusOr<std::unique_ptr<CrossEntropyLossLayer>>
 CrossEntropyLossLayer::Create(int vocabulary_size, DataType data_type,
-                              cuda::Executor* executor) {
-  if (executor == nullptr) {
-    return absl::InvalidArgumentError(
-        "CrossEntropyLossLayer requires a non-null CUDA Executor");
-  }
+                              cuda::Executor& executor) {
   RETURN_IF_ERROR(internal::ValidateComputeType(data_type));
   if (vocabulary_size <= 0) {
     return absl::InvalidArgumentError("vocabulary_size must be positive");
@@ -129,7 +125,7 @@ CrossEntropyLossLayer::Create(int vocabulary_size, DataType data_type,
 
 absl::StatusOr<Buffer> CrossEntropyLossLayer::fwd(
     absl::Span<const Buffer> inputs, Tape* tape,
-    cuda::Executor* executor) const {
+    cuda::Executor& executor) const {
   RETURN_IF_ERROR(
       internal::ValidateExecutor(executor_, executor, "CrossEntropyLossLayer"));
   if (inputs.size() != 2 || tape == nullptr) {
@@ -147,7 +143,7 @@ absl::StatusOr<Buffer> CrossEntropyLossLayer::fwd(
       Buffer::Allocate(static_cast<size_t>(rows) * sizeof(float), executor));
   tape->intermediates = {inputs[0], inputs[1]};
   tape->children.clear();
-  CrossEntropyForwardKernel<<<rows, 1, 0, executor->stream()>>>(
+  CrossEntropyForwardKernel<<<rows, 1, 0, executor.stream()>>>(
       static_cast<const float*>(inputs[0].data()),
       static_cast<const int*>(inputs[1].data()), rows, padded_vocab_size_,
       static_cast<float*>(losses.data()));
@@ -158,7 +154,7 @@ absl::StatusOr<Buffer> CrossEntropyLossLayer::fwd(
 
 absl::StatusOr<BufferVec> CrossEntropyLossLayer::bwd(
     absl::Span<const Buffer> output_gradients, Tape tape,
-    cuda::Executor* executor) {
+    cuda::Executor& executor) {
   RETURN_IF_ERROR(
       internal::ValidateExecutor(executor_, executor, "CrossEntropyLossLayer"));
   if (!output_gradients.empty() || tape.intermediates.size() != 2) {
@@ -176,7 +172,7 @@ absl::StatusOr<BufferVec> CrossEntropyLossLayer::bwd(
       auto logits_gradient,
       Buffer::Allocate(tape.intermediates[0].size_bytes(), executor));
   CrossEntropyBackwardKernel<<<rows * TileCount(padded_vocab_size_), 1, 0,
-                               executor->stream()>>>(
+                               executor.stream()>>>(
       static_cast<const float*>(tape.intermediates[0].data()),
       static_cast<const int*>(tape.intermediates[1].data()), rows,
       padded_vocab_size_, static_cast<float*>(logits_gradient.data()));
