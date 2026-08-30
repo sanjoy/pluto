@@ -1,5 +1,4 @@
-#ifndef PLUTO_SRC_LLM_LAYERS_GELU_H_
-#define PLUTO_SRC_LLM_LAYERS_GELU_H_
+#pragma once
 
 #include <cuda_runtime_api.h>
 
@@ -37,5 +36,3 @@ class GeluLayer final : public Layer {
 };
 
 }  // namespace pluto::llm
-
-#endif  // PLUTO_SRC_LLM_LAYERS_GELU_H_

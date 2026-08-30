@@ -1,5 +1,4 @@
-#ifndef PLUTO_SRC_TOKENIZED_DOCUMENT_FILE_H_
-#define PLUTO_SRC_TOKENIZED_DOCUMENT_FILE_H_
+#pragma once
 
 #include <cstdint>
 #include <filesystem>
@@ -71,5 +70,3 @@ class DocumentFileWriter final {
 };
 
 }  // namespace pluto::tokenized
-
-#endif  // PLUTO_SRC_TOKENIZED_DOCUMENT_FILE_H_

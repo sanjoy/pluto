@@ -1,5 +1,4 @@
-#ifndef PLUTO_SRC_TOKENIZATION_PLAIN_TEXT_TOKENIZER_H_
-#define PLUTO_SRC_TOKENIZATION_PLAIN_TEXT_TOKENIZER_H_
+#pragma once
 
 #include <cstdint>
 #include <string>
@@ -29,5 +28,3 @@ class PlainTextTokenizer final {
 };
 
 }  // namespace pluto::tokenization
-
-#endif  // PLUTO_SRC_TOKENIZATION_PLAIN_TEXT_TOKENIZER_H_

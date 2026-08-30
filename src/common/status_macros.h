@@ -1,5 +1,4 @@
-#ifndef PLUTO_SRC_COMMON_STATUS_MACROS_H_
-#define PLUTO_SRC_COMMON_STATUS_MACROS_H_
+#pragma once
 
 #include <utility>
 
@@ -37,5 +36,3 @@
     return status_or.status();                                             \
   }                                                                        \
   lhs = std::move(status_or).value()
-
-#endif  // PLUTO_SRC_COMMON_STATUS_MACROS_H_

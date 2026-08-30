@@ -1,5 +1,4 @@
-#ifndef PLUTO_SRC_TOKENIZER_GPT2_MODEL_H_
-#define PLUTO_SRC_TOKENIZER_GPT2_MODEL_H_
+#pragma once
 
 #include <array>
 #include <cstdint>
@@ -62,5 +61,3 @@ std::string MergeKey(absl::string_view left, absl::string_view right);
 absl::StatusOr<uint32_t> ConsumeUtf8(absl::string_view* input);
 
 }  // namespace pluto::tokenizer::internal
-
-#endif  // PLUTO_SRC_TOKENIZER_GPT2_MODEL_H_

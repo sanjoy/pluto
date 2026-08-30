@@ -1,5 +1,4 @@
-#ifndef PLUTO_SRC_LLM_OPTIMIZER_H_
-#define PLUTO_SRC_LLM_OPTIMIZER_H_
+#pragma once
 
 #include <cuda_runtime_api.h>
 
@@ -60,5 +59,3 @@ class AdamWOptimizer final {
 };
 
 }  // namespace pluto::llm
-
-#endif  // PLUTO_SRC_LLM_OPTIMIZER_H_

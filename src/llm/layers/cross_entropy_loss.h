@@ -1,5 +1,4 @@
-#ifndef PLUTO_SRC_LLM_LAYERS_CROSS_ENTROPY_LOSS_H_
-#define PLUTO_SRC_LLM_LAYERS_CROSS_ENTROPY_LOSS_H_
+#pragma once
 
 #include <cuda_runtime_api.h>
 
@@ -50,5 +49,3 @@ class CrossEntropyLossLayer final : public Layer {
 };
 
 }  // namespace pluto::llm
-
-#endif  // PLUTO_SRC_LLM_LAYERS_CROSS_ENTROPY_LOSS_H_

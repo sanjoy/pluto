@@ -1,5 +1,4 @@
-#ifndef PLUTO_SRC_LLM_LAYERS_EMBEDDING_H_
-#define PLUTO_SRC_LLM_LAYERS_EMBEDDING_H_
+#pragma once
 
 #include <cuda_runtime_api.h>
 
@@ -118,5 +117,3 @@ class PositionEmbeddingLayer final : public Layer {
 };
 
 }  // namespace pluto::llm
-
-#endif  // PLUTO_SRC_LLM_LAYERS_EMBEDDING_H_

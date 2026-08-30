@@ -1,5 +1,4 @@
-#ifndef PLUTO_SRC_LLM_LAYERS_ATTENTION_H_
-#define PLUTO_SRC_LLM_LAYERS_ATTENTION_H_
+#pragma once
 
 #include <cuda_runtime_api.h>
 
@@ -46,5 +45,3 @@ class AttentionLayer final : public Layer {
 };
 
 }  // namespace pluto::llm
-
-#endif  // PLUTO_SRC_LLM_LAYERS_ATTENTION_H_

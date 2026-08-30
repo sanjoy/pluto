@@ -1,5 +1,4 @@
-#ifndef PLUTO_SRC_TOKENIZED_FINEWEB_CONVERTER_H_
-#define PLUTO_SRC_TOKENIZED_FINEWEB_CONVERTER_H_
+#pragma once
 
 #include <cstddef>
 #include <filesystem>
@@ -25,5 +24,3 @@ absl::Status ConvertFineWebParquetFile(
     FineWebConversionOptions options = {});
 
 }  // namespace pluto::tokenized
-
-#endif  // PLUTO_SRC_TOKENIZED_FINEWEB_CONVERTER_H_

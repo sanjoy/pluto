@@ -1,5 +1,4 @@
-#ifndef PLUTO_SRC_PARQUET_FINEWEB_PARQUET_READER_H_
-#define PLUTO_SRC_PARQUET_FINEWEB_PARQUET_READER_H_
+#pragma once
 
 #include <cstddef>
 #include <cstdint>
@@ -69,5 +68,3 @@ class FineWebParquetReader final {
 };
 
 }  // namespace pluto::parquet
-
-#endif  // PLUTO_SRC_PARQUET_FINEWEB_PARQUET_READER_H_

@@ -1,5 +1,4 @@
-#ifndef PLUTO_SRC_TOKENIZER_DETOKENIZER_H_
-#define PLUTO_SRC_TOKENIZER_DETOKENIZER_H_
+#pragma once
 
 #include <filesystem>
 #include <memory>
@@ -32,5 +31,3 @@ class Gpt2Detokenizer final {
 };
 
 }  // namespace pluto::tokenizer
-
-#endif  // PLUTO_SRC_TOKENIZER_DETOKENIZER_H_

@@ -1,5 +1,4 @@
-#ifndef PLUTO_SRC_LLM_LAYERS_NORM_H_
-#define PLUTO_SRC_LLM_LAYERS_NORM_H_
+#pragma once
 
 #include <cuda_runtime_api.h>
 
@@ -49,5 +48,3 @@ class LayerNormLayer final : public Layer {
 };
 
 }  // namespace pluto::llm
-
-#endif  // PLUTO_SRC_LLM_LAYERS_NORM_H_

@@ -1,5 +1,4 @@
-#ifndef PLUTO_SRC_LLM_LAYERS_COMBINATORS_H_
-#define PLUTO_SRC_LLM_LAYERS_COMBINATORS_H_
+#pragma once
 
 #include <memory>
 #include <type_traits>
@@ -97,5 +96,3 @@ class ComposedLayerBuilder final {
 };
 
 }  // namespace pluto::llm
-
-#endif  // PLUTO_SRC_LLM_LAYERS_COMBINATORS_H_

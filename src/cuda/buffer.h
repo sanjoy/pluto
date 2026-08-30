@@ -1,5 +1,4 @@
-#ifndef PLUTO_SRC_CUDA_BUFFER_H_
-#define PLUTO_SRC_CUDA_BUFFER_H_
+#pragma once
 
 #include <cuda_runtime_api.h>
 
@@ -48,5 +47,3 @@ class Buffer final {
 };
 
 }  // namespace pluto::gpu
-
-#endif  // PLUTO_SRC_CUDA_BUFFER_H_

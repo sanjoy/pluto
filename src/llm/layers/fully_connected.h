@@ -1,5 +1,4 @@
-#ifndef PLUTO_SRC_LLM_LAYERS_FULLY_CONNECTED_H_
-#define PLUTO_SRC_LLM_LAYERS_FULLY_CONNECTED_H_
+#pragma once
 
 #include <cuda_runtime_api.h>
 
@@ -59,5 +58,3 @@ class FullyConnectedLayer final : public Layer {
 };
 
 }  // namespace pluto::llm
-
-#endif  // PLUTO_SRC_LLM_LAYERS_FULLY_CONNECTED_H_

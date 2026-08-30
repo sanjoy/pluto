@@ -1,5 +1,4 @@
-#ifndef PLUTO_SRC_LLM_LAYERS_INTERNAL_H_
-#define PLUTO_SRC_LLM_LAYERS_INTERNAL_H_
+#pragma once
 
 #include <cuda_runtime.h>
 
@@ -142,5 +141,3 @@ inline absl::Status ValidateBuffer(const Buffer& buffer,
 }
 
 }  // namespace pluto::llm::internal
-
-#endif  // PLUTO_SRC_LLM_LAYERS_INTERNAL_H_

@@ -1,5 +1,4 @@
-#ifndef PLUTO_SRC_LLM_LAYER_H_
-#define PLUTO_SRC_LLM_LAYER_H_
+#pragma once
 
 #include <memory>
 #include <vector>
@@ -46,5 +45,3 @@ class Layer {
 };
 
 }  // namespace pluto::llm
-
-#endif  // PLUTO_SRC_LLM_LAYER_H_

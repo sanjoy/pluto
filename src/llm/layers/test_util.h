@@ -1,5 +1,4 @@
-#ifndef PLUTO_SRC_LLM_LAYERS_TEST_UTIL_H_
-#define PLUTO_SRC_LLM_LAYERS_TEST_UTIL_H_
+#pragma once
 
 #include <cuda_runtime.h>
 
@@ -32,5 +31,3 @@ class LayersTest : public testing::Test {
 };
 
 }  // namespace pluto::llm
-
-#endif  // PLUTO_SRC_LLM_LAYERS_TEST_UTIL_H_
