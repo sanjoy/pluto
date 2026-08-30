@@ -449,6 +449,11 @@ absl::Status Run(cuda::Executor& executor) {
       .stop_loss = absl::GetFlag(FLAGS_train_until_loss),
       .evaluation_tokens = training_evaluation_data.get(),
       .initial_loss = initial_training_loss,
+      .evaluation_callback =
+          [](int steps_completed, double loss) {
+            std::cout << "training loss after " << steps_completed
+                      << " steps: " << loss << '\n';
+          },
   };
   ASSIGN_OR_RETURN(auto training_result,
                    Train(executor, *model, *loss_layer, *optimizer,

@@ -138,6 +138,9 @@ absl::StatusOr<TrainingResult> Train(cuda::Executor& executor, Layer& model,
           initial_loss,
           Evaluate(executor, model, loss_layer, evaluation_tokens,
                    EvaluationOptions{.batches = options.evaluation_batches}));
+      if (options.evaluation_callback) {
+        options.evaluation_callback(0, initial_loss);
+      }
     }
     if (initial_loss <= options.stop_loss) {
       return TrainingResult{.steps_completed = 0, .reached_stop_loss = true};
@@ -170,16 +173,20 @@ absl::StatusOr<TrainingResult> Train(cuda::Executor& executor, Layer& model,
     (void)input_gradient;
     RETURN_IF_ERROR(optimizer.Step());
 
+    const bool evaluation_enabled =
+        options.stop_loss >= 0.0 || options.evaluation_callback;
     const bool should_evaluate =
-        options.stop_loss >= 0.0 &&
-        ((step + 1) % options.evaluation_interval == 0 ||
-         step + 1 == options.max_steps);
+        evaluation_enabled && ((step + 1) % options.evaluation_interval == 0 ||
+                               step + 1 == options.max_steps);
     if (should_evaluate) {
       ASSIGN_OR_RETURN(
           double training_loss,
           Evaluate(executor, model, loss_layer, evaluation_tokens,
                    EvaluationOptions{.batches = options.evaluation_batches}));
-      if (training_loss <= options.stop_loss) {
+      if (options.evaluation_callback) {
+        options.evaluation_callback(step + 1, training_loss);
+      }
+      if (options.stop_loss >= 0.0 && training_loss <= options.stop_loss) {
         return TrainingResult{.steps_completed = step + 1,
                               .reached_stop_loss = true};
       }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <optional>
 
 #include "absl/status/statusor.h"
@@ -19,8 +20,8 @@ struct TrainingOptions {
   // Hard cap on optimizer updates. Zero is useful for evaluation-only runs.
   int max_steps = 0;
 
-  // When stop_loss is enabled, run an evaluation at this update interval and
-  // after the final update.
+  // When stop_loss or evaluation_callback is enabled, run an evaluation at
+  // this update interval and after the final update.
   int evaluation_interval = 100;
   int evaluation_batches = 1;
 
@@ -37,6 +38,13 @@ struct TrainingOptions {
   // pass. When absent and stop_loss is enabled, Train() evaluates once before
   // applying the first update so an already-satisfied target takes zero steps.
   std::optional<double> initial_loss;
+
+  // Called synchronously after every evaluation performed by Train(). The
+  // arguments are the number of completed optimizer steps and the mean loss.
+  // Supplying a callback enables periodic evaluation even when stop_loss is
+  // disabled. A supplied initial_loss does not trigger the callback because
+  // Train() did not perform that evaluation.
+  std::function<void(int, double)> evaluation_callback;
 };
 
 struct TrainingResult {

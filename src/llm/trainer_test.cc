@@ -201,6 +201,8 @@ TEST_F(TrainerTest, TrainRunsForwardBackwardAndOptimizerSteps) {
 TEST_F(TrainerTest, StopsBeforeFirstUpdateWhenInitialEvaluationQualifies) {
   FakeModel model;
   FakeOptimizer optimizer;
+  std::vector<int> evaluation_steps;
+  std::vector<double> evaluation_losses;
   auto loss = MakeLoss();
   auto training_data = MakeData();
   auto evaluation_data = MakeData();
@@ -210,20 +212,29 @@ TEST_F(TrainerTest, StopsBeforeFirstUpdateWhenInitialEvaluationQualifies) {
 
   auto result =
       Train(*executor_, model, **loss, optimizer, **training_data,
-            TrainingOptions{.max_steps = 3,
-                            .evaluation_interval = 1,
-                            .evaluation_batches = 1,
-                            .stop_loss = 2.5,
-                            .evaluation_tokens = evaluation_data->get()});
+            TrainingOptions{
+                .max_steps = 3,
+                .evaluation_interval = 1,
+                .evaluation_batches = 1,
+                .stop_loss = 2.5,
+                .evaluation_tokens = evaluation_data->get(),
+                .evaluation_callback = [&](int steps_completed, double loss) {
+                  evaluation_steps.push_back(steps_completed);
+                  evaluation_losses.push_back(loss);
+                }});
   ASSERT_TRUE(result.ok()) << result.status();
   EXPECT_EQ(result->steps_completed, 0);
   EXPECT_TRUE(result->reached_stop_loss);
   EXPECT_EQ(optimizer.steps, 0);
+  EXPECT_EQ(evaluation_steps, (std::vector<int>{0}));
+  EXPECT_EQ(evaluation_losses, (std::vector<double>{2.5}));
 }
 
 TEST_F(TrainerTest, StopsAfterUpdateWhenPeriodicEvaluationQualifies) {
   FakeModel model;
   FakeOptimizer optimizer;
+  std::vector<int> evaluation_steps;
+  std::vector<double> evaluation_losses;
   auto loss = MakeLoss();
   auto training_data = MakeData();
   auto evaluation_data = MakeData();
@@ -233,17 +244,56 @@ TEST_F(TrainerTest, StopsAfterUpdateWhenPeriodicEvaluationQualifies) {
 
   auto result =
       Train(*executor_, model, **loss, optimizer, **training_data,
-            TrainingOptions{.max_steps = 3,
-                            .evaluation_interval = 1,
-                            .evaluation_batches = 1,
-                            .stop_loss = 2.5,
-                            .evaluation_tokens = evaluation_data->get(),
-                            .initial_loss = 3.0});
+            TrainingOptions{
+                .max_steps = 3,
+                .evaluation_interval = 1,
+                .evaluation_batches = 1,
+                .stop_loss = 2.5,
+                .evaluation_tokens = evaluation_data->get(),
+                .initial_loss = 3.0,
+                .evaluation_callback = [&](int steps_completed, double loss) {
+                  evaluation_steps.push_back(steps_completed);
+                  evaluation_losses.push_back(loss);
+                }});
   ASSERT_TRUE(result.ok()) << result.status();
   EXPECT_EQ(result->steps_completed, 1);
   EXPECT_TRUE(result->reached_stop_loss);
   EXPECT_EQ(optimizer.steps, 1);
   EXPECT_EQ(model.backward_calls, 1);
+  EXPECT_EQ(evaluation_steps, (std::vector<int>{1}));
+  EXPECT_EQ(evaluation_losses, (std::vector<double>{2.5}));
+}
+
+TEST_F(TrainerTest, CallbackEnablesPeriodicEvaluationWithoutEarlyStopping) {
+  FakeModel model;
+  FakeOptimizer optimizer;
+  std::vector<int> evaluation_steps;
+  std::vector<double> evaluation_losses;
+  auto loss = MakeLoss();
+  auto training_data = MakeData();
+  auto evaluation_data = MakeData();
+  ASSERT_TRUE(loss.ok()) << loss.status();
+  ASSERT_TRUE(training_data.ok()) << training_data.status();
+  ASSERT_TRUE(evaluation_data.ok()) << evaluation_data.status();
+
+  auto result =
+      Train(*executor_, model, **loss, optimizer, **training_data,
+            TrainingOptions{
+                .max_steps = 3,
+                .evaluation_interval = 2,
+                .evaluation_batches = 1,
+                .evaluation_tokens = evaluation_data->get(),
+                .evaluation_callback = [&](int steps_completed, double loss) {
+                  evaluation_steps.push_back(steps_completed);
+                  evaluation_losses.push_back(loss);
+                }});
+
+  ASSERT_TRUE(result.ok()) << result.status();
+  EXPECT_EQ(result->steps_completed, 3);
+  EXPECT_FALSE(result->reached_stop_loss);
+  EXPECT_EQ(optimizer.steps, 3);
+  EXPECT_EQ(evaluation_steps, (std::vector<int>{2, 3}));
+  EXPECT_EQ(evaluation_losses, (std::vector<double>{2.5, 2.5}));
 }
 
 TEST_F(TrainerTest, RejectsInvalidOptions) {
