@@ -104,6 +104,43 @@ cuda_library(
     ],
 )
 
+cc_library(
+    name = "trainer",
+    srcs = ["trainer.cc"],
+    hdrs = ["trainer.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":layer",
+        ":optimizer",
+        "//src:dataset",
+        "//src/common:status_macros",
+        "//src/cuda:buffer",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_test(
+    name = "trainer_test",
+    size = "small",
+    srcs = ["trainer_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":layer",
+        ":optimizer",
+        ":trainer",
+        "//src:dataset",
+        "//src/cuda:buffer",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
 # Compatibility aggregate for binaries that use several layer families.
 cc_library(
     name = "layers",
@@ -127,6 +164,8 @@ cc_binary(
     deps = [
         ":layers",
         ":optimizer",
+        ":trainer",
+        "//src:dataset",
         "//src/common:status_macros",
         "//src/cuda:buffer",
         "//src/tokenization:detokenizer",
@@ -160,6 +199,8 @@ cc_test(
     deps = [
         ":layers",
         ":optimizer",
+        ":trainer",
+        "//src:dataset",
         "//src/common:status_macros",
         "//src/cuda:buffer",
         "//src/tokenization:detokenizer",
@@ -196,6 +237,8 @@ cc_test(
     deps = [
         ":layers",
         ":optimizer",
+        ":trainer",
+        "//src:dataset",
         "//src/common:status_macros",
         "//src/cuda:buffer",
         "//src/tokenization:detokenizer",

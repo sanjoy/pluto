@@ -51,6 +51,12 @@ state and updates the model after backward.
 Every allocation, copy, kernel, and asynchronous free uses one explicit
 non-default CUDA stream.
 
+The reusable trainer library owns the forward/loss/backward/update loop and
+mean-loss evaluation. DataSetIterator supplies device-resident input/target
+batches; Shakespeare uses the in-memory implementation with random windows
+for optimization and separately resettable sequential windows for stable
+training and held-out evaluation.
+
 ## Running
 
 The binary uses the repository's GPT-2 tokenizer library. Point it at a

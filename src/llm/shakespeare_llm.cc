@@ -21,6 +21,7 @@
 #include "absl/strings/str_cat.h"
 #include "src/common/status_macros.h"
 #include "src/cuda/buffer.h"
+#include "src/dataset.h"
 #include "src/llm/layer.h"
 #include "src/llm/layers/attention.h"
 #include "src/llm/layers/combinators.h"
@@ -30,6 +31,7 @@
 #include "src/llm/layers/gelu.h"
 #include "src/llm/layers/norm.h"
 #include "src/llm/optimizer.h"
+#include "src/llm/trainer.h"
 #include "src/tokenization/detokenizer.h"
 #include "src/tokenization/tokenizer.h"
 
@@ -135,21 +137,6 @@ absl::StatusOr<CorpusSplit> SplitCorpus(const std::vector<int>& corpus_tokens,
                               corpus_tokens.end()),
   };
 }
-
-struct TrainingOptions {
-  int max_steps;
-  int seed;
-  int evaluation_batches;
-  int evaluation_interval;
-  // A negative value disables loss-based early stopping. Zero requests exact
-  // zero according to the FP32 cross-entropy evaluation.
-  double stop_loss;
-};
-
-struct TrainingResult {
-  int steps_completed;
-  bool reached_stop_loss;
-};
 
 absl::Status CudaStatus(cudaError_t error, const char* operation) {
   if (error == cudaSuccess) return absl::OkStatus();
@@ -297,190 +284,6 @@ absl::StatusOr<std::filesystem::path> TokenizerDirectory() {
       "tokenizer directory");
 }
 
-absl::Status CopyBatch(const std::vector<int>& tokens,
-                       const std::vector<int>& targets,
-                       const Buffer& token_buffer, const Buffer& target_buffer,
-                       cudaStream_t stream) {
-  RETURN_IF_ERROR(CudaStatus(
-      cudaMemcpyAsync(token_buffer.data(), tokens.data(),
-                      token_buffer.size_bytes(), cudaMemcpyHostToDevice,
-                      stream),
-      "cudaMemcpyAsync(tokens)"));
-  return CudaStatus(cudaMemcpyAsync(target_buffer.data(), targets.data(),
-                                    target_buffer.size_bytes(),
-                                    cudaMemcpyHostToDevice, stream),
-                    "cudaMemcpyAsync(targets)");
-}
-
-absl::StatusOr<double> Evaluate(
-    const ModelConfig& config, Layer* model, CrossEntropyLossLayer* loss_layer,
-    const std::vector<int>& corpus_tokens, int eval_batches,
-    const Buffer& token_buffer, const Buffer& target_buffer,
-    cudaStream_t stream) {
-  if (model == nullptr || loss_layer == nullptr) {
-    return absl::InvalidArgumentError(
-        "evaluation requires non-null model and loss layer");
-  }
-  if (eval_batches <= 0) {
-    return absl::InvalidArgumentError("eval_batches must be positive");
-  }
-  std::vector<int> tokens(config.batch_size);
-  std::vector<int> targets(config.batch_size);
-  std::vector<float> losses(config.batch_size);
-  double total = 0.0;
-  const size_t sequence_start_count = corpus_tokens.size() - kContextLength;
-
-  for (int batch = 0; batch < eval_batches; ++batch) {
-    for (int sequence = 0; sequence < config.sequence_batch_size();
-         ++sequence) {
-      const size_t ordinal =
-          static_cast<size_t>(batch) * config.sequence_batch_size() + sequence;
-      const size_t start =
-          (ordinal * sequence_start_count) /
-          (static_cast<size_t>(eval_batches) *
-           config.sequence_batch_size());
-      for (int position = 0; position < kContextLength; ++position) {
-        const int row = sequence * kContextLength + position;
-        tokens[row] = corpus_tokens[start + position];
-        targets[row] = corpus_tokens[start + position + 1];
-      }
-    }
-    RETURN_IF_ERROR(
-        CopyBatch(tokens, targets, token_buffer, target_buffer, stream));
-    Tape model_tape;
-    BufferVec model_inputs = {token_buffer};
-    ASSIGN_OR_RETURN(auto logits, model->fwd(model_inputs, &model_tape));
-    Tape loss_tape;
-    BufferVec loss_inputs = {logits, target_buffer};
-    ASSIGN_OR_RETURN(auto device_losses,
-                     loss_layer->fwd(loss_inputs, &loss_tape));
-    RETURN_IF_ERROR(CudaStatus(
-        cudaMemcpyAsync(losses.data(), device_losses.data(),
-                        device_losses.size_bytes(), cudaMemcpyDeviceToHost,
-                        stream),
-        "cudaMemcpyAsync(evaluation losses)"));
-    RETURN_IF_ERROR(CudaStatus(cudaStreamSynchronize(stream),
-                               "cudaStreamSynchronize(evaluation)"));
-    for (float loss : losses) total += loss;
-  }
-  return total / (static_cast<double>(eval_batches) * config.batch_size);
-}
-
-// Runs stochastic next-token training and updates model with optimizer.
-//
-// config determines how many independent 1024-token sequences are packed in
-// one batch. loss_layer computes an FP32 cross-entropy per row and seeds the
-// mean-loss logits gradient. training_tokens is the host-resident GPT-2-token
-// training split. options controls the random window sampler, hard step cap,
-// and deterministic evaluations used for optional loss-based early stopping.
-// initial_training_loss avoids repeating Run()'s initial evaluation.
-//
-// token_buffer and target_buffer are reusable GPU staging allocations with
-// config.batch_size native int values. Viewed as
-// [sequence_batch_size, 1024], token_buffer contains input sequences and
-// target_buffer contains the same sequences shifted by one token. Both buffers
-// are tied to stream; that stream orders copies, forward/backward kernels,
-// AdamW updates, and synchronization. Buffer is reference-counted, so this
-// function only borrows the handles and does not own their allocations.
-absl::StatusOr<TrainingResult> Train(
-    const ModelConfig& config, Layer* model,
-    CrossEntropyLossLayer* loss_layer, Optimizer* optimizer,
-    const std::vector<int>& training_tokens,
-    const TrainingOptions& options, double initial_training_loss,
-    const Buffer& token_buffer, const Buffer& target_buffer,
-    cudaStream_t stream) {
-  if (model == nullptr || loss_layer == nullptr || optimizer == nullptr) {
-    return absl::InvalidArgumentError(
-        "training requires non-null model, loss layer, and optimizer");
-  }
-  if (options.max_steps < 0) {
-    return absl::InvalidArgumentError("max_steps must be non-negative");
-  }
-  if (options.evaluation_batches <= 0 || options.evaluation_interval <= 0) {
-    return absl::InvalidArgumentError(
-        "training evaluation counts must be positive");
-  }
-  if (!std::isfinite(options.stop_loss)) {
-    return absl::InvalidArgumentError("train_until_loss must be finite");
-  }
-  if (options.stop_loss >= 0.0 &&
-      initial_training_loss <= options.stop_loss) {
-    std::cout << "training loss already reached " << options.stop_loss
-              << "; no updates needed\n";
-    return TrainingResult{.steps_completed = 0, .reached_stop_loss = true};
-  }
-
-  std::mt19937 random(options.seed);
-  std::uniform_int_distribution<size_t> sequence_start(
-      0, training_tokens.size() - kContextLength - 1);
-  std::vector<int> tokens(config.batch_size);
-  std::vector<int> targets(config.batch_size);
-  std::vector<float> losses(config.batch_size);
-
-  for (int step = 0; step < options.max_steps; ++step) {
-    for (int sequence = 0; sequence < config.sequence_batch_size();
-         ++sequence) {
-      const size_t start = sequence_start(random);
-      for (int position = 0; position < kContextLength; ++position) {
-        const int row = sequence * kContextLength + position;
-        tokens[row] = training_tokens[start + position];
-        targets[row] = training_tokens[start + position + 1];
-      }
-    }
-    RETURN_IF_ERROR(
-        CopyBatch(tokens, targets, token_buffer, target_buffer, stream));
-
-    Tape model_tape;
-    BufferVec model_inputs = {token_buffer};
-    ASSIGN_OR_RETURN(auto logits, model->fwd(model_inputs, &model_tape));
-    Tape loss_tape;
-    BufferVec loss_inputs = {logits, target_buffer};
-    ASSIGN_OR_RETURN(auto device_losses,
-                     loss_layer->fwd(loss_inputs, &loss_tape));
-    ASSIGN_OR_RETURN(auto logits_gradient,
-                     loss_layer->bwd({}, std::move(loss_tape)));
-    auto input_gradient = model->bwd(logits_gradient, std::move(model_tape));
-    if (!input_gradient.ok()) return input_gradient.status();
-    RETURN_IF_ERROR(optimizer->Step());
-
-    const bool evaluate =
-        (step + 1) % options.evaluation_interval == 0 ||
-        step + 1 == options.max_steps;
-    if (evaluate) {
-      RETURN_IF_ERROR(CudaStatus(
-          cudaMemcpyAsync(losses.data(), device_losses.data(),
-                          device_losses.size_bytes(), cudaMemcpyDeviceToHost,
-                          stream),
-          "cudaMemcpyAsync(training losses)"));
-      RETURN_IF_ERROR(CudaStatus(cudaStreamSynchronize(stream),
-                                 "cudaStreamSynchronize(training)"));
-      double mean = 0.0;
-      for (float loss : losses) mean += loss;
-      mean /= config.batch_size;
-      std::cout << "step " << step + 1 << "/" << options.max_steps
-                << ", pre-update batch loss: " << mean << '\n';
-
-      if (options.stop_loss >= 0.0) {
-        ASSIGN_OR_RETURN(
-            double training_loss,
-            Evaluate(config, model, loss_layer, training_tokens,
-                     options.evaluation_batches, token_buffer, target_buffer,
-                     stream));
-        std::cout << "training evaluation loss after step " << step + 1
-                  << ": " << training_loss << '\n';
-        if (training_loss <= options.stop_loss) {
-          return TrainingResult{.steps_completed = step + 1,
-                                .reached_stop_loss = true};
-        }
-      }
-    }
-  }
-  RETURN_IF_ERROR(CudaStatus(cudaStreamSynchronize(stream),
-                             "cudaStreamSynchronize(after training)"));
-  return TrainingResult{.steps_completed = options.max_steps,
-                        .reached_stop_loss = false};
-}
-
 absl::StatusOr<std::vector<float>> Predict(
     const ModelConfig& config, Layer* model, const std::vector<int>& context,
     const Buffer& token_buffer, cudaStream_t stream) {
@@ -603,23 +406,45 @@ absl::Status Run(cudaStream_t stream) {
   };
   ASSIGN_OR_RETURN(auto optimizer,
                    Optimizer::Create(model.get(), optimizer_config, stream));
+  const InMemoryDataSetOptions training_data_options{
+      .batch_size = config.batch_size,
+      .context_length = kContextLength,
+      .order = InMemoryDataSetOrder::kRandom,
+      .seed = static_cast<uint64_t>(absl::GetFlag(FLAGS_seed)),
+  };
+  const InMemoryDataSetOptions evaluation_data_options{
+      .batch_size = config.batch_size,
+      .context_length = kContextLength,
+      .order = InMemoryDataSetOrder::kSequential,
+      .seed = static_cast<uint64_t>(absl::GetFlag(FLAGS_seed)),
+  };
   ASSIGN_OR_RETURN(
-      auto token_buffer,
-      Buffer::Allocate(config.batch_size * sizeof(int), stream));
+      auto training_data,
+      InMemoryDataSetIterator::Create(corpus_split.training,
+                                      training_data_options, stream));
   ASSIGN_OR_RETURN(
-      auto target_buffer,
-      Buffer::Allocate(config.batch_size * sizeof(int), stream));
+      auto training_evaluation_data,
+      InMemoryDataSetIterator::Create(corpus_split.training,
+                                      evaluation_data_options, stream));
+  ASSIGN_OR_RETURN(
+      auto test_evaluation_data,
+      InMemoryDataSetIterator::Create(corpus_split.test,
+                                      evaluation_data_options, stream));
+  // Generation only needs model inputs; train/eval staging is owned by the
+  // dataset iterators above.
+  ASSIGN_OR_RETURN(auto token_buffer,
+                   Buffer::Allocate(config.batch_size * sizeof(int), stream));
 
   const int eval_batches = absl::GetFlag(FLAGS_eval_batches);
+  const EvaluationOptions evaluation_options{.batches = eval_batches};
   ASSIGN_OR_RETURN(
       double initial_training_loss,
-      Evaluate(config, model.get(), loss_layer.get(), corpus_split.training,
-               eval_batches, token_buffer, target_buffer, stream));
+      Evaluate(model.get(), loss_layer.get(), training_evaluation_data.get(),
+               evaluation_options));
   ASSIGN_OR_RETURN(
       double initial_test_loss,
-      Evaluate(config, model.get(), loss_layer.get(), corpus_split.test,
-               eval_batches,
-               token_buffer, target_buffer, stream));
+      Evaluate(model.get(), loss_layer.get(), test_evaluation_data.get(),
+               evaluation_options));
   std::cout << "model: GPT-2 vocabulary=" << kVocabularySize
             << ", context=" << kContextLength
             << ", layers=" << kTransformerBlockCount
@@ -634,26 +459,24 @@ absl::Status Run(cudaStream_t stream) {
 
   const TrainingOptions training_options{
       .max_steps = absl::GetFlag(FLAGS_steps),
-      .seed = absl::GetFlag(FLAGS_seed),
-      .evaluation_batches = eval_batches,
       .evaluation_interval = absl::GetFlag(FLAGS_training_eval_interval),
+      .evaluation_batches = eval_batches,
       .stop_loss = absl::GetFlag(FLAGS_train_until_loss),
+      .evaluation_tokens = training_evaluation_data.get(),
+      .initial_loss = initial_training_loss,
   };
   ASSIGN_OR_RETURN(
       auto training_result,
-      Train(config, model.get(), loss_layer.get(), optimizer.get(),
-            corpus_split.training,
-            training_options, initial_training_loss, token_buffer,
-            target_buffer, stream));
+      Train(model.get(), loss_layer.get(), optimizer.get(), training_data.get(),
+            training_options));
   ASSIGN_OR_RETURN(
       double final_training_loss,
-      Evaluate(config, model.get(), loss_layer.get(), corpus_split.training,
-               eval_batches, token_buffer, target_buffer, stream));
+      Evaluate(model.get(), loss_layer.get(), training_evaluation_data.get(),
+               evaluation_options));
   ASSIGN_OR_RETURN(
       double final_test_loss,
-      Evaluate(config, model.get(), loss_layer.get(), corpus_split.test,
-               eval_batches,
-               token_buffer, target_buffer, stream));
+      Evaluate(model.get(), loss_layer.get(), test_evaluation_data.get(),
+               evaluation_options));
   std::cout << "completed training steps: " << training_result.steps_completed
             << '\n'
             << "final training loss: " << final_training_loss << '\n'
