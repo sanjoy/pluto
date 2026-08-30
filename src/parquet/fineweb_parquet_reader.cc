@@ -366,8 +366,8 @@ absl::Status ParseRowGroup(CompactReader* reader, RowGroup* row_group) {
         return absl::DataLossError("row-group columns are not structs");
       }
       row_group->columns.resize(list.size);
-      for (size_t index = 0; index < row_group->columns.size(); ++index) {
-        RETURN_IF_ERROR(ParseColumnChunk(reader, &row_group->columns[index]));
+      for (ColumnChunk& column : row_group->columns) {
+        RETURN_IF_ERROR(ParseColumnChunk(reader, &column));
       }
     } else if (field.id == 3) {
       ASSIGN_OR_RETURN(row_group->num_rows, reader->ReadI64());
@@ -393,8 +393,8 @@ absl::StatusOr<FileMetadata> ParseFileMetadata(
         return absl::DataLossError("row groups are not structs");
       }
       metadata.row_groups.resize(list.size);
-      for (size_t index = 0; index < metadata.row_groups.size(); ++index) {
-        RETURN_IF_ERROR(ParseRowGroup(&reader, &metadata.row_groups[index]));
+      for (RowGroup& row_group : metadata.row_groups) {
+        RETURN_IF_ERROR(ParseRowGroup(&reader, &row_group));
       }
     } else {
       RETURN_IF_ERROR(reader.Skip(field.type));
@@ -688,28 +688,25 @@ constexpr std::array<PhysicalType, 10> kColumnTypes = {
 
 absl::Status ValidateMetadata(FileMetadata* metadata, int64_t file_size) {
   int64_t first_row = 0;
-  for (size_t row_group_index = 0;
-       row_group_index < metadata->row_groups.size(); ++row_group_index) {
-    RowGroup* row_group = &metadata->row_groups[row_group_index];
-    row_group->first_row = first_row;
-    if (row_group->num_rows <= 0 ||
-        row_group->num_rows >
-            std::numeric_limits<int64_t>::max() - first_row) {
+  for (RowGroup& row_group : metadata->row_groups) {
+    row_group.first_row = first_row;
+    if (row_group.num_rows <= 0 ||
+        row_group.num_rows > std::numeric_limits<int64_t>::max() - first_row) {
       return absl::DataLossError("invalid row-group size");
     }
-    first_row += row_group->num_rows;
-    if (row_group->columns.size() != kColumnNames.size()) {
+    first_row += row_group.num_rows;
+    if (row_group.columns.size() != kColumnNames.size()) {
       return absl::UnimplementedError("file does not have the FineWeb 10-column schema");
     }
-    for (size_t i = 0; i < row_group->columns.size(); ++i) {
-      const ColumnChunk& column = row_group->columns[i];
+    for (size_t i = 0; i < row_group.columns.size(); ++i) {
+      const ColumnChunk& column = row_group.columns[i];
       if (column.name != kColumnNames[i] || column.type != kColumnTypes[i]) {
         return absl::UnimplementedError("file does not match the FineWeb column schema");
       }
       if (column.codec != CompressionCodec::kSnappy) {
         return absl::UnimplementedError("only Snappy FineWeb columns are supported");
       }
-      if (column.num_values != row_group->num_rows ||
+      if (column.num_values != row_group.num_rows ||
           column.total_compressed_size <= 0 || column.data_page_offset < 0) {
         return absl::DataLossError("invalid FineWeb column metadata");
       }

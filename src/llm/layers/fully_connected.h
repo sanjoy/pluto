@@ -32,7 +32,7 @@ class FullyConnectedLayer final : public Layer {
   absl::Status InitializeNormal(float standard_deviation, uint64_t seed);
 
   absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs,
-                              Tape* tape) override;
+                              Tape* tape) const override;
   absl::StatusOr<BufferVec> bwd(
       absl::Span<const Buffer> output_gradients, Tape tape) override;
   absl::Span<Buffer> weights() override { return absl::MakeSpan(weights_); }

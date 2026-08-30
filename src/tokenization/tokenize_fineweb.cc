@@ -187,10 +187,7 @@ absl::Status RunConversion() {
       }
     });
   }
-  for (std::thread* worker = workers.data();
-       worker != workers.data() + workers.size(); ++worker) {
-    worker->join();
-  }
+  for (std::thread& worker : workers) worker.join();
   return failure;
 }
 

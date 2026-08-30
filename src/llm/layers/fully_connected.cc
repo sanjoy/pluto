@@ -214,10 +214,7 @@ absl::Status FullyConnectedLayer::InitializeNormal(
   std::normal_distribution<float> distribution(0.0f, standard_deviation);
   std::vector<float> matrix(
       static_cast<size_t>(input_dim_) * output_dim_);
-  for (float* value = matrix.data(); value != matrix.data() + matrix.size();
-       ++value) {
-    *value = distribution(random);
-  }
+  for (float& value : matrix) value = distribution(random);
   return internal::CudaStatus(
       cudaMemcpyAsync(weights_[0].data(), matrix.data(),
                       weights_[0].size_bytes(), cudaMemcpyHostToDevice,
@@ -226,7 +223,7 @@ absl::Status FullyConnectedLayer::InitializeNormal(
 }
 
 absl::StatusOr<Buffer> FullyConnectedLayer::fwd(
-    absl::Span<const Buffer> inputs, Tape* tape) {
+    absl::Span<const Buffer> inputs, Tape* tape) const {
   if (inputs.size() != 1 || tape == nullptr) {
     return absl::InvalidArgumentError(
         "FullyConnectedLayer fwd expects one input and a non-null tape");

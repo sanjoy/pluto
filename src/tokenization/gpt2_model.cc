@@ -339,11 +339,11 @@ struct ModelCache {
   absl::flat_hash_map<std::string, std::weak_ptr<const Gpt2Model>> models;
 };
 
-ModelCache* SharedModelCache() {
+ModelCache& SharedModelCache() {
   // Deliberately leaked to avoid static-destruction ordering problems. Models
   // are immutable; weak_ptr entries do not extend caller-owned lifetimes.
   static auto* cache = new ModelCache;
-  return cache;
+  return *cache;
 }
 
 }  // namespace
@@ -400,11 +400,11 @@ absl::StatusOr<std::shared_ptr<const Gpt2Model>> Gpt2Model::Load(
     const std::filesystem::path& directory) {
   const std::string cache_key =
       std::filesystem::absolute(directory).lexically_normal().string();
-  ModelCache* cache = SharedModelCache();
+  ModelCache& cache = SharedModelCache();
   {
-    absl::MutexLock lock(cache->mutex);
-    const auto found = cache->models.find(cache_key);
-    if (found != cache->models.end()) {
+    absl::MutexLock lock(cache.mutex);
+    const auto found = cache.models.find(cache_key);
+    if (found != cache.models.end()) {
       if (std::shared_ptr<const Gpt2Model> model = found->second.lock()) {
         return model;
       }
@@ -452,8 +452,8 @@ absl::StatusOr<std::shared_ptr<const Gpt2Model>> Gpt2Model::Load(
 
   std::shared_ptr<const Gpt2Model> immutable_model = std::move(model);
   {
-    absl::MutexLock lock(cache->mutex);
-    cache->models[cache_key] = immutable_model;
+    absl::MutexLock lock(cache.mutex);
+    cache.models[cache_key] = immutable_model;
   }
   return immutable_model;
 }

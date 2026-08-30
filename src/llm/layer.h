@@ -36,7 +36,7 @@ class Layer {
   virtual ~Layer() = default;
 
   virtual absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs,
-                                      Tape* tape) = 0;
+                                      Tape* tape) const = 0;
   virtual absl::StatusOr<BufferVec> bwd(
       absl::Span<const Buffer> output_gradients, Tape tape) = 0;
   virtual absl::Span<Buffer> weights() = 0;

@@ -65,7 +65,7 @@ ResidualLayer::ResidualLayer(std::unique_ptr<Layer> layer)
 }
 
 absl::StatusOr<Buffer> ResidualLayer::fwd(
-    absl::Span<const Buffer> inputs, Tape* tape) {
+    absl::Span<const Buffer> inputs, Tape* tape) const {
   if (inputs.size() != 1 || tape == nullptr) {
     return absl::InvalidArgumentError(
         "ResidualLayer fwd expects one input and a non-null tape");
@@ -151,7 +151,7 @@ ComposedLayer::ComposedLayer(DataType data_type,
 }
 
 absl::StatusOr<Buffer> ComposedLayer::fwd(absl::Span<const Buffer> inputs,
-                                           Tape* tape) {
+                                           Tape* tape) const {
   if (inputs.size() != 1 || tape == nullptr) {
     return absl::InvalidArgumentError(
         "ComposedLayer fwd expects one input and a non-null tape");

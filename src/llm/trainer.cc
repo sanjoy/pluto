@@ -13,7 +13,7 @@
 #include "absl/strings/str_cat.h"
 #include "src/common/status_macros.h"
 #include "src/cuda/buffer.h"
-#include "src/dataset.h"
+#include "src/dataset/dataset.h"
 #include "src/llm/layer.h"
 #include "src/llm/optimizer.h"
 
@@ -86,30 +86,25 @@ absl::Status ValidateTrainingOptions(const TrainingOptions& options) {
 
 }  // namespace
 
-absl::StatusOr<double> Evaluate(Layer* model, Layer* loss_layer,
-                                DataSetIterator* eval_tokens,
+absl::StatusOr<double> Evaluate(const Layer& model, const Layer& loss_layer,
+                                DataSetIterator& eval_tokens,
                                 const EvaluationOptions& options) {
-  if (model == nullptr || loss_layer == nullptr || eval_tokens == nullptr) {
-    return absl::InvalidArgumentError(
-        "evaluation requires non-null model, loss layer, and dataset");
-  }
   if (options.batches <= 0) {
     return absl::InvalidArgumentError("evaluation batches must be positive");
   }
-  RETURN_IF_ERROR(eval_tokens->Reset());
+  RETURN_IF_ERROR(eval_tokens.Reset());
 
   double loss_sum = 0.0;
   size_t token_count = 0;
   for (int index = 0; index < options.batches; ++index) {
-    ASSIGN_OR_RETURN(TokenBatch batch, eval_tokens->Next());
+    ASSIGN_OR_RETURN(TokenBatch batch, eval_tokens.Next());
     RETURN_IF_ERROR(ValidateBatch(batch));
     Tape model_tape;
     BufferVec model_inputs = {batch.tokens};
-    ASSIGN_OR_RETURN(auto output, model->fwd(model_inputs, &model_tape));
+    ASSIGN_OR_RETURN(auto output, model.fwd(model_inputs, &model_tape));
     Tape loss_tape;
     BufferVec loss_inputs = {output, batch.targets};
-    ASSIGN_OR_RETURN(auto losses,
-                     loss_layer->fwd(loss_inputs, &loss_tape));
+    ASSIGN_OR_RETURN(auto losses, loss_layer.fwd(loss_inputs, &loss_tape));
     ASSIGN_OR_RETURN(double batch_sum,
                      CopyLossSum(losses, batch.batch_size));
     loss_sum += batch_sum;
@@ -118,20 +113,14 @@ absl::StatusOr<double> Evaluate(Layer* model, Layer* loss_layer,
   return loss_sum / token_count;
 }
 
-absl::StatusOr<TrainingResult> Train(Layer* model, Layer* loss_layer,
-                                     Optimizer* optimizer,
-                                     DataSetIterator* training_tokens,
+absl::StatusOr<TrainingResult> Train(Layer& model, Layer& loss_layer,
+                                     Optimizer& optimizer,
+                                     DataSetIterator& training_tokens,
                                      const TrainingOptions& options) {
-  if (model == nullptr || loss_layer == nullptr || optimizer == nullptr ||
-      training_tokens == nullptr) {
-    return absl::InvalidArgumentError(
-        "training requires non-null model, loss layer, optimizer, and "
-        "dataset");
-  }
   RETURN_IF_ERROR(ValidateTrainingOptions(options));
-  DataSetIterator* evaluation_tokens = options.evaluation_tokens == nullptr
+  DataSetIterator& evaluation_tokens = options.evaluation_tokens == nullptr
                                            ? training_tokens
-                                           : options.evaluation_tokens;
+                                           : *options.evaluation_tokens;
 
   if (options.stop_loss >= 0.0) {
     double initial_loss;
@@ -149,32 +138,31 @@ absl::StatusOr<TrainingResult> Train(Layer* model, Layer* loss_layer,
     }
   }
 
-  RETURN_IF_ERROR(training_tokens->Reset());
-  RETURN_IF_ERROR(optimizer->ZeroGrad());
+  RETURN_IF_ERROR(training_tokens.Reset());
+  RETURN_IF_ERROR(optimizer.ZeroGrad());
   cudaStream_t training_stream = nullptr;
   for (int step = 0; step < options.max_steps; ++step) {
-    ASSIGN_OR_RETURN(TokenBatch batch, training_tokens->Next());
+    ASSIGN_OR_RETURN(TokenBatch batch, training_tokens.Next());
     RETURN_IF_ERROR(ValidateBatch(batch));
     training_stream = batch.tokens.stream();
 
     Tape model_tape;
     BufferVec model_inputs = {batch.tokens};
-    ASSIGN_OR_RETURN(auto output, model->fwd(model_inputs, &model_tape));
+    ASSIGN_OR_RETURN(auto output, model.fwd(model_inputs, &model_tape));
     Tape loss_tape;
     BufferVec loss_inputs = {output, batch.targets};
-    ASSIGN_OR_RETURN(auto losses,
-                     loss_layer->fwd(loss_inputs, &loss_tape));
+    ASSIGN_OR_RETURN(auto losses, loss_layer.fwd(loss_inputs, &loss_tape));
     if (losses.size_bytes() !=
         static_cast<size_t>(batch.batch_size) * sizeof(float)) {
       return absl::InvalidArgumentError(
           "loss layer must return one FP32 value per batch token");
     }
     ASSIGN_OR_RETURN(auto output_gradient,
-                     loss_layer->bwd({}, std::move(loss_tape)));
+                     loss_layer.bwd({}, std::move(loss_tape)));
     ASSIGN_OR_RETURN(auto input_gradient,
-                     model->bwd(output_gradient, std::move(model_tape)));
+                     model.bwd(output_gradient, std::move(model_tape)));
     (void)input_gradient;
-    RETURN_IF_ERROR(optimizer->Step());
+    RETURN_IF_ERROR(optimizer.Step());
 
     const bool should_evaluate =
         options.stop_loss >= 0.0 &&

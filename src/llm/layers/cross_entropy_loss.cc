@@ -127,7 +127,7 @@ CrossEntropyLossLayer::Create(int vocabulary_size, DataType data_type,
 }
 
 absl::StatusOr<Buffer> CrossEntropyLossLayer::fwd(
-    absl::Span<const Buffer> inputs, Tape* tape) {
+    absl::Span<const Buffer> inputs, Tape* tape) const {
   if (inputs.size() != 2 || tape == nullptr) {
     return absl::InvalidArgumentError(
         "CrossEntropyLossLayer fwd expects logits, targets, and a non-null "

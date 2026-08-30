@@ -24,7 +24,7 @@ class TestLayer final : public Layer {
  public:
   explicit TestLayer(DataType output_type) : output_type_(output_type) {}
 
-  absl::StatusOr<Buffer> fwd(absl::Span<const Buffer>, Tape*) override {
+  absl::StatusOr<Buffer> fwd(absl::Span<const Buffer>, Tape*) const override {
     return absl::UnimplementedError("TestLayer has no data path");
   }
   absl::StatusOr<BufferVec> bwd(absl::Span<const Buffer>, Tape) override {

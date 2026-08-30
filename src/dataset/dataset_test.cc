@@ -1,4 +1,4 @@
-#include "src/dataset.h"
+#include "src/dataset/dataset.h"
 
 #include <cuda_runtime.h>
 

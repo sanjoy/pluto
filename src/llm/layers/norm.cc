@@ -203,7 +203,7 @@ absl::StatusOr<std::unique_ptr<LayerNormLayer>> LayerNormLayer::Create(
 }
 
 absl::StatusOr<Buffer> LayerNormLayer::fwd(
-    absl::Span<const Buffer> inputs, Tape* tape) {
+    absl::Span<const Buffer> inputs, Tape* tape) const {
   if (inputs.size() != 1 || tape == nullptr) {
     return absl::InvalidArgumentError(
         "LayerNormLayer fwd expects one input and a non-null tape");

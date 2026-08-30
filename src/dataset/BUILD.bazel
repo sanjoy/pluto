@@ -1,0 +1,31 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cuda//cuda:defs.bzl", "cuda_test")
+
+cc_library(
+    name = "dataset",
+    srcs = ["dataset.cc"],
+    hdrs = ["dataset.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/common:status_macros",
+        "//src/cuda:buffer",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cuda_test(
+    name = "dataset_test",
+    size = "small",
+    srcs = ["dataset_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":dataset",
+        "//src/cuda:buffer",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)

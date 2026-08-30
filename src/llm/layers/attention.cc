@@ -204,7 +204,7 @@ absl::StatusOr<std::unique_ptr<AttentionLayer>> AttentionLayer::Create(
 }
 
 absl::StatusOr<Buffer> AttentionLayer::fwd(
-    absl::Span<const Buffer> inputs, Tape* tape) {
+    absl::Span<const Buffer> inputs, Tape* tape) const {
   if (inputs.size() != 1 || tape == nullptr) {
     return absl::InvalidArgumentError(
         "AttentionLayer fwd expects packed Q/K/V and a non-null tape");

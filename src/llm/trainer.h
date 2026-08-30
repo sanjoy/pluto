@@ -3,7 +3,7 @@
 #include <optional>
 
 #include "absl/status/statusor.h"
-#include "src/dataset.h"
+#include "src/dataset/dataset.h"
 #include "src/llm/layer.h"
 #include "src/llm/optimizer.h"
 
@@ -49,8 +49,8 @@ struct TrainingResult {
 // batch targets are then passed to the loss layer as {output, targets}.
 // Evaluate() never runs backward or mutates weights. It resets eval_tokens so
 // repeated calls measure the same batches.
-absl::StatusOr<double> Evaluate(Layer* model, Layer* loss_layer,
-                                DataSetIterator* eval_tokens,
+absl::StatusOr<double> Evaluate(const Layer& model, const Layer& loss_layer,
+                                DataSetIterator& eval_tokens,
                                 const EvaluationOptions& options);
 
 // Runs a conventional forward/loss/backward/update training loop.
@@ -60,9 +60,9 @@ absl::StatusOr<double> Evaluate(Layer* model, Layer* loss_layer,
 // pass when called with no upstream gradients, as CrossEntropyLossLayer does.
 // Train() clears gradients before the first backward; Optimizer::Step() is
 // responsible for applying an update and clearing them after every step.
-absl::StatusOr<TrainingResult> Train(Layer* model, Layer* loss_layer,
-                                     Optimizer* optimizer,
-                                     DataSetIterator* training_tokens,
+absl::StatusOr<TrainingResult> Train(Layer& model, Layer& loss_layer,
+                                     Optimizer& optimizer,
+                                     DataSetIterator& training_tokens,
                                      const TrainingOptions& options);
 
 }  // namespace pluto::llm

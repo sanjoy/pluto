@@ -12,7 +12,7 @@
 #include "absl/types/span.h"
 #include "gtest/gtest.h"
 #include "src/cuda/buffer.h"
-#include "src/dataset.h"
+#include "src/dataset/dataset.h"
 #include "src/llm/layer.h"
 #include "src/llm/optimizer.h"
 
@@ -22,7 +22,7 @@ namespace {
 class FakeModel final : public Layer {
  public:
   absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs,
-                              Tape* tape) override {
+                              Tape* tape) const override {
     ++forward_calls;
     return inputs[0];
   }
@@ -36,7 +36,7 @@ class FakeModel final : public Layer {
   absl::Span<Buffer> weights() override { return {}; }
   DataType output_type() const override { return DataType::FP16; }
 
-  int forward_calls = 0;
+  mutable int forward_calls = 0;
   int backward_calls = 0;
 };
 
@@ -59,7 +59,7 @@ class FakeLoss final : public Layer {
   }
 
   absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs,
-                              Tape* tape) override {
+                              Tape* tape) const override {
     ++forward_calls;
     return losses_;
   }
@@ -73,7 +73,7 @@ class FakeLoss final : public Layer {
   absl::Span<Buffer> weights() override { return {}; }
   DataType output_type() const override { return DataType::FP16; }
 
-  int forward_calls = 0;
+  mutable int forward_calls = 0;
   int backward_calls = 0;
 
  private:
@@ -142,14 +142,14 @@ TEST_F(TrainerTest, EvaluateAveragesLossesAndResetsDataset) {
   ASSERT_TRUE(loss.ok()) << loss.status();
   ASSERT_TRUE(data.ok()) << data.status();
 
-  auto mean = Evaluate(&model, loss->get(), data->get(),
+  auto mean = Evaluate(model, **loss, **data,
                        EvaluationOptions{.batches = 2});
   ASSERT_TRUE(mean.ok()) << mean.status();
   EXPECT_DOUBLE_EQ(*mean, 2.5);
   EXPECT_EQ(model.forward_calls, 2);
   EXPECT_EQ((*loss)->forward_calls, 2);
 
-  auto repeated = Evaluate(&model, loss->get(), data->get(),
+  auto repeated = Evaluate(model, **loss, **data,
                            EvaluationOptions{.batches = 2});
   ASSERT_TRUE(repeated.ok()) << repeated.status();
   EXPECT_DOUBLE_EQ(*repeated, *mean);
@@ -163,7 +163,7 @@ TEST_F(TrainerTest, TrainRunsForwardBackwardAndOptimizerSteps) {
   ASSERT_TRUE(loss.ok()) << loss.status();
   ASSERT_TRUE(data.ok()) << data.status();
 
-  auto result = Train(&model, loss->get(), &optimizer, data->get(),
+  auto result = Train(model, **loss, optimizer, **data,
                       TrainingOptions{.max_steps = 3});
   ASSERT_TRUE(result.ok()) << result.status();
   EXPECT_EQ(result->steps_completed, 3);
@@ -187,7 +187,7 @@ TEST_F(TrainerTest, StopsBeforeFirstUpdateWhenInitialEvaluationQualifies) {
   ASSERT_TRUE(evaluation_data.ok()) << evaluation_data.status();
 
   auto result = Train(
-      &model, loss->get(), &optimizer, training_data->get(),
+      model, **loss, optimizer, **training_data,
       TrainingOptions{.max_steps = 3,
                       .evaluation_interval = 1,
                       .evaluation_batches = 1,
@@ -210,7 +210,7 @@ TEST_F(TrainerTest, StopsAfterUpdateWhenPeriodicEvaluationQualifies) {
   ASSERT_TRUE(evaluation_data.ok()) << evaluation_data.status();
 
   auto result = Train(
-      &model, loss->get(), &optimizer, training_data->get(),
+      model, **loss, optimizer, **training_data,
       TrainingOptions{.max_steps = 3,
                       .evaluation_interval = 1,
                       .evaluation_batches = 1,
@@ -224,7 +224,7 @@ TEST_F(TrainerTest, StopsAfterUpdateWhenPeriodicEvaluationQualifies) {
   EXPECT_EQ(model.backward_calls, 1);
 }
 
-TEST_F(TrainerTest, RejectsNullDependenciesAndInvalidOptions) {
+TEST_F(TrainerTest, RejectsInvalidOptions) {
   FakeModel model;
   FakeOptimizer optimizer;
   auto loss = MakeLoss();
@@ -232,13 +232,10 @@ TEST_F(TrainerTest, RejectsNullDependenciesAndInvalidOptions) {
   ASSERT_TRUE(loss.ok()) << loss.status();
   ASSERT_TRUE(data.ok()) << data.status();
 
-  EXPECT_FALSE(Evaluate(nullptr, loss->get(), data->get(),
-                        EvaluationOptions{})
+  EXPECT_FALSE(Evaluate(model, **loss, **data,
+                        EvaluationOptions{.batches = 0})
                    .ok());
-  EXPECT_FALSE(Train(&model, loss->get(), nullptr, data->get(),
-                     TrainingOptions{})
-                   .ok());
-  EXPECT_FALSE(Train(&model, loss->get(), &optimizer, data->get(),
+  EXPECT_FALSE(Train(model, **loss, optimizer, **data,
                      TrainingOptions{.max_steps = -1})
                    .ok());
 }

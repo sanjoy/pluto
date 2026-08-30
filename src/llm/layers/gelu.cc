@@ -71,7 +71,7 @@ absl::StatusOr<std::unique_ptr<GeluLayer>> GeluLayer::Create(
 }
 
 absl::StatusOr<Buffer> GeluLayer::fwd(absl::Span<const Buffer> inputs,
-                                       Tape* tape) {
+                                       Tape* tape) const {
   if (inputs.size() != 1 || tape == nullptr) {
     return absl::InvalidArgumentError(
         "GeluLayer fwd expects one input and a non-null tape");

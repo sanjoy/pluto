@@ -243,9 +243,8 @@ __tile_global__ void PositionEmbeddingBackwardKernel(
       pointers, gradient_view.load(row, width_tile));
 }
 
-absl::Status CopyNormalInitialization(const Buffer& weight,
-                                      float standard_deviation, uint64_t seed,
-                                      cudaStream_t stream,
+absl::Status CopyNormalInitialization(Buffer& weight, float standard_deviation,
+                                      uint64_t seed, cudaStream_t stream,
                                       const char* operation) {
   if (!(standard_deviation > 0.0f)) {
     return absl::InvalidArgumentError(
@@ -254,10 +253,7 @@ absl::Status CopyNormalInitialization(const Buffer& weight,
   std::mt19937_64 random(seed);
   std::normal_distribution<float> distribution(0.0f, standard_deviation);
   std::vector<float> values(weight.size_bytes() / sizeof(float));
-  for (float* value = values.data(); value != values.data() + values.size();
-       ++value) {
-    *value = distribution(random);
-  }
+  for (float& value : values) value = distribution(random);
   return internal::CudaStatus(
       cudaMemcpyAsync(weight.data(), values.data(), weight.size_bytes(),
                       cudaMemcpyHostToDevice, stream),
@@ -320,7 +316,7 @@ absl::Status EmbeddingLookupLayer::InitializeNormal(
 }
 
 absl::StatusOr<Buffer> EmbeddingLookupLayer::fwd(
-    absl::Span<const Buffer> inputs, Tape* tape) {
+    absl::Span<const Buffer> inputs, Tape* tape) const {
   if (inputs.size() != 1 || tape == nullptr) {
     return absl::InvalidArgumentError(
         "EmbeddingLookupLayer fwd expects token IDs and a non-null tape");
@@ -387,7 +383,7 @@ LanguageModelingHeadLayer::Create(EmbeddingLookupLayer* embedding) {
 }
 
 absl::StatusOr<Buffer> LanguageModelingHeadLayer::fwd(
-    absl::Span<const Buffer> inputs, Tape* tape) {
+    absl::Span<const Buffer> inputs, Tape* tape) const {
   if (inputs.size() != 1 || tape == nullptr) {
     return absl::InvalidArgumentError(
         "LanguageModelingHeadLayer fwd expects one input and a non-null tape");
@@ -531,7 +527,7 @@ absl::Status PositionEmbeddingLayer::InitializeNormal(
 }
 
 absl::StatusOr<Buffer> PositionEmbeddingLayer::fwd(
-    absl::Span<const Buffer> inputs, Tape* tape) {
+    absl::Span<const Buffer> inputs, Tape* tape) const {
   if (inputs.size() != 1 || tape == nullptr) {
     return absl::InvalidArgumentError(
         "PositionEmbeddingLayer fwd expects one input and a non-null tape");
