@@ -18,7 +18,7 @@ namespace pluto::llm {
 namespace {
 
 TEST_F(LayersTest, UpdatesFp32MasterWeightsAndClearsGradients) {
-  auto dense = FullyConnectedLayer::Create(16, DataType::FP16, *executor_);
+  auto dense = FullyConnectedLayer::Create(*executor_, 16, DataType::FP16);
   ASSERT_TRUE(dense.ok()) << dense.status();
   ASSERT_TRUE((*dense)->InitializeIdentity().ok());
   AdamWConfig config{
@@ -28,7 +28,7 @@ TEST_F(LayersTest, UpdatesFp32MasterWeightsAndClearsGradients) {
       .epsilon = 1e-6f,
       .weight_decay = 0.0f,
   };
-  auto optimizer = AdamWOptimizer::Create(**dense, config, *executor_);
+  auto optimizer = AdamWOptimizer::Create(*executor_, **dense, config);
   ASSERT_TRUE(optimizer.ok()) << optimizer.status();
   // Own the concrete AdamW implementation through the algorithm-independent
   // interface so the lifecycle calls below exercise virtual dispatch.
@@ -70,8 +70,8 @@ TEST_F(LayersTest, UpdatesFp32MasterWeightsAndClearsGradients) {
 
 TEST_F(LayersTest, DeduplicatesTiedEmbeddingWeights) {
   ComposedLayerBuilder builder;
-  auto embedding = EmbeddingLookupLayer::Create(17, kTestModelWidth,
-                                                DataType::BF16, *executor_);
+  auto embedding = EmbeddingLookupLayer::Create(*executor_, 17, kTestModelWidth,
+                                                DataType::BF16);
   ASSERT_TRUE(embedding.ok()) << embedding.status();
   EmbeddingLookupLayer* embedding_pointer = embedding->get();
   ASSERT_TRUE(builder.add(std::move(*embedding)).ok());
@@ -81,7 +81,7 @@ TEST_F(LayersTest, DeduplicatesTiedEmbeddingWeights) {
   ASSERT_TRUE(model.ok()) << model.status();
   ASSERT_EQ((*model)->weights().size(), 2u);
 
-  auto optimizer = Optimizer::Create(**model, AdamWConfig{}, *executor_);
+  auto optimizer = Optimizer::Create(*executor_, **model, AdamWConfig{});
   ASSERT_TRUE(optimizer.ok()) << optimizer.status();
   EXPECT_EQ((*optimizer)->parameter_tensor_count(), 1u);
 }

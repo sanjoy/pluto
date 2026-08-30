@@ -16,17 +16,19 @@ namespace pluto::llm {
 class GeluLayer final : public Layer {
  public:
   static absl::StatusOr<std::unique_ptr<GeluLayer>> Create(
-      DataType data_type, cuda::Executor& executor);
+      cuda::Executor& executor, DataType data_type);
 
-  absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs, Tape* tape,
-                             cuda::Executor& executor) const override;
-  absl::StatusOr<BufferVec> bwd(absl::Span<const Buffer> output_gradients,
-                                Tape tape, cuda::Executor& executor) override;
+  absl::StatusOr<Buffer> fwd(cuda::Executor& executor,
+                             absl::Span<const Buffer> inputs,
+                             Tape* tape) const override;
+  absl::StatusOr<BufferVec> bwd(cuda::Executor& executor,
+                                absl::Span<const Buffer> output_gradients,
+                                Tape tape) override;
   absl::Span<Buffer> weights() override { return {}; }
   DataType output_type() const override { return output_type_; }
 
  private:
-  GeluLayer(DataType data_type, cuda::Executor& executor)
+  GeluLayer(cuda::Executor& executor, DataType data_type)
       : output_type_(data_type), executor_(executor) {}
 
   DataType output_type_;

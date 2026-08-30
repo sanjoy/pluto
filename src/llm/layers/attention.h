@@ -16,19 +16,21 @@ namespace pluto::llm {
 class AttentionLayer final : public Layer {
  public:
   static absl::StatusOr<std::unique_ptr<AttentionLayer>> Create(
-      int context_length, int num_heads, int embedding_dim, DataType data_type,
-      cuda::Executor& executor);
+      cuda::Executor& executor, int context_length, int num_heads,
+      int embedding_dim, DataType data_type);
 
-  absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs, Tape* tape,
-                             cuda::Executor& executor) const override;
-  absl::StatusOr<BufferVec> bwd(absl::Span<const Buffer> output_gradients,
-                                Tape tape, cuda::Executor& executor) override;
+  absl::StatusOr<Buffer> fwd(cuda::Executor& executor,
+                             absl::Span<const Buffer> inputs,
+                             Tape* tape) const override;
+  absl::StatusOr<BufferVec> bwd(cuda::Executor& executor,
+                                absl::Span<const Buffer> output_gradients,
+                                Tape tape) override;
   absl::Span<Buffer> weights() override { return {}; }
   DataType output_type() const override { return output_type_; }
 
  private:
-  AttentionLayer(int context_length, int num_heads, int embedding_dim,
-                 DataType data_type, cuda::Executor& executor)
+  AttentionLayer(cuda::Executor& executor, int context_length, int num_heads,
+                 int embedding_dim, DataType data_type)
       : context_length_(context_length),
         num_heads_(num_heads),
         embedding_dim_(embedding_dim),

@@ -50,9 +50,9 @@ struct TrainingResult {
 // batch targets are then passed to the loss layer as {output, targets}.
 // Evaluate() never runs backward or mutates weights. It resets eval_tokens so
 // repeated calls measure the same batches.
-absl::StatusOr<double> Evaluate(const Layer& model, const Layer& loss_layer,
+absl::StatusOr<double> Evaluate(cuda::Executor& executor, const Layer& model,
+                                const Layer& loss_layer,
                                 DataSetIterator& eval_tokens,
-                                cuda::Executor& executor,
                                 const EvaluationOptions& options);
 
 // Runs a conventional forward/loss/backward/update training loop.
@@ -62,10 +62,9 @@ absl::StatusOr<double> Evaluate(const Layer& model, const Layer& loss_layer,
 // pass when called with no upstream gradients, as CrossEntropyLossLayer does.
 // Train() clears gradients before the first backward; Optimizer::Step() is
 // responsible for applying an update and clearing them after every step.
-absl::StatusOr<TrainingResult> Train(Layer& model, Layer& loss_layer,
-                                     Optimizer& optimizer,
+absl::StatusOr<TrainingResult> Train(cuda::Executor& executor, Layer& model,
+                                     Layer& loss_layer, Optimizer& optimizer,
                                      DataSetIterator& training_tokens,
-                                     cuda::Executor& executor,
                                      const TrainingOptions& options);
 
 }  // namespace pluto::llm

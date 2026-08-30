@@ -36,12 +36,12 @@ class Layer {
  public:
   virtual ~Layer() = default;
 
-  virtual absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs,
-                                     Tape* tape,
-                                     cuda::Executor& executor) const = 0;
+  virtual absl::StatusOr<Buffer> fwd(cuda::Executor& executor,
+                                     absl::Span<const Buffer> inputs,
+                                     Tape* tape) const = 0;
   virtual absl::StatusOr<BufferVec> bwd(
-      absl::Span<const Buffer> output_gradients, Tape tape,
-      cuda::Executor& executor) = 0;
+      cuda::Executor& executor, absl::Span<const Buffer> output_gradients,
+      Tape tape) = 0;
   virtual absl::Span<Buffer> weights() = 0;
   // FP32 gradient accumulators corresponding one-for-one with weights().
   // Stateless layers return an empty span. Optimizers clear these buffers

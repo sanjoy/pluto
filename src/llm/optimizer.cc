@@ -53,7 +53,7 @@ __tile_global__ void AdamWUpdateKernel(
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<AdamWOptimizer>> AdamWOptimizer::Create(
-    Layer& model, AdamWConfig config, cuda::Executor& executor) {
+    cuda::Executor& executor, Layer& model, AdamWConfig config) {
   if (!(config.learning_rate > 0.0f) || config.beta1 < 0.0f ||
       config.beta1 >= 1.0f || config.beta2 < 0.0f || config.beta2 >= 1.0f ||
       !(config.epsilon > 0.0f) || config.weight_decay < 0.0f) {
@@ -85,9 +85,9 @@ absl::StatusOr<std::unique_ptr<AdamWOptimizer>> AdamWOptimizer::Create(
     RETURN_IF_ERROR(
         internal::ValidateTiledExtent(elements, "AdamW parameter elements"));
     ASSIGN_OR_RETURN(auto first,
-                     Buffer::Allocate(weight.size_bytes(), executor));
+                     Buffer::Allocate(executor, weight.size_bytes()));
     ASSIGN_OR_RETURN(auto second,
-                     Buffer::Allocate(weight.size_bytes(), executor));
+                     Buffer::Allocate(executor, weight.size_bytes()));
     RETURN_IF_ERROR(internal::CudaStatus(
         cudaMemsetAsync(first.data(), 0, first.size_bytes(), executor.stream()),
         "cudaMemsetAsync(AdamW first moment)"));
@@ -104,16 +104,16 @@ absl::StatusOr<std::unique_ptr<AdamWOptimizer>> AdamWOptimizer::Create(
     return absl::InvalidArgumentError("AdamW model has no parameters");
   }
   auto optimizer = std::unique_ptr<AdamWOptimizer>(new AdamWOptimizer(
-      config, executor, std::move(weights), std::move(gradients),
+      executor, config, std::move(weights), std::move(gradients),
       std::move(first_moments), std::move(second_moments)));
   RETURN_IF_ERROR(optimizer->ZeroGrad());
   return optimizer;
 }
 
 absl::StatusOr<std::unique_ptr<Optimizer>> Optimizer::Create(
-    Layer& model, AdamWConfig config, cuda::Executor& executor) {
+    cuda::Executor& executor, Layer& model, AdamWConfig config) {
   ASSIGN_OR_RETURN(auto optimizer,
-                   AdamWOptimizer::Create(model, config, executor));
+                   AdamWOptimizer::Create(executor, model, config));
   return std::unique_ptr<Optimizer>(std::move(optimizer));
 }
 

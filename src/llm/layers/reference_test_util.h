@@ -35,13 +35,13 @@ inline absl::Status TestCudaStatus(cudaError_t error, const char* operation) {
 }
 
 template <class Element>
-absl::StatusOr<BufferPair> MakeRawBufferPair(absl::Span<const Element> values,
-                                             cuda::Executor& executor) {
+absl::StatusOr<BufferPair> MakeRawBufferPair(cuda::Executor& executor,
+                                             absl::Span<const Element> values) {
   static_assert(std::is_trivially_copyable_v<Element>);
   const size_t bytes = values.size() * sizeof(Element);
   ASSIGN_OR_RETURN(auto host, HostBuffer::Allocate(bytes));
   if (bytes != 0) std::memcpy(host.data(), values.data(), bytes);
-  ASSIGN_OR_RETURN(auto device, Buffer::Allocate(bytes, executor));
+  ASSIGN_OR_RETURN(auto device, Buffer::Allocate(executor, bytes));
   RETURN_IF_ERROR(
       TestCudaStatus(cudaMemcpyAsync(device.data(), host.data(), bytes,
                                      cudaMemcpyHostToDevice, executor.stream()),
@@ -50,15 +50,15 @@ absl::StatusOr<BufferPair> MakeRawBufferPair(absl::Span<const Element> values,
 }
 
 inline absl::StatusOr<BufferPair> MakeActivationBufferPair(
-    absl::Span<const float> values, DataType data_type,
-    cuda::Executor& executor) {
+    cuda::Executor& executor, absl::Span<const float> values,
+    DataType data_type) {
   RETURN_IF_ERROR(reference_internal::ValidateComputeType(data_type));
   ASSIGN_OR_RETURN(auto host, reference_internal::AllocateActivation(
                                   values.size(), data_type));
   for (size_t index = 0; index < values.size(); ++index) {
     reference_internal::StoreActivation(&host, index, data_type, values[index]);
   }
-  ASSIGN_OR_RETURN(auto device, Buffer::Allocate(host.size_bytes(), executor));
+  ASSIGN_OR_RETURN(auto device, Buffer::Allocate(executor, host.size_bytes()));
   RETURN_IF_ERROR(TestCudaStatus(
       cudaMemcpyAsync(device.data(), host.data(), host.size_bytes(),
                       cudaMemcpyHostToDevice, executor.stream()),
@@ -66,9 +66,9 @@ inline absl::StatusOr<BufferPair> MakeActivationBufferPair(
   return BufferPair{std::move(device), std::move(host)};
 }
 
-inline absl::Status SetFloatBufferPair(const Buffer& device, HostBuffer* host,
-                                       absl::Span<const float> values,
-                                       cuda::Executor& executor) {
+inline absl::Status SetFloatBufferPair(cuda::Executor& executor,
+                                       const Buffer& device, HostBuffer* host,
+                                       absl::Span<const float> values) {
   const size_t bytes = values.size() * sizeof(float);
   if (device.size_bytes() != bytes || host->size_bytes() != bytes) {
     return absl::InvalidArgumentError("parameter pair has the wrong size");
@@ -80,8 +80,8 @@ inline absl::Status SetFloatBufferPair(const Buffer& device, HostBuffer* host,
       "copy paired parameter to device");
 }
 
-inline absl::Status ZeroBufferPair(const Buffer& device, HostBuffer* host,
-                                   cuda::Executor& executor) {
+inline absl::Status ZeroBufferPair(cuda::Executor& executor,
+                                   const Buffer& device, HostBuffer* host) {
   std::memset(host->data(), 0, host->size_bytes());
   return TestCudaStatus(
       cudaMemsetAsync(device.data(), 0, device.size_bytes(), executor.stream()),
@@ -89,7 +89,7 @@ inline absl::Status ZeroBufferPair(const Buffer& device, HostBuffer* host,
 }
 
 inline absl::StatusOr<std::vector<float>> ReadDeviceFloats(
-    const Buffer& buffer, cuda::Executor& executor) {
+    cuda::Executor& executor, const Buffer& buffer) {
   if (buffer.size_bytes() % sizeof(float) != 0) {
     return absl::InvalidArgumentError("device buffer is not FP32");
   }
@@ -109,7 +109,7 @@ inline std::vector<float> ReadHostFloats(const HostBuffer& buffer) {
 }
 
 inline absl::StatusOr<std::vector<float>> ReadDeviceActivations(
-    const Buffer& buffer, DataType data_type, cuda::Executor& executor) {
+    cuda::Executor& executor, const Buffer& buffer, DataType data_type) {
   ASSIGN_OR_RETURN(auto host, HostBuffer::Allocate(buffer.size_bytes()));
   RETURN_IF_ERROR(TestCudaStatus(
       cudaMemcpyAsync(host.data(), buffer.data(), buffer.size_bytes(),
@@ -167,7 +167,7 @@ class LayerReferenceTest : public LayersTest {
                                             const HostBuffer& host,
                                             float absolute_tolerance,
                                             float relative_tolerance = 0.0f) {
-    auto actual = ReadDeviceFloats(device, *executor_);
+    auto actual = ReadDeviceFloats(*executor_, device);
     if (!actual.ok()) {
       return testing::AssertionFailure() << actual.status();
     }
@@ -178,7 +178,7 @@ class LayerReferenceTest : public LayersTest {
   testing::AssertionResult ActivationBuffersNear(
       const Buffer& device, const HostBuffer& host, DataType data_type,
       float absolute_tolerance, float relative_tolerance = 0.0f) {
-    auto actual = ReadDeviceActivations(device, data_type, *executor_);
+    auto actual = ReadDeviceActivations(*executor_, device, data_type);
     if (!actual.ok()) {
       return testing::AssertionFailure() << actual.status();
     }

@@ -43,13 +43,12 @@ TEST_F(DataSetTest, SequentialBatchesShiftTargetsAndReset) {
   std::vector<int> corpus(21);
   std::iota(corpus.begin(), corpus.end(), 0);
   auto iterator = InMemoryDataSetIterator::Create(
-      corpus,
+      *executor_, corpus,
       InMemoryDataSetOptions{
           .batch_size = 8,
           .context_length = 4,
           .order = InMemoryDataSetOrder::kSequential,
-      },
-      *executor_);
+      });
   ASSERT_TRUE(iterator.ok()) << iterator.status();
 
   auto first = (*iterator)->Next();
@@ -75,14 +74,13 @@ TEST_F(DataSetTest, RandomOrderIsDeterministicAcrossReset) {
   std::vector<int> corpus(100);
   std::iota(corpus.begin(), corpus.end(), 0);
   auto iterator = InMemoryDataSetIterator::Create(
-      corpus,
+      *executor_, corpus,
       InMemoryDataSetOptions{
           .batch_size = 8,
           .context_length = 4,
           .order = InMemoryDataSetOrder::kRandom,
           .seed = 123,
-      },
-      *executor_);
+      });
   ASSERT_TRUE(iterator.ok()) << iterator.status();
   auto first = (*iterator)->Next();
   ASSERT_TRUE(first.ok()) << first.status();
@@ -98,14 +96,12 @@ TEST_F(DataSetTest, RandomOrderIsDeterministicAcrossReset) {
 TEST_F(DataSetTest, RejectsInvalidShapes) {
   const std::vector<int> corpus(10, 1);
   EXPECT_FALSE(InMemoryDataSetIterator::Create(
-                   corpus,
-                   InMemoryDataSetOptions{.batch_size = 7, .context_length = 4},
-                   *executor_)
+                   *executor_, corpus,
+                   InMemoryDataSetOptions{.batch_size = 7, .context_length = 4})
                    .ok());
   EXPECT_FALSE(InMemoryDataSetIterator::Create(
-                   std::vector<int>{1, 2, 3, 4},
-                   InMemoryDataSetOptions{.batch_size = 4, .context_length = 4},
-                   *executor_)
+                   *executor_, std::vector<int>{1, 2, 3, 4},
+                   InMemoryDataSetOptions{.batch_size = 4, .context_length = 4})
                    .ok());
 }
 

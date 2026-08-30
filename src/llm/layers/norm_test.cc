@@ -17,8 +17,8 @@ namespace pluto::llm {
 namespace {
 
 TEST_F(LayersTest, LayerNormNormalizesRowsAndRejectsConstantGradient) {
-  auto layer_norm = LayerNormLayer::Create(kTestModelWidth, 1e-5f,
-                                           DataType::FP16, *executor_);
+  auto layer_norm = LayerNormLayer::Create(*executor_, kTestModelWidth, 1e-5f,
+                                           DataType::FP16);
   ASSERT_TRUE(layer_norm.ok()) << layer_norm.status();
 
   std::vector<float> input(kTestBatchSize * kTestModelWidth);
@@ -30,9 +30,9 @@ TEST_F(LayersTest, LayerNormNormalizesRowsAndRejectsConstantGradient) {
     }
   }
   auto input_buffer =
-      Buffer::Allocate(input.size() * sizeof(float), *executor_);
+      Buffer::Allocate(*executor_, input.size() * sizeof(float));
   auto gradient_buffer =
-      Buffer::Allocate(output_gradient.size() * sizeof(float), *executor_);
+      Buffer::Allocate(*executor_, output_gradient.size() * sizeof(float));
   ASSERT_TRUE(input_buffer.ok()) << input_buffer.status();
   ASSERT_TRUE(gradient_buffer.ok()) << gradient_buffer.status();
   ASSERT_EQ(cudaMemcpyAsync(input_buffer->data(), input.data(),
@@ -46,11 +46,11 @@ TEST_F(LayersTest, LayerNormNormalizesRowsAndRejectsConstantGradient) {
 
   Tape tape;
   BufferVec inputs = {*input_buffer};
-  auto output = (*layer_norm)->fwd(inputs, &tape, *executor_);
+  auto output = (*layer_norm)->fwd(*executor_, inputs, &tape);
   ASSERT_TRUE(output.ok()) << output.status();
   BufferVec gradients = {*gradient_buffer};
   auto input_gradient =
-      (*layer_norm)->bwd(gradients, std::move(tape), *executor_);
+      (*layer_norm)->bwd(*executor_, gradients, std::move(tape));
   ASSERT_TRUE(input_gradient.ok()) << input_gradient.status();
 
   std::vector<float> host_output(kTestModelWidth);

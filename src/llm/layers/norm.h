@@ -14,20 +14,22 @@ namespace pluto::llm {
 class LayerNormLayer final : public Layer {
  public:
   static absl::StatusOr<std::unique_ptr<LayerNormLayer>> Create(
-      int embedding_dim, float epsilon, DataType data_type,
-      cuda::Executor& executor);
+      cuda::Executor& executor, int embedding_dim, float epsilon,
+      DataType data_type);
 
-  absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs, Tape* tape,
-                             cuda::Executor& executor) const override;
-  absl::StatusOr<BufferVec> bwd(absl::Span<const Buffer> output_gradients,
-                                Tape tape, cuda::Executor& executor) override;
+  absl::StatusOr<Buffer> fwd(cuda::Executor& executor,
+                             absl::Span<const Buffer> inputs,
+                             Tape* tape) const override;
+  absl::StatusOr<BufferVec> bwd(cuda::Executor& executor,
+                                absl::Span<const Buffer> output_gradients,
+                                Tape tape) override;
   absl::Span<Buffer> weights() override { return absl::MakeSpan(weights_); }
   absl::Span<Buffer> gradients() override { return absl::MakeSpan(gradients_); }
   DataType output_type() const override { return output_type_; }
 
  private:
-  LayerNormLayer(int embedding_dim, float epsilon, DataType data_type,
-                 cuda::Executor& executor, Buffer gamma, Buffer beta,
+  LayerNormLayer(cuda::Executor& executor, int embedding_dim, float epsilon,
+                 DataType data_type, Buffer gamma, Buffer beta,
                  Buffer gamma_gradient, Buffer beta_gradient)
       : embedding_dim_(embedding_dim),
         epsilon_(epsilon),

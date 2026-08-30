@@ -22,14 +22,16 @@ namespace {
 
 class FakeModel final : public Layer {
  public:
-  absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs, Tape* tape,
-                             cuda::Executor& executor) const override {
+  absl::StatusOr<Buffer> fwd(cuda::Executor& executor,
+                             absl::Span<const Buffer> inputs,
+                             Tape* tape) const override {
     ++forward_calls;
     return inputs[0];
   }
 
-  absl::StatusOr<BufferVec> bwd(absl::Span<const Buffer> output_gradients,
-                                Tape tape, cuda::Executor& executor) override {
+  absl::StatusOr<BufferVec> bwd(cuda::Executor& executor,
+                                absl::Span<const Buffer> output_gradients,
+                                Tape tape) override {
     ++backward_calls;
     return BufferVec{};
   }
@@ -44,11 +46,11 @@ class FakeModel final : public Layer {
 class FakeLoss final : public Layer {
  public:
   static absl::StatusOr<std::unique_ptr<FakeLoss>> Create(
-      absl::Span<const float> losses, cuda::Executor& executor) {
+      cuda::Executor& executor, absl::Span<const float> losses) {
     auto device_losses =
-        Buffer::Allocate(losses.size() * sizeof(float), executor);
+        Buffer::Allocate(executor, losses.size() * sizeof(float));
     if (!device_losses.ok()) return device_losses.status();
-    auto gradient = Buffer::Allocate(losses.size() * sizeof(float), executor);
+    auto gradient = Buffer::Allocate(executor, losses.size() * sizeof(float));
     if (!gradient.ok()) return gradient.status();
     if (cudaMemcpyAsync(device_losses->data(), losses.data(),
                         device_losses->size_bytes(), cudaMemcpyHostToDevice,
@@ -60,14 +62,16 @@ class FakeLoss final : public Layer {
         new FakeLoss(std::move(*device_losses), std::move(*gradient)));
   }
 
-  absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs, Tape* tape,
-                             cuda::Executor& executor) const override {
+  absl::StatusOr<Buffer> fwd(cuda::Executor& executor,
+                             absl::Span<const Buffer> inputs,
+                             Tape* tape) const override {
     ++forward_calls;
     return losses_;
   }
 
-  absl::StatusOr<BufferVec> bwd(absl::Span<const Buffer> output_gradients,
-                                Tape tape, cuda::Executor& executor) override {
+  absl::StatusOr<BufferVec> bwd(cuda::Executor& executor,
+                                absl::Span<const Buffer> output_gradients,
+                                Tape tape) override {
     ++backward_calls;
     return BufferVec{gradient_};
   }
@@ -121,18 +125,17 @@ class TrainerTest : public testing::Test {
 
   absl::StatusOr<std::unique_ptr<InMemoryDataSetIterator>> MakeData() {
     return InMemoryDataSetIterator::Create(
-        corpus_,
+        *executor_, corpus_,
         InMemoryDataSetOptions{
             .batch_size = 4,
             .context_length = 4,
             .order = InMemoryDataSetOrder::kSequential,
-        },
-        *executor_);
+        });
   }
 
   absl::StatusOr<std::unique_ptr<FakeLoss>> MakeLoss() {
     const std::vector<float> losses = {1.0f, 2.0f, 3.0f, 4.0f};
-    return FakeLoss::Create(losses, *executor_);
+    return FakeLoss::Create(*executor_, losses);
   }
 
   std::unique_ptr<cuda::Executor> executor_;
@@ -146,14 +149,14 @@ TEST_F(TrainerTest, EvaluateAveragesLossesAndResetsDataset) {
   ASSERT_TRUE(loss.ok()) << loss.status();
   ASSERT_TRUE(data.ok()) << data.status();
 
-  auto mean = Evaluate(model, **loss, **data, *executor_,
+  auto mean = Evaluate(*executor_, model, **loss, **data,
                        EvaluationOptions{.batches = 2});
   ASSERT_TRUE(mean.ok()) << mean.status();
   EXPECT_DOUBLE_EQ(*mean, 2.5);
   EXPECT_EQ(model.forward_calls, 2);
   EXPECT_EQ((*loss)->forward_calls, 2);
 
-  auto repeated = Evaluate(model, **loss, **data, *executor_,
+  auto repeated = Evaluate(*executor_, model, **loss, **data,
                            EvaluationOptions{.batches = 2});
   ASSERT_TRUE(repeated.ok()) << repeated.status();
   EXPECT_DOUBLE_EQ(*repeated, *mean);
@@ -168,7 +171,7 @@ TEST_F(TrainerTest, EvaluateRejectsADatasetFromAnotherExecutor) {
   ASSERT_TRUE(data.ok()) << data.status();
   ASSERT_TRUE(other_executor.ok()) << other_executor.status();
 
-  const auto mean = Evaluate(model, **loss, **data, **other_executor,
+  const auto mean = Evaluate(**other_executor, model, **loss, **data,
                              EvaluationOptions{.batches = 1});
   EXPECT_FALSE(mean.ok());
   EXPECT_EQ(mean.status().code(), absl::StatusCode::kInvalidArgument);
@@ -182,7 +185,7 @@ TEST_F(TrainerTest, TrainRunsForwardBackwardAndOptimizerSteps) {
   ASSERT_TRUE(loss.ok()) << loss.status();
   ASSERT_TRUE(data.ok()) << data.status();
 
-  auto result = Train(model, **loss, optimizer, **data, *executor_,
+  auto result = Train(*executor_, model, **loss, optimizer, **data,
                       TrainingOptions{.max_steps = 3});
   ASSERT_TRUE(result.ok()) << result.status();
   EXPECT_EQ(result->steps_completed, 3);
@@ -206,7 +209,7 @@ TEST_F(TrainerTest, StopsBeforeFirstUpdateWhenInitialEvaluationQualifies) {
   ASSERT_TRUE(evaluation_data.ok()) << evaluation_data.status();
 
   auto result =
-      Train(model, **loss, optimizer, **training_data, *executor_,
+      Train(*executor_, model, **loss, optimizer, **training_data,
             TrainingOptions{.max_steps = 3,
                             .evaluation_interval = 1,
                             .evaluation_batches = 1,
@@ -229,7 +232,7 @@ TEST_F(TrainerTest, StopsAfterUpdateWhenPeriodicEvaluationQualifies) {
   ASSERT_TRUE(evaluation_data.ok()) << evaluation_data.status();
 
   auto result =
-      Train(model, **loss, optimizer, **training_data, *executor_,
+      Train(*executor_, model, **loss, optimizer, **training_data,
             TrainingOptions{.max_steps = 3,
                             .evaluation_interval = 1,
                             .evaluation_batches = 1,
@@ -251,10 +254,10 @@ TEST_F(TrainerTest, RejectsInvalidOptions) {
   ASSERT_TRUE(loss.ok()) << loss.status();
   ASSERT_TRUE(data.ok()) << data.status();
 
-  EXPECT_FALSE(Evaluate(model, **loss, **data, *executor_,
+  EXPECT_FALSE(Evaluate(*executor_, model, **loss, **data,
                         EvaluationOptions{.batches = 0})
                    .ok());
-  EXPECT_FALSE(Train(model, **loss, optimizer, **data, *executor_,
+  EXPECT_FALSE(Train(*executor_, model, **loss, optimizer, **data,
                      TrainingOptions{.max_steps = -1})
                    .ok());
 }

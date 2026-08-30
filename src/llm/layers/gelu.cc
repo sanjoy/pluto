@@ -63,14 +63,14 @@ __tile_global__ void GeluBackwardKernel(
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<GeluLayer>> GeluLayer::Create(
-    DataType data_type, cuda::Executor& executor) {
+    cuda::Executor& executor, DataType data_type) {
   RETURN_IF_ERROR(internal::ValidateComputeType(data_type));
-  return std::unique_ptr<GeluLayer>(new GeluLayer(data_type, executor));
+  return std::unique_ptr<GeluLayer>(new GeluLayer(executor, data_type));
 }
 
-absl::StatusOr<Buffer> GeluLayer::fwd(absl::Span<const Buffer> inputs,
-                                      Tape* tape,
-                                      cuda::Executor& executor) const {
+absl::StatusOr<Buffer> GeluLayer::fwd(cuda::Executor& executor,
+                                      absl::Span<const Buffer> inputs,
+                                      Tape* tape) const {
   RETURN_IF_ERROR(internal::ValidateExecutor(executor_, executor, "GeluLayer"));
   if (inputs.size() != 1 || tape == nullptr) {
     return absl::InvalidArgumentError(
@@ -78,13 +78,13 @@ absl::StatusOr<Buffer> GeluLayer::fwd(absl::Span<const Buffer> inputs,
   }
   ASSIGN_OR_RETURN(
       int elements,
-      internal::ElementCount(inputs[0],
+      internal::ElementCount(executor, inputs[0],
                              internal::ActivationElementBytes(output_type_),
-                             executor, "GELU input"));
+                             "GELU input"));
   RETURN_IF_ERROR(
       internal::ValidateTiledExtent(elements, "GELU element count"));
   ASSIGN_OR_RETURN(auto output,
-                   Buffer::Allocate(inputs[0].size_bytes(), executor));
+                   Buffer::Allocate(executor, inputs[0].size_bytes()));
   tape->intermediates = {inputs[0]};
   tape->children.clear();
   if (output_type_ == DataType::BF16) {
@@ -104,25 +104,24 @@ absl::StatusOr<Buffer> GeluLayer::fwd(absl::Span<const Buffer> inputs,
 }
 
 absl::StatusOr<BufferVec> GeluLayer::bwd(
-    absl::Span<const Buffer> output_gradients, Tape tape,
-    cuda::Executor& executor) {
+    cuda::Executor& executor, absl::Span<const Buffer> output_gradients,
+    Tape tape) {
   RETURN_IF_ERROR(internal::ValidateExecutor(executor_, executor, "GeluLayer"));
   if (output_gradients.size() != 1 || tape.intermediates.size() != 1) {
     return absl::InvalidArgumentError(
         "GeluLayer bwd received an incompatible gradient or tape");
   }
-  ASSIGN_OR_RETURN(int elements,
-                   internal::ElementCount(output_gradients[0], sizeof(float),
-                                          executor, "GELU output gradient"));
+  ASSIGN_OR_RETURN(int elements, internal::ElementCount(
+                                     executor, output_gradients[0],
+                                     sizeof(float), "GELU output gradient"));
   RETURN_IF_ERROR(internal::ValidateBuffer(
-      tape.intermediates[0],
+      executor, tape.intermediates[0],
       static_cast<size_t>(elements) *
           internal::ActivationElementBytes(output_type_),
-      executor, "GELU saved input"));
-  ASSIGN_OR_RETURN(
-      auto input_gradient,
-      Buffer::Allocate(static_cast<size_t>(elements) * sizeof(float),
-                       executor));
+      "GELU saved input"));
+  ASSIGN_OR_RETURN(auto input_gradient,
+                   Buffer::Allocate(executor, static_cast<size_t>(elements) *
+                                                  sizeof(float)));
   if (output_type_ == DataType::BF16) {
     GeluBackwardKernel<__nv_bfloat16>
         <<<internal::TileCount(elements), 1, 0, executor.stream()>>>(

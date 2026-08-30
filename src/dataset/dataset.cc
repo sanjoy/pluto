@@ -28,9 +28,9 @@ absl::Status CudaStatus(cudaError_t error, const char* operation) {
 
 }  // namespace
 
-InMemoryDataSetIterator::InMemoryDataSetIterator(std::vector<int> corpus,
+InMemoryDataSetIterator::InMemoryDataSetIterator(cuda::Executor& executor,
+                                                 std::vector<int> corpus,
                                                  InMemoryDataSetOptions options,
-                                                 cuda::Executor& executor,
                                                  cuda::Buffer token_buffer,
                                                  cuda::Buffer target_buffer)
     : corpus_(std::move(corpus)),
@@ -44,9 +44,9 @@ InMemoryDataSetIterator::InMemoryDataSetIterator(std::vector<int> corpus,
       random_start_(0, corpus_.size() - options.context_length - 1) {}
 
 absl::StatusOr<std::unique_ptr<InMemoryDataSetIterator>>
-InMemoryDataSetIterator::Create(absl::Span<const int> tokens,
-                                InMemoryDataSetOptions options,
-                                cuda::Executor& executor) {
+InMemoryDataSetIterator::Create(cuda::Executor& executor,
+                                absl::Span<const int> tokens,
+                                InMemoryDataSetOptions options) {
   if (options.batch_size <= 0 || options.context_length <= 0 ||
       options.batch_size % options.context_length != 0) {
     return absl::InvalidArgumentError(
@@ -63,11 +63,11 @@ InMemoryDataSetIterator::Create(absl::Span<const int> tokens,
   const size_t buffer_bytes =
       static_cast<size_t>(options.batch_size) * sizeof(int);
   ASSIGN_OR_RETURN(auto token_buffer,
-                   cuda::Buffer::Allocate(buffer_bytes, executor));
+                   cuda::Buffer::Allocate(executor, buffer_bytes));
   ASSIGN_OR_RETURN(auto target_buffer,
-                   cuda::Buffer::Allocate(buffer_bytes, executor));
+                   cuda::Buffer::Allocate(executor, buffer_bytes));
   return std::unique_ptr<InMemoryDataSetIterator>(new InMemoryDataSetIterator(
-      std::vector<int>(tokens.begin(), tokens.end()), options, executor,
+      executor, std::vector<int>(tokens.begin(), tokens.end()), options,
       std::move(token_buffer), std::move(target_buffer)));
 }
 

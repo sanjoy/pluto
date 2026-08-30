@@ -17,11 +17,11 @@ namespace pluto::llm {
 class FullyConnectedLayer final : public Layer {
  public:
   static absl::StatusOr<std::unique_ptr<FullyConnectedLayer>> Create(
-      int input_dim, int output_dim, DataType data_type,
-      cuda::Executor& executor);
+      cuda::Executor& executor, int input_dim, int output_dim,
+      DataType data_type);
   static absl::StatusOr<std::unique_ptr<FullyConnectedLayer>> Create(
-      int model_width, DataType data_type, cuda::Executor& executor) {
-    return Create(model_width, model_width, data_type, executor);
+      cuda::Executor& executor, int model_width, DataType data_type) {
+    return Create(executor, model_width, model_width, data_type);
   }
 
   // Initializes the rectangular matrix to a scaled identity on its available
@@ -29,10 +29,12 @@ class FullyConnectedLayer final : public Layer {
   absl::Status InitializeIdentity(float scale = 1.0f);
   absl::Status InitializeNormal(float standard_deviation, uint64_t seed);
 
-  absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs, Tape* tape,
-                             cuda::Executor& executor) const override;
-  absl::StatusOr<BufferVec> bwd(absl::Span<const Buffer> output_gradients,
-                                Tape tape, cuda::Executor& executor) override;
+  absl::StatusOr<Buffer> fwd(cuda::Executor& executor,
+                             absl::Span<const Buffer> inputs,
+                             Tape* tape) const override;
+  absl::StatusOr<BufferVec> bwd(cuda::Executor& executor,
+                                absl::Span<const Buffer> output_gradients,
+                                Tape tape) override;
   absl::Span<Buffer> weights() override { return absl::MakeSpan(weights_); }
   absl::Span<Buffer> gradients() override { return absl::MakeSpan(gradients_); }
   DataType output_type() const override { return output_type_; }
@@ -41,8 +43,8 @@ class FullyConnectedLayer final : public Layer {
   int output_dim() const { return output_dim_; }
 
  private:
-  FullyConnectedLayer(int input_dim, int output_dim, DataType data_type,
-                      cuda::Executor& executor, Buffer matrix, Buffer bias,
+  FullyConnectedLayer(cuda::Executor& executor, int input_dim, int output_dim,
+                      DataType data_type, Buffer matrix, Buffer bias,
                       Buffer matrix_gradient, Buffer bias_gradient);
 
   int input_dim_;

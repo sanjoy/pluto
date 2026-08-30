@@ -22,9 +22,9 @@ TEST_F(LayersTest, CrossEntropyForwardAndBackwardMatchUniformSoftmax) {
   for (int row = 0; row < kTestBatchSize; ++row) targets[row] = row;
 
   auto logits_buffer =
-      Buffer::Allocate(logits.size() * sizeof(float), *executor_);
+      Buffer::Allocate(*executor_, logits.size() * sizeof(float));
   auto target_buffer =
-      Buffer::Allocate(targets.size() * sizeof(int), *executor_);
+      Buffer::Allocate(*executor_, targets.size() * sizeof(int));
   ASSERT_TRUE(logits_buffer.ok()) << logits_buffer.status();
   ASSERT_TRUE(target_buffer.ok()) << target_buffer.status();
   ASSERT_EQ(cudaMemcpyAsync(logits_buffer->data(), logits.data(),
@@ -36,14 +36,14 @@ TEST_F(LayersTest, CrossEntropyForwardAndBackwardMatchUniformSoftmax) {
                             executor_->stream()),
             cudaSuccess);
 
-  auto loss_layer = CrossEntropyLossLayer::Create(kTestVocabularySize,
-                                                  DataType::FP16, *executor_);
+  auto loss_layer = CrossEntropyLossLayer::Create(
+      *executor_, kTestVocabularySize, DataType::FP16);
   ASSERT_TRUE(loss_layer.ok()) << loss_layer.status();
   Tape tape;
   BufferVec loss_inputs = {*logits_buffer, *target_buffer};
-  auto losses = (*loss_layer)->fwd(loss_inputs, &tape, *executor_);
+  auto losses = (*loss_layer)->fwd(*executor_, loss_inputs, &tape);
   ASSERT_TRUE(losses.ok()) << losses.status();
-  auto gradients = (*loss_layer)->bwd({}, std::move(tape), *executor_);
+  auto gradients = (*loss_layer)->bwd(*executor_, {}, std::move(tape));
   ASSERT_TRUE(gradients.ok()) << gradients.status();
   ASSERT_EQ(gradients->size(), 1u);
 
@@ -79,9 +79,9 @@ TEST_F(LayersTest, IgnoresPaddedVocabularyColumns) {
   }
   std::vector<int> targets(kTestBatchSize, 0);
   auto logits_buffer =
-      Buffer::Allocate(logits.size() * sizeof(float), *executor_);
+      Buffer::Allocate(*executor_, logits.size() * sizeof(float));
   auto target_buffer =
-      Buffer::Allocate(targets.size() * sizeof(int), *executor_);
+      Buffer::Allocate(*executor_, targets.size() * sizeof(int));
   ASSERT_TRUE(logits_buffer.ok()) << logits_buffer.status();
   ASSERT_TRUE(target_buffer.ok()) << target_buffer.status();
   ASSERT_EQ(cudaMemcpyAsync(logits_buffer->data(), logits.data(),
@@ -92,13 +92,13 @@ TEST_F(LayersTest, IgnoresPaddedVocabularyColumns) {
                             target_buffer->size_bytes(), cudaMemcpyHostToDevice,
                             executor_->stream()),
             cudaSuccess);
-  auto loss_layer = CrossEntropyLossLayer::Create(kLogicalVocabularySize,
-                                                  DataType::BF16, *executor_);
+  auto loss_layer = CrossEntropyLossLayer::Create(
+      *executor_, kLogicalVocabularySize, DataType::BF16);
   ASSERT_TRUE(loss_layer.ok()) << loss_layer.status();
   EXPECT_EQ((*loss_layer)->padded_vocab_size(), kPaddedVocabularySize);
   Tape tape;
   BufferVec inputs = {*logits_buffer, *target_buffer};
-  auto losses = (*loss_layer)->fwd(inputs, &tape, *executor_);
+  auto losses = (*loss_layer)->fwd(*executor_, inputs, &tape);
   ASSERT_TRUE(losses.ok()) << losses.status();
   std::vector<float> host_losses(kTestBatchSize);
   ASSERT_EQ(

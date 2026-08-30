@@ -47,7 +47,7 @@ TEST_F(BufferTest, CopiesShareStorageUntilTheLastReferenceIsDestroyed) {
   std::optional<Buffer> survivor;
   void* address = nullptr;
   {
-    auto original = Buffer::Allocate(kByteCount, *executor_);
+    auto original = Buffer::Allocate(*executor_, kByteCount);
     ASSERT_TRUE(original.ok()) << original.status();
     ASSERT_NE(original->data(), nullptr);
     EXPECT_EQ(original->size_bytes(), kByteCount);
@@ -83,7 +83,7 @@ TEST_F(BufferTest, CopiesShareStorageUntilTheLastReferenceIsDestroyed) {
 
 TEST_F(BufferTest, ZeroByteBufferRetainsItsExecutorWithoutAllocatingStorage) {
   {
-    auto buffer = Buffer::Allocate(0, *executor_);
+    auto buffer = Buffer::Allocate(*executor_, 0);
     ASSERT_TRUE(buffer.ok()) << buffer.status();
     EXPECT_EQ(buffer->data(), nullptr);
     EXPECT_EQ(buffer->size_bytes(), 0u);

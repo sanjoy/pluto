@@ -112,20 +112,20 @@ __tile_global__ void CrossEntropyBackwardKernel(
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<CrossEntropyLossLayer>>
-CrossEntropyLossLayer::Create(int vocabulary_size, DataType data_type,
-                              cuda::Executor& executor) {
+CrossEntropyLossLayer::Create(cuda::Executor& executor, int vocabulary_size,
+                              DataType data_type) {
   RETURN_IF_ERROR(internal::ValidateComputeType(data_type));
   if (vocabulary_size <= 0) {
     return absl::InvalidArgumentError("vocabulary_size must be positive");
   }
   return std::unique_ptr<CrossEntropyLossLayer>(new CrossEntropyLossLayer(
-      vocabulary_size, internal::RoundUpToTile(vocabulary_size), data_type,
-      executor));
+      executor, vocabulary_size, internal::RoundUpToTile(vocabulary_size),
+      data_type));
 }
 
 absl::StatusOr<Buffer> CrossEntropyLossLayer::fwd(
-    absl::Span<const Buffer> inputs, Tape* tape,
-    cuda::Executor& executor) const {
+    cuda::Executor& executor, absl::Span<const Buffer> inputs,
+    Tape* tape) const {
   RETURN_IF_ERROR(
       internal::ValidateExecutor(executor_, executor, "CrossEntropyLossLayer"));
   if (inputs.size() != 2 || tape == nullptr) {
@@ -133,14 +133,14 @@ absl::StatusOr<Buffer> CrossEntropyLossLayer::fwd(
         "CrossEntropyLossLayer fwd expects logits, targets, and a non-null "
         "tape");
   }
-  ASSIGN_OR_RETURN(int rows, MatrixRows(inputs[0], padded_vocab_size_, executor,
+  ASSIGN_OR_RETURN(int rows, MatrixRows(executor, inputs[0], padded_vocab_size_,
                                         "cross-entropy logits"));
-  RETURN_IF_ERROR(ValidateBuffer(inputs[1],
+  RETURN_IF_ERROR(ValidateBuffer(executor, inputs[1],
                                  static_cast<size_t>(rows) * sizeof(int),
-                                 executor, "cross-entropy targets"));
+                                 "cross-entropy targets"));
   ASSIGN_OR_RETURN(
       auto losses,
-      Buffer::Allocate(static_cast<size_t>(rows) * sizeof(float), executor));
+      Buffer::Allocate(executor, static_cast<size_t>(rows) * sizeof(float)));
   tape->intermediates = {inputs[0], inputs[1]};
   tape->children.clear();
   CrossEntropyForwardKernel<<<rows, 1, 0, executor.stream()>>>(
@@ -153,8 +153,8 @@ absl::StatusOr<Buffer> CrossEntropyLossLayer::fwd(
 }
 
 absl::StatusOr<BufferVec> CrossEntropyLossLayer::bwd(
-    absl::Span<const Buffer> output_gradients, Tape tape,
-    cuda::Executor& executor) {
+    cuda::Executor& executor, absl::Span<const Buffer> output_gradients,
+    Tape tape) {
   RETURN_IF_ERROR(
       internal::ValidateExecutor(executor_, executor, "CrossEntropyLossLayer"));
   if (!output_gradients.empty() || tape.intermediates.size() != 2) {
@@ -163,14 +163,14 @@ absl::StatusOr<BufferVec> CrossEntropyLossLayer::bwd(
         "a matching tape");
   }
   ASSIGN_OR_RETURN(
-      int rows, MatrixRows(tape.intermediates[0], padded_vocab_size_, executor,
+      int rows, MatrixRows(executor, tape.intermediates[0], padded_vocab_size_,
                            "cross-entropy saved logits"));
-  RETURN_IF_ERROR(ValidateBuffer(tape.intermediates[1],
+  RETURN_IF_ERROR(ValidateBuffer(executor, tape.intermediates[1],
                                  static_cast<size_t>(rows) * sizeof(int),
-                                 executor, "cross-entropy saved targets"));
+                                 "cross-entropy saved targets"));
   ASSIGN_OR_RETURN(
       auto logits_gradient,
-      Buffer::Allocate(tape.intermediates[0].size_bytes(), executor));
+      Buffer::Allocate(executor, tape.intermediates[0].size_bytes()));
   CrossEntropyBackwardKernel<<<rows * TileCount(padded_vocab_size_), 1, 0,
                                executor.stream()>>>(
       static_cast<const float*>(tape.intermediates[0].data()),

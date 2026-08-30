@@ -25,7 +25,7 @@ absl::Status CudaAllocationError(cudaError_t error, size_t size_bytes) {
 }  // namespace
 
 struct Buffer::Allocation {
-  Allocation(size_t size_bytes, Executor& executor)
+  Allocation(Executor& executor, size_t size_bytes)
       : size_bytes(size_bytes), executor(executor) {}
 
   ~Allocation() {
@@ -49,10 +49,10 @@ struct Buffer::Allocation {
 Buffer::Buffer(std::shared_ptr<Allocation> allocation)
     : allocation_(std::move(allocation)) {}
 
-absl::StatusOr<Buffer> Buffer::Allocate(size_t size_bytes, Executor& executor) {
+absl::StatusOr<Buffer> Buffer::Allocate(Executor& executor, size_t size_bytes) {
   // Create the control block first so that a later host allocation failure
   // cannot leak a successfully allocated device pointer.
-  auto allocation = std::make_shared<Allocation>(size_bytes, executor);
+  auto allocation = std::make_shared<Allocation>(executor, size_bytes);
 
   // CUDA treats a zero-byte allocation as no storage. Keeping a control block
   // still preserves the requested stream and normal copy semantics.

@@ -20,7 +20,7 @@ TEST_F(LayerReferenceTest, LookupAndTiedHeadMatchAcrossShapesAndTypes) {
                    << "type=" << static_cast<int>(type) << " vocab=" << vocab
                    << " width=" << width << " rows=" << rows);
       auto device_embedding =
-          EmbeddingLookupLayer::Create(vocab, width, type, *executor_);
+          EmbeddingLookupLayer::Create(*executor_, vocab, width, type);
       auto reference_embedding =
           EmbeddingLookupLayerReference::Create(vocab, width, type);
       ASSERT_TRUE(device_embedding.ok()) << device_embedding.status();
@@ -32,8 +32,8 @@ TEST_F(LayerReferenceTest, LookupAndTiedHeadMatchAcrossShapesAndTypes) {
       }
       auto device_weights = (*device_embedding)->weights();
       auto reference_weights = (*reference_embedding)->weights();
-      ASSERT_TRUE(SetFloatBufferPair(device_weights[0], &reference_weights[0],
-                                     table, *executor_)
+      ASSERT_TRUE(SetFloatBufferPair(*executor_, device_weights[0],
+                                     &reference_weights[0], table)
                       .ok());
 
       std::vector<int> tokens(rows);
@@ -45,9 +45,9 @@ TEST_F(LayerReferenceTest, LookupAndTiedHeadMatchAcrossShapesAndTypes) {
         lookup_gradient[index] =
             0.15f * std::cos(static_cast<float>(index) * 0.17f);
       }
-      auto tokens_pair = MakeRawBufferPair<int>(tokens, *executor_);
+      auto tokens_pair = MakeRawBufferPair<int>(*executor_, tokens);
       auto lookup_gradient_pair =
-          MakeRawBufferPair<float>(lookup_gradient, *executor_);
+          MakeRawBufferPair<float>(*executor_, lookup_gradient);
       ASSERT_TRUE(tokens_pair.ok()) << tokens_pair.status();
       ASSERT_TRUE(lookup_gradient_pair.ok()) << lookup_gradient_pair.status();
       Tape device_lookup_tape;
@@ -56,7 +56,7 @@ TEST_F(LayerReferenceTest, LookupAndTiedHeadMatchAcrossShapesAndTypes) {
       HostBufferVec reference_tokens = {tokens_pair->host};
       auto device_lookup =
           (*device_embedding)
-              ->fwd(device_tokens, &device_lookup_tape, *executor_);
+              ->fwd(*executor_, device_tokens, &device_lookup_tape);
       auto reference_lookup =
           (*reference_embedding)->fwd(reference_tokens, &reference_lookup_tape);
       ASSERT_TRUE(device_lookup.ok()) << device_lookup.status();
@@ -65,10 +65,9 @@ TEST_F(LayerReferenceTest, LookupAndTiedHeadMatchAcrossShapesAndTypes) {
           ActivationBuffersNear(*device_lookup, *reference_lookup, type, 0.0f));
       BufferVec device_lookup_gradients = {lookup_gradient_pair->device};
       HostBufferVec reference_lookup_gradients = {lookup_gradient_pair->host};
-      auto device_lookup_input =
-          (*device_embedding)
-              ->bwd(device_lookup_gradients, std::move(device_lookup_tape),
-                    *executor_);
+      auto device_lookup_input = (*device_embedding)
+                                     ->bwd(*executor_, device_lookup_gradients,
+                                           std::move(device_lookup_tape));
       auto reference_lookup_input = (*reference_embedding)
                                         ->bwd(reference_lookup_gradients,
                                               std::move(reference_lookup_tape));
@@ -84,8 +83,8 @@ TEST_F(LayerReferenceTest, LookupAndTiedHeadMatchAcrossShapesAndTypes) {
 
       // Test the tied output projection independently, including its additive
       // contribution to the same embedding-table gradient.
-      ASSERT_TRUE(ZeroBufferPair(device_table_gradients[0],
-                                 &reference_table_gradients[0], *executor_)
+      ASSERT_TRUE(ZeroBufferPair(*executor_, device_table_gradients[0],
+                                 &reference_table_gradients[0])
                       .ok());
       auto device_head =
           LanguageModelingHeadLayer::Create(device_embedding->get());
@@ -102,9 +101,9 @@ TEST_F(LayerReferenceTest, LookupAndTiedHeadMatchAcrossShapesAndTypes) {
         logits_gradient[index] =
             0.08f * std::cos(static_cast<float>(index) * 0.07f);
       }
-      auto hidden_pair = MakeActivationBufferPair(hidden, type, *executor_);
+      auto hidden_pair = MakeActivationBufferPair(*executor_, hidden, type);
       auto logits_gradient_pair =
-          MakeRawBufferPair<float>(logits_gradient, *executor_);
+          MakeRawBufferPair<float>(*executor_, logits_gradient);
       ASSERT_TRUE(hidden_pair.ok()) << hidden_pair.status();
       ASSERT_TRUE(logits_gradient_pair.ok()) << logits_gradient_pair.status();
       Tape device_head_tape;
@@ -112,7 +111,7 @@ TEST_F(LayerReferenceTest, LookupAndTiedHeadMatchAcrossShapesAndTypes) {
       BufferVec device_hidden = {hidden_pair->device};
       HostBufferVec reference_hidden = {hidden_pair->host};
       auto device_logits =
-          (*device_head)->fwd(device_hidden, &device_head_tape, *executor_);
+          (*device_head)->fwd(*executor_, device_hidden, &device_head_tape);
       auto reference_logits =
           (*reference_head)->fwd(reference_hidden, &reference_head_tape);
       ASSERT_TRUE(device_logits.ok()) << device_logits.status();
@@ -123,8 +122,8 @@ TEST_F(LayerReferenceTest, LookupAndTiedHeadMatchAcrossShapesAndTypes) {
       HostBufferVec reference_logits_gradients = {logits_gradient_pair->host};
       auto device_hidden_gradient =
           (*device_head)
-              ->bwd(device_logits_gradients, std::move(device_head_tape),
-                    *executor_);
+              ->bwd(*executor_, device_logits_gradients,
+                    std::move(device_head_tape));
       auto reference_hidden_gradient =
           (*reference_head)
               ->bwd(reference_logits_gradients, std::move(reference_head_tape));
@@ -146,7 +145,7 @@ TEST_F(LayerReferenceTest, PositionEmbeddingForwardAndBackwardMatch) {
     for (const auto [context, width, rows] :
          {std::tuple{4, 16, 8}, std::tuple{8, 32, 24}}) {
       auto device =
-          PositionEmbeddingLayer::Create(context, width, type, *executor_);
+          PositionEmbeddingLayer::Create(*executor_, context, width, type);
       auto reference =
           PositionEmbeddingLayerReference::Create(context, width, type);
       ASSERT_TRUE(device.ok()) << device.status();
@@ -157,8 +156,8 @@ TEST_F(LayerReferenceTest, PositionEmbeddingForwardAndBackwardMatch) {
       }
       auto device_weights = (*device)->weights();
       auto reference_weights = (*reference)->weights();
-      ASSERT_TRUE(SetFloatBufferPair(device_weights[0], &reference_weights[0],
-                                     positions, *executor_)
+      ASSERT_TRUE(SetFloatBufferPair(*executor_, device_weights[0],
+                                     &reference_weights[0], positions)
                       .ok());
       std::vector<float> input(static_cast<size_t>(rows) * width);
       std::vector<float> gradient(input.size());
@@ -166,8 +165,8 @@ TEST_F(LayerReferenceTest, PositionEmbeddingForwardAndBackwardMatch) {
         input[index] = 0.3f * std::sin(static_cast<float>(index) * 0.09f);
         gradient[index] = 0.2f * std::cos(static_cast<float>(index) * 0.15f);
       }
-      auto input_pair = MakeActivationBufferPair(input, type, *executor_);
-      auto gradient_pair = MakeRawBufferPair<float>(gradient, *executor_);
+      auto input_pair = MakeActivationBufferPair(*executor_, input, type);
+      auto gradient_pair = MakeRawBufferPair<float>(*executor_, gradient);
       ASSERT_TRUE(input_pair.ok()) << input_pair.status();
       ASSERT_TRUE(gradient_pair.ok()) << gradient_pair.status();
       Tape device_tape;
@@ -175,7 +174,7 @@ TEST_F(LayerReferenceTest, PositionEmbeddingForwardAndBackwardMatch) {
       BufferVec device_inputs = {input_pair->device};
       HostBufferVec reference_inputs = {input_pair->host};
       auto device_output =
-          (*device)->fwd(device_inputs, &device_tape, *executor_);
+          (*device)->fwd(*executor_, device_inputs, &device_tape);
       auto reference_output =
           (*reference)->fwd(reference_inputs, &reference_tape);
       ASSERT_TRUE(device_output.ok()) << device_output.status();
@@ -185,7 +184,7 @@ TEST_F(LayerReferenceTest, PositionEmbeddingForwardAndBackwardMatch) {
       BufferVec device_gradients = {gradient_pair->device};
       HostBufferVec reference_gradients = {gradient_pair->host};
       auto device_input =
-          (*device)->bwd(device_gradients, std::move(device_tape), *executor_);
+          (*device)->bwd(*executor_, device_gradients, std::move(device_tape));
       auto reference_input =
           (*reference)->bwd(reference_gradients, std::move(reference_tape));
       ASSERT_TRUE(device_input.ok()) << device_input.status();
@@ -200,11 +199,11 @@ TEST_F(LayerReferenceTest, PositionEmbeddingForwardAndBackwardMatch) {
 
 TEST_F(LayerReferenceTest, FP8IsRejectedConsistently) {
   auto device_lookup =
-      EmbeddingLookupLayer::Create(17, 16, DataType::FP8, *executor_);
+      EmbeddingLookupLayer::Create(*executor_, 17, 16, DataType::FP8);
   auto reference_lookup =
       EmbeddingLookupLayerReference::Create(17, 16, DataType::FP8);
   auto device_position =
-      PositionEmbeddingLayer::Create(4, 16, DataType::FP8, *executor_);
+      PositionEmbeddingLayer::Create(*executor_, 4, 16, DataType::FP8);
   auto reference_position =
       PositionEmbeddingLayerReference::Create(4, 16, DataType::FP8);
   ASSERT_FALSE(device_lookup.ok());

@@ -155,9 +155,11 @@ __tile_global__ void DenseBiasGradientKernel(
 
 }  // namespace
 
-FullyConnectedLayer::FullyConnectedLayer(
-    int input_dim, int output_dim, DataType data_type, cuda::Executor& executor,
-    Buffer matrix, Buffer bias, Buffer matrix_gradient, Buffer bias_gradient)
+FullyConnectedLayer::FullyConnectedLayer(cuda::Executor& executor,
+                                         int input_dim, int output_dim,
+                                         DataType data_type, Buffer matrix,
+                                         Buffer bias, Buffer matrix_gradient,
+                                         Buffer bias_gradient)
     : input_dim_(input_dim),
       output_dim_(output_dim),
       output_type_(data_type),
@@ -166,19 +168,19 @@ FullyConnectedLayer::FullyConnectedLayer(
       gradients_{std::move(matrix_gradient), std::move(bias_gradient)} {}
 
 absl::StatusOr<std::unique_ptr<FullyConnectedLayer>>
-FullyConnectedLayer::Create(int input_dim, int output_dim, DataType data_type,
-                            cuda::Executor& executor) {
+FullyConnectedLayer::Create(cuda::Executor& executor, int input_dim,
+                            int output_dim, DataType data_type) {
   RETURN_IF_ERROR(internal::ValidateComputeType(data_type));
   RETURN_IF_ERROR(internal::ValidateTiledExtent(input_dim, "input_dim"));
   RETURN_IF_ERROR(internal::ValidateTiledExtent(output_dim, "output_dim"));
   const size_t matrix_bytes =
       static_cast<size_t>(input_dim) * output_dim * sizeof(float);
   const size_t bias_bytes = static_cast<size_t>(output_dim) * sizeof(float);
-  ASSIGN_OR_RETURN(auto matrix, Buffer::Allocate(matrix_bytes, executor));
-  ASSIGN_OR_RETURN(auto bias, Buffer::Allocate(bias_bytes, executor));
+  ASSIGN_OR_RETURN(auto matrix, Buffer::Allocate(executor, matrix_bytes));
+  ASSIGN_OR_RETURN(auto bias, Buffer::Allocate(executor, bias_bytes));
   ASSIGN_OR_RETURN(auto matrix_gradient,
-                   Buffer::Allocate(matrix_bytes, executor));
-  ASSIGN_OR_RETURN(auto bias_gradient, Buffer::Allocate(bias_bytes, executor));
+                   Buffer::Allocate(executor, matrix_bytes));
+  ASSIGN_OR_RETURN(auto bias_gradient, Buffer::Allocate(executor, bias_bytes));
   for (Buffer* buffer : {&matrix, &bias, &matrix_gradient, &bias_gradient}) {
     RETURN_IF_ERROR(internal::CudaStatus(
         cudaMemsetAsync(buffer->data(), 0, buffer->size_bytes(),
@@ -186,7 +188,7 @@ FullyConnectedLayer::Create(int input_dim, int output_dim, DataType data_type,
         "cudaMemsetAsync(dense parameter)"));
   }
   return std::unique_ptr<FullyConnectedLayer>(new FullyConnectedLayer(
-      input_dim, output_dim, data_type, executor, std::move(matrix),
+      executor, input_dim, output_dim, data_type, std::move(matrix),
       std::move(bias), std::move(matrix_gradient), std::move(bias_gradient)));
 }
 
@@ -220,9 +222,9 @@ absl::Status FullyConnectedLayer::InitializeNormal(float standard_deviation,
       "cudaMemcpyAsync(normal matrix)");
 }
 
-absl::StatusOr<Buffer> FullyConnectedLayer::fwd(
-    absl::Span<const Buffer> inputs, Tape* tape,
-    cuda::Executor& executor) const {
+absl::StatusOr<Buffer> FullyConnectedLayer::fwd(cuda::Executor& executor,
+                                                absl::Span<const Buffer> inputs,
+                                                Tape* tape) const {
   RETURN_IF_ERROR(
       internal::ValidateExecutor(executor_, executor, "FullyConnectedLayer"));
   if (inputs.size() != 1 || tape == nullptr) {
@@ -230,14 +232,14 @@ absl::StatusOr<Buffer> FullyConnectedLayer::fwd(
         "FullyConnectedLayer fwd expects one input and a non-null tape");
   }
   ASSIGN_OR_RETURN(int rows,
-                   internal::ActivationRows(inputs[0], input_dim_, output_type_,
-                                            executor, "dense input"));
+                   internal::ActivationRows(executor, inputs[0], input_dim_,
+                                            output_type_, "dense input"));
   RETURN_IF_ERROR(internal::ValidateTiledExtent(rows, "dense rows"));
   ASSIGN_OR_RETURN(
       auto output,
-      Buffer::Allocate(static_cast<size_t>(rows) * output_dim_ *
-                           internal::ActivationElementBytes(output_type_),
-                       executor));
+      Buffer::Allocate(executor,
+                       static_cast<size_t>(rows) * output_dim_ *
+                           internal::ActivationElementBytes(output_type_)));
   tape->intermediates = {inputs[0]};
   tape->children.clear();
   const int blocks =
@@ -261,8 +263,8 @@ absl::StatusOr<Buffer> FullyConnectedLayer::fwd(
 }
 
 absl::StatusOr<BufferVec> FullyConnectedLayer::bwd(
-    absl::Span<const Buffer> output_gradients, Tape tape,
-    cuda::Executor& executor) {
+    cuda::Executor& executor, absl::Span<const Buffer> output_gradients,
+    Tape tape) {
   RETURN_IF_ERROR(
       internal::ValidateExecutor(executor_, executor, "FullyConnectedLayer"));
   if (output_gradients.size() != 1 || tape.intermediates.size() != 1) {
@@ -270,17 +272,16 @@ absl::StatusOr<BufferVec> FullyConnectedLayer::bwd(
         "FullyConnectedLayer bwd received an incompatible gradient or tape");
   }
   ASSIGN_OR_RETURN(
-      int rows, internal::MatrixRows(output_gradients[0], output_dim_, executor,
+      int rows, internal::MatrixRows(executor, output_gradients[0], output_dim_,
                                      "dense output gradient"));
   RETURN_IF_ERROR(internal::ValidateBuffer(
-      tape.intermediates[0],
+      executor, tape.intermediates[0],
       static_cast<size_t>(rows) * input_dim_ *
           internal::ActivationElementBytes(output_type_),
-      executor, "dense saved input"));
-  ASSIGN_OR_RETURN(
-      auto input_gradient,
-      Buffer::Allocate(static_cast<size_t>(rows) * input_dim_ * sizeof(float),
-                       executor));
+      "dense saved input"));
+  ASSIGN_OR_RETURN(auto input_gradient,
+                   Buffer::Allocate(executor, static_cast<size_t>(rows) *
+                                                  input_dim_ * sizeof(float)));
   const int input_blocks =
       internal::TileCount(rows) * internal::TileCount(input_dim_);
   const int weight_blocks =

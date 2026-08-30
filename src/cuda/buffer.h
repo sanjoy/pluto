@@ -18,7 +18,7 @@ namespace pluto::cuda {
 // until every Buffer copy referring to it has been destroyed.
 class Buffer final {
  public:
-  static absl::StatusOr<Buffer> Allocate(size_t size_bytes, Executor& executor);
+  static absl::StatusOr<Buffer> Allocate(Executor& executor, size_t size_bytes);
 
   Buffer(const Buffer&) = default;
   Buffer& operator=(const Buffer&) = default;

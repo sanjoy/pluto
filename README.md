@@ -11,7 +11,7 @@ untyped CUDA allocation:
 
 ```cpp
 auto executor = pluto::cuda::Executor::Create();
-auto buffer = pluto::cuda::Buffer::Allocate(byte_count, **executor);
+auto buffer = pluto::cuda::Buffer::Allocate(**executor, byte_count);
 cudaMemsetAsync(buffer->data(), 0, buffer->size_bytes(),
                 (*executor)->stream());
 ```

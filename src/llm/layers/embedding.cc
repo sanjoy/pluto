@@ -242,8 +242,8 @@ __tile_global__ void PositionEmbeddingBackwardKernel(
       pointers, gradient_view.load(row, width_tile));
 }
 
-absl::Status CopyNormalInitialization(Buffer& weight, float standard_deviation,
-                                      uint64_t seed, cuda::Executor& executor,
+absl::Status CopyNormalInitialization(cuda::Executor& executor, Buffer& weight,
+                                      float standard_deviation, uint64_t seed,
                                       const char* operation) {
   if (!(standard_deviation > 0.0f)) {
     return absl::InvalidArgumentError(
@@ -261,12 +261,9 @@ absl::Status CopyNormalInitialization(Buffer& weight, float standard_deviation,
 
 }  // namespace
 
-EmbeddingLookupLayer::EmbeddingLookupLayer(int vocab_size,
-                                           int padded_vocab_size,
-                                           int embedding_dim,
-                                           DataType data_type,
-                                           cuda::Executor& executor,
-                                           Buffer weight, Buffer gradient)
+EmbeddingLookupLayer::EmbeddingLookupLayer(
+    cuda::Executor& executor, int vocab_size, int padded_vocab_size,
+    int embedding_dim, DataType data_type, Buffer weight, Buffer gradient)
     : vocab_size_(vocab_size),
       padded_vocab_size_(padded_vocab_size),
       embedding_dim_(embedding_dim),
@@ -276,8 +273,8 @@ EmbeddingLookupLayer::EmbeddingLookupLayer(int vocab_size,
       gradient_(std::move(gradient)) {}
 
 absl::StatusOr<std::unique_ptr<EmbeddingLookupLayer>>
-EmbeddingLookupLayer::Create(int vocab_size, int embedding_dim,
-                             DataType data_type, cuda::Executor& executor) {
+EmbeddingLookupLayer::Create(cuda::Executor& executor, int vocab_size,
+                             int embedding_dim, DataType data_type) {
   RETURN_IF_ERROR(internal::ValidateComputeType(data_type));
   if (vocab_size <= 0) {
     return absl::InvalidArgumentError("vocab_size must be positive");
@@ -287,8 +284,8 @@ EmbeddingLookupLayer::Create(int vocab_size, int embedding_dim,
   const int padded_vocab_size = internal::RoundUpToTile(vocab_size);
   const size_t bytes =
       static_cast<size_t>(padded_vocab_size) * embedding_dim * sizeof(float);
-  ASSIGN_OR_RETURN(auto weight, Buffer::Allocate(bytes, executor));
-  ASSIGN_OR_RETURN(auto gradient, Buffer::Allocate(bytes, executor));
+  ASSIGN_OR_RETURN(auto weight, Buffer::Allocate(executor, bytes));
+  ASSIGN_OR_RETURN(auto gradient, Buffer::Allocate(executor, bytes));
   for (Buffer* buffer : {&weight, &gradient}) {
     RETURN_IF_ERROR(internal::CudaStatus(
         cudaMemsetAsync(buffer->data(), 0, buffer->size_bytes(),
@@ -296,7 +293,7 @@ EmbeddingLookupLayer::Create(int vocab_size, int embedding_dim,
         "cudaMemsetAsync(embedding parameter)"));
   }
   return std::unique_ptr<EmbeddingLookupLayer>(new EmbeddingLookupLayer(
-      vocab_size, padded_vocab_size, embedding_dim, data_type, executor,
+      executor, vocab_size, padded_vocab_size, embedding_dim, data_type,
       std::move(weight), std::move(gradient)));
 }
 
@@ -314,13 +311,13 @@ absl::Status EmbeddingLookupLayer::InitializeIdentity(float scale) {
 
 absl::Status EmbeddingLookupLayer::InitializeNormal(float standard_deviation,
                                                     uint64_t seed) {
-  return CopyNormalInitialization(weight_, standard_deviation, seed, executor_,
+  return CopyNormalInitialization(executor_, weight_, standard_deviation, seed,
                                   "cudaMemcpyAsync(normal embedding)");
 }
 
 absl::StatusOr<Buffer> EmbeddingLookupLayer::fwd(
-    absl::Span<const Buffer> inputs, Tape* tape,
-    cuda::Executor& executor) const {
+    cuda::Executor& executor, absl::Span<const Buffer> inputs,
+    Tape* tape) const {
   RETURN_IF_ERROR(
       internal::ValidateExecutor(executor_, executor, "EmbeddingLookupLayer"));
   if (inputs.size() != 1 || tape == nullptr) {
@@ -328,13 +325,13 @@ absl::StatusOr<Buffer> EmbeddingLookupLayer::fwd(
         "EmbeddingLookupLayer fwd expects token IDs and a non-null tape");
   }
   ASSIGN_OR_RETURN(int rows,
-                   internal::ElementCount(inputs[0], sizeof(int), executor,
+                   internal::ElementCount(executor, inputs[0], sizeof(int),
                                           "embedding token input"));
   ASSIGN_OR_RETURN(
       auto output,
-      Buffer::Allocate(static_cast<size_t>(rows) * embedding_dim_ *
-                           internal::ActivationElementBytes(output_type_),
-                       executor));
+      Buffer::Allocate(executor,
+                       static_cast<size_t>(rows) * embedding_dim_ *
+                           internal::ActivationElementBytes(output_type_)));
   const int blocks = rows * internal::TileCount(embedding_dim_);
   if (output_type_ == DataType::BF16) {
     EmbeddingForwardKernel<__nv_bfloat16><<<blocks, 1, 0, executor.stream()>>>(
@@ -355,20 +352,20 @@ absl::StatusOr<Buffer> EmbeddingLookupLayer::fwd(
 }
 
 absl::StatusOr<BufferVec> EmbeddingLookupLayer::bwd(
-    absl::Span<const Buffer> output_gradients, Tape tape,
-    cuda::Executor& executor) {
+    cuda::Executor& executor, absl::Span<const Buffer> output_gradients,
+    Tape tape) {
   RETURN_IF_ERROR(
       internal::ValidateExecutor(executor_, executor, "EmbeddingLookupLayer"));
   if (output_gradients.size() != 1 || tape.intermediates.size() != 1) {
     return absl::InvalidArgumentError(
         "EmbeddingLookupLayer bwd received an incompatible gradient or tape");
   }
-  ASSIGN_OR_RETURN(int rows,
-                   internal::ElementCount(tape.intermediates[0], sizeof(int),
-                                          executor, "embedding token input"));
+  ASSIGN_OR_RETURN(
+      int rows, internal::ElementCount(executor, tape.intermediates[0],
+                                       sizeof(int), "embedding token input"));
   RETURN_IF_ERROR(internal::ValidateBuffer(
-      output_gradients[0],
-      static_cast<size_t>(rows) * embedding_dim_ * sizeof(float), executor,
+      executor, output_gradients[0],
+      static_cast<size_t>(rows) * embedding_dim_ * sizeof(float),
       "embedding output gradient"));
   EmbeddingBackwardKernel<<<rows * internal::TileCount(embedding_dim_), 1, 0,
                             executor.stream()>>>(
@@ -391,8 +388,8 @@ LanguageModelingHeadLayer::Create(EmbeddingLookupLayer* embedding) {
 }
 
 absl::StatusOr<Buffer> LanguageModelingHeadLayer::fwd(
-    absl::Span<const Buffer> inputs, Tape* tape,
-    cuda::Executor& executor) const {
+    cuda::Executor& executor, absl::Span<const Buffer> inputs,
+    Tape* tape) const {
   RETURN_IF_ERROR(internal::ValidateExecutor(embedding_->executor_, executor,
                                              "LanguageModelingHeadLayer"));
   if (inputs.size() != 1 || tape == nullptr) {
@@ -400,16 +397,16 @@ absl::StatusOr<Buffer> LanguageModelingHeadLayer::fwd(
         "LanguageModelingHeadLayer fwd expects one input and a non-null tape");
   }
   ASSIGN_OR_RETURN(
-      int rows, internal::ActivationRows(inputs[0], embedding_->embedding_dim_,
-                                         embedding_->output_type_, executor,
-                                         "language-modeling-head input"));
+      int rows, internal::ActivationRows(
+                    executor, inputs[0], embedding_->embedding_dim_,
+                    embedding_->output_type_, "language-modeling-head input"));
   RETURN_IF_ERROR(
       internal::ValidateTiledExtent(rows, "language-modeling-head rows"));
   ASSIGN_OR_RETURN(
       auto output,
-      Buffer::Allocate(static_cast<size_t>(rows) *
-                           embedding_->padded_vocab_size_ * sizeof(float),
-                       executor));
+      Buffer::Allocate(executor, static_cast<size_t>(rows) *
+                                     embedding_->padded_vocab_size_ *
+                                     sizeof(float)));
   const int blocks = internal::TileCount(rows) *
                      internal::TileCount(embedding_->padded_vocab_size_);
   if (embedding_->output_type_ == DataType::BF16) {
@@ -438,8 +435,8 @@ absl::StatusOr<Buffer> LanguageModelingHeadLayer::fwd(
 }
 
 absl::StatusOr<BufferVec> LanguageModelingHeadLayer::bwd(
-    absl::Span<const Buffer> output_gradients, Tape tape,
-    cuda::Executor& executor) {
+    cuda::Executor& executor, absl::Span<const Buffer> output_gradients,
+    Tape tape) {
   RETURN_IF_ERROR(internal::ValidateExecutor(embedding_->executor_, executor,
                                              "LanguageModelingHeadLayer"));
   if (output_gradients.size() != 1 || tape.intermediates.size() != 1) {
@@ -448,19 +445,18 @@ absl::StatusOr<BufferVec> LanguageModelingHeadLayer::bwd(
         "tape");
   }
   ASSIGN_OR_RETURN(
-      int rows,
-      internal::MatrixRows(output_gradients[0], embedding_->padded_vocab_size_,
-                           executor, "language-modeling-head output gradient"));
+      int rows, internal::MatrixRows(executor, output_gradients[0],
+                                     embedding_->padded_vocab_size_,
+                                     "language-modeling-head output gradient"));
   RETURN_IF_ERROR(internal::ValidateBuffer(
-      tape.intermediates[0],
+      executor, tape.intermediates[0],
       static_cast<size_t>(rows) * embedding_->embedding_dim_ *
           internal::ActivationElementBytes(embedding_->output_type_),
-      executor, "language-modeling-head saved input"));
-  ASSIGN_OR_RETURN(
-      auto input_gradient,
-      Buffer::Allocate(static_cast<size_t>(rows) * embedding_->embedding_dim_ *
-                           sizeof(float),
-                       executor));
+      "language-modeling-head saved input"));
+  ASSIGN_OR_RETURN(auto input_gradient,
+                   Buffer::Allocate(executor, static_cast<size_t>(rows) *
+                                                  embedding_->embedding_dim_ *
+                                                  sizeof(float)));
   const int input_blocks = internal::TileCount(rows) *
                            internal::TileCount(embedding_->embedding_dim_);
   const int weight_blocks =
@@ -498,10 +494,10 @@ absl::StatusOr<BufferVec> LanguageModelingHeadLayer::bwd(
   return BufferVec{std::move(input_gradient)};
 }
 
-PositionEmbeddingLayer::PositionEmbeddingLayer(int context_length,
+PositionEmbeddingLayer::PositionEmbeddingLayer(cuda::Executor& executor,
+                                               int context_length,
                                                int embedding_dim,
                                                DataType data_type,
-                                               cuda::Executor& executor,
                                                Buffer weight, Buffer gradient)
     : context_length_(context_length),
       embedding_dim_(embedding_dim),
@@ -511,8 +507,8 @@ PositionEmbeddingLayer::PositionEmbeddingLayer(int context_length,
       gradient_(std::move(gradient)) {}
 
 absl::StatusOr<std::unique_ptr<PositionEmbeddingLayer>>
-PositionEmbeddingLayer::Create(int context_length, int embedding_dim,
-                               DataType data_type, cuda::Executor& executor) {
+PositionEmbeddingLayer::Create(cuda::Executor& executor, int context_length,
+                               int embedding_dim, DataType data_type) {
   RETURN_IF_ERROR(internal::ValidateComputeType(data_type));
   if (context_length <= 0) {
     return absl::InvalidArgumentError("context_length must be positive");
@@ -521,8 +517,8 @@ PositionEmbeddingLayer::Create(int context_length, int embedding_dim,
       internal::ValidateTiledExtent(embedding_dim, "embedding_dim"));
   const size_t bytes =
       static_cast<size_t>(context_length) * embedding_dim * sizeof(float);
-  ASSIGN_OR_RETURN(auto weight, Buffer::Allocate(bytes, executor));
-  ASSIGN_OR_RETURN(auto gradient, Buffer::Allocate(bytes, executor));
+  ASSIGN_OR_RETURN(auto weight, Buffer::Allocate(executor, bytes));
+  ASSIGN_OR_RETURN(auto gradient, Buffer::Allocate(executor, bytes));
   for (Buffer* buffer : {&weight, &gradient}) {
     RETURN_IF_ERROR(internal::CudaStatus(
         cudaMemsetAsync(buffer->data(), 0, buffer->size_bytes(),
@@ -530,19 +526,19 @@ PositionEmbeddingLayer::Create(int context_length, int embedding_dim,
         "cudaMemsetAsync(position parameter)"));
   }
   return std::unique_ptr<PositionEmbeddingLayer>(new PositionEmbeddingLayer(
-      context_length, embedding_dim, data_type, executor, std::move(weight),
+      executor, context_length, embedding_dim, data_type, std::move(weight),
       std::move(gradient)));
 }
 
 absl::Status PositionEmbeddingLayer::InitializeNormal(float standard_deviation,
                                                       uint64_t seed) {
-  return CopyNormalInitialization(weight_, standard_deviation, seed, executor_,
+  return CopyNormalInitialization(executor_, weight_, standard_deviation, seed,
                                   "cudaMemcpyAsync(normal positions)");
 }
 
 absl::StatusOr<Buffer> PositionEmbeddingLayer::fwd(
-    absl::Span<const Buffer> inputs, Tape* tape,
-    cuda::Executor& executor) const {
+    cuda::Executor& executor, absl::Span<const Buffer> inputs,
+    Tape* tape) const {
   RETURN_IF_ERROR(internal::ValidateExecutor(executor_, executor,
                                              "PositionEmbeddingLayer"));
   if (inputs.size() != 1 || tape == nullptr) {
@@ -550,10 +546,10 @@ absl::StatusOr<Buffer> PositionEmbeddingLayer::fwd(
         "PositionEmbeddingLayer fwd expects one input and a non-null tape");
   }
   ASSIGN_OR_RETURN(int rows, internal::ActivationRows(
-                                 inputs[0], embedding_dim_, output_type_,
-                                 executor, "position-embedding input"));
+                                 executor, inputs[0], embedding_dim_,
+                                 output_type_, "position-embedding input"));
   ASSIGN_OR_RETURN(auto output,
-                   Buffer::Allocate(inputs[0].size_bytes(), executor));
+                   Buffer::Allocate(executor, inputs[0].size_bytes()));
   const int blocks = rows * internal::TileCount(embedding_dim_);
   if (output_type_ == DataType::BF16) {
     PositionEmbeddingForwardKernel<__nv_bfloat16>
@@ -575,8 +571,8 @@ absl::StatusOr<Buffer> PositionEmbeddingLayer::fwd(
 }
 
 absl::StatusOr<BufferVec> PositionEmbeddingLayer::bwd(
-    absl::Span<const Buffer> output_gradients, Tape tape,
-    cuda::Executor& executor) {
+    cuda::Executor& executor, absl::Span<const Buffer> output_gradients,
+    Tape tape) {
   RETURN_IF_ERROR(internal::ValidateExecutor(executor_, executor,
                                              "PositionEmbeddingLayer"));
   if (output_gradients.size() != 1 || !tape.intermediates.empty()) {
@@ -585,7 +581,7 @@ absl::StatusOr<BufferVec> PositionEmbeddingLayer::bwd(
         "tape");
   }
   ASSIGN_OR_RETURN(int rows, internal::MatrixRows(
-                                 output_gradients[0], embedding_dim_, executor,
+                                 executor, output_gradients[0], embedding_dim_,
                                  "position-embedding output gradient"));
   PositionEmbeddingBackwardKernel<<<rows * internal::TileCount(embedding_dim_),
                                     1, 0, executor.stream()>>>(

@@ -61,16 +61,16 @@ struct InMemoryDataSetOptions {
 class InMemoryDataSetIterator final : public DataSetIterator {
  public:
   static absl::StatusOr<std::unique_ptr<InMemoryDataSetIterator>> Create(
-      absl::Span<const int> tokens, InMemoryDataSetOptions options,
-      cuda::Executor& executor);
+      cuda::Executor& executor, absl::Span<const int> tokens,
+      InMemoryDataSetOptions options);
 
   absl::StatusOr<TokenBatch> Next() override;
   absl::Status Reset() override;
 
  private:
-  InMemoryDataSetIterator(std::vector<int> corpus,
+  InMemoryDataSetIterator(cuda::Executor& executor, std::vector<int> corpus,
                           InMemoryDataSetOptions options,
-                          cuda::Executor& executor, cuda::Buffer token_buffer,
+                          cuda::Buffer token_buffer,
                           cuda::Buffer target_buffer);
 
   std::vector<int> corpus_;

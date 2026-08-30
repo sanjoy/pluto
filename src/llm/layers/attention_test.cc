@@ -17,9 +17,9 @@ namespace pluto::llm {
 namespace {
 
 TEST_F(LayersTest, FlashAttentionIsCausalAndHasCorrectSingleTokenGradient) {
-  auto attention =
-      AttentionLayer::Create(kTestContextLength, kTestAttentionHeads,
-                             kTestModelWidth, DataType::FP16, *executor_);
+  auto attention = AttentionLayer::Create(*executor_, kTestContextLength,
+                                          kTestAttentionHeads, kTestModelWidth,
+                                          DataType::FP16);
   ASSERT_TRUE(attention.ok()) << attention.status();
 
   constexpr int kPackedWidth = 3 * kTestModelWidth;
@@ -36,7 +36,7 @@ TEST_F(LayersTest, FlashAttentionIsCausalAndHasCorrectSingleTokenGradient) {
   // A future value that position zero is not allowed to observe.
   input[2 * kPackedWidth + 2 * kTestModelWidth] = 4.0f;
   auto input_buffer =
-      Buffer::Allocate(input.size() * sizeof(float), *executor_);
+      Buffer::Allocate(*executor_, input.size() * sizeof(float));
   ASSERT_TRUE(input_buffer.ok()) << input_buffer.status();
   ASSERT_EQ(cudaMemcpyAsync(input_buffer->data(), input.data(),
                             input_buffer->size_bytes(), cudaMemcpyHostToDevice,
@@ -45,13 +45,13 @@ TEST_F(LayersTest, FlashAttentionIsCausalAndHasCorrectSingleTokenGradient) {
 
   Tape tape;
   BufferVec attention_inputs = {*input_buffer};
-  auto output = (*attention)->fwd(attention_inputs, &tape, *executor_);
+  auto output = (*attention)->fwd(*executor_, attention_inputs, &tape);
   ASSERT_TRUE(output.ok()) << output.status();
 
   std::vector<float> output_gradient(kTestBatchSize * kTestModelWidth, 0.0f);
   output_gradient[0] = 1.0f;
   auto gradient_buffer =
-      Buffer::Allocate(output_gradient.size() * sizeof(float), *executor_);
+      Buffer::Allocate(*executor_, output_gradient.size() * sizeof(float));
   ASSERT_TRUE(gradient_buffer.ok()) << gradient_buffer.status();
   ASSERT_EQ(cudaMemcpyAsync(gradient_buffer->data(), output_gradient.data(),
                             gradient_buffer->size_bytes(),
@@ -59,7 +59,7 @@ TEST_F(LayersTest, FlashAttentionIsCausalAndHasCorrectSingleTokenGradient) {
             cudaSuccess);
   BufferVec attention_gradients = {*gradient_buffer};
   auto input_gradient =
-      (*attention)->bwd(attention_gradients, std::move(tape), *executor_);
+      (*attention)->bwd(*executor_, attention_gradients, std::move(tape));
   ASSERT_TRUE(input_gradient.ok()) << input_gradient.status();
   ASSERT_EQ(input_gradient->size(), 1u);
 

@@ -62,26 +62,26 @@ ResidualLayer::ResidualLayer(std::unique_ptr<Layer> layer)
   }
 }
 
-absl::StatusOr<Buffer> ResidualLayer::fwd(absl::Span<const Buffer> inputs,
-                                          Tape* tape,
-                                          cuda::Executor& executor) const {
+absl::StatusOr<Buffer> ResidualLayer::fwd(cuda::Executor& executor,
+                                          absl::Span<const Buffer> inputs,
+                                          Tape* tape) const {
   if (inputs.size() != 1 || tape == nullptr) {
     return absl::InvalidArgumentError(
         "ResidualLayer fwd expects one input and a non-null tape");
   }
   Tape child_tape;
-  ASSIGN_OR_RETURN(auto branch, layer_->fwd(inputs, &child_tape, executor));
+  ASSIGN_OR_RETURN(auto branch, layer_->fwd(executor, inputs, &child_tape));
   if (branch.size_bytes() != inputs[0].size_bytes() ||
       &branch.executor() != &executor || &inputs[0].executor() != &executor) {
     return absl::InvalidArgumentError(
         "ResidualLayer branch changed the activation shape or executor");
   }
   ASSIGN_OR_RETURN(auto output,
-                   Buffer::Allocate(inputs[0].size_bytes(), executor));
-  ASSIGN_OR_RETURN(
-      int elements,
-      ElementCount(inputs[0], internal::ActivationElementBytes(output_type()),
-                   executor, "residual input"));
+                   Buffer::Allocate(executor, inputs[0].size_bytes()));
+  ASSIGN_OR_RETURN(int elements,
+                   ElementCount(executor, inputs[0],
+                                internal::ActivationElementBytes(output_type()),
+                                "residual input"));
   RETURN_IF_ERROR(ValidateTiledExtent(elements, "residual element count"));
   tape->intermediates = {inputs[0]};
   tape->children = {std::move(child_tape)};
@@ -101,8 +101,8 @@ absl::StatusOr<Buffer> ResidualLayer::fwd(absl::Span<const Buffer> inputs,
 }
 
 absl::StatusOr<BufferVec> ResidualLayer::bwd(
-    absl::Span<const Buffer> output_gradients, Tape tape,
-    cuda::Executor& executor) {
+    cuda::Executor& executor, absl::Span<const Buffer> output_gradients,
+    Tape tape) {
   if (output_gradients.size() != 1 || tape.intermediates.size() != 1 ||
       tape.children.size() != 1) {
     return absl::InvalidArgumentError(
@@ -110,7 +110,7 @@ absl::StatusOr<BufferVec> ResidualLayer::bwd(
   }
   ASSIGN_OR_RETURN(
       auto branch_gradient,
-      layer_->bwd(output_gradients, std::move(tape.children[0]), executor));
+      layer_->bwd(executor, output_gradients, std::move(tape.children[0])));
   if (branch_gradient.size() != 1 || branch_gradient.front().size_bytes() !=
                                          output_gradients[0].size_bytes()) {
     return absl::InvalidArgumentError(
@@ -118,9 +118,9 @@ absl::StatusOr<BufferVec> ResidualLayer::bwd(
   }
   ASSIGN_OR_RETURN(
       auto input_gradient,
-      Buffer::Allocate(output_gradients[0].size_bytes(), executor));
+      Buffer::Allocate(executor, output_gradients[0].size_bytes()));
   ASSIGN_OR_RETURN(int elements,
-                   ElementCount(output_gradients[0], sizeof(float), executor,
+                   ElementCount(executor, output_gradients[0], sizeof(float),
                                 "residual output gradient"));
   AddKernel<float><<<TileCount(elements), 1, 0, executor.stream()>>>(
       static_cast<const float*>(output_gradients[0].data()),
@@ -142,9 +142,9 @@ ComposedLayer::ComposedLayer(DataType data_type,
   }
 }
 
-absl::StatusOr<Buffer> ComposedLayer::fwd(absl::Span<const Buffer> inputs,
-                                          Tape* tape,
-                                          cuda::Executor& executor) const {
+absl::StatusOr<Buffer> ComposedLayer::fwd(cuda::Executor& executor,
+                                          absl::Span<const Buffer> inputs,
+                                          Tape* tape) const {
   if (inputs.size() != 1 || tape == nullptr) {
     return absl::InvalidArgumentError(
         "ComposedLayer fwd expects one input and a non-null tape");
@@ -156,7 +156,7 @@ absl::StatusOr<Buffer> ComposedLayer::fwd(absl::Span<const Buffer> inputs,
     Tape child_tape;
     BufferVec child_inputs = {activation};
     ASSIGN_OR_RETURN(auto output,
-                     layer->fwd(child_inputs, &child_tape, executor));
+                     layer->fwd(executor, child_inputs, &child_tape));
     activation = std::move(output);
     tape->children.push_back(std::move(child_tape));
   }
@@ -164,8 +164,8 @@ absl::StatusOr<Buffer> ComposedLayer::fwd(absl::Span<const Buffer> inputs,
 }
 
 absl::StatusOr<BufferVec> ComposedLayer::bwd(
-    absl::Span<const Buffer> output_gradients, Tape tape,
-    cuda::Executor& executor) {
+    cuda::Executor& executor, absl::Span<const Buffer> output_gradients,
+    Tape tape) {
   if (output_gradients.size() != 1 || tape.children.size() != layers_.size()) {
     return absl::InvalidArgumentError(
         "ComposedLayer bwd received an incompatible gradient or tape");
@@ -173,10 +173,9 @@ absl::StatusOr<BufferVec> ComposedLayer::bwd(
   Buffer gradient = output_gradients.front();
   for (size_t index = layers_.size(); index-- > 0;) {
     BufferVec child_gradients = {gradient};
-    ASSIGN_OR_RETURN(
-        auto input_gradients,
-        layers_[index]->bwd(child_gradients, std::move(tape.children[index]),
-                            executor));
+    ASSIGN_OR_RETURN(auto input_gradients,
+                     layers_[index]->bwd(executor, child_gradients,
+                                         std::move(tape.children[index])));
     if (index == 0 && input_gradients.empty()) return BufferVec{};
     if (input_gradients.size() != 1) {
       return absl::InternalError(

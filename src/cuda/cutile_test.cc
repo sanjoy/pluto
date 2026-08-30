@@ -66,9 +66,9 @@ TEST_F(CuTileTest, AddsOneTilePerLogicalBlock) {
     right_host[index] = 3 * index + 7;
   }
 
-  auto left = Buffer::Allocate(sizeof(left_host), *executor_);
-  auto right = Buffer::Allocate(sizeof(right_host), *executor_);
-  auto output = Buffer::Allocate(sizeof(output_host), *executor_);
+  auto left = Buffer::Allocate(*executor_, sizeof(left_host));
+  auto right = Buffer::Allocate(*executor_, sizeof(right_host));
+  auto output = Buffer::Allocate(*executor_, sizeof(output_host));
   ASSERT_TRUE(left.ok()) << left.status();
   ASSERT_TRUE(right.ok()) << right.status();
   ASSERT_TRUE(output.ok()) << output.status();

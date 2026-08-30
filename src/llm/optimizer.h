@@ -30,7 +30,7 @@ class Optimizer {
   virtual ~Optimizer() = default;
 
   static absl::StatusOr<std::unique_ptr<Optimizer>> Create(
-      Layer& model, AdamWConfig config, cuda::Executor& executor);
+      cuda::Executor& executor, Layer& model, AdamWConfig config);
 
   // Clears every unique parameter-gradient accumulator. Call this before the
   // first backward pass. Step() also clears gradients after applying updates.
@@ -49,7 +49,7 @@ class Optimizer {
 class AdamWOptimizer final : public Optimizer {
  public:
   static absl::StatusOr<std::unique_ptr<AdamWOptimizer>> Create(
-      Layer& model, AdamWConfig config, cuda::Executor& executor);
+      cuda::Executor& executor, Layer& model, AdamWConfig config);
 
   absl::Status ZeroGrad() override;
   absl::Status Step() override;
@@ -58,7 +58,7 @@ class AdamWOptimizer final : public Optimizer {
   size_t parameter_tensor_count() const override { return weights_.size(); }
 
  private:
-  AdamWOptimizer(AdamWConfig config, cuda::Executor& executor,
+  AdamWOptimizer(cuda::Executor& executor, AdamWConfig config,
                  std::vector<Buffer> weights, std::vector<Buffer> gradients,
                  std::vector<Buffer> first_moments,
                  std::vector<Buffer> second_moments)

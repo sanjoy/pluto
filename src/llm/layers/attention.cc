@@ -181,8 +181,8 @@ __tile_global__ void FlashAttentionBackwardKernel(
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<AttentionLayer>> AttentionLayer::Create(
-    int context_length, int num_heads, int embedding_dim, DataType data_type,
-    cuda::Executor& executor) {
+    cuda::Executor& executor, int context_length, int num_heads,
+    int embedding_dim, DataType data_type) {
   RETURN_IF_ERROR(internal::ValidateComputeType(data_type));
   if (context_length <= 0 || num_heads <= 0 || embedding_dim <= 0) {
     return absl::InvalidArgumentError(
@@ -195,12 +195,12 @@ absl::StatusOr<std::unique_ptr<AttentionLayer>> AttentionLayer::Create(
   RETURN_IF_ERROR(internal::ValidateTiledExtent(embedding_dim / num_heads,
                                                 "attention head dimension"));
   return std::unique_ptr<AttentionLayer>(new AttentionLayer(
-      context_length, num_heads, embedding_dim, data_type, executor));
+      executor, context_length, num_heads, embedding_dim, data_type));
 }
 
-absl::StatusOr<Buffer> AttentionLayer::fwd(absl::Span<const Buffer> inputs,
-                                           Tape* tape,
-                                           cuda::Executor& executor) const {
+absl::StatusOr<Buffer> AttentionLayer::fwd(cuda::Executor& executor,
+                                           absl::Span<const Buffer> inputs,
+                                           Tape* tape) const {
   RETURN_IF_ERROR(
       internal::ValidateExecutor(executor_, executor, "AttentionLayer"));
   if (inputs.size() != 1 || tape == nullptr) {
@@ -208,17 +208,17 @@ absl::StatusOr<Buffer> AttentionLayer::fwd(absl::Span<const Buffer> inputs,
         "AttentionLayer fwd expects packed Q/K/V and a non-null tape");
   }
   ASSIGN_OR_RETURN(int rows, internal::ActivationRows(
-                                 inputs[0], 3 * embedding_dim_, output_type_,
-                                 executor, "attention packed Q/K/V input"));
+                                 executor, inputs[0], 3 * embedding_dim_,
+                                 output_type_, "attention packed Q/K/V input"));
   if (rows % context_length_ != 0) {
     return absl::InvalidArgumentError(
         "attention rows must be divisible by context_length");
   }
   ASSIGN_OR_RETURN(
       auto output,
-      Buffer::Allocate(static_cast<size_t>(rows) * embedding_dim_ *
-                           internal::ActivationElementBytes(output_type_),
-                       executor));
+      Buffer::Allocate(executor,
+                       static_cast<size_t>(rows) * embedding_dim_ *
+                           internal::ActivationElementBytes(output_type_)));
   const int head_dimension = embedding_dim_ / num_heads_;
   const int blocks = rows * num_heads_ * internal::TileCount(head_dimension);
   const float scale = 1.0f / std::sqrt(static_cast<float>(head_dimension));
@@ -241,31 +241,31 @@ absl::StatusOr<Buffer> AttentionLayer::fwd(absl::Span<const Buffer> inputs,
 }
 
 absl::StatusOr<BufferVec> AttentionLayer::bwd(
-    absl::Span<const Buffer> output_gradients, Tape tape,
-    cuda::Executor& executor) {
+    cuda::Executor& executor, absl::Span<const Buffer> output_gradients,
+    Tape tape) {
   RETURN_IF_ERROR(
       internal::ValidateExecutor(executor_, executor, "AttentionLayer"));
   if (output_gradients.size() != 1 || tape.intermediates.size() != 2) {
     return absl::InvalidArgumentError(
         "AttentionLayer bwd received an incompatible gradient or tape");
   }
-  ASSIGN_OR_RETURN(int rows,
-                   internal::MatrixRows(output_gradients[0], embedding_dim_,
-                                        executor, "attention output gradient"));
+  ASSIGN_OR_RETURN(int rows, internal::MatrixRows(executor, output_gradients[0],
+                                                  embedding_dim_,
+                                                  "attention output gradient"));
   RETURN_IF_ERROR(internal::ValidateBuffer(
-      tape.intermediates[0],
+      executor, tape.intermediates[0],
       static_cast<size_t>(rows) * 3 * embedding_dim_ *
           internal::ActivationElementBytes(output_type_),
-      executor, "attention saved Q/K/V"));
+      "attention saved Q/K/V"));
   RETURN_IF_ERROR(internal::ValidateBuffer(
-      tape.intermediates[1],
+      executor, tape.intermediates[1],
       static_cast<size_t>(rows) * embedding_dim_ *
           internal::ActivationElementBytes(output_type_),
-      executor, "attention saved output"));
-  ASSIGN_OR_RETURN(auto qkv_gradient,
-                   Buffer::Allocate(static_cast<size_t>(rows) * 3 *
-                                        embedding_dim_ * sizeof(float),
-                                    executor));
+      "attention saved output"));
+  ASSIGN_OR_RETURN(
+      auto qkv_gradient,
+      Buffer::Allocate(executor, static_cast<size_t>(rows) * 3 *
+                                     embedding_dim_ * sizeof(float)));
   RETURN_IF_ERROR(internal::CudaStatus(
       cudaMemsetAsync(qkv_gradient.data(), 0, qkv_gradient.size_bytes(),
                       executor.stream()),

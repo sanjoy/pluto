@@ -48,8 +48,8 @@ inline absl::Status ValidateExecutor(cuda::Executor& expected,
   return absl::OkStatus();
 }
 
-inline absl::StatusOr<int> MatrixRows(const Buffer& buffer, int columns,
-                                      cuda::Executor& executor,
+inline absl::StatusOr<int> MatrixRows(cuda::Executor& executor,
+                                      const Buffer& buffer, int columns,
                                       const char* name) {
   if (&buffer.executor() != &executor) {
     return absl::InvalidArgumentError(
@@ -68,9 +68,9 @@ inline absl::StatusOr<int> MatrixRows(const Buffer& buffer, int columns,
   return static_cast<int>(rows);
 }
 
-inline absl::StatusOr<int> ActivationRows(const Buffer& buffer, int columns,
+inline absl::StatusOr<int> ActivationRows(cuda::Executor& executor,
+                                          const Buffer& buffer, int columns,
                                           DataType data_type,
-                                          cuda::Executor& executor,
                                           const char* name) {
   if (&buffer.executor() != &executor) {
     return absl::InvalidArgumentError(
@@ -91,9 +91,9 @@ inline absl::StatusOr<int> ActivationRows(const Buffer& buffer, int columns,
   return static_cast<int>(rows);
 }
 
-inline absl::StatusOr<int> ElementCount(const Buffer& buffer,
+inline absl::StatusOr<int> ElementCount(cuda::Executor& executor,
+                                        const Buffer& buffer,
                                         size_t element_bytes,
-                                        cuda::Executor& executor,
                                         const char* name) {
   if (&buffer.executor() != &executor) {
     return absl::InvalidArgumentError(
@@ -133,8 +133,9 @@ inline absl::Status ValidateFp16(DataType data_type) {
   return ValidateComputeType(data_type);
 }
 
-inline absl::Status ValidateBuffer(const Buffer& buffer, size_t expected_bytes,
-                                   cuda::Executor& executor, const char* name) {
+inline absl::Status ValidateBuffer(cuda::Executor& executor,
+                                   const Buffer& buffer, size_t expected_bytes,
+                                   const char* name) {
   if (buffer.size_bytes() != expected_bytes) {
     return absl::InvalidArgumentError(
         absl::StrCat(name, " has ", buffer.size_bytes(), " bytes; expected ",

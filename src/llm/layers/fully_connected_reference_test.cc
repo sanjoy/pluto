@@ -21,7 +21,7 @@ TEST_F(LayerReferenceTest, ForwardAndBackwardMatchAcrossShapesAndTypes) {
                    << "type=" << static_cast<int>(type) << " rows=" << rows
                    << " input=" << input_dim << " output=" << output_dim);
       auto device_layer =
-          FullyConnectedLayer::Create(input_dim, output_dim, type, *executor_);
+          FullyConnectedLayer::Create(*executor_, input_dim, output_dim, type);
       auto reference_layer =
           FullyConnectedLayerReference::Create(input_dim, output_dim, type);
       ASSERT_TRUE(device_layer.ok()) << device_layer.status();
@@ -38,11 +38,11 @@ TEST_F(LayerReferenceTest, ForwardAndBackwardMatchAcrossShapesAndTypes) {
       for (int index = 0; index < output_dim; ++index) {
         bias[index] = 0.03f * std::cos(static_cast<float>(index) * 0.7f);
       }
-      ASSERT_TRUE(SetFloatBufferPair(device_weights[0], &reference_weights[0],
-                                     matrix, *executor_)
+      ASSERT_TRUE(SetFloatBufferPair(*executor_, device_weights[0],
+                                     &reference_weights[0], matrix)
                       .ok());
-      ASSERT_TRUE(SetFloatBufferPair(device_weights[1], &reference_weights[1],
-                                     bias, *executor_)
+      ASSERT_TRUE(SetFloatBufferPair(*executor_, device_weights[1],
+                                     &reference_weights[1], bias)
                       .ok());
 
       std::vector<float> input(static_cast<size_t>(rows) * input_dim);
@@ -55,9 +55,9 @@ TEST_F(LayerReferenceTest, ForwardAndBackwardMatchAcrossShapesAndTypes) {
         output_gradient[index] =
             0.2f * std::cos(static_cast<float>(index) * 0.11f);
       }
-      auto input_pair = MakeActivationBufferPair(input, type, *executor_);
+      auto input_pair = MakeActivationBufferPair(*executor_, input, type);
       auto gradient_pair =
-          MakeRawBufferPair<float>(output_gradient, *executor_);
+          MakeRawBufferPair<float>(*executor_, output_gradient);
       ASSERT_TRUE(input_pair.ok()) << input_pair.status();
       ASSERT_TRUE(gradient_pair.ok()) << gradient_pair.status();
 
@@ -66,7 +66,7 @@ TEST_F(LayerReferenceTest, ForwardAndBackwardMatchAcrossShapesAndTypes) {
       BufferVec device_inputs = {input_pair->device};
       HostBufferVec reference_inputs = {input_pair->host};
       auto device_output =
-          (*device_layer)->fwd(device_inputs, &device_tape, *executor_);
+          (*device_layer)->fwd(*executor_, device_inputs, &device_tape);
       auto reference_output =
           (*reference_layer)->fwd(reference_inputs, &reference_tape);
       ASSERT_TRUE(device_output.ok()) << device_output.status();
@@ -78,8 +78,8 @@ TEST_F(LayerReferenceTest, ForwardAndBackwardMatchAcrossShapesAndTypes) {
       HostBufferVec reference_output_gradients = {gradient_pair->host};
       auto device_input_gradients =
           (*device_layer)
-              ->bwd(device_output_gradients, std::move(device_tape),
-                    *executor_);
+              ->bwd(*executor_, device_output_gradients,
+                    std::move(device_tape));
       auto reference_input_gradients =
           (*reference_layer)
               ->bwd(reference_output_gradients, std::move(reference_tape));
@@ -105,7 +105,7 @@ TEST_F(LayerReferenceTest, ForwardAndBackwardMatchAcrossShapesAndTypes) {
 }
 
 TEST_F(LayerReferenceTest, FP8IsRejectedConsistently) {
-  auto device = FullyConnectedLayer::Create(16, DataType::FP8, *executor_);
+  auto device = FullyConnectedLayer::Create(*executor_, 16, DataType::FP8);
   auto reference = FullyConnectedLayerReference::Create(16, DataType::FP8);
   ASSERT_FALSE(device.ok());
   ASSERT_FALSE(reference.ok());
