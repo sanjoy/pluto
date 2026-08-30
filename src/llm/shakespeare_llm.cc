@@ -10,6 +10,7 @@
 #include <iostream>
 #include <memory>
 #include <random>
+#include <streambuf>
 #include <string>
 #include <utility>
 #include <vector>
@@ -66,12 +67,93 @@ ABSL_FLAG(int, generation_tokens, 300, "Tokens generated after each prompt");
 ABSL_FLAG(double, temperature, 0.8, "Sampling temperature");
 ABSL_FLAG(int, batch_size, 1024,
           "Token rows per batch; must be a multiple of context length 1024");
+ABSL_FLAG(std::string, log_file, "/tmp/train.log",
+          "File that receives a copy of stdout; truncated at startup");
 
 namespace pluto::llm {
 namespace {
 
 using tokenizer::Gpt2Detokenizer;
 using tokenizer::Gpt2Tokenizer;
+
+// Copies writes to two stream buffers. Keeping this at the stream-buffer level
+// means progress callbacks, generated samples, and interactive output cannot
+// accidentally bypass the training log when new output is added below.
+class TeeStreamBuffer final : public std::streambuf {
+ public:
+  TeeStreamBuffer(std::streambuf* first, std::streambuf* second)
+      : first_(first), second_(second) {}
+
+ protected:
+  int_type overflow(int_type character) override {
+    if (traits_type::eq_int_type(character, traits_type::eof())) {
+      return traits_type::not_eof(character);
+    }
+    const char value = traits_type::to_char_type(character);
+    if (traits_type::eq_int_type(first_->sputc(value), traits_type::eof()) ||
+        traits_type::eq_int_type(second_->sputc(value), traits_type::eof())) {
+      return traits_type::eof();
+    }
+    if (value == '\n' && second_->pubsync() != 0) {
+      return traits_type::eof();
+    }
+    return character;
+  }
+
+  std::streamsize xsputn(const char* data, std::streamsize size) override {
+    const std::streamsize first_size = first_->sputn(data, size);
+    const std::streamsize second_size = second_->sputn(data, size);
+    const std::streamsize written = std::min(first_size, second_size);
+    if (std::find(data, data + written, '\n') != data + written &&
+        second_->pubsync() != 0) {
+      return 0;
+    }
+    return written;
+  }
+
+  int sync() override {
+    const int first_status = first_->pubsync();
+    const int second_status = second_->pubsync();
+    return first_status == 0 && second_status == 0 ? 0 : -1;
+  }
+
+ private:
+  std::streambuf* first_;
+  std::streambuf* second_;
+};
+
+// Installs a process-local stdout tee for the lifetime of Run(). Destruction
+// restores stdout even when an error-return macro exits Run() early.
+class ScopedStdoutTee final {
+ public:
+  explicit ScopedStdoutTee(const std::string& path)
+      : file_(path, std::ios::out | std::ios::trunc),
+        original_(std::cout.rdbuf()),
+        tee_(original_, file_.rdbuf()) {
+    if (file_.is_open()) {
+      std::cout.rdbuf(&tee_);
+      installed_ = true;
+    }
+  }
+
+  ScopedStdoutTee(const ScopedStdoutTee&) = delete;
+  ScopedStdoutTee& operator=(const ScopedStdoutTee&) = delete;
+
+  ~ScopedStdoutTee() {
+    if (!installed_) return;
+    std::cout.flush();
+    std::cout.rdbuf(original_);
+    file_.flush();
+  }
+
+  bool is_open() const { return file_.is_open(); }
+
+ private:
+  std::ofstream file_;
+  std::streambuf* original_;
+  TeeStreamBuffer tee_;
+  bool installed_ = false;
+};
 
 // This binary deliberately exposes no architecture flags: these constants are
 // the model contract requested for Shakespeare. The vocabulary is physically
@@ -361,6 +443,17 @@ absl::StatusOr<std::string> Generate(
 }
 
 absl::Status Run(cuda::Executor& executor) {
+  const std::string log_path = absl::GetFlag(FLAGS_log_file);
+  if (log_path.empty()) {
+    return absl::InvalidArgumentError("log_file must not be empty");
+  }
+  ScopedStdoutTee log(log_path);
+  if (!log.is_open()) {
+    return absl::FailedPreconditionError(
+        absl::StrCat("cannot open training log for writing: ", log_path));
+  }
+  std::cout << "training log: " << log_path << '\n';
+
   ASSIGN_OR_RETURN(auto corpus, LoadCorpus());
   ASSIGN_OR_RETURN(auto tokenizer_directory, TokenizerDirectory());
   ASSIGN_OR_RETURN(auto tokenizer, Gpt2Tokenizer::Load(tokenizer_directory));
