@@ -24,7 +24,7 @@ class DataSetTest : public testing::Test {
     ASSERT_EQ(cudaStreamDestroy(stream_), cudaSuccess);
   }
 
-  std::vector<int> CopyToHost(const gpu::Buffer& buffer) {
+  std::vector<int> CopyToHost(const cuda::Buffer& buffer) {
     std::vector<int> result(buffer.size_bytes() / sizeof(int));
     EXPECT_EQ(cudaMemcpyAsync(result.data(), buffer.data(),
                               buffer.size_bytes(), cudaMemcpyDeviceToHost,

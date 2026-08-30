@@ -35,7 +35,7 @@ namespace {
 __tile_global__ void CrossEntropyForwardKernel(
     const float* __restrict__ logits, const int* __restrict__ targets,
     int rows, int padded_vocab_size, float* __restrict__ losses) {
-  namespace ct = cuda::tiles;
+  namespace ct = ::cuda::tiles;
   using namespace ct::literals;
 
   auto logits_view = ct::partition_view{
@@ -72,7 +72,7 @@ __tile_global__ void CrossEntropyForwardKernel(
 __tile_global__ void CrossEntropyBackwardKernel(
     const float* __restrict__ logits, const int* __restrict__ targets,
     int rows, int padded_vocab_size, float* __restrict__ logits_gradient) {
-  namespace ct = cuda::tiles;
+  namespace ct = ::cuda::tiles;
   using namespace ct::literals;
 
   auto logits_view = ct::partition_view{

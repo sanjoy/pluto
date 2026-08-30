@@ -25,7 +25,7 @@ __tile_global__ void FlashAttentionForwardKernel(
     const Activation* __restrict__ qkv, int rows, int context_length,
     int num_heads, int embedding_dim, float scale,
     Activation* __restrict__ output) {
-  namespace ct = cuda::tiles;
+  namespace ct = ::cuda::tiles;
   using namespace ct::literals;
   auto qkv_view = ct::partition_view{
       ct::tensor_span{qkv, ct::extents{rows, 3 * embedding_dim}},
@@ -82,7 +82,7 @@ __tile_global__ void FlashAttentionBackwardKernel(
     const float* __restrict__ output_gradient, int rows, int context_length,
     int num_heads, int embedding_dim, float scale,
     float* __restrict__ qkv_gradient) {
-  namespace ct = cuda::tiles;
+  namespace ct = ::cuda::tiles;
   using namespace ct::literals;
   auto qkv_view = ct::partition_view{
       ct::tensor_span{qkv, ct::extents{rows, 3 * embedding_dim}},

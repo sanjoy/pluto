@@ -10,7 +10,7 @@
 
 #include "gtest/gtest.h"
 
-namespace pluto::gpu {
+namespace pluto::cuda {
 namespace {
 
 constexpr size_t kByteCount = 4096;
@@ -104,4 +104,4 @@ TEST_F(BufferTest, ZeroByteBufferRetainsItsStreamWithoutAllocatingStorage) {
 }
 
 }  // namespace
-}  // namespace pluto::gpu
+}  // namespace pluto::cuda

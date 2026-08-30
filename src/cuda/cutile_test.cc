@@ -7,7 +7,7 @@
 #include "gtest/gtest.h"
 #include "src/cuda/buffer.h"
 
-namespace pluto::gpu {
+namespace pluto::cuda {
 namespace {
 
 constexpr int kElementCount = 128;
@@ -20,7 +20,7 @@ constexpr int kTileSize = 8;
 __tile_global__ void AddTiles(const int* __restrict__ left,
                               const int* __restrict__ right,
                               int* __restrict__ output) {
-  namespace ct = cuda::tiles;
+  namespace ct = ::cuda::tiles;
   using namespace ct::literals;
 
   left = ct::assume_aligned(left, 16_ic);
@@ -97,4 +97,4 @@ TEST_F(CuTileTest, AddsOneTilePerLogicalBlock) {
 }
 
 }  // namespace
-}  // namespace pluto::gpu
+}  // namespace pluto::cuda

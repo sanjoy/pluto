@@ -19,8 +19,8 @@ namespace pluto {
 // `targets` contains the same sequences shifted left by one token. Both are
 // int32 device buffers with `batch_size` elements on the same CUDA stream.
 struct TokenBatch {
-  gpu::Buffer tokens;
-  gpu::Buffer targets;
+  cuda::Buffer tokens;
+  cuda::Buffer targets;
   int batch_size;
 };
 
@@ -71,14 +71,14 @@ class InMemoryDataSetIterator final : public DataSetIterator {
  private:
   InMemoryDataSetIterator(std::vector<int> corpus,
                           InMemoryDataSetOptions options,
-                          cudaStream_t stream, gpu::Buffer token_buffer,
-                          gpu::Buffer target_buffer);
+                          cudaStream_t stream, cuda::Buffer token_buffer,
+                          cuda::Buffer target_buffer);
 
   std::vector<int> corpus_;
   InMemoryDataSetOptions options_;
   cudaStream_t stream_;
-  gpu::Buffer token_buffer_;
-  gpu::Buffer target_buffer_;
+  cuda::Buffer token_buffer_;
+  cuda::Buffer target_buffer_;
   std::vector<int> host_tokens_;
   std::vector<int> host_targets_;
   std::mt19937_64 random_;

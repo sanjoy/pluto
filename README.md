@@ -6,11 +6,11 @@ GoogleTest.
 
 ## GPU buffer
 
-The public target `//src/cuda:buffer` provides `pluto::gpu::Buffer`, a small
+The public target `//src/cuda:buffer` provides `pluto::cuda::Buffer`, a small
 untyped CUDA allocation:
 
 ```cpp
-auto buffer = pluto::gpu::Buffer::Allocate(byte_count, stream);
+auto buffer = pluto::cuda::Buffer::Allocate(byte_count, stream);
 cudaMemsetAsync(buffer->data(), 0, buffer->size_bytes(), buffer->stream());
 ```
 

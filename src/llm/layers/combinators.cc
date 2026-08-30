@@ -38,7 +38,7 @@ __tile_global__ void AddKernel(const Element* __restrict__ left,
                                const Element* __restrict__ right,
                                int elements,
                                Element* __restrict__ output) {
-  namespace ct = cuda::tiles;
+  namespace ct = ::cuda::tiles;
   using namespace ct::literals;
 
   auto left_view = ct::partition_view{

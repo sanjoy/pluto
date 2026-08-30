@@ -11,7 +11,7 @@
 
 namespace pluto::llm {
 
-using Buffer = gpu::Buffer;
+using Buffer = cuda::Buffer;
 using BufferVec = absl::InlinedVector<Buffer, 2>;
 using HostBuffer = host::Buffer;
 using HostBufferVec = absl::InlinedVector<HostBuffer, 2>;

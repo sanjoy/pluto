@@ -24,7 +24,7 @@ __tile_global__ void AdamWUpdateKernel(
     int elements, float learning_rate, float beta1, float beta2,
     float inverse_bias_correction1, float inverse_bias_correction2,
     float epsilon, float weight_decay) {
-  namespace ct = cuda::tiles;
+  namespace ct = ::cuda::tiles;
   using namespace ct::literals;
 
   auto weight_view = ct::partition_view{

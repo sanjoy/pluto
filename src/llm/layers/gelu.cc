@@ -21,7 +21,7 @@ template <class Activation>
 __tile_global__ void GeluForwardKernel(
     const Activation* __restrict__ input, int elements,
     Activation* __restrict__ output) {
-  namespace ct = cuda::tiles;
+  namespace ct = ::cuda::tiles;
   using namespace ct::literals;
   auto input_view = ct::partition_view{
       ct::tensor_span{input, ct::extents{elements}}, ct::shape{16_ic}};
@@ -40,7 +40,7 @@ __tile_global__ void GeluBackwardKernel(
     const Activation* __restrict__ input,
     const float* __restrict__ output_gradient, int elements,
     float* __restrict__ input_gradient) {
-  namespace ct = cuda::tiles;
+  namespace ct = ::cuda::tiles;
   using namespace ct::literals;
   auto input_view = ct::partition_view{
       ct::tensor_span{input, ct::extents{elements}}, ct::shape{16_ic}};

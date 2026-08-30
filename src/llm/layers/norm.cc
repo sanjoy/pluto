@@ -23,7 +23,7 @@ __tile_global__ void LayerNormForwardKernel(
     const Activation* __restrict__ input, const float* __restrict__ gamma,
     const float* __restrict__ beta, int rows, int embedding_dim, float epsilon,
     Activation* __restrict__ output) {
-  namespace ct = cuda::tiles;
+  namespace ct = ::cuda::tiles;
   using namespace ct::literals;
   auto input_view = ct::partition_view{
       ct::tensor_span{input, ct::extents{rows, embedding_dim}},
@@ -65,7 +65,7 @@ __tile_global__ void LayerNormInputGradientKernel(
     const Activation* __restrict__ input, const float* __restrict__ gamma,
     const float* __restrict__ output_gradient, int rows, int embedding_dim,
     float epsilon, float* __restrict__ input_gradient) {
-  namespace ct = cuda::tiles;
+  namespace ct = ::cuda::tiles;
   using namespace ct::literals;
   auto input_view = ct::partition_view{
       ct::tensor_span{input, ct::extents{rows, embedding_dim}},
@@ -126,7 +126,7 @@ __tile_global__ void LayerNormParameterGradientKernel(
     const float* __restrict__ output_gradient, int rows, int embedding_dim,
     float epsilon, float* __restrict__ gamma_gradient,
     float* __restrict__ beta_gradient) {
-  namespace ct = cuda::tiles;
+  namespace ct = ::cuda::tiles;
   using namespace ct::literals;
   auto input_view = ct::partition_view{
       ct::tensor_span{input, ct::extents{rows, embedding_dim}},

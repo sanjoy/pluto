@@ -7,7 +7,7 @@
 
 #include "absl/status/statusor.h"
 
-namespace pluto::gpu {
+namespace pluto::cuda {
 
 // An untyped, reference-counted device allocation tied to one CUDA stream.
 //
@@ -46,4 +46,4 @@ class Buffer final {
   std::shared_ptr<Allocation> allocation_;
 };
 
-}  // namespace pluto::gpu
+}  // namespace pluto::cuda

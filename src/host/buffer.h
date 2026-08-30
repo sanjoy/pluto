@@ -11,7 +11,7 @@ namespace pluto::host {
 // A small reference-counted byte buffer for CPU reference implementations.
 //
 // This intentionally mirrors only the ownership and byte-oriented interface of
-// gpu::Buffer. CPU work is synchronous, so there is no stream association and
+// cuda::Buffer. CPU work is synchronous, so there is no stream association and
 // no asynchronous allocation/free policy to model.
 class Buffer final {
  public:

@@ -30,8 +30,8 @@ absl::Status CudaStatus(cudaError_t error, const char* operation) {
 
 InMemoryDataSetIterator::InMemoryDataSetIterator(
     std::vector<int> corpus, InMemoryDataSetOptions options,
-    cudaStream_t stream, gpu::Buffer token_buffer,
-    gpu::Buffer target_buffer)
+    cudaStream_t stream, cuda::Buffer token_buffer,
+    cuda::Buffer target_buffer)
     : corpus_(std::move(corpus)),
       options_(options),
       stream_(stream),
@@ -67,9 +67,9 @@ InMemoryDataSetIterator::Create(absl::Span<const int> tokens,
   const size_t buffer_bytes =
       static_cast<size_t>(options.batch_size) * sizeof(int);
   ASSIGN_OR_RETURN(auto token_buffer,
-                   gpu::Buffer::Allocate(buffer_bytes, stream));
+                   cuda::Buffer::Allocate(buffer_bytes, stream));
   ASSIGN_OR_RETURN(auto target_buffer,
-                   gpu::Buffer::Allocate(buffer_bytes, stream));
+                   cuda::Buffer::Allocate(buffer_bytes, stream));
   return std::unique_ptr<InMemoryDataSetIterator>(
       new InMemoryDataSetIterator(
           std::vector<int>(tokens.begin(), tokens.end()), options, stream,

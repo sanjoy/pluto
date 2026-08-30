@@ -34,7 +34,7 @@ __tile_global__ void DenseForwardKernel(
     const Activation* __restrict__ input, const float* __restrict__ matrix,
     const float* __restrict__ bias, int rows, int input_dim, int output_dim,
     Activation* __restrict__ output) {
-  namespace ct = cuda::tiles;
+  namespace ct = ::cuda::tiles;
   using namespace ct::literals;
   auto input_view = ct::partition_view{
       ct::tensor_span{input, ct::extents{rows, input_dim}},
@@ -70,7 +70,7 @@ __tile_global__ void DenseInputGradientKernel(
     const float* __restrict__ output_gradient,
     const float* __restrict__ matrix, int rows, int input_dim, int output_dim,
     float* __restrict__ input_gradient) {
-  namespace ct = cuda::tiles;
+  namespace ct = ::cuda::tiles;
   using namespace ct::literals;
   auto gradient_view = ct::partition_view{
       ct::tensor_span{output_gradient, ct::extents{rows, output_dim}},
@@ -103,7 +103,7 @@ __tile_global__ void DenseWeightGradientKernel(
     const Activation* __restrict__ input,
     const float* __restrict__ output_gradient, int rows, int input_dim,
     int output_dim, float* __restrict__ matrix_gradient) {
-  namespace ct = cuda::tiles;
+  namespace ct = ::cuda::tiles;
   using namespace ct::literals;
   auto input_view = ct::partition_view{
       ct::tensor_span{input, ct::extents{rows, input_dim}},
@@ -134,7 +134,7 @@ __tile_global__ void DenseWeightGradientKernel(
 __tile_global__ void DenseBiasGradientKernel(
     const float* __restrict__ output_gradient, int rows, int output_dim,
     float* __restrict__ bias_gradient) {
-  namespace ct = cuda::tiles;
+  namespace ct = ::cuda::tiles;
   using namespace ct::literals;
   auto gradient_view = ct::partition_view{
       ct::tensor_span{output_gradient, ct::extents{rows, output_dim}},

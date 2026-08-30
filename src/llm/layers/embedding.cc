@@ -32,7 +32,7 @@ __tile_global__ void EmbeddingForwardKernel(
     const int* __restrict__ tokens, const float* __restrict__ table,
     int rows, int padded_vocab_size, int embedding_dim,
     Activation* __restrict__ output) {
-  namespace ct = cuda::tiles;
+  namespace ct = ::cuda::tiles;
   using namespace ct::literals;
   auto token_view = ct::partition_view{
       ct::tensor_span{tokens, ct::extents{rows}}, ct::shape{1_ic}};
@@ -55,7 +55,7 @@ __tile_global__ void EmbeddingForwardKernel(
 __tile_global__ void EmbeddingBackwardKernel(
     const int* __restrict__ tokens, const float* __restrict__ output_gradient,
     int rows, int embedding_dim, float* __restrict__ table_gradient) {
-  namespace ct = cuda::tiles;
+  namespace ct = ::cuda::tiles;
   using namespace ct::literals;
   auto token_view = ct::partition_view{
       ct::tensor_span{tokens, ct::extents{rows}}, ct::shape{1_ic}};
@@ -79,7 +79,7 @@ __tile_global__ void LanguageModelingHeadForwardKernel(
     const Activation* __restrict__ input, const float* __restrict__ table,
     int rows, int padded_vocab_size, int embedding_dim,
     float* __restrict__ output) {
-  namespace ct = cuda::tiles;
+  namespace ct = ::cuda::tiles;
   using namespace ct::literals;
   auto input_view = ct::partition_view{
       ct::tensor_span{input, ct::extents{rows, embedding_dim}},
@@ -111,7 +111,7 @@ __tile_global__ void LanguageModelingHeadForwardKernel(
 __tile_global__ void MaskPaddedLogitsKernel(
     float* __restrict__ logits, int rows, int vocab_size,
     int padded_vocab_size) {
-  namespace ct = cuda::tiles;
+  namespace ct = ::cuda::tiles;
   using namespace ct::literals;
   auto logits_view = ct::partition_view{
       ct::tensor_span{logits, ct::extents{rows, padded_vocab_size}},
@@ -133,7 +133,7 @@ __tile_global__ void LanguageModelingHeadInputGradientKernel(
     const float* __restrict__ output_gradient,
     const float* __restrict__ table, int rows, int padded_vocab_size,
     int embedding_dim, float* __restrict__ input_gradient) {
-  namespace ct = cuda::tiles;
+  namespace ct = ::cuda::tiles;
   using namespace ct::literals;
   auto gradient_view = ct::partition_view{
       ct::tensor_span{output_gradient, ct::extents{rows, padded_vocab_size}},
@@ -167,7 +167,7 @@ __tile_global__ void LanguageModelingHeadWeightGradientKernel(
     const float* __restrict__ output_gradient, int rows,
     int padded_vocab_size, int embedding_dim,
     float* __restrict__ table_gradient) {
-  namespace ct = cuda::tiles;
+  namespace ct = ::cuda::tiles;
   using namespace ct::literals;
   auto input_view = ct::partition_view{
       ct::tensor_span{input, ct::extents{rows, embedding_dim}},
@@ -203,7 +203,7 @@ __tile_global__ void PositionEmbeddingForwardKernel(
     const Activation* __restrict__ input, const float* __restrict__ positions,
     int rows, int context_length, int embedding_dim,
     Activation* __restrict__ output) {
-  namespace ct = cuda::tiles;
+  namespace ct = ::cuda::tiles;
   using namespace ct::literals;
   auto input_view = ct::partition_view{
       ct::tensor_span{input, ct::extents{rows, embedding_dim}},
@@ -226,7 +226,7 @@ __tile_global__ void PositionEmbeddingForwardKernel(
 __tile_global__ void PositionEmbeddingBackwardKernel(
     const float* __restrict__ output_gradient, int rows, int context_length,
     int embedding_dim, float* __restrict__ position_gradient) {
-  namespace ct = cuda::tiles;
+  namespace ct = ::cuda::tiles;
   using namespace ct::literals;
   auto gradient_view = ct::partition_view{
       ct::tensor_span{output_gradient, ct::extents{rows, embedding_dim}},

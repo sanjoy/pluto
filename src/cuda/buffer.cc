@@ -10,7 +10,7 @@
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 
-namespace pluto::gpu {
+namespace pluto::cuda {
 namespace {
 
 absl::Status CudaAllocationError(cudaError_t error, size_t size_bytes) {
@@ -83,4 +83,4 @@ size_t Buffer::size_bytes() const { return allocation_->size_bytes; }
 
 cudaStream_t Buffer::stream() const { return allocation_->stream; }
 
-}  // namespace pluto::gpu
+}  // namespace pluto::cuda
