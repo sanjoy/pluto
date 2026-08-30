@@ -58,8 +58,10 @@ __tile_global__ void AddKernel(const Element* __restrict__ left,
 
 ResidualLayer::ResidualLayer(std::unique_ptr<Layer> layer)
     : layer_(std::move(layer)) {
-  for (Buffer& weight : layer_->weights()) weights_.push_back(weight);
-  for (Buffer& gradient : layer_->gradients()) gradients_.push_back(gradient);
+  for (const Buffer& weight : layer_->weights()) weights_.push_back(weight);
+  for (const Buffer& gradient : layer_->gradients()) {
+    gradients_.push_back(gradient);
+  }
 }
 
 absl::StatusOr<Buffer> ResidualLayer::fwd(
@@ -141,8 +143,10 @@ ComposedLayer::ComposedLayer(DataType data_type,
                              std::vector<std::unique_ptr<Layer>> layers)
     : output_type_(data_type), layers_(std::move(layers)) {
   for (const auto& layer : layers_) {
-    for (Buffer& weight : layer->weights()) weights_.push_back(weight);
-    for (Buffer& gradient : layer->gradients()) gradients_.push_back(gradient);
+    for (const Buffer& weight : layer->weights()) weights_.push_back(weight);
+    for (const Buffer& gradient : layer->gradients()) {
+      gradients_.push_back(gradient);
+    }
   }
 }
 
@@ -155,7 +159,7 @@ absl::StatusOr<Buffer> ComposedLayer::fwd(absl::Span<const Buffer> inputs,
   tape->intermediates.clear();
   tape->children.clear();
   Buffer activation = inputs.front();
-  for (auto& layer : layers_) {
+  for (const auto& layer : layers_) {
     Tape child_tape;
     BufferVec child_inputs = {activation};
     ASSIGN_OR_RETURN(auto output, layer->fwd(child_inputs, &child_tape));

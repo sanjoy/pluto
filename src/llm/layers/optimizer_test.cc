@@ -29,14 +29,14 @@ TEST_F(LayersTest, UpdatesFp32MasterWeightsAndClearsGradients) {
       .epsilon = 1e-6f,
       .weight_decay = 0.0f,
   };
-  auto optimizer = AdamWOptimizer::Create(**dense, config, stream_);
+  auto optimizer = AdamWOptimizer::Create(dense->get(), config, stream_);
   ASSERT_TRUE(optimizer.ok()) << optimizer.status();
   // Own the concrete AdamW implementation through the algorithm-independent
   // interface so the lifecycle calls below exercise virtual dispatch.
   std::unique_ptr<Optimizer> optimizer_interface = std::move(*optimizer);
   ASSERT_EQ(optimizer_interface->parameter_tensor_count(), 2u);
 
-  for (Buffer& gradient : (*dense)->gradients()) {
+  for (const Buffer& gradient : (*dense)->gradients()) {
     std::vector<float> values(gradient.size_bytes() / sizeof(float), 2.0f);
     ASSERT_EQ(cudaMemcpyAsync(gradient.data(), values.data(),
                               gradient.size_bytes(), cudaMemcpyHostToDevice,
@@ -82,9 +82,22 @@ TEST_F(LayersTest, DeduplicatesTiedEmbeddingWeights) {
   ASSERT_TRUE(model.ok()) << model.status();
   ASSERT_EQ((*model)->weights().size(), 2u);
 
-  auto optimizer = Optimizer::Create(**model, AdamWConfig{}, stream_);
+  auto optimizer = Optimizer::Create(model->get(), AdamWConfig{}, stream_);
   ASSERT_TRUE(optimizer.ok()) << optimizer.status();
   EXPECT_EQ((*optimizer)->parameter_tensor_count(), 1u);
+}
+
+TEST_F(LayersTest, RejectsNullModelPointers) {
+  auto interface_optimizer =
+      Optimizer::Create(nullptr, AdamWConfig{}, stream_);
+  auto adamw_optimizer =
+      AdamWOptimizer::Create(nullptr, AdamWConfig{}, stream_);
+  ASSERT_FALSE(interface_optimizer.ok());
+  ASSERT_FALSE(adamw_optimizer.ok());
+  EXPECT_EQ(interface_optimizer.status().code(),
+            absl::StatusCode::kInvalidArgument);
+  EXPECT_EQ(adamw_optimizer.status().code(),
+            absl::StatusCode::kInvalidArgument);
 }
 
 }  // namespace

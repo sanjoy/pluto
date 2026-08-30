@@ -17,8 +17,8 @@ namespace ri = reference_internal;
 ResidualLayerReference::ResidualLayerReference(
     std::unique_ptr<LayerReference> layer)
     : layer_(std::move(layer)) {
-  for (HostBuffer& weight : layer_->weights()) weights_.push_back(weight);
-  for (HostBuffer& gradient : layer_->gradients()) {
+  for (const HostBuffer& weight : layer_->weights()) weights_.push_back(weight);
+  for (const HostBuffer& gradient : layer_->gradients()) {
     gradients_.push_back(gradient);
   }
 }
@@ -90,8 +90,8 @@ ComposedLayerReference::ComposedLayerReference(
     std::vector<std::unique_ptr<LayerReference>> layers)
     : output_type_(data_type), layers_(std::move(layers)) {
   for (const auto& layer : layers_) {
-    for (HostBuffer& weight : layer->weights()) weights_.push_back(weight);
-    for (HostBuffer& gradient : layer->gradients()) {
+    for (const HostBuffer& weight : layer->weights()) weights_.push_back(weight);
+    for (const HostBuffer& gradient : layer->gradients()) {
       gradients_.push_back(gradient);
     }
   }
@@ -108,7 +108,7 @@ absl::StatusOr<HostBuffer> ComposedLayerReference::fwd(
   HostBuffer activation = inputs[0];
   // Execute one child at a time and retain its independent tape. This is
   // intentionally the simplest possible interpretation of composition.
-  for (auto& layer : layers_) {
+  for (const auto& layer : layers_) {
     ReferenceTape child_tape;
     HostBufferVec child_inputs = {activation};
     ASSIGN_OR_RETURN(auto output, layer->fwd(child_inputs, &child_tape));

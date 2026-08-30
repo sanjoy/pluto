@@ -53,7 +53,11 @@ __tile_global__ void AdamWUpdateKernel(
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<AdamWOptimizer>> AdamWOptimizer::Create(
-    Layer& model, AdamWConfig config, cudaStream_t stream) {
+    Layer* model, AdamWConfig config, cudaStream_t stream) {
+  if (model == nullptr) {
+    return absl::InvalidArgumentError(
+        "AdamWOptimizer requires a non-null model");
+  }
   if (stream == nullptr || stream == cudaStreamLegacy ||
       stream == cudaStreamPerThread) {
     return absl::InvalidArgumentError(
@@ -64,8 +68,8 @@ absl::StatusOr<std::unique_ptr<AdamWOptimizer>> AdamWOptimizer::Create(
       !(config.epsilon > 0.0f) || config.weight_decay < 0.0f) {
     return absl::InvalidArgumentError("invalid AdamW hyperparameters");
   }
-  absl::Span<Buffer> model_weights = model.weights();
-  absl::Span<Buffer> model_gradients = model.gradients();
+  absl::Span<Buffer> model_weights = model->weights();
+  absl::Span<Buffer> model_gradients = model->gradients();
   if (model_weights.size() != model_gradients.size()) {
     return absl::InvalidArgumentError(
         "model weights and gradients must have matching cardinality");
@@ -77,8 +81,8 @@ absl::StatusOr<std::unique_ptr<AdamWOptimizer>> AdamWOptimizer::Create(
   std::vector<Buffer> first_moments;
   std::vector<Buffer> second_moments;
   for (size_t index = 0; index < model_weights.size(); ++index) {
-    Buffer& weight = model_weights[index];
-    Buffer& gradient = model_gradients[index];
+    const Buffer& weight = model_weights[index];
+    const Buffer& gradient = model_gradients[index];
     if (!seen.insert(weight.data()).second) continue;
     if (weight.stream() != stream || gradient.stream() != stream ||
         weight.size_bytes() != gradient.size_bytes() ||
@@ -116,14 +120,14 @@ absl::StatusOr<std::unique_ptr<AdamWOptimizer>> AdamWOptimizer::Create(
 }
 
 absl::StatusOr<std::unique_ptr<Optimizer>> Optimizer::Create(
-    Layer& model, AdamWConfig config, cudaStream_t stream) {
+    Layer* model, AdamWConfig config, cudaStream_t stream) {
   ASSIGN_OR_RETURN(auto optimizer,
                    AdamWOptimizer::Create(model, config, stream));
   return std::unique_ptr<Optimizer>(std::move(optimizer));
 }
 
 absl::Status AdamWOptimizer::ZeroGrad() {
-  for (Buffer& gradient : gradients_) {
+  for (const Buffer& gradient : gradients_) {
     RETURN_IF_ERROR(internal::CudaStatus(
         cudaMemsetAsync(gradient.data(), 0, gradient.size_bytes(), stream_),
         "cudaMemsetAsync(AdamW gradient)"));

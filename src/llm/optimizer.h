@@ -31,7 +31,7 @@ class Optimizer {
   virtual ~Optimizer() = default;
 
   static absl::StatusOr<std::unique_ptr<Optimizer>> Create(
-      Layer& model, AdamWConfig config, cudaStream_t stream);
+      Layer* model, AdamWConfig config, cudaStream_t stream);
 
   // Clears every unique parameter-gradient accumulator. Call this before the
   // first backward pass. Step() also clears gradients after applying updates.
@@ -50,7 +50,7 @@ class Optimizer {
 class AdamWOptimizer final : public Optimizer {
  public:
   static absl::StatusOr<std::unique_ptr<AdamWOptimizer>> Create(
-      Layer& model, AdamWConfig config, cudaStream_t stream);
+      Layer* model, AdamWConfig config, cudaStream_t stream);
 
   absl::Status ZeroGrad() override;
   absl::Status Step() override;

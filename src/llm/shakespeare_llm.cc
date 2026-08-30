@@ -313,10 +313,14 @@ absl::Status CopyBatch(const std::vector<int>& tokens,
 }
 
 absl::StatusOr<double> Evaluate(
-    const ModelConfig& config, Layer& model, CrossEntropyLossLayer& loss_layer,
+    const ModelConfig& config, Layer* model, CrossEntropyLossLayer* loss_layer,
     const std::vector<int>& corpus_tokens, int eval_batches,
     const Buffer& token_buffer, const Buffer& target_buffer,
     cudaStream_t stream) {
+  if (model == nullptr || loss_layer == nullptr) {
+    return absl::InvalidArgumentError(
+        "evaluation requires non-null model and loss layer");
+  }
   if (eval_batches <= 0) {
     return absl::InvalidArgumentError("eval_batches must be positive");
   }
@@ -345,11 +349,11 @@ absl::StatusOr<double> Evaluate(
         CopyBatch(tokens, targets, token_buffer, target_buffer, stream));
     Tape model_tape;
     BufferVec model_inputs = {token_buffer};
-    ASSIGN_OR_RETURN(auto logits, model.fwd(model_inputs, &model_tape));
+    ASSIGN_OR_RETURN(auto logits, model->fwd(model_inputs, &model_tape));
     Tape loss_tape;
     BufferVec loss_inputs = {logits, target_buffer};
     ASSIGN_OR_RETURN(auto device_losses,
-                     loss_layer.fwd(loss_inputs, &loss_tape));
+                     loss_layer->fwd(loss_inputs, &loss_tape));
     RETURN_IF_ERROR(CudaStatus(
         cudaMemcpyAsync(losses.data(), device_losses.data(),
                         device_losses.size_bytes(), cudaMemcpyDeviceToHost,
@@ -379,12 +383,16 @@ absl::StatusOr<double> Evaluate(
 // AdamW updates, and synchronization. Buffer is reference-counted, so this
 // function only borrows the handles and does not own their allocations.
 absl::StatusOr<TrainingResult> Train(
-    const ModelConfig& config, Layer& model,
-    CrossEntropyLossLayer& loss_layer, Optimizer& optimizer,
+    const ModelConfig& config, Layer* model,
+    CrossEntropyLossLayer* loss_layer, Optimizer* optimizer,
     const std::vector<int>& training_tokens,
     const TrainingOptions& options, double initial_training_loss,
     const Buffer& token_buffer, const Buffer& target_buffer,
     cudaStream_t stream) {
+  if (model == nullptr || loss_layer == nullptr || optimizer == nullptr) {
+    return absl::InvalidArgumentError(
+        "training requires non-null model, loss layer, and optimizer");
+  }
   if (options.max_steps < 0) {
     return absl::InvalidArgumentError("max_steps must be non-negative");
   }
@@ -424,16 +432,16 @@ absl::StatusOr<TrainingResult> Train(
 
     Tape model_tape;
     BufferVec model_inputs = {token_buffer};
-    ASSIGN_OR_RETURN(auto logits, model.fwd(model_inputs, &model_tape));
+    ASSIGN_OR_RETURN(auto logits, model->fwd(model_inputs, &model_tape));
     Tape loss_tape;
     BufferVec loss_inputs = {logits, target_buffer};
     ASSIGN_OR_RETURN(auto device_losses,
-                     loss_layer.fwd(loss_inputs, &loss_tape));
+                     loss_layer->fwd(loss_inputs, &loss_tape));
     ASSIGN_OR_RETURN(auto logits_gradient,
-                     loss_layer.bwd({}, std::move(loss_tape)));
-    auto input_gradient = model.bwd(logits_gradient, std::move(model_tape));
+                     loss_layer->bwd({}, std::move(loss_tape)));
+    auto input_gradient = model->bwd(logits_gradient, std::move(model_tape));
     if (!input_gradient.ok()) return input_gradient.status();
-    RETURN_IF_ERROR(optimizer.Step());
+    RETURN_IF_ERROR(optimizer->Step());
 
     const bool evaluate =
         (step + 1) % options.evaluation_interval == 0 ||
@@ -474,8 +482,11 @@ absl::StatusOr<TrainingResult> Train(
 }
 
 absl::StatusOr<std::vector<float>> Predict(
-    const ModelConfig& config, Layer& model, const std::vector<int>& context,
+    const ModelConfig& config, Layer* model, const std::vector<int>& context,
     const Buffer& token_buffer, cudaStream_t stream) {
+  if (model == nullptr) {
+    return absl::InvalidArgumentError("prediction requires a non-null model");
+  }
   if (context.empty()) {
     return absl::InvalidArgumentError("prediction context must not be empty");
   }
@@ -502,7 +513,7 @@ absl::StatusOr<std::vector<float>> Predict(
       "cudaMemcpyAsync(prompt context)"));
   Tape tape;
   BufferVec inputs = {token_buffer};
-  ASSIGN_OR_RETURN(auto logits, model.fwd(inputs, &tape));
+  ASSIGN_OR_RETURN(auto logits, model->fwd(inputs, &tape));
   std::vector<float> host_logits(kVocabularySize);
   const size_t output_row = context_size - 1;
   const auto* selected_logits =
@@ -519,10 +530,14 @@ absl::StatusOr<std::vector<float>> Predict(
 }
 
 absl::StatusOr<std::string> Generate(
-    const ModelConfig& config, Layer& model, const Gpt2Tokenizer& tokenizer,
+    const ModelConfig& config, Layer* model, const Gpt2Tokenizer& tokenizer,
     const Gpt2Detokenizer& detokenizer, std::string prompt,
     int generation_tokens, double temperature, std::mt19937* random,
     const Buffer& token_buffer, cudaStream_t stream) {
+  if (model == nullptr || random == nullptr) {
+    return absl::InvalidArgumentError(
+        "generation requires non-null model and random generator");
+  }
   if (generation_tokens < 0 || temperature <= 0.0) {
     return absl::InvalidArgumentError(
         "generation_tokens must be non-negative and temperature positive");
@@ -587,7 +602,7 @@ absl::Status Run(cudaStream_t stream) {
           static_cast<float>(absl::GetFlag(FLAGS_weight_decay)),
   };
   ASSIGN_OR_RETURN(auto optimizer,
-                   Optimizer::Create(*model, optimizer_config, stream));
+                   Optimizer::Create(model.get(), optimizer_config, stream));
   ASSIGN_OR_RETURN(
       auto token_buffer,
       Buffer::Allocate(config.batch_size * sizeof(int), stream));
@@ -598,11 +613,12 @@ absl::Status Run(cudaStream_t stream) {
   const int eval_batches = absl::GetFlag(FLAGS_eval_batches);
   ASSIGN_OR_RETURN(
       double initial_training_loss,
-      Evaluate(config, *model, *loss_layer, corpus_split.training,
+      Evaluate(config, model.get(), loss_layer.get(), corpus_split.training,
                eval_batches, token_buffer, target_buffer, stream));
   ASSIGN_OR_RETURN(
       double initial_test_loss,
-      Evaluate(config, *model, *loss_layer, corpus_split.test, eval_batches,
+      Evaluate(config, model.get(), loss_layer.get(), corpus_split.test,
+               eval_batches,
                token_buffer, target_buffer, stream));
   std::cout << "model: GPT-2 vocabulary=" << kVocabularySize
             << ", context=" << kContextLength
@@ -625,16 +641,18 @@ absl::Status Run(cudaStream_t stream) {
   };
   ASSIGN_OR_RETURN(
       auto training_result,
-      Train(config, *model, *loss_layer, *optimizer, corpus_split.training,
+      Train(config, model.get(), loss_layer.get(), optimizer.get(),
+            corpus_split.training,
             training_options, initial_training_loss, token_buffer,
             target_buffer, stream));
   ASSIGN_OR_RETURN(
       double final_training_loss,
-      Evaluate(config, *model, *loss_layer, corpus_split.training,
+      Evaluate(config, model.get(), loss_layer.get(), corpus_split.training,
                eval_batches, token_buffer, target_buffer, stream));
   ASSIGN_OR_RETURN(
       double final_test_loss,
-      Evaluate(config, *model, *loss_layer, corpus_split.test, eval_batches,
+      Evaluate(config, model.get(), loss_layer.get(), corpus_split.test,
+               eval_batches,
                token_buffer, target_buffer, stream));
   std::cout << "completed training steps: " << training_result.steps_completed
             << '\n'
@@ -664,7 +682,7 @@ absl::Status Run(cudaStream_t stream) {
   std::mt19937 random(absl::GetFlag(FLAGS_seed) + 1);
   ASSIGN_OR_RETURN(
       auto sample,
-      Generate(config, *model, *tokenizer, *detokenizer, "To be",
+      Generate(config, model.get(), *tokenizer, *detokenizer, "To be",
                std::min(120, absl::GetFlag(FLAGS_generation_tokens)),
                absl::GetFlag(FLAGS_temperature), &random, token_buffer,
                stream));
@@ -678,7 +696,7 @@ absl::Status Run(cudaStream_t stream) {
     if (!std::getline(std::cin, prompt)) break;
     ASSIGN_OR_RETURN(
         auto completion,
-        Generate(config, *model, *tokenizer, *detokenizer, prompt,
+        Generate(config, model.get(), *tokenizer, *detokenizer, prompt,
                  absl::GetFlag(FLAGS_generation_tokens),
                  absl::GetFlag(FLAGS_temperature), &random, token_buffer,
                  stream));
