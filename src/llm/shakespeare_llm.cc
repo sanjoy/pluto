@@ -10,7 +10,6 @@
 #include <iostream>
 #include <memory>
 #include <random>
-#include <streambuf>
 #include <string>
 #include <utility>
 #include <vector>
@@ -76,83 +75,32 @@ namespace {
 using tokenizer::Gpt2Detokenizer;
 using tokenizer::Gpt2Tokenizer;
 
-// Copies writes to two stream buffers. Keeping this at the stream-buffer level
-// means progress callbacks, generated samples, and interactive output cannot
-// accidentally bypass the training log when new output is added below.
-class TeeStreamBuffer final : public std::streambuf {
+// A deliberately small ostream-like logger. Every insertion is printed to the
+// terminal, copied to the log file, and flushed so a running job can be tailed.
+class Logger final {
  public:
-  TeeStreamBuffer(std::streambuf* first, std::streambuf* second)
-      : first_(first), second_(second) {}
+  explicit Logger(const std::string& path)
+      : file_(path, std::ios::out | std::ios::trunc) {}
 
- protected:
-  int_type overflow(int_type character) override {
-    if (traits_type::eq_int_type(character, traits_type::eof())) {
-      return traits_type::not_eof(character);
-    }
-    const char value = traits_type::to_char_type(character);
-    if (traits_type::eq_int_type(first_->sputc(value), traits_type::eof()) ||
-        traits_type::eq_int_type(second_->sputc(value), traits_type::eof())) {
-      return traits_type::eof();
-    }
-    if (value == '\n' && second_->pubsync() != 0) {
-      return traits_type::eof();
-    }
-    return character;
-  }
-
-  std::streamsize xsputn(const char* data, std::streamsize size) override {
-    const std::streamsize first_size = first_->sputn(data, size);
-    const std::streamsize second_size = second_->sputn(data, size);
-    const std::streamsize written = std::min(first_size, second_size);
-    if (std::find(data, data + written, '\n') != data + written &&
-        second_->pubsync() != 0) {
-      return 0;
-    }
-    return written;
-  }
-
-  int sync() override {
-    const int first_status = first_->pubsync();
-    const int second_status = second_->pubsync();
-    return first_status == 0 && second_status == 0 ? 0 : -1;
-  }
-
- private:
-  std::streambuf* first_;
-  std::streambuf* second_;
-};
-
-// Installs a process-local stdout tee for the lifetime of Run(). Destruction
-// restores stdout even when an error-return macro exits Run() early.
-class ScopedStdoutTee final {
- public:
-  explicit ScopedStdoutTee(const std::string& path)
-      : file_(path, std::ios::out | std::ios::trunc),
-        original_(std::cout.rdbuf()),
-        tee_(original_, file_.rdbuf()) {
-    if (file_.is_open()) {
-      std::cout.rdbuf(&tee_);
-      installed_ = true;
-    }
-  }
-
-  ScopedStdoutTee(const ScopedStdoutTee&) = delete;
-  ScopedStdoutTee& operator=(const ScopedStdoutTee&) = delete;
-
-  ~ScopedStdoutTee() {
-    if (!installed_) return;
-    std::cout.flush();
-    std::cout.rdbuf(original_);
+  template <class Value>
+  Logger& operator<<(const Value& value) {
+    std::cout << value;
+    file_ << value;
     file_.flush();
+    return *this;
+  }
+
+  Logger& operator<<(std::ostream& (*manipulator)(std::ostream&)) {
+    manipulator(std::cout);
+    manipulator(file_);
+    file_.flush();
+    return *this;
   }
 
   bool is_open() const { return file_.is_open(); }
 
  private:
   std::ofstream file_;
-  std::streambuf* original_;
-  TeeStreamBuffer tee_;
-  bool installed_ = false;
 };
 
 // This binary deliberately exposes no architecture flags: these constants are
@@ -447,12 +395,12 @@ absl::Status Run(cuda::Executor& executor) {
   if (log_path.empty()) {
     return absl::InvalidArgumentError("log_file must not be empty");
   }
-  ScopedStdoutTee log(log_path);
-  if (!log.is_open()) {
+  Logger logger(log_path);
+  if (!logger.is_open()) {
     return absl::FailedPreconditionError(
         absl::StrCat("cannot open training log for writing: ", log_path));
   }
-  std::cout << "training log: " << log_path << '\n';
+  logger << "training log: " << log_path << '\n';
 
   ASSIGN_OR_RETURN(auto corpus, LoadCorpus());
   ASSIGN_OR_RETURN(auto tokenizer_directory, TokenizerDirectory());
@@ -523,17 +471,17 @@ absl::Status Run(cuda::Executor& executor) {
   ASSIGN_OR_RETURN(double initial_test_loss,
                    Evaluate(executor, *model, *loss_layer,
                             *test_evaluation_data, evaluation_options));
-  std::cout << "model: GPT-2 vocabulary=" << kVocabularySize
-            << ", context=" << kContextLength
-            << ", layers=" << kTransformerBlockCount
-            << ", width=" << kModelWidth << ", heads=" << kAttentionHeads
-            << ", head_dim=" << kAttentionHeadDimension
-            << ", MLP=" << kFeedForwardWidth << ", BF16 compute\n"
-            << "corpus tokens: " << corpus_tokens.size()
-            << " (training: " << corpus_split.training.size()
-            << ", test: " << corpus_split.test.size() << ")\n"
-            << "initial training loss: " << initial_training_loss << '\n'
-            << "initial test loss: " << initial_test_loss << '\n';
+  logger << "model: GPT-2 vocabulary=" << kVocabularySize
+         << ", context=" << kContextLength
+         << ", layers=" << kTransformerBlockCount << ", width=" << kModelWidth
+         << ", heads=" << kAttentionHeads
+         << ", head_dim=" << kAttentionHeadDimension
+         << ", MLP=" << kFeedForwardWidth << ", BF16 compute\n"
+         << "corpus tokens: " << corpus_tokens.size()
+         << " (training: " << corpus_split.training.size()
+         << ", test: " << corpus_split.test.size() << ")\n"
+         << "initial training loss: " << initial_training_loss << '\n'
+         << "initial test loss: " << initial_test_loss << '\n';
 
   const TrainingOptions training_options{
       .max_steps = absl::GetFlag(FLAGS_steps),
@@ -543,9 +491,9 @@ absl::Status Run(cuda::Executor& executor) {
       .evaluation_tokens = training_evaluation_data.get(),
       .initial_loss = initial_training_loss,
       .evaluation_callback =
-          [](int steps_completed, double loss) {
-            std::cout << "training loss after " << steps_completed
-                      << " steps: " << loss << '\n';
+          [&logger](int steps_completed, double loss) {
+            logger << "training loss after " << steps_completed
+                   << " steps: " << loss << '\n';
           },
   };
   ASSIGN_OR_RETURN(auto training_result,
@@ -557,10 +505,10 @@ absl::Status Run(cuda::Executor& executor) {
   ASSIGN_OR_RETURN(double final_test_loss,
                    Evaluate(executor, *model, *loss_layer,
                             *test_evaluation_data, evaluation_options));
-  std::cout << "completed training steps: " << training_result.steps_completed
-            << '\n'
-            << "final training loss: " << final_training_loss << '\n'
-            << "final test loss: " << final_test_loss << '\n';
+  logger << "completed training steps: " << training_result.steps_completed
+         << '\n'
+         << "final training loss: " << final_training_loss << '\n'
+         << "final test loss: " << final_test_loss << '\n';
 
   if (training_options.stop_loss >= 0.0 &&
       (!training_result.reached_stop_loss ||
@@ -588,20 +536,20 @@ absl::Status Run(cuda::Executor& executor) {
       Generate(executor, config, *model, *tokenizer, *detokenizer, "To be",
                std::min(120, absl::GetFlag(FLAGS_generation_tokens)),
                absl::GetFlag(FLAGS_temperature), random, token_buffer));
-  std::cout << "sample:\nTo be" << sample << "\n";
+  logger << "sample:\nTo be" << sample << "\n";
 
   if (!absl::GetFlag(FLAGS_interactive)) return absl::OkStatus();
-  std::cout << "\nEnter a prompt (Ctrl-C or Ctrl-D to quit).\n";
+  logger << "\nEnter a prompt (Ctrl-C or Ctrl-D to quit).\n";
   std::string prompt;
   while (true) {
-    std::cout << "> " << std::flush;
+    logger << "> " << std::flush;
     if (!std::getline(std::cin, prompt)) break;
     ASSIGN_OR_RETURN(
         auto completion,
         Generate(executor, config, *model, *tokenizer, *detokenizer, prompt,
                  absl::GetFlag(FLAGS_generation_tokens),
                  absl::GetFlag(FLAGS_temperature), random, token_buffer));
-    std::cout << prompt << completion << "\n";
+    logger << prompt << completion << "\n";
   }
   return absl::OkStatus();
 }
