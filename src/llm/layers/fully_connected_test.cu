@@ -39,7 +39,7 @@ TEST_F(LayersTest, IdentityDenseLayerHasIdentityForwardAndBackward) {
             cudaSuccess);
 
   auto dense = FullyConnectedLayer::Create(
-      kTestModelWidth, DataType::FP16, 0.0f, stream_);
+      kTestModelWidth, DataType::FP16, stream_);
   ASSERT_TRUE(dense.ok()) << dense.status();
   ASSERT_TRUE((*dense)->InitializeIdentity().ok());
   Tape tape;
@@ -72,6 +72,46 @@ TEST_F(LayersTest, IdentityDenseLayerHasIdentityForwardAndBackward) {
   }
 }
 
+TEST_F(LayersTest, RectangularProjectionUsesDistinctInputAndOutputWidths) {
+  constexpr int kOutputWidth = 48;
+  auto dense = FullyConnectedLayer::Create(
+      kTestModelWidth, kOutputWidth, DataType::FP16, stream_);
+  ASSERT_TRUE(dense.ok()) << dense.status();
+  ASSERT_EQ((*dense)->input_dim(), kTestModelWidth);
+  ASSERT_EQ((*dense)->output_dim(), kOutputWidth);
+  ASSERT_TRUE((*dense)->InitializeIdentity().ok());
+
+  std::vector<float> input(kTestBatchSize * kTestModelWidth);
+  for (size_t index = 0; index < input.size(); ++index) {
+    input[index] = static_cast<float>(index % 7);
+  }
+  auto input_buffer = Buffer::Allocate(input.size() * sizeof(float), stream_);
+  ASSERT_TRUE(input_buffer.ok()) << input_buffer.status();
+  ASSERT_EQ(cudaMemcpyAsync(input_buffer->data(), input.data(),
+                            input_buffer->size_bytes(), cudaMemcpyHostToDevice,
+                            stream_),
+            cudaSuccess);
+  Tape tape;
+  BufferVec inputs = {*input_buffer};
+  auto output = (*dense)->fwd(inputs, &tape);
+  ASSERT_TRUE(output.ok()) << output.status();
+  std::vector<float> host_output(kTestBatchSize * kOutputWidth);
+  ASSERT_EQ(cudaMemcpyAsync(host_output.data(), output->data(),
+                            output->size_bytes(), cudaMemcpyDeviceToHost,
+                            stream_),
+            cudaSuccess);
+  ASSERT_EQ(cudaStreamSynchronize(stream_), cudaSuccess);
+
+  for (int row = 0; row < kTestBatchSize; ++row) {
+    for (int column = 0; column < kTestModelWidth; ++column) {
+      EXPECT_FLOAT_EQ(host_output[row * kOutputWidth + column],
+                      input[row * kTestModelWidth + column]);
+    }
+    for (int column = kTestModelWidth; column < kOutputWidth; ++column) {
+      EXPECT_FLOAT_EQ(host_output[row * kOutputWidth + column], 0.0f);
+    }
+  }
+}
 
 }  // namespace
 }  // namespace pluto::llm

@@ -16,6 +16,7 @@ using BufferVec = absl::InlinedVector<Buffer, 2>;
 
 enum class DataType {
   FP16,
+  BF16,
   FP8,
 };
 
@@ -37,6 +38,10 @@ class Layer {
   virtual absl::StatusOr<BufferVec> bwd(
       absl::Span<const Buffer> output_gradients, Tape tape) = 0;
   virtual absl::Span<Buffer> weights() = 0;
+  // FP32 gradient accumulators corresponding one-for-one with weights().
+  // Stateless layers return an empty span. Optimizers clear these buffers
+  // before backward and update the FP32 master weights after backward.
+  virtual absl::Span<Buffer> gradients() { return {}; }
   virtual DataType output_type() const = 0;
 };
 

@@ -1,5 +1,6 @@
 #include "src/llm/layers/combinators.h"
 
+#include <cuda_bf16.h>
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
 #include <cuda_tile.h>
@@ -32,10 +33,11 @@ using internal::ValidateFp16;
 using internal::ValidateTiledExtent;
 
 namespace {
-__tile_global__ void AddKernel(const float* __restrict__ left,
-                                const float* __restrict__ right,
-                                int elements,
-                                float* __restrict__ output) {
+template <class Element>
+__tile_global__ void AddKernel(const Element* __restrict__ left,
+                               const Element* __restrict__ right,
+                               int elements,
+                               Element* __restrict__ output) {
   namespace ct = cuda::tiles;
   using namespace ct::literals;
 
@@ -46,7 +48,9 @@ __tile_global__ void AddKernel(const float* __restrict__ left,
   auto output_view = ct::partition_view{
       ct::tensor_span{output, ct::extents{elements}}, ct::shape{16_ic}};
   const int block = ct::bid().x;
-  output_view.store(left_view.load(block) + right_view.load(block), block);
+  auto sum = ct::element_cast<float>(left_view.load(block)) +
+             ct::element_cast<float>(right_view.load(block));
+  output_view.store(ct::element_cast<Element>(sum), block);
 }
 
 
@@ -55,6 +59,7 @@ __tile_global__ void AddKernel(const float* __restrict__ left,
 ResidualLayer::ResidualLayer(std::unique_ptr<Layer> layer)
     : layer_(std::move(layer)) {
   for (Buffer& weight : layer_->weights()) weights_.push_back(weight);
+  for (Buffer& gradient : layer_->gradients()) gradients_.push_back(gradient);
 }
 
 absl::StatusOr<Buffer> ResidualLayer::fwd(
@@ -74,15 +79,25 @@ absl::StatusOr<Buffer> ResidualLayer::fwd(
       auto output,
       Buffer::Allocate(inputs[0].size_bytes(), inputs[0].stream()));
   ASSIGN_OR_RETURN(int elements,
-                   ElementCount(inputs[0], sizeof(float), inputs[0].stream(),
-                                "residual input"));
+                   ElementCount(
+                       inputs[0],
+                       internal::ActivationElementBytes(output_type()),
+                       inputs[0].stream(), "residual input"));
   RETURN_IF_ERROR(ValidateTiledExtent(elements, "residual element count"));
   tape->intermediates = {inputs[0]};
   tape->children = {std::move(child_tape)};
-  AddKernel<<<TileCount(elements), 1, 0, inputs[0].stream()>>>(
-      static_cast<const float*>(inputs[0].data()),
-      static_cast<const float*>(branch.data()), elements,
-      static_cast<float*>(output.data()));
+  if (output_type() == DataType::BF16) {
+    AddKernel<__nv_bfloat16><<<TileCount(elements), 1, 0,
+                               inputs[0].stream()>>>(
+        static_cast<const __nv_bfloat16*>(inputs[0].data()),
+        static_cast<const __nv_bfloat16*>(branch.data()), elements,
+        static_cast<__nv_bfloat16*>(output.data()));
+  } else {
+    AddKernel<float><<<TileCount(elements), 1, 0, inputs[0].stream()>>>(
+        static_cast<const float*>(inputs[0].data()),
+        static_cast<const float*>(branch.data()), elements,
+        static_cast<float*>(output.data()));
+  }
   RETURN_IF_ERROR(
       CudaStatus(cudaGetLastError(), "AddKernel(residual) launch"));
   return std::move(output);
@@ -112,7 +127,8 @@ absl::StatusOr<BufferVec> ResidualLayer::bwd(
                    ElementCount(output_gradients[0], sizeof(float),
                                 output_gradients[0].stream(),
                                 "residual output gradient"));
-  AddKernel<<<TileCount(elements), 1, 0, output_gradients[0].stream()>>>(
+  AddKernel<float><<<TileCount(elements), 1, 0,
+                     output_gradients[0].stream()>>>(
       static_cast<const float*>(output_gradients[0].data()),
       static_cast<const float*>(branch_gradient.front().data()), elements,
       static_cast<float*>(input_gradient.data()));
@@ -126,6 +142,7 @@ ComposedLayer::ComposedLayer(DataType data_type,
     : output_type_(data_type), layers_(std::move(layers)) {
   for (const auto& layer : layers_) {
     for (Buffer& weight : layer->weights()) weights_.push_back(weight);
+    for (Buffer& gradient : layer->gradients()) gradients_.push_back(gradient);
   }
 }
 

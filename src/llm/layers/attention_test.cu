@@ -22,12 +22,19 @@ TEST_F(LayersTest, FlashAttentionIsCausalAndHasCorrectSingleTokenGradient) {
       DataType::FP16, stream_);
   ASSERT_TRUE(attention.ok()) << attention.status();
 
-  std::vector<float> input(kTestBatchSize * kTestModelWidth, 0.0f);
-  // Only the first feature of the first head is nonzero. Position zero must
-  // ignore the larger future values, while position one attends to 1 and 2.
+  constexpr int kPackedWidth = 3 * kTestModelWidth;
+  std::vector<float> input(kTestBatchSize * kPackedWidth, 0.0f);
+  // Q, K, and V occupy distinct packed regions in each row. Position zero
+  // must ignore future values, while position one attends to values 1 and 2
+  // using dot products 2 and 4.
   input[0] = 1.0f;
-  input[kTestModelWidth] = 2.0f;
-  input[2 * kTestModelWidth] = 4.0f;
+  input[kTestModelWidth] = 1.0f;
+  input[2 * kTestModelWidth] = 1.0f;
+  input[kPackedWidth] = 2.0f;
+  input[kPackedWidth + kTestModelWidth] = 2.0f;
+  input[kPackedWidth + 2 * kTestModelWidth] = 2.0f;
+  // A future value that position zero is not allowed to observe.
+  input[2 * kPackedWidth + 2 * kTestModelWidth] = 4.0f;
   auto input_buffer = Buffer::Allocate(input.size() * sizeof(float), stream_);
   ASSERT_TRUE(input_buffer.ok()) << input_buffer.status();
   ASSERT_EQ(cudaMemcpyAsync(input_buffer->data(), input.data(),
@@ -40,7 +47,8 @@ TEST_F(LayersTest, FlashAttentionIsCausalAndHasCorrectSingleTokenGradient) {
   auto output = (*attention)->fwd(attention_inputs, &tape);
   ASSERT_TRUE(output.ok()) << output.status();
 
-  std::vector<float> output_gradient(input.size(), 0.0f);
+  std::vector<float> output_gradient(
+      kTestBatchSize * kTestModelWidth, 0.0f);
   output_gradient[0] = 1.0f;
   auto gradient_buffer =
       Buffer::Allocate(output_gradient.size() * sizeof(float), stream_);
@@ -55,7 +63,7 @@ TEST_F(LayersTest, FlashAttentionIsCausalAndHasCorrectSingleTokenGradient) {
   ASSERT_TRUE(input_gradient.ok()) << input_gradient.status();
   ASSERT_EQ(input_gradient->size(), 1u);
 
-  std::vector<float> host_output(input.size());
+  std::vector<float> host_output(output_gradient.size());
   std::vector<float> host_input_gradient(input.size());
   ASSERT_EQ(cudaMemcpyAsync(host_output.data(), output->data(),
                             output->size_bytes(), cudaMemcpyDeviceToHost,
@@ -77,8 +85,10 @@ TEST_F(LayersTest, FlashAttentionIsCausalAndHasCorrectSingleTokenGradient) {
       (first_weight + second_weight);
   EXPECT_NEAR(host_output[0], 1.0f, 1e-6f);
   EXPECT_NEAR(host_output[kTestModelWidth], expected_position_one, 1e-5f);
-  EXPECT_NEAR(host_input_gradient[0], 1.0f, 1e-6f);
+  EXPECT_NEAR(host_input_gradient[0], 0.0f, 1e-6f);
   EXPECT_NEAR(host_input_gradient[kTestModelWidth], 0.0f, 1e-6f);
+  EXPECT_NEAR(host_input_gradient[2 * kTestModelWidth], 1.0f, 1e-6f);
+  EXPECT_NEAR(host_input_gradient[kPackedWidth], 0.0f, 1e-6f);
 }
 
 

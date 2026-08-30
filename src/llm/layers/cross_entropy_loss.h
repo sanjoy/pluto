@@ -31,14 +31,20 @@ class CrossEntropyLossLayer final : public Layer {
   absl::Span<Buffer> weights() override { return {}; }
   DataType output_type() const override { return output_type_; }
 
+  int vocab_size() const { return vocab_size_; }
+  int padded_vocab_size() const { return padded_vocab_size_; }
+
  private:
-  CrossEntropyLossLayer(int vocabulary_size, DataType data_type,
+  CrossEntropyLossLayer(int vocab_size, int padded_vocab_size,
+                        DataType data_type,
                         cudaStream_t stream)
-      : vocabulary_size_(vocabulary_size),
+      : vocab_size_(vocab_size),
+        padded_vocab_size_(padded_vocab_size),
         output_type_(data_type),
         stream_(stream) {}
 
-  int vocabulary_size_;
+  int vocab_size_;
+  int padded_vocab_size_;
   DataType output_type_;
   cudaStream_t stream_;
 };

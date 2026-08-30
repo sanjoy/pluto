@@ -3,25 +3,19 @@
 
 #include <cuda_runtime_api.h>
 
-#include <cstddef>
 #include <memory>
-#include <utility>
-#include <vector>
 
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "src/llm/layer.h"
 
 namespace pluto::llm {
 
-// Causal multi-head self-attention using a fused FlashAttention algorithm.
-// Each query block streams over visible keys, maintains an online softmax, and
-// accumulates values without ever allocating the quadratic attention matrix.
-// Backward recomputes those probabilities and atomically accumulates dQ, dK,
-// and dV into the single input gradient. This scaled implementation uses the
-// input activation as Q, K, and V; surrounding GPT-2 projections can therefore
-// remain ordinary FullyConnectedLayer instances.
+// Causal multi-head FlashAttention over a packed [Q, K, V] activation produced
+// by a d_model -> 3*d_model projection. It streams visible keys/values and
+// maintains FP32 online-softmax statistics without materializing the quadratic
+// attention matrix. Backward recomputes probabilities and emits packed FP32
+// dQ/dK/dV gradients.
 class AttentionLayer final : public Layer {
  public:
   static absl::StatusOr<std::unique_ptr<AttentionLayer>> Create(

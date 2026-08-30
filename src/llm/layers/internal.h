@@ -20,6 +20,17 @@ inline constexpr int kDenseTile = 16;
 
 inline int TileCount(int extent) { return extent / kDenseTile; }
 
+inline int RoundUpToTile(int extent) {
+  return ((extent + kDenseTile - 1) / kDenseTile) * kDenseTile;
+}
+
+inline size_t ActivationElementBytes(DataType data_type) {
+  // The legacy FP16 path retains FP32 activation storage for compatibility.
+  // BF16 models use compact BF16 activation storage; gradients and master
+  // parameters remain FP32 in both modes.
+  return data_type == DataType::BF16 ? 2 : sizeof(float);
+}
+
 inline absl::Status ValidateTiledExtent(int extent, const char* name) {
   if (extent <= 0 || extent % kDenseTile != 0) {
     return absl::InvalidArgumentError(absl::StrCat(
@@ -41,6 +52,29 @@ inline absl::StatusOr<int> MatrixRows(const Buffer& buffer, int columns,
       buffer.size_bytes() % row_bytes != 0) {
     return absl::InvalidArgumentError(absl::StrCat(
         name, " is not a non-empty float matrix with ", columns,
+        " columns"));
+  }
+  const size_t rows = buffer.size_bytes() / row_bytes;
+  if (rows > static_cast<size_t>(std::numeric_limits<int>::max())) {
+    return absl::InvalidArgumentError(absl::StrCat(name, " has too many rows"));
+  }
+  return static_cast<int>(rows);
+}
+
+inline absl::StatusOr<int> ActivationRows(const Buffer& buffer, int columns,
+                                          DataType data_type,
+                                          cudaStream_t stream,
+                                          const char* name) {
+  if (buffer.stream() != stream) {
+    return absl::InvalidArgumentError(
+        absl::StrCat(name, " belongs to a different CUDA stream"));
+  }
+  const size_t row_bytes =
+      static_cast<size_t>(columns) * ActivationElementBytes(data_type);
+  if (columns <= 0 || buffer.size_bytes() == 0 ||
+      buffer.size_bytes() % row_bytes != 0) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        name, " is not a non-empty activation matrix with ", columns,
         " columns"));
   }
   const size_t rows = buffer.size_bytes() / row_bytes;
@@ -77,11 +111,19 @@ inline absl::Status CudaStatus(cudaError_t error, const char* operation) {
                    cudaGetErrorString(error)));
 }
 
-inline absl::Status ValidateFp16(DataType data_type) {
-  if (data_type == DataType::FP16) return absl::OkStatus();
+inline absl::Status ValidateComputeType(DataType data_type) {
+  if (data_type == DataType::FP16 || data_type == DataType::BF16) {
+    return absl::OkStatus();
+  }
   return absl::UnimplementedError(
       "FP8 requires an explicit scaling policy; this cuTile backend currently "
-      "implements FP16 compute with FP32 master weights");
+      "implements FP16 and BF16 compute with FP32 master weights");
+}
+
+// Compatibility spelling for call sites which have not yet become
+// dtype-polymorphic.
+inline absl::Status ValidateFp16(DataType data_type) {
+  return ValidateComputeType(data_type);
 }
 
 inline absl::Status ValidateBuffer(const Buffer& buffer,

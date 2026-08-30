@@ -79,9 +79,9 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> BuildDenseComposition(
     cudaStream_t stream) {
   ComposedLayerBuilder builder;
   RETURN_IF_ERROR(builder.add(FullyConnectedLayer::Create(
-      kTestModelWidth, DataType::FP16, 0.0f, stream)));
+      kTestModelWidth, DataType::FP16, stream)));
   RETURN_IF_ERROR(builder.add(FullyConnectedLayer::Create(
-      kTestModelWidth, DataType::FP16, 0.0f, stream)));
+      kTestModelWidth, DataType::FP16, stream)));
   return builder.create();
 }
 
@@ -129,6 +129,7 @@ TEST_F(LayersTest, CreatedCompositionCollectsChildWeights) {
 
   // Each dense child contributes its own matrix and bias.
   EXPECT_EQ((*composed)->weights().size(), 4u);
+  EXPECT_EQ((*composed)->gradients().size(), 4u);
 }
 
 

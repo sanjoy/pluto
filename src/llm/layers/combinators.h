@@ -25,11 +25,15 @@ class ResidualLayer final : public Layer {
   absl::Span<Buffer> weights() override {
     return absl::MakeSpan(weights_);
   }
+  absl::Span<Buffer> gradients() override {
+    return absl::MakeSpan(gradients_);
+  }
   DataType output_type() const override { return layer_->output_type(); }
 
  private:
   std::unique_ptr<Layer> layer_;
   std::vector<Buffer> weights_;
+  std::vector<Buffer> gradients_;
 };
 
 // Sequentially composes unary layers. Multi-input terminal operations, such as
@@ -46,12 +50,16 @@ class ComposedLayer final : public Layer {
   absl::Span<Buffer> weights() override {
     return absl::MakeSpan(weights_);
   }
+  absl::Span<Buffer> gradients() override {
+    return absl::MakeSpan(gradients_);
+  }
   DataType output_type() const override { return output_type_; }
 
  private:
   DataType output_type_;
   std::vector<std::unique_ptr<Layer>> layers_;
   std::vector<Buffer> weights_;
+  std::vector<Buffer> gradients_;
 };
 
 // Incrementally assembles a ComposedLayer while retaining ownership of every

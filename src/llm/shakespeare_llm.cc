@@ -5,9 +5,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <limits>
 #include <memory>
 #include <random>
 #include <string>
@@ -29,95 +29,91 @@
 #include "src/llm/layers/fully_connected.h"
 #include "src/llm/layers/gelu.h"
 #include "src/llm/layers/norm.h"
-#include "src/tokenization/plain_text_tokenizer.h"
+#include "src/llm/optimizer.h"
+#include "src/tokenization/detokenizer.h"
+#include "src/tokenization/tokenizer.h"
 
 ABSL_FLAG(std::string, corpus, "",
           "Shakespeare corpus path; defaults to the Bazel testdata runfile");
-ABSL_FLAG(int, steps, 1200, "Number of stochastic-gradient training steps");
-ABSL_FLAG(double, learning_rate, 0.05, "SGD learning rate");
+ABSL_FLAG(std::string, tokenizer_dir, "",
+          "GPT-2 tokenizer directory; defaults to "
+          "PLUTO_GPT2_TOKENIZER_DIR");
+ABSL_FLAG(int, steps, 1200, "Maximum number of AdamW training steps");
+ABSL_FLAG(double, learning_rate, 3e-4, "AdamW learning rate");
+ABSL_FLAG(double, adam_beta1, 0.9, "AdamW first-moment decay");
+ABSL_FLAG(double, adam_beta2, 0.95, "AdamW second-moment decay");
+ABSL_FLAG(double, adam_epsilon, 1e-8, "AdamW numerical-stability epsilon");
+ABSL_FLAG(double, weight_decay, 0.1, "Decoupled AdamW weight decay");
 ABSL_FLAG(double, target_loss, 2.8,
-          "Fail unless held-out average next-byte loss is at most this value");
-ABSL_FLAG(int, eval_batches, 32,
+          "Fail unless held-out average token loss is at most this value; a "
+          "negative value disables this check");
+ABSL_FLAG(int, eval_batches, 4,
           "Number of fixed batches used for each train/test loss evaluation");
 ABSL_FLAG(double, test_fraction, 0.1,
           "Fraction of the corpus reserved as contiguous held-out test data");
 ABSL_FLAG(double, train_until_loss, -1.0,
           "When nonnegative, stop once training loss reaches this value; "
           "--steps remains the hard iteration cap");
-ABSL_FLAG(int, training_eval_interval, 200,
+ABSL_FLAG(int, training_eval_interval, 100,
           "Steps between training-loss checks and progress reports");
-ABSL_FLAG(int, seed, 17, "Deterministic training and sampling seed");
+ABSL_FLAG(int, seed, 17, "Deterministic initialization and sampling seed");
 ABSL_FLAG(bool, interactive, true,
-          "Read prompts after training; disabled by the Bazel test");
+          "Read prompts after training; disabled by the Bazel tests");
 ABSL_FLAG(int, generation_tokens, 300,
-          "Bytes generated after each prompt");
+          "Tokens generated after each prompt");
 ABSL_FLAG(double, temperature, 0.8, "Sampling temperature");
-ABSL_FLAG(int, batch_size, 256,
-          "Token rows per training batch; must be a multiple of 16");
-ABSL_FLAG(int, model_width, 256,
-          "Transformer hidden width; must be a multiple of 16");
-ABSL_FLAG(int, context_length, 16,
-          "Tokens per training sequence; must divide batch_size");
-ABSL_FLAG(int, attention_heads, 4,
-          "Attention heads; each head dimension must be a multiple of 16");
+ABSL_FLAG(int, batch_size, 1024,
+          "Token rows per batch; must be a multiple of context length 1024");
 
 namespace pluto::llm {
 namespace {
 
-using tokenization::PlainTextTokenizer;
+using tokenizer::Gpt2Detokenizer;
+using tokenizer::Gpt2Tokenizer;
 
-constexpr int kTransformerBlockCount = 12;
+// This binary deliberately exposes no architecture flags: these constants are
+// the model contract requested for Shakespeare. The vocabulary is physically
+// padded to 50,272 only inside tiled output kernels; padded logits are masked
+// and are never valid token IDs.
+constexpr int kVocabularySize = 50'257;
+constexpr int kContextLength = 1'024;
+constexpr int kTransformerBlockCount = 8;
+constexpr int kModelWidth = 512;
+constexpr int kAttentionHeads = 8;
+constexpr int kAttentionHeadDimension = 64;
+constexpr int kFeedForwardWidth = 2'048;
+constexpr float kLayerNormEpsilon = 1e-5f;
+constexpr float kInitializationStandardDeviation = 0.02f;
+constexpr int kTileSize = 16;
+static_assert(kModelWidth == kAttentionHeads * kAttentionHeadDimension);
+static_assert(kFeedForwardWidth == 4 * kModelWidth);
 
-// All data/model dimensions live in this binary-level configuration. Layers
-// retain only the dimensions inherent to their own weights and infer the batch
-// row count from their input buffers.
 struct ModelConfig {
   int batch_size;
-  int model_width;
-  int vocabulary_size;
-  int context_length;
-  int attention_heads;
 
-  int sequence_batch_size() const { return batch_size / context_length; }
+  int sequence_batch_size() const { return batch_size / kContextLength; }
+  int padded_vocabulary_size() const {
+    return ((kVocabularySize + kTileSize - 1) / kTileSize) * kTileSize;
+  }
 
   absl::Status Validate() const {
-    if (batch_size <= 0 || batch_size % 16 != 0) {
+    if (batch_size <= 0 || batch_size % kContextLength != 0) {
       return absl::InvalidArgumentError(
-          "batch_size must be a positive multiple of 16");
-    }
-    if (context_length <= 0 || batch_size % context_length != 0) {
-      return absl::InvalidArgumentError(
-          "context_length must be positive and divide batch_size");
-    }
-    if (model_width <= 0 || model_width % 16 != 0) {
-      return absl::InvalidArgumentError(
-          "model_width must be a positive multiple of 16");
-    }
-    if (vocabulary_size <= 0 || vocabulary_size % 16 != 0) {
-      return absl::InvalidArgumentError(
-          "vocabulary_size must be a positive multiple of 16");
-    }
-    if (attention_heads <= 0 || model_width % attention_heads != 0 ||
-        (model_width / attention_heads) % 16 != 0) {
-      return absl::InvalidArgumentError(
-          "attention_heads must divide model_width and produce a head "
-          "dimension that is a multiple of 16");
+          "batch_size must be a positive multiple of context length 1024");
     }
     return absl::OkStatus();
   }
 };
 
 struct CorpusSplit {
-  std::vector<uint32_t> training;
-  std::vector<uint32_t> test;
+  std::vector<int> training;
+  std::vector<int> test;
 };
 
 // Preserves temporal order: the prefix is used for fitting and the suffix is
-// held out. Keeping the split contiguous prevents near-identical overlapping
-// context windows from leaking across a randomized example-level split.
-absl::StatusOr<CorpusSplit> SplitCorpus(
-    const std::vector<uint32_t>& corpus_tokens, double test_fraction,
-    int context_length) {
+// held out. A contiguous split avoids leaking overlapping context windows.
+absl::StatusOr<CorpusSplit> SplitCorpus(const std::vector<int>& corpus_tokens,
+                                        double test_fraction) {
   if (!std::isfinite(test_fraction) || test_fraction <= 0.0 ||
       test_fraction >= 1.0) {
     return absl::InvalidArgumentError(
@@ -125,17 +121,18 @@ absl::StatusOr<CorpusSplit> SplitCorpus(
   }
   const size_t training_size = static_cast<size_t>(
       static_cast<double>(corpus_tokens.size()) * (1.0 - test_fraction));
-  const size_t minimum_size = static_cast<size_t>(context_length) + 1;
-  if (training_size < minimum_size ||
-      corpus_tokens.size() - training_size < minimum_size) {
+  constexpr size_t kMinimumSplitSize = kContextLength + 1;
+  if (training_size < kMinimumSplitSize ||
+      corpus_tokens.size() - training_size < kMinimumSplitSize) {
     return absl::InvalidArgumentError(
-        "both corpus splits must contain more tokens than context_length");
+        "both corpus splits must contain more than 1024 GPT-2 tokens");
   }
   return CorpusSplit{
-      .training = std::vector<uint32_t>(corpus_tokens.begin(),
-                                       corpus_tokens.begin() + training_size),
-      .test = std::vector<uint32_t>(corpus_tokens.begin() + training_size,
-                                   corpus_tokens.end()),
+      .training =
+          std::vector<int>(corpus_tokens.begin(),
+                           corpus_tokens.begin() + training_size),
+      .test = std::vector<int>(corpus_tokens.begin() + training_size,
+                              corpus_tokens.end()),
   };
 }
 
@@ -161,58 +158,59 @@ absl::Status CudaStatus(cudaError_t error, const char* operation) {
                    cudaGetErrorString(error)));
 }
 
-// Builds one pre-norm, GPT-2-style transformer block. Given an input x, the
-// block applies these two residual branches in sequence:
+// Builds one pre-LayerNorm GPT-2 transformer block:
 //
-//   attention: x <- x + W_o CausalAttention(W_qkv LayerNorm(x))
-//   MLP:       x <- x + W_2 GELU(W_1 LayerNorm(x))
+//   x = x + W_o CausalMHA(W_qkv LayerNorm(x))
+//   x = x + W_2 GELU(W_1 LayerNorm(x))
 //
-// CausalAttention is the fused FlashAttention layer. Its single projected
-// activation supplies Q, K, and V, so this scaled-down model shares their
-// projection rather than creating three matrices. The MLP is also
-// width-preserving instead of expanding to GPT-2's usual four-times width.
-// Both residual-output projections are scaled at initialization to keep
-// activation variance stable across the model's 12 blocks.
+// W_qkv maps 512 to three independent 512-wide Q/K/V tensors. CausalMHA has
+// eight 64-wide heads and uses online FP32 softmax statistics. The MLP expands
+// 512 -> 2048 -> 512. Dropout and attention dropout are exactly zero, so no
+// dropout layers appear. Each block is independently parameterized.
 absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateTransformerBlock(
-    const ModelConfig& config, DataType output_type, float learning_rate,
+    DataType output_type, int initialization_seed, int block_index,
     cudaStream_t stream) {
-  // GPT-2 scales residual projections by 1/sqrt(2 * layer_count) so variance
-  // does not grow with depth.
-  const float residual_projection_scale =
-      1.0f / std::sqrt(2.0f * kTransformerBlockCount);
+  const float residual_standard_deviation =
+      kInitializationStandardDeviation /
+      std::sqrt(2.0f * kTransformerBlockCount);
+  const uint64_t seed_base =
+      static_cast<uint64_t>(static_cast<uint32_t>(initialization_seed)) +
+      1'000 + static_cast<uint64_t>(block_index) * 100;
+
   ComposedLayerBuilder attention_builder;
   RETURN_IF_ERROR(attention_builder.add(LayerNormLayer::Create(
-      config.model_width, 1e-5f, output_type, stream)));
+      kModelWidth, kLayerNormEpsilon, output_type, stream)));
   RETURN_IF_ERROR(attention_builder.add(FullyConnectedLayer::Create(
-      config.model_width, output_type, learning_rate, stream)));
+      kModelWidth, 3 * kModelWidth, output_type, stream)));
   auto* qkv_projection =
       static_cast<FullyConnectedLayer*>(attention_builder.back());
-  RETURN_IF_ERROR(qkv_projection->InitializeIdentity());
+  RETURN_IF_ERROR(qkv_projection->InitializeNormal(
+      kInitializationStandardDeviation, seed_base + 1));
   RETURN_IF_ERROR(attention_builder.add(AttentionLayer::Create(
-      config.context_length, config.attention_heads, config.model_width,
-      output_type, stream)));
+      kContextLength, kAttentionHeads, kModelWidth, output_type, stream)));
   RETURN_IF_ERROR(attention_builder.add(FullyConnectedLayer::Create(
-      config.model_width, output_type, learning_rate, stream)));
+      kModelWidth, kModelWidth, output_type, stream)));
   auto* attention_projection =
       static_cast<FullyConnectedLayer*>(attention_builder.back());
-  RETURN_IF_ERROR(
-      attention_projection->InitializeIdentity(residual_projection_scale));
+  RETURN_IF_ERROR(attention_projection->InitializeNormal(
+      residual_standard_deviation, seed_base + 2));
 
   ComposedLayerBuilder mlp_builder;
   RETURN_IF_ERROR(mlp_builder.add(LayerNormLayer::Create(
-      config.model_width, 1e-5f, output_type, stream)));
+      kModelWidth, kLayerNormEpsilon, output_type, stream)));
   RETURN_IF_ERROR(mlp_builder.add(FullyConnectedLayer::Create(
-      config.model_width, output_type, learning_rate, stream)));
+      kModelWidth, kFeedForwardWidth, output_type, stream)));
   auto* mlp_input =
       static_cast<FullyConnectedLayer*>(mlp_builder.back());
-  RETURN_IF_ERROR(mlp_input->InitializeIdentity());
+  RETURN_IF_ERROR(mlp_input->InitializeNormal(
+      kInitializationStandardDeviation, seed_base + 3));
   RETURN_IF_ERROR(mlp_builder.add(GeluLayer::Create(output_type, stream)));
   RETURN_IF_ERROR(mlp_builder.add(FullyConnectedLayer::Create(
-      config.model_width, output_type, learning_rate, stream)));
+      kFeedForwardWidth, kModelWidth, output_type, stream)));
   auto* mlp_output =
       static_cast<FullyConnectedLayer*>(mlp_builder.back());
-  RETURN_IF_ERROR(
-      mlp_output->InitializeIdentity(residual_projection_scale));
+  RETURN_IF_ERROR(mlp_output->InitializeNormal(
+      residual_standard_deviation, seed_base + 4));
 
   ASSIGN_OR_RETURN(auto attention, attention_builder.create());
   ASSIGN_OR_RETURN(auto mlp, mlp_builder.create());
@@ -224,40 +222,33 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateTransformerBlock(
   return block_builder.create();
 }
 
-// Constructs the model here because its topology is specific to this training
-// binary. Generic layer implementations remain in //src/llm:layers.
+// Constructs the exact eight-block model described above. Token and position
+// embeddings, block activations, and final normalized activations are BF16.
+// Parameters are FP32 master weights, reductions/statistics remain FP32, and
+// the terminal projection reuses the token embedding table.
 absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateShakespeareLlm(
-    const ModelConfig& config, DataType output_type, float learning_rate,
-    cudaStream_t stream) {
+    DataType output_type, int seed, cudaStream_t stream) {
   ComposedLayerBuilder builder;
   RETURN_IF_ERROR(builder.add(EmbeddingLookupLayer::Create(
-      config.vocabulary_size, config.model_width, output_type, learning_rate,
-      stream)));
+      kVocabularySize, kModelWidth, output_type, stream)));
   auto* embedding = static_cast<EmbeddingLookupLayer*>(builder.back());
-  // GPT-2 uses small initial embeddings. A scaled identity is deterministic,
-  // breaks the tied E * E^T zero-gradient symmetry, and keeps the final
-  // layer-normalized logits in a stable range.
-  RETURN_IF_ERROR(embedding->InitializeIdentity(0.02f));
+  RETURN_IF_ERROR(embedding->InitializeNormal(
+      kInitializationStandardDeviation, static_cast<uint64_t>(seed)));
 
   RETURN_IF_ERROR(builder.add(PositionEmbeddingLayer::Create(
-      config.context_length, config.model_width, output_type, learning_rate,
-      stream)));
+      kContextLength, kModelWidth, output_type, stream)));
+  auto* positions = static_cast<PositionEmbeddingLayer*>(builder.back());
+  RETURN_IF_ERROR(positions->InitializeNormal(
+      kInitializationStandardDeviation, static_cast<uint64_t>(seed) + 1));
 
-  // Each block is independently parameterized and participates directly in
-  // the model's sequential composition. The compact variant retains GPT-2's
-  // 12-block depth, pre-norm residual topology, and causal attention, but
-  // shares Q/K/V within each block and keeps the MLP width-preserving.
   for (int index = 0; index < kTransformerBlockCount; ++index) {
     RETURN_IF_ERROR(builder.add(
-        CreateTransformerBlock(config, output_type, learning_rate, stream)));
+        CreateTransformerBlock(output_type, seed, index, stream)));
   }
 
   RETURN_IF_ERROR(builder.add(LayerNormLayer::Create(
-      config.model_width, 1e-5f, output_type, stream)));
-
-  RETURN_IF_ERROR(
-      builder.add(LanguageModelingHeadLayer::Create(embedding)));
-
+      kModelWidth, kLayerNormEpsilon, output_type, stream)));
+  RETURN_IF_ERROR(builder.add(LanguageModelingHeadLayer::Create(embedding)));
   return builder.create();
 }
 
@@ -285,18 +276,25 @@ absl::StatusOr<std::string> LoadCorpus() {
   const std::string requested = absl::GetFlag(FLAGS_corpus);
   if (!requested.empty()) return ReadFile(requested);
 
-  // Bazel tests expose the fixture beneath TEST_SRCDIR/TEST_WORKSPACE. `bazel
-  // run` normally starts in the workspace, so the relative fallback handles
-  // both direct execution and interactive development.
   if (const char* test_srcdir = std::getenv("TEST_SRCDIR")) {
-    const char* workspace = std::getenv("TEST_WORKSPACE");
-    if (workspace != nullptr) {
+    if (const char* workspace = std::getenv("TEST_WORKSPACE")) {
       auto corpus = ReadFile(absl::StrCat(test_srcdir, "/", workspace,
                                           "/testdata/shakespeare.txt"));
       if (corpus.ok()) return corpus;
     }
   }
   return ReadFile("testdata/shakespeare.txt");
+}
+
+absl::StatusOr<std::filesystem::path> TokenizerDirectory() {
+  const std::string requested = absl::GetFlag(FLAGS_tokenizer_dir);
+  if (!requested.empty()) return std::filesystem::path(requested);
+  if (const char* environment = std::getenv("PLUTO_GPT2_TOKENIZER_DIR")) {
+    return std::filesystem::path(environment);
+  }
+  return absl::FailedPreconditionError(
+      "set --tokenizer_dir or PLUTO_GPT2_TOKENIZER_DIR to the GPT-2 "
+      "tokenizer directory");
 }
 
 absl::Status CopyBatch(const std::vector<int>& tokens,
@@ -316,7 +314,7 @@ absl::Status CopyBatch(const std::vector<int>& tokens,
 
 absl::StatusOr<double> Evaluate(
     const ModelConfig& config, Layer& model, CrossEntropyLossLayer& loss_layer,
-    const std::vector<uint32_t>& corpus_tokens, int eval_batches,
+    const std::vector<int>& corpus_tokens, int eval_batches,
     const Buffer& token_buffer, const Buffer& target_buffer,
     cudaStream_t stream) {
   if (eval_batches <= 0) {
@@ -326,21 +324,21 @@ absl::StatusOr<double> Evaluate(
   std::vector<int> targets(config.batch_size);
   std::vector<float> losses(config.batch_size);
   double total = 0.0;
-  const size_t sequence_start_count =
-      corpus_tokens.size() - config.context_length;
+  const size_t sequence_start_count = corpus_tokens.size() - kContextLength;
 
   for (int batch = 0; batch < eval_batches; ++batch) {
-    for (int sequence = 0; sequence < config.sequence_batch_size(); ++sequence) {
+    for (int sequence = 0; sequence < config.sequence_batch_size();
+         ++sequence) {
       const size_t ordinal =
           static_cast<size_t>(batch) * config.sequence_batch_size() + sequence;
       const size_t start =
           (ordinal * sequence_start_count) /
-          (static_cast<size_t>(eval_batches) * config.sequence_batch_size());
-      for (int position = 0; position < config.context_length; ++position) {
-        const int row = sequence * config.context_length + position;
-        tokens[row] = static_cast<int>(corpus_tokens[start + position]);
-        targets[row] =
-            static_cast<int>(corpus_tokens[start + position + 1]);
+          (static_cast<size_t>(eval_batches) *
+           config.sequence_batch_size());
+      for (int position = 0; position < kContextLength; ++position) {
+        const int row = sequence * kContextLength + position;
+        tokens[row] = corpus_tokens[start + position];
+        targets[row] = corpus_tokens[start + position + 1];
       }
     }
     RETURN_IF_ERROR(
@@ -364,31 +362,26 @@ absl::StatusOr<double> Evaluate(
   return total / (static_cast<double>(eval_batches) * config.batch_size);
 }
 
-// Runs stochastic next-token training and updates the model in place.
+// Runs stochastic next-token training and updates model with optimizer.
 //
-// `config` defines the batch, sequence, vocabulary, and model dimensions.
-// `model` maps token IDs to vocabulary logits; its backward pass applies the
-// parameter updates using the learning rate supplied when it was constructed.
-// `loss_layer` computes one cross-entropy value per token and seeds the logits
-// gradient. `training_tokens` is the host-resident training split. `options`
-// supplies the random seed, the maximum number of updates, and the deterministic
-// training-evaluation schedule used for optional loss-based early stopping.
-// `initial_training_loss` avoids repeating the evaluation already performed by
-// Run() and permits an immediate zero-step stop.
+// config determines how many independent 1024-token sequences are packed in
+// one batch. loss_layer computes an FP32 cross-entropy per row and seeds the
+// mean-loss logits gradient. training_tokens is the host-resident GPT-2-token
+// training split. options controls the random window sampler, hard step cap,
+// and deterministic evaluations used for optional loss-based early stopping.
+// initial_training_loss avoids repeating Run()'s initial evaluation.
 //
-// `token_buffer` and `target_buffer` are reusable GPU staging allocations,
-// each containing `config.batch_size` native `int` values. They are interpreted
-// as flattened [config.sequence_batch_size(), config.context_length] arrays:
-// token_buffer holds each input sequence and target_buffer holds the same
-// sequence shifted forward by one token. Reusing these buffers avoids a device
-// allocation on every step. They must belong to `stream`, which orders the
-// host-to-device copies, forward/backward kernels, and final synchronization.
-// Buffer is reference-counted, so Train borrows these handles without taking
-// ownership of the underlying allocations.
+// token_buffer and target_buffer are reusable GPU staging allocations with
+// config.batch_size native int values. Viewed as
+// [sequence_batch_size, 1024], token_buffer contains input sequences and
+// target_buffer contains the same sequences shifted by one token. Both buffers
+// are tied to stream; that stream orders copies, forward/backward kernels,
+// AdamW updates, and synchronization. Buffer is reference-counted, so this
+// function only borrows the handles and does not own their allocations.
 absl::StatusOr<TrainingResult> Train(
     const ModelConfig& config, Layer& model,
-    CrossEntropyLossLayer& loss_layer,
-    const std::vector<uint32_t>& training_tokens,
+    CrossEntropyLossLayer& loss_layer, AdamWOptimizer& optimizer,
+    const std::vector<int>& training_tokens,
     const TrainingOptions& options, double initial_training_loss,
     const Buffer& token_buffer, const Buffer& target_buffer,
     cudaStream_t stream) {
@@ -408,21 +401,22 @@ absl::StatusOr<TrainingResult> Train(
               << "; no updates needed\n";
     return TrainingResult{.steps_completed = 0, .reached_stop_loss = true};
   }
+
   std::mt19937 random(options.seed);
   std::uniform_int_distribution<size_t> sequence_start(
-      0, training_tokens.size() - config.context_length - 1);
+      0, training_tokens.size() - kContextLength - 1);
   std::vector<int> tokens(config.batch_size);
   std::vector<int> targets(config.batch_size);
   std::vector<float> losses(config.batch_size);
 
   for (int step = 0; step < options.max_steps; ++step) {
-    for (int sequence = 0; sequence < config.sequence_batch_size(); ++sequence) {
+    for (int sequence = 0; sequence < config.sequence_batch_size();
+         ++sequence) {
       const size_t start = sequence_start(random);
-      for (int position = 0; position < config.context_length; ++position) {
-        const int row = sequence * config.context_length + position;
-        tokens[row] = static_cast<int>(training_tokens[start + position]);
-        targets[row] =
-            static_cast<int>(training_tokens[start + position + 1]);
+      for (int position = 0; position < kContextLength; ++position) {
+        const int row = sequence * kContextLength + position;
+        tokens[row] = training_tokens[start + position];
+        targets[row] = training_tokens[start + position + 1];
       }
     }
     RETURN_IF_ERROR(
@@ -439,6 +433,7 @@ absl::StatusOr<TrainingResult> Train(
                      loss_layer.bwd({}, std::move(loss_tape)));
     auto input_gradient = model.bwd(logits_gradient, std::move(model_tape));
     if (!input_gradient.ok()) return input_gradient.status();
+    RETURN_IF_ERROR(optimizer.Step());
 
     const bool evaluate =
         (step + 1) % options.evaluation_interval == 0 ||
@@ -455,7 +450,7 @@ absl::StatusOr<TrainingResult> Train(
       for (float loss : losses) mean += loss;
       mean /= config.batch_size;
       std::cout << "step " << step + 1 << "/" << options.max_steps
-                << ", batch loss: " << mean << '\n';
+                << ", pre-update batch loss: " << mean << '\n';
 
       if (options.stop_loss >= 0.0) {
         ASSIGN_OR_RETURN(
@@ -479,27 +474,25 @@ absl::StatusOr<TrainingResult> Train(
 }
 
 absl::StatusOr<std::vector<float>> Predict(
-    const ModelConfig& config, Layer& model,
-    const std::vector<uint32_t>& context,
+    const ModelConfig& config, Layer& model, const std::vector<int>& context,
     const Buffer& token_buffer, cudaStream_t stream) {
   if (context.empty()) {
     return absl::InvalidArgumentError("prediction context must not be empty");
   }
   const size_t context_size =
-      std::min(context.size(), static_cast<size_t>(config.context_length));
+      std::min(context.size(), static_cast<size_t>(kContextLength));
   const size_t context_start = context.size() - context_size;
   std::vector<int> repeated_context(config.batch_size);
-  for (int sequence = 0; sequence < config.sequence_batch_size(); ++sequence) {
+  for (int sequence = 0; sequence < config.sequence_batch_size();
+       ++sequence) {
     for (size_t position = 0; position < context_size; ++position) {
-      repeated_context[sequence * config.context_length + position] =
-          static_cast<int>(context[context_start + position]);
+      repeated_context[sequence * kContextLength + position] =
+          context[context_start + position];
     }
-    // These rows are causally invisible to the selected output row. Filling
-    // them still gives every kernel valid token IDs.
+    // Later rows are causally invisible to the selected output row.
     for (size_t position = context_size;
-         position < static_cast<size_t>(config.context_length); ++position) {
-      repeated_context[sequence * config.context_length + position] =
-          static_cast<int>(context.back());
+         position < static_cast<size_t>(kContextLength); ++position) {
+      repeated_context[sequence * kContextLength + position] = context.back();
     }
   }
   RETURN_IF_ERROR(CudaStatus(
@@ -510,11 +503,11 @@ absl::StatusOr<std::vector<float>> Predict(
   Tape tape;
   BufferVec inputs = {token_buffer};
   ASSIGN_OR_RETURN(auto logits, model.fwd(inputs, &tape));
-  std::vector<float> host_logits(config.vocabulary_size);
+  std::vector<float> host_logits(kVocabularySize);
   const size_t output_row = context_size - 1;
   const auto* selected_logits =
       static_cast<const float*>(logits.data()) +
-      output_row * config.vocabulary_size;
+      output_row * config.padded_vocabulary_size();
   RETURN_IF_ERROR(CudaStatus(
       cudaMemcpyAsync(host_logits.data(), selected_logits,
                       host_logits.size() * sizeof(float),
@@ -526,9 +519,8 @@ absl::StatusOr<std::vector<float>> Predict(
 }
 
 absl::StatusOr<std::string> Generate(
-    const ModelConfig& config, Layer& model,
-    const PlainTextTokenizer& tokenizer, const std::vector<bool>& observed,
-    std::string prompt,
+    const ModelConfig& config, Layer& model, const Gpt2Tokenizer& tokenizer,
+    const Gpt2Detokenizer& detokenizer, std::string prompt,
     int generation_tokens, double temperature, std::mt19937* random,
     const Buffer& token_buffer, cudaStream_t stream) {
   if (generation_tokens < 0 || temperature <= 0.0) {
@@ -536,63 +528,66 @@ absl::StatusOr<std::string> Generate(
         "generation_tokens must be non-negative and temperature positive");
   }
   if (prompt.empty()) prompt = "\n";
-  std::vector<uint32_t> prompt_tokens = tokenizer.Encode(prompt);
-  std::vector<uint32_t> context = prompt_tokens;
-  std::vector<uint32_t> generated;
+  ASSIGN_OR_RETURN(std::vector<int> context, tokenizer.Encode(prompt));
+  std::vector<int> generated;
   generated.reserve(generation_tokens);
 
   for (int index = 0; index < generation_tokens; ++index) {
     ASSIGN_OR_RETURN(auto logits,
                      Predict(config, model, context, token_buffer, stream));
     const float maximum = *std::max_element(logits.begin(), logits.end());
-    std::vector<double> probabilities(config.vocabulary_size);
-    for (int token = 0; token < config.vocabulary_size; ++token) {
-      if (observed[token]) {
-        probabilities[token] =
-            std::exp((logits[token] - maximum) / temperature);
-      }
+    std::vector<double> probabilities(kVocabularySize);
+    for (int token = 0; token < kVocabularySize; ++token) {
+      probabilities[token] =
+          std::exp((logits[token] - maximum) / temperature);
     }
     std::discrete_distribution<int> sample(probabilities.begin(),
                                             probabilities.end());
-    const uint32_t next = static_cast<uint32_t>(sample(*random));
+    const int next = sample(*random);
     context.push_back(next);
     generated.push_back(next);
   }
-  return tokenizer.Decode(generated);
+  return detokenizer.Decode(generated);
 }
 
 absl::Status Run(cudaStream_t stream) {
   ASSIGN_OR_RETURN(auto corpus, LoadCorpus());
-  const PlainTextTokenizer tokenizer;
-  const ModelConfig config{
-      .batch_size = absl::GetFlag(FLAGS_batch_size),
-      .model_width = absl::GetFlag(FLAGS_model_width),
-      .vocabulary_size = static_cast<int>(tokenizer.vocab_size()),
-      .context_length = absl::GetFlag(FLAGS_context_length),
-      .attention_heads = absl::GetFlag(FLAGS_attention_heads),
-  };
-  RETURN_IF_ERROR(config.Validate());
-  const std::vector<uint32_t> corpus_tokens = tokenizer.Encode(corpus);
-  if (corpus_tokens.size() <= static_cast<size_t>(config.context_length)) {
-    return absl::InvalidArgumentError(
-        "the training corpus must be longer than the model context");
+  ASSIGN_OR_RETURN(auto tokenizer_directory, TokenizerDirectory());
+  ASSIGN_OR_RETURN(auto tokenizer, Gpt2Tokenizer::Load(tokenizer_directory));
+  ASSIGN_OR_RETURN(auto detokenizer,
+                   Gpt2Detokenizer::Load(tokenizer_directory));
+  if (tokenizer->vocab_size() != kVocabularySize ||
+      detokenizer->vocab_size() != kVocabularySize) {
+    return absl::FailedPreconditionError(absl::StrCat(
+        "the model requires the GPT-2 vocabulary of ", kVocabularySize,
+        " tokens; encoder reports ", tokenizer->vocab_size(),
+        " and decoder reports ", detokenizer->vocab_size()));
   }
+
+  const ModelConfig config{.batch_size = absl::GetFlag(FLAGS_batch_size)};
+  RETURN_IF_ERROR(config.Validate());
+  ASSIGN_OR_RETURN(std::vector<int> corpus_tokens, tokenizer->Encode(corpus));
   ASSIGN_OR_RETURN(
       auto corpus_split,
-      SplitCorpus(corpus_tokens, absl::GetFlag(FLAGS_test_fraction),
-                  config.context_length));
-  std::vector<bool> observed(config.vocabulary_size);
-  for (uint32_t token : corpus_tokens) observed[token] = true;
+      SplitCorpus(corpus_tokens, absl::GetFlag(FLAGS_test_fraction)));
 
-  ASSIGN_OR_RETURN(
-      auto model,
-      CreateShakespeareLlm(
-          config, DataType::FP16,
-          static_cast<float>(absl::GetFlag(FLAGS_learning_rate)), stream));
-  ASSIGN_OR_RETURN(
-      auto loss_layer,
-      CrossEntropyLossLayer::Create(config.vocabulary_size, DataType::FP16,
-                                    stream));
+  ASSIGN_OR_RETURN(auto model,
+                   CreateShakespeareLlm(DataType::BF16,
+                                        absl::GetFlag(FLAGS_seed), stream));
+  ASSIGN_OR_RETURN(auto loss_layer,
+                   CrossEntropyLossLayer::Create(kVocabularySize,
+                                                 DataType::BF16, stream));
+  const AdamWConfig optimizer_config{
+      .learning_rate =
+          static_cast<float>(absl::GetFlag(FLAGS_learning_rate)),
+      .beta1 = static_cast<float>(absl::GetFlag(FLAGS_adam_beta1)),
+      .beta2 = static_cast<float>(absl::GetFlag(FLAGS_adam_beta2)),
+      .epsilon = static_cast<float>(absl::GetFlag(FLAGS_adam_epsilon)),
+      .weight_decay =
+          static_cast<float>(absl::GetFlag(FLAGS_weight_decay)),
+  };
+  ASSIGN_OR_RETURN(auto optimizer,
+                   AdamWOptimizer::Create(*model, optimizer_config, stream));
   ASSIGN_OR_RETURN(
       auto token_buffer,
       Buffer::Allocate(config.batch_size * sizeof(int), stream));
@@ -609,10 +604,15 @@ absl::Status Run(cudaStream_t stream) {
       double initial_test_loss,
       Evaluate(config, *model, *loss_layer, corpus_split.test, eval_batches,
                token_buffer, target_buffer, stream));
-  std::cout << "corpus tokens: " << corpus_tokens.size()
+  std::cout << "model: GPT-2 vocabulary=" << kVocabularySize
+            << ", context=" << kContextLength
+            << ", layers=" << kTransformerBlockCount
+            << ", width=" << kModelWidth << ", heads=" << kAttentionHeads
+            << ", head_dim=" << kAttentionHeadDimension
+            << ", MLP=" << kFeedForwardWidth << ", BF16 compute\n"
+            << "corpus tokens: " << corpus_tokens.size()
             << " (training: " << corpus_split.training.size()
-            << ", test: " << corpus_split.test.size()
-            << "), vocabulary: " << tokenizer.vocab_size() << '\n'
+            << ", test: " << corpus_split.test.size() << ")\n"
             << "initial training loss: " << initial_training_loss << '\n'
             << "initial test loss: " << initial_test_loss << '\n';
 
@@ -625,7 +625,7 @@ absl::Status Run(cudaStream_t stream) {
   };
   ASSIGN_OR_RETURN(
       auto training_result,
-      Train(config, *model, *loss_layer, corpus_split.training,
+      Train(config, *model, *loss_layer, *optimizer, corpus_split.training,
             training_options, initial_training_loss, token_buffer,
             target_buffer, stream));
   ASSIGN_OR_RETURN(
@@ -650,7 +650,7 @@ absl::Status Run(cudaStream_t stream) {
         final_training_loss));
   }
   const double target_loss = absl::GetFlag(FLAGS_target_loss);
-  if (final_test_loss > target_loss) {
+  if (target_loss >= 0.0 && final_test_loss > target_loss) {
     return absl::FailedPreconditionError(
         absl::StrCat("model did not reach target loss ", target_loss,
                      "; final test loss was ", final_test_loss));
@@ -664,7 +664,7 @@ absl::Status Run(cudaStream_t stream) {
   std::mt19937 random(absl::GetFlag(FLAGS_seed) + 1);
   ASSIGN_OR_RETURN(
       auto sample,
-      Generate(config, *model, tokenizer, observed, "To be",
+      Generate(config, *model, *tokenizer, *detokenizer, "To be",
                std::min(120, absl::GetFlag(FLAGS_generation_tokens)),
                absl::GetFlag(FLAGS_temperature), &random, token_buffer,
                stream));
@@ -678,7 +678,7 @@ absl::Status Run(cudaStream_t stream) {
     if (!std::getline(std::cin, prompt)) break;
     ASSIGN_OR_RETURN(
         auto completion,
-        Generate(config, *model, tokenizer, observed, prompt,
+        Generate(config, *model, *tokenizer, *detokenizer, prompt,
                  absl::GetFlag(FLAGS_generation_tokens),
                  absl::GetFlag(FLAGS_temperature), &random, token_buffer,
                  stream));
@@ -705,8 +705,8 @@ int main(int argc, char** argv) {
     return 1;
   }
   const absl::Status status = pluto::llm::Run(stream);
-  // Run() owns every Buffer, so its return queues all stream-ordered frees
-  // before the final synchronization and stream destruction below.
+  // Run() destroys every Buffer, queueing stream-ordered frees before this
+  // synchronization and stream destruction.
   const cudaError_t sync_error = cudaStreamSynchronize(stream);
   const cudaError_t destroy_error = cudaStreamDestroy(stream);
   if (!status.ok()) {

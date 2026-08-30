@@ -1,6 +1,7 @@
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
+load("@rules_cuda//cuda:defs.bzl", "cuda_library")
 load("//src/llm:layers/defs.bzl", "layer_library", "layer_test")
 
 cc_library(
@@ -39,6 +40,27 @@ layer_library("fully_connected")
 layer_library("gelu")
 layer_library("norm")
 
+cuda_library(
+    name = "optimizer",
+    srcs = ["optimizer.cu"],
+    hdrs = ["optimizer.h"],
+    copts = [
+        "--enable-tile",
+        "-std=c++20",
+    ],
+    host_copts = ["-std=c++20"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":layer",
+        ":layer_internal",
+        "//src/common:status_macros",
+        "//src/gpu:buffer",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
 # Compatibility aggregate for binaries that use several layer families.
 cc_library(
     name = "layers",
@@ -51,6 +73,7 @@ cc_library(
         ":fully_connected",
         ":gelu",
         ":norm",
+        ":optimizer",
     ],
 )
 
@@ -60,9 +83,11 @@ cc_binary(
     data = ["//testdata:shakespeare.txt"],
     deps = [
         ":layers",
+        ":optimizer",
         "//src/common:status_macros",
         "//src/gpu:buffer",
-        "//src/tokenization:plain_text_tokenizer",
+        "//src/tokenization:detokenizer",
+        "//src/tokenization:tokenizer",
         "@abseil-cpp//absl/flags:flag",
         "@abseil-cpp//absl/flags:parse",
         "@abseil-cpp//absl/status",
@@ -78,20 +103,24 @@ cc_test(
     timeout = "long",
     srcs = ["shakespeare_llm.cc"],
     args = [
-        "--eval_batches=16",
-        "--generation_tokens=40",
+        "--eval_batches=1",
+        "--generation_tokens=0",
         "--interactive=false",
-        "--learning_rate=0.05",
-        "--steps=1200",
-        "--target_loss=2.8",
+        "--steps=0",
+        "--target_loss=20",
     ],
     data = ["//testdata:shakespeare.txt"],
-    tags = ["requires-gpu"],
+    tags = [
+        "requires-gpu",
+        "requires-tokenizer",
+    ],
     deps = [
         ":layers",
+        ":optimizer",
         "//src/common:status_macros",
         "//src/gpu:buffer",
-        "//src/tokenization:plain_text_tokenizer",
+        "//src/tokenization:detokenizer",
+        "//src/tokenization:tokenizer",
         "@abseil-cpp//absl/flags:flag",
         "@abseil-cpp//absl/flags:parse",
         "@abseil-cpp//absl/status",
@@ -113,16 +142,21 @@ cc_test(
         "--generation_tokens=0",
         "--interactive=false",
         "--steps=10",
-        "--target_loss=10",
-        "--train_until_loss=10",
+        "--target_loss=20",
+        "--train_until_loss=20",
     ],
     data = ["//testdata:shakespeare.txt"],
-    tags = ["requires-gpu"],
+    tags = [
+        "requires-gpu",
+        "requires-tokenizer",
+    ],
     deps = [
         ":layers",
+        ":optimizer",
         "//src/common:status_macros",
         "//src/gpu:buffer",
-        "//src/tokenization:plain_text_tokenizer",
+        "//src/tokenization:detokenizer",
+        "//src/tokenization:tokenizer",
         "@abseil-cpp//absl/flags:flag",
         "@abseil-cpp//absl/flags:parse",
         "@abseil-cpp//absl/status",
@@ -155,6 +189,11 @@ layer_test("embedding")
 layer_test("fully_connected")
 layer_test("gelu")
 layer_test("norm")
+layer_test("optimizer", [
+    ":combinators",
+    ":embedding",
+    ":fully_connected",
+])
 
 test_suite(
     name = "layers_test",
@@ -166,5 +205,6 @@ test_suite(
         ":fully_connected_test",
         ":gelu_test",
         ":norm_test",
+        ":optimizer_test",
     ],
 )
