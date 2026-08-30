@@ -5,7 +5,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "src/gpu/buffer.h"
+#include "src/cuda/buffer.h"
 #include "src/llm/layer.h"
 #include "src/llm/layers/test_util.h"
 

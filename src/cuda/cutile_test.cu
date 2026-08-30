@@ -5,7 +5,7 @@
 #include <cstddef>
 
 #include "gtest/gtest.h"
-#include "src/gpu/buffer.h"
+#include "src/cuda/buffer.h"
 
 namespace pluto::gpu {
 namespace {

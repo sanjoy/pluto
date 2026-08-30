@@ -1,4 +1,4 @@
-#include "src/gpu/buffer.h"
+#include "src/cuda/buffer.h"
 
 #include <cuda_runtime_api.h>
 

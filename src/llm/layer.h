@@ -7,7 +7,7 @@
 #include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "src/gpu/buffer.h"
+#include "src/cuda/buffer.h"
 
 namespace pluto::llm {
 

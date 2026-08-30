@@ -9,7 +9,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "src/gpu/buffer.h"
+#include "src/cuda/buffer.h"
 #include "src/llm/layer.h"
 
 namespace pluto::llm::internal {

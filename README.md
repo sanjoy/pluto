@@ -6,7 +6,7 @@ GoogleTest.
 
 ## GPU buffer
 
-The public target `//src/gpu:buffer` provides `pluto::gpu::Buffer`, a small
+The public target `//src/cuda:buffer` provides `pluto::gpu::Buffer`, a small
 untyped CUDA allocation:
 
 ```cpp
@@ -27,20 +27,20 @@ device-to-host copy, drops the final reference, and verifies that the
 stream-ordered free does not race the earlier work:
 
 ```bash
-bazel test //src/gpu:buffer_test
+bazel test //src/cuda:buffer_test
 ```
 
-The `//src/gpu:cutile_test` target is a CUDA Tile C++ toolchain smoke test. It
+The `//src/cuda:cutile_test` target is a CUDA Tile C++ toolchain smoke test. It
 uses an `__tile_global__` kernel to add two 128-element vectors in
 eight-element tiles, with one logical tile block per region:
 
 ```bash
-bazel test //src/gpu:cutile_test
+bazel test //src/cuda:cutile_test
 ```
 
 CUDA Tile C++ requires CUDA 13.3 or newer, C++20, and NVCC's
 `--enable-tile` option. Those language and compiler options are scoped to the
-cuTile target in `src/gpu/BUILD.bazel`; the rest of the project remains C++17.
+cuTile target in `src/cuda/BUILD.bazel`; the rest of the project remains C++17.
 
 ## GPT-2 tokenizer libraries
 

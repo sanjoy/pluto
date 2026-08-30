@@ -20,7 +20,7 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "src/common/status_macros.h"
-#include "src/gpu/buffer.h"
+#include "src/cuda/buffer.h"
 #include "src/llm/layer.h"
 #include "src/llm/layers/attention.h"
 #include "src/llm/layers/combinators.h"

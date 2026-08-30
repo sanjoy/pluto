@@ -10,7 +10,7 @@
 #include "absl/types/span.h"
 #include "gtest/gtest.h"
 #include "src/common/status_macros.h"
-#include "src/gpu/buffer.h"
+#include "src/cuda/buffer.h"
 #include "src/llm/layer.h"
 #include "src/llm/layers/test_util.h"
 #include "src/llm/layers/fully_connected.h"
