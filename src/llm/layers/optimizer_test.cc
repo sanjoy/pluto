@@ -18,7 +18,7 @@ namespace pluto::llm {
 namespace {
 
 TEST_F(LayersTest, UpdatesFp32MasterWeightsAndClearsGradients) {
-  auto dense = FullyConnectedLayer::Create(16, DataType::FP16, stream_);
+  auto dense = FullyConnectedLayer::Create(16, DataType::FP16, executor_);
   ASSERT_TRUE(dense.ok()) << dense.status();
   ASSERT_TRUE((*dense)->InitializeIdentity().ok());
   AdamWConfig config{
@@ -28,7 +28,7 @@ TEST_F(LayersTest, UpdatesFp32MasterWeightsAndClearsGradients) {
       .epsilon = 1e-6f,
       .weight_decay = 0.0f,
   };
-  auto optimizer = AdamWOptimizer::Create(**dense, config, stream_);
+  auto optimizer = AdamWOptimizer::Create(**dense, config, executor_);
   ASSERT_TRUE(optimizer.ok()) << optimizer.status();
   // Own the concrete AdamW implementation through the algorithm-independent
   // interface so the lifecycle calls below exercise virtual dispatch.
@@ -39,7 +39,7 @@ TEST_F(LayersTest, UpdatesFp32MasterWeightsAndClearsGradients) {
     std::vector<float> values(gradient.size_bytes() / sizeof(float), 2.0f);
     ASSERT_EQ(
         cudaMemcpyAsync(gradient.data(), values.data(), gradient.size_bytes(),
-                        cudaMemcpyHostToDevice, stream_),
+                        cudaMemcpyHostToDevice, executor_->stream()),
         cudaSuccess);
   }
   ASSERT_TRUE(optimizer_interface->Step().ok());
@@ -50,18 +50,18 @@ TEST_F(LayersTest, UpdatesFp32MasterWeightsAndClearsGradients) {
   std::vector<float> matrix_gradient(16 * 16);
   ASSERT_EQ(cudaMemcpyAsync(matrix.data(), (*dense)->weights()[0].data(),
                             matrix.size() * sizeof(float),
-                            cudaMemcpyDeviceToHost, stream_),
+                            cudaMemcpyDeviceToHost, executor_->stream()),
             cudaSuccess);
   ASSERT_EQ(cudaMemcpyAsync(bias.data(), (*dense)->weights()[1].data(),
                             bias.size() * sizeof(float), cudaMemcpyDeviceToHost,
-                            stream_),
+                            executor_->stream()),
             cudaSuccess);
   ASSERT_EQ(
       cudaMemcpyAsync(matrix_gradient.data(), (*dense)->gradients()[0].data(),
                       matrix_gradient.size() * sizeof(float),
-                      cudaMemcpyDeviceToHost, stream_),
+                      cudaMemcpyDeviceToHost, executor_->stream()),
       cudaSuccess);
-  ASSERT_EQ(cudaStreamSynchronize(stream_), cudaSuccess);
+  ASSERT_TRUE(executor_->Synchronize().ok());
   EXPECT_NEAR(matrix[0], 0.9f, 1e-5f);
   EXPECT_NEAR(matrix[1], -0.1f, 1e-5f);
   EXPECT_NEAR(bias[0], -0.1f, 1e-5f);
@@ -71,7 +71,7 @@ TEST_F(LayersTest, UpdatesFp32MasterWeightsAndClearsGradients) {
 TEST_F(LayersTest, DeduplicatesTiedEmbeddingWeights) {
   ComposedLayerBuilder builder;
   auto embedding = EmbeddingLookupLayer::Create(17, kTestModelWidth,
-                                                DataType::BF16, stream_);
+                                                DataType::BF16, executor_);
   ASSERT_TRUE(embedding.ok()) << embedding.status();
   EmbeddingLookupLayer* embedding_pointer = embedding->get();
   ASSERT_TRUE(builder.add(std::move(*embedding)).ok());
@@ -81,7 +81,7 @@ TEST_F(LayersTest, DeduplicatesTiedEmbeddingWeights) {
   ASSERT_TRUE(model.ok()) << model.status();
   ASSERT_EQ((*model)->weights().size(), 2u);
 
-  auto optimizer = Optimizer::Create(**model, AdamWConfig{}, stream_);
+  auto optimizer = Optimizer::Create(**model, AdamWConfig{}, executor_);
   ASSERT_TRUE(optimizer.ok()) << optimizer.status();
   EXPECT_EQ((*optimizer)->parameter_tensor_count(), 1u);
 }

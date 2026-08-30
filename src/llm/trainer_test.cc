@@ -12,6 +12,7 @@
 #include "absl/types/span.h"
 #include "gtest/gtest.h"
 #include "src/cuda/buffer.h"
+#include "src/cuda/executor.h"
 #include "src/dataset/dataset.h"
 #include "src/llm/layer.h"
 #include "src/llm/optimizer.h"
@@ -21,14 +22,14 @@ namespace {
 
 class FakeModel final : public Layer {
  public:
-  absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs,
-                             Tape* tape) const override {
+  absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs, Tape* tape,
+                             cuda::Executor* executor) const override {
     ++forward_calls;
     return inputs[0];
   }
 
   absl::StatusOr<BufferVec> bwd(absl::Span<const Buffer> output_gradients,
-                                Tape tape) override {
+                                Tape tape, cuda::Executor* executor) override {
     ++backward_calls;
     return BufferVec{};
   }
@@ -43,15 +44,15 @@ class FakeModel final : public Layer {
 class FakeLoss final : public Layer {
  public:
   static absl::StatusOr<std::unique_ptr<FakeLoss>> Create(
-      absl::Span<const float> losses, cudaStream_t stream) {
+      absl::Span<const float> losses, cuda::Executor* executor) {
     auto device_losses =
-        Buffer::Allocate(losses.size() * sizeof(float), stream);
+        Buffer::Allocate(losses.size() * sizeof(float), executor);
     if (!device_losses.ok()) return device_losses.status();
-    auto gradient = Buffer::Allocate(losses.size() * sizeof(float), stream);
+    auto gradient = Buffer::Allocate(losses.size() * sizeof(float), executor);
     if (!gradient.ok()) return gradient.status();
     if (cudaMemcpyAsync(device_losses->data(), losses.data(),
                         device_losses->size_bytes(), cudaMemcpyHostToDevice,
-                        stream) != cudaSuccess) {
+                        executor->stream()) != cudaSuccess) {
       return absl::Status(absl::StatusCode::kInternal,
                           "failed to initialize fake losses");
     }
@@ -59,14 +60,14 @@ class FakeLoss final : public Layer {
         new FakeLoss(std::move(*device_losses), std::move(*gradient)));
   }
 
-  absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs,
-                             Tape* tape) const override {
+  absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs, Tape* tape,
+                             cuda::Executor* executor) const override {
     ++forward_calls;
     return losses_;
   }
 
   absl::StatusOr<BufferVec> bwd(absl::Span<const Buffer> output_gradients,
-                                Tape tape) override {
+                                Tape tape, cuda::Executor* executor) override {
     ++backward_calls;
     return BufferVec{gradient_};
   }
@@ -105,15 +106,19 @@ class FakeOptimizer final : public Optimizer {
 class TrainerTest : public testing::Test {
  protected:
   void SetUp() override {
-    ASSERT_EQ(cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking),
-              cudaSuccess);
+    auto executor = cuda::Executor::Create();
+    ASSERT_TRUE(executor.ok()) << executor.status();
+    executor_storage_ = std::move(*executor);
+    executor_ = executor_storage_.get();
     corpus_.resize(32);
     std::iota(corpus_.begin(), corpus_.end(), 0);
   }
 
   void TearDown() override {
-    ASSERT_EQ(cudaStreamSynchronize(stream_), cudaSuccess);
-    ASSERT_EQ(cudaStreamDestroy(stream_), cudaSuccess);
+    if (executor_ == nullptr) return;
+    EXPECT_TRUE(executor_->Synchronize().ok());
+    executor_ = nullptr;
+    executor_storage_.reset();
   }
 
   absl::StatusOr<std::unique_ptr<InMemoryDataSetIterator>> MakeData() {
@@ -124,15 +129,16 @@ class TrainerTest : public testing::Test {
             .context_length = 4,
             .order = InMemoryDataSetOrder::kSequential,
         },
-        stream_);
+        executor_);
   }
 
   absl::StatusOr<std::unique_ptr<FakeLoss>> MakeLoss() {
     const std::vector<float> losses = {1.0f, 2.0f, 3.0f, 4.0f};
-    return FakeLoss::Create(losses, stream_);
+    return FakeLoss::Create(losses, executor_);
   }
 
-  cudaStream_t stream_ = nullptr;
+  std::unique_ptr<cuda::Executor> executor_storage_;
+  cuda::Executor* executor_ = nullptr;
   std::vector<int> corpus_;
 };
 
@@ -143,16 +149,32 @@ TEST_F(TrainerTest, EvaluateAveragesLossesAndResetsDataset) {
   ASSERT_TRUE(loss.ok()) << loss.status();
   ASSERT_TRUE(data.ok()) << data.status();
 
-  auto mean = Evaluate(model, **loss, **data, EvaluationOptions{.batches = 2});
+  auto mean = Evaluate(model, **loss, **data, executor_,
+                       EvaluationOptions{.batches = 2});
   ASSERT_TRUE(mean.ok()) << mean.status();
   EXPECT_DOUBLE_EQ(*mean, 2.5);
   EXPECT_EQ(model.forward_calls, 2);
   EXPECT_EQ((*loss)->forward_calls, 2);
 
-  auto repeated =
-      Evaluate(model, **loss, **data, EvaluationOptions{.batches = 2});
+  auto repeated = Evaluate(model, **loss, **data, executor_,
+                           EvaluationOptions{.batches = 2});
   ASSERT_TRUE(repeated.ok()) << repeated.status();
   EXPECT_DOUBLE_EQ(*repeated, *mean);
+}
+
+TEST_F(TrainerTest, EvaluateRejectsADatasetFromAnotherExecutor) {
+  FakeModel model;
+  auto loss = MakeLoss();
+  auto data = MakeData();
+  auto other_executor = cuda::Executor::Create();
+  ASSERT_TRUE(loss.ok()) << loss.status();
+  ASSERT_TRUE(data.ok()) << data.status();
+  ASSERT_TRUE(other_executor.ok()) << other_executor.status();
+
+  const auto mean = Evaluate(model, **loss, **data, other_executor->get(),
+                             EvaluationOptions{.batches = 1});
+  EXPECT_FALSE(mean.ok());
+  EXPECT_EQ(mean.status().code(), absl::StatusCode::kInvalidArgument);
 }
 
 TEST_F(TrainerTest, TrainRunsForwardBackwardAndOptimizerSteps) {
@@ -163,8 +185,8 @@ TEST_F(TrainerTest, TrainRunsForwardBackwardAndOptimizerSteps) {
   ASSERT_TRUE(loss.ok()) << loss.status();
   ASSERT_TRUE(data.ok()) << data.status();
 
-  auto result =
-      Train(model, **loss, optimizer, **data, TrainingOptions{.max_steps = 3});
+  auto result = Train(model, **loss, optimizer, **data, executor_,
+                      TrainingOptions{.max_steps = 3});
   ASSERT_TRUE(result.ok()) << result.status();
   EXPECT_EQ(result->steps_completed, 3);
   EXPECT_FALSE(result->reached_stop_loss);
@@ -187,7 +209,7 @@ TEST_F(TrainerTest, StopsBeforeFirstUpdateWhenInitialEvaluationQualifies) {
   ASSERT_TRUE(evaluation_data.ok()) << evaluation_data.status();
 
   auto result =
-      Train(model, **loss, optimizer, **training_data,
+      Train(model, **loss, optimizer, **training_data, executor_,
             TrainingOptions{.max_steps = 3,
                             .evaluation_interval = 1,
                             .evaluation_batches = 1,
@@ -210,7 +232,7 @@ TEST_F(TrainerTest, StopsAfterUpdateWhenPeriodicEvaluationQualifies) {
   ASSERT_TRUE(evaluation_data.ok()) << evaluation_data.status();
 
   auto result =
-      Train(model, **loss, optimizer, **training_data,
+      Train(model, **loss, optimizer, **training_data, executor_,
             TrainingOptions{.max_steps = 3,
                             .evaluation_interval = 1,
                             .evaluation_batches = 1,
@@ -232,11 +254,12 @@ TEST_F(TrainerTest, RejectsInvalidOptions) {
   ASSERT_TRUE(loss.ok()) << loss.status();
   ASSERT_TRUE(data.ok()) << data.status();
 
-  EXPECT_FALSE(
-      Evaluate(model, **loss, **data, EvaluationOptions{.batches = 0}).ok());
-  EXPECT_FALSE(
-      Train(model, **loss, optimizer, **data, TrainingOptions{.max_steps = -1})
-          .ok());
+  EXPECT_FALSE(Evaluate(model, **loss, **data, executor_,
+                        EvaluationOptions{.batches = 0})
+                   .ok());
+  EXPECT_FALSE(Train(model, **loss, optimizer, **data, executor_,
+                     TrainingOptions{.max_steps = -1})
+                   .ok());
 }
 
 }  // namespace

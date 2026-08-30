@@ -9,6 +9,7 @@ cc_library(
     deps = [
         "//src/common:status_macros",
         "//src/cuda:buffer",
+        "//src/cuda:executor",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings",
@@ -25,6 +26,7 @@ cuda_test(
     deps = [
         ":dataset",
         "//src/cuda:buffer",
+        "//src/cuda:executor",
         "@cuda//:cuda_runtime",
         "@googletest//:gtest_main",
     ],

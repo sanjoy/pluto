@@ -30,12 +30,12 @@ absl::Status CudaStatus(cudaError_t error, const char* operation) {
 
 InMemoryDataSetIterator::InMemoryDataSetIterator(std::vector<int> corpus,
                                                  InMemoryDataSetOptions options,
-                                                 cudaStream_t stream,
+                                                 cuda::Executor* executor,
                                                  cuda::Buffer token_buffer,
                                                  cuda::Buffer target_buffer)
     : corpus_(std::move(corpus)),
       options_(options),
-      stream_(stream),
+      executor_(executor),
       token_buffer_(std::move(token_buffer)),
       target_buffer_(std::move(target_buffer)),
       host_tokens_(options.batch_size),
@@ -46,11 +46,10 @@ InMemoryDataSetIterator::InMemoryDataSetIterator(std::vector<int> corpus,
 absl::StatusOr<std::unique_ptr<InMemoryDataSetIterator>>
 InMemoryDataSetIterator::Create(absl::Span<const int> tokens,
                                 InMemoryDataSetOptions options,
-                                cudaStream_t stream) {
-  if (stream == nullptr || stream == cudaStreamLegacy ||
-      stream == cudaStreamPerThread) {
+                                cuda::Executor* executor) {
+  if (executor == nullptr) {
     return absl::InvalidArgumentError(
-        "InMemoryDataSetIterator requires an explicit CUDA stream");
+        "InMemoryDataSetIterator requires a non-null CUDA Executor");
   }
   if (options.batch_size <= 0 || options.context_length <= 0 ||
       options.batch_size % options.context_length != 0) {
@@ -68,11 +67,11 @@ InMemoryDataSetIterator::Create(absl::Span<const int> tokens,
   const size_t buffer_bytes =
       static_cast<size_t>(options.batch_size) * sizeof(int);
   ASSIGN_OR_RETURN(auto token_buffer,
-                   cuda::Buffer::Allocate(buffer_bytes, stream));
+                   cuda::Buffer::Allocate(buffer_bytes, executor));
   ASSIGN_OR_RETURN(auto target_buffer,
-                   cuda::Buffer::Allocate(buffer_bytes, stream));
+                   cuda::Buffer::Allocate(buffer_bytes, executor));
   return std::unique_ptr<InMemoryDataSetIterator>(new InMemoryDataSetIterator(
-      std::vector<int>(tokens.begin(), tokens.end()), options, stream,
+      std::vector<int>(tokens.begin(), tokens.end()), options, executor,
       std::move(token_buffer), std::move(target_buffer)));
 }
 
@@ -100,12 +99,12 @@ absl::StatusOr<TokenBatch> InMemoryDataSetIterator::Next() {
   RETURN_IF_ERROR(
       CudaStatus(cudaMemcpyAsync(token_buffer_.data(), host_tokens_.data(),
                                  token_buffer_.size_bytes(),
-                                 cudaMemcpyHostToDevice, stream_),
+                                 cudaMemcpyHostToDevice, executor_->stream()),
                  "cudaMemcpyAsync(dataset tokens)"));
   RETURN_IF_ERROR(
       CudaStatus(cudaMemcpyAsync(target_buffer_.data(), host_targets_.data(),
                                  target_buffer_.size_bytes(),
-                                 cudaMemcpyHostToDevice, stream_),
+                                 cudaMemcpyHostToDevice, executor_->stream()),
                  "cudaMemcpyAsync(dataset targets)"));
   return TokenBatch{.tokens = token_buffer_,
                     .targets = target_buffer_,

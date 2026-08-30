@@ -2,15 +2,41 @@ load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cuda//cuda:defs.bzl", "cuda_test")
 
 cc_library(
-    name = "buffer",
-    srcs = ["buffer.cc"],
-    hdrs = ["buffer.h"],
+    name = "executor",
+    srcs = ["executor.cc"],
+    hdrs = ["executor.h"],
     visibility = ["//visibility:public"],
     deps = [
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings",
         "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_library(
+    name = "buffer",
+    srcs = ["buffer.cc"],
+    hdrs = ["buffer.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":executor",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cuda_test(
+    name = "executor_test",
+    size = "small",
+    srcs = ["executor_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":executor",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -21,6 +47,7 @@ cuda_test(
     tags = ["requires-gpu"],
     deps = [
         ":buffer",
+        ":executor",
         "@cuda//:cuda_runtime",
         "@googletest//:gtest_main",
     ],
@@ -39,6 +66,7 @@ cuda_test(
     tags = ["requires-gpu"],
     deps = [
         ":buffer",
+        ":executor",
         "@cuda//:cuda_runtime",
         "@googletest//:gtest_main",
     ],

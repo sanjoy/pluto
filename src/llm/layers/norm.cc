@@ -169,7 +169,12 @@ __tile_global__ void LayerNormParameterGradientKernel(
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<LayerNormLayer>> LayerNormLayer::Create(
-    int embedding_dim, float epsilon, DataType data_type, cudaStream_t stream) {
+    int embedding_dim, float epsilon, DataType data_type,
+    cuda::Executor* executor) {
+  if (executor == nullptr) {
+    return absl::InvalidArgumentError(
+        "LayerNormLayer requires a non-null CUDA Executor");
+  }
   RETURN_IF_ERROR(internal::ValidateComputeType(data_type));
   if (!(epsilon > 0.0f)) {
     return absl::InvalidArgumentError("layer-norm epsilon must be positive");
@@ -177,45 +182,49 @@ absl::StatusOr<std::unique_ptr<LayerNormLayer>> LayerNormLayer::Create(
   RETURN_IF_ERROR(
       internal::ValidateTiledExtent(embedding_dim, "embedding_dim"));
   const size_t bytes = static_cast<size_t>(embedding_dim) * sizeof(float);
-  ASSIGN_OR_RETURN(auto gamma, Buffer::Allocate(bytes, stream));
-  ASSIGN_OR_RETURN(auto beta, Buffer::Allocate(bytes, stream));
-  ASSIGN_OR_RETURN(auto gamma_gradient, Buffer::Allocate(bytes, stream));
-  ASSIGN_OR_RETURN(auto beta_gradient, Buffer::Allocate(bytes, stream));
+  ASSIGN_OR_RETURN(auto gamma, Buffer::Allocate(bytes, executor));
+  ASSIGN_OR_RETURN(auto beta, Buffer::Allocate(bytes, executor));
+  ASSIGN_OR_RETURN(auto gamma_gradient, Buffer::Allocate(bytes, executor));
+  ASSIGN_OR_RETURN(auto beta_gradient, Buffer::Allocate(bytes, executor));
   std::vector<float> gamma_values(embedding_dim, 1.0f);
   RETURN_IF_ERROR(internal::CudaStatus(
       cudaMemcpyAsync(gamma.data(), gamma_values.data(), bytes,
-                      cudaMemcpyHostToDevice, stream),
+                      cudaMemcpyHostToDevice, executor->stream()),
       "cudaMemcpyAsync(layer-norm gamma)"));
   for (Buffer* buffer : {&beta, &gamma_gradient, &beta_gradient}) {
     RETURN_IF_ERROR(internal::CudaStatus(
-        cudaMemsetAsync(buffer->data(), 0, buffer->size_bytes(), stream),
+        cudaMemsetAsync(buffer->data(), 0, buffer->size_bytes(),
+                        executor->stream()),
         "cudaMemsetAsync(layer-norm parameter)"));
   }
   return std::unique_ptr<LayerNormLayer>(new LayerNormLayer(
-      embedding_dim, epsilon, data_type, stream, std::move(gamma),
+      embedding_dim, epsilon, data_type, executor, std::move(gamma),
       std::move(beta), std::move(gamma_gradient), std::move(beta_gradient)));
 }
 
 absl::StatusOr<Buffer> LayerNormLayer::fwd(absl::Span<const Buffer> inputs,
-                                           Tape* tape) const {
+                                           Tape* tape,
+                                           cuda::Executor* executor) const {
+  RETURN_IF_ERROR(
+      internal::ValidateExecutor(executor_, executor, "LayerNormLayer"));
   if (inputs.size() != 1 || tape == nullptr) {
     return absl::InvalidArgumentError(
         "LayerNormLayer fwd expects one input and a non-null tape");
   }
   ASSIGN_OR_RETURN(int rows, internal::ActivationRows(inputs[0], embedding_dim_,
-                                                      output_type_, stream_,
+                                                      output_type_, executor,
                                                       "layer-norm input"));
   ASSIGN_OR_RETURN(auto output,
-                   Buffer::Allocate(inputs[0].size_bytes(), stream_));
+                   Buffer::Allocate(inputs[0].size_bytes(), executor));
   const int blocks = rows * internal::TileCount(embedding_dim_);
   if (output_type_ == DataType::BF16) {
-    LayerNormForwardKernel<__nv_bfloat16><<<blocks, 1, 0, stream_>>>(
+    LayerNormForwardKernel<__nv_bfloat16><<<blocks, 1, 0, executor->stream()>>>(
         static_cast<const __nv_bfloat16*>(inputs[0].data()),
         static_cast<const float*>(weights_[0].data()),
         static_cast<const float*>(weights_[1].data()), rows, embedding_dim_,
         epsilon_, static_cast<__nv_bfloat16*>(output.data()));
   } else {
-    LayerNormForwardKernel<float><<<blocks, 1, 0, stream_>>>(
+    LayerNormForwardKernel<float><<<blocks, 1, 0, executor->stream()>>>(
         static_cast<const float*>(inputs[0].data()),
         static_cast<const float*>(weights_[0].data()),
         static_cast<const float*>(weights_[1].data()), rows, embedding_dim_,
@@ -229,44 +238,49 @@ absl::StatusOr<Buffer> LayerNormLayer::fwd(absl::Span<const Buffer> inputs,
 }
 
 absl::StatusOr<BufferVec> LayerNormLayer::bwd(
-    absl::Span<const Buffer> output_gradients, Tape tape) {
+    absl::Span<const Buffer> output_gradients, Tape tape,
+    cuda::Executor* executor) {
+  RETURN_IF_ERROR(
+      internal::ValidateExecutor(executor_, executor, "LayerNormLayer"));
   if (output_gradients.size() != 1 || tape.intermediates.size() != 1) {
     return absl::InvalidArgumentError(
         "LayerNormLayer bwd received an incompatible gradient or tape");
   }
-  ASSIGN_OR_RETURN(int rows,
-                   internal::MatrixRows(output_gradients[0], embedding_dim_,
-                                        stream_, "layer-norm output gradient"));
+  ASSIGN_OR_RETURN(
+      int rows, internal::MatrixRows(output_gradients[0], embedding_dim_,
+                                     executor, "layer-norm output gradient"));
   RETURN_IF_ERROR(internal::ValidateBuffer(
       tape.intermediates[0],
       static_cast<size_t>(rows) * embedding_dim_ *
           internal::ActivationElementBytes(output_type_),
-      stream_, "layer-norm saved input"));
-  ASSIGN_OR_RETURN(
-      auto input_gradient,
-      Buffer::Allocate(
-          static_cast<size_t>(rows) * embedding_dim_ * sizeof(float), stream_));
+      executor, "layer-norm saved input"));
+  ASSIGN_OR_RETURN(auto input_gradient,
+                   Buffer::Allocate(static_cast<size_t>(rows) * embedding_dim_ *
+                                        sizeof(float),
+                                    executor));
   const int blocks = rows * internal::TileCount(embedding_dim_);
   if (output_type_ == DataType::BF16) {
-    LayerNormInputGradientKernel<__nv_bfloat16><<<blocks, 1, 0, stream_>>>(
-        static_cast<const __nv_bfloat16*>(tape.intermediates[0].data()),
-        static_cast<const float*>(weights_[0].data()),
-        static_cast<const float*>(output_gradients[0].data()), rows,
-        embedding_dim_, epsilon_, static_cast<float*>(input_gradient.data()));
+    LayerNormInputGradientKernel<__nv_bfloat16>
+        <<<blocks, 1, 0, executor->stream()>>>(
+            static_cast<const __nv_bfloat16*>(tape.intermediates[0].data()),
+            static_cast<const float*>(weights_[0].data()),
+            static_cast<const float*>(output_gradients[0].data()), rows,
+            embedding_dim_, epsilon_,
+            static_cast<float*>(input_gradient.data()));
     LayerNormParameterGradientKernel<__nv_bfloat16>
-        <<<internal::TileCount(embedding_dim_), 1, 0, stream_>>>(
+        <<<internal::TileCount(embedding_dim_), 1, 0, executor->stream()>>>(
             static_cast<const __nv_bfloat16*>(tape.intermediates[0].data()),
             static_cast<const float*>(output_gradients[0].data()), rows,
             embedding_dim_, epsilon_, static_cast<float*>(gradients_[0].data()),
             static_cast<float*>(gradients_[1].data()));
   } else {
-    LayerNormInputGradientKernel<float><<<blocks, 1, 0, stream_>>>(
+    LayerNormInputGradientKernel<float><<<blocks, 1, 0, executor->stream()>>>(
         static_cast<const float*>(tape.intermediates[0].data()),
         static_cast<const float*>(weights_[0].data()),
         static_cast<const float*>(output_gradients[0].data()), rows,
         embedding_dim_, epsilon_, static_cast<float*>(input_gradient.data()));
     LayerNormParameterGradientKernel<float>
-        <<<internal::TileCount(embedding_dim_), 1, 0, stream_>>>(
+        <<<internal::TileCount(embedding_dim_), 1, 0, executor->stream()>>>(
             static_cast<const float*>(tape.intermediates[0].data()),
             static_cast<const float*>(output_gradients[0].data()), rows,
             embedding_dim_, epsilon_, static_cast<float*>(gradients_[0].data()),

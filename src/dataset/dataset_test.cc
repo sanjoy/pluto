@@ -8,6 +8,7 @@
 
 #include "gtest/gtest.h"
 #include "src/cuda/buffer.h"
+#include "src/cuda/executor.h"
 
 namespace pluto {
 namespace {
@@ -15,25 +16,30 @@ namespace {
 class DataSetTest : public testing::Test {
  protected:
   void SetUp() override {
-    ASSERT_EQ(cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking),
-              cudaSuccess);
+    auto executor = cuda::Executor::Create();
+    ASSERT_TRUE(executor.ok()) << executor.status();
+    executor_storage_ = std::move(*executor);
+    executor_ = executor_storage_.get();
   }
 
   void TearDown() override {
-    ASSERT_EQ(cudaStreamSynchronize(stream_), cudaSuccess);
-    ASSERT_EQ(cudaStreamDestroy(stream_), cudaSuccess);
+    if (executor_ == nullptr) return;
+    EXPECT_TRUE(executor_->Synchronize().ok());
+    executor_ = nullptr;
+    executor_storage_.reset();
   }
 
   std::vector<int> CopyToHost(const cuda::Buffer& buffer) {
     std::vector<int> result(buffer.size_bytes() / sizeof(int));
     EXPECT_EQ(cudaMemcpyAsync(result.data(), buffer.data(), buffer.size_bytes(),
-                              cudaMemcpyDeviceToHost, stream_),
+                              cudaMemcpyDeviceToHost, executor_->stream()),
               cudaSuccess);
-    EXPECT_EQ(cudaStreamSynchronize(stream_), cudaSuccess);
+    EXPECT_TRUE(executor_->Synchronize().ok());
     return result;
   }
 
-  cudaStream_t stream_ = nullptr;
+  std::unique_ptr<cuda::Executor> executor_storage_;
+  cuda::Executor* executor_ = nullptr;
 };
 
 TEST_F(DataSetTest, SequentialBatchesShiftTargetsAndReset) {
@@ -46,7 +52,7 @@ TEST_F(DataSetTest, SequentialBatchesShiftTargetsAndReset) {
           .context_length = 4,
           .order = InMemoryDataSetOrder::kSequential,
       },
-      stream_);
+      executor_);
   ASSERT_TRUE(iterator.ok()) << iterator.status();
 
   auto first = (*iterator)->Next();
@@ -79,7 +85,7 @@ TEST_F(DataSetTest, RandomOrderIsDeterministicAcrossReset) {
           .order = InMemoryDataSetOrder::kRandom,
           .seed = 123,
       },
-      stream_);
+      executor_);
   ASSERT_TRUE(iterator.ok()) << iterator.status();
   auto first = (*iterator)->Next();
   ASSERT_TRUE(first.ok()) << first.status();
@@ -92,17 +98,17 @@ TEST_F(DataSetTest, RandomOrderIsDeterministicAcrossReset) {
   EXPECT_EQ(CopyToHost(reset->tokens), expected);
 }
 
-TEST_F(DataSetTest, RejectsInvalidShapesAndDefaultStream) {
+TEST_F(DataSetTest, RejectsInvalidShapesAndNullExecutor) {
   const std::vector<int> corpus(10, 1);
   EXPECT_FALSE(InMemoryDataSetIterator::Create(
                    corpus,
                    InMemoryDataSetOptions{.batch_size = 7, .context_length = 4},
-                   stream_)
+                   executor_)
                    .ok());
   EXPECT_FALSE(InMemoryDataSetIterator::Create(
                    std::vector<int>{1, 2, 3, 4},
                    InMemoryDataSetOptions{.batch_size = 4, .context_length = 4},
-                   stream_)
+                   executor_)
                    .ok());
   EXPECT_FALSE(InMemoryDataSetIterator::Create(
                    corpus,

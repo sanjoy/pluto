@@ -1,13 +1,12 @@
 #pragma once
 
-#include <cuda_runtime_api.h>
-
 #include <cstddef>
 #include <memory>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "src/cuda/executor.h"
 #include "src/llm/layer.h"
 
 namespace pluto::llm {
@@ -30,9 +29,8 @@ class Optimizer {
  public:
   virtual ~Optimizer() = default;
 
-  static absl::StatusOr<std::unique_ptr<Optimizer>> Create(Layer& model,
-                                                           AdamWConfig config,
-                                                           cudaStream_t stream);
+  static absl::StatusOr<std::unique_ptr<Optimizer>> Create(
+      Layer& model, AdamWConfig config, cuda::Executor* executor);
 
   // Clears every unique parameter-gradient accumulator. Call this before the
   // first backward pass. Step() also clears gradients after applying updates.
@@ -51,7 +49,7 @@ class Optimizer {
 class AdamWOptimizer final : public Optimizer {
  public:
   static absl::StatusOr<std::unique_ptr<AdamWOptimizer>> Create(
-      Layer& model, AdamWConfig config, cudaStream_t stream);
+      Layer& model, AdamWConfig config, cuda::Executor* executor);
 
   absl::Status ZeroGrad() override;
   absl::Status Step() override;
@@ -60,19 +58,19 @@ class AdamWOptimizer final : public Optimizer {
   size_t parameter_tensor_count() const override { return weights_.size(); }
 
  private:
-  AdamWOptimizer(AdamWConfig config, cudaStream_t stream,
+  AdamWOptimizer(AdamWConfig config, cuda::Executor* executor,
                  std::vector<Buffer> weights, std::vector<Buffer> gradients,
                  std::vector<Buffer> first_moments,
                  std::vector<Buffer> second_moments)
       : config_(config),
-        stream_(stream),
+        executor_(executor),
         weights_(std::move(weights)),
         gradients_(std::move(gradients)),
         first_moments_(std::move(first_moments)),
         second_moments_(std::move(second_moments)) {}
 
   AdamWConfig config_;
-  cudaStream_t stream_;
+  cuda::Executor* executor_;
   int step_ = 0;
   std::vector<Buffer> weights_;
   std::vector<Buffer> gradients_;

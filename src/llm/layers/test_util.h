@@ -1,8 +1,9 @@
 #pragma once
 
-#include <cuda_runtime.h>
+#include <memory>
 
 #include "gtest/gtest.h"
+#include "src/cuda/executor.h"
 
 namespace pluto::llm {
 
@@ -17,17 +18,21 @@ inline constexpr int kTestAttentionHeads = 2;
 class LayersTest : public testing::Test {
  protected:
   void SetUp() override {
-    ASSERT_EQ(cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking),
-              cudaSuccess);
+    auto executor = cuda::Executor::Create();
+    ASSERT_TRUE(executor.ok()) << executor.status();
+    executor_storage_ = std::move(*executor);
+    executor_ = executor_storage_.get();
   }
 
   void TearDown() override {
-    if (stream_ == nullptr) return;
-    EXPECT_EQ(cudaStreamSynchronize(stream_), cudaSuccess);
-    EXPECT_EQ(cudaStreamDestroy(stream_), cudaSuccess);
+    if (executor_ == nullptr) return;
+    EXPECT_TRUE(executor_->Synchronize().ok());
+    executor_ = nullptr;
+    executor_storage_.reset();
   }
 
-  cudaStream_t stream_ = nullptr;
+  std::unique_ptr<cuda::Executor> executor_storage_;
+  cuda::Executor* executor_ = nullptr;
 };
 
 }  // namespace pluto::llm

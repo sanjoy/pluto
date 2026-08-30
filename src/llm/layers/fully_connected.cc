@@ -155,39 +155,42 @@ __tile_global__ void DenseBiasGradientKernel(
 
 }  // namespace
 
-FullyConnectedLayer::FullyConnectedLayer(int input_dim, int output_dim,
-                                         DataType data_type,
-                                         cudaStream_t stream, Buffer matrix,
-                                         Buffer bias, Buffer matrix_gradient,
-                                         Buffer bias_gradient)
+FullyConnectedLayer::FullyConnectedLayer(
+    int input_dim, int output_dim, DataType data_type, cuda::Executor* executor,
+    Buffer matrix, Buffer bias, Buffer matrix_gradient, Buffer bias_gradient)
     : input_dim_(input_dim),
       output_dim_(output_dim),
       output_type_(data_type),
-      stream_(stream),
+      executor_(executor),
       weights_{std::move(matrix), std::move(bias)},
       gradients_{std::move(matrix_gradient), std::move(bias_gradient)} {}
 
 absl::StatusOr<std::unique_ptr<FullyConnectedLayer>>
 FullyConnectedLayer::Create(int input_dim, int output_dim, DataType data_type,
-                            cudaStream_t stream) {
+                            cuda::Executor* executor) {
+  if (executor == nullptr) {
+    return absl::InvalidArgumentError(
+        "FullyConnectedLayer requires a non-null CUDA Executor");
+  }
   RETURN_IF_ERROR(internal::ValidateComputeType(data_type));
   RETURN_IF_ERROR(internal::ValidateTiledExtent(input_dim, "input_dim"));
   RETURN_IF_ERROR(internal::ValidateTiledExtent(output_dim, "output_dim"));
   const size_t matrix_bytes =
       static_cast<size_t>(input_dim) * output_dim * sizeof(float);
   const size_t bias_bytes = static_cast<size_t>(output_dim) * sizeof(float);
-  ASSIGN_OR_RETURN(auto matrix, Buffer::Allocate(matrix_bytes, stream));
-  ASSIGN_OR_RETURN(auto bias, Buffer::Allocate(bias_bytes, stream));
+  ASSIGN_OR_RETURN(auto matrix, Buffer::Allocate(matrix_bytes, executor));
+  ASSIGN_OR_RETURN(auto bias, Buffer::Allocate(bias_bytes, executor));
   ASSIGN_OR_RETURN(auto matrix_gradient,
-                   Buffer::Allocate(matrix_bytes, stream));
-  ASSIGN_OR_RETURN(auto bias_gradient, Buffer::Allocate(bias_bytes, stream));
+                   Buffer::Allocate(matrix_bytes, executor));
+  ASSIGN_OR_RETURN(auto bias_gradient, Buffer::Allocate(bias_bytes, executor));
   for (Buffer* buffer : {&matrix, &bias, &matrix_gradient, &bias_gradient}) {
     RETURN_IF_ERROR(internal::CudaStatus(
-        cudaMemsetAsync(buffer->data(), 0, buffer->size_bytes(), stream),
+        cudaMemsetAsync(buffer->data(), 0, buffer->size_bytes(),
+                        executor->stream()),
         "cudaMemsetAsync(dense parameter)"));
   }
   return std::unique_ptr<FullyConnectedLayer>(new FullyConnectedLayer(
-      input_dim, output_dim, data_type, stream, std::move(matrix),
+      input_dim, output_dim, data_type, executor, std::move(matrix),
       std::move(bias), std::move(matrix_gradient), std::move(bias_gradient)));
 }
 
@@ -197,10 +200,11 @@ absl::Status FullyConnectedLayer::InitializeIdentity(float scale) {
   for (int index = 0; index < std::min(input_dim_, output_dim_); ++index) {
     matrix[static_cast<size_t>(index) * output_dim_ + index] = scale;
   }
-  return internal::CudaStatus(cudaMemcpyAsync(weights_[0].data(), matrix.data(),
-                                              weights_[0].size_bytes(),
-                                              cudaMemcpyHostToDevice, stream_),
-                              "cudaMemcpyAsync(identity matrix)");
+  return internal::CudaStatus(
+      cudaMemcpyAsync(weights_[0].data(), matrix.data(),
+                      weights_[0].size_bytes(), cudaMemcpyHostToDevice,
+                      executor_->stream()),
+      "cudaMemcpyAsync(identity matrix)");
 }
 
 absl::Status FullyConnectedLayer::InitializeNormal(float standard_deviation,
@@ -213,39 +217,43 @@ absl::Status FullyConnectedLayer::InitializeNormal(float standard_deviation,
   std::normal_distribution<float> distribution(0.0f, standard_deviation);
   std::vector<float> matrix(static_cast<size_t>(input_dim_) * output_dim_);
   for (float& value : matrix) value = distribution(random);
-  return internal::CudaStatus(cudaMemcpyAsync(weights_[0].data(), matrix.data(),
-                                              weights_[0].size_bytes(),
-                                              cudaMemcpyHostToDevice, stream_),
-                              "cudaMemcpyAsync(normal matrix)");
+  return internal::CudaStatus(
+      cudaMemcpyAsync(weights_[0].data(), matrix.data(),
+                      weights_[0].size_bytes(), cudaMemcpyHostToDevice,
+                      executor_->stream()),
+      "cudaMemcpyAsync(normal matrix)");
 }
 
-absl::StatusOr<Buffer> FullyConnectedLayer::fwd(absl::Span<const Buffer> inputs,
-                                                Tape* tape) const {
+absl::StatusOr<Buffer> FullyConnectedLayer::fwd(
+    absl::Span<const Buffer> inputs, Tape* tape,
+    cuda::Executor* executor) const {
+  RETURN_IF_ERROR(
+      internal::ValidateExecutor(executor_, executor, "FullyConnectedLayer"));
   if (inputs.size() != 1 || tape == nullptr) {
     return absl::InvalidArgumentError(
         "FullyConnectedLayer fwd expects one input and a non-null tape");
   }
   ASSIGN_OR_RETURN(int rows,
                    internal::ActivationRows(inputs[0], input_dim_, output_type_,
-                                            stream_, "dense input"));
+                                            executor, "dense input"));
   RETURN_IF_ERROR(internal::ValidateTiledExtent(rows, "dense rows"));
   ASSIGN_OR_RETURN(
       auto output,
       Buffer::Allocate(static_cast<size_t>(rows) * output_dim_ *
                            internal::ActivationElementBytes(output_type_),
-                       stream_));
+                       executor));
   tape->intermediates = {inputs[0]};
   tape->children.clear();
   const int blocks =
       internal::TileCount(rows) * internal::TileCount(output_dim_);
   if (output_type_ == DataType::BF16) {
-    DenseForwardKernel<__nv_bfloat16><<<blocks, 1, 0, stream_>>>(
+    DenseForwardKernel<__nv_bfloat16><<<blocks, 1, 0, executor->stream()>>>(
         static_cast<const __nv_bfloat16*>(inputs[0].data()),
         static_cast<const float*>(weights_[0].data()),
         static_cast<const float*>(weights_[1].data()), rows, input_dim_,
         output_dim_, static_cast<__nv_bfloat16*>(output.data()));
   } else {
-    DenseForwardKernel<float><<<blocks, 1, 0, stream_>>>(
+    DenseForwardKernel<float><<<blocks, 1, 0, executor->stream()>>>(
         static_cast<const float*>(inputs[0].data()),
         static_cast<const float*>(weights_[0].data()),
         static_cast<const float*>(weights_[1].data()), rows, input_dim_,
@@ -257,47 +265,54 @@ absl::StatusOr<Buffer> FullyConnectedLayer::fwd(absl::Span<const Buffer> inputs,
 }
 
 absl::StatusOr<BufferVec> FullyConnectedLayer::bwd(
-    absl::Span<const Buffer> output_gradients, Tape tape) {
+    absl::Span<const Buffer> output_gradients, Tape tape,
+    cuda::Executor* executor) {
+  RETURN_IF_ERROR(
+      internal::ValidateExecutor(executor_, executor, "FullyConnectedLayer"));
   if (output_gradients.size() != 1 || tape.intermediates.size() != 1) {
     return absl::InvalidArgumentError(
         "FullyConnectedLayer bwd received an incompatible gradient or tape");
   }
   ASSIGN_OR_RETURN(
-      int rows, internal::MatrixRows(output_gradients[0], output_dim_, stream_,
+      int rows, internal::MatrixRows(output_gradients[0], output_dim_, executor,
                                      "dense output gradient"));
   RETURN_IF_ERROR(internal::ValidateBuffer(
       tape.intermediates[0],
       static_cast<size_t>(rows) * input_dim_ *
           internal::ActivationElementBytes(output_type_),
-      stream_, "dense saved input"));
+      executor, "dense saved input"));
   ASSIGN_OR_RETURN(
       auto input_gradient,
       Buffer::Allocate(static_cast<size_t>(rows) * input_dim_ * sizeof(float),
-                       stream_));
+                       executor));
   const int input_blocks =
       internal::TileCount(rows) * internal::TileCount(input_dim_);
   const int weight_blocks =
       internal::TileCount(input_dim_) * internal::TileCount(output_dim_);
   if (output_type_ == DataType::BF16) {
-    DenseInputGradientKernel<__nv_bfloat16><<<input_blocks, 1, 0, stream_>>>(
-        static_cast<const float*>(output_gradients[0].data()),
-        static_cast<const float*>(weights_[0].data()), rows, input_dim_,
-        output_dim_, static_cast<float*>(input_gradient.data()));
-    DenseWeightGradientKernel<__nv_bfloat16><<<weight_blocks, 1, 0, stream_>>>(
-        static_cast<const __nv_bfloat16*>(tape.intermediates[0].data()),
-        static_cast<const float*>(output_gradients[0].data()), rows, input_dim_,
-        output_dim_, static_cast<float*>(gradients_[0].data()));
+    DenseInputGradientKernel<__nv_bfloat16>
+        <<<input_blocks, 1, 0, executor->stream()>>>(
+            static_cast<const float*>(output_gradients[0].data()),
+            static_cast<const float*>(weights_[0].data()), rows, input_dim_,
+            output_dim_, static_cast<float*>(input_gradient.data()));
+    DenseWeightGradientKernel<__nv_bfloat16>
+        <<<weight_blocks, 1, 0, executor->stream()>>>(
+            static_cast<const __nv_bfloat16*>(tape.intermediates[0].data()),
+            static_cast<const float*>(output_gradients[0].data()), rows,
+            input_dim_, output_dim_, static_cast<float*>(gradients_[0].data()));
   } else {
-    DenseInputGradientKernel<float><<<input_blocks, 1, 0, stream_>>>(
+    DenseInputGradientKernel<float><<<input_blocks, 1, 0, executor->stream()>>>(
         static_cast<const float*>(output_gradients[0].data()),
         static_cast<const float*>(weights_[0].data()), rows, input_dim_,
         output_dim_, static_cast<float*>(input_gradient.data()));
-    DenseWeightGradientKernel<float><<<weight_blocks, 1, 0, stream_>>>(
-        static_cast<const float*>(tape.intermediates[0].data()),
-        static_cast<const float*>(output_gradients[0].data()), rows, input_dim_,
-        output_dim_, static_cast<float*>(gradients_[0].data()));
+    DenseWeightGradientKernel<float>
+        <<<weight_blocks, 1, 0, executor->stream()>>>(
+            static_cast<const float*>(tape.intermediates[0].data()),
+            static_cast<const float*>(output_gradients[0].data()), rows,
+            input_dim_, output_dim_, static_cast<float*>(gradients_[0].data()));
   }
-  DenseBiasGradientKernel<<<internal::TileCount(output_dim_), 1, 0, stream_>>>(
+  DenseBiasGradientKernel<<<internal::TileCount(output_dim_), 1, 0,
+                            executor->stream()>>>(
       static_cast<const float*>(output_gradients[0].data()), rows, output_dim_,
       static_cast<float*>(gradients_[1].data()));
   RETURN_IF_ERROR(

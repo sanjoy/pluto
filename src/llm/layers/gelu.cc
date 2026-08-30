@@ -63,13 +63,19 @@ __tile_global__ void GeluBackwardKernel(
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<GeluLayer>> GeluLayer::Create(
-    DataType data_type, cudaStream_t stream) {
+    DataType data_type, cuda::Executor* executor) {
+  if (executor == nullptr) {
+    return absl::InvalidArgumentError(
+        "GeluLayer requires a non-null CUDA Executor");
+  }
   RETURN_IF_ERROR(internal::ValidateComputeType(data_type));
-  return std::unique_ptr<GeluLayer>(new GeluLayer(data_type, stream));
+  return std::unique_ptr<GeluLayer>(new GeluLayer(data_type, executor));
 }
 
 absl::StatusOr<Buffer> GeluLayer::fwd(absl::Span<const Buffer> inputs,
-                                      Tape* tape) const {
+                                      Tape* tape,
+                                      cuda::Executor* executor) const {
+  RETURN_IF_ERROR(internal::ValidateExecutor(executor_, executor, "GeluLayer"));
   if (inputs.size() != 1 || tape == nullptr) {
     return absl::InvalidArgumentError(
         "GeluLayer fwd expects one input and a non-null tape");
@@ -78,22 +84,23 @@ absl::StatusOr<Buffer> GeluLayer::fwd(absl::Span<const Buffer> inputs,
       int elements,
       internal::ElementCount(inputs[0],
                              internal::ActivationElementBytes(output_type_),
-                             stream_, "GELU input"));
+                             executor, "GELU input"));
   RETURN_IF_ERROR(
       internal::ValidateTiledExtent(elements, "GELU element count"));
   ASSIGN_OR_RETURN(auto output,
-                   Buffer::Allocate(inputs[0].size_bytes(), stream_));
+                   Buffer::Allocate(inputs[0].size_bytes(), executor));
   tape->intermediates = {inputs[0]};
   tape->children.clear();
   if (output_type_ == DataType::BF16) {
     GeluForwardKernel<__nv_bfloat16>
-        <<<internal::TileCount(elements), 1, 0, stream_>>>(
+        <<<internal::TileCount(elements), 1, 0, executor->stream()>>>(
             static_cast<const __nv_bfloat16*>(inputs[0].data()), elements,
             static_cast<__nv_bfloat16*>(output.data()));
   } else {
-    GeluForwardKernel<float><<<internal::TileCount(elements), 1, 0, stream_>>>(
-        static_cast<const float*>(inputs[0].data()), elements,
-        static_cast<float*>(output.data()));
+    GeluForwardKernel<float>
+        <<<internal::TileCount(elements), 1, 0, executor->stream()>>>(
+            static_cast<const float*>(inputs[0].data()), elements,
+            static_cast<float*>(output.data()));
   }
   RETURN_IF_ERROR(
       internal::CudaStatus(cudaGetLastError(), "GeluForwardKernel launch"));
@@ -101,33 +108,37 @@ absl::StatusOr<Buffer> GeluLayer::fwd(absl::Span<const Buffer> inputs,
 }
 
 absl::StatusOr<BufferVec> GeluLayer::bwd(
-    absl::Span<const Buffer> output_gradients, Tape tape) {
+    absl::Span<const Buffer> output_gradients, Tape tape,
+    cuda::Executor* executor) {
+  RETURN_IF_ERROR(internal::ValidateExecutor(executor_, executor, "GeluLayer"));
   if (output_gradients.size() != 1 || tape.intermediates.size() != 1) {
     return absl::InvalidArgumentError(
         "GeluLayer bwd received an incompatible gradient or tape");
   }
   ASSIGN_OR_RETURN(int elements,
                    internal::ElementCount(output_gradients[0], sizeof(float),
-                                          stream_, "GELU output gradient"));
+                                          executor, "GELU output gradient"));
   RETURN_IF_ERROR(internal::ValidateBuffer(
       tape.intermediates[0],
       static_cast<size_t>(elements) *
           internal::ActivationElementBytes(output_type_),
-      stream_, "GELU saved input"));
+      executor, "GELU saved input"));
   ASSIGN_OR_RETURN(
       auto input_gradient,
-      Buffer::Allocate(static_cast<size_t>(elements) * sizeof(float), stream_));
+      Buffer::Allocate(static_cast<size_t>(elements) * sizeof(float),
+                       executor));
   if (output_type_ == DataType::BF16) {
     GeluBackwardKernel<__nv_bfloat16>
-        <<<internal::TileCount(elements), 1, 0, stream_>>>(
+        <<<internal::TileCount(elements), 1, 0, executor->stream()>>>(
             static_cast<const __nv_bfloat16*>(tape.intermediates[0].data()),
             static_cast<const float*>(output_gradients[0].data()), elements,
             static_cast<float*>(input_gradient.data()));
   } else {
-    GeluBackwardKernel<float><<<internal::TileCount(elements), 1, 0, stream_>>>(
-        static_cast<const float*>(tape.intermediates[0].data()),
-        static_cast<const float*>(output_gradients[0].data()), elements,
-        static_cast<float*>(input_gradient.data()));
+    GeluBackwardKernel<float>
+        <<<internal::TileCount(elements), 1, 0, executor->stream()>>>(
+            static_cast<const float*>(tape.intermediates[0].data()),
+            static_cast<const float*>(output_gradients[0].data()), elements,
+            static_cast<float*>(input_gradient.data()));
   }
   RETURN_IF_ERROR(
       internal::CudaStatus(cudaGetLastError(), "GeluBackwardKernel launch"));

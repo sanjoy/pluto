@@ -16,7 +16,7 @@ TEST_F(LayerReferenceTest, ForwardAndBackwardMatchAcrossDomainAndTypes) {
     for (int elements : {16, 32, 64}) {
       SCOPED_TRACE(testing::Message() << "type=" << static_cast<int>(type)
                                       << " elements=" << elements);
-      auto device_layer = GeluLayer::Create(type, stream_);
+      auto device_layer = GeluLayer::Create(type, executor_);
       auto reference_layer = GeluLayerReference::Create(type);
       ASSERT_TRUE(device_layer.ok()) << device_layer.status();
       ASSERT_TRUE(reference_layer.ok()) << reference_layer.status();
@@ -26,15 +26,16 @@ TEST_F(LayerReferenceTest, ForwardAndBackwardMatchAcrossDomainAndTypes) {
         input[index] = -5.0f + 10.0f * index / (elements - 1.0f);
         gradient[index] = 0.25f * std::cos(index * 0.41f);
       }
-      auto input_pair = MakeActivationBufferPair(input, type, stream_);
-      auto gradient_pair = MakeRawBufferPair<float>(gradient, stream_);
+      auto input_pair = MakeActivationBufferPair(input, type, executor_);
+      auto gradient_pair = MakeRawBufferPair<float>(gradient, executor_);
       ASSERT_TRUE(input_pair.ok()) << input_pair.status();
       ASSERT_TRUE(gradient_pair.ok()) << gradient_pair.status();
       Tape device_tape;
       ReferenceTape reference_tape;
       BufferVec device_inputs = {input_pair->device};
       HostBufferVec reference_inputs = {input_pair->host};
-      auto device_output = (*device_layer)->fwd(device_inputs, &device_tape);
+      auto device_output =
+          (*device_layer)->fwd(device_inputs, &device_tape, executor_);
       auto reference_output =
           (*reference_layer)->fwd(reference_inputs, &reference_tape);
       ASSERT_TRUE(device_output.ok()) << device_output.status();
@@ -45,7 +46,8 @@ TEST_F(LayerReferenceTest, ForwardAndBackwardMatchAcrossDomainAndTypes) {
       BufferVec device_gradients = {gradient_pair->device};
       HostBufferVec reference_gradients = {gradient_pair->host};
       auto device_input =
-          (*device_layer)->bwd(device_gradients, std::move(device_tape));
+          (*device_layer)
+              ->bwd(device_gradients, std::move(device_tape), executor_);
       auto reference_input =
           (*reference_layer)
               ->bwd(reference_gradients, std::move(reference_tape));
@@ -58,7 +60,7 @@ TEST_F(LayerReferenceTest, ForwardAndBackwardMatchAcrossDomainAndTypes) {
 }
 
 TEST_F(LayerReferenceTest, FP8IsRejectedConsistently) {
-  auto device = GeluLayer::Create(DataType::FP8, stream_);
+  auto device = GeluLayer::Create(DataType::FP8, executor_);
   auto reference = GeluLayerReference::Create(DataType::FP8);
   ASSERT_FALSE(device.ok());
   ASSERT_FALSE(reference.ok());

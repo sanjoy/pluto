@@ -17,10 +17,10 @@ class ResidualLayer final : public Layer {
  public:
   explicit ResidualLayer(std::unique_ptr<Layer> layer);
 
-  absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs,
-                             Tape* tape) const override;
+  absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs, Tape* tape,
+                             cuda::Executor* executor) const override;
   absl::StatusOr<BufferVec> bwd(absl::Span<const Buffer> output_gradients,
-                                Tape tape) override;
+                                Tape tape, cuda::Executor* executor) override;
   absl::Span<Buffer> weights() override { return absl::MakeSpan(weights_); }
   absl::Span<Buffer> gradients() override { return absl::MakeSpan(gradients_); }
   DataType output_type() const override { return layer_->output_type(); }
@@ -37,10 +37,10 @@ class ComposedLayer final : public Layer {
  public:
   ComposedLayer(DataType data_type, std::vector<std::unique_ptr<Layer>> layers);
 
-  absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs,
-                             Tape* tape) const override;
+  absl::StatusOr<Buffer> fwd(absl::Span<const Buffer> inputs, Tape* tape,
+                             cuda::Executor* executor) const override;
   absl::StatusOr<BufferVec> bwd(absl::Span<const Buffer> output_gradients,
-                                Tape tape) override;
+                                Tape tape, cuda::Executor* executor) override;
   absl::Span<Buffer> weights() override { return absl::MakeSpan(weights_); }
   absl::Span<Buffer> gradients() override { return absl::MakeSpan(gradients_); }
   DataType output_type() const override { return output_type_; }

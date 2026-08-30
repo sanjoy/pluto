@@ -53,11 +53,10 @@ __tile_global__ void AdamWUpdateKernel(
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<AdamWOptimizer>> AdamWOptimizer::Create(
-    Layer& model, AdamWConfig config, cudaStream_t stream) {
-  if (stream == nullptr || stream == cudaStreamLegacy ||
-      stream == cudaStreamPerThread) {
+    Layer& model, AdamWConfig config, cuda::Executor* executor) {
+  if (executor == nullptr) {
     return absl::InvalidArgumentError(
-        "AdamWOptimizer requires an explicit non-default CUDA stream");
+        "AdamWOptimizer requires a non-null CUDA Executor");
   }
   if (!(config.learning_rate > 0.0f) || config.beta1 < 0.0f ||
       config.beta1 >= 1.0f || config.beta2 < 0.0f || config.beta2 >= 1.0f ||
@@ -80,23 +79,26 @@ absl::StatusOr<std::unique_ptr<AdamWOptimizer>> AdamWOptimizer::Create(
     Buffer& weight = model_weights[index];
     Buffer& gradient = model_gradients[index];
     if (!seen.insert(weight.data()).second) continue;
-    if (weight.stream() != stream || gradient.stream() != stream ||
+    if (weight.executor() != executor || gradient.executor() != executor ||
         weight.size_bytes() != gradient.size_bytes() ||
         weight.size_bytes() % sizeof(float) != 0) {
       return absl::InvalidArgumentError(
-          "AdamW parameters must be matching FP32 buffers on its stream");
+          "AdamW parameters must be matching FP32 buffers on its executor");
     }
     const int elements = static_cast<int>(weight.size_bytes() / sizeof(float));
     RETURN_IF_ERROR(
         internal::ValidateTiledExtent(elements, "AdamW parameter elements"));
-    ASSIGN_OR_RETURN(auto first, Buffer::Allocate(weight.size_bytes(), stream));
+    ASSIGN_OR_RETURN(auto first,
+                     Buffer::Allocate(weight.size_bytes(), executor));
     ASSIGN_OR_RETURN(auto second,
-                     Buffer::Allocate(weight.size_bytes(), stream));
+                     Buffer::Allocate(weight.size_bytes(), executor));
     RETURN_IF_ERROR(internal::CudaStatus(
-        cudaMemsetAsync(first.data(), 0, first.size_bytes(), stream),
+        cudaMemsetAsync(first.data(), 0, first.size_bytes(),
+                        executor->stream()),
         "cudaMemsetAsync(AdamW first moment)"));
     RETURN_IF_ERROR(internal::CudaStatus(
-        cudaMemsetAsync(second.data(), 0, second.size_bytes(), stream),
+        cudaMemsetAsync(second.data(), 0, second.size_bytes(),
+                        executor->stream()),
         "cudaMemsetAsync(AdamW second moment)"));
     weights.push_back(weight);
     gradients.push_back(gradient);
@@ -107,23 +109,24 @@ absl::StatusOr<std::unique_ptr<AdamWOptimizer>> AdamWOptimizer::Create(
     return absl::InvalidArgumentError("AdamW model has no parameters");
   }
   auto optimizer = std::unique_ptr<AdamWOptimizer>(new AdamWOptimizer(
-      config, stream, std::move(weights), std::move(gradients),
+      config, executor, std::move(weights), std::move(gradients),
       std::move(first_moments), std::move(second_moments)));
   RETURN_IF_ERROR(optimizer->ZeroGrad());
   return optimizer;
 }
 
 absl::StatusOr<std::unique_ptr<Optimizer>> Optimizer::Create(
-    Layer& model, AdamWConfig config, cudaStream_t stream) {
+    Layer& model, AdamWConfig config, cuda::Executor* executor) {
   ASSIGN_OR_RETURN(auto optimizer,
-                   AdamWOptimizer::Create(model, config, stream));
+                   AdamWOptimizer::Create(model, config, executor));
   return std::unique_ptr<Optimizer>(std::move(optimizer));
 }
 
 absl::Status AdamWOptimizer::ZeroGrad() {
   for (Buffer& gradient : gradients_) {
     RETURN_IF_ERROR(internal::CudaStatus(
-        cudaMemsetAsync(gradient.data(), 0, gradient.size_bytes(), stream_),
+        cudaMemsetAsync(gradient.data(), 0, gradient.size_bytes(),
+                        executor_->stream()),
         "cudaMemsetAsync(AdamW gradient)"));
   }
   return absl::OkStatus();
@@ -138,7 +141,8 @@ absl::Status AdamWOptimizer::Step() {
   for (size_t index = 0; index < weights_.size(); ++index) {
     const int elements =
         static_cast<int>(weights_[index].size_bytes() / sizeof(float));
-    AdamWUpdateKernel<<<internal::TileCount(elements), 1, 0, stream_>>>(
+    AdamWUpdateKernel<<<internal::TileCount(elements), 1, 0,
+                        executor_->stream()>>>(
         static_cast<float*>(weights_[index].data()),
         static_cast<float*>(gradients_[index].data()),
         static_cast<float*>(first_moments_[index].data()),

@@ -31,7 +31,7 @@ struct Buffer::Allocation {
     // A destructor cannot return a Status. Report a programming/runtime error
     // rather than silently hiding it; normal stream-ordered frees return
     // cudaSuccess immediately and finish when the stream reaches this call.
-    const cudaError_t error = cudaFreeAsync(data, stream);
+    const cudaError_t error = cudaFreeAsync(data, executor->stream());
     if (error != cudaSuccess) {
       std::fprintf(stderr, "cudaFreeAsync(%p) failed: %s: %s\n", data,
                    cudaGetErrorName(error), cudaGetErrorString(error));
@@ -40,37 +40,31 @@ struct Buffer::Allocation {
 
   void* data = nullptr;
   size_t size_bytes = 0;
-  cudaStream_t stream = nullptr;
+  Executor* executor = nullptr;
 };
 
 Buffer::Buffer(std::shared_ptr<Allocation> allocation)
     : allocation_(std::move(allocation)) {}
 
-absl::StatusOr<Buffer> Buffer::Allocate(size_t size_bytes,
-                                        cudaStream_t stream) {
-  const bool has_explicit_stream = stream != nullptr &&
-                                   stream != cudaStreamLegacy &&
-                                   stream != cudaStreamPerThread;
-  assert(has_explicit_stream &&
-         "Buffer requires an explicitly created CUDA stream");
-  // Keep the invariant in optimized builds where assert() may be compiled out.
-  if (!has_explicit_stream) {
+absl::StatusOr<Buffer> Buffer::Allocate(size_t size_bytes, Executor* executor) {
+  assert(executor != nullptr && "Buffer requires a non-null CUDA Executor");
+  if (executor == nullptr) {
     return absl::InvalidArgumentError(
-        "Buffer requires an explicitly created CUDA stream");
+        "Buffer requires a non-null CUDA Executor");
   }
 
   // Create the control block first so that a later host allocation failure
   // cannot leak a successfully allocated device pointer.
   auto allocation = std::make_shared<Allocation>();
   allocation->size_bytes = size_bytes;
-  allocation->stream = stream;
+  allocation->executor = executor;
 
   // CUDA treats a zero-byte allocation as no storage. Keeping a control block
   // still preserves the requested stream and normal copy semantics.
   if (size_bytes == 0) return Buffer(std::move(allocation));
 
   const cudaError_t error =
-      cudaMallocAsync(&allocation->data, size_bytes, stream);
+      cudaMallocAsync(&allocation->data, size_bytes, executor->stream());
   if (error != cudaSuccess) return CudaAllocationError(error, size_bytes);
   return Buffer(std::move(allocation));
 }
@@ -79,6 +73,6 @@ void* Buffer::data() const { return allocation_->data; }
 
 size_t Buffer::size_bytes() const { return allocation_->size_bytes; }
 
-cudaStream_t Buffer::stream() const { return allocation_->stream; }
+Executor* Buffer::executor() const { return allocation_->executor; }
 
 }  // namespace pluto::cuda

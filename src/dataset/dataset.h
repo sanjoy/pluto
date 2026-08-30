@@ -1,7 +1,5 @@
 #pragma once
 
-#include <cuda_runtime_api.h>
-
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -12,12 +10,13 @@
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "src/cuda/buffer.h"
+#include "src/cuda/executor.h"
 
 namespace pluto {
 
 // One next-token language-modeling batch. `tokens` contains model inputs and
 // `targets` contains the same sequences shifted left by one token. Both are
-// int32 device buffers with `batch_size` elements on the same CUDA stream.
+// int32 device buffers with `batch_size` elements on the same CUDA executor.
 struct TokenBatch {
   cuda::Buffer tokens;
   cuda::Buffer targets;
@@ -63,20 +62,20 @@ class InMemoryDataSetIterator final : public DataSetIterator {
  public:
   static absl::StatusOr<std::unique_ptr<InMemoryDataSetIterator>> Create(
       absl::Span<const int> tokens, InMemoryDataSetOptions options,
-      cudaStream_t stream);
+      cuda::Executor* executor);
 
   absl::StatusOr<TokenBatch> Next() override;
   absl::Status Reset() override;
 
  private:
   InMemoryDataSetIterator(std::vector<int> corpus,
-                          InMemoryDataSetOptions options, cudaStream_t stream,
-                          cuda::Buffer token_buffer,
+                          InMemoryDataSetOptions options,
+                          cuda::Executor* executor, cuda::Buffer token_buffer,
                           cuda::Buffer target_buffer);
 
   std::vector<int> corpus_;
   InMemoryDataSetOptions options_;
-  cudaStream_t stream_;
+  cuda::Executor* executor_;
   cuda::Buffer token_buffer_;
   cuda::Buffer target_buffer_;
   std::vector<int> host_tokens_;

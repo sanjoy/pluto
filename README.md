@@ -10,16 +10,18 @@ The public target `//src/cuda:buffer` provides `pluto::cuda::Buffer`, a small
 untyped CUDA allocation:
 
 ```cpp
-auto buffer = pluto::cuda::Buffer::Allocate(byte_count, stream);
-cudaMemsetAsync(buffer->data(), 0, buffer->size_bytes(), buffer->stream());
+auto executor = pluto::cuda::Executor::Create();
+auto buffer = pluto::cuda::Buffer::Allocate(byte_count, executor->get());
+cudaMemsetAsync(buffer->data(), 0, buffer->size_bytes(),
+                (*executor)->stream());
 ```
 
-`Allocate()` queues `cudaMallocAsync()` on the supplied stream. Copying a
+`Executor` owns an explicitly created non-default CUDA stream. `Allocate()`
+queues `cudaMallocAsync()` on its executor. Copying a
 `Buffer` shares its allocation; destroying the final copy queues
-`cudaFreeAsync()` on that same stream. The caller owns the stream and must
-keep it valid until all copies are destroyed. Access from another stream
-requires explicit CUDA event ordering before the final reference is released.
-A zero-byte buffer retains its stream but has a null data pointer.
+`cudaFreeAsync()` on that executor's stream. The caller must keep the executor
+valid until all copies are destroyed. A zero-byte buffer retains its executor
+but has a null data pointer.
 
 The Bazel library links the CUDA runtime through `@cuda//:cuda_runtime`. Its
 GPU test launches a kernel through a shared buffer, queues an asynchronous

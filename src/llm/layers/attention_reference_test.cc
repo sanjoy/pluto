@@ -22,7 +22,7 @@ TEST_F(LayerReferenceTest, CausalForwardAndBackwardMatchAcrossConfigurations) {
                    << " context=" << context << " heads=" << heads
                    << " width=" << width << " sequences=" << sequences);
       auto device_layer =
-          AttentionLayer::Create(context, heads, width, type, stream_);
+          AttentionLayer::Create(context, heads, width, type, executor_);
       auto reference_layer =
           AttentionLayerReference::Create(context, heads, width, type);
       ASSERT_TRUE(device_layer.ok()) << device_layer.status();
@@ -38,8 +38,8 @@ TEST_F(LayerReferenceTest, CausalForwardAndBackwardMatchAcrossConfigurations) {
         output_gradient[index] =
             0.2f * std::cos(static_cast<float>(index) * 0.13f);
       }
-      auto input_pair = MakeActivationBufferPair(qkv, type, stream_);
-      auto gradient_pair = MakeRawBufferPair<float>(output_gradient, stream_);
+      auto input_pair = MakeActivationBufferPair(qkv, type, executor_);
+      auto gradient_pair = MakeRawBufferPair<float>(output_gradient, executor_);
       ASSERT_TRUE(input_pair.ok()) << input_pair.status();
       ASSERT_TRUE(gradient_pair.ok()) << gradient_pair.status();
 
@@ -47,7 +47,8 @@ TEST_F(LayerReferenceTest, CausalForwardAndBackwardMatchAcrossConfigurations) {
       ReferenceTape reference_tape;
       BufferVec device_inputs = {input_pair->device};
       HostBufferVec reference_inputs = {input_pair->host};
-      auto device_output = (*device_layer)->fwd(device_inputs, &device_tape);
+      auto device_output =
+          (*device_layer)->fwd(device_inputs, &device_tape, executor_);
       auto reference_output =
           (*reference_layer)->fwd(reference_inputs, &reference_tape);
       ASSERT_TRUE(device_output.ok()) << device_output.status();
@@ -58,7 +59,8 @@ TEST_F(LayerReferenceTest, CausalForwardAndBackwardMatchAcrossConfigurations) {
       BufferVec device_gradients = {gradient_pair->device};
       HostBufferVec reference_gradients = {gradient_pair->host};
       auto device_input =
-          (*device_layer)->bwd(device_gradients, std::move(device_tape));
+          (*device_layer)
+              ->bwd(device_gradients, std::move(device_tape), executor_);
       auto reference_input =
           (*reference_layer)
               ->bwd(reference_gradients, std::move(reference_tape));
@@ -73,7 +75,7 @@ TEST_F(LayerReferenceTest, CausalForwardAndBackwardMatchAcrossConfigurations) {
 }
 
 TEST_F(LayerReferenceTest, FP8IsRejectedConsistently) {
-  auto device = AttentionLayer::Create(4, 2, 32, DataType::FP8, stream_);
+  auto device = AttentionLayer::Create(4, 2, 32, DataType::FP8, executor_);
   auto reference = AttentionLayerReference::Create(4, 2, 32, DataType::FP8);
   ASSERT_FALSE(device.ok());
   ASSERT_FALSE(reference.ok());

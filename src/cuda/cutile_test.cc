@@ -3,9 +3,11 @@
 
 #include <array>
 #include <cstddef>
+#include <memory>
 
 #include "gtest/gtest.h"
 #include "src/cuda/buffer.h"
+#include "src/cuda/executor.h"
 
 namespace pluto::cuda {
 namespace {
@@ -41,17 +43,21 @@ __tile_global__ void AddTiles(const int* __restrict__ left,
 class CuTileTest : public testing::Test {
  protected:
   void SetUp() override {
-    ASSERT_EQ(cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking),
-              cudaSuccess);
+    auto executor = Executor::Create();
+    ASSERT_TRUE(executor.ok()) << executor.status();
+    executor_storage_ = std::move(*executor);
+    executor_ = executor_storage_.get();
   }
 
   void TearDown() override {
-    if (stream_ == nullptr) return;
-    EXPECT_EQ(cudaStreamSynchronize(stream_), cudaSuccess);
-    EXPECT_EQ(cudaStreamDestroy(stream_), cudaSuccess);
+    if (executor_ == nullptr) return;
+    EXPECT_TRUE(executor_->Synchronize().ok());
+    executor_ = nullptr;
+    executor_storage_.reset();
   }
 
-  cudaStream_t stream_ = nullptr;
+  std::unique_ptr<Executor> executor_storage_;
+  Executor* executor_ = nullptr;
 };
 
 TEST_F(CuTileTest, AddsOneTilePerLogicalBlock) {
@@ -63,33 +69,33 @@ TEST_F(CuTileTest, AddsOneTilePerLogicalBlock) {
     right_host[index] = 3 * index + 7;
   }
 
-  auto left = Buffer::Allocate(sizeof(left_host), stream_);
-  auto right = Buffer::Allocate(sizeof(right_host), stream_);
-  auto output = Buffer::Allocate(sizeof(output_host), stream_);
+  auto left = Buffer::Allocate(sizeof(left_host), executor_);
+  auto right = Buffer::Allocate(sizeof(right_host), executor_);
+  auto output = Buffer::Allocate(sizeof(output_host), executor_);
   ASSERT_TRUE(left.ok()) << left.status();
   ASSERT_TRUE(right.ok()) << right.status();
   ASSERT_TRUE(output.ok()) << output.status();
 
   ASSERT_EQ(cudaMemcpyAsync(left->data(), left_host.data(), sizeof(left_host),
-                            cudaMemcpyHostToDevice, stream_),
+                            cudaMemcpyHostToDevice, executor_->stream()),
             cudaSuccess);
   ASSERT_EQ(
       cudaMemcpyAsync(right->data(), right_host.data(), sizeof(right_host),
-                      cudaMemcpyHostToDevice, stream_),
+                      cudaMemcpyHostToDevice, executor_->stream()),
       cudaSuccess);
 
   // Tile kernels use ordinary launch syntax, but their block dimension must be
   // one because the tile compiler chooses the physical thread configuration.
-  AddTiles<<<kElementCount / kTileSize, 1, 0, stream_>>>(
+  AddTiles<<<kElementCount / kTileSize, 1, 0, executor_->stream()>>>(
       static_cast<const int*>(left->data()),
       static_cast<const int*>(right->data()),
       static_cast<int*>(output->data()));
   ASSERT_EQ(cudaGetLastError(), cudaSuccess);
   ASSERT_EQ(
       cudaMemcpyAsync(output_host.data(), output->data(), sizeof(output_host),
-                      cudaMemcpyDeviceToHost, stream_),
+                      cudaMemcpyDeviceToHost, executor_->stream()),
       cudaSuccess);
-  ASSERT_EQ(cudaStreamSynchronize(stream_), cudaSuccess);
+  ASSERT_TRUE(executor_->Synchronize().ok());
 
   for (int index = 0; index < kElementCount; ++index) {
     EXPECT_EQ(output_host[index], left_host[index] + right_host[index])

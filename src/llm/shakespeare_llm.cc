@@ -21,6 +21,7 @@
 #include "absl/strings/str_cat.h"
 #include "src/common/status_macros.h"
 #include "src/cuda/buffer.h"
+#include "src/cuda/executor.h"
 #include "src/dataset/dataset.h"
 #include "src/llm/layer.h"
 #include "src/llm/layers/attention.h"
@@ -154,7 +155,7 @@ absl::Status CudaStatus(cudaError_t error, const char* operation) {
 // dropout layers appear. Each block is independently parameterized.
 absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateTransformerBlock(
     DataType output_type, int initialization_seed, int block_index,
-    cudaStream_t stream) {
+    cuda::Executor* executor) {
   const float residual_standard_deviation =
       kInitializationStandardDeviation /
       std::sqrt(2.0f * kTransformerBlockCount);
@@ -164,17 +165,17 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateTransformerBlock(
 
   ComposedLayerBuilder attention_builder;
   RETURN_IF_ERROR(attention_builder.add(LayerNormLayer::Create(
-      kModelWidth, kLayerNormEpsilon, output_type, stream)));
+      kModelWidth, kLayerNormEpsilon, output_type, executor)));
   RETURN_IF_ERROR(attention_builder.add(FullyConnectedLayer::Create(
-      kModelWidth, 3 * kModelWidth, output_type, stream)));
+      kModelWidth, 3 * kModelWidth, output_type, executor)));
   auto* qkv_projection =
       static_cast<FullyConnectedLayer*>(attention_builder.back());
   RETURN_IF_ERROR(qkv_projection->InitializeNormal(
       kInitializationStandardDeviation, seed_base + 1));
   RETURN_IF_ERROR(attention_builder.add(AttentionLayer::Create(
-      kContextLength, kAttentionHeads, kModelWidth, output_type, stream)));
+      kContextLength, kAttentionHeads, kModelWidth, output_type, executor)));
   RETURN_IF_ERROR(attention_builder.add(FullyConnectedLayer::Create(
-      kModelWidth, kModelWidth, output_type, stream)));
+      kModelWidth, kModelWidth, output_type, executor)));
   auto* attention_projection =
       static_cast<FullyConnectedLayer*>(attention_builder.back());
   RETURN_IF_ERROR(attention_projection->InitializeNormal(
@@ -182,15 +183,15 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateTransformerBlock(
 
   ComposedLayerBuilder mlp_builder;
   RETURN_IF_ERROR(mlp_builder.add(LayerNormLayer::Create(
-      kModelWidth, kLayerNormEpsilon, output_type, stream)));
+      kModelWidth, kLayerNormEpsilon, output_type, executor)));
   RETURN_IF_ERROR(mlp_builder.add(FullyConnectedLayer::Create(
-      kModelWidth, kFeedForwardWidth, output_type, stream)));
+      kModelWidth, kFeedForwardWidth, output_type, executor)));
   auto* mlp_input = static_cast<FullyConnectedLayer*>(mlp_builder.back());
   RETURN_IF_ERROR(mlp_input->InitializeNormal(kInitializationStandardDeviation,
                                               seed_base + 3));
-  RETURN_IF_ERROR(mlp_builder.add(GeluLayer::Create(output_type, stream)));
+  RETURN_IF_ERROR(mlp_builder.add(GeluLayer::Create(output_type, executor)));
   RETURN_IF_ERROR(mlp_builder.add(FullyConnectedLayer::Create(
-      kFeedForwardWidth, kModelWidth, output_type, stream)));
+      kFeedForwardWidth, kModelWidth, output_type, executor)));
   auto* mlp_output = static_cast<FullyConnectedLayer*>(mlp_builder.back());
   RETURN_IF_ERROR(
       mlp_output->InitializeNormal(residual_standard_deviation, seed_base + 4));
@@ -210,27 +211,27 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateTransformerBlock(
 // Parameters are FP32 master weights, reductions/statistics remain FP32, and
 // the terminal projection reuses the token embedding table.
 absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateShakespeareLlm(
-    DataType output_type, int seed, cudaStream_t stream) {
+    DataType output_type, int seed, cuda::Executor* executor) {
   ComposedLayerBuilder builder;
   RETURN_IF_ERROR(builder.add(EmbeddingLookupLayer::Create(
-      kVocabularySize, kModelWidth, output_type, stream)));
+      kVocabularySize, kModelWidth, output_type, executor)));
   auto* embedding = static_cast<EmbeddingLookupLayer*>(builder.back());
   RETURN_IF_ERROR(embedding->InitializeNormal(kInitializationStandardDeviation,
                                               static_cast<uint64_t>(seed)));
 
   RETURN_IF_ERROR(builder.add(PositionEmbeddingLayer::Create(
-      kContextLength, kModelWidth, output_type, stream)));
+      kContextLength, kModelWidth, output_type, executor)));
   auto* positions = static_cast<PositionEmbeddingLayer*>(builder.back());
   RETURN_IF_ERROR(positions->InitializeNormal(kInitializationStandardDeviation,
                                               static_cast<uint64_t>(seed) + 1));
 
   for (int index = 0; index < kTransformerBlockCount; ++index) {
-    RETURN_IF_ERROR(
-        builder.add(CreateTransformerBlock(output_type, seed, index, stream)));
+    RETURN_IF_ERROR(builder.add(
+        CreateTransformerBlock(output_type, seed, index, executor)));
   }
 
   RETURN_IF_ERROR(builder.add(LayerNormLayer::Create(
-      kModelWidth, kLayerNormEpsilon, output_type, stream)));
+      kModelWidth, kLayerNormEpsilon, output_type, executor)));
   RETURN_IF_ERROR(builder.add(LanguageModelingHeadLayer::Create(embedding)));
   return builder.create();
 }
@@ -284,7 +285,11 @@ absl::StatusOr<std::vector<float>> Predict(const ModelConfig& config,
                                            const Layer& model,
                                            const std::vector<int>& context,
                                            const Buffer& token_buffer,
-                                           cudaStream_t stream) {
+                                           cuda::Executor* executor) {
+  if (executor == nullptr || token_buffer.executor() != executor) {
+    return absl::InvalidArgumentError(
+        "prediction requires its token buffer's CUDA Executor");
+  }
   if (context.empty()) {
     return absl::InvalidArgumentError("prediction context must not be empty");
   }
@@ -306,11 +311,11 @@ absl::StatusOr<std::vector<float>> Predict(const ModelConfig& config,
   RETURN_IF_ERROR(
       CudaStatus(cudaMemcpyAsync(token_buffer.data(), repeated_context.data(),
                                  token_buffer.size_bytes(),
-                                 cudaMemcpyHostToDevice, stream),
+                                 cudaMemcpyHostToDevice, executor->stream()),
                  "cudaMemcpyAsync(prompt context)"));
   Tape tape;
   BufferVec inputs = {token_buffer};
-  ASSIGN_OR_RETURN(auto logits, model.fwd(inputs, &tape));
+  ASSIGN_OR_RETURN(auto logits, model.fwd(inputs, &tape, executor));
   std::vector<float> host_logits(kVocabularySize);
   const size_t output_row = context_size - 1;
   const auto* selected_logits = static_cast<const float*>(logits.data()) +
@@ -318,18 +323,20 @@ absl::StatusOr<std::vector<float>> Predict(const ModelConfig& config,
   RETURN_IF_ERROR(
       CudaStatus(cudaMemcpyAsync(host_logits.data(), selected_logits,
                                  host_logits.size() * sizeof(float),
-                                 cudaMemcpyDeviceToHost, stream),
+                                 cudaMemcpyDeviceToHost, executor->stream()),
                  "cudaMemcpyAsync(prompt logits)"));
-  RETURN_IF_ERROR(CudaStatus(cudaStreamSynchronize(stream),
-                             "cudaStreamSynchronize(prompt)"));
+  RETURN_IF_ERROR(executor->Synchronize());
   return host_logits;
 }
 
-absl::StatusOr<std::string> Generate(
-    const ModelConfig& config, const Layer& model,
-    const Gpt2Tokenizer& tokenizer, const Gpt2Detokenizer& detokenizer,
-    std::string prompt, int generation_tokens, double temperature,
-    std::mt19937& random, const Buffer& token_buffer, cudaStream_t stream) {
+absl::StatusOr<std::string> Generate(const ModelConfig& config,
+                                     const Layer& model,
+                                     const Gpt2Tokenizer& tokenizer,
+                                     const Gpt2Detokenizer& detokenizer,
+                                     std::string prompt, int generation_tokens,
+                                     double temperature, std::mt19937& random,
+                                     const Buffer& token_buffer,
+                                     cuda::Executor* executor) {
   if (generation_tokens < 0 || temperature <= 0.0) {
     return absl::InvalidArgumentError(
         "generation_tokens must be non-negative and temperature positive");
@@ -341,7 +348,7 @@ absl::StatusOr<std::string> Generate(
 
   for (int index = 0; index < generation_tokens; ++index) {
     ASSIGN_OR_RETURN(auto logits,
-                     Predict(config, model, context, token_buffer, stream));
+                     Predict(config, model, context, token_buffer, executor));
     const float maximum = *std::max_element(logits.begin(), logits.end());
     std::vector<double> probabilities(kVocabularySize);
     for (int token = 0; token < kVocabularySize; ++token) {
@@ -356,7 +363,10 @@ absl::StatusOr<std::string> Generate(
   return detokenizer.Decode(generated);
 }
 
-absl::Status Run(cudaStream_t stream) {
+absl::Status Run(cuda::Executor* executor) {
+  if (executor == nullptr) {
+    return absl::InvalidArgumentError("Run requires a CUDA Executor");
+  }
   ASSIGN_OR_RETURN(auto corpus, LoadCorpus());
   ASSIGN_OR_RETURN(auto tokenizer_directory, TokenizerDirectory());
   ASSIGN_OR_RETURN(auto tokenizer, Gpt2Tokenizer::Load(tokenizer_directory));
@@ -377,12 +387,12 @@ absl::Status Run(cudaStream_t stream) {
       auto corpus_split,
       SplitCorpus(corpus_tokens, absl::GetFlag(FLAGS_test_fraction)));
 
-  ASSIGN_OR_RETURN(
-      auto model,
-      CreateShakespeareLlm(DataType::BF16, absl::GetFlag(FLAGS_seed), stream));
+  ASSIGN_OR_RETURN(auto model,
+                   CreateShakespeareLlm(DataType::BF16,
+                                        absl::GetFlag(FLAGS_seed), executor));
   ASSIGN_OR_RETURN(
       auto loss_layer,
-      CrossEntropyLossLayer::Create(kVocabularySize, DataType::BF16, stream));
+      CrossEntropyLossLayer::Create(kVocabularySize, DataType::BF16, executor));
   const AdamWConfig optimizer_config{
       .learning_rate = static_cast<float>(absl::GetFlag(FLAGS_learning_rate)),
       .beta1 = static_cast<float>(absl::GetFlag(FLAGS_adam_beta1)),
@@ -391,7 +401,7 @@ absl::Status Run(cudaStream_t stream) {
       .weight_decay = static_cast<float>(absl::GetFlag(FLAGS_weight_decay)),
   };
   ASSIGN_OR_RETURN(auto optimizer,
-                   Optimizer::Create(*model, optimizer_config, stream));
+                   Optimizer::Create(*model, optimizer_config, executor));
   const InMemoryDataSetOptions training_data_options{
       .batch_size = config.batch_size,
       .context_length = kContextLength,
@@ -406,26 +416,27 @@ absl::Status Run(cudaStream_t stream) {
   };
   ASSIGN_OR_RETURN(auto training_data,
                    InMemoryDataSetIterator::Create(
-                       corpus_split.training, training_data_options, stream));
-  ASSIGN_OR_RETURN(auto training_evaluation_data,
-                   InMemoryDataSetIterator::Create(
-                       corpus_split.training, evaluation_data_options, stream));
+                       corpus_split.training, training_data_options, executor));
+  ASSIGN_OR_RETURN(
+      auto training_evaluation_data,
+      InMemoryDataSetIterator::Create(corpus_split.training,
+                                      evaluation_data_options, executor));
   ASSIGN_OR_RETURN(auto test_evaluation_data,
                    InMemoryDataSetIterator::Create(
-                       corpus_split.test, evaluation_data_options, stream));
+                       corpus_split.test, evaluation_data_options, executor));
   // Generation only needs model inputs; train/eval staging is owned by the
   // dataset iterators above.
   ASSIGN_OR_RETURN(auto token_buffer,
-                   Buffer::Allocate(config.batch_size * sizeof(int), stream));
+                   Buffer::Allocate(config.batch_size * sizeof(int), executor));
 
   const int eval_batches = absl::GetFlag(FLAGS_eval_batches);
   const EvaluationOptions evaluation_options{.batches = eval_batches};
   ASSIGN_OR_RETURN(double initial_training_loss,
                    Evaluate(*model, *loss_layer, *training_evaluation_data,
-                            evaluation_options));
-  ASSIGN_OR_RETURN(
-      double initial_test_loss,
-      Evaluate(*model, *loss_layer, *test_evaluation_data, evaluation_options));
+                            executor, evaluation_options));
+  ASSIGN_OR_RETURN(double initial_test_loss,
+                   Evaluate(*model, *loss_layer, *test_evaluation_data,
+                            executor, evaluation_options));
   std::cout << "model: GPT-2 vocabulary=" << kVocabularySize
             << ", context=" << kContextLength
             << ", layers=" << kTransformerBlockCount
@@ -446,15 +457,15 @@ absl::Status Run(cudaStream_t stream) {
       .evaluation_tokens = training_evaluation_data.get(),
       .initial_loss = initial_training_loss,
   };
-  ASSIGN_OR_RETURN(
-      auto training_result,
-      Train(*model, *loss_layer, *optimizer, *training_data, training_options));
+  ASSIGN_OR_RETURN(auto training_result,
+                   Train(*model, *loss_layer, *optimizer, *training_data,
+                         executor, training_options));
   ASSIGN_OR_RETURN(double final_training_loss,
                    Evaluate(*model, *loss_layer, *training_evaluation_data,
-                            evaluation_options));
-  ASSIGN_OR_RETURN(
-      double final_test_loss,
-      Evaluate(*model, *loss_layer, *test_evaluation_data, evaluation_options));
+                            executor, evaluation_options));
+  ASSIGN_OR_RETURN(double final_test_loss,
+                   Evaluate(*model, *loss_layer, *test_evaluation_data,
+                            executor, evaluation_options));
   std::cout << "completed training steps: " << training_result.steps_completed
             << '\n'
             << "final training loss: " << final_training_loss << '\n'
@@ -485,7 +496,8 @@ absl::Status Run(cudaStream_t stream) {
       auto sample,
       Generate(config, *model, *tokenizer, *detokenizer, "To be",
                std::min(120, absl::GetFlag(FLAGS_generation_tokens)),
-               absl::GetFlag(FLAGS_temperature), random, token_buffer, stream));
+               absl::GetFlag(FLAGS_temperature), random, token_buffer,
+               executor));
   std::cout << "sample:\nTo be" << sample << "\n";
 
   if (!absl::GetFlag(FLAGS_interactive)) return absl::OkStatus();
@@ -498,7 +510,7 @@ absl::Status Run(cudaStream_t stream) {
                      Generate(config, *model, *tokenizer, *detokenizer, prompt,
                               absl::GetFlag(FLAGS_generation_tokens),
                               absl::GetFlag(FLAGS_temperature), random,
-                              token_buffer, stream));
+                              token_buffer, executor));
     std::cout << prompt << completion << "\n";
   }
   return absl::OkStatus();
@@ -513,25 +525,21 @@ int main(int argc, char** argv) {
     std::cerr << "This binary accepts flags only; use --corpus=PATH.\n";
     return 2;
   }
-  cudaStream_t stream = nullptr;
-  if (const absl::Status status = pluto::llm::CudaStatus(
-          cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking),
-          "cudaStreamCreateWithFlags");
-      !status.ok()) {
-    std::cerr << status << '\n';
+  auto executor = pluto::cuda::Executor::Create();
+  if (!executor.ok()) {
+    std::cerr << executor.status() << '\n';
     return 1;
   }
-  const absl::Status status = pluto::llm::Run(stream);
+  const absl::Status status = pluto::llm::Run(executor->get());
   // Run() destroys every Buffer, queueing stream-ordered frees before this
-  // synchronization and stream destruction.
-  const cudaError_t sync_error = cudaStreamSynchronize(stream);
-  const cudaError_t destroy_error = cudaStreamDestroy(stream);
+  // synchronization. Executor destruction then releases the native stream.
+  const absl::Status sync_status = (*executor)->Synchronize();
   if (!status.ok()) {
     std::cerr << status << '\n';
     return 1;
   }
-  if (sync_error != cudaSuccess || destroy_error != cudaSuccess) {
-    std::cerr << "CUDA stream cleanup failed\n";
+  if (!sync_status.ok()) {
+    std::cerr << sync_status << '\n';
     return 1;
   }
   return 0;
