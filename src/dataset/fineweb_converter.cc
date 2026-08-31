@@ -1,4 +1,4 @@
-#include "src/tokenization/fineweb_converter.h"
+#include "src/dataset/fineweb_converter.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -11,7 +11,7 @@
 #include "absl/strings/str_cat.h"
 #include "src/common/status_macros.h"
 #include "src/parquet/fineweb_parquet_reader.h"
-#include "src/tokenization/document_file.h"
+#include "src/dataset/document_file.h"
 
 namespace pluto::tokenized {
 namespace {

@@ -6,8 +6,8 @@
 
 #include "gtest/gtest.h"
 #include "src/parquet/fineweb_parquet_reader.h"
-#include "src/tokenization/detokenizer.h"
-#include "src/tokenization/tokenizer.h"
+#include "src/dataset/detokenizer.h"
+#include "src/dataset/tokenizer.h"
 
 namespace pluto::pipeline {
 namespace {

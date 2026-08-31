@@ -11,7 +11,7 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "src/tokenization/gpt2_model.h"
+#include "src/dataset/gpt2_model.h"
 
 namespace pluto::tokenizer {
 

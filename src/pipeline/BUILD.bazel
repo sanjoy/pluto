@@ -8,8 +8,8 @@ cc_test(
     tags = ["requires-tokenizer"],
     deps = [
         "//src/parquet:fineweb_parquet_reader",
-        "//src/tokenization:detokenizer",
-        "//src/tokenization:tokenizer",
+        "//src/dataset:detokenizer",
+        "//src/dataset:tokenizer",
         "@googletest//:gtest_main",
     ],
 )
@@ -24,8 +24,8 @@ cc_test(
     ],
     deps = [
         "//src/parquet:fineweb_parquet_reader",
-        "//src/tokenization:detokenizer",
-        "//src/tokenization:tokenizer",
+        "//src/dataset:detokenizer",
+        "//src/dataset:tokenizer",
         "@googletest//:gtest_main",
     ],
 )

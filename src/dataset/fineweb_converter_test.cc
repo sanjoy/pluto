@@ -1,4 +1,4 @@
-#include "src/tokenization/fineweb_converter.h"
+#include "src/dataset/fineweb_converter.h"
 
 #include <cstdint>
 #include <cstdlib>
@@ -7,9 +7,9 @@
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "src/tokenization/detokenizer.h"
-#include "src/tokenization/document_file.h"
-#include "src/tokenization/tokenizer.h"
+#include "src/dataset/detokenizer.h"
+#include "src/dataset/document_file.h"
+#include "src/dataset/tokenizer.h"
 
 namespace pluto::tokenized {
 namespace {

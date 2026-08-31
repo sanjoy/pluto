@@ -1,4 +1,4 @@
-#include "src/tokenization/tokenizer.h"
+#include "src/dataset/tokenizer.h"
 
 #include <algorithm>
 #include <limits>
@@ -15,7 +15,7 @@
 #include "re2/re2.h"
 #include "re2/stringpiece.h"
 #include "src/common/status_macros.h"
-#include "src/tokenization/gpt2_model.h"
+#include "src/dataset/gpt2_model.h"
 
 namespace pluto::tokenizer {
 namespace {

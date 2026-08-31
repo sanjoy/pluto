@@ -33,8 +33,8 @@
 #include "src/llm/layers/norm.h"
 #include "src/llm/optimizer.h"
 #include "src/llm/trainer.h"
-#include "src/tokenization/detokenizer.h"
-#include "src/tokenization/tokenizer.h"
+#include "src/dataset/detokenizer.h"
+#include "src/dataset/tokenizer.h"
 
 ABSL_FLAG(std::string, corpus, "",
           "Shakespeare corpus path; defaults to the Bazel testdata runfile");

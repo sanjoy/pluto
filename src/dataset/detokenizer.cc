@@ -1,4 +1,4 @@
-#include "src/tokenization/detokenizer.h"
+#include "src/dataset/detokenizer.h"
 
 #include <filesystem>
 #include <memory>
@@ -9,7 +9,7 @@
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "src/common/status_macros.h"
-#include "src/tokenization/gpt2_model.h"
+#include "src/dataset/gpt2_model.h"
 
 namespace pluto::tokenizer {
 

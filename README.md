@@ -48,8 +48,8 @@ cuTile target in `src/cuda/BUILD.bazel`; the rest of the project remains C++17.
 
 The public targets are:
 
-- `//src/tokenization:tokenizer` — `pluto::tokenizer::Gpt2Tokenizer`
-- `//src/tokenization:detokenizer` — `pluto::tokenizer::Gpt2Detokenizer`
+- `//src/dataset:tokenizer` — `pluto::tokenizer::Gpt2Tokenizer`
+- `//src/dataset:detokenizer` — `pluto::tokenizer::Gpt2Detokenizer`
 
 Both `Load()` methods take a directory supplied by the caller. No tokenizer
 location is compiled into the libraries. The directory must contain the
@@ -69,7 +69,7 @@ decoding preserve UTF-8 input byte-for-byte and recognize GPT-2's EOS token.
 
 ## Tokenized-document files
 
-The public target `//src/tokenization:document_file` provides
+The public target `//src/dataset:document_file` provides
 `pluto::tokenized::DocumentFileReader` and `DocumentFileWriter`. The format
 contains one length table followed by packed token IDs:
 
@@ -86,14 +86,14 @@ keeps only the length table and a 1 MiB payload buffer in memory. It writes
 through a temporary file in the destination directory and atomically publishes
 the result only when every declared document has been supplied.
 
-The `//src/tokenization:fineweb_converter` library composes this format with the
+The `//src/dataset:fineweb_converter` library composes this format with the
 GPT-2 tokenizer and the projected-text Parquet reader. The
-`//src/tokenization:tokenize_fineweb` binary discovers every `.parquet` file in
+`//src/dataset:tokenize_fineweb` binary discovers every `.parquet` file in
 an input directory and writes a matching `.tokenized` file. For example,
 `000_00000.parquet` becomes `000_00000.tokenized`.
 
 ```bash
-bazel run //src/tokenization:tokenize_fineweb -- \
+bazel run //src/dataset:tokenize_fineweb -- \
   --input_dir=/home/ubuntu/datasets/raw/sample/10BT \
   --output_dir=/home/ubuntu/datasets/tokenized/10BT \
   --tokenizer_dir=/home/ubuntu/datasets/tokenizer/gpt2
@@ -134,10 +134,10 @@ checked-in `.bazelrc` forwards into Bazel's test environment:
 export PLUTO_GPT2_TOKENIZER_DIR=/path/to/datasets/tokenizer/gpt2
 export PLUTO_FINEWEB_PARQUET_DIR=/path/to/datasets/raw/sample/10BT
 
-bazel test //src/tokenization:tokenizer_test
+bazel test //src/dataset:tokenizer_test
 bazel test //src/parquet:fineweb_parquet_reader_test
-bazel test //src/tokenization:document_file_test
-bazel test //src/tokenization:fineweb_converter_test
+bazel test //src/dataset:document_file_test
+bazel test //src/dataset:fineweb_converter_test
 bazel test //src/pipeline:tokenized_parquet_test
 bazel test //src/pipeline:fineweb_integration_test
 ```

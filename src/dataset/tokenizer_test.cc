@@ -1,4 +1,4 @@
-#include "src/tokenization/tokenizer.h"
+#include "src/dataset/tokenizer.h"
 
 #include <cstdlib>
 #include <filesystem>
@@ -7,7 +7,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "src/tokenization/detokenizer.h"
+#include "src/dataset/detokenizer.h"
 
 namespace pluto::tokenizer {
 namespace {
