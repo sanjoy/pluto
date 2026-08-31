@@ -43,6 +43,13 @@ class Layer {
       cuda::Executor& executor, absl::Span<const Buffer> output_gradients,
       Tape tape) = 0;
   virtual absl::Span<Buffer> weights() = 0;
+  // Read-only access for serialization and inspection. Implementations expose
+  // the same handles as weights(); callers must not mutate their device bytes.
+  absl::Span<const Buffer> weights() const {
+    absl::Span<Buffer> mutable_weights = const_cast<Layer*>(this)->weights();
+    return absl::Span<const Buffer>(mutable_weights.data(),
+                                    mutable_weights.size());
+  }
   // FP32 gradient accumulators corresponding one-for-one with weights().
   // Stateless layers return an empty span. Optimizers clear these buffers
   // before backward and update the FP32 master weights after backward.

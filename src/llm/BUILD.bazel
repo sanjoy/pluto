@@ -27,6 +27,41 @@ cc_library(
 )
 
 cc_library(
+    name = "checkpoint",
+    srcs = ["checkpoint.cc"],
+    hdrs = ["checkpoint.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":layer",
+        "//src/common:status_macros",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_test(
+    name = "checkpoint_test",
+    size = "small",
+    srcs = ["checkpoint_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":checkpoint",
+        ":layer",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "layer_internal",
     hdrs = ["layers/internal.h"],
     visibility = ["//src/llm:__subpackages__"],
