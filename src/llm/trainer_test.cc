@@ -296,6 +296,35 @@ TEST_F(TrainerTest, CallbackEnablesPeriodicEvaluationWithoutEarlyStopping) {
   EXPECT_EQ(evaluation_losses, (std::vector<double>{2.5, 2.5}));
 }
 
+TEST_F(TrainerTest, StepCallbackRunsAfterUpdatesAndPropagatesErrors) {
+  FakeModel model;
+  FakeOptimizer optimizer;
+  std::vector<int> callback_steps;
+  auto loss = MakeLoss();
+  auto data = MakeData();
+  ASSERT_TRUE(loss.ok()) << loss.status();
+  ASSERT_TRUE(data.ok()) << data.status();
+
+  auto result =
+      Train(*executor_, model, **loss, optimizer, **data,
+            TrainingOptions{
+                .max_steps = 3,
+                .step_callback = [&](int steps_completed) -> absl::Status {
+                  callback_steps.push_back(steps_completed);
+                  if (steps_completed == 2) {
+                    return absl::UnavailableError("checkpoint failed");
+                  }
+                  return absl::OkStatus();
+                }});
+
+  ASSERT_FALSE(result.ok());
+  EXPECT_EQ(result.status().code(), absl::StatusCode::kUnavailable);
+  EXPECT_EQ(result.status().message(), "checkpoint failed");
+  EXPECT_EQ(callback_steps, (std::vector<int>{1, 2}));
+  EXPECT_EQ(optimizer.steps, 2);
+  EXPECT_EQ(model.backward_calls, 2);
+}
+
 TEST_F(TrainerTest, RejectsInvalidOptions) {
   FakeModel model;
   FakeOptimizer optimizer;

@@ -172,6 +172,9 @@ absl::StatusOr<TrainingResult> Train(cuda::Executor& executor, Layer& model,
                                                     std::move(model_tape)));
     (void)input_gradient;
     RETURN_IF_ERROR(optimizer.Step());
+    if (options.step_callback) {
+      RETURN_IF_ERROR(options.step_callback(step + 1));
+    }
 
     const bool evaluation_enabled =
         options.stop_loss >= 0.0 || options.evaluation_callback;

@@ -85,3 +85,21 @@ To train until a requested training loss while retaining a hard iteration cap:
 ```sh
 PLUTO_GPT2_TOKENIZER_DIR=/path/to/gpt2 bazel run //src/llm:shakespeare_llm -- --train_until_loss=0 --steps=100000 --training_eval_interval=100
 ```
+
+To write model weights every 100 completed optimizer steps:
+
+```sh
+PLUTO_GPT2_TOKENIZER_DIR=/path/to/gpt2 bazel run //src/llm:shakespeare_llm -- --steps=1200 --checkpoint_dir=/path/to/checkpoints --checkpoint_every=100
+```
+
+This creates `/path/to/checkpoints/step_100`, `step_200`, and so on. Restore
+one of those directories before evaluation or further training with:
+
+```sh
+PLUTO_GPT2_TOKENIZER_DIR=/path/to/gpt2 bazel run //src/llm:shakespeare_llm -- --load_checkpoint=/path/to/checkpoints/step_1200 --steps=0
+```
+
+Checkpoints currently contain model weights only. AdamW moment state and the
+training-step counter restart on every invocation, so periodic directory names
+are relative to the current run. `--checkpoint_every=0` (the default) disables
+checkpoint writes.

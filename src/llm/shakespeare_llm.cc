@@ -28,6 +28,7 @@
 #include "src/dataset/dataset.h"
 #include "src/dataset/detokenizer.h"
 #include "src/dataset/tokenizer.h"
+#include "src/llm/checkpoint.h"
 #include "src/llm/layer.h"
 #include "src/llm/layers/attention.h"
 #include "src/llm/layers/combinators.h"
@@ -44,6 +45,13 @@ ABSL_FLAG(std::string, corpus, "",
 ABSL_FLAG(std::string, tokenizer_dir, "",
           "GPT-2 tokenizer directory; defaults to "
           "PLUTO_GPT2_TOKENIZER_DIR");
+ABSL_FLAG(std::string, load_checkpoint, "",
+          "Checkpoint directory to restore before training; empty starts with "
+          "newly initialized weights");
+ABSL_FLAG(std::string, checkpoint_dir, "",
+          "Root directory for periodic step_N checkpoint directories");
+ABSL_FLAG(int, checkpoint_every, 0,
+          "Write a checkpoint every N optimizer steps; zero disables writes");
 ABSL_FLAG(int, steps, 1200, "Maximum number of AdamW training steps");
 ABSL_FLAG(double, learning_rate, 3e-4, "AdamW learning rate");
 ABSL_FLAG(double, adam_beta1, 0.9, "AdamW first-moment decay");
@@ -406,6 +414,16 @@ absl::Status Run(cuda::Executor& executor) {
         absl::StrCat("cannot open training log for writing: ", log_path));
   }
   logger << "training log: " << log_path << '\n';
+  const int checkpoint_every = absl::GetFlag(FLAGS_checkpoint_every);
+  const std::filesystem::path checkpoint_root =
+      absl::GetFlag(FLAGS_checkpoint_dir);
+  if (checkpoint_every < 0) {
+    return absl::InvalidArgumentError("checkpoint_every must be non-negative");
+  }
+  if (checkpoint_every > 0 && checkpoint_root.empty()) {
+    return absl::InvalidArgumentError(
+        "checkpoint_dir must not be empty when checkpoint_every is positive");
+  }
 
   ASSIGN_OR_RETURN(auto corpus, LoadTextCorpus(CorpusPath()));
   ASSIGN_OR_RETURN(auto tokenizer_directory, TokenizerDirectory());
@@ -427,6 +445,13 @@ absl::Status Run(cuda::Executor& executor) {
 
   ASSIGN_OR_RETURN(auto model, CreateShakespeareLlm(executor, DataType::BF16,
                                                     absl::GetFlag(FLAGS_seed)));
+  const std::filesystem::path load_checkpoint =
+      absl::GetFlag(FLAGS_load_checkpoint);
+  if (!load_checkpoint.empty()) {
+    RETURN_IF_ERROR(ReadFromDirectory(executor, *model, load_checkpoint));
+    logger << '[' << CurrentTimestamp()
+           << "] loaded checkpoint: " << load_checkpoint.string() << '\n';
+  }
   ASSIGN_OR_RETURN(
       auto loss_layer,
       CrossEntropyLossLayer::Create(executor, kVocabularySize, DataType::BF16));
@@ -491,7 +516,7 @@ absl::Status Run(cuda::Executor& executor) {
          << "initial training loss: " << initial_training_loss << '\n'
          << "initial test loss: " << initial_test_loss << '\n';
 
-  const TrainingOptions training_options{
+  TrainingOptions training_options{
       .max_steps = absl::GetFlag(FLAGS_steps),
       .evaluation_interval = absl::GetFlag(FLAGS_training_eval_interval),
       .evaluation_batches = eval_batches,
@@ -504,6 +529,21 @@ absl::Status Run(cuda::Executor& executor) {
                    << steps_completed << " steps: " << loss << '\n';
           },
   };
+  if (checkpoint_every > 0) {
+    training_options.step_callback =
+        [&executor, &logger, model_ptr = model.get(), checkpoint_every,
+         checkpoint_root](int steps_completed) -> absl::Status {
+      if (steps_completed % checkpoint_every != 0) {
+        return absl::OkStatus();
+      }
+      const std::filesystem::path checkpoint =
+          checkpoint_root / absl::StrCat("step_", steps_completed);
+      RETURN_IF_ERROR(WriteToDirectory(executor, *model_ptr, checkpoint));
+      logger << '[' << CurrentTimestamp()
+             << "] wrote checkpoint: " << checkpoint.string() << '\n';
+      return absl::OkStatus();
+    };
+  }
   ASSIGN_OR_RETURN(auto training_result,
                    Train(executor, *model, *loss_layer, *optimizer,
                          *training_data, training_options));

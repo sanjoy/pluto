@@ -202,6 +202,7 @@ cc_binary(
     srcs = ["shakespeare_llm.cc"],
     data = ["//testdata:shakespeare.txt"],
     deps = [
+        ":checkpoint",
         ":layers",
         ":optimizer",
         ":trainer",
@@ -240,6 +241,7 @@ cc_test(
         "requires-tokenizer",
     ],
     deps = [
+        ":checkpoint",
         ":layers",
         ":optimizer",
         ":trainer",
@@ -280,6 +282,7 @@ cc_test(
         "requires-tokenizer",
     ],
     deps = [
+        ":checkpoint",
         ":layers",
         ":optimizer",
         ":trainer",

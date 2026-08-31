@@ -3,6 +3,7 @@
 #include <functional>
 #include <optional>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "src/cuda/executor.h"
 #include "src/dataset/dataset.h"
@@ -45,6 +46,12 @@ struct TrainingOptions {
   // disabled. A supplied initial_loss does not trigger the callback because
   // Train() did not perform that evaluation.
   std::function<void(int, double)> evaluation_callback;
+
+  // Called synchronously after every successful optimizer update. The argument
+  // is the number of completed updates. Returning an error stops training and
+  // propagates that error to the caller. This is suitable for periodic work
+  // such as checkpointing that must not depend on the evaluation cadence.
+  std::function<absl::Status(int)> step_callback;
 };
 
 struct TrainingResult {
