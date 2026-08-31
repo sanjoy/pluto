@@ -75,9 +75,10 @@ PLUTO_GPT2_TOKENIZER_DIR=/path/to/gpt2 bazel run //src/llm:shakespeare_llm -- --
 
 The corpus is encoded with GPT-2 BPE and split chronologically into training
 and held-out suffixes. The binary reports both losses before and after
-training. --batch_size controls how many token rows are processed per update
-and must be a positive multiple of 1,024; architecture dimensions are fixed.
---eval_batches controls deterministic evaluation sample count.
+training. --batch_size controls how many independent 1,024-token sequences are
+processed per update. For example, --batch_size=10 processes 10,240 token rows
+per optimizer step. Architecture dimensions are fixed; --eval_batches controls
+the deterministic evaluation sample count.
 
 To train until a requested training loss while retaining a hard iteration cap:
 

@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <random>
 #include <string>
@@ -64,8 +65,8 @@ ABSL_FLAG(bool, interactive, true,
           "Read prompts after training; disabled by the Bazel tests");
 ABSL_FLAG(int, generation_tokens, 300, "Tokens generated after each prompt");
 ABSL_FLAG(double, temperature, 0.8, "Sampling temperature");
-ABSL_FLAG(int, batch_size, 1024,
-          "Token rows per batch; must be a multiple of context length 1024");
+ABSL_FLAG(int, batch_size, 1,
+          "Number of context-length sequences per training/evaluation batch");
 ABSL_FLAG(std::string, log_file, "/tmp/train.log",
           "File that receives a copy of stdout; truncated at startup");
 
@@ -123,15 +124,17 @@ static_assert(kFeedForwardWidth == 4 * kModelWidth);
 struct ModelConfig {
   int batch_size;
 
-  int sequence_batch_size() const { return batch_size / kContextLength; }
+  int token_batch_size() const { return batch_size * kContextLength; }
   int padded_vocabulary_size() const {
     return ((kVocabularySize + kTileSize - 1) / kTileSize) * kTileSize;
   }
 
   absl::Status Validate() const {
-    if (batch_size <= 0 || batch_size % kContextLength != 0) {
-      return absl::InvalidArgumentError(
-          "batch_size must be a positive multiple of context length 1024");
+    if (batch_size <= 0) {
+      return absl::InvalidArgumentError("batch_size must be positive");
+    }
+    if (batch_size > std::numeric_limits<int>::max() / kContextLength) {
+      return absl::InvalidArgumentError("batch_size is too large");
     }
     return absl::OkStatus();
   }
@@ -321,8 +324,8 @@ absl::StatusOr<std::vector<float>> Predict(cuda::Executor& executor,
   const size_t context_size =
       std::min(context.size(), static_cast<size_t>(kContextLength));
   const size_t context_start = context.size() - context_size;
-  std::vector<int> repeated_context(config.batch_size);
-  for (int sequence = 0; sequence < config.sequence_batch_size(); ++sequence) {
+  std::vector<int> repeated_context(config.token_batch_size());
+  for (int sequence = 0; sequence < config.batch_size; ++sequence) {
     for (size_t position = 0; position < context_size; ++position) {
       repeated_context[sequence * kContextLength + position] =
           context[context_start + position];
@@ -430,13 +433,13 @@ absl::Status Run(cuda::Executor& executor) {
   ASSIGN_OR_RETURN(auto optimizer,
                    Optimizer::Create(executor, *model, optimizer_config));
   const InMemoryDataSetOptions training_data_options{
-      .batch_size = config.batch_size,
+      .batch_size = config.token_batch_size(),
       .context_length = kContextLength,
       .order = InMemoryDataSetOrder::kRandom,
       .seed = static_cast<uint64_t>(absl::GetFlag(FLAGS_seed)),
   };
   const InMemoryDataSetOptions evaluation_data_options{
-      .batch_size = config.batch_size,
+      .batch_size = config.token_batch_size(),
       .context_length = kContextLength,
       .order = InMemoryDataSetOrder::kSequential,
       .seed = static_cast<uint64_t>(absl::GetFlag(FLAGS_seed)),
@@ -454,8 +457,9 @@ absl::Status Run(cuda::Executor& executor) {
                                   evaluation_data_options));
   // Generation only needs model inputs; train/eval staging is owned by the
   // dataset iterators above.
-  ASSIGN_OR_RETURN(auto token_buffer,
-                   Buffer::Allocate(executor, config.batch_size * sizeof(int)));
+  ASSIGN_OR_RETURN(
+      auto token_buffer,
+      Buffer::Allocate(executor, config.token_batch_size() * sizeof(int)));
 
   const int eval_batches = absl::GetFlag(FLAGS_eval_batches);
   const EvaluationOptions evaluation_options{.batches = eval_batches};
@@ -471,6 +475,8 @@ absl::Status Run(cuda::Executor& executor) {
          << ", heads=" << kAttentionHeads
          << ", head_dim=" << kAttentionHeadDimension
          << ", MLP=" << kFeedForwardWidth << ", BF16 compute\n"
+         << "batch: " << config.batch_size << " sequences ("
+         << config.token_batch_size() << " tokens)\n"
          << "corpus tokens: "
          << training_data->token_count() + test_evaluation_data->token_count()
          << " (training: " << training_data->token_count()

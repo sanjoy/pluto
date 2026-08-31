@@ -191,6 +191,7 @@ cc_test(
     timeout = "long",
     srcs = ["shakespeare_llm.cc"],
     args = [
+        "--batch_size=2",
         "--eval_batches=1",
         "--generation_tokens=0",
         "--interactive=false",
