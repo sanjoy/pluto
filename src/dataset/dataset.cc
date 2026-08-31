@@ -123,19 +123,19 @@ absl::StatusOr<TextCorpus> LoadTextCorpus(absl::string_view path) {
 }
 
 InMemoryDataSetIterator::InMemoryDataSetIterator(cuda::Executor& executor,
-                                                 std::vector<int> corpus,
+                                                 cuda::Buffer corpus,
+                                                 size_t corpus_token_count,
                                                  InMemoryDataSetOptions options,
                                                  cuda::Buffer token_buffer,
                                                  cuda::Buffer target_buffer)
     : corpus_(std::move(corpus)),
+      corpus_token_count_(corpus_token_count),
       options_(options),
       executor_(executor),
       token_buffer_(std::move(token_buffer)),
       target_buffer_(std::move(target_buffer)),
-      host_tokens_(options.batch_size),
-      host_targets_(options.batch_size),
       random_(options.seed),
-      random_start_(0, corpus_.size() - options.context_length - 1) {}
+      random_start_(0, corpus_token_count_ - options.context_length - 1) {}
 
 absl::StatusOr<std::unique_ptr<InMemoryDataSetIterator>>
 InMemoryDataSetIterator::Create(cuda::Executor& executor,
@@ -158,25 +158,44 @@ InMemoryDataSetIterator::Create(cuda::Executor& executor,
     return absl::InvalidArgumentError(
         "the corpus must contain more than context_length tokens");
   }
+  if (tokens.size() > std::numeric_limits<size_t>::max() / sizeof(int)) {
+    return absl::InvalidArgumentError("the corpus is too large");
+  }
   if (static_cast<size_t>(options.batch_size) >
       std::numeric_limits<size_t>::max() / sizeof(int)) {
     return absl::InvalidArgumentError("batch_size is too large");
   }
   const size_t buffer_bytes =
       static_cast<size_t>(options.batch_size) * sizeof(int);
+  const size_t corpus_bytes = tokens.size() * sizeof(int);
+  ASSIGN_OR_RETURN(auto corpus_buffer,
+                   cuda::Buffer::Allocate(executor, corpus_bytes));
   ASSIGN_OR_RETURN(auto token_buffer,
                    cuda::Buffer::Allocate(executor, buffer_bytes));
   ASSIGN_OR_RETURN(auto target_buffer,
                    cuda::Buffer::Allocate(executor, buffer_bytes));
+  RETURN_IF_ERROR(CudaStatus(
+      cudaMemcpyAsync(corpus_buffer.data(), tokens.data(), corpus_bytes,
+                      cudaMemcpyHostToDevice, executor.stream()),
+      "cudaMemcpyAsync(dataset corpus)"));
+  // The caller-owned span and the by-value vector overload can both cease to
+  // exist when Create() returns. Complete this one-time upload before releasing
+  // either host source; subsequent Next() calls remain fully asynchronous.
+  RETURN_IF_ERROR(executor.Synchronize());
   return std::unique_ptr<InMemoryDataSetIterator>(new InMemoryDataSetIterator(
-      executor, std::move(tokens), options, std::move(token_buffer),
-      std::move(target_buffer)));
+      executor, std::move(corpus_buffer), tokens.size(), options,
+      std::move(token_buffer), std::move(target_buffer)));
 }
 
 absl::StatusOr<TokenBatch> InMemoryDataSetIterator::Next() {
   const size_t sequence_start_count =
-      corpus_.size() - static_cast<size_t>(options_.context_length);
+      corpus_token_count_ - static_cast<size_t>(options_.context_length);
   const int sequences_per_batch = options_.batch_size / options_.context_length;
+  const size_t sequence_bytes =
+      static_cast<size_t>(options_.context_length) * sizeof(int);
+  const auto* corpus = static_cast<const char*>(corpus_.data());
+  auto* batch_tokens = static_cast<char*>(token_buffer_.data());
+  auto* batch_targets = static_cast<char*>(target_buffer_.data());
   for (int sequence = 0; sequence < sequences_per_batch; ++sequence) {
     size_t start;
     if (options_.order == InMemoryDataSetOrder::kRandom) {
@@ -187,23 +206,19 @@ absl::StatusOr<TokenBatch> InMemoryDataSetIterator::Next() {
           (next_sequential_start_ + options_.context_length) %
           sequence_start_count;
     }
-    for (int position = 0; position < options_.context_length; ++position) {
-      const int row = sequence * options_.context_length + position;
-      host_tokens_[row] = corpus_[start + position];
-      host_targets_[row] = corpus_[start + position + 1];
-    }
+    const size_t destination_offset =
+        static_cast<size_t>(sequence) * sequence_bytes;
+    RETURN_IF_ERROR(CudaStatus(
+        cudaMemcpyAsync(batch_tokens + destination_offset,
+                        corpus + start * sizeof(int), sequence_bytes,
+                        cudaMemcpyDeviceToDevice, executor_.stream()),
+        "cudaMemcpyAsync(dataset token slice)"));
+    RETURN_IF_ERROR(CudaStatus(
+        cudaMemcpyAsync(batch_targets + destination_offset,
+                        corpus + (start + 1) * sizeof(int), sequence_bytes,
+                        cudaMemcpyDeviceToDevice, executor_.stream()),
+        "cudaMemcpyAsync(dataset target slice)"));
   }
-
-  RETURN_IF_ERROR(
-      CudaStatus(cudaMemcpyAsync(token_buffer_.data(), host_tokens_.data(),
-                                 token_buffer_.size_bytes(),
-                                 cudaMemcpyHostToDevice, executor_.stream()),
-                 "cudaMemcpyAsync(dataset tokens)"));
-  RETURN_IF_ERROR(
-      CudaStatus(cudaMemcpyAsync(target_buffer_.data(), host_targets_.data(),
-                                 target_buffer_.size_bytes(),
-                                 cudaMemcpyHostToDevice, executor_.stream()),
-                 "cudaMemcpyAsync(dataset targets)"));
   return TokenBatch{.tokens = token_buffer_,
                     .targets = target_buffer_,
                     .batch_size = options_.batch_size};

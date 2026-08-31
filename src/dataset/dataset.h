@@ -90,13 +90,13 @@ struct InMemoryDataSetOptions {
   uint64_t seed = 0;
 };
 
-// Produces next-token batches from a copied, host-resident token vector.
+// Produces next-token batches from a device-resident copy of a token vector.
 //
 // A batch may pack multiple independent sequences, so batch_size must be a
-// multiple of context_length. Next() fills reusable host staging vectors and
-// asynchronously copies them into reusable device buffers. Random order is
-// appropriate for optimization; sequential order plus Reset() is appropriate
-// for stable train/test evaluation.
+// multiple of context_length. Create() uploads the corpus through executor;
+// Next() then assembles each batch entirely with stream-ordered device copies.
+// Random order is appropriate for optimization; sequential order plus Reset()
+// is appropriate for stable train/test evaluation.
 class InMemoryDataSetIterator final : public DataSetIterator {
  public:
   static absl::StatusOr<std::unique_ptr<InMemoryDataSetIterator>> Create(
@@ -109,28 +109,28 @@ class InMemoryDataSetIterator final : public DataSetIterator {
   absl::StatusOr<TokenBatch> Next() override;
   absl::Status Reset() override;
 
-  size_t token_count() const { return corpus_.size(); }
+  size_t token_count() const { return corpus_token_count_; }
 
  private:
-  InMemoryDataSetIterator(cuda::Executor& executor, std::vector<int> corpus,
+  InMemoryDataSetIterator(cuda::Executor& executor, cuda::Buffer corpus,
+                          size_t corpus_token_count,
                           InMemoryDataSetOptions options,
                           cuda::Buffer token_buffer,
                           cuda::Buffer target_buffer);
 
-  std::vector<int> corpus_;
+  cuda::Buffer corpus_;
+  size_t corpus_token_count_;
   InMemoryDataSetOptions options_;
   cuda::Executor& executor_;
   cuda::Buffer token_buffer_;
   cuda::Buffer target_buffer_;
-  std::vector<int> host_tokens_;
-  std::vector<int> host_targets_;
   std::mt19937_64 random_;
   std::uniform_int_distribution<size_t> random_start_;
   size_t next_sequential_start_ = 0;
 };
 
-// Tokenizes an mmap-backed corpus and transfers ownership of the resulting
-// token vector to an in-memory dataset iterator.
+// Tokenizes an mmap-backed corpus and uploads the resulting token vector to an
+// in-memory dataset iterator's device storage.
 absl::StatusOr<std::unique_ptr<InMemoryDataSetIterator>>
 MakeInMemoryDataSetIterator(cuda::Executor& executor, const TextCorpus& corpus,
                             const tokenizer::Gpt2Tokenizer& tokenizer,

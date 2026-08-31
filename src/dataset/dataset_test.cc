@@ -2,6 +2,7 @@
 
 #include <cuda_runtime.h>
 
+#include <algorithm>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -80,6 +81,26 @@ TEST_F(DataSetTest, SequentialBatchesShiftTargetsAndReset) {
   auto reset = (*iterator)->Next();
   ASSERT_TRUE(reset.ok()) << reset.status();
   EXPECT_EQ(CopyToHost(reset->tokens), first_tokens);
+}
+
+TEST_F(DataSetTest, CorpusIsUploadedDuringCreation) {
+  std::vector<int> corpus(21);
+  std::iota(corpus.begin(), corpus.end(), 0);
+  auto iterator = InMemoryDataSetIterator::Create(
+      *executor_, corpus,
+      InMemoryDataSetOptions{
+          .batch_size = 4,
+          .context_length = 4,
+          .order = InMemoryDataSetOrder::kSequential,
+      });
+  ASSERT_TRUE(iterator.ok()) << iterator.status();
+
+  // Mutating the host input must not affect the device-resident corpus.
+  std::fill(corpus.begin(), corpus.end(), -1);
+  auto batch = (*iterator)->Next();
+  ASSERT_TRUE(batch.ok()) << batch.status();
+  EXPECT_EQ(CopyToHost(batch->tokens), (std::vector<int>{0, 1, 2, 3}));
+  EXPECT_EQ(CopyToHost(batch->targets), (std::vector<int>{1, 2, 3, 4}));
 }
 
 TEST_F(DataSetTest, RandomOrderIsDeterministicAcrossReset) {
