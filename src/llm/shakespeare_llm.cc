@@ -20,6 +20,8 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "src/common/status_macros.h"
 #include "src/cuda/buffer.h"
 #include "src/cuda/executor.h"
@@ -103,6 +105,11 @@ class Logger final {
  private:
   std::ofstream file_;
 };
+
+std::string CurrentTimestamp() {
+  return absl::FormatTime("%Y-%m-%d %H:%M:%S UTC", absl::Now(),
+                          absl::UTCTimeZone());
+}
 
 // This binary deliberately exposes no architecture flags: these constants are
 // the model contract requested for Shakespeare. The vocabulary is physically
@@ -493,8 +500,8 @@ absl::Status Run(cuda::Executor& executor) {
       .initial_loss = initial_training_loss,
       .evaluation_callback =
           [&logger](int steps_completed, double loss) {
-            logger << "training loss after " << steps_completed
-                   << " steps: " << loss << '\n';
+            logger << '[' << CurrentTimestamp() << "] training loss after "
+                   << steps_completed << " steps: " << loss << '\n';
           },
   };
   ASSIGN_OR_RETURN(auto training_result,
