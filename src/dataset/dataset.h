@@ -8,11 +8,50 @@
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "src/cuda/buffer.h"
 #include "src/cuda/executor.h"
 
 namespace pluto {
+
+namespace tokenizer {
+class Gpt2Tokenizer;
+}  // namespace tokenizer
+
+// A cheap, copyable view of an mmap-backed UTF-8 text file.
+//
+// Copies and subcorpora share ownership of the mapping. The mapping therefore
+// remains valid until the final TextCorpus view is destroyed, even if the file
+// is renamed or unlinked after LoadTextCorpus() returns.
+class TextCorpus {
+ public:
+  TextCorpus() = default;
+
+  absl::string_view text() const;
+  size_t size() const { return size_; }
+  bool empty() const { return size_ == 0; }
+
+  // Returns a view into this corpus without copying or creating another mmap.
+  absl::StatusOr<TextCorpus> SubCorpus(
+      size_t offset, size_t length = absl::string_view::npos) const;
+
+ private:
+  struct Mapping;
+
+  TextCorpus(std::shared_ptr<const Mapping> mapping, size_t offset,
+             size_t size);
+
+  friend absl::StatusOr<TextCorpus> LoadTextCorpus(absl::string_view path);
+
+  std::shared_ptr<const Mapping> mapping_;
+  size_t offset_ = 0;
+  size_t size_ = 0;
+};
+
+// Memory-maps path read-only. No text bytes are copied into process-owned heap
+// storage; an empty file produces a valid empty corpus without calling mmap().
+absl::StatusOr<TextCorpus> LoadTextCorpus(absl::string_view path);
 
 // One next-token language-modeling batch. `tokens` contains model inputs and
 // `targets` contains the same sequences shifted left by one token. Both are
@@ -63,9 +102,14 @@ class InMemoryDataSetIterator final : public DataSetIterator {
   static absl::StatusOr<std::unique_ptr<InMemoryDataSetIterator>> Create(
       cuda::Executor& executor, absl::Span<const int> tokens,
       InMemoryDataSetOptions options);
+  static absl::StatusOr<std::unique_ptr<InMemoryDataSetIterator>> Create(
+      cuda::Executor& executor, std::vector<int> tokens,
+      InMemoryDataSetOptions options);
 
   absl::StatusOr<TokenBatch> Next() override;
   absl::Status Reset() override;
+
+  size_t token_count() const { return corpus_.size(); }
 
  private:
   InMemoryDataSetIterator(cuda::Executor& executor, std::vector<int> corpus,
@@ -84,5 +128,12 @@ class InMemoryDataSetIterator final : public DataSetIterator {
   std::uniform_int_distribution<size_t> random_start_;
   size_t next_sequential_start_ = 0;
 };
+
+// Tokenizes an mmap-backed corpus and transfers ownership of the resulting
+// token vector to an in-memory dataset iterator.
+absl::StatusOr<std::unique_ptr<InMemoryDataSetIterator>>
+MakeInMemoryDataSetIterator(cuda::Executor& executor, const TextCorpus& corpus,
+                            const tokenizer::Gpt2Tokenizer& tokenizer,
+                            InMemoryDataSetOptions options);
 
 }  // namespace pluto

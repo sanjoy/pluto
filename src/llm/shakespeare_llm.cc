@@ -23,6 +23,8 @@
 #include "src/cuda/buffer.h"
 #include "src/cuda/executor.h"
 #include "src/dataset/dataset.h"
+#include "src/dataset/detokenizer.h"
+#include "src/dataset/tokenizer.h"
 #include "src/llm/layer.h"
 #include "src/llm/layers/attention.h"
 #include "src/llm/layers/combinators.h"
@@ -33,8 +35,6 @@
 #include "src/llm/layers/norm.h"
 #include "src/llm/optimizer.h"
 #include "src/llm/trainer.h"
-#include "src/dataset/detokenizer.h"
-#include "src/dataset/tokenizer.h"
 
 ABSL_FLAG(std::string, corpus, "",
           "Shakespeare corpus path; defaults to the Bazel testdata runfile");
@@ -138,32 +138,47 @@ struct ModelConfig {
 };
 
 struct CorpusSplit {
-  std::vector<int> training;
-  std::vector<int> test;
+  TextCorpus training;
+  TextCorpus test;
 };
 
 // Preserves temporal order: the prefix is used for fitting and the suffix is
 // held out. A contiguous split avoids leaking overlapping context windows.
-absl::StatusOr<CorpusSplit> SplitCorpus(const std::vector<int>& corpus_tokens,
+absl::StatusOr<CorpusSplit> SplitCorpus(const TextCorpus& corpus,
                                         double test_fraction) {
   if (!std::isfinite(test_fraction) || test_fraction <= 0.0 ||
       test_fraction >= 1.0) {
     return absl::InvalidArgumentError(
         "test_fraction must be finite and strictly between zero and one");
   }
-  const size_t training_size = static_cast<size_t>(
-      static_cast<double>(corpus_tokens.size()) * (1.0 - test_fraction));
-  constexpr size_t kMinimumSplitSize = kContextLength + 1;
-  if (training_size < kMinimumSplitSize ||
-      corpus_tokens.size() - training_size < kMinimumSplitSize) {
-    return absl::InvalidArgumentError(
-        "both corpus splits must contain more than 1024 GPT-2 tokens");
+  if (corpus.empty()) {
+    return absl::InvalidArgumentError("cannot split an empty text corpus");
   }
+
+  const size_t approximate_boundary = static_cast<size_t>(
+      static_cast<double>(corpus.size()) * (1.0 - test_fraction));
+  size_t boundary = corpus.text().find('\n', approximate_boundary);
+  if (boundary == absl::string_view::npos) {
+    boundary = approximate_boundary;
+    // Do not split in the middle of a UTF-8 code point if there is no nearby
+    // line boundary. GPT-2 itself remains byte preserving.
+    while (boundary < corpus.size() &&
+           (static_cast<unsigned char>(corpus.text()[boundary]) & 0xc0) ==
+               0x80) {
+      ++boundary;
+    }
+  } else {
+    ++boundary;  // Keep the boundary newline in the training prefix.
+  }
+  if (boundary == 0 || boundary >= corpus.size()) {
+    return absl::InvalidArgumentError(
+        "test_fraction does not produce two non-empty text corpora");
+  }
+  ASSIGN_OR_RETURN(auto training, corpus.SubCorpus(0, boundary));
+  ASSIGN_OR_RETURN(auto test, corpus.SubCorpus(boundary));
   return CorpusSplit{
-      .training = std::vector<int>(corpus_tokens.begin(),
-                                   corpus_tokens.begin() + training_size),
-      .test = std::vector<int>(corpus_tokens.begin() + training_size,
-                               corpus_tokens.end()),
+      .training = std::move(training),
+      .test = std::move(test),
   };
 }
 
@@ -266,38 +281,18 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateShakespeareLlm(
   return builder.create();
 }
 
-absl::StatusOr<std::string> ReadFile(const std::string& path) {
-  std::ifstream input(path, std::ios::binary);
-  if (!input) {
-    return absl::NotFoundError(absl::StrCat("cannot open corpus: ", path));
-  }
-  input.seekg(0, std::ios::end);
-  const std::streamoff size = input.tellg();
-  if (size < 0) {
-    return absl::InternalError(
-        absl::StrCat("cannot determine corpus size: ", path));
-  }
-  std::string contents(static_cast<size_t>(size), '\0');
-  input.seekg(0, std::ios::beg);
-  input.read(contents.data(), size);
-  if (!input) {
-    return absl::InternalError(absl::StrCat("cannot read corpus: ", path));
-  }
-  return contents;
-}
-
-absl::StatusOr<std::string> LoadCorpus() {
+std::string CorpusPath() {
   const std::string requested = absl::GetFlag(FLAGS_corpus);
-  if (!requested.empty()) return ReadFile(requested);
+  if (!requested.empty()) return requested;
 
   if (const char* test_srcdir = std::getenv("TEST_SRCDIR")) {
     if (const char* workspace = std::getenv("TEST_WORKSPACE")) {
-      auto corpus = ReadFile(absl::StrCat(test_srcdir, "/", workspace,
-                                          "/testdata/shakespeare.txt"));
-      if (corpus.ok()) return corpus;
+      const std::string runfile = absl::StrCat(test_srcdir, "/", workspace,
+                                               "/testdata/shakespeare.txt");
+      if (std::filesystem::exists(runfile)) return runfile;
     }
   }
-  return ReadFile("testdata/shakespeare.txt");
+  return "testdata/shakespeare.txt";
 }
 
 absl::StatusOr<std::filesystem::path> TokenizerDirectory() {
@@ -402,7 +397,7 @@ absl::Status Run(cuda::Executor& executor) {
   }
   logger << "training log: " << log_path << '\n';
 
-  ASSIGN_OR_RETURN(auto corpus, LoadCorpus());
+  ASSIGN_OR_RETURN(auto corpus, LoadTextCorpus(CorpusPath()));
   ASSIGN_OR_RETURN(auto tokenizer_directory, TokenizerDirectory());
   ASSIGN_OR_RETURN(auto tokenizer, Gpt2Tokenizer::Load(tokenizer_directory));
   ASSIGN_OR_RETURN(auto detokenizer,
@@ -417,10 +412,8 @@ absl::Status Run(cuda::Executor& executor) {
 
   const ModelConfig config{.batch_size = absl::GetFlag(FLAGS_batch_size)};
   RETURN_IF_ERROR(config.Validate());
-  ASSIGN_OR_RETURN(std::vector<int> corpus_tokens, tokenizer->Encode(corpus));
-  ASSIGN_OR_RETURN(
-      auto corpus_split,
-      SplitCorpus(corpus_tokens, absl::GetFlag(FLAGS_test_fraction)));
+  ASSIGN_OR_RETURN(auto corpus_split,
+                   SplitCorpus(corpus, absl::GetFlag(FLAGS_test_fraction)));
 
   ASSIGN_OR_RETURN(auto model, CreateShakespeareLlm(executor, DataType::BF16,
                                                     absl::GetFlag(FLAGS_seed)));
@@ -448,16 +441,17 @@ absl::Status Run(cuda::Executor& executor) {
       .order = InMemoryDataSetOrder::kSequential,
       .seed = static_cast<uint64_t>(absl::GetFlag(FLAGS_seed)),
   };
-  ASSIGN_OR_RETURN(auto training_data,
-                   InMemoryDataSetIterator::Create(
-                       executor, corpus_split.training, training_data_options));
+  ASSIGN_OR_RETURN(auto training_data, MakeInMemoryDataSetIterator(
+                                           executor, corpus_split.training,
+                                           *tokenizer, training_data_options));
   ASSIGN_OR_RETURN(
       auto training_evaluation_data,
-      InMemoryDataSetIterator::Create(executor, corpus_split.training,
-                                      evaluation_data_options));
-  ASSIGN_OR_RETURN(auto test_evaluation_data,
-                   InMemoryDataSetIterator::Create(executor, corpus_split.test,
-                                                   evaluation_data_options));
+      MakeInMemoryDataSetIterator(executor, corpus_split.training, *tokenizer,
+                                  evaluation_data_options));
+  ASSIGN_OR_RETURN(
+      auto test_evaluation_data,
+      MakeInMemoryDataSetIterator(executor, corpus_split.test, *tokenizer,
+                                  evaluation_data_options));
   // Generation only needs model inputs; train/eval staging is owned by the
   // dataset iterators above.
   ASSIGN_OR_RETURN(auto token_buffer,
@@ -477,9 +471,10 @@ absl::Status Run(cuda::Executor& executor) {
          << ", heads=" << kAttentionHeads
          << ", head_dim=" << kAttentionHeadDimension
          << ", MLP=" << kFeedForwardWidth << ", BF16 compute\n"
-         << "corpus tokens: " << corpus_tokens.size()
-         << " (training: " << corpus_split.training.size()
-         << ", test: " << corpus_split.test.size() << ")\n"
+         << "corpus tokens: "
+         << training_data->token_count() + test_evaluation_data->token_count()
+         << " (training: " << training_data->token_count()
+         << ", test: " << test_evaluation_data->token_count() << ")\n"
          << "initial training loss: " << initial_training_loss << '\n'
          << "initial test loss: " << initial_test_loss << '\n';
 
