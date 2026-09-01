@@ -17,8 +17,8 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "src/util/status_macros.h"
 #include "src/llm/layers/internal.h"
+#include "src/util/status_macros.h"
 
 namespace pluto::llm {
 namespace {
@@ -253,7 +253,7 @@ absl::Status CopyNormalInitialization(cuda::Executor& executor, Buffer& weight,
   std::normal_distribution<float> distribution(0.0f, standard_deviation);
   std::vector<float> values(weight.size_bytes() / sizeof(float));
   for (float& value : values) value = distribution(random);
-  return internal::CudaStatus(
+  return cuda::CudaStatus(
       cudaMemcpyAsync(weight.data(), values.data(), weight.size_bytes(),
                       cudaMemcpyHostToDevice, executor.stream()),
       operation);
@@ -287,7 +287,7 @@ EmbeddingLookupLayer::Create(cuda::Executor& executor, int vocab_size,
   ASSIGN_OR_RETURN(auto weight, Buffer::Allocate(executor, bytes));
   ASSIGN_OR_RETURN(auto gradient, Buffer::Allocate(executor, bytes));
   for (Buffer* buffer : {&weight, &gradient}) {
-    RETURN_IF_ERROR(internal::CudaStatus(
+    RETURN_IF_ERROR(cuda::CudaStatus(
         cudaMemsetAsync(buffer->data(), 0, buffer->size_bytes(),
                         executor.stream()),
         "cudaMemsetAsync(embedding parameter)"));
@@ -303,7 +303,7 @@ absl::Status EmbeddingLookupLayer::InitializeIdentity(float scale) {
   for (int index = 0; index < std::min(vocab_size_, embedding_dim_); ++index) {
     values[static_cast<size_t>(index) * embedding_dim_ + index] = scale;
   }
-  return internal::CudaStatus(
+  return cuda::CudaStatus(
       cudaMemcpyAsync(weight_.data(), values.data(), weight_.size_bytes(),
                       cudaMemcpyHostToDevice, executor_.stream()),
       "cudaMemcpyAsync(identity embedding)");
@@ -344,8 +344,8 @@ absl::StatusOr<Buffer> EmbeddingLookupLayer::fwd(
         static_cast<const float*>(weight_.data()), rows, padded_vocab_size_,
         embedding_dim_, static_cast<float*>(output.data()));
   }
-  RETURN_IF_ERROR(internal::CudaStatus(cudaGetLastError(),
-                                       "EmbeddingForwardKernel launch"));
+  RETURN_IF_ERROR(
+      cuda::CudaStatus(cudaGetLastError(), "EmbeddingForwardKernel launch"));
   tape->intermediates = {inputs[0]};
   tape->children.clear();
   return std::move(output);
@@ -372,8 +372,8 @@ absl::StatusOr<BufferVec> EmbeddingLookupLayer::bwd(
       static_cast<const int*>(tape.intermediates[0].data()),
       static_cast<const float*>(output_gradients[0].data()), rows,
       embedding_dim_, static_cast<float*>(gradient_.data()));
-  RETURN_IF_ERROR(internal::CudaStatus(cudaGetLastError(),
-                                       "EmbeddingBackwardKernel launch"));
+  RETURN_IF_ERROR(
+      cuda::CudaStatus(cudaGetLastError(), "EmbeddingBackwardKernel launch"));
   return BufferVec{};
 }
 
@@ -427,8 +427,8 @@ absl::StatusOr<Buffer> LanguageModelingHeadLayer::fwd(
   MaskPaddedLogitsKernel<<<rows, 1, 0, executor.stream()>>>(
       static_cast<float*>(output.data()), rows, embedding_->vocab_size_,
       embedding_->padded_vocab_size_);
-  RETURN_IF_ERROR(internal::CudaStatus(
-      cudaGetLastError(), "language-modeling-head forward launch"));
+  RETURN_IF_ERROR(cuda::CudaStatus(cudaGetLastError(),
+                                   "language-modeling-head forward launch"));
   tape->intermediates = {inputs[0]};
   tape->children.clear();
   return std::move(output);
@@ -489,8 +489,8 @@ absl::StatusOr<BufferVec> LanguageModelingHeadLayer::bwd(
             embedding_->padded_vocab_size_, embedding_->embedding_dim_,
             static_cast<float*>(embedding_->gradient_.data()));
   }
-  RETURN_IF_ERROR(internal::CudaStatus(
-      cudaGetLastError(), "language-modeling-head backward launch"));
+  RETURN_IF_ERROR(cuda::CudaStatus(cudaGetLastError(),
+                                   "language-modeling-head backward launch"));
   return BufferVec{std::move(input_gradient)};
 }
 
@@ -520,7 +520,7 @@ PositionEmbeddingLayer::Create(cuda::Executor& executor, int context_length,
   ASSIGN_OR_RETURN(auto weight, Buffer::Allocate(executor, bytes));
   ASSIGN_OR_RETURN(auto gradient, Buffer::Allocate(executor, bytes));
   for (Buffer* buffer : {&weight, &gradient}) {
-    RETURN_IF_ERROR(internal::CudaStatus(
+    RETURN_IF_ERROR(cuda::CudaStatus(
         cudaMemsetAsync(buffer->data(), 0, buffer->size_bytes(),
                         executor.stream()),
         "cudaMemsetAsync(position parameter)"));
@@ -563,8 +563,8 @@ absl::StatusOr<Buffer> PositionEmbeddingLayer::fwd(
         static_cast<const float*>(weight_.data()), rows, context_length_,
         embedding_dim_, static_cast<float*>(output.data()));
   }
-  RETURN_IF_ERROR(internal::CudaStatus(
-      cudaGetLastError(), "PositionEmbeddingForwardKernel launch"));
+  RETURN_IF_ERROR(cuda::CudaStatus(cudaGetLastError(),
+                                   "PositionEmbeddingForwardKernel launch"));
   tape->intermediates.clear();
   tape->children.clear();
   return std::move(output);
@@ -587,8 +587,8 @@ absl::StatusOr<BufferVec> PositionEmbeddingLayer::bwd(
                                     1, 0, executor.stream()>>>(
       static_cast<const float*>(output_gradients[0].data()), rows,
       context_length_, embedding_dim_, static_cast<float*>(gradient_.data()));
-  RETURN_IF_ERROR(internal::CudaStatus(
-      cudaGetLastError(), "PositionEmbeddingBackwardKernel launch"));
+  RETURN_IF_ERROR(cuda::CudaStatus(cudaGetLastError(),
+                                   "PositionEmbeddingBackwardKernel launch"));
   return BufferVec{output_gradients[0]};
 }
 

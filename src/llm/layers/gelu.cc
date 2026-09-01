@@ -11,8 +11,8 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "src/util/status_macros.h"
 #include "src/llm/layers/internal.h"
+#include "src/util/status_macros.h"
 
 namespace pluto::llm {
 namespace {
@@ -99,7 +99,7 @@ absl::StatusOr<Buffer> GeluLayer::fwd(cuda::Executor& executor,
             static_cast<float*>(output.data()));
   }
   RETURN_IF_ERROR(
-      internal::CudaStatus(cudaGetLastError(), "GeluForwardKernel launch"));
+      cuda::CudaStatus(cudaGetLastError(), "GeluForwardKernel launch"));
   return std::move(output);
 }
 
@@ -136,7 +136,7 @@ absl::StatusOr<BufferVec> GeluLayer::bwd(
             static_cast<float*>(input_gradient.data()));
   }
   RETURN_IF_ERROR(
-      internal::CudaStatus(cudaGetLastError(), "GeluBackwardKernel launch"));
+      cuda::CudaStatus(cudaGetLastError(), "GeluBackwardKernel launch"));
   return BufferVec{std::move(input_gradient)};
 }
 

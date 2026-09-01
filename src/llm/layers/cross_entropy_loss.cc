@@ -16,13 +16,13 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
-#include "src/util/status_macros.h"
 #include "src/cuda/buffer.h"
 #include "src/llm/layers/internal.h"
+#include "src/util/status_macros.h"
 
 namespace pluto::llm {
 
-using internal::CudaStatus;
+using cuda::CudaStatus;
 using internal::ElementCount;
 using internal::kDenseTile;
 using internal::MatrixRows;

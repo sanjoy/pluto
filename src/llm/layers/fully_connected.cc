@@ -18,9 +18,9 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "src/util/status_macros.h"
 #include "src/cuda/buffer.h"
 #include "src/llm/layers/internal.h"
+#include "src/util/status_macros.h"
 
 namespace pluto::llm {
 namespace {
@@ -182,7 +182,7 @@ FullyConnectedLayer::Create(cuda::Executor& executor, int input_dim,
                    Buffer::Allocate(executor, matrix_bytes));
   ASSIGN_OR_RETURN(auto bias_gradient, Buffer::Allocate(executor, bias_bytes));
   for (Buffer* buffer : {&matrix, &bias, &matrix_gradient, &bias_gradient}) {
-    RETURN_IF_ERROR(internal::CudaStatus(
+    RETURN_IF_ERROR(cuda::CudaStatus(
         cudaMemsetAsync(buffer->data(), 0, buffer->size_bytes(),
                         executor.stream()),
         "cudaMemsetAsync(dense parameter)"));
@@ -198,7 +198,7 @@ absl::Status FullyConnectedLayer::InitializeIdentity(float scale) {
   for (int index = 0; index < std::min(input_dim_, output_dim_); ++index) {
     matrix[static_cast<size_t>(index) * output_dim_ + index] = scale;
   }
-  return internal::CudaStatus(
+  return cuda::CudaStatus(
       cudaMemcpyAsync(weights_[0].data(), matrix.data(),
                       weights_[0].size_bytes(), cudaMemcpyHostToDevice,
                       executor_.stream()),
@@ -215,7 +215,7 @@ absl::Status FullyConnectedLayer::InitializeNormal(float standard_deviation,
   std::normal_distribution<float> distribution(0.0f, standard_deviation);
   std::vector<float> matrix(static_cast<size_t>(input_dim_) * output_dim_);
   for (float& value : matrix) value = distribution(random);
-  return internal::CudaStatus(
+  return cuda::CudaStatus(
       cudaMemcpyAsync(weights_[0].data(), matrix.data(),
                       weights_[0].size_bytes(), cudaMemcpyHostToDevice,
                       executor_.stream()),
@@ -258,7 +258,7 @@ absl::StatusOr<Buffer> FullyConnectedLayer::fwd(cuda::Executor& executor,
         output_dim_, static_cast<float*>(output.data()));
   }
   RETURN_IF_ERROR(
-      internal::CudaStatus(cudaGetLastError(), "DenseForwardKernel launch"));
+      cuda::CudaStatus(cudaGetLastError(), "DenseForwardKernel launch"));
   return std::move(output);
 }
 
@@ -313,7 +313,7 @@ absl::StatusOr<BufferVec> FullyConnectedLayer::bwd(
       static_cast<const float*>(output_gradients[0].data()), rows, output_dim_,
       static_cast<float*>(gradients_[1].data()));
   RETURN_IF_ERROR(
-      internal::CudaStatus(cudaGetLastError(), "dense backward kernel launch"));
+      cuda::CudaStatus(cudaGetLastError(), "dense backward kernel launch"));
   return BufferVec{std::move(input_gradient)};
 }
 

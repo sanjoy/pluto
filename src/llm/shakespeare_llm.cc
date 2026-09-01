@@ -130,13 +130,6 @@ struct ModelConfig {
   }
 };
 
-absl::Status CudaStatus(cudaError_t error, const char* operation) {
-  if (error == cudaSuccess) return absl::OkStatus();
-  return absl::InternalError(absl::StrCat(operation,
-                                          " failed: ", cudaGetErrorName(error),
-                                          ": ", cudaGetErrorString(error)));
-}
-
 // Builds one pre-LayerNorm GPT-2 transformer block:
 //
 //   x = x + W_o CausalMHA(W_qkv LayerNorm(x))
@@ -281,11 +274,11 @@ absl::StatusOr<std::vector<float>> Predict(cuda::Executor& executor,
       repeated_context[sequence * kContextLength + position] = context.back();
     }
   }
-  RETURN_IF_ERROR(
-      CudaStatus(cudaMemcpyAsync(token_buffer.data(), repeated_context.data(),
-                                 token_buffer.size_bytes(),
-                                 cudaMemcpyHostToDevice, executor.stream()),
-                 "cudaMemcpyAsync(prompt context)"));
+  RETURN_IF_ERROR(cuda::CudaStatus(
+      cudaMemcpyAsync(token_buffer.data(), repeated_context.data(),
+                      token_buffer.size_bytes(), cudaMemcpyHostToDevice,
+                      executor.stream()),
+      "cudaMemcpyAsync(prompt context)"));
   Tape tape;
   BufferVec inputs = {token_buffer};
   ASSIGN_OR_RETURN(auto logits, model.fwd(executor, inputs, &tape));
@@ -293,11 +286,11 @@ absl::StatusOr<std::vector<float>> Predict(cuda::Executor& executor,
   const size_t output_row = context_size - 1;
   const auto* selected_logits = static_cast<const float*>(logits.data()) +
                                 output_row * config.padded_vocabulary_size();
-  RETURN_IF_ERROR(
-      CudaStatus(cudaMemcpyAsync(host_logits.data(), selected_logits,
-                                 host_logits.size() * sizeof(float),
-                                 cudaMemcpyDeviceToHost, executor.stream()),
-                 "cudaMemcpyAsync(prompt logits)"));
+  RETURN_IF_ERROR(cuda::CudaStatus(
+      cudaMemcpyAsync(host_logits.data(), selected_logits,
+                      host_logits.size() * sizeof(float),
+                      cudaMemcpyDeviceToHost, executor.stream()),
+      "cudaMemcpyAsync(prompt logits)"));
   RETURN_IF_ERROR(executor.Synchronize());
   return host_logits;
 }

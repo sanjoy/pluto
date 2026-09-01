@@ -14,8 +14,8 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "src/util/status_macros.h"
 #include "src/llm/layers/internal.h"
+#include "src/util/status_macros.h"
 
 namespace pluto::llm {
 namespace {
@@ -233,8 +233,8 @@ absl::StatusOr<Buffer> AttentionLayer::fwd(cuda::Executor& executor,
         static_cast<const float*>(inputs[0].data()), rows, context_length_,
         num_heads_, embedding_dim_, scale, static_cast<float*>(output.data()));
   }
-  RETURN_IF_ERROR(internal::CudaStatus(cudaGetLastError(),
-                                       "FlashAttentionForwardKernel launch"));
+  RETURN_IF_ERROR(cuda::CudaStatus(cudaGetLastError(),
+                                   "FlashAttentionForwardKernel launch"));
   tape->intermediates = {inputs[0], output};
   tape->children.clear();
   return std::move(output);
@@ -266,7 +266,7 @@ absl::StatusOr<BufferVec> AttentionLayer::bwd(
       auto qkv_gradient,
       Buffer::Allocate(executor, static_cast<size_t>(rows) * 3 *
                                      embedding_dim_ * sizeof(float)));
-  RETURN_IF_ERROR(internal::CudaStatus(
+  RETURN_IF_ERROR(cuda::CudaStatus(
       cudaMemsetAsync(qkv_gradient.data(), 0, qkv_gradient.size_bytes(),
                       executor.stream()),
       "cudaMemsetAsync(attention Q/K/V gradient)"));
@@ -289,8 +289,8 @@ absl::StatusOr<BufferVec> AttentionLayer::bwd(
         context_length_, num_heads_, embedding_dim_, scale,
         static_cast<float*>(qkv_gradient.data()));
   }
-  RETURN_IF_ERROR(internal::CudaStatus(cudaGetLastError(),
-                                       "FlashAttentionBackwardKernel launch"));
+  RETURN_IF_ERROR(cuda::CudaStatus(cudaGetLastError(),
+                                   "FlashAttentionBackwardKernel launch"));
   return BufferVec{std::move(qkv_gradient)};
 }
 

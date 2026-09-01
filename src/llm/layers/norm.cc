@@ -12,8 +12,8 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "src/util/status_macros.h"
 #include "src/llm/layers/internal.h"
+#include "src/util/status_macros.h"
 
 namespace pluto::llm {
 namespace {
@@ -183,12 +183,12 @@ absl::StatusOr<std::unique_ptr<LayerNormLayer>> LayerNormLayer::Create(
   ASSIGN_OR_RETURN(auto gamma_gradient, Buffer::Allocate(executor, bytes));
   ASSIGN_OR_RETURN(auto beta_gradient, Buffer::Allocate(executor, bytes));
   std::vector<float> gamma_values(embedding_dim, 1.0f);
-  RETURN_IF_ERROR(internal::CudaStatus(
+  RETURN_IF_ERROR(cuda::CudaStatus(
       cudaMemcpyAsync(gamma.data(), gamma_values.data(), bytes,
                       cudaMemcpyHostToDevice, executor.stream()),
       "cudaMemcpyAsync(layer-norm gamma)"));
   for (Buffer* buffer : {&beta, &gamma_gradient, &beta_gradient}) {
-    RETURN_IF_ERROR(internal::CudaStatus(
+    RETURN_IF_ERROR(cuda::CudaStatus(
         cudaMemsetAsync(buffer->data(), 0, buffer->size_bytes(),
                         executor.stream()),
         "cudaMemsetAsync(layer-norm parameter)"));
@@ -226,8 +226,8 @@ absl::StatusOr<Buffer> LayerNormLayer::fwd(cuda::Executor& executor,
         static_cast<const float*>(weights_[1].data()), rows, embedding_dim_,
         epsilon_, static_cast<float*>(output.data()));
   }
-  RETURN_IF_ERROR(internal::CudaStatus(cudaGetLastError(),
-                                       "LayerNormForwardKernel launch"));
+  RETURN_IF_ERROR(
+      cuda::CudaStatus(cudaGetLastError(), "LayerNormForwardKernel launch"));
   tape->intermediates = {inputs[0]};
   tape->children.clear();
   return std::move(output);
@@ -283,7 +283,7 @@ absl::StatusOr<BufferVec> LayerNormLayer::bwd(
             static_cast<float*>(gradients_[1].data()));
   }
   RETURN_IF_ERROR(
-      internal::CudaStatus(cudaGetLastError(), "layer-norm backward launch"));
+      cuda::CudaStatus(cudaGetLastError(), "layer-norm backward launch"));
   return BufferVec{std::move(input_gradient)};
 }
 

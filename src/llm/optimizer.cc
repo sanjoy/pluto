@@ -12,8 +12,8 @@
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "src/util/status_macros.h"
 #include "src/llm/layers/internal.h"
+#include "src/util/status_macros.h"
 
 namespace pluto::llm {
 namespace {
@@ -88,13 +88,13 @@ absl::StatusOr<std::unique_ptr<AdamWOptimizer>> AdamWOptimizer::Create(
                      Buffer::Allocate(executor, weight.size_bytes()));
     ASSIGN_OR_RETURN(auto second,
                      Buffer::Allocate(executor, weight.size_bytes()));
-    RETURN_IF_ERROR(internal::CudaStatus(
+    RETURN_IF_ERROR(cuda::CudaStatus(
         cudaMemsetAsync(first.data(), 0, first.size_bytes(), executor.stream()),
         "cudaMemsetAsync(AdamW first moment)"));
-    RETURN_IF_ERROR(internal::CudaStatus(
-        cudaMemsetAsync(second.data(), 0, second.size_bytes(),
-                        executor.stream()),
-        "cudaMemsetAsync(AdamW second moment)"));
+    RETURN_IF_ERROR(
+        cuda::CudaStatus(cudaMemsetAsync(second.data(), 0, second.size_bytes(),
+                                         executor.stream()),
+                         "cudaMemsetAsync(AdamW second moment)"));
     weights.push_back(weight);
     gradients.push_back(gradient);
     first_moments.push_back(std::move(first));
@@ -119,7 +119,7 @@ absl::StatusOr<std::unique_ptr<Optimizer>> Optimizer::Create(
 
 absl::Status AdamWOptimizer::ZeroGrad() {
   for (Buffer& gradient : gradients_) {
-    RETURN_IF_ERROR(internal::CudaStatus(
+    RETURN_IF_ERROR(cuda::CudaStatus(
         cudaMemsetAsync(gradient.data(), 0, gradient.size_bytes(),
                         executor_.stream()),
         "cudaMemsetAsync(AdamW gradient)"));
@@ -146,7 +146,7 @@ absl::Status AdamWOptimizer::Step() {
         inverse_bias_correction1, inverse_bias_correction2, config_.epsilon,
         config_.weight_decay);
   }
-  return internal::CudaStatus(cudaGetLastError(), "AdamWUpdateKernel launch");
+  return cuda::CudaStatus(cudaGetLastError(), "AdamWUpdateKernel launch");
 }
 
 }  // namespace pluto::llm

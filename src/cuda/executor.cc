@@ -9,7 +9,6 @@
 #include "absl/strings/str_cat.h"
 
 namespace pluto::cuda {
-namespace {
 
 absl::Status CudaStatus(cudaError_t error, const char* operation) {
   if (error == cudaSuccess) return absl::OkStatus();
@@ -17,6 +16,8 @@ absl::Status CudaStatus(cudaError_t error, const char* operation) {
                                           " failed: ", cudaGetErrorName(error),
                                           ": ", cudaGetErrorString(error)));
 }
+
+namespace {
 
 void ReportCleanupError(cudaError_t error, const char* operation) {
   if (error == cudaSuccess) return;

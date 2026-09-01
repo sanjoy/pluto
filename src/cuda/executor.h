@@ -9,6 +9,10 @@
 
 namespace pluto::cuda {
 
+// Converts a CUDA runtime result into an Abseil status. Successful results map
+// to OkStatus; failures include both CUDA's symbolic name and description.
+absl::Status CudaStatus(cudaError_t error, const char* operation);
+
 // Owns the CUDA execution context used by one stream-ordered computation.
 //
 // Executor is deliberately small today: its only state is one explicitly

@@ -11,22 +11,15 @@
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
-#include "src/util/status_macros.h"
 #include "src/cuda/buffer.h"
+#include "src/cuda/executor.h"
 #include "src/dataset/dataset.h"
 #include "src/llm/layer.h"
 #include "src/llm/optimizer.h"
+#include "src/util/status_macros.h"
 
 namespace pluto::llm {
 namespace {
-
-absl::Status CudaStatus(cudaError_t error, const char* operation) {
-  if (error == cudaSuccess) return absl::OkStatus();
-  return absl::InternalError(absl::StrCat(operation,
-                                          " failed: ", cudaGetErrorName(error),
-                                          ": ", cudaGetErrorString(error)));
-}
 
 absl::Status ValidateBatch(cuda::Executor& executor, const TokenBatch& batch) {
   if (batch.batch_size <= 0) {
@@ -60,7 +53,7 @@ absl::StatusOr<double> CopyLossSum(cuda::Executor& executor,
         "loss buffer belongs to a different CUDA Executor");
   }
   std::vector<float> host_losses(expected_count);
-  RETURN_IF_ERROR(CudaStatus(
+  RETURN_IF_ERROR(cuda::CudaStatus(
       cudaMemcpyAsync(host_losses.data(), losses.data(), losses.size_bytes(),
                       cudaMemcpyDeviceToHost, executor.stream()),
       "cudaMemcpyAsync(evaluation losses)"));

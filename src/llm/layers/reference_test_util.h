@@ -13,13 +13,13 @@
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "gtest/gtest.h"
-#include "src/util/status_macros.h"
+#include "src/cuda/executor.h"
 #include "src/llm/layer.h"
 #include "src/llm/layers/reference_internal.h"
 #include "src/llm/layers/test_util.h"
+#include "src/util/status_macros.h"
 
 namespace pluto::llm {
 
@@ -27,12 +27,6 @@ struct BufferPair {
   Buffer device;
   HostBuffer host;
 };
-
-inline absl::Status TestCudaStatus(cudaError_t error, const char* operation) {
-  if (error == cudaSuccess) return absl::OkStatus();
-  return absl::InternalError(
-      absl::StrCat(operation, ": ", cudaGetErrorString(error)));
-}
 
 template <class Element>
 absl::StatusOr<BufferPair> MakeRawBufferPair(cuda::Executor& executor,
@@ -42,10 +36,10 @@ absl::StatusOr<BufferPair> MakeRawBufferPair(cuda::Executor& executor,
   ASSIGN_OR_RETURN(auto host, HostBuffer::Allocate(bytes));
   if (bytes != 0) std::memcpy(host.data(), values.data(), bytes);
   ASSIGN_OR_RETURN(auto device, Buffer::Allocate(executor, bytes));
-  RETURN_IF_ERROR(
-      TestCudaStatus(cudaMemcpyAsync(device.data(), host.data(), bytes,
-                                     cudaMemcpyHostToDevice, executor.stream()),
-                     "copy test buffer to device"));
+  RETURN_IF_ERROR(cuda::CudaStatus(
+      cudaMemcpyAsync(device.data(), host.data(), bytes, cudaMemcpyHostToDevice,
+                      executor.stream()),
+      "copy test buffer to device"));
   return BufferPair{std::move(device), std::move(host)};
 }
 
@@ -59,7 +53,7 @@ inline absl::StatusOr<BufferPair> MakeActivationBufferPair(
     reference_internal::StoreActivation(&host, index, data_type, values[index]);
   }
   ASSIGN_OR_RETURN(auto device, Buffer::Allocate(executor, host.size_bytes()));
-  RETURN_IF_ERROR(TestCudaStatus(
+  RETURN_IF_ERROR(cuda::CudaStatus(
       cudaMemcpyAsync(device.data(), host.data(), host.size_bytes(),
                       cudaMemcpyHostToDevice, executor.stream()),
       "copy activation to device"));
@@ -74,7 +68,7 @@ inline absl::Status SetFloatBufferPair(cuda::Executor& executor,
     return absl::InvalidArgumentError("parameter pair has the wrong size");
   }
   std::memcpy(host->data(), values.data(), bytes);
-  return TestCudaStatus(
+  return cuda::CudaStatus(
       cudaMemcpyAsync(device.data(), values.data(), bytes,
                       cudaMemcpyHostToDevice, executor.stream()),
       "copy paired parameter to device");
@@ -83,7 +77,7 @@ inline absl::Status SetFloatBufferPair(cuda::Executor& executor,
 inline absl::Status ZeroBufferPair(cuda::Executor& executor,
                                    const Buffer& device, HostBuffer* host) {
   std::memset(host->data(), 0, host->size_bytes());
-  return TestCudaStatus(
+  return cuda::CudaStatus(
       cudaMemsetAsync(device.data(), 0, device.size_bytes(), executor.stream()),
       "clear paired buffer");
 }
@@ -94,7 +88,7 @@ inline absl::StatusOr<std::vector<float>> ReadDeviceFloats(
     return absl::InvalidArgumentError("device buffer is not FP32");
   }
   std::vector<float> values(buffer.size_bytes() / sizeof(float));
-  RETURN_IF_ERROR(TestCudaStatus(
+  RETURN_IF_ERROR(cuda::CudaStatus(
       cudaMemcpyAsync(values.data(), buffer.data(), buffer.size_bytes(),
                       cudaMemcpyDeviceToHost, executor.stream()),
       "copy FP32 device buffer to host"));
@@ -111,7 +105,7 @@ inline std::vector<float> ReadHostFloats(const HostBuffer& buffer) {
 inline absl::StatusOr<std::vector<float>> ReadDeviceActivations(
     cuda::Executor& executor, const Buffer& buffer, DataType data_type) {
   ASSIGN_OR_RETURN(auto host, HostBuffer::Allocate(buffer.size_bytes()));
-  RETURN_IF_ERROR(TestCudaStatus(
+  RETURN_IF_ERROR(cuda::CudaStatus(
       cudaMemcpyAsync(host.data(), buffer.data(), buffer.size_bytes(),
                       cudaMemcpyDeviceToHost, executor.stream()),
       "copy activation device buffer to host"));

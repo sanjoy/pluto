@@ -44,13 +44,6 @@ class ScopedFileDescriptor {
   int descriptor_;
 };
 
-absl::Status CudaStatus(cudaError_t error, const char* operation) {
-  if (error == cudaSuccess) return absl::OkStatus();
-  return absl::InternalError(absl::StrCat(operation,
-                                          " failed: ", cudaGetErrorName(error),
-                                          ": ", cudaGetErrorString(error)));
-}
-
 }  // namespace
 
 struct TextCorpus::Mapping {
@@ -213,7 +206,7 @@ InMemoryDataSetIterator::Create(cuda::Executor& executor,
                    cuda::Buffer::Allocate(executor, buffer_bytes));
   ASSIGN_OR_RETURN(auto target_buffer,
                    cuda::Buffer::Allocate(executor, buffer_bytes));
-  RETURN_IF_ERROR(CudaStatus(
+  RETURN_IF_ERROR(cuda::CudaStatus(
       cudaMemcpyAsync(corpus_buffer.data(), tokens.data(), corpus_bytes,
                       cudaMemcpyHostToDevice, executor.stream()),
       "cudaMemcpyAsync(dataset corpus)"));
@@ -247,12 +240,12 @@ absl::StatusOr<TokenBatch> InMemoryDataSetIterator::Next() {
     }
     const size_t destination_offset =
         static_cast<size_t>(sequence) * sequence_bytes;
-    RETURN_IF_ERROR(CudaStatus(
+    RETURN_IF_ERROR(cuda::CudaStatus(
         cudaMemcpyAsync(batch_tokens + destination_offset,
                         corpus + start * sizeof(int), sequence_bytes,
                         cudaMemcpyDeviceToDevice, executor_.stream()),
         "cudaMemcpyAsync(dataset token slice)"));
-    RETURN_IF_ERROR(CudaStatus(
+    RETURN_IF_ERROR(cuda::CudaStatus(
         cudaMemcpyAsync(batch_targets + destination_offset,
                         corpus + (start + 1) * sizeof(int), sequence_bytes,
                         cudaMemcpyDeviceToDevice, executor_.stream()),

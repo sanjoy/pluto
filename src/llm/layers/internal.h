@@ -9,6 +9,7 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "src/cuda/buffer.h"
+#include "src/cuda/executor.h"
 #include "src/llm/layer.h"
 
 namespace pluto::llm::internal {
@@ -109,13 +110,6 @@ inline absl::StatusOr<int> ElementCount(cuda::Executor& executor,
         absl::StrCat(name, " has too many elements"));
   }
   return static_cast<int>(count);
-}
-
-inline absl::Status CudaStatus(cudaError_t error, const char* operation) {
-  if (error == cudaSuccess) return absl::OkStatus();
-  return absl::InternalError(absl::StrCat(operation,
-                                          " failed: ", cudaGetErrorName(error),
-                                          ": ", cudaGetErrorString(error)));
 }
 
 inline absl::Status ValidateComputeType(DataType data_type) {

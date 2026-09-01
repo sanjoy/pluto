@@ -17,8 +17,9 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
-#include "src/util/status_macros.h"
 #include "src/cuda/buffer.h"
+#include "src/cuda/executor.h"
+#include "src/util/status_macros.h"
 
 namespace pluto::llm {
 namespace {
@@ -26,13 +27,6 @@ namespace {
 constexpr char kWeightPrefix[] = "weight_";
 constexpr char kWeightSuffix[] = ".bin";
 constexpr char kStepPrefix[] = "step_";
-
-absl::Status CudaStatus(cudaError_t error, const char* operation) {
-  if (error == cudaSuccess) return absl::OkStatus();
-  return absl::InternalError(absl::StrCat(operation,
-                                          " failed: ", cudaGetErrorName(error),
-                                          ": ", cudaGetErrorString(error)));
-}
 
 absl::Status FileSystemError(const char* operation,
                              const std::filesystem::path& path,
@@ -316,11 +310,11 @@ absl::Status WriteToDirectory(cuda::Executor& executor, const Layer& layer,
   for (const Buffer* weight : weights) {
     host_weights.emplace_back(weight->size_bytes());
     if (weight->size_bytes() == 0) continue;
-    RETURN_IF_ERROR(
-        CudaStatus(cudaMemcpyAsync(host_weights.back().data(), weight->data(),
-                                   weight->size_bytes(), cudaMemcpyDeviceToHost,
-                                   executor.stream()),
-                   "cudaMemcpyAsync(checkpoint write)"));
+    RETURN_IF_ERROR(cuda::CudaStatus(
+        cudaMemcpyAsync(host_weights.back().data(), weight->data(),
+                        weight->size_bytes(), cudaMemcpyDeviceToHost,
+                        executor.stream()),
+        "cudaMemcpyAsync(checkpoint write)"));
   }
   RETURN_IF_ERROR(executor.Synchronize());
 
@@ -369,7 +363,7 @@ absl::Status ReadFromDirectory(cuda::Executor& executor, Layer& layer,
 
   for (size_t index = 0; index < weights.size(); ++index) {
     if (weights[index]->size_bytes() == 0) continue;
-    RETURN_IF_ERROR(CudaStatus(
+    RETURN_IF_ERROR(cuda::CudaStatus(
         cudaMemcpyAsync(weights[index]->data(), host_weights[index].data(),
                         weights[index]->size_bytes(), cudaMemcpyHostToDevice,
                         executor.stream()),

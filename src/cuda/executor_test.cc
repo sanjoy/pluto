@@ -2,12 +2,23 @@
 
 #include <cuda_runtime_api.h>
 
+#include <cstddef>
 #include <memory>
 
 #include "gtest/gtest.h"
 
 namespace pluto::cuda {
 namespace {
+
+TEST(ExecutorTest, ConvertsCudaErrorsToStatus) {
+  EXPECT_TRUE(CudaStatus(cudaSuccess, "successful operation").ok());
+
+  const absl::Status status =
+      CudaStatus(cudaErrorInvalidValue, "failing operation");
+  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
+  EXPECT_EQ(status.message().find("failing operation failed: "),
+            std::size_t{0});
+}
 
 TEST(ExecutorTest, OwnsAnExplicitStreamAndSynchronizesIt) {
   auto executor = Executor::Create();
