@@ -11,6 +11,12 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "tee_stream",
+    hdrs = ["tee_stream.h"],
+    visibility = ["//visibility:public"],
+)
+
 cc_test(
     name = "status_macros_test",
     size = "small",
@@ -19,6 +25,16 @@ cc_test(
         ":status_macros",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "tee_stream_test",
+    size = "small",
+    srcs = ["tee_stream_test.cc"],
+    deps = [
+        ":tee_stream",
         "@googletest//:gtest_main",
     ],
 )

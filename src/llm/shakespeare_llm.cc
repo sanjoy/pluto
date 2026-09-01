@@ -22,7 +22,6 @@
 #include "absl/strings/str_cat.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "src/util/status_macros.h"
 #include "src/cuda/buffer.h"
 #include "src/cuda/executor.h"
 #include "src/dataset/dataset.h"
@@ -39,6 +38,8 @@
 #include "src/llm/layers/norm.h"
 #include "src/llm/optimizer.h"
 #include "src/llm/trainer.h"
+#include "src/util/status_macros.h"
+#include "src/util/tee_stream.h"
 
 ABSL_FLAG(std::string, corpus, "",
           "Shakespeare corpus path; defaults to the Bazel testdata runfile");
@@ -87,34 +88,6 @@ namespace {
 
 using tokenizer::Gpt2Detokenizer;
 using tokenizer::Gpt2Tokenizer;
-
-// A deliberately small ostream-like logger. Every insertion is printed to the
-// terminal, copied to the log file, and flushed so a running job can be tailed.
-class Logger final {
- public:
-  explicit Logger(const std::string& path)
-      : file_(path, std::ios::out | std::ios::trunc) {}
-
-  template <class Value>
-  Logger& operator<<(const Value& value) {
-    std::cout << value;
-    file_ << value;
-    file_.flush();
-    return *this;
-  }
-
-  Logger& operator<<(std::ostream& (*manipulator)(std::ostream&)) {
-    manipulator(std::cout);
-    manipulator(file_);
-    file_.flush();
-    return *this;
-  }
-
-  bool is_open() const { return file_.is_open(); }
-
- private:
-  std::ofstream file_;
-};
 
 std::string CurrentTimestamp() {
   return absl::FormatTime("%Y-%m-%d %H:%M:%S UTC", absl::Now(),
@@ -413,11 +386,12 @@ absl::Status RunTraining(cuda::Executor& executor,
   if (log_path.empty()) {
     return absl::InvalidArgumentError("log_file must not be empty");
   }
-  Logger logger(log_path);
-  if (!logger.is_open()) {
+  std::ofstream log_file(log_path, std::ios::out | std::ios::trunc);
+  if (!log_file.is_open()) {
     return absl::FailedPreconditionError(
         absl::StrCat("cannot open training log for writing: ", log_path));
   }
+  util::TeeStream logger(std::cout, log_file);
   logger << "training log: " << log_path << '\n';
   const int checkpoint_every = absl::GetFlag(FLAGS_checkpoint_every);
   std::filesystem::path checkpoint_root = absl::GetFlag(FLAGS_checkpoint_dir);
