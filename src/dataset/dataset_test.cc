@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <memory>
 #include <numeric>
 #include <string>
@@ -171,6 +172,47 @@ TEST_F(DataSetTest, LoadsEmptyTextCorpus) {
   ASSERT_TRUE(corpus.ok()) << corpus.status();
   EXPECT_TRUE(corpus->empty());
   EXPECT_TRUE(corpus->text().empty());
+}
+
+TEST_F(DataSetTest, SplitsTextCorpusAtNextLineBoundary) {
+  const std::filesystem::path path =
+      std::filesystem::path(testing::TempDir()) / "split-corpus.txt";
+  {
+    std::ofstream output(path, std::ios::binary);
+    ASSERT_TRUE(output.is_open());
+    output << "alpha\nbeta\ngamma\n";
+  }
+
+  auto corpus = LoadTextCorpus(path.string());
+  ASSERT_TRUE(corpus.ok()) << corpus.status();
+  auto split = SplitCorpus(*corpus, 0.5);
+  ASSERT_TRUE(split.ok()) << split.status();
+  EXPECT_EQ(split->training.text(), "alpha\nbeta\n");
+  EXPECT_EQ(split->test.text(), "gamma\n");
+}
+
+TEST_F(DataSetTest, RejectsInvalidCorpusSplits) {
+  const std::filesystem::path path =
+      std::filesystem::path(testing::TempDir()) / "invalid-split-corpus.txt";
+  {
+    std::ofstream output(path, std::ios::binary);
+    ASSERT_TRUE(output.is_open());
+    output << "alpha\nbeta\n";
+  }
+
+  auto corpus = LoadTextCorpus(path.string());
+  ASSERT_TRUE(corpus.ok()) << corpus.status();
+  EXPECT_FALSE(SplitCorpus(*corpus, 0.0).ok());
+  EXPECT_FALSE(SplitCorpus(*corpus, 1.0).ok());
+  EXPECT_FALSE(
+      SplitCorpus(*corpus, std::numeric_limits<double>::quiet_NaN()).ok());
+
+  const std::filesystem::path empty_path =
+      std::filesystem::path(testing::TempDir()) / "empty-split-corpus.txt";
+  std::ofstream(empty_path, std::ios::binary).close();
+  auto empty = LoadTextCorpus(empty_path.string());
+  ASSERT_TRUE(empty.ok()) << empty.status();
+  EXPECT_FALSE(SplitCorpus(*empty, 0.5).ok());
 }
 
 TEST_F(DataSetTest, TokenizesMappedCorpusIntoSequentialDataset) {

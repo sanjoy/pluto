@@ -7,6 +7,7 @@
 #include <unistd.h>
 
 #include <cerrno>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -19,9 +20,9 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "src/util/status_macros.h"
 #include "src/cuda/buffer.h"
 #include "src/dataset/tokenizer.h"
+#include "src/util/status_macros.h"
 
 namespace pluto {
 namespace {
@@ -120,6 +121,44 @@ absl::StatusOr<TextCorpus> LoadTextCorpus(absl::string_view path) {
   }
   return TextCorpus(std::make_shared<TextCorpus::Mapping>(address, size), 0,
                     size);
+}
+
+absl::StatusOr<CorpusSplit> SplitCorpus(const TextCorpus& corpus,
+                                        double test_fraction) {
+  if (!std::isfinite(test_fraction) || test_fraction <= 0.0 ||
+      test_fraction >= 1.0) {
+    return absl::InvalidArgumentError(
+        "test_fraction must be finite and strictly between zero and one");
+  }
+  if (corpus.empty()) {
+    return absl::InvalidArgumentError("cannot split an empty text corpus");
+  }
+
+  const size_t approximate_boundary = static_cast<size_t>(
+      static_cast<double>(corpus.size()) * (1.0 - test_fraction));
+  size_t boundary = corpus.text().find('\n', approximate_boundary);
+  if (boundary == absl::string_view::npos) {
+    boundary = approximate_boundary;
+    // Do not split in the middle of a UTF-8 code point if there is no nearby
+    // line boundary. GPT-2 itself remains byte preserving.
+    while (boundary < corpus.size() &&
+           (static_cast<unsigned char>(corpus.text()[boundary]) & 0xc0) ==
+               0x80) {
+      ++boundary;
+    }
+  } else {
+    ++boundary;  // Keep the boundary newline in the training prefix.
+  }
+  if (boundary == 0 || boundary >= corpus.size()) {
+    return absl::InvalidArgumentError(
+        "test_fraction does not produce two non-empty text corpora");
+  }
+  ASSIGN_OR_RETURN(auto training, corpus.SubCorpus(0, boundary));
+  ASSIGN_OR_RETURN(auto test, corpus.SubCorpus(boundary));
+  return CorpusSplit{
+      .training = std::move(training),
+      .test = std::move(test),
+  };
 }
 
 InMemoryDataSetIterator::InMemoryDataSetIterator(cuda::Executor& executor,

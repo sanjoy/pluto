@@ -53,6 +53,17 @@ class TextCorpus {
 // storage; an empty file produces a valid empty corpus without calling mmap().
 absl::StatusOr<TextCorpus> LoadTextCorpus(absl::string_view path);
 
+struct CorpusSplit {
+  TextCorpus training;
+  TextCorpus test;
+};
+
+// Splits corpus into a training prefix and held-out test suffix while
+// preserving temporal order. The boundary is moved to the next newline when
+// possible, which avoids leaking overlapping context across the two corpora.
+absl::StatusOr<CorpusSplit> SplitCorpus(const TextCorpus& corpus,
+                                        double test_fraction);
+
 // One next-token language-modeling batch. `tokens` contains model inputs and
 // `targets` contains the same sequences shifted left by one token. Both are
 // int32 device buffers with `batch_size` elements on the same CUDA executor.
