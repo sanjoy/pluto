@@ -11,7 +11,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "src/common/status_macros.h"
+#include "src/util/status_macros.h"
 #include "src/llm/layers/fully_connected.h"
 #include "src/llm/layers/reference_internal.h"
 

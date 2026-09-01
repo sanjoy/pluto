@@ -12,7 +12,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "src/common/status_macros.h"
+#include "src/util/status_macros.h"
 #include "src/cuda/buffer.h"
 #include "src/dataset/dataset.h"
 #include "src/llm/layer.h"

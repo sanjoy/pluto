@@ -19,7 +19,7 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "src/common/status_macros.h"
+#include "src/util/status_macros.h"
 #include "src/cuda/buffer.h"
 #include "src/dataset/tokenizer.h"
 

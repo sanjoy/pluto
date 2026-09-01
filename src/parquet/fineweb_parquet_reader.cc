@@ -24,7 +24,7 @@
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "snappy.h"
-#include "src/common/status_macros.h"
+#include "src/util/status_macros.h"
 
 namespace pluto::parquet {
 namespace {

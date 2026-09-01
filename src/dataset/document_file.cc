@@ -19,7 +19,7 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
-#include "src/common/status_macros.h"
+#include "src/util/status_macros.h"
 
 namespace pluto::tokenized {
 namespace {

@@ -13,7 +13,7 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "src/common/status_macros.h"
+#include "src/util/status_macros.h"
 
 namespace pluto::tokenizer::internal {
 namespace {

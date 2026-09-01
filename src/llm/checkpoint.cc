@@ -17,7 +17,7 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
-#include "src/common/status_macros.h"
+#include "src/util/status_macros.h"
 #include "src/cuda/buffer.h"
 
 namespace pluto::llm {

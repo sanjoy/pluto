@@ -9,7 +9,7 @@
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "src/common/status_macros.h"
+#include "src/util/status_macros.h"
 #include "src/parquet/fineweb_parquet_reader.h"
 #include "src/dataset/document_file.h"
 

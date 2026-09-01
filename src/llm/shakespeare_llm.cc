@@ -22,7 +22,7 @@
 #include "absl/strings/str_cat.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "src/common/status_macros.h"
+#include "src/util/status_macros.h"
 #include "src/cuda/buffer.h"
 #include "src/cuda/executor.h"
 #include "src/dataset/dataset.h"

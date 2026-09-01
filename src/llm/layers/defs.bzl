@@ -17,7 +17,7 @@ def layer_library(name):
         deps = [
             ":layer",
             ":layer_internal",
-            "//src/common:status_macros",
+            "//src/util:status_macros",
             "//src/cuda:buffer",
             "//src/cuda:executor",
             "@abseil-cpp//absl/status",
@@ -39,7 +39,7 @@ def layer_reference_library(name):
         deps = [
             ":layer",
             ":layer_reference_internal",
-            "//src/common:status_macros",
+            "//src/util:status_macros",
             "//src/host:buffer",
             "@abseil-cpp//absl/status",
             "@abseil-cpp//absl/status:statusor",
@@ -80,7 +80,7 @@ def layer_reference_test(name, extra_deps = []):
             ":" + name + "_reference",
             ":layer",
             ":layer_reference_test_util",
-            "//src/common:status_macros",
+            "//src/util:status_macros",
             "//src/cuda:buffer",
             "//src/cuda:executor",
             "//src/host:buffer",

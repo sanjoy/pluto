@@ -9,7 +9,7 @@
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "gtest/gtest.h"
-#include "src/common/status_macros.h"
+#include "src/util/status_macros.h"
 #include "src/cuda/buffer.h"
 #include "src/llm/layer.h"
 #include "src/llm/layers/fully_connected.h"

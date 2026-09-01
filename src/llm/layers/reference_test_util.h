@@ -16,7 +16,7 @@
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "gtest/gtest.h"
-#include "src/common/status_macros.h"
+#include "src/util/status_macros.h"
 #include "src/llm/layer.h"
 #include "src/llm/layers/reference_internal.h"
 #include "src/llm/layers/test_util.h"
