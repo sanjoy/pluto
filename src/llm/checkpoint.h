@@ -2,6 +2,7 @@
 
 #include <filesystem>
 
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "src/cuda/executor.h"
@@ -34,5 +35,15 @@ absl::Status WriteToDirectory(cuda::Executor& executor, const Layer& layer,
 // The caller must supply the same layer topology used to write the checkpoint.
 absl::Status ReadFromDirectory(cuda::Executor& executor, Layer& layer,
                                const std::filesystem::path& directory);
+
+// Tries step_N children from newest to oldest and restores the first valid
+// checkpoint. Malformed or concurrently removed candidates invoke
+// on_malformed_checkpoint before the previous step is tried. Other failures,
+// such as an executor mismatch or CUDA error, are returned immediately.
+absl::StatusOr<CheckpointInfo> ReadLatestCheckpoint(
+    cuda::Executor& executor, Layer& layer,
+    const std::filesystem::path& parent_directory,
+    absl::FunctionRef<void(const CheckpointInfo&, const absl::Status&)>
+        on_malformed_checkpoint);
 
 }  // namespace pluto::llm

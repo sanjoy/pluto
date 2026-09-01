@@ -6,7 +6,6 @@
 #include <cstddef>
 #include <fstream>
 #include <limits>
-#include <optional>
 #include <string>
 #include <system_error>
 #include <unordered_set>
@@ -254,6 +253,51 @@ absl::StatusOr<std::vector<char>> ReadWeightFile(
   return contents;
 }
 
+absl::StatusOr<std::vector<CheckpointInfo>> FindCheckpoints(
+    const std::filesystem::path& parent_directory) {
+  RETURN_IF_ERROR(ValidateReadDirectory(parent_directory));
+
+  std::error_code error;
+  std::filesystem::directory_iterator iterator(parent_directory, error);
+  if (error) return FileSystemError("cannot list", parent_directory, error);
+
+  std::vector<CheckpointInfo> checkpoints;
+  const std::filesystem::directory_iterator end;
+  while (iterator != end) {
+    const std::filesystem::directory_entry& entry = *iterator;
+    const bool is_directory = entry.is_directory(error);
+    if (error) return FileSystemError("cannot inspect", entry.path(), error);
+    if (is_directory) {
+      absl::StatusOr<int> step = ParseCheckpointStep(entry.path());
+      if (step.ok()) {
+        checkpoints.push_back(
+            CheckpointInfo{.directory = entry.path(), .step = *step});
+      } else if (step.status().code() != absl::StatusCode::kInvalidArgument) {
+        return step.status();
+      }
+    }
+    iterator.increment(error);
+    if (error) return FileSystemError("cannot list", parent_directory, error);
+  }
+
+  if (checkpoints.empty()) {
+    return absl::NotFoundError(
+        absl::StrCat("no step_N checkpoint directories found in ",
+                     parent_directory.string()));
+  }
+  std::sort(checkpoints.begin(), checkpoints.end(),
+            [](const CheckpointInfo& left, const CheckpointInfo& right) {
+              return left.step > right.step;
+            });
+  return checkpoints;
+}
+
+bool IsMalformedCheckpoint(const absl::Status& status) {
+  return status.code() == absl::StatusCode::kDataLoss ||
+         status.code() == absl::StatusCode::kNotFound ||
+         status.code() == absl::StatusCode::kFailedPrecondition;
+}
+
 }  // namespace
 
 absl::StatusOr<CheckpointInfo> InspectCheckpointDirectory(
@@ -265,38 +309,8 @@ absl::StatusOr<CheckpointInfo> InspectCheckpointDirectory(
 
 absl::StatusOr<CheckpointInfo> FindLatestCheckpoint(
     const std::filesystem::path& parent_directory) {
-  RETURN_IF_ERROR(ValidateReadDirectory(parent_directory));
-
-  std::error_code error;
-  std::filesystem::directory_iterator iterator(parent_directory, error);
-  if (error) return FileSystemError("cannot list", parent_directory, error);
-
-  std::optional<CheckpointInfo> latest;
-  const std::filesystem::directory_iterator end;
-  while (iterator != end) {
-    const std::filesystem::directory_entry& entry = *iterator;
-    const bool is_directory = entry.is_directory(error);
-    if (error) return FileSystemError("cannot inspect", entry.path(), error);
-    if (is_directory) {
-      absl::StatusOr<int> step = ParseCheckpointStep(entry.path());
-      if (step.ok()) {
-        if (!latest.has_value() || *step > latest->step) {
-          latest = CheckpointInfo{.directory = entry.path(), .step = *step};
-        }
-      } else if (step.status().code() != absl::StatusCode::kInvalidArgument) {
-        return step.status();
-      }
-    }
-    iterator.increment(error);
-    if (error) return FileSystemError("cannot list", parent_directory, error);
-  }
-
-  if (!latest.has_value()) {
-    return absl::NotFoundError(
-        absl::StrCat("no step_N checkpoint directories found in ",
-                     parent_directory.string()));
-  }
-  return *latest;
+  ASSIGN_OR_RETURN(auto checkpoints, FindCheckpoints(parent_directory));
+  return std::move(checkpoints.front());
 }
 
 absl::Status WriteToDirectory(cuda::Executor& executor, const Layer& layer,
@@ -370,6 +384,24 @@ absl::Status ReadFromDirectory(cuda::Executor& executor, Layer& layer,
         "cudaMemcpyAsync(checkpoint read)"));
   }
   return executor.Synchronize();
+}
+
+absl::StatusOr<CheckpointInfo> ReadLatestCheckpoint(
+    cuda::Executor& executor, Layer& layer,
+    const std::filesystem::path& parent_directory,
+    absl::FunctionRef<void(const CheckpointInfo&, const absl::Status&)>
+        on_malformed_checkpoint) {
+  ASSIGN_OR_RETURN(auto checkpoints, FindCheckpoints(parent_directory));
+  absl::Status newest_error;
+  for (const CheckpointInfo& checkpoint : checkpoints) {
+    absl::Status status =
+        ReadFromDirectory(executor, layer, checkpoint.directory);
+    if (status.ok()) return checkpoint;
+    if (!IsMalformedCheckpoint(status)) return status;
+    if (newest_error.ok()) newest_error = status;
+    on_malformed_checkpoint(checkpoint, status);
+  }
+  return newest_error;
 }
 
 }  // namespace pluto::llm

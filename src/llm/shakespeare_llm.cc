@@ -373,8 +373,16 @@ absl::Status RunTraining(cuda::Executor& executor,
   int initial_step = 0;
   if (!resume_from.empty()) {
     ASSIGN_OR_RETURN(const CheckpointInfo checkpoint,
-                     FindLatestCheckpoint(resume_from));
-    RETURN_IF_ERROR(ReadFromDirectory(executor, *model, checkpoint.directory));
+                     ReadLatestCheckpoint(
+                         executor, *model, resume_from,
+                         [&logger](const CheckpointInfo& malformed,
+                                   const absl::Status& status) {
+                           logger << '[' << CurrentTimestamp()
+                                  << "] WARNING: cannot load checkpoint "
+                                  << malformed.directory.string() << " (step "
+                                  << malformed.step << "): " << status
+                                  << "; trying the previous checkpoint\n";
+                         }));
     initial_step = checkpoint.step;
     logger << '[' << CurrentTimestamp()
            << "] resumed from checkpoint: " << checkpoint.directory.string()

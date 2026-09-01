@@ -182,6 +182,37 @@ TEST_F(CheckpointTest, RejectsWrongWeightCountAndExecutor) {
   EXPECT_TRUE((*other_executor)->Synchronize().ok());
 }
 
+TEST_F(CheckpointTest, ReadLatestFallsBackFromMalformedCheckpoint) {
+  auto weight = Buffer::Allocate(*executor_, 24);
+  ASSERT_TRUE(weight.ok()) << weight.status();
+  CheckpointLayer layer(BufferVec{*weight});
+  const std::vector<unsigned char> expected = Pattern(24, 19);
+  CopyToDevice(layer.weights()[0], expected);
+
+  const std::filesystem::path parent =
+      std::filesystem::path(testing::TempDir()) / "checkpoint-fallback";
+  ASSERT_TRUE(WriteToDirectory(*executor_, layer, parent / "step_7").ok());
+  ASSERT_TRUE(std::filesystem::create_directories(parent / "step_8"));
+  CopyToDevice(layer.weights()[0], std::vector<unsigned char>(24, 0));
+
+  std::vector<int> warned_steps;
+  std::vector<absl::StatusCode> warning_codes;
+  auto loaded = ReadLatestCheckpoint(
+      *executor_, layer, parent,
+      [&](const CheckpointInfo& malformed, const absl::Status& status) {
+        warned_steps.push_back(malformed.step);
+        warning_codes.push_back(status.code());
+      });
+
+  ASSERT_TRUE(loaded.ok()) << loaded.status();
+  EXPECT_EQ(loaded->step, 7);
+  EXPECT_EQ(loaded->directory, parent / "step_7");
+  EXPECT_EQ(warned_steps, std::vector<int>{8});
+  EXPECT_EQ(warning_codes,
+            std::vector<absl::StatusCode>{absl::StatusCode::kDataLoss});
+  EXPECT_EQ(CopyFromDevice(layer.weights()[0]), expected);
+}
+
 TEST(CheckpointDirectoryTest, FindsNumericallyLatestStepDirectory) {
   const std::filesystem::path parent =
       std::filesystem::path(testing::TempDir()) / "checkpoint-latest";
