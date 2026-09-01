@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <fstream>
 #include <limits>
+#include <optional>
 #include <string>
 #include <system_error>
 #include <unordered_set>
@@ -14,6 +15,7 @@
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "src/common/status_macros.h"
 #include "src/cuda/buffer.h"
@@ -23,6 +25,7 @@ namespace {
 
 constexpr char kWeightPrefix[] = "weight_";
 constexpr char kWeightSuffix[] = ".bin";
+constexpr char kStepPrefix[] = "step_";
 
 absl::Status CudaStatus(cudaError_t error, const char* operation) {
   if (error == cudaSuccess) return absl::OkStatus();
@@ -56,6 +59,31 @@ bool IsWeightFile(const std::filesystem::path& path) {
   return std::all_of(
       name.begin() + prefix_size, name.end() - suffix_size,
       [](char character) { return character >= '0' && character <= '9'; });
+}
+
+absl::StatusOr<int> ParseCheckpointStep(
+    const std::filesystem::path& directory) {
+  std::filesystem::path name_path = directory;
+  while (name_path.filename().empty() && name_path.has_parent_path() &&
+         name_path != name_path.root_path()) {
+    name_path = name_path.parent_path();
+  }
+  const std::string name = name_path.filename().string();
+  constexpr size_t prefix_size = sizeof(kStepPrefix) - 1;
+  if (name.size() <= prefix_size ||
+      name.compare(0, prefix_size, kStepPrefix) != 0 ||
+      !std::all_of(name.begin() + prefix_size, name.end(), [](char character) {
+        return character >= '0' && character <= '9';
+      })) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "checkpoint directory must be named step_N: ", directory.string()));
+  }
+  int step;
+  if (!absl::SimpleAtoi(name.substr(prefix_size), &step)) {
+    return absl::OutOfRangeError(
+        absl::StrCat("checkpoint step is too large: ", name));
+  }
+  return step;
 }
 
 absl::Status EnsureWriteDirectory(const std::filesystem::path& directory) {
@@ -233,6 +261,49 @@ absl::StatusOr<std::vector<char>> ReadWeightFile(
 }
 
 }  // namespace
+
+absl::StatusOr<CheckpointInfo> InspectCheckpointDirectory(
+    const std::filesystem::path& directory) {
+  RETURN_IF_ERROR(ValidateReadDirectory(directory));
+  ASSIGN_OR_RETURN(const int step, ParseCheckpointStep(directory));
+  return CheckpointInfo{.directory = directory, .step = step};
+}
+
+absl::StatusOr<CheckpointInfo> FindLatestCheckpoint(
+    const std::filesystem::path& parent_directory) {
+  RETURN_IF_ERROR(ValidateReadDirectory(parent_directory));
+
+  std::error_code error;
+  std::filesystem::directory_iterator iterator(parent_directory, error);
+  if (error) return FileSystemError("cannot list", parent_directory, error);
+
+  std::optional<CheckpointInfo> latest;
+  const std::filesystem::directory_iterator end;
+  while (iterator != end) {
+    const std::filesystem::directory_entry& entry = *iterator;
+    const bool is_directory = entry.is_directory(error);
+    if (error) return FileSystemError("cannot inspect", entry.path(), error);
+    if (is_directory) {
+      absl::StatusOr<int> step = ParseCheckpointStep(entry.path());
+      if (step.ok()) {
+        if (!latest.has_value() || *step > latest->step) {
+          latest = CheckpointInfo{.directory = entry.path(), .step = *step};
+        }
+      } else if (step.status().code() != absl::StatusCode::kInvalidArgument) {
+        return step.status();
+      }
+    }
+    iterator.increment(error);
+    if (error) return FileSystemError("cannot list", parent_directory, error);
+  }
+
+  if (!latest.has_value()) {
+    return absl::NotFoundError(
+        absl::StrCat("no step_N checkpoint directories found in ",
+                     parent_directory.string()));
+  }
+  return *latest;
+}
 
 absl::Status WriteToDirectory(cuda::Executor& executor, const Layer& layer,
                               const std::filesystem::path& directory) {

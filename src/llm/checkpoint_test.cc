@@ -182,5 +182,52 @@ TEST_F(CheckpointTest, RejectsWrongWeightCountAndExecutor) {
   EXPECT_TRUE((*other_executor)->Synchronize().ok());
 }
 
+TEST(CheckpointDirectoryTest, FindsNumericallyLatestStepDirectory) {
+  const std::filesystem::path parent =
+      std::filesystem::path(testing::TempDir()) / "checkpoint-latest";
+  ASSERT_TRUE(std::filesystem::create_directories(parent / "step_9"));
+  ASSERT_TRUE(std::filesystem::create_directories(parent / "step_570"));
+  ASSERT_TRUE(std::filesystem::create_directories(parent / "step_00042"));
+  ASSERT_TRUE(std::filesystem::create_directories(parent / "notes"));
+  std::ofstream(parent / "step_999") << "not a directory";
+
+  auto latest = FindLatestCheckpoint(parent);
+  ASSERT_TRUE(latest.ok()) << latest.status();
+  EXPECT_EQ(latest->step, 570);
+  EXPECT_EQ(latest->directory, parent / "step_570");
+
+  auto inspected = InspectCheckpointDirectory(parent / "step_00042");
+  ASSERT_TRUE(inspected.ok()) << inspected.status();
+  EXPECT_EQ(inspected->step, 42);
+  EXPECT_EQ(inspected->directory, parent / "step_00042");
+
+  const std::filesystem::path trailing_separator(
+      (parent / "step_00042").string() + "/");
+  auto trailing = InspectCheckpointDirectory(trailing_separator);
+  ASSERT_TRUE(trailing.ok()) << trailing.status();
+  EXPECT_EQ(trailing->step, 42);
+}
+
+TEST(CheckpointDirectoryTest, RejectsMissingMalformedAndEmptyParents) {
+  const std::filesystem::path root =
+      std::filesystem::path(testing::TempDir()) / "checkpoint-invalid";
+  const std::filesystem::path empty_parent = root / "empty";
+  const std::filesystem::path malformed = root / "step_bad";
+  const std::filesystem::path overflow = root / "step_2147483648";
+  ASSERT_TRUE(std::filesystem::create_directories(empty_parent / "notes"));
+  ASSERT_TRUE(std::filesystem::create_directories(malformed));
+  ASSERT_TRUE(std::filesystem::create_directories(overflow));
+  std::ofstream(empty_parent / "step_700") << "not a directory";
+
+  EXPECT_EQ(FindLatestCheckpoint(root / "missing").status().code(),
+            absl::StatusCode::kNotFound);
+  EXPECT_EQ(FindLatestCheckpoint(empty_parent).status().code(),
+            absl::StatusCode::kNotFound);
+  EXPECT_EQ(InspectCheckpointDirectory(malformed).status().code(),
+            absl::StatusCode::kInvalidArgument);
+  EXPECT_EQ(InspectCheckpointDirectory(overflow).status().code(),
+            absl::StatusCode::kOutOfRange);
+}
+
 }  // namespace
 }  // namespace pluto::llm

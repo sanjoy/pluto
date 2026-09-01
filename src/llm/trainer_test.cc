@@ -2,6 +2,7 @@
 
 #include <cuda_runtime.h>
 
+#include <limits>
 #include <memory>
 #include <numeric>
 #include <utility>
@@ -214,6 +215,7 @@ TEST_F(TrainerTest, StopsBeforeFirstUpdateWhenInitialEvaluationQualifies) {
       Train(*executor_, model, **loss, optimizer, **training_data,
             TrainingOptions{
                 .max_steps = 3,
+                .initial_step = 570,
                 .evaluation_interval = 1,
                 .evaluation_batches = 1,
                 .stop_loss = 2.5,
@@ -223,10 +225,10 @@ TEST_F(TrainerTest, StopsBeforeFirstUpdateWhenInitialEvaluationQualifies) {
                   evaluation_losses.push_back(loss);
                 }});
   ASSERT_TRUE(result.ok()) << result.status();
-  EXPECT_EQ(result->steps_completed, 0);
+  EXPECT_EQ(result->steps_completed, 570);
   EXPECT_TRUE(result->reached_stop_loss);
   EXPECT_EQ(optimizer.steps, 0);
-  EXPECT_EQ(evaluation_steps, (std::vector<int>{0}));
+  EXPECT_EQ(evaluation_steps, (std::vector<int>{570}));
   EXPECT_EQ(evaluation_losses, (std::vector<double>{2.5}));
 }
 
@@ -296,6 +298,42 @@ TEST_F(TrainerTest, CallbackEnablesPeriodicEvaluationWithoutEarlyStopping) {
   EXPECT_EQ(evaluation_losses, (std::vector<double>{2.5, 2.5}));
 }
 
+TEST_F(TrainerTest, ResumedRunUsesAbsoluteStepNumbers) {
+  FakeModel model;
+  FakeOptimizer optimizer;
+  std::vector<int> step_callbacks;
+  std::vector<int> evaluation_steps;
+  auto loss = MakeLoss();
+  auto training_data = MakeData();
+  auto evaluation_data = MakeData();
+  ASSERT_TRUE(loss.ok()) << loss.status();
+  ASSERT_TRUE(training_data.ok()) << training_data.status();
+  ASSERT_TRUE(evaluation_data.ok()) << evaluation_data.status();
+
+  auto result =
+      Train(*executor_, model, **loss, optimizer, **training_data,
+            TrainingOptions{.max_steps = 3,
+                            .initial_step = 570,
+                            .evaluation_interval = 2,
+                            .evaluation_batches = 1,
+                            .evaluation_tokens = evaluation_data->get(),
+                            .evaluation_callback =
+                                [&](int steps_completed, double) {
+                                  evaluation_steps.push_back(steps_completed);
+                                },
+                            .step_callback =
+                                [&](int steps_completed) {
+                                  step_callbacks.push_back(steps_completed);
+                                  return absl::OkStatus();
+                                }});
+
+  ASSERT_TRUE(result.ok()) << result.status();
+  EXPECT_EQ(result->steps_completed, 573);
+  EXPECT_EQ(optimizer.steps, 3);
+  EXPECT_EQ(step_callbacks, (std::vector<int>{571, 572, 573}));
+  EXPECT_EQ(evaluation_steps, (std::vector<int>{572, 573}));
+}
+
 TEST_F(TrainerTest, StepCallbackRunsAfterUpdatesAndPropagatesErrors) {
   FakeModel model;
   FakeOptimizer optimizer;
@@ -309,9 +347,10 @@ TEST_F(TrainerTest, StepCallbackRunsAfterUpdatesAndPropagatesErrors) {
       Train(*executor_, model, **loss, optimizer, **data,
             TrainingOptions{
                 .max_steps = 3,
+                .initial_step = 570,
                 .step_callback = [&](int steps_completed) -> absl::Status {
                   callback_steps.push_back(steps_completed);
-                  if (steps_completed == 2) {
+                  if (steps_completed == 572) {
                     return absl::UnavailableError("checkpoint failed");
                   }
                   return absl::OkStatus();
@@ -320,7 +359,7 @@ TEST_F(TrainerTest, StepCallbackRunsAfterUpdatesAndPropagatesErrors) {
   ASSERT_FALSE(result.ok());
   EXPECT_EQ(result.status().code(), absl::StatusCode::kUnavailable);
   EXPECT_EQ(result.status().message(), "checkpoint failed");
-  EXPECT_EQ(callback_steps, (std::vector<int>{1, 2}));
+  EXPECT_EQ(callback_steps, (std::vector<int>{571, 572}));
   EXPECT_EQ(optimizer.steps, 2);
   EXPECT_EQ(model.backward_calls, 2);
 }
@@ -339,6 +378,14 @@ TEST_F(TrainerTest, RejectsInvalidOptions) {
   EXPECT_FALSE(Train(*executor_, model, **loss, optimizer, **data,
                      TrainingOptions{.max_steps = -1})
                    .ok());
+  EXPECT_FALSE(Train(*executor_, model, **loss, optimizer, **data,
+                     TrainingOptions{.initial_step = -1})
+                   .ok());
+  EXPECT_FALSE(
+      Train(*executor_, model, **loss, optimizer, **data,
+            TrainingOptions{.max_steps = 1,
+                            .initial_step = std::numeric_limits<int>::max()})
+          .ok());
 }
 
 }  // namespace

@@ -230,8 +230,6 @@ cc_test(
     args = [
         "--batch_size=2",
         "--eval_batches=1",
-        "--generation_tokens=0",
-        "--interactive=false",
         "--steps=0",
         "--target_loss=20",
     ],
@@ -270,8 +268,6 @@ cc_test(
     srcs = ["shakespeare_llm.cc"],
     args = [
         "--eval_batches=1",
-        "--generation_tokens=0",
-        "--interactive=false",
         "--steps=10",
         "--target_loss=20",
         "--train_until_loss=20",

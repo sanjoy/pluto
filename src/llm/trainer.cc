@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <cstddef>
+#include <limits>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -73,6 +74,13 @@ absl::Status ValidateTrainingOptions(const TrainingOptions& options) {
   if (options.max_steps < 0) {
     return absl::InvalidArgumentError("max_steps must be non-negative");
   }
+  if (options.initial_step < 0) {
+    return absl::InvalidArgumentError("initial_step must be non-negative");
+  }
+  if (options.max_steps >
+      std::numeric_limits<int>::max() - options.initial_step) {
+    return absl::InvalidArgumentError("training step count would overflow");
+  }
   if (options.evaluation_interval <= 0 || options.evaluation_batches <= 0) {
     return absl::InvalidArgumentError(
         "training evaluation counts must be positive");
@@ -139,17 +147,18 @@ absl::StatusOr<TrainingResult> Train(cuda::Executor& executor, Layer& model,
           Evaluate(executor, model, loss_layer, evaluation_tokens,
                    EvaluationOptions{.batches = options.evaluation_batches}));
       if (options.evaluation_callback) {
-        options.evaluation_callback(0, initial_loss);
+        options.evaluation_callback(options.initial_step, initial_loss);
       }
     }
     if (initial_loss <= options.stop_loss) {
-      return TrainingResult{.steps_completed = 0, .reached_stop_loss = true};
+      return TrainingResult{.steps_completed = options.initial_step,
+                            .reached_stop_loss = true};
     }
   }
 
   RETURN_IF_ERROR(training_tokens.Reset());
   RETURN_IF_ERROR(optimizer.ZeroGrad());
-  for (int step = 0; step < options.max_steps; ++step) {
+  for (int update = 0; update < options.max_steps; ++update) {
     ASSIGN_OR_RETURN(TokenBatch batch, training_tokens.Next());
     RETURN_IF_ERROR(ValidateBatch(executor, batch));
 
@@ -172,32 +181,35 @@ absl::StatusOr<TrainingResult> Train(cuda::Executor& executor, Layer& model,
                                                     std::move(model_tape)));
     (void)input_gradient;
     RETURN_IF_ERROR(optimizer.Step());
+    const int steps_completed = options.initial_step + update + 1;
     if (options.step_callback) {
-      RETURN_IF_ERROR(options.step_callback(step + 1));
+      RETURN_IF_ERROR(options.step_callback(steps_completed));
     }
 
     const bool evaluation_enabled =
         options.stop_loss >= 0.0 || options.evaluation_callback;
     const bool should_evaluate =
-        evaluation_enabled && ((step + 1) % options.evaluation_interval == 0 ||
-                               step + 1 == options.max_steps);
+        evaluation_enabled &&
+        (steps_completed % options.evaluation_interval == 0 ||
+         update + 1 == options.max_steps);
     if (should_evaluate) {
       ASSIGN_OR_RETURN(
           double training_loss,
           Evaluate(executor, model, loss_layer, evaluation_tokens,
                    EvaluationOptions{.batches = options.evaluation_batches}));
       if (options.evaluation_callback) {
-        options.evaluation_callback(step + 1, training_loss);
+        options.evaluation_callback(steps_completed, training_loss);
       }
       if (options.stop_loss >= 0.0 && training_loss <= options.stop_loss) {
-        return TrainingResult{.steps_completed = step + 1,
+        return TrainingResult{.steps_completed = steps_completed,
                               .reached_stop_loss = true};
       }
     }
   }
   RETURN_IF_ERROR(executor.Synchronize());
-  return TrainingResult{.steps_completed = options.max_steps,
-                        .reached_stop_loss = false};
+  return TrainingResult{
+      .steps_completed = options.initial_step + options.max_steps,
+      .reached_stop_loss = false};
 }
 
 }  // namespace pluto::llm

@@ -45,14 +45,16 @@ ABSL_FLAG(std::string, corpus, "",
 ABSL_FLAG(std::string, tokenizer_dir, "",
           "GPT-2 tokenizer directory; defaults to "
           "PLUTO_GPT2_TOKENIZER_DIR");
-ABSL_FLAG(std::string, load_checkpoint, "",
-          "Checkpoint directory to restore before training; empty starts with "
-          "newly initialized weights");
+ABSL_FLAG(std::string, resume_from, "",
+          "Parent directory whose numerically latest step_N resumes training");
+ABSL_FLAG(std::string, inference_from, "",
+          "Exact step_N checkpoint directory to load for inference; selecting "
+          "this mode disables training");
 ABSL_FLAG(std::string, checkpoint_dir, "",
           "Root directory for periodic step_N checkpoint directories");
 ABSL_FLAG(int, checkpoint_every, 0,
           "Write a checkpoint every N optimizer steps; zero disables writes");
-ABSL_FLAG(int, steps, 1200, "Maximum number of AdamW training steps");
+ABSL_FLAG(int, steps, 1200, "Maximum AdamW updates in this invocation");
 ABSL_FLAG(double, learning_rate, 3e-4, "AdamW learning rate");
 ABSL_FLAG(double, adam_beta1, 0.9, "AdamW first-moment decay");
 ABSL_FLAG(double, adam_beta2, 0.95, "AdamW second-moment decay");
@@ -71,8 +73,8 @@ ABSL_FLAG(double, train_until_loss, -1.0,
 ABSL_FLAG(int, training_eval_interval, 100,
           "Steps between training-loss checks and progress reports");
 ABSL_FLAG(int, seed, 17, "Deterministic initialization and sampling seed");
-ABSL_FLAG(bool, interactive, true,
-          "Read prompts after training; disabled by the Bazel tests");
+ABSL_FLAG(std::string, prompt, "",
+          "One inference prompt; empty starts the inference prompt loop");
 ABSL_FLAG(int, generation_tokens, 300, "Tokens generated after each prompt");
 ABSL_FLAG(double, temperature, 0.8, "Sampling temperature");
 ABSL_FLAG(int, batch_size, 1,
@@ -377,9 +379,11 @@ absl::StatusOr<std::string> Generate(
     const Gpt2Tokenizer& tokenizer, const Gpt2Detokenizer& detokenizer,
     std::string prompt, int generation_tokens, double temperature,
     std::mt19937& random, const Buffer& token_buffer) {
-  if (generation_tokens < 0 || temperature <= 0.0) {
+  if (generation_tokens < 0 || !std::isfinite(temperature) ||
+      temperature <= 0.0) {
     return absl::InvalidArgumentError(
-        "generation_tokens must be non-negative and temperature positive");
+        "generation_tokens must be non-negative and temperature finite and "
+        "positive");
   }
   if (prompt.empty()) prompt = "\n";
   ASSIGN_OR_RETURN(std::vector<int> context, tokenizer.Encode(prompt));
@@ -403,7 +407,8 @@ absl::StatusOr<std::string> Generate(
   return detokenizer.Decode(generated);
 }
 
-absl::Status Run(cuda::Executor& executor) {
+absl::Status RunTraining(cuda::Executor& executor,
+                         const std::filesystem::path& resume_from) {
   const std::string log_path = absl::GetFlag(FLAGS_log_file);
   if (log_path.empty()) {
     return absl::InvalidArgumentError("log_file must not be empty");
@@ -415,8 +420,10 @@ absl::Status Run(cuda::Executor& executor) {
   }
   logger << "training log: " << log_path << '\n';
   const int checkpoint_every = absl::GetFlag(FLAGS_checkpoint_every);
-  const std::filesystem::path checkpoint_root =
-      absl::GetFlag(FLAGS_checkpoint_dir);
+  std::filesystem::path checkpoint_root = absl::GetFlag(FLAGS_checkpoint_dir);
+  if (checkpoint_root.empty() && !resume_from.empty()) {
+    checkpoint_root = resume_from;
+  }
   if (checkpoint_every < 0) {
     return absl::InvalidArgumentError("checkpoint_every must be non-negative");
   }
@@ -428,14 +435,10 @@ absl::Status Run(cuda::Executor& executor) {
   ASSIGN_OR_RETURN(auto corpus, LoadTextCorpus(CorpusPath()));
   ASSIGN_OR_RETURN(auto tokenizer_directory, TokenizerDirectory());
   ASSIGN_OR_RETURN(auto tokenizer, Gpt2Tokenizer::Load(tokenizer_directory));
-  ASSIGN_OR_RETURN(auto detokenizer,
-                   Gpt2Detokenizer::Load(tokenizer_directory));
-  if (tokenizer->vocab_size() != kVocabularySize ||
-      detokenizer->vocab_size() != kVocabularySize) {
+  if (tokenizer->vocab_size() != kVocabularySize) {
     return absl::FailedPreconditionError(absl::StrCat(
         "the model requires the GPT-2 vocabulary of ", kVocabularySize,
-        " tokens; encoder reports ", tokenizer->vocab_size(),
-        " and decoder reports ", detokenizer->vocab_size()));
+        " tokens; encoder reports ", tokenizer->vocab_size()));
   }
 
   const ModelConfig config{.batch_size = absl::GetFlag(FLAGS_batch_size)};
@@ -445,12 +448,15 @@ absl::Status Run(cuda::Executor& executor) {
 
   ASSIGN_OR_RETURN(auto model, CreateShakespeareLlm(executor, DataType::BF16,
                                                     absl::GetFlag(FLAGS_seed)));
-  const std::filesystem::path load_checkpoint =
-      absl::GetFlag(FLAGS_load_checkpoint);
-  if (!load_checkpoint.empty()) {
-    RETURN_IF_ERROR(ReadFromDirectory(executor, *model, load_checkpoint));
+  int initial_step = 0;
+  if (!resume_from.empty()) {
+    ASSIGN_OR_RETURN(const CheckpointInfo checkpoint,
+                     FindLatestCheckpoint(resume_from));
+    RETURN_IF_ERROR(ReadFromDirectory(executor, *model, checkpoint.directory));
+    initial_step = checkpoint.step;
     logger << '[' << CurrentTimestamp()
-           << "] loaded checkpoint: " << load_checkpoint.string() << '\n';
+           << "] resumed from checkpoint: " << checkpoint.directory.string()
+           << " (step " << initial_step << ")\n";
   }
   ASSIGN_OR_RETURN(
       auto loss_layer,
@@ -487,11 +493,6 @@ absl::Status Run(cuda::Executor& executor) {
       auto test_evaluation_data,
       MakeInMemoryDataSetIterator(executor, corpus_split.test, *tokenizer,
                                   evaluation_data_options));
-  // Generation only needs model inputs; train/eval staging is owned by the
-  // dataset iterators above.
-  ASSIGN_OR_RETURN(
-      auto token_buffer,
-      Buffer::Allocate(executor, config.token_batch_size() * sizeof(int)));
 
   const int eval_batches = absl::GetFlag(FLAGS_eval_batches);
   const EvaluationOptions evaluation_options{.batches = eval_batches};
@@ -513,11 +514,13 @@ absl::Status Run(cuda::Executor& executor) {
          << training_data->token_count() + test_evaluation_data->token_count()
          << " (training: " << training_data->token_count()
          << ", test: " << test_evaluation_data->token_count() << ")\n"
+         << "starting step: " << initial_step << '\n'
          << "initial training loss: " << initial_training_loss << '\n'
          << "initial test loss: " << initial_test_loss << '\n';
 
   TrainingOptions training_options{
       .max_steps = absl::GetFlag(FLAGS_steps),
+      .initial_step = initial_step,
       .evaluation_interval = absl::GetFlag(FLAGS_training_eval_interval),
       .evaluation_batches = eval_batches,
       .stop_loss = absl::GetFlag(FLAGS_train_until_loss),
@@ -553,7 +556,7 @@ absl::Status Run(cuda::Executor& executor) {
   ASSIGN_OR_RETURN(double final_test_loss,
                    Evaluate(executor, *model, *loss_layer,
                             *test_evaluation_data, evaluation_options));
-  logger << "completed training steps: " << training_result.steps_completed
+  logger << "training stopped at step: " << training_result.steps_completed
          << '\n'
          << "final training loss: " << final_training_loss << '\n'
          << "final test loss: " << final_test_loss << '\n';
@@ -561,10 +564,10 @@ absl::Status Run(cuda::Executor& executor) {
   if (training_options.stop_loss >= 0.0 &&
       (!training_result.reached_stop_loss ||
        final_training_loss > training_options.stop_loss)) {
-    return absl::FailedPreconditionError(
-        absl::StrCat("training loss did not reach ", training_options.stop_loss,
-                     " within ", training_options.max_steps,
-                     " steps; final training loss was ", final_training_loss));
+    return absl::FailedPreconditionError(absl::StrCat(
+        "training loss did not reach ", training_options.stop_loss, " within ",
+        training_options.max_steps,
+        " additional updates; final training loss was ", final_training_loss));
   }
   const double target_loss = absl::GetFlag(FLAGS_target_loss);
   if (target_loss >= 0.0 && final_test_loss > target_loss) {
@@ -572,34 +575,88 @@ absl::Status Run(cuda::Executor& executor) {
         absl::StrCat("model did not reach target loss ", target_loss,
                      "; final test loss was ", final_test_loss));
   }
-  if (training_result.steps_completed > 0 &&
+  if (training_result.steps_completed > initial_step &&
       final_training_loss >= initial_training_loss) {
     return absl::FailedPreconditionError(
         "training did not reduce training loss");
   }
 
-  std::mt19937 random(absl::GetFlag(FLAGS_seed) + 1);
-  ASSIGN_OR_RETURN(
-      auto sample,
-      Generate(executor, config, *model, *tokenizer, *detokenizer, "To be",
-               std::min(120, absl::GetFlag(FLAGS_generation_tokens)),
-               absl::GetFlag(FLAGS_temperature), random, token_buffer));
-  logger << "sample:\nTo be" << sample << "\n";
+  return absl::OkStatus();
+}
 
-  if (!absl::GetFlag(FLAGS_interactive)) return absl::OkStatus();
-  logger << "\nEnter a prompt (Ctrl-C or Ctrl-D to quit).\n";
+absl::Status RunInference(cuda::Executor& executor,
+                          const std::filesystem::path& checkpoint_path) {
+  ASSIGN_OR_RETURN(const CheckpointInfo checkpoint,
+                   InspectCheckpointDirectory(checkpoint_path));
+  ASSIGN_OR_RETURN(auto tokenizer_directory, TokenizerDirectory());
+  ASSIGN_OR_RETURN(auto tokenizer, Gpt2Tokenizer::Load(tokenizer_directory));
+  ASSIGN_OR_RETURN(auto detokenizer,
+                   Gpt2Detokenizer::Load(tokenizer_directory));
+  if (tokenizer->vocab_size() != kVocabularySize ||
+      detokenizer->vocab_size() != kVocabularySize) {
+    return absl::FailedPreconditionError(absl::StrCat(
+        "the model requires the GPT-2 vocabulary of ", kVocabularySize,
+        " tokens; encoder reports ", tokenizer->vocab_size(),
+        " and decoder reports ", detokenizer->vocab_size()));
+  }
+
+  const int generation_tokens = absl::GetFlag(FLAGS_generation_tokens);
+  const double temperature = absl::GetFlag(FLAGS_temperature);
+  if (generation_tokens < 0 || !std::isfinite(temperature) ||
+      temperature <= 0.0) {
+    return absl::InvalidArgumentError(
+        "generation_tokens must be non-negative and temperature finite and "
+        "positive");
+  }
+
+  const ModelConfig config{.batch_size = 1};
+  RETURN_IF_ERROR(config.Validate());
+  ASSIGN_OR_RETURN(auto model, CreateShakespeareLlm(executor, DataType::BF16,
+                                                    absl::GetFlag(FLAGS_seed)));
+  RETURN_IF_ERROR(ReadFromDirectory(executor, *model, checkpoint.directory));
+  ASSIGN_OR_RETURN(
+      auto token_buffer,
+      Buffer::Allocate(executor, config.token_batch_size() * sizeof(int)));
+  std::cout << "loaded checkpoint: " << checkpoint.directory.string()
+            << " (step " << checkpoint.step << ")\n";
+
+  std::mt19937 random(absl::GetFlag(FLAGS_seed) + 1);
+  const std::string one_shot_prompt = absl::GetFlag(FLAGS_prompt);
+  if (!one_shot_prompt.empty()) {
+    ASSIGN_OR_RETURN(auto completion,
+                     Generate(executor, config, *model, *tokenizer,
+                              *detokenizer, one_shot_prompt, generation_tokens,
+                              temperature, random, token_buffer));
+    std::cout << one_shot_prompt << completion << '\n';
+    return absl::OkStatus();
+  }
+
+  std::cout << "Enter a prompt (Ctrl-C or Ctrl-D to quit).\n";
   std::string prompt;
   while (true) {
-    logger << "> " << std::flush;
+    std::cout << "> " << std::flush;
     if (!std::getline(std::cin, prompt)) break;
     ASSIGN_OR_RETURN(
         auto completion,
         Generate(executor, config, *model, *tokenizer, *detokenizer, prompt,
-                 absl::GetFlag(FLAGS_generation_tokens),
-                 absl::GetFlag(FLAGS_temperature), random, token_buffer));
-    logger << prompt << completion << "\n";
+                 generation_tokens, temperature, random, token_buffer));
+    std::cout << prompt << completion << '\n';
   }
   return absl::OkStatus();
+}
+
+absl::Status Run(cuda::Executor& executor) {
+  const std::filesystem::path resume_from = absl::GetFlag(FLAGS_resume_from);
+  const std::filesystem::path inference_from =
+      absl::GetFlag(FLAGS_inference_from);
+  if (!resume_from.empty() && !inference_from.empty()) {
+    return absl::InvalidArgumentError(
+        "resume_from and inference_from are mutually exclusive");
+  }
+  if (!inference_from.empty()) {
+    return RunInference(executor, inference_from);
+  }
+  return RunTraining(executor, resume_from);
 }
 
 }  // namespace
@@ -608,7 +665,7 @@ absl::Status Run(cuda::Executor& executor) {
 int main(int argc, char** argv) {
   const std::vector<char*> positional = absl::ParseCommandLine(argc, argv);
   if (positional.size() != 1) {
-    std::cerr << "This binary accepts flags only; use --corpus=PATH.\n";
+    std::cerr << "This binary accepts flags only.\n";
     return 2;
   }
   auto executor = pluto::cuda::Executor::Create();

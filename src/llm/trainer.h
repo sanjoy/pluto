@@ -21,6 +21,11 @@ struct TrainingOptions {
   // Hard cap on optimizer updates. Zero is useful for evaluation-only runs.
   int max_steps = 0;
 
+  // Logical step represented by the input model weights. The first optimizer
+  // update completes initial_step + 1. Callbacks and TrainingResult use this
+  // absolute numbering so resumed runs continue checkpoint step numbers.
+  int initial_step = 0;
+
   // When stop_loss or evaluation_callback is enabled, run an evaluation at
   // this update interval and after the final update.
   int evaluation_interval = 100;
@@ -55,6 +60,7 @@ struct TrainingOptions {
 };
 
 struct TrainingResult {
+  // Absolute logical step, including TrainingOptions::initial_step.
   int steps_completed;
   bool reached_stop_loss;
 };

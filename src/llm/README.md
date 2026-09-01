@@ -67,7 +67,8 @@ save_pretrained tokenizer directory with PLUTO_GPT2_TOKENIZER_DIR or
 PLUTO_GPT2_TOKENIZER_DIR=/path/to/gpt2 bazel test //src/llm:shakespeare_llm_test --test_output=streamed
 ```
 
-Train and then prompt the model (end input with Ctrl-C or Ctrl-D):
+Training mode only trains and evaluates; it never generates text or starts a
+prompt loop:
 
 ```sh
 PLUTO_GPT2_TOKENIZER_DIR=/path/to/gpt2 bazel run //src/llm:shakespeare_llm -- --steps=1200
@@ -75,12 +76,12 @@ PLUTO_GPT2_TOKENIZER_DIR=/path/to/gpt2 bazel run //src/llm:shakespeare_llm -- --
 
 The corpus is encoded with GPT-2 BPE and split chronologically into training
 and held-out suffixes. The binary reports both losses before and after
-training. --batch_size controls how many independent 1,024-token sequences are
-processed per update. For example, --batch_size=10 processes 10,240 token rows
-per optimizer step. Architecture dimensions are fixed; --eval_batches controls
-the deterministic evaluation sample count.
+training. `--batch_size` controls how many independent 1,024-token sequences
+are processed per update. For example, `--batch_size=10` processes 10,240
+token rows per optimizer step. Architecture dimensions are fixed;
+`--eval_batches` controls the deterministic evaluation sample count.
 
-To train until a requested training loss while retaining a hard iteration cap:
+To train until a requested training loss while retaining a hard update cap:
 
 ```sh
 PLUTO_GPT2_TOKENIZER_DIR=/path/to/gpt2 bazel run //src/llm:shakespeare_llm -- --train_until_loss=0 --steps=100000 --training_eval_interval=100
@@ -89,17 +90,30 @@ PLUTO_GPT2_TOKENIZER_DIR=/path/to/gpt2 bazel run //src/llm:shakespeare_llm -- --
 To write model weights every 100 completed optimizer steps:
 
 ```sh
-PLUTO_GPT2_TOKENIZER_DIR=/path/to/gpt2 bazel run //src/llm:shakespeare_llm -- --steps=1200 --checkpoint_dir=/path/to/checkpoints --checkpoint_every=100
+PLUTO_GPT2_TOKENIZER_DIR=/path/to/gpt2 bazel run //src/llm:shakespeare_llm -- --steps=1200 --checkpoint_dir=/home/ubuntu/checkpoints/shakespeare --checkpoint_every=100
 ```
 
-This creates `/path/to/checkpoints/step_100`, `step_200`, and so on. Restore
-one of those directories before evaluation or further training with:
+This creates `step_100`, `step_200`, and so on beneath the checkpoint
+directory. To resume, pass the parent directory rather than a particular step:
 
 ```sh
-PLUTO_GPT2_TOKENIZER_DIR=/path/to/gpt2 bazel run //src/llm:shakespeare_llm -- --load_checkpoint=/path/to/checkpoints/step_1200 --steps=0
+PLUTO_GPT2_TOKENIZER_DIR=/path/to/gpt2 bazel run //src/llm:shakespeare_llm -- --resume_from=/home/ubuntu/checkpoints/shakespeare --steps=630 --checkpoint_every=100
 ```
 
-Checkpoints currently contain model weights only. AdamW moment state and the
-training-step counter restart on every invocation, so periodic directory names
-are relative to the current run. `--checkpoint_every=0` (the default) disables
+The numerically largest direct child named `step_N` is loaded. If that is
+`step_570`, the restored model starts at logical step 570 and its next update
+is step 571. `--steps` counts additional updates in this invocation. Periodic
+checkpoints default to the resume parent; `--checkpoint_dir` can direct new
+checkpoints elsewhere.
+
+Inference takes the exact checkpoint directory, not its parent:
+
+```sh
+PLUTO_GPT2_TOKENIZER_DIR=/path/to/gpt2 bazel run //src/llm:shakespeare_llm -- --inference_from=/home/ubuntu/checkpoints/shakespeare/step_570
+```
+
+This starts an inference-only prompt loop. Pass `--prompt='To be'` for one
+completion followed by exit. Checkpoints contain model weights only, so AdamW
+moment state restarts when training resumes; logical step numbering is
+preserved from the `step_N` directory name. `--checkpoint_every=0` disables
 checkpoint writes.
