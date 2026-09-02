@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import os
 from pathlib import Path
 import re
@@ -76,8 +77,17 @@ def archive_old_checkpoints(
             raise FileExistsError(f"archive already exists: {destination}")
 
     if not dry_run:
-        for source, destination in actions:
-            _archive_directory(source, destination)
+        # zlib compression releases the GIL, so independent archives can make
+        # progress concurrently. Submit every archive before waiting and size
+        # the pool to all logical CPUs; ThreadPoolExecutor creates only as many
+        # threads as there are actions when fewer checkpoints need archiving.
+        with ThreadPoolExecutor(max_workers=os.cpu_count() or 1) as executor:
+            futures = [
+                executor.submit(_archive_directory, source, destination)
+                for source, destination in actions
+            ]
+            for future in futures:
+                future.result()
     return actions
 
 

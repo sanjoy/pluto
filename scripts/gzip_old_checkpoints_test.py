@@ -3,7 +3,9 @@
 from pathlib import Path
 import tarfile
 import tempfile
+import threading
 import unittest
+from unittest import mock
 
 from gzip_old_checkpoints import archive_old_checkpoints
 
@@ -78,6 +80,30 @@ class ArchiveOldCheckpointsTest(unittest.TestCase):
             for step in range(1, 8):
                 self.assertTrue((root / f"step_{step}").is_dir())
                 self.assertFalse((root / f"step_{step}.tar.gz").exists())
+
+    def test_uses_all_available_cpus_concurrently(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            for step in range(1, 8):
+                (root / f"step_{step}").mkdir()
+
+            barrier = threading.Barrier(2, timeout=5)
+            worker_threads: list[int] = []
+
+            def observe_worker(source: Path, destination: Path) -> None:
+                del source, destination
+                worker_threads.append(threading.get_ident())
+                barrier.wait()
+
+            with mock.patch(
+                "gzip_old_checkpoints.os.cpu_count", return_value=2
+            ), mock.patch(
+                "gzip_old_checkpoints._archive_directory",
+                side_effect=observe_worker,
+            ):
+                archive_old_checkpoints(root)
+
+            self.assertEqual(len(set(worker_threads)), 2)
 
 
 if __name__ == "__main__":
