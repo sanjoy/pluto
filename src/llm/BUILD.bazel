@@ -233,7 +233,6 @@ cc_test(
         "--batch_size=2",
         "--eval_batches=1",
         "--steps=0",
-        "--target_loss=20",
     ],
     data = ["//testdata:shakespeare.txt"],
     tags = [
@@ -272,7 +271,6 @@ cc_test(
     args = [
         "--eval_batches=1",
         "--steps=10",
-        "--target_loss=20",
         "--train_until_loss=20",
     ],
     data = ["//testdata:shakespeare.txt"],

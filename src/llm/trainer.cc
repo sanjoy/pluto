@@ -64,14 +64,16 @@ absl::StatusOr<double> CopyLossSum(cuda::Executor& executor,
 }
 
 absl::Status ValidateTrainingOptions(const TrainingOptions& options) {
-  if (options.max_steps < 0) {
-    return absl::InvalidArgumentError("max_steps must be non-negative");
+  if (options.max_steps < kUnlimitedTrainingSteps) {
+    return absl::InvalidArgumentError(
+        "max_steps must be non-negative or kUnlimitedTrainingSteps");
   }
   if (options.initial_step < 0) {
     return absl::InvalidArgumentError("initial_step must be non-negative");
   }
-  if (options.max_steps >
-      std::numeric_limits<int>::max() - options.initial_step) {
+  if (options.max_steps != kUnlimitedTrainingSteps &&
+      options.max_steps >
+          std::numeric_limits<int>::max() - options.initial_step) {
     return absl::InvalidArgumentError("training step count would overflow");
   }
   if (options.evaluation_interval <= 0 || options.evaluation_batches <= 0) {
@@ -151,7 +153,13 @@ absl::StatusOr<TrainingResult> Train(cuda::Executor& executor, Layer& model,
 
   RETURN_IF_ERROR(training_tokens.Reset());
   RETURN_IF_ERROR(optimizer.ZeroGrad());
-  for (int update = 0; update < options.max_steps; ++update) {
+  const bool has_step_limit = options.max_steps != kUnlimitedTrainingSteps;
+  int updates_completed = 0;
+  int steps_completed = options.initial_step;
+  while (!has_step_limit || updates_completed < options.max_steps) {
+    if (steps_completed == std::numeric_limits<int>::max()) {
+      return absl::OutOfRangeError("training step number overflowed");
+    }
     ASSIGN_OR_RETURN(TokenBatch batch, training_tokens.Next());
     RETURN_IF_ERROR(ValidateBatch(executor, batch));
 
@@ -174,7 +182,8 @@ absl::StatusOr<TrainingResult> Train(cuda::Executor& executor, Layer& model,
                                                     std::move(model_tape)));
     (void)input_gradient;
     RETURN_IF_ERROR(optimizer.Step());
-    const int steps_completed = options.initial_step + update + 1;
+    ++updates_completed;
+    ++steps_completed;
     if (options.step_callback) {
       RETURN_IF_ERROR(options.step_callback(steps_completed));
     }
@@ -184,7 +193,7 @@ absl::StatusOr<TrainingResult> Train(cuda::Executor& executor, Layer& model,
     const bool should_evaluate =
         evaluation_enabled &&
         (steps_completed % options.evaluation_interval == 0 ||
-         update + 1 == options.max_steps);
+         (has_step_limit && updates_completed == options.max_steps));
     if (should_evaluate) {
       ASSIGN_OR_RETURN(
           double training_loss,
@@ -200,9 +209,8 @@ absl::StatusOr<TrainingResult> Train(cuda::Executor& executor, Layer& model,
     }
   }
   RETURN_IF_ERROR(executor.Synchronize());
-  return TrainingResult{
-      .steps_completed = options.initial_step + options.max_steps,
-      .reached_stop_loss = false};
+  return TrainingResult{.steps_completed = steps_completed,
+                        .reached_stop_loss = false};
 }
 
 }  // namespace pluto::llm

@@ -364,6 +364,30 @@ TEST_F(TrainerTest, StepCallbackRunsAfterUpdatesAndPropagatesErrors) {
   EXPECT_EQ(model.backward_calls, 2);
 }
 
+TEST_F(TrainerTest, UnlimitedTrainingRunsUntilCallbackStopsIt) {
+  FakeModel model;
+  FakeOptimizer optimizer;
+  auto loss = MakeLoss();
+  auto data = MakeData();
+  ASSERT_TRUE(loss.ok()) << loss.status();
+  ASSERT_TRUE(data.ok()) << data.status();
+
+  auto result = Train(
+      *executor_, model, **loss, optimizer, **data,
+      TrainingOptions{.max_steps = kUnlimitedTrainingSteps,
+                      .step_callback = [](int steps_completed) -> absl::Status {
+                        if (steps_completed == 3) {
+                          return absl::CancelledError("test requested stop");
+                        }
+                        return absl::OkStatus();
+                      }});
+
+  ASSERT_FALSE(result.ok());
+  EXPECT_EQ(result.status().code(), absl::StatusCode::kCancelled);
+  EXPECT_EQ(optimizer.steps, 3);
+  EXPECT_EQ(model.backward_calls, 3);
+}
+
 TEST_F(TrainerTest, RejectsInvalidOptions) {
   FakeModel model;
   FakeOptimizer optimizer;
@@ -376,7 +400,7 @@ TEST_F(TrainerTest, RejectsInvalidOptions) {
                         EvaluationOptions{.batches = 0})
                    .ok());
   EXPECT_FALSE(Train(*executor_, model, **loss, optimizer, **data,
-                     TrainingOptions{.max_steps = -1})
+                     TrainingOptions{.max_steps = -2})
                    .ok());
   EXPECT_FALSE(Train(*executor_, model, **loss, optimizer, **data,
                      TrainingOptions{.initial_step = -1})

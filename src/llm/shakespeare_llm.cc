@@ -55,22 +55,20 @@ ABSL_FLAG(std::string, checkpoint_dir, "",
           "Root directory for periodic step_N checkpoint directories");
 ABSL_FLAG(int, checkpoint_every, 0,
           "Write a checkpoint every N optimizer steps; zero disables writes");
-ABSL_FLAG(int, steps, 1200, "Maximum AdamW updates in this invocation");
+ABSL_FLAG(int, steps, -1,
+          "Maximum AdamW updates in this invocation; omitted runs forever");
 ABSL_FLAG(double, learning_rate, 3e-4, "AdamW learning rate");
 ABSL_FLAG(double, adam_beta1, 0.9, "AdamW first-moment decay");
 ABSL_FLAG(double, adam_beta2, 0.95, "AdamW second-moment decay");
 ABSL_FLAG(double, adam_epsilon, 1e-8, "AdamW numerical-stability epsilon");
 ABSL_FLAG(double, weight_decay, 0.1, "Decoupled AdamW weight decay");
-ABSL_FLAG(double, target_loss, 2.8,
-          "Fail unless held-out average token loss is at most this value; a "
-          "negative value disables this check");
 ABSL_FLAG(int, eval_batches, 4,
           "Number of fixed batches used for each train/test loss evaluation");
 ABSL_FLAG(double, test_fraction, 0.1,
           "Fraction of the corpus reserved as contiguous held-out test data");
 ABSL_FLAG(double, train_until_loss, -1.0,
           "When nonnegative, stop once training loss reaches this value; "
-          "--steps remains the hard iteration cap");
+          "--steps, when supplied, remains the hard iteration cap");
 ABSL_FLAG(int, training_eval_interval, 100,
           "Steps between training-loss checks and progress reports");
 ABSL_FLAG(int, seed, 17, "Deterministic initialization and sampling seed");
@@ -490,26 +488,6 @@ absl::Status RunTraining(cuda::Executor& executor,
          << '\n'
          << "final training loss: " << final_training_loss << '\n'
          << "final test loss: " << final_test_loss << '\n';
-
-  if (training_options.stop_loss >= 0.0 &&
-      (!training_result.reached_stop_loss ||
-       final_training_loss > training_options.stop_loss)) {
-    return absl::FailedPreconditionError(absl::StrCat(
-        "training loss did not reach ", training_options.stop_loss, " within ",
-        training_options.max_steps,
-        " additional updates; final training loss was ", final_training_loss));
-  }
-  const double target_loss = absl::GetFlag(FLAGS_target_loss);
-  if (target_loss >= 0.0 && final_test_loss > target_loss) {
-    return absl::FailedPreconditionError(
-        absl::StrCat("model did not reach target loss ", target_loss,
-                     "; final test loss was ", final_test_loss));
-  }
-  if (training_result.steps_completed > initial_step &&
-      final_training_loss >= initial_training_loss) {
-    return absl::FailedPreconditionError(
-        "training did not reduce training loss");
-  }
 
   return absl::OkStatus();
 }

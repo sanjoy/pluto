@@ -12,13 +12,16 @@
 
 namespace pluto::llm {
 
+inline constexpr int kUnlimitedTrainingSteps = -1;
+
 struct EvaluationOptions {
   // Evaluate exactly this many batches after resetting the iterator.
   int batches = 1;
 };
 
 struct TrainingOptions {
-  // Hard cap on optimizer updates. Zero is useful for evaluation-only runs.
+  // Hard cap on optimizer updates. kUnlimitedTrainingSteps runs until an
+  // explicit stop-loss condition or callback error; zero is evaluation-only.
   int max_steps = 0;
 
   // Logical step represented by the input model weights. The first optimizer

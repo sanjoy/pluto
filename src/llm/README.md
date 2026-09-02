@@ -68,10 +68,10 @@ PLUTO_GPT2_TOKENIZER_DIR=/path/to/gpt2 bazel test //src/llm:shakespeare_llm_test
 ```
 
 Training mode only trains and evaluates; it never generates text or starts a
-prompt loop:
+prompt loop. With no step limit it runs until interrupted:
 
 ```sh
-PLUTO_GPT2_TOKENIZER_DIR=/path/to/gpt2 bazel run //src/llm:shakespeare_llm -- --steps=1200
+PLUTO_GPT2_TOKENIZER_DIR=/path/to/gpt2 bazel run //src/llm:shakespeare_llm
 ```
 
 The corpus is encoded with GPT-2 BPE and split chronologically into training
@@ -81,7 +81,9 @@ are processed per update. For example, `--batch_size=10` processes 10,240
 token rows per optimizer step. Architecture dimensions are fixed;
 `--eval_batches` controls the deterministic evaluation sample count.
 
-To train until a requested training loss while retaining a hard update cap:
+Pass `--steps=N` to stop successfully after N additional updates, regardless
+of the resulting loss. To stop early at a requested training loss, optionally
+with a hard update cap:
 
 ```sh
 PLUTO_GPT2_TOKENIZER_DIR=/path/to/gpt2 bazel run //src/llm:shakespeare_llm -- --train_until_loss=0 --steps=100000 --training_eval_interval=100
