@@ -7,7 +7,7 @@ import threading
 import unittest
 from unittest import mock
 
-from gzip_old_checkpoints import archive_old_checkpoints
+from gzip_old_checkpoints import _archive_directory, archive_old_checkpoints
 
 
 class ArchiveOldCheckpointsTest(unittest.TestCase):
@@ -104,6 +104,50 @@ class ArchiveOldCheckpointsTest(unittest.TestCase):
                 archive_old_checkpoints(root)
 
             self.assertEqual(len(set(worker_threads)), 2)
+
+    def test_reports_progress_as_archives_finish(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            for step in range(1, 8):
+                (root / f"step_{step}").mkdir()
+            messages: list[str] = []
+
+            with mock.patch(
+                "gzip_old_checkpoints.os.cpu_count", return_value=2
+            ), mock.patch("gzip_old_checkpoints._archive_directory"):
+                archive_old_checkpoints(root, progress=messages.append)
+
+            self.assertEqual(
+                messages[0], "archiving 2 checkpoint(s) with 2 worker(s)"
+            )
+            self.assertEqual(len(messages), 3)
+            self.assertTrue(messages[1].startswith("[1/2] archived "))
+            self.assertTrue(messages[2].startswith("[2/2] archived "))
+            self.assertCountEqual(
+                [message.split(" archived ", 1)[1] for message in messages[1:]],
+                [
+                    str(root / "step_1")
+                    + " -> "
+                    + str(root / "step_1.tar.gz"),
+                    str(root / "step_2")
+                    + " -> "
+                    + str(root / "step_2.tar.gz"),
+                ],
+            )
+
+    def test_uses_maximum_gzip_compression(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source = root / "step_1"
+            source.mkdir()
+            destination = root / "step_1.tar.gz"
+
+            with mock.patch("gzip_old_checkpoints.tarfile.open") as tar_open:
+                _archive_directory(source, destination)
+
+            tar_open.assert_called_once_with(
+                mock.ANY, mode="w:gz", compresslevel=9
+            )
 
 
 if __name__ == "__main__":

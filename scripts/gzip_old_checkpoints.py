@@ -4,7 +4,8 @@
 from __future__ import annotations
 
 import argparse
-from concurrent.futures import ThreadPoolExecutor
+from collections.abc import Callable
+from concurrent.futures import as_completed, ThreadPoolExecutor
 import os
 from pathlib import Path
 import re
@@ -44,7 +45,9 @@ def _archive_directory(source: Path, destination: Path) -> None:
     try:
         # Store the step_N directory itself as the archive's top-level member,
         # so extracting in the checkpoint parent reconstructs the input tree.
-        with tarfile.open(temporary_path, mode="w:gz") as archive:
+        with tarfile.open(
+            temporary_path, mode="w:gz", compresslevel=9
+        ) as archive:
             archive.add(source, arcname=source.name, recursive=True)
         os.replace(temporary_path, destination)
         shutil.rmtree(source)
@@ -54,12 +57,16 @@ def _archive_directory(source: Path, destination: Path) -> None:
 
 
 def archive_old_checkpoints(
-    checkpoint_directory: Path, *, dry_run: bool = False
+    checkpoint_directory: Path,
+    *,
+    dry_run: bool = False,
+    progress: Callable[[str], None] | None = None,
 ) -> list[tuple[Path, Path]]:
     """Archives every numeric checkpoint except the newest five.
 
     Returns the source/destination pairs selected for archiving. Existing
-    archives are rejected during preflight, before any source is removed.
+    archives are rejected during preflight, before any source is removed. If
+    provided, progress receives an initial summary and each completed archive.
     """
     if not checkpoint_directory.is_dir():
         raise NotADirectoryError(
@@ -81,13 +88,30 @@ def archive_old_checkpoints(
         # progress concurrently. Submit every archive before waiting and size
         # the pool to all logical CPUs; ThreadPoolExecutor creates only as many
         # threads as there are actions when fewer checkpoints need archiving.
-        with ThreadPoolExecutor(max_workers=os.cpu_count() or 1) as executor:
-            futures = [
-                executor.submit(_archive_directory, source, destination)
+        worker_count = os.cpu_count() or 1
+        if progress is not None and actions:
+            progress(
+                f"archiving {len(actions)} checkpoint(s) with "
+                f"{worker_count} worker(s)"
+            )
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            future_to_action = {
+                executor.submit(_archive_directory, source, destination): (
+                    source,
+                    destination,
+                )
                 for source, destination in actions
-            ]
-            for future in futures:
+            }
+            for completed, future in enumerate(
+                as_completed(future_to_action), start=1
+            ):
                 future.result()
+                if progress is not None:
+                    source, destination = future_to_action[future]
+                    progress(
+                        f"[{completed}/{len(actions)}] archived "
+                        f"{source} -> {destination}"
+                    )
     return actions
 
 
@@ -106,19 +130,26 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _print_progress(message: str) -> None:
+    """Prints a status update immediately, even when stdout is redirected."""
+    print(message, flush=True)
+
+
 def main() -> int:
     args = _parse_args()
     try:
         actions = archive_old_checkpoints(
-            args.checkpoint_directory, dry_run=args.dry_run
+            args.checkpoint_directory,
+            dry_run=args.dry_run,
+            progress=None if args.dry_run else _print_progress,
         )
     except (OSError, tarfile.TarError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
 
-    verb = "would archive" if args.dry_run else "archived"
-    for source, destination in actions:
-        print(f"{verb} {source} -> {destination}")
+    if args.dry_run:
+        for source, destination in actions:
+            print(f"would archive {source} -> {destination}")
     if not actions:
         print("no checkpoint directories need archiving")
     return 0
