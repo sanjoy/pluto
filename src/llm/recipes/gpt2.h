@@ -25,6 +25,20 @@ static_assert(kGpt2ModelWidth ==
               kGpt2AttentionHeads * kGpt2AttentionHeadDimension);
 static_assert(kGpt2FeedForwardWidth == 4 * kGpt2ModelWidth);
 
+// Builds the token-to-activation prefix of the GPT-2 recipe. The returned
+// layer applies the token and learned position embeddings followed by exactly
+// transformer_block_count pre-LayerNorm transformer blocks. It deliberately
+// omits the final LayerNorm and language-modeling head so its output is the
+// [token_count, kGpt2ModelWidth] residual-stream activation that follows the
+// requested block. Passing zero taps the summed token and position embeddings.
+//
+// transformer_block_count must be in [0, kGpt2TransformerBlockCount]. The seed
+// and initialization scheme match CreateGpt2(), so the returned layer has the
+// same parameter prefix as a complete model created with the same arguments.
+absl::StatusOr<std::unique_ptr<Layer>> CreateActivationGenerator(
+    cuda::Executor& executor, int transformer_block_count, DataType output_type,
+    int seed);
+
 // Builds the fixed GPT-2-style architecture used by the training binaries:
 // learned token and position embeddings, eight pre-LayerNorm transformer
 // blocks, a final LayerNorm, and a tied language-modeling head. Activations use

@@ -86,11 +86,20 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateTransformerBlock(
   return block_builder.create();
 }
 
-}  // namespace
+// Adds the shared token-to-residual-stream prefix to builder and returns the
+// embedding layer so CreateGpt2() can tie the language-modeling head to it.
+// Keeping this construction in one place prevents activation taps from
+// silently drifting away from the model recipe they are meant to inspect.
+absl::StatusOr<EmbeddingLookupLayer*> AddActivationGeneratorLayers(
+    cuda::Executor& executor, ComposedLayerBuilder& builder,
+    int transformer_block_count, DataType output_type, int seed) {
+  if (transformer_block_count < 0 ||
+      transformer_block_count > kGpt2TransformerBlockCount) {
+    return absl::InvalidArgumentError(
+        "transformer_block_count must be between zero and "
+        "kGpt2TransformerBlockCount");
+  }
 
-absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateGpt2(
-    cuda::Executor& executor, DataType output_type, int seed) {
-  ComposedLayerBuilder builder;
   RETURN_IF_ERROR(builder.add(EmbeddingLookupLayer::Create(
       executor, kGpt2VocabularySize, kGpt2ModelWidth, output_type)));
   auto* embedding = static_cast<EmbeddingLookupLayer*>(builder.back());
@@ -103,10 +112,35 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateGpt2(
   RETURN_IF_ERROR(positions->InitializeNormal(kInitializationStandardDeviation,
                                               static_cast<uint64_t>(seed) + 1));
 
-  for (int index = 0; index < kGpt2TransformerBlockCount; ++index) {
+  for (int index = 0; index < transformer_block_count; ++index) {
     RETURN_IF_ERROR(builder.add(
         CreateTransformerBlock(executor, output_type, seed, index)));
   }
+  return embedding;
+}
+
+}  // namespace
+
+absl::StatusOr<std::unique_ptr<Layer>> CreateActivationGenerator(
+    cuda::Executor& executor, int transformer_block_count, DataType output_type,
+    int seed) {
+  ComposedLayerBuilder builder;
+  ASSIGN_OR_RETURN(
+      auto* embedding,
+      AddActivationGeneratorLayers(executor, builder, transformer_block_count,
+                                   output_type, seed));
+  (void)embedding;
+  ASSIGN_OR_RETURN(auto generator, builder.create());
+  return std::unique_ptr<Layer>(std::move(generator));
+}
+
+absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateGpt2(
+    cuda::Executor& executor, DataType output_type, int seed) {
+  ComposedLayerBuilder builder;
+  ASSIGN_OR_RETURN(
+      auto* embedding,
+      AddActivationGeneratorLayers(
+          executor, builder, kGpt2TransformerBlockCount, output_type, seed));
 
   RETURN_IF_ERROR(builder.add(LayerNormLayer::Create(
       executor, kGpt2ModelWidth, kLayerNormEpsilon, output_type)));
