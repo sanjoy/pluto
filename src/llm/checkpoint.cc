@@ -360,10 +360,10 @@ absl::Status ReadFromDirectory(cuda::Executor& executor, Layer& layer,
   const std::vector<Buffer*> weights = UniqueWeights(layer);
   RETURN_IF_ERROR(ValidateWeights(executor, weights));
   ASSIGN_OR_RETURN(const size_t file_count, CountWeightFiles(directory));
-  if (file_count != weights.size()) {
-    return absl::DataLossError(absl::StrCat("checkpoint contains ", file_count,
-                                            " weight files; model expects ",
-                                            weights.size()));
+  if (file_count < weights.size()) {
+    return absl::DataLossError(absl::StrCat(
+        "checkpoint contains ", file_count,
+        " weight files; layer requires at least ", weights.size()));
   }
 
   std::vector<std::vector<char>> host_weights;

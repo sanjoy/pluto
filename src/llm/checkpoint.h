@@ -30,9 +30,11 @@ absl::StatusOr<CheckpointInfo> FindLatestCheckpoint(
 absl::Status WriteToDirectory(cuda::Executor& executor, const Layer& layer,
                               const std::filesystem::path& directory);
 
-// Restores the layer's unique weight buffers from directory. The complete file
-// count and every byte size are checked before any device buffer is modified.
-// The caller must supply the same layer topology used to write the checkpoint.
+// Restores the layer's unique weight buffers from the corresponding
+// weight_0.bin, weight_1.bin, ... prefix in directory. Every required file and
+// byte size is checked before any device buffer is modified. Additional
+// higher-index weight files are ignored, allowing a prefix layer such as an
+// activation generator to read weights from a complete-model checkpoint.
 absl::Status ReadFromDirectory(cuda::Executor& executor, Layer& layer,
                                const std::filesystem::path& directory);
 

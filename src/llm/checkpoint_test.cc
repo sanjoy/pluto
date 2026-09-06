@@ -160,24 +160,51 @@ TEST_F(CheckpointTest, RejectsWrongFileSizeBeforeModifyingAnyWeight) {
             std::vector<unsigned char>(48, 0x7b));
 }
 
-TEST_F(CheckpointTest, RejectsWrongWeightCountAndExecutor) {
-  auto weight = Buffer::Allocate(*executor_, 24);
-  ASSERT_TRUE(weight.ok()) << weight.status();
-  CheckpointLayer layer(BufferVec{*weight});
-  CopyToDevice(layer.weights()[0], Pattern(24, 13));
+TEST_F(CheckpointTest, LoadsLayerPrefixFromLargerCheckpoint) {
+  auto first = Buffer::Allocate(*executor_, 24);
+  auto second = Buffer::Allocate(*executor_, 41);
+  ASSERT_TRUE(first.ok()) << first.status();
+  ASSERT_TRUE(second.ok()) << second.status();
+  CheckpointLayer full_layer(BufferVec{*first, *second});
+  const std::vector<unsigned char> expected = Pattern(24, 13);
+  CopyToDevice(full_layer.weights()[0], expected);
+  CopyToDevice(full_layer.weights()[1], Pattern(41, 29));
 
   const std::filesystem::path directory =
-      std::filesystem::path(testing::TempDir()) / "checkpoint-wrong-count";
-  ASSERT_TRUE(WriteToDirectory(*executor_, layer, directory).ok());
-  std::ofstream(directory / "weight_1.bin", std::ios::binary) << "extra";
-  EXPECT_EQ(ReadFromDirectory(*executor_, layer, directory).code(),
+      std::filesystem::path(testing::TempDir()) / "checkpoint-prefix";
+  ASSERT_TRUE(WriteToDirectory(*executor_, full_layer, directory).ok());
+
+  auto prefix_weight = Buffer::Allocate(*executor_, 24);
+  ASSERT_TRUE(prefix_weight.ok()) << prefix_weight.status();
+  CheckpointLayer prefix_layer(BufferVec{*prefix_weight});
+  ASSERT_EQ(cudaMemsetAsync(prefix_layer.weights()[0].data(), 0,
+                            prefix_layer.weights()[0].size_bytes(),
+                            executor_->stream()),
+            cudaSuccess);
+
+  ASSERT_TRUE(ReadFromDirectory(*executor_, prefix_layer, directory).ok());
+  EXPECT_EQ(CopyFromDevice(prefix_layer.weights()[0]), expected);
+}
+
+TEST_F(CheckpointTest, RejectsMissingRequiredWeightAndWrongExecutor) {
+  auto first = Buffer::Allocate(*executor_, 24);
+  auto second = Buffer::Allocate(*executor_, 41);
+  ASSERT_TRUE(first.ok()) << first.status();
+  ASSERT_TRUE(second.ok()) << second.status();
+  CheckpointLayer full_layer(BufferVec{*first, *second});
+
+  const std::filesystem::path directory =
+      std::filesystem::path(testing::TempDir()) / "checkpoint-missing-weight";
+  CheckpointLayer prefix_layer(BufferVec{*first});
+  ASSERT_TRUE(WriteToDirectory(*executor_, prefix_layer, directory).ok());
+  EXPECT_EQ(ReadFromDirectory(*executor_, full_layer, directory).code(),
             absl::StatusCode::kDataLoss);
 
   auto other_executor = cuda::Executor::Create();
   ASSERT_TRUE(other_executor.ok()) << other_executor.status();
-  EXPECT_EQ(WriteToDirectory(**other_executor, layer, directory).code(),
+  EXPECT_EQ(WriteToDirectory(**other_executor, full_layer, directory).code(),
             absl::StatusCode::kInvalidArgument);
-  EXPECT_EQ(ReadFromDirectory(**other_executor, layer, directory).code(),
+  EXPECT_EQ(ReadFromDirectory(**other_executor, full_layer, directory).code(),
             absl::StatusCode::kInvalidArgument);
   EXPECT_TRUE((*other_executor)->Synchronize().ok());
 }
