@@ -19,6 +19,9 @@ and V have independent learned projections packed into one 512-to-1,536
 matrix. Token embeddings and learned absolute position embeddings feed the
 blocks; a final LayerNorm precedes an LM head tied to the token embedding
 table. Dropout and attention dropout are both exactly zero.
+Architecture construction and its dimensions live in
+`src/llm/recipes/gpt2.{h,cc}`; the Shakespeare binary supplies only the
+dataset and training/inference policy.
 
 ## Numeric policy
 

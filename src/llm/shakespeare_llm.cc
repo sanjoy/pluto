@@ -9,10 +9,8 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
-#include <memory>
 #include <random>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/flags/flag.h"
@@ -29,14 +27,9 @@
 #include "src/dataset/tokenizer.h"
 #include "src/llm/checkpoint.h"
 #include "src/llm/layer.h"
-#include "src/llm/layers/attention.h"
-#include "src/llm/layers/combinators.h"
 #include "src/llm/layers/cross_entropy_loss.h"
-#include "src/llm/layers/embedding.h"
-#include "src/llm/layers/fully_connected.h"
-#include "src/llm/layers/gelu.h"
-#include "src/llm/layers/norm.h"
 #include "src/llm/optimizer.h"
+#include "src/llm/recipes/gpt2.h"
 #include "src/llm/trainer.h"
 #include "src/util/status_macros.h"
 #include "src/util/tee_stream.h"
@@ -92,133 +85,22 @@ std::string CurrentTimestamp() {
                           absl::UTCTimeZone());
 }
 
-// This binary deliberately exposes no architecture flags: these constants are
-// the model contract requested for Shakespeare. The vocabulary is physically
-// padded to 50,272 only inside tiled output kernels; padded logits are masked
-// and are never valid token IDs.
-constexpr int kVocabularySize = 50'257;
-constexpr int kContextLength = 1'024;
-constexpr int kTransformerBlockCount = 8;
-constexpr int kModelWidth = 512;
-constexpr int kAttentionHeads = 8;
-constexpr int kAttentionHeadDimension = 64;
-constexpr int kFeedForwardWidth = 2'048;
-constexpr float kLayerNormEpsilon = 1e-5f;
-constexpr float kInitializationStandardDeviation = 0.02f;
-constexpr int kTileSize = 16;
-static_assert(kModelWidth == kAttentionHeads * kAttentionHeadDimension);
-static_assert(kFeedForwardWidth == 4 * kModelWidth);
-
 struct ModelConfig {
   int batch_size;
 
-  int token_batch_size() const { return batch_size * kContextLength; }
-  int padded_vocabulary_size() const {
-    return ((kVocabularySize + kTileSize - 1) / kTileSize) * kTileSize;
-  }
+  int token_batch_size() const { return batch_size * kGpt2ContextLength; }
+  int padded_vocabulary_size() const { return kGpt2PaddedVocabularySize; }
 
   absl::Status Validate() const {
     if (batch_size <= 0) {
       return absl::InvalidArgumentError("batch_size must be positive");
     }
-    if (batch_size > std::numeric_limits<int>::max() / kContextLength) {
+    if (batch_size > std::numeric_limits<int>::max() / kGpt2ContextLength) {
       return absl::InvalidArgumentError("batch_size is too large");
     }
     return absl::OkStatus();
   }
 };
-
-// Builds one pre-LayerNorm GPT-2 transformer block:
-//
-//   x = x + W_o CausalMHA(W_qkv LayerNorm(x))
-//   x = x + W_2 GELU(W_1 LayerNorm(x))
-//
-// W_qkv maps 512 to three independent 512-wide Q/K/V tensors. CausalMHA has
-// eight 64-wide heads and uses online FP32 softmax statistics. The MLP expands
-// 512 -> 2048 -> 512. Dropout and attention dropout are exactly zero, so no
-// dropout layers appear. Each block is independently parameterized.
-absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateTransformerBlock(
-    cuda::Executor& executor, DataType output_type, int initialization_seed,
-    int block_index) {
-  const float residual_standard_deviation =
-      kInitializationStandardDeviation /
-      std::sqrt(2.0f * kTransformerBlockCount);
-  const uint64_t seed_base =
-      static_cast<uint64_t>(static_cast<uint32_t>(initialization_seed)) +
-      1'000 + static_cast<uint64_t>(block_index) * 100;
-
-  ComposedLayerBuilder attention_builder;
-  RETURN_IF_ERROR(attention_builder.add(LayerNormLayer::Create(
-      executor, kModelWidth, kLayerNormEpsilon, output_type)));
-  RETURN_IF_ERROR(attention_builder.add(FullyConnectedLayer::Create(
-      executor, kModelWidth, 3 * kModelWidth, output_type)));
-  auto* qkv_projection =
-      static_cast<FullyConnectedLayer*>(attention_builder.back());
-  RETURN_IF_ERROR(qkv_projection->InitializeNormal(
-      kInitializationStandardDeviation, seed_base + 1));
-  RETURN_IF_ERROR(attention_builder.add(AttentionLayer::Create(
-      executor, kContextLength, kAttentionHeads, kModelWidth, output_type)));
-  RETURN_IF_ERROR(attention_builder.add(FullyConnectedLayer::Create(
-      executor, kModelWidth, kModelWidth, output_type)));
-  auto* attention_projection =
-      static_cast<FullyConnectedLayer*>(attention_builder.back());
-  RETURN_IF_ERROR(attention_projection->InitializeNormal(
-      residual_standard_deviation, seed_base + 2));
-
-  ComposedLayerBuilder mlp_builder;
-  RETURN_IF_ERROR(mlp_builder.add(LayerNormLayer::Create(
-      executor, kModelWidth, kLayerNormEpsilon, output_type)));
-  RETURN_IF_ERROR(mlp_builder.add(FullyConnectedLayer::Create(
-      executor, kModelWidth, kFeedForwardWidth, output_type)));
-  auto* mlp_input = static_cast<FullyConnectedLayer*>(mlp_builder.back());
-  RETURN_IF_ERROR(mlp_input->InitializeNormal(kInitializationStandardDeviation,
-                                              seed_base + 3));
-  RETURN_IF_ERROR(mlp_builder.add(GeluLayer::Create(executor, output_type)));
-  RETURN_IF_ERROR(mlp_builder.add(FullyConnectedLayer::Create(
-      executor, kFeedForwardWidth, kModelWidth, output_type)));
-  auto* mlp_output = static_cast<FullyConnectedLayer*>(mlp_builder.back());
-  RETURN_IF_ERROR(
-      mlp_output->InitializeNormal(residual_standard_deviation, seed_base + 4));
-
-  ASSIGN_OR_RETURN(auto attention, attention_builder.create());
-  ASSIGN_OR_RETURN(auto mlp, mlp_builder.create());
-  ComposedLayerBuilder block_builder;
-  RETURN_IF_ERROR(
-      block_builder.add(std::make_unique<ResidualLayer>(std::move(attention))));
-  RETURN_IF_ERROR(
-      block_builder.add(std::make_unique<ResidualLayer>(std::move(mlp))));
-  return block_builder.create();
-}
-
-// Constructs the exact eight-block model described above. Token and position
-// embeddings, block activations, and final normalized activations are BF16.
-// Parameters are FP32 master weights, reductions/statistics remain FP32, and
-// the terminal projection reuses the token embedding table.
-absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateShakespeareLlm(
-    cuda::Executor& executor, DataType output_type, int seed) {
-  ComposedLayerBuilder builder;
-  RETURN_IF_ERROR(builder.add(EmbeddingLookupLayer::Create(
-      executor, kVocabularySize, kModelWidth, output_type)));
-  auto* embedding = static_cast<EmbeddingLookupLayer*>(builder.back());
-  RETURN_IF_ERROR(embedding->InitializeNormal(kInitializationStandardDeviation,
-                                              static_cast<uint64_t>(seed)));
-
-  RETURN_IF_ERROR(builder.add(PositionEmbeddingLayer::Create(
-      executor, kContextLength, kModelWidth, output_type)));
-  auto* positions = static_cast<PositionEmbeddingLayer*>(builder.back());
-  RETURN_IF_ERROR(positions->InitializeNormal(kInitializationStandardDeviation,
-                                              static_cast<uint64_t>(seed) + 1));
-
-  for (int index = 0; index < kTransformerBlockCount; ++index) {
-    RETURN_IF_ERROR(builder.add(
-        CreateTransformerBlock(executor, output_type, seed, index)));
-  }
-
-  RETURN_IF_ERROR(builder.add(LayerNormLayer::Create(
-      executor, kModelWidth, kLayerNormEpsilon, output_type)));
-  RETURN_IF_ERROR(builder.add(LanguageModelingHeadLayer::Create(embedding)));
-  return builder.create();
-}
 
 std::string CorpusPath() {
   const std::string requested = absl::GetFlag(FLAGS_corpus);
@@ -258,18 +140,19 @@ absl::StatusOr<std::vector<float>> Predict(cuda::Executor& executor,
     return absl::InvalidArgumentError("prediction context must not be empty");
   }
   const size_t context_size =
-      std::min(context.size(), static_cast<size_t>(kContextLength));
+      std::min(context.size(), static_cast<size_t>(kGpt2ContextLength));
   const size_t context_start = context.size() - context_size;
   std::vector<int> repeated_context(config.token_batch_size());
   for (int sequence = 0; sequence < config.batch_size; ++sequence) {
     for (size_t position = 0; position < context_size; ++position) {
-      repeated_context[sequence * kContextLength + position] =
+      repeated_context[sequence * kGpt2ContextLength + position] =
           context[context_start + position];
     }
     // Later rows are causally invisible to the selected output row.
     for (size_t position = context_size;
-         position < static_cast<size_t>(kContextLength); ++position) {
-      repeated_context[sequence * kContextLength + position] = context.back();
+         position < static_cast<size_t>(kGpt2ContextLength); ++position) {
+      repeated_context[sequence * kGpt2ContextLength + position] =
+          context.back();
     }
   }
   RETURN_IF_ERROR(cuda::CudaStatus(
@@ -280,7 +163,7 @@ absl::StatusOr<std::vector<float>> Predict(cuda::Executor& executor,
   Tape tape;
   BufferVec inputs = {token_buffer};
   ASSIGN_OR_RETURN(auto logits, model.fwd(executor, inputs, &tape));
-  std::vector<float> host_logits(kVocabularySize);
+  std::vector<float> host_logits(kGpt2VocabularySize);
   const size_t output_row = context_size - 1;
   const auto* selected_logits = static_cast<const float*>(logits.data()) +
                                 output_row * config.padded_vocabulary_size();
@@ -313,8 +196,8 @@ absl::StatusOr<std::string> Generate(
     ASSIGN_OR_RETURN(auto logits,
                      Predict(executor, config, model, context, token_buffer));
     const float maximum = *std::max_element(logits.begin(), logits.end());
-    std::vector<double> probabilities(kVocabularySize);
-    for (int token = 0; token < kVocabularySize; ++token) {
+    std::vector<double> probabilities(kGpt2VocabularySize);
+    for (int token = 0; token < kGpt2VocabularySize; ++token) {
       probabilities[token] = std::exp((logits[token] - maximum) / temperature);
     }
     std::discrete_distribution<int> sample(probabilities.begin(),
@@ -355,9 +238,9 @@ absl::Status RunTraining(cuda::Executor& executor,
   ASSIGN_OR_RETURN(auto corpus, LoadTextCorpus(CorpusPath()));
   ASSIGN_OR_RETURN(auto tokenizer_directory, TokenizerDirectory());
   ASSIGN_OR_RETURN(auto tokenizer, Gpt2Tokenizer::Load(tokenizer_directory));
-  if (tokenizer->vocab_size() != kVocabularySize) {
+  if (tokenizer->vocab_size() != kGpt2VocabularySize) {
     return absl::FailedPreconditionError(absl::StrCat(
-        "the model requires the GPT-2 vocabulary of ", kVocabularySize,
+        "the model requires the GPT-2 vocabulary of ", kGpt2VocabularySize,
         " tokens; encoder reports ", tokenizer->vocab_size()));
   }
 
@@ -366,8 +249,8 @@ absl::Status RunTraining(cuda::Executor& executor,
   ASSIGN_OR_RETURN(auto corpus_split,
                    SplitCorpus(corpus, absl::GetFlag(FLAGS_test_fraction)));
 
-  ASSIGN_OR_RETURN(auto model, CreateShakespeareLlm(executor, DataType::BF16,
-                                                    absl::GetFlag(FLAGS_seed)));
+  ASSIGN_OR_RETURN(auto model, CreateGpt2(executor, DataType::BF16,
+                                          absl::GetFlag(FLAGS_seed)));
   int initial_step = 0;
   if (!resume_from.empty()) {
     ASSIGN_OR_RETURN(const CheckpointInfo checkpoint,
@@ -386,9 +269,9 @@ absl::Status RunTraining(cuda::Executor& executor,
            << "] resumed from checkpoint: " << checkpoint.directory.string()
            << " (step " << initial_step << ")\n";
   }
-  ASSIGN_OR_RETURN(
-      auto loss_layer,
-      CrossEntropyLossLayer::Create(executor, kVocabularySize, DataType::BF16));
+  ASSIGN_OR_RETURN(auto loss_layer,
+                   CrossEntropyLossLayer::Create(executor, kGpt2VocabularySize,
+                                                 DataType::BF16));
   const AdamWConfig optimizer_config{
       .learning_rate = static_cast<float>(absl::GetFlag(FLAGS_learning_rate)),
       .beta1 = static_cast<float>(absl::GetFlag(FLAGS_adam_beta1)),
@@ -400,13 +283,13 @@ absl::Status RunTraining(cuda::Executor& executor,
                    Optimizer::Create(executor, *model, optimizer_config));
   const InMemoryDataSetOptions training_data_options{
       .batch_size = config.token_batch_size(),
-      .context_length = kContextLength,
+      .context_length = kGpt2ContextLength,
       .order = InMemoryDataSetOrder::kRandom,
       .seed = static_cast<uint64_t>(absl::GetFlag(FLAGS_seed)),
   };
   const InMemoryDataSetOptions evaluation_data_options{
       .batch_size = config.token_batch_size(),
-      .context_length = kContextLength,
+      .context_length = kGpt2ContextLength,
       .order = InMemoryDataSetOrder::kSequential,
       .seed = static_cast<uint64_t>(absl::GetFlag(FLAGS_seed)),
   };
@@ -430,12 +313,12 @@ absl::Status RunTraining(cuda::Executor& executor,
   ASSIGN_OR_RETURN(double initial_test_loss,
                    Evaluate(executor, *model, *loss_layer,
                             *test_evaluation_data, evaluation_options));
-  logger << "model: GPT-2 vocabulary=" << kVocabularySize
-         << ", context=" << kContextLength
-         << ", layers=" << kTransformerBlockCount << ", width=" << kModelWidth
-         << ", heads=" << kAttentionHeads
-         << ", head_dim=" << kAttentionHeadDimension
-         << ", MLP=" << kFeedForwardWidth << ", BF16 compute\n"
+  logger << "model: GPT-2 vocabulary=" << kGpt2VocabularySize
+         << ", context=" << kGpt2ContextLength
+         << ", layers=" << kGpt2TransformerBlockCount
+         << ", width=" << kGpt2ModelWidth << ", heads=" << kGpt2AttentionHeads
+         << ", head_dim=" << kGpt2AttentionHeadDimension
+         << ", MLP=" << kGpt2FeedForwardWidth << ", BF16 compute\n"
          << "batch: " << config.batch_size << " sequences ("
          << config.token_batch_size() << " tokens)\n"
          << "corpus tokens: "
@@ -500,10 +383,10 @@ absl::Status RunInference(cuda::Executor& executor,
   ASSIGN_OR_RETURN(auto tokenizer, Gpt2Tokenizer::Load(tokenizer_directory));
   ASSIGN_OR_RETURN(auto detokenizer,
                    Gpt2Detokenizer::Load(tokenizer_directory));
-  if (tokenizer->vocab_size() != kVocabularySize ||
-      detokenizer->vocab_size() != kVocabularySize) {
+  if (tokenizer->vocab_size() != kGpt2VocabularySize ||
+      detokenizer->vocab_size() != kGpt2VocabularySize) {
     return absl::FailedPreconditionError(absl::StrCat(
-        "the model requires the GPT-2 vocabulary of ", kVocabularySize,
+        "the model requires the GPT-2 vocabulary of ", kGpt2VocabularySize,
         " tokens; encoder reports ", tokenizer->vocab_size(),
         " and decoder reports ", detokenizer->vocab_size()));
   }
@@ -519,8 +402,8 @@ absl::Status RunInference(cuda::Executor& executor,
 
   const ModelConfig config{.batch_size = 1};
   RETURN_IF_ERROR(config.Validate());
-  ASSIGN_OR_RETURN(auto model, CreateShakespeareLlm(executor, DataType::BF16,
-                                                    absl::GetFlag(FLAGS_seed)));
+  ASSIGN_OR_RETURN(auto model, CreateGpt2(executor, DataType::BF16,
+                                          absl::GetFlag(FLAGS_seed)));
   RETURN_IF_ERROR(ReadFromDirectory(executor, *model, checkpoint.directory));
   ASSIGN_OR_RETURN(
       auto token_buffer,
