@@ -37,3 +37,40 @@ cc_test(
         "@googletest//:gtest_main",
     ],
 )
+
+cc_library(
+    name = "sparse_autoencoder_dataset",
+    srcs = ["sparse_autoencoder_dataset.cc"],
+    hdrs = ["sparse_autoencoder_dataset.h"],
+    copts = ["-std=c++20"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/cuda:executor",
+        "//src/dataset",
+        "//src/llm:checkpoint",
+        "//src/llm:layer",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+    ],
+)
+
+cc_test(
+    name = "sparse_autoencoder_dataset_test",
+    size = "small",
+    srcs = ["sparse_autoencoder_dataset_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":sparse_autoencoder_dataset",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/dataset",
+        "//src/llm:checkpoint",
+        "//src/llm:embedding",
+        "//src/llm:layer",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
