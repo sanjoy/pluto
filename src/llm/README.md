@@ -40,8 +40,9 @@ until an explicit scaling policy exists.
 Reusable layer families live under src/llm/layers: embedding and the tied LM
 head, learned positions, rectangular fully connected projections, causal
 FlashAttention, affine LayerNorm, GELU, cross entropy, and composition/residual
-combinators. Each family has a header, cuTile implementation, Bazel target, and
-focused GPU test.
+combinators. A sparse-autoencoder family provides an encoder/decoder and its
+reconstruction-plus-decoder-norm sparsity objective. Each family has a header,
+cuTile implementation, Bazel target, and focused GPU test.
 
 Layer forward passes receive explicit buffers and save private intermediates
 in a tree-shaped Tape. Backward passes return input gradients and fill FP32

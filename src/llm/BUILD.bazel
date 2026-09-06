@@ -98,6 +98,7 @@ layer_library("embedding")
 layer_library("fully_connected")
 layer_library("gelu")
 layer_library("norm")
+layer_library("sparse_autoencoder")
 
 layer_reference_library("attention")
 layer_reference_library("combinators")
@@ -106,6 +107,7 @@ layer_reference_library("embedding")
 layer_reference_library("fully_connected")
 layer_reference_library("gelu")
 layer_reference_library("norm")
+layer_reference_library("sparse_autoencoder")
 
 cc_library(
     name = "layer_references",
@@ -118,6 +120,7 @@ cc_library(
         ":fully_connected_reference",
         ":gelu_reference",
         ":norm_reference",
+        ":sparse_autoencoder_reference",
     ],
 )
 
@@ -195,6 +198,7 @@ cc_library(
         ":gelu",
         ":norm",
         ":optimizer",
+        ":sparse_autoencoder",
     ],
 )
 
@@ -345,6 +349,7 @@ layer_test("embedding")
 layer_test("fully_connected")
 layer_test("gelu")
 layer_test("norm")
+layer_test("sparse_autoencoder")
 layer_test("optimizer", [
     ":combinators",
     ":embedding",
@@ -363,6 +368,7 @@ layer_reference_test("embedding")
 layer_reference_test("fully_connected")
 layer_reference_test("gelu")
 layer_reference_test("norm")
+layer_reference_test("sparse_autoencoder")
 
 test_suite(
     name = "layers_test",
@@ -375,6 +381,7 @@ test_suite(
         ":gelu_test",
         ":norm_test",
         ":optimizer_test",
+        ":sparse_autoencoder_test",
     ],
 )
 
@@ -388,5 +395,6 @@ test_suite(
         ":fully_connected_reference_test",
         ":gelu_reference_test",
         ":norm_reference_test",
+        ":sparse_autoencoder_reference_test",
     ],
 )
