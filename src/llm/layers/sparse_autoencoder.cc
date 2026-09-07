@@ -332,13 +332,38 @@ __tile_global__ void SparseDecoderBiasGradientKernel(
                            input_tile);
 }
 
+// Decoder-column norms depend only on D, not on the activation row. Compute
+// each group of 16 norms once instead of repeating this work for every row.
+__tile_global__ void SparseLossDecoderNormSquaredKernel(
+    const float* __restrict__ decoder, int input_dim, int feature_dim,
+    float* __restrict__ decoder_norm_squared) {
+  namespace ct = ::cuda::tiles;
+  using namespace ct::literals;
+  auto decoder_view = ct::partition_view{
+      ct::tensor_span{decoder, ct::extents{input_dim, feature_dim}},
+      ct::shape{16_ic, 16_ic}};
+  auto norm_view = ct::partition_view{
+      ct::tensor_span{decoder_norm_squared, ct::extents{feature_dim}},
+      ct::shape{16_ic}};
+  const int input_tiles = input_dim / internal::kDenseTile;
+  const int feature_tile = ct::bid().x;
+  auto norm_squared = ct::zeros<ct::tile<float, ct::shape<1, 16>>>();
+  for (int input_tile = 0; input_tile < input_tiles; ++input_tile) {
+    auto directions = decoder_view.load(input_tile, feature_tile);
+    norm_squared = norm_squared + ct::sum(directions * directions, 0_ic);
+  }
+  norm_view.store(ct::reshape(norm_squared, ct::shape{16_ic}), feature_tile);
+}
+
+// One tile program owns each row. It performs a modest serial reduction over
+// that row while all rows are processed independently across the GPU.
 template <class Activation>
-__tile_global__ void SparseLossForwardKernel(
+__tile_global__ void SparseLossPerRowKernel(
     const Activation* __restrict__ input,
     const Activation* __restrict__ reconstruction,
-    const Activation* __restrict__ latents, const float* __restrict__ decoder,
-    int rows, int input_dim, int feature_dim, float sparsity_penalty,
-    float* __restrict__ output) {
+    const Activation* __restrict__ latents,
+    const float* __restrict__ decoder_norm_squared, int rows, int input_dim,
+    int feature_dim, float sparsity_penalty, float* __restrict__ row_losses) {
   namespace ct = ::cuda::tiles;
   using namespace ct::literals;
   auto input_view =
@@ -350,33 +375,48 @@ __tile_global__ void SparseLossForwardKernel(
   auto latent_view = ct::partition_view{
       ct::tensor_span{latents, ct::extents{rows, feature_dim}},
       ct::shape{1_ic, 16_ic}};
-  auto decoder_view = ct::partition_view{
-      ct::tensor_span{decoder, ct::extents{input_dim, feature_dim}},
-      ct::shape{16_ic, 16_ic}};
-  auto output_view = ct::partition_view{ct::tensor_span{output, ct::extents{1}},
-                                        ct::shape{1_ic}};
+  auto norm_view = ct::partition_view{
+      ct::tensor_span{decoder_norm_squared, ct::extents{feature_dim}},
+      ct::shape{16_ic}};
+  auto row_loss_view = ct::partition_view{
+      ct::tensor_span{row_losses, ct::extents{rows}}, ct::shape{1_ic}};
   const int input_tiles = input_dim / internal::kDenseTile;
   const int feature_tiles = feature_dim / internal::kDenseTile;
+  const int row = ct::bid().x;
   auto loss = ct::zeros<ct::tile<float, ct::shape<1, 1>>>();
-  for (int row = 0; row < rows; ++row) {
-    for (int input_tile = 0; input_tile < input_tiles; ++input_tile) {
-      auto residual =
-          ct::element_cast<float>(input_view.load(row, input_tile)) -
-          ct::element_cast<float>(reconstruction_view.load(row, input_tile));
-      loss = loss + ct::sum(residual * residual, 1_ic);
-    }
-    for (int feature_tile = 0; feature_tile < feature_tiles; ++feature_tile) {
-      auto norm_squared = ct::zeros<ct::tile<float, ct::shape<1, 16>>>();
-      for (int input_tile = 0; input_tile < input_tiles; ++input_tile) {
-        auto directions = decoder_view.load(input_tile, feature_tile);
-        norm_squared = norm_squared + ct::sum(directions * directions, 0_ic);
-      }
-      auto features =
-          ct::element_cast<float>(latent_view.load(row, feature_tile));
-      loss = loss + sparsity_penalty * ct::sum(features * norm_squared, 1_ic);
-    }
+  for (int input_tile = 0; input_tile < input_tiles; ++input_tile) {
+    auto residual =
+        ct::element_cast<float>(input_view.load(row, input_tile)) -
+        ct::element_cast<float>(reconstruction_view.load(row, input_tile));
+    loss = loss + ct::sum(residual * residual, 1_ic);
   }
-  output_view.store(ct::reshape(loss, ct::shape{1_ic}), 0);
+  for (int feature_tile = 0; feature_tile < feature_tiles; ++feature_tile) {
+    auto features =
+        ct::element_cast<float>(latent_view.load(row, feature_tile));
+    auto norm_squared =
+        ct::reshape(norm_view.load(feature_tile), ct::shape{1_ic, 16_ic});
+    loss = loss + sparsity_penalty * ct::sum(features * norm_squared, 1_ic);
+  }
+  row_loss_view.store(ct::reshape(loss, ct::shape{1_ic}), row);
+}
+
+// The expensive work above is parallel. This deliberately simple final
+// reduction reads only one FP32 scalar per row and keeps the public loss-layer
+// result as a single scalar.
+__tile_global__ void SparseLossReduceKernel(
+    const float* __restrict__ row_losses, int rows,
+    float* __restrict__ output) {
+  namespace ct = ::cuda::tiles;
+  using namespace ct::literals;
+  auto row_loss_view = ct::partition_view{
+      ct::tensor_span{row_losses, ct::extents{rows}}, ct::shape{1_ic}};
+  auto output_view = ct::partition_view{ct::tensor_span{output, ct::extents{1}},
+                                        ct::shape{1_ic}};
+  auto loss = ct::zeros<ct::tile<float, ct::shape<1>>>();
+  for (int row = 0; row < rows; ++row) {
+    loss = loss + row_loss_view.load(row);
+  }
+  output_view.store(loss, 0);
 }
 
 template <class Activation>
@@ -822,21 +862,37 @@ absl::StatusOr<Buffer> SparseAutoEncoderLossLayer::fwd(
   ASSIGN_OR_RETURN(int rows, ValidateLossInputs(executor, inputs, input_dim_,
                                                 feature_dim_, output_type_));
   ASSIGN_OR_RETURN(auto output, Buffer::Allocate(executor, sizeof(float)));
+  ASSIGN_OR_RETURN(
+      auto decoder_norm_squared,
+      Buffer::Allocate(executor,
+                       static_cast<size_t>(feature_dim_) * sizeof(float)));
+  ASSIGN_OR_RETURN(
+      auto row_losses,
+      Buffer::Allocate(executor, static_cast<size_t>(rows) * sizeof(float)));
+  SparseLossDecoderNormSquaredKernel<<<internal::TileCount(feature_dim_), 1, 0,
+                                       executor.stream()>>>(
+      static_cast<const float*>(inputs[3].data()), input_dim_, feature_dim_,
+      static_cast<float*>(decoder_norm_squared.data()));
   if (output_type_ == DataType::BF16) {
-    SparseLossForwardKernel<__nv_bfloat16><<<1, 1, 0, executor.stream()>>>(
+    SparseLossPerRowKernel<__nv_bfloat16><<<rows, 1, 0, executor.stream()>>>(
         static_cast<const __nv_bfloat16*>(inputs[0].data()),
         static_cast<const __nv_bfloat16*>(inputs[1].data()),
         static_cast<const __nv_bfloat16*>(inputs[2].data()),
-        static_cast<const float*>(inputs[3].data()), rows, input_dim_,
-        feature_dim_, sparsity_penalty_, static_cast<float*>(output.data()));
+        static_cast<const float*>(decoder_norm_squared.data()), rows,
+        input_dim_, feature_dim_, sparsity_penalty_,
+        static_cast<float*>(row_losses.data()));
   } else {
-    SparseLossForwardKernel<float><<<1, 1, 0, executor.stream()>>>(
+    SparseLossPerRowKernel<float><<<rows, 1, 0, executor.stream()>>>(
         static_cast<const float*>(inputs[0].data()),
         static_cast<const float*>(inputs[1].data()),
         static_cast<const float*>(inputs[2].data()),
-        static_cast<const float*>(inputs[3].data()), rows, input_dim_,
-        feature_dim_, sparsity_penalty_, static_cast<float*>(output.data()));
+        static_cast<const float*>(decoder_norm_squared.data()), rows,
+        input_dim_, feature_dim_, sparsity_penalty_,
+        static_cast<float*>(row_losses.data()));
   }
+  SparseLossReduceKernel<<<1, 1, 0, executor.stream()>>>(
+      static_cast<const float*>(row_losses.data()), rows,
+      static_cast<float*>(output.data()));
   RETURN_IF_ERROR(
       cuda::CudaStatus(cudaGetLastError(), "sparse loss forward launch"));
   tape->intermediates.assign(inputs.begin(), inputs.end());

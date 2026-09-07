@@ -105,5 +105,42 @@ TEST_F(LayersTest, BackwardAcceptsReconstructionGradientAlone) {
   EXPECT_EQ(input_gradient->front().size_bytes(), input->size_bytes());
 }
 
+TEST_F(LayersTest, ParallelLossHandlesGpt2BatchTenShape) {
+  constexpr int kRows = 10 * 1024;
+  constexpr int kInputDim = 512;
+  constexpr int kFeatureDim = 4096;
+  auto loss = SparseAutoEncoderLossLayer::Create(
+      *executor_, kInputDim, kFeatureDim, 0.5f, DataType::BF16);
+  auto input = Buffer::Allocate(
+      *executor_, static_cast<size_t>(kRows) * kInputDim * sizeof(uint16_t));
+  auto reconstruction = Buffer::Allocate(
+      *executor_, static_cast<size_t>(kRows) * kInputDim * sizeof(uint16_t));
+  auto latents = Buffer::Allocate(
+      *executor_, static_cast<size_t>(kRows) * kFeatureDim * sizeof(uint16_t));
+  auto decoder = Buffer::Allocate(
+      *executor_, static_cast<size_t>(kInputDim) * kFeatureDim * sizeof(float));
+  ASSERT_TRUE(loss.ok()) << loss.status();
+  ASSERT_TRUE(input.ok()) << input.status();
+  ASSERT_TRUE(reconstruction.ok()) << reconstruction.status();
+  ASSERT_TRUE(latents.ok()) << latents.status();
+  ASSERT_TRUE(decoder.ok()) << decoder.status();
+  for (Buffer* buffer : {&*input, &*reconstruction, &*latents, &*decoder}) {
+    ASSERT_EQ(cudaMemsetAsync(buffer->data(), 0, buffer->size_bytes(),
+                              executor_->stream()),
+              cudaSuccess);
+  }
+
+  Tape tape;
+  BufferVec inputs = {*input, *reconstruction, *latents, *decoder};
+  auto output = (*loss)->fwd(*executor_, inputs, &tape);
+  ASSERT_TRUE(output.ok()) << output.status();
+  auto host_output = AllocatePageLockedHostArray<float>(1);
+  ASSERT_EQ(cudaMemcpyAsync(host_output.data(), output->data(), sizeof(float),
+                            cudaMemcpyDeviceToHost, executor_->stream()),
+            cudaSuccess);
+  ASSERT_TRUE(executor_->Synchronize().ok());
+  EXPECT_FLOAT_EQ(host_output[0], 0.0f);
+}
+
 }  // namespace
 }  // namespace pluto::llm
