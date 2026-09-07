@@ -1,5 +1,7 @@
 #include "src/llm/recipes/sparse_autoencoder_dataset.h"
 
+#include <cuda_runtime.h>
+
 #include <cstddef>
 #include <filesystem>
 #include <memory>
@@ -7,6 +9,7 @@
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "src/cuda/buffer.h"
 #include "src/cuda/executor.h"
 #include "src/dataset/dataset.h"
 #include "src/llm/checkpoint.h"
@@ -17,22 +20,21 @@ namespace pluto::llm {
 namespace {
 
 absl::Status ValidateSourceBatch(cuda::Executor& executor,
-                                 const TokenBatch& batch) {
+                                 const DataBatch& batch) {
   if (batch.batch_size <= 0) {
     return absl::InvalidArgumentError(
         "activation dataset source returned an empty batch");
   }
-  const size_t expected_bytes =
+  const size_t token_bytes =
       static_cast<size_t>(batch.batch_size) * sizeof(int);
-  if (batch.tokens.size_bytes() != expected_bytes ||
-      batch.targets.size_bytes() != expected_bytes) {
+  if (batch.data.size_bytes() != 2 * token_bytes) {
     return absl::InvalidArgumentError(
-        "activation dataset source buffers do not match batch_size");
+        "activation dataset source must contain packed input and target "
+        "tokens");
   }
-  if (&batch.tokens.executor() != &executor ||
-      &batch.targets.executor() != &executor) {
+  if (&batch.data.executor() != &executor) {
     return absl::InvalidArgumentError(
-        "activation dataset source buffers belong to a different executor");
+        "activation dataset source belongs to a different executor");
   }
   return absl::OkStatus();
 }
@@ -52,11 +54,18 @@ SparseAutoEncoderDataSetIterator::Create(
 }
 
 absl::StatusOr<ActivationBatch> SparseAutoEncoderDataSetIterator::Next() {
-  ASSIGN_OR_RETURN(TokenBatch batch, source_.Next());
+  ASSIGN_OR_RETURN(DataBatch batch, source_.Next());
   RETURN_IF_ERROR(ValidateSourceBatch(executor_, batch));
 
+  const size_t token_bytes =
+      static_cast<size_t>(batch.batch_size) * sizeof(int);
+  ASSIGN_OR_RETURN(auto tokens, Buffer::Allocate(executor_, token_bytes));
+  RETURN_IF_ERROR(cuda::CudaStatus(
+      cudaMemcpyAsync(tokens.data(), batch.data.data(), token_bytes,
+                      cudaMemcpyDeviceToDevice, executor_.stream()),
+      "cudaMemcpyAsync(activation dataset inputs)"));
   Tape tape;
-  BufferVec inputs = {batch.tokens};
+  BufferVec inputs = {std::move(tokens)};
   ASSIGN_OR_RETURN(auto activations,
                    activation_generator_.fwd(executor_, inputs, &tape));
   if (&activations.executor() != &executor_) {

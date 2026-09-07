@@ -43,6 +43,20 @@ class DataSetTest : public testing::Test {
     return result;
   }
 
+  std::vector<int> Inputs(const DataBatch& batch) {
+    std::vector<int> packed = CopyToHost(batch.data);
+    EXPECT_EQ(packed.size(), 2 * static_cast<size_t>(batch.batch_size));
+    packed.resize(batch.batch_size);
+    return packed;
+  }
+
+  std::vector<int> Targets(const DataBatch& batch) {
+    const std::vector<int> packed = CopyToHost(batch.data);
+    EXPECT_EQ(packed.size(), 2 * static_cast<size_t>(batch.batch_size));
+    if (packed.size() < static_cast<size_t>(batch.batch_size)) return {};
+    return std::vector<int>(packed.begin() + batch.batch_size, packed.end());
+  }
+
   std::unique_ptr<cuda::Executor> executor_;
 };
 
@@ -68,20 +82,18 @@ TEST_F(DataSetTest, SequentialBatchesShiftTargetsAndReset) {
   auto first = (*iterator)->Next();
   ASSERT_TRUE(first.ok()) << first.status();
   EXPECT_EQ(first->batch_size, 8);
-  const std::vector<int> first_tokens = CopyToHost(first->tokens);
+  const std::vector<int> first_tokens = Inputs(*first);
   EXPECT_EQ(first_tokens, (std::vector<int>{0, 1, 2, 3, 4, 5, 6, 7}));
-  EXPECT_EQ(CopyToHost(first->targets),
-            (std::vector<int>{1, 2, 3, 4, 5, 6, 7, 8}));
+  EXPECT_EQ(Targets(*first), (std::vector<int>{1, 2, 3, 4, 5, 6, 7, 8}));
 
   auto second = (*iterator)->Next();
   ASSERT_TRUE(second.ok()) << second.status();
-  EXPECT_EQ(CopyToHost(second->tokens),
-            (std::vector<int>{8, 9, 10, 11, 12, 13, 14, 15}));
+  EXPECT_EQ(Inputs(*second), (std::vector<int>{8, 9, 10, 11, 12, 13, 14, 15}));
 
   ASSERT_TRUE((*iterator)->Reset().ok());
   auto reset = (*iterator)->Next();
   ASSERT_TRUE(reset.ok()) << reset.status();
-  EXPECT_EQ(CopyToHost(reset->tokens), first_tokens);
+  EXPECT_EQ(Inputs(*reset), first_tokens);
 }
 
 TEST_F(DataSetTest, CorpusIsUploadedDuringCreation) {
@@ -100,8 +112,8 @@ TEST_F(DataSetTest, CorpusIsUploadedDuringCreation) {
   std::fill(corpus.begin(), corpus.end(), -1);
   auto batch = (*iterator)->Next();
   ASSERT_TRUE(batch.ok()) << batch.status();
-  EXPECT_EQ(CopyToHost(batch->tokens), (std::vector<int>{0, 1, 2, 3}));
-  EXPECT_EQ(CopyToHost(batch->targets), (std::vector<int>{1, 2, 3, 4}));
+  EXPECT_EQ(Inputs(*batch), (std::vector<int>{0, 1, 2, 3}));
+  EXPECT_EQ(Targets(*batch), (std::vector<int>{1, 2, 3, 4}));
 }
 
 TEST_F(DataSetTest, RandomOrderIsDeterministicAcrossReset) {
@@ -118,13 +130,13 @@ TEST_F(DataSetTest, RandomOrderIsDeterministicAcrossReset) {
   ASSERT_TRUE(iterator.ok()) << iterator.status();
   auto first = (*iterator)->Next();
   ASSERT_TRUE(first.ok()) << first.status();
-  const std::vector<int> expected = CopyToHost(first->tokens);
+  const std::vector<int> expected = Inputs(*first);
 
   ASSERT_TRUE((*iterator)->Next().ok());
   ASSERT_TRUE((*iterator)->Reset().ok());
   auto reset = (*iterator)->Next();
   ASSERT_TRUE(reset.ok()) << reset.status();
-  EXPECT_EQ(CopyToHost(reset->tokens), expected);
+  EXPECT_EQ(Inputs(*reset), expected);
 }
 
 TEST_F(DataSetTest, RejectsInvalidShapes) {
@@ -240,9 +252,9 @@ TEST_F(DataSetTest, TokenizesMappedCorpusIntoSequentialDataset) {
   EXPECT_EQ((*iterator)->token_count(), expected->size());
   auto batch = (*iterator)->Next();
   ASSERT_TRUE(batch.ok()) << batch.status();
-  EXPECT_EQ(CopyToHost(batch->tokens),
+  EXPECT_EQ(Inputs(*batch),
             std::vector<int>(expected->begin(), expected->begin() + 4));
-  EXPECT_EQ(CopyToHost(batch->targets),
+  EXPECT_EQ(Targets(*batch),
             std::vector<int>(expected->begin() + 1, expected->begin() + 5));
 }
 

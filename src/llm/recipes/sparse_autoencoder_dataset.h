@@ -24,9 +24,10 @@ struct ActivationBatch {
 // Create() first restores activation_generator from checkpoint_directory.
 // ReadFromDirectory() accepts a complete-model checkpoint when the generator's
 // weights form its prefix, which is the normal use with
-// CreateActivationGenerator(). Each Next() then passes the source batch's token
-// buffer through the generator. Next-token targets are deliberately ignored:
-// the resulting activations themselves are the examples consumed by an SAE.
+// CreateActivationGenerator(). The source must use
+// InMemoryDataSetIterator's packed next-token schema. Each Next() passes its
+// input-token half through the generator; the target-token half is deliberately
+// ignored because the resulting activations themselves are the SAE examples.
 //
 // The iterator borrows executor, activation_generator, and source. All three
 // must outlive it. The generator is used only for forward inference; its tape

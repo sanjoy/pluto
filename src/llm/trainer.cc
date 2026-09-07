@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <optional>
 #include <utility>
@@ -21,23 +22,48 @@
 namespace pluto::llm {
 namespace {
 
-absl::Status ValidateBatch(cuda::Executor& executor, const TokenBatch& batch) {
+struct LanguageModelingBatch {
+  Buffer tokens;
+  Buffer targets;
+  int32_t batch_size;
+};
+
+// InMemoryDataSetIterator keeps the generic DataBatch surface small by packing
+// its language-modeling inputs and targets into one allocation. Training
+// unpacks those two contiguous halves into ordinary layer inputs here.
+absl::StatusOr<LanguageModelingBatch> PrepareLanguageModelingBatch(
+    cuda::Executor& executor, const DataBatch& batch) {
   if (batch.batch_size <= 0) {
     return absl::InvalidArgumentError("dataset returned an empty batch");
   }
-  const size_t expected_bytes =
+  const size_t token_bytes =
       static_cast<size_t>(batch.batch_size) * sizeof(int);
-  if (batch.tokens.size_bytes() != expected_bytes ||
-      batch.targets.size_bytes() != expected_bytes) {
+  if (batch.data.size_bytes() != 2 * token_bytes) {
     return absl::InvalidArgumentError(
-        "dataset token buffers do not match batch_size");
+        "language-modeling dataset data must contain batch_size input tokens "
+        "followed by batch_size target tokens");
   }
-  if (&batch.tokens.executor() != &executor ||
-      &batch.targets.executor() != &executor) {
+  if (&batch.data.executor() != &executor) {
     return absl::InvalidArgumentError(
-        "dataset token buffers must belong to the supplied CUDA Executor");
+        "dataset data must belong to the supplied CUDA Executor");
   }
-  return absl::OkStatus();
+
+  ASSIGN_OR_RETURN(auto tokens, Buffer::Allocate(executor, token_bytes));
+  ASSIGN_OR_RETURN(auto targets, Buffer::Allocate(executor, token_bytes));
+  const auto* data = static_cast<const char*>(batch.data.data());
+  RETURN_IF_ERROR(cuda::CudaStatus(
+      cudaMemcpyAsync(tokens.data(), data, token_bytes,
+                      cudaMemcpyDeviceToDevice, executor.stream()),
+      "cudaMemcpyAsync(language-modeling inputs)"));
+  RETURN_IF_ERROR(cuda::CudaStatus(
+      cudaMemcpyAsync(targets.data(), data + token_bytes, token_bytes,
+                      cudaMemcpyDeviceToDevice, executor.stream()),
+      "cudaMemcpyAsync(language-modeling targets)"));
+  return LanguageModelingBatch{
+      .tokens = std::move(tokens),
+      .targets = std::move(targets),
+      .batch_size = batch.batch_size,
+  };
 }
 
 absl::StatusOr<double> CopyLossSum(cuda::Executor& executor,
@@ -105,8 +131,9 @@ absl::StatusOr<double> Evaluate(cuda::Executor& executor, const Layer& model,
   double loss_sum = 0.0;
   size_t token_count = 0;
   for (int index = 0; index < options.batches; ++index) {
-    ASSIGN_OR_RETURN(TokenBatch batch, eval_tokens.Next());
-    RETURN_IF_ERROR(ValidateBatch(executor, batch));
+    ASSIGN_OR_RETURN(DataBatch data_batch, eval_tokens.Next());
+    ASSIGN_OR_RETURN(auto batch,
+                     PrepareLanguageModelingBatch(executor, data_batch));
     Tape model_tape;
     BufferVec model_inputs = {batch.tokens};
     ASSIGN_OR_RETURN(auto output,
@@ -160,8 +187,9 @@ absl::StatusOr<TrainingResult> Train(cuda::Executor& executor, Layer& model,
     if (steps_completed == std::numeric_limits<int>::max()) {
       return absl::OutOfRangeError("training step number overflowed");
     }
-    ASSIGN_OR_RETURN(TokenBatch batch, training_tokens.Next());
-    RETURN_IF_ERROR(ValidateBatch(executor, batch));
+    ASSIGN_OR_RETURN(DataBatch data_batch, training_tokens.Next());
+    ASSIGN_OR_RETURN(auto batch,
+                     PrepareLanguageModelingBatch(executor, data_batch));
 
     Tape model_tape;
     BufferVec model_inputs = {batch.tokens};

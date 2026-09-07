@@ -29,14 +29,12 @@ constexpr int kEmbeddingDimension = 16;
 
 class FixedTokenDataSetIterator final : public DataSetIterator {
  public:
-  explicit FixedTokenDataSetIterator(Buffer tokens)
-      : tokens_(std::move(tokens)) {}
+  explicit FixedTokenDataSetIterator(Buffer data) : data_(std::move(data)) {}
 
-  absl::StatusOr<TokenBatch> Next() override {
+  absl::StatusOr<DataBatch> Next() override {
     ++next_calls_;
-    return TokenBatch{
-        .tokens = tokens_,
-        .targets = tokens_,
+    return DataBatch{
+        .data = data_,
         .batch_size = kBatchSize,
     };
   }
@@ -50,7 +48,7 @@ class FixedTokenDataSetIterator final : public DataSetIterator {
   int reset_calls() const { return reset_calls_; }
 
  private:
-  Buffer tokens_;
+  Buffer data_;
   int next_calls_ = 0;
   int reset_calls_ = 0;
 };
@@ -69,13 +67,14 @@ class SparseAutoEncoderDataSetTest : public testing::Test {
     executor_.reset();
   }
 
-  absl::StatusOr<Buffer> MakeTokens() {
-    std::vector<int> tokens(kBatchSize);
-    std::iota(tokens.begin(), tokens.end(), 0);
-    auto buffer = Buffer::Allocate(*executor_, tokens.size() * sizeof(int));
+  absl::StatusOr<Buffer> MakeData() {
+    std::vector<int> data(2 * kBatchSize);
+    std::iota(data.begin(), data.begin() + kBatchSize, 0);
+    std::iota(data.begin() + kBatchSize, data.end(), 1);
+    auto buffer = Buffer::Allocate(*executor_, data.size() * sizeof(int));
     if (!buffer.ok()) return buffer.status();
     const cudaError_t error =
-        cudaMemcpyAsync(buffer->data(), tokens.data(), buffer->size_bytes(),
+        cudaMemcpyAsync(buffer->data(), data.data(), buffer->size_bytes(),
                         cudaMemcpyHostToDevice, executor_->stream());
     if (error != cudaSuccess) {
       return cuda::CudaStatus(error, "cudaMemcpyAsync(test tokens)");
@@ -116,9 +115,9 @@ TEST_F(SparseAutoEncoderDataSetTest,
   auto activation_generator = EmbeddingLookupLayer::Create(
       *executor_, kVocabularySize, kEmbeddingDimension, DataType::FP16);
   ASSERT_TRUE(activation_generator.ok()) << activation_generator.status();
-  auto tokens = MakeTokens();
-  ASSERT_TRUE(tokens.ok()) << tokens.status();
-  FixedTokenDataSetIterator source(*tokens);
+  auto data = MakeData();
+  ASSERT_TRUE(data.ok()) << data.status();
+  FixedTokenDataSetIterator source(*data);
 
   auto dataset = SparseAutoEncoderDataSetIterator::Create(
       *executor_, **activation_generator, source, checkpoint);
@@ -160,9 +159,9 @@ TEST_F(SparseAutoEncoderDataSetTest,
   auto activation_generator = EmbeddingLookupLayer::Create(
       *executor_, kVocabularySize, kEmbeddingDimension, DataType::FP16);
   ASSERT_TRUE(activation_generator.ok()) << activation_generator.status();
-  auto tokens = MakeTokens();
-  ASSERT_TRUE(tokens.ok()) << tokens.status();
-  FixedTokenDataSetIterator source(*tokens);
+  auto data = MakeData();
+  ASSERT_TRUE(data.ok()) << data.status();
+  FixedTokenDataSetIterator source(*data);
 
   auto dataset = SparseAutoEncoderDataSetIterator::Create(
       *executor_, **activation_generator, source, checkpoint);

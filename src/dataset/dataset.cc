@@ -158,14 +158,12 @@ InMemoryDataSetIterator::InMemoryDataSetIterator(cuda::Executor& executor,
                                                  cuda::Buffer corpus,
                                                  size_t corpus_token_count,
                                                  InMemoryDataSetOptions options,
-                                                 cuda::Buffer token_buffer,
-                                                 cuda::Buffer target_buffer)
+                                                 cuda::Buffer data_buffer)
     : corpus_(std::move(corpus)),
       corpus_token_count_(corpus_token_count),
       options_(options),
       executor_(executor),
-      token_buffer_(std::move(token_buffer)),
-      target_buffer_(std::move(target_buffer)),
+      data_buffer_(std::move(data_buffer)),
       random_(options.seed),
       random_start_(0, corpus_token_count_ - options.context_length - 1) {}
 
@@ -194,18 +192,17 @@ InMemoryDataSetIterator::Create(cuda::Executor& executor,
     return absl::InvalidArgumentError("the corpus is too large");
   }
   if (static_cast<size_t>(options.batch_size) >
-      std::numeric_limits<size_t>::max() / sizeof(int)) {
+      std::numeric_limits<size_t>::max() / (2 * sizeof(int))) {
     return absl::InvalidArgumentError("batch_size is too large");
   }
-  const size_t buffer_bytes =
+  const size_t token_bytes =
       static_cast<size_t>(options.batch_size) * sizeof(int);
+  const size_t data_bytes = 2 * token_bytes;
   const size_t corpus_bytes = tokens.size() * sizeof(int);
   ASSIGN_OR_RETURN(auto corpus_buffer,
                    cuda::Buffer::Allocate(executor, corpus_bytes));
-  ASSIGN_OR_RETURN(auto token_buffer,
-                   cuda::Buffer::Allocate(executor, buffer_bytes));
-  ASSIGN_OR_RETURN(auto target_buffer,
-                   cuda::Buffer::Allocate(executor, buffer_bytes));
+  ASSIGN_OR_RETURN(auto data_buffer,
+                   cuda::Buffer::Allocate(executor, data_bytes));
   RETURN_IF_ERROR(cuda::CudaStatus(
       cudaMemcpyAsync(corpus_buffer.data(), tokens.data(), corpus_bytes,
                       cudaMemcpyHostToDevice, executor.stream()),
@@ -216,18 +213,19 @@ InMemoryDataSetIterator::Create(cuda::Executor& executor,
   RETURN_IF_ERROR(executor.Synchronize());
   return std::unique_ptr<InMemoryDataSetIterator>(new InMemoryDataSetIterator(
       executor, std::move(corpus_buffer), tokens.size(), options,
-      std::move(token_buffer), std::move(target_buffer)));
+      std::move(data_buffer)));
 }
 
-absl::StatusOr<TokenBatch> InMemoryDataSetIterator::Next() {
+absl::StatusOr<DataBatch> InMemoryDataSetIterator::Next() {
   const size_t sequence_start_count =
       corpus_token_count_ - static_cast<size_t>(options_.context_length);
   const int sequences_per_batch = options_.batch_size / options_.context_length;
   const size_t sequence_bytes =
       static_cast<size_t>(options_.context_length) * sizeof(int);
   const auto* corpus = static_cast<const char*>(corpus_.data());
-  auto* batch_tokens = static_cast<char*>(token_buffer_.data());
-  auto* batch_targets = static_cast<char*>(target_buffer_.data());
+  auto* batch_tokens = static_cast<char*>(data_buffer_.data());
+  auto* batch_targets =
+      batch_tokens + static_cast<size_t>(options_.batch_size) * sizeof(int);
   for (int sequence = 0; sequence < sequences_per_batch; ++sequence) {
     size_t start;
     if (options_.order == InMemoryDataSetOrder::kRandom) {
@@ -251,9 +249,7 @@ absl::StatusOr<TokenBatch> InMemoryDataSetIterator::Next() {
                         cudaMemcpyDeviceToDevice, executor_.stream()),
         "cudaMemcpyAsync(dataset target slice)"));
   }
-  return TokenBatch{.tokens = token_buffer_,
-                    .targets = target_buffer_,
-                    .batch_size = options_.batch_size};
+  return DataBatch{.data = data_buffer_, .batch_size = options_.batch_size};
 }
 
 absl::Status InMemoryDataSetIterator::Reset() {

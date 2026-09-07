@@ -70,10 +70,11 @@ struct TrainingResult {
 
 // Computes the mean of the loss layer's per-token FP32 outputs.
 //
-// Each dataset batch is passed to the model as {tokens}; the model output and
-// batch targets are then passed to the loss layer as {output, targets}.
-// Evaluate() never runs backward or mutates weights. It resets eval_tokens so
-// repeated calls measure the same batches.
+// Each dataset batch must use InMemoryDataSetIterator's language-modeling
+// schema: batch_size int32 input tokens followed by batch_size int32 targets.
+// Inputs are passed to the model; the model output and targets are then passed
+// to the loss layer. Evaluate() never runs backward or mutates weights. It
+// resets eval_tokens so repeated calls measure the same batches.
 absl::StatusOr<double> Evaluate(cuda::Executor& executor, const Layer& model,
                                 const Layer& loss_layer,
                                 DataSetIterator& eval_tokens,
@@ -81,11 +82,12 @@ absl::StatusOr<double> Evaluate(cuda::Executor& executor, const Layer& model,
 
 // Runs a conventional forward/loss/backward/update training loop.
 //
-// training_tokens owns batch creation and host-to-device staging. The loss
-// layer must emit one FP32 scalar per input token and seed its own backward
-// pass when called with no upstream gradients, as CrossEntropyLossLayer does.
-// Train() clears gradients before the first backward; Optimizer::Step() is
-// responsible for applying an update and clearing them after every step.
+// training_tokens owns batch creation and host-to-device staging and must use
+// the packed language-modeling schema described by Evaluate(). The loss layer
+// must emit one FP32 scalar per input token and seed its own backward pass when
+// called with no upstream gradients, as CrossEntropyLossLayer does. Train()
+// clears gradients before the first backward; Optimizer::Step() is responsible
+// for applying an update and clearing them after every step.
 absl::StatusOr<TrainingResult> Train(cuda::Executor& executor, Layer& model,
                                      Layer& loss_layer, Optimizer& optimizer,
                                      DataSetIterator& training_tokens,

@@ -45,6 +45,7 @@ cc_library(
     copts = ["-std=c++20"],
     visibility = ["//visibility:public"],
     deps = [
+        "//src/cuda:buffer",
         "//src/cuda:executor",
         "//src/dataset",
         "//src/llm:checkpoint",
@@ -52,6 +53,7 @@ cc_library(
         "//src/util:status_macros",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
+        "@cuda//:cuda_runtime",
     ],
 )
 

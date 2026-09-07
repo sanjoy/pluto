@@ -64,16 +64,15 @@ struct CorpusSplit {
 absl::StatusOr<CorpusSplit> SplitCorpus(const TextCorpus& corpus,
                                         double test_fraction);
 
-// One next-token language-modeling batch. `tokens` contains model inputs and
-// `targets` contains the same sequences shifted left by one token. Both are
-// int32 device buffers with `batch_size` elements on the same CUDA executor.
-struct TokenBatch {
-  cuda::Buffer tokens;
-  cuda::Buffer targets;
-  int batch_size;
+// One opaque, device-resident batch. The concrete iterator defines the element
+// type, row shape, and any internal layout of data. batch_size is the number of
+// logical examples rather than a byte or element count.
+struct DataBatch {
+  cuda::Buffer data;
+  int32_t batch_size;
 };
 
-// Source of device-resident next-token batches.
+// Source of device-resident batches.
 //
 // Implementations own their staging storage, so returned Buffer handles stay
 // alive independently through reference counting. Reset() restores the
@@ -83,7 +82,7 @@ class DataSetIterator {
  public:
   virtual ~DataSetIterator() = default;
 
-  virtual absl::StatusOr<TokenBatch> Next() = 0;
+  virtual absl::StatusOr<DataBatch> Next() = 0;
   virtual absl::Status Reset() = 0;
 };
 
@@ -106,8 +105,12 @@ struct InMemoryDataSetOptions {
 // A batch may pack multiple independent sequences, so batch_size must be a
 // multiple of context_length. Create() uploads the corpus through executor;
 // Next() then assembles each batch entirely with stream-ordered device copies.
-// Random order is appropriate for optimization; sequential order plus Reset()
-// is appropriate for stable train/test evaluation.
+// Its DataBatch::data contains 2 * batch_size int32 values: model input tokens
+// first, followed by the corresponding one-token-shifted targets. Keeping this
+// concrete schema out of DataBatch lets other iterators expose activation
+// matrices through the same base interface. Random order is appropriate for
+// optimization; sequential order plus Reset() is appropriate for stable
+// train/test evaluation.
 class InMemoryDataSetIterator final : public DataSetIterator {
  public:
   static absl::StatusOr<std::unique_ptr<InMemoryDataSetIterator>> Create(
@@ -117,7 +120,7 @@ class InMemoryDataSetIterator final : public DataSetIterator {
       cuda::Executor& executor, std::vector<int> tokens,
       InMemoryDataSetOptions options);
 
-  absl::StatusOr<TokenBatch> Next() override;
+  absl::StatusOr<DataBatch> Next() override;
   absl::Status Reset() override;
 
   size_t token_count() const { return corpus_token_count_; }
@@ -126,15 +129,13 @@ class InMemoryDataSetIterator final : public DataSetIterator {
   InMemoryDataSetIterator(cuda::Executor& executor, cuda::Buffer corpus,
                           size_t corpus_token_count,
                           InMemoryDataSetOptions options,
-                          cuda::Buffer token_buffer,
-                          cuda::Buffer target_buffer);
+                          cuda::Buffer data_buffer);
 
   cuda::Buffer corpus_;
   size_t corpus_token_count_;
   InMemoryDataSetOptions options_;
   cuda::Executor& executor_;
-  cuda::Buffer token_buffer_;
-  cuda::Buffer target_buffer_;
+  cuda::Buffer data_buffer_;
   std::mt19937_64 random_;
   std::uniform_int_distribution<size_t> random_start_;
   size_t next_sequential_start_ = 0;
