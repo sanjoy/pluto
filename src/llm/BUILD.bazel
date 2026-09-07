@@ -1,4 +1,3 @@
-load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("@rules_cuda//cuda:defs.bzl", "cuda_library")
@@ -154,6 +153,7 @@ cc_library(
     deps = [
         ":layer",
         ":optimizer",
+        ":sparse_autoencoder",
         "//src/dataset",
         "//src/util:status_macros",
         "//src/cuda:buffer",
@@ -173,6 +173,7 @@ cc_test(
     deps = [
         ":layer",
         ":optimizer",
+        ":sparse_autoencoder",
         ":trainer",
         "//src/dataset",
         "//src/cuda:buffer",
@@ -199,111 +200,6 @@ cc_library(
         ":norm",
         ":optimizer",
         ":sparse_autoencoder",
-    ],
-)
-
-cc_binary(
-    name = "shakespeare_llm",
-    srcs = ["shakespeare_llm.cc"],
-    data = ["//testdata:shakespeare.txt"],
-    deps = [
-        ":checkpoint",
-        ":cross_entropy_loss",
-        ":optimizer",
-        ":trainer",
-        "//src/llm/recipes:gpt2",
-        "//src/dataset",
-        "//src/util:status_macros",
-        "//src/util:tee_stream",
-        "//src/cuda:buffer",
-        "//src/cuda:executor",
-        "//src/dataset:detokenizer",
-        "//src/dataset:tokenizer",
-        "@abseil-cpp//absl/flags:flag",
-        "@abseil-cpp//absl/flags:parse",
-        "@abseil-cpp//absl/status",
-        "@abseil-cpp//absl/status:statusor",
-        "@abseil-cpp//absl/strings",
-        "@abseil-cpp//absl/time",
-        "@cuda//:cuda_runtime",
-    ],
-)
-
-cc_test(
-    name = "shakespeare_llm_test",
-    size = "large",
-    timeout = "long",
-    srcs = ["shakespeare_llm.cc"],
-    args = [
-        "--batch_size=2",
-        "--eval_batches=1",
-        "--steps=0",
-    ],
-    data = ["//testdata:shakespeare.txt"],
-    tags = [
-        "requires-gpu",
-        "requires-tokenizer",
-    ],
-    deps = [
-        ":checkpoint",
-        ":cross_entropy_loss",
-        ":optimizer",
-        ":trainer",
-        "//src/llm/recipes:gpt2",
-        "//src/dataset",
-        "//src/util:status_macros",
-        "//src/util:tee_stream",
-        "//src/cuda:buffer",
-        "//src/cuda:executor",
-        "//src/dataset:detokenizer",
-        "//src/dataset:tokenizer",
-        "@abseil-cpp//absl/flags:flag",
-        "@abseil-cpp//absl/flags:parse",
-        "@abseil-cpp//absl/status",
-        "@abseil-cpp//absl/status:statusor",
-        "@abseil-cpp//absl/strings",
-        "@abseil-cpp//absl/time",
-        "@cuda//:cuda_runtime",
-    ],
-)
-
-# Exercises loss-based early stopping without paying for a training step: the
-# freshly initialized cross entropy is below this deliberately loose target.
-cc_test(
-    name = "shakespeare_llm_early_stop_test",
-    size = "medium",
-    timeout = "moderate",
-    srcs = ["shakespeare_llm.cc"],
-    args = [
-        "--eval_batches=1",
-        "--steps=10",
-        "--train_until_loss=20",
-    ],
-    data = ["//testdata:shakespeare.txt"],
-    tags = [
-        "requires-gpu",
-        "requires-tokenizer",
-    ],
-    deps = [
-        ":checkpoint",
-        ":cross_entropy_loss",
-        ":optimizer",
-        ":trainer",
-        "//src/llm/recipes:gpt2",
-        "//src/dataset",
-        "//src/util:status_macros",
-        "//src/util:tee_stream",
-        "//src/cuda:buffer",
-        "//src/cuda:executor",
-        "//src/dataset:detokenizer",
-        "//src/dataset:tokenizer",
-        "@abseil-cpp//absl/flags:flag",
-        "@abseil-cpp//absl/flags:parse",
-        "@abseil-cpp//absl/status",
-        "@abseil-cpp//absl/status:statusor",
-        "@abseil-cpp//absl/strings",
-        "@abseil-cpp//absl/time",
-        "@cuda//:cuda_runtime",
     ],
 )
 

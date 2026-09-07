@@ -12,6 +12,9 @@
 
 namespace pluto::llm {
 
+class SparseAutoEncoderLayer;
+class SparseAutoEncoderLossLayer;
+
 inline constexpr int kUnlimitedTrainingSteps = -1;
 
 struct EvaluationOptions {
@@ -91,6 +94,26 @@ absl::StatusOr<double> Evaluate(cuda::Executor& executor, const Layer& model,
 absl::StatusOr<TrainingResult> Train(cuda::Executor& executor, Layer& model,
                                      Layer& loss_layer, Optimizer& optimizer,
                                      DataSetIterator& training_tokens,
+                                     const TrainingOptions& options);
+
+// Sparse-autoencoder counterpart to Evaluate(). Each DataBatch::data is an
+// activation matrix with batch_size rows. SparseAutoEncoderLossLayer emits one
+// scalar sum per batch; this overload returns its mean per activation row.
+absl::StatusOr<double> Evaluate(cuda::Executor& executor,
+                                const SparseAutoEncoderLayer& model,
+                                const SparseAutoEncoderLossLayer& loss_layer,
+                                DataSetIterator& eval_activations,
+                                const EvaluationOptions& options);
+
+// Trains an SAE with the same scheduling, evaluation, stopping, and callback
+// behavior as the generic language-modeling loop. The activation generator is
+// intentionally outside model: only the SAE's parameters are differentiated
+// and updated.
+absl::StatusOr<TrainingResult> Train(cuda::Executor& executor,
+                                     SparseAutoEncoderLayer& model,
+                                     SparseAutoEncoderLossLayer& loss_layer,
+                                     Optimizer& optimizer,
+                                     DataSetIterator& training_activations,
                                      const TrainingOptions& options);
 
 }  // namespace pluto::llm

@@ -28,8 +28,10 @@
 #include "src/llm/checkpoint.h"
 #include "src/llm/layer.h"
 #include "src/llm/layers/cross_entropy_loss.h"
+#include "src/llm/layers/sparse_autoencoder.h"
 #include "src/llm/optimizer.h"
 #include "src/llm/recipes/gpt2.h"
+#include "src/llm/recipes/sparse_autoencoder_dataset.h"
 #include "src/llm/trainer.h"
 #include "src/util/status_macros.h"
 #include "src/util/tee_stream.h"
@@ -44,6 +46,9 @@ ABSL_FLAG(std::string, resume_from, "",
 ABSL_FLAG(std::string, inference_from, "",
           "Exact step_N checkpoint directory to load for inference; selecting "
           "this mode disables training");
+ABSL_FLAG(std::string, sparse_autoencoder_from, "",
+          "Exact GPT-2 step_N checkpoint used to generate fourth-block "
+          "activations while training a sparse autoencoder");
 ABSL_FLAG(std::string, checkpoint_dir, "",
           "Root directory for periodic step_N checkpoint directories");
 ABSL_FLAG(int, checkpoint_every, 0,
@@ -80,6 +85,12 @@ namespace {
 using tokenizer::Gpt2Detokenizer;
 using tokenizer::Gpt2Tokenizer;
 
+constexpr int kSparseAutoEncoderActivationBlockCount = 4;
+constexpr int kSparseAutoEncoderFeatureDimension = 8 * kGpt2ModelWidth;
+constexpr float kSparseAutoEncoderPenalty = 0.5f;
+static_assert(kSparseAutoEncoderActivationBlockCount <=
+              kGpt2TransformerBlockCount);
+
 std::string CurrentTimestamp() {
   return absl::FormatTime("%Y-%m-%d %H:%M:%S UTC", absl::Now(),
                           absl::UTCTimeZone());
@@ -101,6 +112,16 @@ struct ModelConfig {
     return absl::OkStatus();
   }
 };
+
+AdamWConfig OptimizerConfigFromFlags() {
+  return AdamWConfig{
+      .learning_rate = static_cast<float>(absl::GetFlag(FLAGS_learning_rate)),
+      .beta1 = static_cast<float>(absl::GetFlag(FLAGS_adam_beta1)),
+      .beta2 = static_cast<float>(absl::GetFlag(FLAGS_adam_beta2)),
+      .epsilon = static_cast<float>(absl::GetFlag(FLAGS_adam_epsilon)),
+      .weight_decay = static_cast<float>(absl::GetFlag(FLAGS_weight_decay)),
+  };
+}
 
 std::string CorpusPath() {
   const std::string requested = absl::GetFlag(FLAGS_corpus);
@@ -272,15 +293,9 @@ absl::Status RunTraining(cuda::Executor& executor,
   ASSIGN_OR_RETURN(auto loss_layer,
                    CrossEntropyLossLayer::Create(executor, kGpt2VocabularySize,
                                                  DataType::BF16));
-  const AdamWConfig optimizer_config{
-      .learning_rate = static_cast<float>(absl::GetFlag(FLAGS_learning_rate)),
-      .beta1 = static_cast<float>(absl::GetFlag(FLAGS_adam_beta1)),
-      .beta2 = static_cast<float>(absl::GetFlag(FLAGS_adam_beta2)),
-      .epsilon = static_cast<float>(absl::GetFlag(FLAGS_adam_epsilon)),
-      .weight_decay = static_cast<float>(absl::GetFlag(FLAGS_weight_decay)),
-  };
-  ASSIGN_OR_RETURN(auto optimizer,
-                   Optimizer::Create(executor, *model, optimizer_config));
+  ASSIGN_OR_RETURN(
+      auto optimizer,
+      Optimizer::Create(executor, *model, OptimizerConfigFromFlags()));
   const InMemoryDataSetOptions training_data_options{
       .batch_size = config.token_batch_size(),
       .context_length = kGpt2ContextLength,
@@ -375,6 +390,152 @@ absl::Status RunTraining(cuda::Executor& executor,
   return absl::OkStatus();
 }
 
+absl::Status RunSparseAutoEncoderTraining(
+    cuda::Executor& executor,
+    const std::filesystem::path& gpt2_checkpoint_path) {
+  ASSIGN_OR_RETURN(const CheckpointInfo gpt2_checkpoint,
+                   InspectCheckpointDirectory(gpt2_checkpoint_path));
+  const std::string log_path = absl::GetFlag(FLAGS_log_file);
+  if (log_path.empty()) {
+    return absl::InvalidArgumentError("log_file must not be empty");
+  }
+  std::ofstream log_file(log_path, std::ios::out | std::ios::trunc);
+  if (!log_file.is_open()) {
+    return absl::FailedPreconditionError(
+        absl::StrCat("cannot open training log for writing: ", log_path));
+  }
+  util::TeeStream logger(std::cout, log_file);
+  logger << "training log: " << log_path << '\n';
+
+  const int checkpoint_every = absl::GetFlag(FLAGS_checkpoint_every);
+  const std::filesystem::path checkpoint_root =
+      absl::GetFlag(FLAGS_checkpoint_dir);
+  if (checkpoint_every < 0) {
+    return absl::InvalidArgumentError("checkpoint_every must be non-negative");
+  }
+  if (checkpoint_every > 0 && checkpoint_root.empty()) {
+    return absl::InvalidArgumentError(
+        "checkpoint_dir must not be empty when checkpoint_every is positive");
+  }
+
+  ASSIGN_OR_RETURN(auto corpus, LoadTextCorpus(CorpusPath()));
+  ASSIGN_OR_RETURN(auto tokenizer_directory, TokenizerDirectory());
+  ASSIGN_OR_RETURN(auto tokenizer, Gpt2Tokenizer::Load(tokenizer_directory));
+  if (tokenizer->vocab_size() != kGpt2VocabularySize) {
+    return absl::FailedPreconditionError(absl::StrCat(
+        "the model requires the GPT-2 vocabulary of ", kGpt2VocabularySize,
+        " tokens; encoder reports ", tokenizer->vocab_size()));
+  }
+
+  const ModelConfig config{.batch_size = absl::GetFlag(FLAGS_batch_size)};
+  RETURN_IF_ERROR(config.Validate());
+  const InMemoryDataSetOptions training_source_options{
+      .batch_size = config.token_batch_size(),
+      .context_length = kGpt2ContextLength,
+      .order = InMemoryDataSetOrder::kRandom,
+      .seed = static_cast<uint64_t>(absl::GetFlag(FLAGS_seed)),
+  };
+  const InMemoryDataSetOptions evaluation_source_options{
+      .batch_size = config.token_batch_size(),
+      .context_length = kGpt2ContextLength,
+      .order = InMemoryDataSetOrder::kSequential,
+      .seed = static_cast<uint64_t>(absl::GetFlag(FLAGS_seed)),
+  };
+  ASSIGN_OR_RETURN(auto training_source,
+                   MakeInMemoryDataSetIterator(executor, corpus, *tokenizer,
+                                               training_source_options));
+  ASSIGN_OR_RETURN(auto evaluation_source,
+                   MakeInMemoryDataSetIterator(executor, corpus, *tokenizer,
+                                               evaluation_source_options));
+
+  ASSIGN_OR_RETURN(auto activation_generator,
+                   CreateActivationGenerator(
+                       executor, kSparseAutoEncoderActivationBlockCount,
+                       DataType::BF16, absl::GetFlag(FLAGS_seed)));
+  ASSIGN_OR_RETURN(auto training_activations,
+                   SparseAutoEncoderDataSetIterator::Create(
+                       executor, *activation_generator, *training_source,
+                       gpt2_checkpoint.directory));
+  ASSIGN_OR_RETURN(auto evaluation_activations,
+                   SparseAutoEncoderDataSetIterator::Create(
+                       executor, *activation_generator, *evaluation_source,
+                       gpt2_checkpoint.directory));
+
+  ASSIGN_OR_RETURN(auto autoencoder,
+                   SparseAutoEncoderLayer::Create(
+                       executor, kGpt2ModelWidth,
+                       kSparseAutoEncoderFeatureDimension, DataType::BF16));
+  RETURN_IF_ERROR(autoencoder->InitializeNormal(
+      1.0f / std::sqrt(static_cast<float>(kGpt2ModelWidth)),
+      static_cast<uint64_t>(absl::GetFlag(FLAGS_seed)) + 20'000));
+  ASSIGN_OR_RETURN(
+      auto loss_layer,
+      SparseAutoEncoderLossLayer::Create(
+          executor, kGpt2ModelWidth, kSparseAutoEncoderFeatureDimension,
+          kSparseAutoEncoderPenalty, DataType::BF16));
+  ASSIGN_OR_RETURN(
+      auto optimizer,
+      Optimizer::Create(executor, *autoencoder, OptimizerConfigFromFlags()));
+
+  const int eval_batches = absl::GetFlag(FLAGS_eval_batches);
+  const EvaluationOptions evaluation_options{.batches = eval_batches};
+  ASSIGN_OR_RETURN(double initial_loss,
+                   Evaluate(executor, *autoencoder, *loss_layer,
+                            *evaluation_activations, evaluation_options));
+  logger << "mode: sparse autoencoder training\n"
+         << "GPT-2 checkpoint: " << gpt2_checkpoint.directory.string()
+         << " (step " << gpt2_checkpoint.step << ")\n"
+         << "activation tap: after transformer block "
+         << kSparseAutoEncoderActivationBlockCount << '\n'
+         << "SAE dimensions: d=" << kGpt2ModelWidth
+         << ", m=" << kSparseAutoEncoderFeatureDimension
+         << ", sparsity penalty=" << kSparseAutoEncoderPenalty << '\n'
+         << "batch: " << config.batch_size << " sequences ("
+         << config.token_batch_size() << " activations)\n"
+         << "corpus tokens: " << training_source->token_count() << '\n'
+         << "initial loss per activation: " << initial_loss << '\n';
+
+  TrainingOptions training_options{
+      .max_steps = absl::GetFlag(FLAGS_steps),
+      .evaluation_interval = absl::GetFlag(FLAGS_training_eval_interval),
+      .evaluation_batches = eval_batches,
+      .stop_loss = absl::GetFlag(FLAGS_train_until_loss),
+      .evaluation_tokens = evaluation_activations.get(),
+      .initial_loss = initial_loss,
+      .evaluation_callback =
+          [&logger](int steps_completed, double loss) {
+            logger << '[' << CurrentTimestamp() << "] SAE loss after "
+                   << steps_completed << " steps: " << loss << '\n';
+          },
+  };
+  if (checkpoint_every > 0) {
+    training_options.step_callback =
+        [&executor, &logger, autoencoder_ptr = autoencoder.get(),
+         checkpoint_every,
+         checkpoint_root](int steps_completed) -> absl::Status {
+      if (steps_completed % checkpoint_every != 0) {
+        return absl::OkStatus();
+      }
+      const std::filesystem::path checkpoint =
+          checkpoint_root / absl::StrCat("step_", steps_completed);
+      RETURN_IF_ERROR(WriteToDirectory(executor, *autoencoder_ptr, checkpoint));
+      logger << '[' << CurrentTimestamp()
+             << "] wrote SAE checkpoint: " << checkpoint.string() << '\n';
+      return absl::OkStatus();
+    };
+  }
+  ASSIGN_OR_RETURN(auto training_result,
+                   Train(executor, *autoencoder, *loss_layer, *optimizer,
+                         *training_activations, training_options));
+  ASSIGN_OR_RETURN(double final_loss,
+                   Evaluate(executor, *autoencoder, *loss_layer,
+                            *evaluation_activations, evaluation_options));
+  logger << "SAE training stopped at step: " << training_result.steps_completed
+         << '\n'
+         << "final loss per activation: " << final_loss << '\n';
+  return absl::OkStatus();
+}
+
 absl::Status RunInference(cuda::Executor& executor,
                           const std::filesystem::path& checkpoint_path) {
   ASSIGN_OR_RETURN(const CheckpointInfo checkpoint,
@@ -440,9 +601,18 @@ absl::Status Run(cuda::Executor& executor) {
   const std::filesystem::path resume_from = absl::GetFlag(FLAGS_resume_from);
   const std::filesystem::path inference_from =
       absl::GetFlag(FLAGS_inference_from);
-  if (!resume_from.empty() && !inference_from.empty()) {
+  const std::filesystem::path sparse_autoencoder_from =
+      absl::GetFlag(FLAGS_sparse_autoencoder_from);
+  const int selected_modes = static_cast<int>(!resume_from.empty()) +
+                             static_cast<int>(!inference_from.empty()) +
+                             static_cast<int>(!sparse_autoencoder_from.empty());
+  if (selected_modes > 1) {
     return absl::InvalidArgumentError(
-        "resume_from and inference_from are mutually exclusive");
+        "resume_from, inference_from, and sparse_autoencoder_from are "
+        "mutually exclusive");
+  }
+  if (!sparse_autoencoder_from.empty()) {
+    return RunSparseAutoEncoderTraining(executor, sparse_autoencoder_from);
   }
   if (!inference_from.empty()) {
     return RunInference(executor, inference_from);

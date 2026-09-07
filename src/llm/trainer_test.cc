@@ -2,6 +2,7 @@
 
 #include <cuda_runtime.h>
 
+#include <cmath>
 #include <limits>
 #include <memory>
 #include <numeric>
@@ -16,6 +17,7 @@
 #include "src/cuda/executor.h"
 #include "src/dataset/dataset.h"
 #include "src/llm/layer.h"
+#include "src/llm/layers/sparse_autoencoder.h"
 #include "src/llm/optimizer.h"
 
 namespace pluto::llm {
@@ -108,6 +110,29 @@ class FakeOptimizer final : public Optimizer {
   int steps = 0;
 };
 
+class FixedActivationDataSetIterator final : public DataSetIterator {
+ public:
+  FixedActivationDataSetIterator(Buffer data, int32_t batch_size)
+      : data_(std::move(data)), batch_size_(batch_size) {}
+
+  absl::StatusOr<DataBatch> Next() override {
+    ++next_calls;
+    return DataBatch{.data = data_, .batch_size = batch_size_};
+  }
+
+  absl::Status Reset() override {
+    ++reset_calls;
+    return absl::OkStatus();
+  }
+
+  int next_calls = 0;
+  int reset_calls = 0;
+
+ private:
+  Buffer data_;
+  int32_t batch_size_;
+};
+
 class TrainerTest : public testing::Test {
  protected:
   void SetUp() override {
@@ -197,6 +222,59 @@ TEST_F(TrainerTest, TrainRunsForwardBackwardAndOptimizerSteps) {
   EXPECT_EQ((*loss)->backward_calls, 3);
   EXPECT_EQ(optimizer.zero_grad_calls, 1);
   EXPECT_EQ(optimizer.steps, 3);
+}
+
+TEST_F(TrainerTest, TrainsAndEvaluatesSparseAutoEncoderDataBatches) {
+  constexpr int kRows = 16;
+  constexpr int kInputDimension = 16;
+  constexpr int kFeatureDimension = 32;
+  std::vector<float> host_activations(kRows * kInputDimension);
+  for (size_t index = 0; index < host_activations.size(); ++index) {
+    host_activations[index] =
+        static_cast<float>(static_cast<int>(index % 13) - 6) / 8.0f;
+  }
+  auto activations =
+      Buffer::Allocate(*executor_, host_activations.size() * sizeof(float));
+  ASSERT_TRUE(activations.ok()) << activations.status();
+  ASSERT_EQ(cudaMemcpyAsync(activations->data(), host_activations.data(),
+                            activations->size_bytes(), cudaMemcpyHostToDevice,
+                            executor_->stream()),
+            cudaSuccess);
+
+  auto model = SparseAutoEncoderLayer::Create(
+      *executor_, kInputDimension, kFeatureDimension, DataType::FP16);
+  auto loss = SparseAutoEncoderLossLayer::Create(
+      *executor_, kInputDimension, kFeatureDimension, 0.5f, DataType::FP16);
+  ASSERT_TRUE(model.ok()) << model.status();
+  ASSERT_TRUE(loss.ok()) << loss.status();
+  ASSERT_TRUE((*model)->InitializeNormal(0.05f, 19).ok());
+  FixedActivationDataSetIterator data(*activations, kRows);
+
+  auto initial = Evaluate(*executor_, **model, **loss, data,
+                          EvaluationOptions{.batches = 1});
+  ASSERT_TRUE(initial.ok()) << initial.status();
+  EXPECT_TRUE(std::isfinite(*initial));
+  EXPECT_GE(*initial, 0.0);
+
+  FakeOptimizer optimizer;
+  std::vector<int> evaluation_steps;
+  auto result = Train(*executor_, **model, **loss, optimizer, data,
+                      TrainingOptions{
+                          .max_steps = 2,
+                          .evaluation_interval = 1,
+                          .evaluation_batches = 1,
+                          .evaluation_callback =
+                              [&](int step, double value) {
+                                evaluation_steps.push_back(step);
+                                EXPECT_TRUE(std::isfinite(value));
+                                EXPECT_GE(value, 0.0);
+                              },
+                      });
+  ASSERT_TRUE(result.ok()) << result.status();
+  EXPECT_EQ(result->steps_completed, 2);
+  EXPECT_EQ(optimizer.zero_grad_calls, 1);
+  EXPECT_EQ(optimizer.steps, 2);
+  EXPECT_EQ(evaluation_steps, (std::vector<int>{1, 2}));
 }
 
 TEST_F(TrainerTest, StopsBeforeFirstUpdateWhenInitialEvaluationQualifies) {

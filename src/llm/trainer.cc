@@ -16,6 +16,7 @@
 #include "src/cuda/executor.h"
 #include "src/dataset/dataset.h"
 #include "src/llm/layer.h"
+#include "src/llm/layers/sparse_autoencoder.h"
 #include "src/llm/optimizer.h"
 #include "src/util/status_macros.h"
 
@@ -115,6 +116,43 @@ absl::Status ValidateTrainingOptions(const TrainingOptions& options) {
         "initial_loss must be finite and non-negative");
   }
   return absl::OkStatus();
+}
+
+absl::Status ValidateSparseAutoEncoderBatch(cuda::Executor& executor,
+                                            const SparseAutoEncoderLayer& model,
+                                            const DataBatch& batch) {
+  if (batch.batch_size <= 0) {
+    return absl::InvalidArgumentError(
+        "sparse-autoencoder dataset returned an empty batch");
+  }
+  if (&batch.data.executor() != &executor) {
+    return absl::InvalidArgumentError(
+        "sparse-autoencoder dataset belongs to a different executor");
+  }
+  const size_t element_bytes =
+      model.output_type() == DataType::BF16 ? sizeof(uint16_t) : sizeof(float);
+  const size_t expected_bytes =
+      static_cast<size_t>(batch.batch_size) * model.input_dim() * element_bytes;
+  if (batch.data.size_bytes() != expected_bytes) {
+    return absl::InvalidArgumentError(
+        "sparse-autoencoder dataset data does not match batch_size and "
+        "input_dim");
+  }
+  return absl::OkStatus();
+}
+
+absl::StatusOr<Buffer> ForwardSparseAutoEncoderLoss(
+    cuda::Executor& executor, const SparseAutoEncoderLayer& model,
+    const SparseAutoEncoderLossLayer& loss_layer, const DataBatch& batch,
+    Tape* model_tape, Tape* loss_tape) {
+  RETURN_IF_ERROR(ValidateSparseAutoEncoderBatch(executor, model, batch));
+  BufferVec model_inputs = {batch.data};
+  ASSIGN_OR_RETURN(auto reconstruction,
+                   model.fwd(executor, model_inputs, model_tape));
+  ASSIGN_OR_RETURN(auto latents, model.latent_activations(*model_tape));
+  BufferVec loss_inputs = {batch.data, reconstruction, latents,
+                           model.decoder()};
+  return loss_layer.fwd(executor, loss_inputs, loss_tape);
 }
 
 }  // namespace
@@ -226,6 +264,127 @@ absl::StatusOr<TrainingResult> Train(cuda::Executor& executor, Layer& model,
       ASSIGN_OR_RETURN(
           double training_loss,
           Evaluate(executor, model, loss_layer, evaluation_tokens,
+                   EvaluationOptions{.batches = options.evaluation_batches}));
+      if (options.evaluation_callback) {
+        options.evaluation_callback(steps_completed, training_loss);
+      }
+      if (options.stop_loss >= 0.0 && training_loss <= options.stop_loss) {
+        return TrainingResult{.steps_completed = steps_completed,
+                              .reached_stop_loss = true};
+      }
+    }
+  }
+  RETURN_IF_ERROR(executor.Synchronize());
+  return TrainingResult{.steps_completed = steps_completed,
+                        .reached_stop_loss = false};
+}
+
+absl::StatusOr<double> Evaluate(cuda::Executor& executor,
+                                const SparseAutoEncoderLayer& model,
+                                const SparseAutoEncoderLossLayer& loss_layer,
+                                DataSetIterator& eval_activations,
+                                const EvaluationOptions& options) {
+  if (options.batches <= 0) {
+    return absl::InvalidArgumentError("evaluation batches must be positive");
+  }
+  RETURN_IF_ERROR(eval_activations.Reset());
+
+  double loss_sum = 0.0;
+  size_t activation_count = 0;
+  for (int index = 0; index < options.batches; ++index) {
+    ASSIGN_OR_RETURN(DataBatch batch, eval_activations.Next());
+    Tape model_tape;
+    Tape loss_tape;
+    ASSIGN_OR_RETURN(auto loss, ForwardSparseAutoEncoderLoss(
+                                    executor, model, loss_layer, batch,
+                                    &model_tape, &loss_tape));
+    ASSIGN_OR_RETURN(double batch_loss, CopyLossSum(executor, loss, 1));
+    loss_sum += batch_loss;
+    activation_count += batch.batch_size;
+  }
+  return loss_sum / activation_count;
+}
+
+absl::StatusOr<TrainingResult> Train(cuda::Executor& executor,
+                                     SparseAutoEncoderLayer& model,
+                                     SparseAutoEncoderLossLayer& loss_layer,
+                                     Optimizer& optimizer,
+                                     DataSetIterator& training_activations,
+                                     const TrainingOptions& options) {
+  RETURN_IF_ERROR(ValidateTrainingOptions(options));
+  DataSetIterator& evaluation_activations = options.evaluation_tokens == nullptr
+                                                ? training_activations
+                                                : *options.evaluation_tokens;
+
+  if (options.stop_loss >= 0.0) {
+    double initial_loss;
+    if (options.initial_loss.has_value()) {
+      initial_loss = *options.initial_loss;
+    } else {
+      ASSIGN_OR_RETURN(
+          initial_loss,
+          Evaluate(executor, model, loss_layer, evaluation_activations,
+                   EvaluationOptions{.batches = options.evaluation_batches}));
+      if (options.evaluation_callback) {
+        options.evaluation_callback(options.initial_step, initial_loss);
+      }
+    }
+    if (initial_loss <= options.stop_loss) {
+      return TrainingResult{.steps_completed = options.initial_step,
+                            .reached_stop_loss = true};
+    }
+  }
+
+  RETURN_IF_ERROR(training_activations.Reset());
+  RETURN_IF_ERROR(optimizer.ZeroGrad());
+  const bool has_step_limit = options.max_steps != kUnlimitedTrainingSteps;
+  int updates_completed = 0;
+  int steps_completed = options.initial_step;
+  while (!has_step_limit || updates_completed < options.max_steps) {
+    if (steps_completed == std::numeric_limits<int>::max()) {
+      return absl::OutOfRangeError("training step number overflowed");
+    }
+    ASSIGN_OR_RETURN(DataBatch batch, training_activations.Next());
+    Tape model_tape;
+    Tape loss_tape;
+    ASSIGN_OR_RETURN(auto loss, ForwardSparseAutoEncoderLoss(
+                                    executor, model, loss_layer, batch,
+                                    &model_tape, &loss_tape));
+    if (loss.size_bytes() != sizeof(float)) {
+      return absl::InvalidArgumentError(
+          "sparse-autoencoder loss must return one FP32 scalar");
+    }
+    ASSIGN_OR_RETURN(auto loss_gradients,
+                     loss_layer.bwd(executor, {}, std::move(loss_tape)));
+    if (loss_gradients.size() != 4) {
+      return absl::InternalError(
+          "sparse-autoencoder loss must return gradients for x, x1, z, and D");
+    }
+    // The activation generator is frozen, so dL/dx is intentionally dropped.
+    // The remaining gradients match SparseAutoEncoderLayer's documented
+    // auxiliary backward inputs.
+    BufferVec model_gradients = {loss_gradients[1], loss_gradients[2],
+                                 loss_gradients[3]};
+    ASSIGN_OR_RETURN(auto input_gradient, model.bwd(executor, model_gradients,
+                                                    std::move(model_tape)));
+    (void)input_gradient;
+    RETURN_IF_ERROR(optimizer.Step());
+    ++updates_completed;
+    ++steps_completed;
+    if (options.step_callback) {
+      RETURN_IF_ERROR(options.step_callback(steps_completed));
+    }
+
+    const bool evaluation_enabled =
+        options.stop_loss >= 0.0 || options.evaluation_callback;
+    const bool should_evaluate =
+        evaluation_enabled &&
+        (steps_completed % options.evaluation_interval == 0 ||
+         (has_step_limit && updates_completed == options.max_steps));
+    if (should_evaluate) {
+      ASSIGN_OR_RETURN(
+          double training_loss,
+          Evaluate(executor, model, loss_layer, evaluation_activations,
                    EvaluationOptions{.batches = options.evaluation_batches}));
       if (options.evaluation_callback) {
         options.evaluation_callback(steps_completed, training_loss);
