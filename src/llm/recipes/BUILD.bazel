@@ -39,12 +39,37 @@ cc_test(
     ],
 )
 
+cc_library(
+    name = "gpt2_shakespeare_cli",
+    srcs = ["gpt2_shakespeare_cli.cc"],
+    hdrs = ["gpt2_shakespeare_cli.h"],
+    visibility = ["//visibility:private"],
+    deps = [
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "gpt2_shakespeare_cli_test",
+    size = "small",
+    srcs = ["gpt2_shakespeare_cli_test.cc"],
+    deps = [
+        ":gpt2_shakespeare_cli",
+        "@abseil-cpp//absl/status",
+        "@googletest//:gtest_main",
+    ],
+)
+
 cc_binary(
     name = "gpt2_shakespeare_llm",
     srcs = ["gpt2_shakespeare_llm.cc"],
     data = ["//testdata:shakespeare.txt"],
     deps = [
         ":gpt2",
+        ":gpt2_shakespeare_cli",
         ":sparse_autoencoder_dataset",
         "//src/cuda:buffer",
         "//src/cuda:executor",
@@ -75,6 +100,7 @@ cc_test(
     timeout = "long",
     srcs = ["gpt2_shakespeare_llm.cc"],
     args = [
+        "--mode=train_model",
         "--batch_size=2",
         "--eval_batches=1",
         "--steps=0",
@@ -86,6 +112,7 @@ cc_test(
     ],
     deps = [
         ":gpt2",
+        ":gpt2_shakespeare_cli",
         ":sparse_autoencoder_dataset",
         "//src/cuda:buffer",
         "//src/cuda:executor",
@@ -118,6 +145,7 @@ cc_test(
     timeout = "moderate",
     srcs = ["gpt2_shakespeare_llm.cc"],
     args = [
+        "--mode=train_model",
         "--eval_batches=1",
         "--steps=10",
         "--train_until_loss=20",
@@ -129,6 +157,7 @@ cc_test(
     ],
     deps = [
         ":gpt2",
+        ":gpt2_shakespeare_cli",
         ":sparse_autoencoder_dataset",
         "//src/cuda:buffer",
         "//src/cuda:executor",

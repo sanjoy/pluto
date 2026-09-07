@@ -18,6 +18,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "src/cuda/buffer.h"
@@ -32,24 +33,27 @@
 #include "src/llm/layers/sparse_autoencoder.h"
 #include "src/llm/optimizer.h"
 #include "src/llm/recipes/gpt2.h"
+#include "src/llm/recipes/gpt2_shakespeare_cli.h"
 #include "src/llm/recipes/sparse_autoencoder_dataset.h"
 #include "src/llm/trainer.h"
 #include "src/util/status_macros.h"
 #include "src/util/tee_stream.h"
 
+ABSL_FLAG(std::string, mode, "",
+          "Required run mode: train_model, infer_model, or train_sae");
 ABSL_FLAG(std::string, corpus, "",
           "Shakespeare corpus path; defaults to the Bazel testdata runfile");
 ABSL_FLAG(std::string, tokenizer_dir, "",
           "GPT-2 tokenizer directory; defaults to "
           "PLUTO_GPT2_TOKENIZER_DIR");
 ABSL_FLAG(std::string, resume_from, "",
-          "Parent directory whose numerically latest step_N resumes training");
+          "Parent directory whose latest valid step_N resumes model or SAE "
+          "training");
 ABSL_FLAG(std::string, inference_from, "",
-          "Exact step_N checkpoint directory to load for inference; selecting "
-          "this mode disables training");
+          "Exact model step_N checkpoint required by infer_model");
 ABSL_FLAG(std::string, sparse_autoencoder_from, "",
-          "Exact GPT-2 step_N checkpoint used to generate fourth-block "
-          "activations while training a sparse autoencoder");
+          "Exact GPT-2 step_N checkpoint required by train_sae to generate "
+          "fourth-block activations");
 ABSL_FLAG(std::string, checkpoint_dir, "",
           "Root directory for periodic step_N checkpoint directories");
 ABSL_FLAG(int, checkpoint_every, 0,
@@ -91,6 +95,45 @@ constexpr int kSparseAutoEncoderFeatureDimension = 8 * kGpt2ModelWidth;
 constexpr float kSparseAutoEncoderPenalty = 0.5f;
 static_assert(kSparseAutoEncoderActivationBlockCount <=
               kGpt2TransformerBlockCount);
+
+template <class T>
+void AddIfExplicitlySet(const absl::Flag<T>& flag,
+                        std::vector<absl::string_view>* names) {
+  if (flag.IsSpecifiedOnCommandLine()) names->push_back(flag.Name());
+}
+
+// Validates only explicit command-line uses. Defaults for flags owned by other
+// modes are harmless because the selected mode never reads them.
+absl::StatusOr<Gpt2ShakespeareMode> ParseAndValidateRunMode() {
+  ASSIGN_OR_RETURN(auto mode,
+                   ParseGpt2ShakespeareMode(absl::GetFlag(FLAGS_mode)));
+  std::vector<absl::string_view> explicitly_set;
+  AddIfExplicitlySet(FLAGS_corpus, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_resume_from, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_inference_from, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_sparse_autoencoder_from, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_checkpoint_dir, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_checkpoint_every, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_steps, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_learning_rate, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_adam_beta1, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_adam_beta2, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_adam_epsilon, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_weight_decay, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_eval_batches, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_test_fraction, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_train_until_loss, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_training_eval_interval, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_prompt, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_generation_tokens, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_temperature, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_batch_size, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_log_file, &explicitly_set);
+  RETURN_IF_ERROR(ValidateGpt2ShakespeareModeFlags(
+      mode, explicitly_set, absl::GetFlag(FLAGS_inference_from),
+      absl::GetFlag(FLAGS_sparse_autoencoder_from)));
+  return mode;
+}
 
 std::string CurrentTimestamp() {
   return absl::FormatTime("%Y-%m-%d %H:%M:%S UTC", absl::Now(),
@@ -422,8 +465,8 @@ absl::Status RunTraining(cuda::Executor& executor,
 }
 
 absl::Status RunSparseAutoEncoderTraining(
-    cuda::Executor& executor,
-    const std::filesystem::path& gpt2_checkpoint_path) {
+    cuda::Executor& executor, const std::filesystem::path& gpt2_checkpoint_path,
+    const std::filesystem::path& resume_from) {
   ASSIGN_OR_RETURN(const CheckpointInfo gpt2_checkpoint,
                    InspectCheckpointDirectory(gpt2_checkpoint_path));
   const std::string log_path = absl::GetFlag(FLAGS_log_file);
@@ -439,8 +482,10 @@ absl::Status RunSparseAutoEncoderTraining(
   logger << "training log: " << log_path << '\n';
 
   const int checkpoint_every = absl::GetFlag(FLAGS_checkpoint_every);
-  const std::filesystem::path checkpoint_root =
-      absl::GetFlag(FLAGS_checkpoint_dir);
+  std::filesystem::path checkpoint_root = absl::GetFlag(FLAGS_checkpoint_dir);
+  if (checkpoint_root.empty() && !resume_from.empty()) {
+    checkpoint_root = resume_from;
+  }
   if (checkpoint_every < 0) {
     return absl::InvalidArgumentError("checkpoint_every must be non-negative");
   }
@@ -499,6 +544,24 @@ absl::Status RunSparseAutoEncoderTraining(
   RETURN_IF_ERROR(autoencoder->InitializeNormal(
       1.0f / std::sqrt(static_cast<float>(kGpt2ModelWidth)),
       static_cast<uint64_t>(absl::GetFlag(FLAGS_seed)) + 20'000));
+  int initial_step = 0;
+  if (!resume_from.empty()) {
+    ASSIGN_OR_RETURN(const CheckpointInfo checkpoint,
+                     ReadLatestCheckpoint(
+                         executor, *autoencoder, resume_from,
+                         [&logger](const CheckpointInfo& malformed,
+                                   const absl::Status& status) {
+                           logger << '[' << CurrentTimestamp()
+                                  << "] WARNING: cannot load SAE checkpoint "
+                                  << malformed.directory.string() << " (step "
+                                  << malformed.step << "): " << status
+                                  << "; trying the previous checkpoint\n";
+                         }));
+    initial_step = checkpoint.step;
+    logger << '[' << CurrentTimestamp()
+           << "] resumed SAE from checkpoint: " << checkpoint.directory.string()
+           << " (step " << initial_step << ")\n";
+  }
   ASSIGN_OR_RETURN(
       auto loss_layer,
       SparseAutoEncoderLossLayer::Create(
@@ -527,10 +590,12 @@ absl::Status RunSparseAutoEncoderTraining(
          << "batch: " << config.batch_size << " sequences ("
          << config.token_batch_size() << " activations)\n"
          << "corpus tokens: " << training_source->token_count() << '\n'
+         << "starting SAE step: " << initial_step << '\n'
          << "initial loss per activation: " << initial_loss << '\n';
 
   TrainingOptions training_options{
       .max_steps = absl::GetFlag(FLAGS_steps),
+      .initial_step = initial_step,
       .evaluation_interval = absl::GetFlag(FLAGS_training_eval_interval),
       .evaluation_batches = eval_batches,
       .stop_loss = absl::GetFlag(FLAGS_train_until_loss),
@@ -633,27 +698,18 @@ absl::Status RunInference(cuda::Executor& executor,
   return absl::OkStatus();
 }
 
-absl::Status Run(cuda::Executor& executor) {
+absl::Status Run(cuda::Executor& executor, Gpt2ShakespeareMode mode) {
   const std::filesystem::path resume_from = absl::GetFlag(FLAGS_resume_from);
-  const std::filesystem::path inference_from =
-      absl::GetFlag(FLAGS_inference_from);
-  const std::filesystem::path sparse_autoencoder_from =
-      absl::GetFlag(FLAGS_sparse_autoencoder_from);
-  const int selected_modes = static_cast<int>(!resume_from.empty()) +
-                             static_cast<int>(!inference_from.empty()) +
-                             static_cast<int>(!sparse_autoencoder_from.empty());
-  if (selected_modes > 1) {
-    return absl::InvalidArgumentError(
-        "resume_from, inference_from, and sparse_autoencoder_from are "
-        "mutually exclusive");
+  switch (mode) {
+    case Gpt2ShakespeareMode::kTrainModel:
+      return RunTraining(executor, resume_from);
+    case Gpt2ShakespeareMode::kInferModel:
+      return RunInference(executor, absl::GetFlag(FLAGS_inference_from));
+    case Gpt2ShakespeareMode::kTrainSparseAutoEncoder:
+      return RunSparseAutoEncoderTraining(
+          executor, absl::GetFlag(FLAGS_sparse_autoencoder_from), resume_from);
   }
-  if (!sparse_autoencoder_from.empty()) {
-    return RunSparseAutoEncoderTraining(executor, sparse_autoencoder_from);
-  }
-  if (!inference_from.empty()) {
-    return RunInference(executor, inference_from);
-  }
-  return RunTraining(executor, resume_from);
+  return absl::InternalError("unknown GPT-2 Shakespeare run mode");
 }
 
 }  // namespace
@@ -665,12 +721,17 @@ int main(int argc, char** argv) {
     std::cerr << "This binary accepts flags only.\n";
     return 2;
   }
+  auto mode = pluto::llm::ParseAndValidateRunMode();
+  if (!mode.ok()) {
+    std::cerr << mode.status() << '\n';
+    return 2;
+  }
   auto executor = pluto::cuda::Executor::Create();
   if (!executor.ok()) {
     std::cerr << executor.status() << '\n';
     return 1;
   }
-  const absl::Status status = pluto::llm::Run(**executor);
+  const absl::Status status = pluto::llm::Run(**executor, *mode);
   // Run() destroys every Buffer, queueing stream-ordered frees before this
   // synchronization. Executor destruction then releases the native stream.
   const absl::Status sync_status = (*executor)->Synchronize();

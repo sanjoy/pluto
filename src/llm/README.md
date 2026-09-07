@@ -65,7 +65,10 @@ training and held-out evaluation.
 
 The binary uses the repository's GPT-2 tokenizer library. Point it at a
 save_pretrained tokenizer directory with PLUTO_GPT2_TOKENIZER_DIR or
---tokenizer_dir.
+--tokenizer_dir. Every invocation requires exactly one explicit mode:
+`--mode=train_model`, `--mode=infer_model`, or `--mode=train_sae`. Flags that
+do not apply to the selected mode are rejected instead of being silently
+ignored.
 
 ```sh
 PLUTO_GPT2_TOKENIZER_DIR=/path/to/gpt2 bazel test //src/llm/recipes:gpt2_shakespeare_llm_test --test_output=streamed
@@ -75,7 +78,7 @@ Training mode only trains and evaluates; it never generates text or starts a
 prompt loop. With no step limit it runs until interrupted:
 
 ```sh
-PLUTO_GPT2_TOKENIZER_DIR=/path/to/gpt2 bazel run //src/llm/recipes:gpt2_shakespeare_llm
+PLUTO_GPT2_TOKENIZER_DIR=/path/to/gpt2 bazel run //src/llm/recipes:gpt2_shakespeare_llm -- --mode=train_model
 ```
 
 The corpus is encoded with GPT-2 BPE and split chronologically into training
@@ -90,20 +93,20 @@ of the resulting loss. To stop early at a requested training loss, optionally
 with a hard update cap:
 
 ```sh
-PLUTO_GPT2_TOKENIZER_DIR=/path/to/gpt2 bazel run //src/llm/recipes:gpt2_shakespeare_llm -- --train_until_loss=0 --steps=100000 --training_eval_interval=100
+PLUTO_GPT2_TOKENIZER_DIR=/path/to/gpt2 bazel run //src/llm/recipes:gpt2_shakespeare_llm -- --mode=train_model --train_until_loss=0 --steps=100000 --training_eval_interval=100
 ```
 
 To write model weights every 100 completed optimizer steps:
 
 ```sh
-PLUTO_GPT2_TOKENIZER_DIR=/path/to/gpt2 bazel run //src/llm/recipes:gpt2_shakespeare_llm -- --steps=1200 --checkpoint_dir=/home/ubuntu/checkpoints/shakespeare --checkpoint_every=100
+PLUTO_GPT2_TOKENIZER_DIR=/path/to/gpt2 bazel run //src/llm/recipes:gpt2_shakespeare_llm -- --mode=train_model --steps=1200 --checkpoint_dir=/home/ubuntu/checkpoints/shakespeare --checkpoint_every=100
 ```
 
 This creates `step_100`, `step_200`, and so on beneath the checkpoint
 directory. To resume, pass the parent directory rather than a particular step:
 
 ```sh
-PLUTO_GPT2_TOKENIZER_DIR=/path/to/gpt2 bazel run //src/llm/recipes:gpt2_shakespeare_llm -- --resume_from=/home/ubuntu/checkpoints/shakespeare --steps=630 --checkpoint_every=100
+PLUTO_GPT2_TOKENIZER_DIR=/path/to/gpt2 bazel run //src/llm/recipes:gpt2_shakespeare_llm -- --mode=train_model --resume_from=/home/ubuntu/checkpoints/shakespeare --steps=630 --checkpoint_every=100
 ```
 
 The numerically largest direct child named `step_N` is loaded. If that is
@@ -115,7 +118,7 @@ checkpoints elsewhere.
 Inference takes the exact checkpoint directory, not its parent:
 
 ```sh
-PLUTO_GPT2_TOKENIZER_DIR=/path/to/gpt2 bazel run //src/llm/recipes:gpt2_shakespeare_llm -- --inference_from=/home/ubuntu/checkpoints/shakespeare/step_570
+PLUTO_GPT2_TOKENIZER_DIR=/path/to/gpt2 bazel run //src/llm/recipes:gpt2_shakespeare_llm -- --mode=infer_model --inference_from=/home/ubuntu/checkpoints/shakespeare/step_570
 ```
 
 This starts an inference-only prompt loop. Pass `--prompt='To be'` for one
@@ -130,8 +133,12 @@ Shakespeare corpus, 4,096 features (eight times GPT-2's hidden width), and a
 sparsity penalty of 0.5:
 
 ```sh
-PLUTO_GPT2_TOKENIZER_DIR=/path/to/gpt2 bazel run //src/llm/recipes:gpt2_shakespeare_llm -- --sparse_autoencoder_from=/home/ubuntu/checkpoints/shakespeare/step_570
+PLUTO_GPT2_TOKENIZER_DIR=/path/to/gpt2 bazel run //src/llm/recipes:gpt2_shakespeare_llm -- --mode=train_sae --sparse_autoencoder_from=/home/ubuntu/checkpoints/shakespeare/step_570
 ```
 
 The usual training, evaluation, optimizer, logging, step-limit, and checkpoint
 flags apply. Checkpoints written in this mode contain only the SAE weights.
+To resume SAE training, keep `--sparse_autoencoder_from` pointed at the exact
+GPT-2 checkpoint and pass the parent of the SAE `step_N` directories through
+`--resume_from`. As with model training, the latest valid SAE checkpoint is
+loaded and malformed newer checkpoints are skipped with a warning.
