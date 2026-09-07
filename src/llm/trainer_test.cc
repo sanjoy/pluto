@@ -174,16 +174,17 @@ TEST_F(TrainerTest, EvaluateAveragesLossesAndResetsDataset) {
   auto data = MakeData();
   ASSERT_TRUE(loss.ok()) << loss.status();
   ASSERT_TRUE(data.ok()) << data.status();
+  LanguageModelingObjective objective(model, **loss);
 
-  auto mean = Evaluate(*executor_, model, **loss, **data,
-                       EvaluationOptions{.batches = 2});
+  auto mean =
+      Evaluate(*executor_, objective, **data, EvaluationOptions{.batches = 2});
   ASSERT_TRUE(mean.ok()) << mean.status();
   EXPECT_DOUBLE_EQ(*mean, 2.5);
   EXPECT_EQ(model.forward_calls, 2);
   EXPECT_EQ((*loss)->forward_calls, 2);
 
-  auto repeated = Evaluate(*executor_, model, **loss, **data,
-                           EvaluationOptions{.batches = 2});
+  auto repeated =
+      Evaluate(*executor_, objective, **data, EvaluationOptions{.batches = 2});
   ASSERT_TRUE(repeated.ok()) << repeated.status();
   EXPECT_DOUBLE_EQ(*repeated, *mean);
 }
@@ -196,8 +197,9 @@ TEST_F(TrainerTest, EvaluateRejectsADatasetFromAnotherExecutor) {
   ASSERT_TRUE(loss.ok()) << loss.status();
   ASSERT_TRUE(data.ok()) << data.status();
   ASSERT_TRUE(other_executor.ok()) << other_executor.status();
+  LanguageModelingObjective objective(model, **loss);
 
-  const auto mean = Evaluate(**other_executor, model, **loss, **data,
+  const auto mean = Evaluate(**other_executor, objective, **data,
                              EvaluationOptions{.batches = 1});
   EXPECT_FALSE(mean.ok());
   EXPECT_EQ(mean.status().code(), absl::StatusCode::kInvalidArgument);
@@ -210,8 +212,9 @@ TEST_F(TrainerTest, TrainRunsForwardBackwardAndOptimizerSteps) {
   auto data = MakeData();
   ASSERT_TRUE(loss.ok()) << loss.status();
   ASSERT_TRUE(data.ok()) << data.status();
+  LanguageModelingObjective objective(model, **loss);
 
-  auto result = Train(*executor_, model, **loss, optimizer, **data,
+  auto result = Train(*executor_, objective, optimizer, **data,
                       TrainingOptions{.max_steps = 3});
   ASSERT_TRUE(result.ok()) << result.status();
   EXPECT_EQ(result->steps_completed, 3);
@@ -249,16 +252,17 @@ TEST_F(TrainerTest, TrainsAndEvaluatesSparseAutoEncoderDataBatches) {
   ASSERT_TRUE(loss.ok()) << loss.status();
   ASSERT_TRUE((*model)->InitializeNormal(0.05f, 19).ok());
   FixedActivationDataSetIterator data(*activations, kRows);
+  SparseAutoEncoderObjective objective(**model, **loss);
 
-  auto initial = Evaluate(*executor_, **model, **loss, data,
-                          EvaluationOptions{.batches = 1});
+  auto initial =
+      Evaluate(*executor_, objective, data, EvaluationOptions{.batches = 1});
   ASSERT_TRUE(initial.ok()) << initial.status();
   EXPECT_TRUE(std::isfinite(*initial));
   EXPECT_GE(*initial, 0.0);
 
   FakeOptimizer optimizer;
   std::vector<int> evaluation_steps;
-  auto result = Train(*executor_, **model, **loss, optimizer, data,
+  auto result = Train(*executor_, objective, optimizer, data,
                       TrainingOptions{
                           .max_steps = 2,
                           .evaluation_interval = 1,
@@ -288,9 +292,10 @@ TEST_F(TrainerTest, StopsBeforeFirstUpdateWhenInitialEvaluationQualifies) {
   ASSERT_TRUE(loss.ok()) << loss.status();
   ASSERT_TRUE(training_data.ok()) << training_data.status();
   ASSERT_TRUE(evaluation_data.ok()) << evaluation_data.status();
+  LanguageModelingObjective objective(model, **loss);
 
   auto result =
-      Train(*executor_, model, **loss, optimizer, **training_data,
+      Train(*executor_, objective, optimizer, **training_data,
             TrainingOptions{
                 .max_steps = 3,
                 .initial_step = 570,
@@ -321,9 +326,10 @@ TEST_F(TrainerTest, StopsAfterUpdateWhenPeriodicEvaluationQualifies) {
   ASSERT_TRUE(loss.ok()) << loss.status();
   ASSERT_TRUE(training_data.ok()) << training_data.status();
   ASSERT_TRUE(evaluation_data.ok()) << evaluation_data.status();
+  LanguageModelingObjective objective(model, **loss);
 
   auto result =
-      Train(*executor_, model, **loss, optimizer, **training_data,
+      Train(*executor_, objective, optimizer, **training_data,
             TrainingOptions{
                 .max_steps = 3,
                 .evaluation_interval = 1,
@@ -355,9 +361,10 @@ TEST_F(TrainerTest, CallbackEnablesPeriodicEvaluationWithoutEarlyStopping) {
   ASSERT_TRUE(loss.ok()) << loss.status();
   ASSERT_TRUE(training_data.ok()) << training_data.status();
   ASSERT_TRUE(evaluation_data.ok()) << evaluation_data.status();
+  LanguageModelingObjective objective(model, **loss);
 
   auto result =
-      Train(*executor_, model, **loss, optimizer, **training_data,
+      Train(*executor_, objective, optimizer, **training_data,
             TrainingOptions{
                 .max_steps = 3,
                 .evaluation_interval = 2,
@@ -387,9 +394,10 @@ TEST_F(TrainerTest, ResumedRunUsesAbsoluteStepNumbers) {
   ASSERT_TRUE(loss.ok()) << loss.status();
   ASSERT_TRUE(training_data.ok()) << training_data.status();
   ASSERT_TRUE(evaluation_data.ok()) << evaluation_data.status();
+  LanguageModelingObjective objective(model, **loss);
 
   auto result =
-      Train(*executor_, model, **loss, optimizer, **training_data,
+      Train(*executor_, objective, optimizer, **training_data,
             TrainingOptions{.max_steps = 3,
                             .initial_step = 570,
                             .evaluation_interval = 2,
@@ -420,9 +428,10 @@ TEST_F(TrainerTest, StepCallbackRunsAfterUpdatesAndPropagatesErrors) {
   auto data = MakeData();
   ASSERT_TRUE(loss.ok()) << loss.status();
   ASSERT_TRUE(data.ok()) << data.status();
+  LanguageModelingObjective objective(model, **loss);
 
   auto result =
-      Train(*executor_, model, **loss, optimizer, **data,
+      Train(*executor_, objective, optimizer, **data,
             TrainingOptions{
                 .max_steps = 3,
                 .initial_step = 570,
@@ -449,9 +458,10 @@ TEST_F(TrainerTest, UnlimitedTrainingRunsUntilCallbackStopsIt) {
   auto data = MakeData();
   ASSERT_TRUE(loss.ok()) << loss.status();
   ASSERT_TRUE(data.ok()) << data.status();
+  LanguageModelingObjective objective(model, **loss);
 
   auto result = Train(
-      *executor_, model, **loss, optimizer, **data,
+      *executor_, objective, optimizer, **data,
       TrainingOptions{.max_steps = kUnlimitedTrainingSteps,
                       .step_callback = [](int steps_completed) -> absl::Status {
                         if (steps_completed == 3) {
@@ -473,18 +483,19 @@ TEST_F(TrainerTest, RejectsInvalidOptions) {
   auto data = MakeData();
   ASSERT_TRUE(loss.ok()) << loss.status();
   ASSERT_TRUE(data.ok()) << data.status();
+  LanguageModelingObjective objective(model, **loss);
 
-  EXPECT_FALSE(Evaluate(*executor_, model, **loss, **data,
-                        EvaluationOptions{.batches = 0})
-                   .ok());
-  EXPECT_FALSE(Train(*executor_, model, **loss, optimizer, **data,
+  EXPECT_FALSE(
+      Evaluate(*executor_, objective, **data, EvaluationOptions{.batches = 0})
+          .ok());
+  EXPECT_FALSE(Train(*executor_, objective, optimizer, **data,
                      TrainingOptions{.max_steps = -2})
                    .ok());
-  EXPECT_FALSE(Train(*executor_, model, **loss, optimizer, **data,
+  EXPECT_FALSE(Train(*executor_, objective, optimizer, **data,
                      TrainingOptions{.initial_step = -1})
                    .ok());
   EXPECT_FALSE(
-      Train(*executor_, model, **loss, optimizer, **data,
+      Train(*executor_, objective, optimizer, **data,
             TrainingOptions{.max_steps = 1,
                             .initial_step = std::numeric_limits<int>::max()})
           .ok());

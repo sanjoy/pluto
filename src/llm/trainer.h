@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <functional>
 #include <optional>
 
@@ -71,49 +72,87 @@ struct TrainingResult {
   bool reached_stop_loss;
 };
 
-// Computes the mean of the loss layer's per-token FP32 outputs.
+// Everything retained from an objective's forward pass until evaluation
+// consumes its loss or training runs its backward pass. normalization_count
+// states how many examples the loss represents; it may differ from the number
+// of FP32 values in loss. For example, the SAE loss is one sum for an entire
+// activation batch.
+struct ObjectiveForwardPass {
+  Buffer loss;
+  int64_t normalization_count;
+  Tape model_tape;
+  Tape loss_tape;
+};
+
+// Adapts a model, loss, and DataBatch schema to the common training loop.
 //
-// Each dataset batch must use InMemoryDataSetIterator's language-modeling
-// schema: batch_size int32 input tokens followed by batch_size int32 targets.
-// Inputs are passed to the model; the model output and targets are then passed
-// to the loss layer. Evaluate() never runs backward or mutates weights. It
-// resets eval_tokens so repeated calls measure the same batches.
-absl::StatusOr<double> Evaluate(cuda::Executor& executor, const Layer& model,
-                                const Layer& loss_layer,
+// The objective owns no layers. Its referenced model and loss must outlive it.
+// Forward() validates and connects a dataset batch to those layers. Backward()
+// wires the saved loss gradients back through the model. This boundary keeps
+// Train() and Evaluate() independent of model-specific auxiliary outputs.
+class TrainingObjective {
+ public:
+  virtual ~TrainingObjective() = default;
+
+  virtual absl::StatusOr<ObjectiveForwardPass> Forward(
+      cuda::Executor& executor, const DataBatch& batch) const = 0;
+  virtual absl::Status Backward(cuda::Executor& executor,
+                                ObjectiveForwardPass pass) = 0;
+};
+
+// Language-modeling wiring for a conventional model and terminal loss layer.
+// DataBatch::data contains batch_size int32 input tokens followed by batch_size
+// int32 next-token targets. The loss must return one FP32 value per token.
+class LanguageModelingObjective final : public TrainingObjective {
+ public:
+  LanguageModelingObjective(Layer& model, Layer& loss_layer)
+      : model_(model), loss_layer_(loss_layer) {}
+
+  absl::StatusOr<ObjectiveForwardPass> Forward(
+      cuda::Executor& executor, const DataBatch& batch) const override;
+  absl::Status Backward(cuda::Executor& executor,
+                        ObjectiveForwardPass pass) override;
+
+ private:
+  Layer& model_;
+  Layer& loss_layer_;
+};
+
+// Sparse-autoencoder wiring for activation batches. It exposes the SAE's
+// latent activations and decoder to SparseAutoEncoderLossLayer, then routes the
+// loss's auxiliary gradients back to the SAE. The activation generator remains
+// outside this objective and is therefore frozen.
+class SparseAutoEncoderObjective final : public TrainingObjective {
+ public:
+  SparseAutoEncoderObjective(SparseAutoEncoderLayer& model,
+                             SparseAutoEncoderLossLayer& loss_layer)
+      : model_(model), loss_layer_(loss_layer) {}
+
+  absl::StatusOr<ObjectiveForwardPass> Forward(
+      cuda::Executor& executor, const DataBatch& batch) const override;
+  absl::Status Backward(cuda::Executor& executor,
+                        ObjectiveForwardPass pass) override;
+
+ private:
+  SparseAutoEncoderLayer& model_;
+  SparseAutoEncoderLossLayer& loss_layer_;
+};
+
+// Computes the mean FP32 loss produced by objective over the requested data.
+// Evaluate() never runs backward or mutates weights. It resets eval_data so
+// repeated calls measure the same batches.
+absl::StatusOr<double> Evaluate(cuda::Executor& executor,
+                                const TrainingObjective& objective,
                                 DataSetIterator& eval_tokens,
                                 const EvaluationOptions& options);
 
-// Runs a conventional forward/loss/backward/update training loop.
-//
-// training_tokens owns batch creation and host-to-device staging and must use
-// the packed language-modeling schema described by Evaluate(). The loss layer
-// must emit one FP32 scalar per input token and seed its own backward pass when
-// called with no upstream gradients, as CrossEntropyLossLayer does. Train()
-// clears gradients before the first backward; Optimizer::Step() is responsible
-// for applying an update and clearing them after every step.
-absl::StatusOr<TrainingResult> Train(cuda::Executor& executor, Layer& model,
-                                     Layer& loss_layer, Optimizer& optimizer,
-                                     DataSetIterator& training_tokens,
-                                     const TrainingOptions& options);
-
-// Sparse-autoencoder counterpart to Evaluate(). Each DataBatch::data is an
-// activation matrix with batch_size rows. SparseAutoEncoderLossLayer emits one
-// scalar sum per batch; this overload returns its mean per activation row.
-absl::StatusOr<double> Evaluate(cuda::Executor& executor,
-                                const SparseAutoEncoderLayer& model,
-                                const SparseAutoEncoderLossLayer& loss_layer,
-                                DataSetIterator& eval_activations,
-                                const EvaluationOptions& options);
-
-// Trains an SAE with the same scheduling, evaluation, stopping, and callback
-// behavior as the generic language-modeling loop. The activation generator is
-// intentionally outside model: only the SAE's parameters are differentiated
-// and updated.
+// Runs the common forward/loss/backward/update loop for any TrainingObjective.
+// Train() clears gradients before the first backward; Optimizer::Step() applies
+// an update and clears them after each step.
 absl::StatusOr<TrainingResult> Train(cuda::Executor& executor,
-                                     SparseAutoEncoderLayer& model,
-                                     SparseAutoEncoderLossLayer& loss_layer,
+                                     TrainingObjective& objective,
                                      Optimizer& optimizer,
-                                     DataSetIterator& training_activations,
+                                     DataSetIterator& training_data,
                                      const TrainingOptions& options);
 
 }  // namespace pluto::llm

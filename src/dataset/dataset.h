@@ -9,7 +9,6 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "src/cuda/buffer.h"
 #include "src/cuda/executor.h"
 
@@ -113,9 +112,6 @@ struct InMemoryDataSetOptions {
 // train/test evaluation.
 class InMemoryDataSetIterator final : public DataSetIterator {
  public:
-  static absl::StatusOr<std::unique_ptr<InMemoryDataSetIterator>> Create(
-      cuda::Executor& executor, absl::Span<const int> tokens,
-      InMemoryDataSetOptions options);
   static absl::StatusOr<std::unique_ptr<InMemoryDataSetIterator>> Create(
       cuda::Executor& executor, std::vector<int> tokens,
       InMemoryDataSetOptions options);

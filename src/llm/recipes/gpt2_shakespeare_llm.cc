@@ -293,6 +293,7 @@ absl::Status RunTraining(cuda::Executor& executor,
   ASSIGN_OR_RETURN(auto loss_layer,
                    CrossEntropyLossLayer::Create(executor, kGpt2VocabularySize,
                                                  DataType::BF16));
+  LanguageModelingObjective objective(*model, *loss_layer);
   ASSIGN_OR_RETURN(
       auto optimizer,
       Optimizer::Create(executor, *model, OptimizerConfigFromFlags()));
@@ -323,11 +324,11 @@ absl::Status RunTraining(cuda::Executor& executor,
   const int eval_batches = absl::GetFlag(FLAGS_eval_batches);
   const EvaluationOptions evaluation_options{.batches = eval_batches};
   ASSIGN_OR_RETURN(double initial_training_loss,
-                   Evaluate(executor, *model, *loss_layer,
-                            *training_evaluation_data, evaluation_options));
-  ASSIGN_OR_RETURN(double initial_test_loss,
-                   Evaluate(executor, *model, *loss_layer,
-                            *test_evaluation_data, evaluation_options));
+                   Evaluate(executor, objective, *training_evaluation_data,
+                            evaluation_options));
+  ASSIGN_OR_RETURN(
+      double initial_test_loss,
+      Evaluate(executor, objective, *test_evaluation_data, evaluation_options));
   logger << "model: GPT-2 vocabulary=" << kGpt2VocabularySize
          << ", context=" << kGpt2ContextLength
          << ", layers=" << kGpt2TransformerBlockCount
@@ -373,15 +374,15 @@ absl::Status RunTraining(cuda::Executor& executor,
       return absl::OkStatus();
     };
   }
-  ASSIGN_OR_RETURN(auto training_result,
-                   Train(executor, *model, *loss_layer, *optimizer,
-                         *training_data, training_options));
+  ASSIGN_OR_RETURN(
+      auto training_result,
+      Train(executor, objective, *optimizer, *training_data, training_options));
   ASSIGN_OR_RETURN(double final_training_loss,
-                   Evaluate(executor, *model, *loss_layer,
-                            *training_evaluation_data, evaluation_options));
-  ASSIGN_OR_RETURN(double final_test_loss,
-                   Evaluate(executor, *model, *loss_layer,
-                            *test_evaluation_data, evaluation_options));
+                   Evaluate(executor, objective, *training_evaluation_data,
+                            evaluation_options));
+  ASSIGN_OR_RETURN(
+      double final_test_loss,
+      Evaluate(executor, objective, *test_evaluation_data, evaluation_options));
   logger << "training stopped at step: " << training_result.steps_completed
          << '\n'
          << "final training loss: " << final_training_loss << '\n'
@@ -473,6 +474,7 @@ absl::Status RunSparseAutoEncoderTraining(
       SparseAutoEncoderLossLayer::Create(
           executor, kGpt2ModelWidth, kSparseAutoEncoderFeatureDimension,
           kSparseAutoEncoderPenalty, DataType::BF16));
+  SparseAutoEncoderObjective objective(*autoencoder, *loss_layer);
   ASSIGN_OR_RETURN(
       auto optimizer,
       Optimizer::Create(executor, *autoencoder, OptimizerConfigFromFlags()));
@@ -480,8 +482,8 @@ absl::Status RunSparseAutoEncoderTraining(
   const int eval_batches = absl::GetFlag(FLAGS_eval_batches);
   const EvaluationOptions evaluation_options{.batches = eval_batches};
   ASSIGN_OR_RETURN(double initial_loss,
-                   Evaluate(executor, *autoencoder, *loss_layer,
-                            *evaluation_activations, evaluation_options));
+                   Evaluate(executor, objective, *evaluation_activations,
+                            evaluation_options));
   logger << "mode: sparse autoencoder training\n"
          << "GPT-2 checkpoint: " << gpt2_checkpoint.directory.string()
          << " (step " << gpt2_checkpoint.step << ")\n"
@@ -525,11 +527,11 @@ absl::Status RunSparseAutoEncoderTraining(
     };
   }
   ASSIGN_OR_RETURN(auto training_result,
-                   Train(executor, *autoencoder, *loss_layer, *optimizer,
-                         *training_activations, training_options));
+                   Train(executor, objective, *optimizer, *training_activations,
+                         training_options));
   ASSIGN_OR_RETURN(double final_loss,
-                   Evaluate(executor, *autoencoder, *loss_layer,
-                            *evaluation_activations, evaluation_options));
+                   Evaluate(executor, objective, *evaluation_activations,
+                            evaluation_options));
   logger << "SAE training stopped at step: " << training_result.steps_completed
          << '\n'
          << "final loss per activation: " << final_loss << '\n';

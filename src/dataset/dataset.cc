@@ -169,14 +169,6 @@ InMemoryDataSetIterator::InMemoryDataSetIterator(cuda::Executor& executor,
 
 absl::StatusOr<std::unique_ptr<InMemoryDataSetIterator>>
 InMemoryDataSetIterator::Create(cuda::Executor& executor,
-                                absl::Span<const int> tokens,
-                                InMemoryDataSetOptions options) {
-  return Create(executor, std::vector<int>(tokens.begin(), tokens.end()),
-                options);
-}
-
-absl::StatusOr<std::unique_ptr<InMemoryDataSetIterator>>
-InMemoryDataSetIterator::Create(cuda::Executor& executor,
                                 std::vector<int> tokens,
                                 InMemoryDataSetOptions options) {
   if (options.batch_size <= 0 || options.context_length <= 0 ||
@@ -207,9 +199,9 @@ InMemoryDataSetIterator::Create(cuda::Executor& executor,
       cudaMemcpyAsync(corpus_buffer.data(), tokens.data(), corpus_bytes,
                       cudaMemcpyHostToDevice, executor.stream()),
       "cudaMemcpyAsync(dataset corpus)"));
-  // The caller-owned span and the by-value vector overload can both cease to
-  // exist when Create() returns. Complete this one-time upload before releasing
-  // either host source; subsequent Next() calls remain fully asynchronous.
+  // The by-value vector ceases to exist when Create() returns. Complete this
+  // one-time upload before releasing its storage; subsequent Next() calls
+  // remain fully asynchronous.
   RETURN_IF_ERROR(executor.Synchronize());
   return std::unique_ptr<InMemoryDataSetIterator>(new InMemoryDataSetIterator(
       executor, std::move(corpus_buffer), tokens.size(), options,
