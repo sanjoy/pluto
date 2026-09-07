@@ -145,10 +145,15 @@ cuda_library(
     ],
 )
 
-cc_library(
+cuda_library(
     name = "trainer",
     srcs = ["trainer.cc"],
     hdrs = ["trainer.h"],
+    copts = [
+        "--enable-tile",
+        "-std=c++20",
+    ],
+    host_copts = ["-std=c++20"],
     visibility = ["//visibility:public"],
     deps = [
         ":layer",

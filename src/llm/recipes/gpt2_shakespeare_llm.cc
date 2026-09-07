@@ -148,6 +148,24 @@ absl::StatusOr<std::filesystem::path> TokenizerDirectory() {
       "tokenizer directory");
 }
 
+// Training and evaluation stay device-resident. This recipe crosses the
+// synchronization boundary only when a scalar must be printed or reused as a
+// host-side stopping value.
+absl::StatusOr<double> ReadEvaluationLoss(cuda::Executor& executor,
+                                          const Buffer& loss) {
+  if (&loss.executor() != &executor || loss.size_bytes() != sizeof(float)) {
+    return absl::InvalidArgumentError(
+        "evaluation must return one FP32 scalar on its CUDA Executor");
+  }
+  float host_loss;
+  RETURN_IF_ERROR(cuda::CudaStatus(
+      cudaMemcpyAsync(&host_loss, loss.data(), sizeof(host_loss),
+                      cudaMemcpyDeviceToHost, executor.stream()),
+      "cudaMemcpyAsync(evaluation loss for logging)"));
+  RETURN_IF_ERROR(executor.Synchronize());
+  return host_loss;
+}
+
 absl::StatusOr<std::vector<float>> Predict(cuda::Executor& executor,
                                            const ModelConfig& config,
                                            const Layer& model,
@@ -323,12 +341,16 @@ absl::Status RunTraining(cuda::Executor& executor,
 
   const int eval_batches = absl::GetFlag(FLAGS_eval_batches);
   const EvaluationOptions evaluation_options{.batches = eval_batches};
-  ASSIGN_OR_RETURN(double initial_training_loss,
+  ASSIGN_OR_RETURN(auto initial_training_loss_buffer,
                    Evaluate(executor, objective, *training_evaluation_data,
                             evaluation_options));
+  ASSIGN_OR_RETURN(double initial_training_loss,
+                   ReadEvaluationLoss(executor, initial_training_loss_buffer));
   ASSIGN_OR_RETURN(
-      double initial_test_loss,
+      auto initial_test_loss_buffer,
       Evaluate(executor, objective, *test_evaluation_data, evaluation_options));
+  ASSIGN_OR_RETURN(double initial_test_loss,
+                   ReadEvaluationLoss(executor, initial_test_loss_buffer));
   logger << "model: GPT-2 vocabulary=" << kGpt2VocabularySize
          << ", context=" << kGpt2ContextLength
          << ", layers=" << kGpt2TransformerBlockCount
@@ -377,12 +399,16 @@ absl::Status RunTraining(cuda::Executor& executor,
   ASSIGN_OR_RETURN(
       auto training_result,
       Train(executor, objective, *optimizer, *training_data, training_options));
-  ASSIGN_OR_RETURN(double final_training_loss,
+  ASSIGN_OR_RETURN(auto final_training_loss_buffer,
                    Evaluate(executor, objective, *training_evaluation_data,
                             evaluation_options));
+  ASSIGN_OR_RETURN(double final_training_loss,
+                   ReadEvaluationLoss(executor, final_training_loss_buffer));
   ASSIGN_OR_RETURN(
-      double final_test_loss,
+      auto final_test_loss_buffer,
       Evaluate(executor, objective, *test_evaluation_data, evaluation_options));
+  ASSIGN_OR_RETURN(double final_test_loss,
+                   ReadEvaluationLoss(executor, final_test_loss_buffer));
   logger << "training stopped at step: " << training_result.steps_completed
          << '\n'
          << "final training loss: " << final_training_loss << '\n'
@@ -481,9 +507,11 @@ absl::Status RunSparseAutoEncoderTraining(
 
   const int eval_batches = absl::GetFlag(FLAGS_eval_batches);
   const EvaluationOptions evaluation_options{.batches = eval_batches};
-  ASSIGN_OR_RETURN(double initial_loss,
+  ASSIGN_OR_RETURN(auto initial_loss_buffer,
                    Evaluate(executor, objective, *evaluation_activations,
                             evaluation_options));
+  ASSIGN_OR_RETURN(double initial_loss,
+                   ReadEvaluationLoss(executor, initial_loss_buffer));
   logger << "mode: sparse autoencoder training\n"
          << "GPT-2 checkpoint: " << gpt2_checkpoint.directory.string()
          << " (step " << gpt2_checkpoint.step << ")\n"
@@ -529,9 +557,11 @@ absl::Status RunSparseAutoEncoderTraining(
   ASSIGN_OR_RETURN(auto training_result,
                    Train(executor, objective, *optimizer, *training_activations,
                          training_options));
-  ASSIGN_OR_RETURN(double final_loss,
+  ASSIGN_OR_RETURN(auto final_loss_buffer,
                    Evaluate(executor, objective, *evaluation_activations,
                             evaluation_options));
+  ASSIGN_OR_RETURN(double final_loss,
+                   ReadEvaluationLoss(executor, final_loss_buffer));
   logger << "SAE training stopped at step: " << training_result.steps_completed
          << '\n'
          << "final loss per activation: " << final_loss << '\n';

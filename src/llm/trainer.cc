@@ -1,13 +1,13 @@
 #include "src/llm/trainer.h"
 
 #include <cuda_runtime.h>
+#include <cuda_tile.h>
 
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <utility>
-#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -21,6 +21,28 @@
 
 namespace pluto::llm {
 namespace {
+
+// Adds all FP32 loss values to accumulator. On the final evaluation batch,
+// output_scale converts the accumulated sum into a mean. A single tile program
+// intentionally owns the scalar so batches remain deterministic without
+// atomics; loss vectors are tiny relative to the model kernels that produce
+// them.
+__tile_global__ void AddLossKernel(const float* __restrict__ losses,
+                                   int loss_count, float output_scale,
+                                   float* __restrict__ accumulator) {
+  namespace ct = ::cuda::tiles;
+  using namespace ct::literals;
+
+  auto loss_view = ct::partition_view{
+      ct::tensor_span{losses, ct::extents{loss_count}}, ct::shape{1_ic}};
+  auto accumulator_view = ct::partition_view{
+      ct::tensor_span{accumulator, ct::extents{1}}, ct::shape{1_ic}};
+  auto sum = accumulator_view.load(0);
+  for (int index = 0; index < loss_count; ++index) {
+    sum = sum + loss_view.load(index);
+  }
+  accumulator_view.store(sum * output_scale, 0);
+}
 
 struct LanguageModelingBatch {
   Buffer tokens;
@@ -66,25 +88,23 @@ absl::StatusOr<LanguageModelingBatch> PrepareLanguageModelingBatch(
   };
 }
 
-absl::StatusOr<double> CopyLossSum(cuda::Executor& executor,
-                                   const Buffer& losses) {
-  if (losses.size_bytes() == 0 || losses.size_bytes() % sizeof(float) != 0) {
+absl::StatusOr<double> ReadDeviceLoss(cuda::Executor& executor,
+                                      const Buffer& loss) {
+  if (loss.size_bytes() != sizeof(float)) {
     return absl::InvalidArgumentError(
-        "objective loss must contain one or more FP32 values");
+        "evaluation result must contain one FP32 scalar");
   }
-  if (&losses.executor() != &executor) {
+  if (&loss.executor() != &executor) {
     return absl::InvalidArgumentError(
-        "loss buffer belongs to a different CUDA Executor");
+        "evaluation result belongs to a different CUDA Executor");
   }
-  std::vector<float> host_losses(losses.size_bytes() / sizeof(float));
+  float host_loss;
   RETURN_IF_ERROR(cuda::CudaStatus(
-      cudaMemcpyAsync(host_losses.data(), losses.data(), losses.size_bytes(),
+      cudaMemcpyAsync(&host_loss, loss.data(), sizeof(host_loss),
                       cudaMemcpyDeviceToHost, executor.stream()),
-      "cudaMemcpyAsync(evaluation losses)"));
+      "cudaMemcpyAsync(evaluation result)"));
   RETURN_IF_ERROR(executor.Synchronize());
-  double total = 0.0;
-  for (float loss : host_losses) total += loss;
-  return total;
+  return host_loss;
 }
 
 absl::Status ValidateTrainingOptions(const TrainingOptions& options) {
@@ -219,7 +239,7 @@ absl::Status SparseAutoEncoderObjective::Backward(cuda::Executor& executor,
   return absl::OkStatus();
 }
 
-absl::StatusOr<double> Evaluate(cuda::Executor& executor,
+absl::StatusOr<Buffer> Evaluate(cuda::Executor& executor,
                                 const TrainingObjective& objective,
                                 DataSetIterator& eval_data,
                                 const EvaluationOptions& options) {
@@ -227,8 +247,12 @@ absl::StatusOr<double> Evaluate(cuda::Executor& executor,
     return absl::InvalidArgumentError("evaluation batches must be positive");
   }
   RETURN_IF_ERROR(eval_data.Reset());
+  ASSIGN_OR_RETURN(auto mean_loss, Buffer::Allocate(executor, sizeof(float)));
+  RETURN_IF_ERROR(cuda::CudaStatus(
+      cudaMemsetAsync(mean_loss.data(), 0, mean_loss.size_bytes(),
+                      executor.stream()),
+      "cudaMemsetAsync(evaluation result)"));
 
-  double loss_sum = 0.0;
   int64_t normalization_count = 0;
   for (int index = 0; index < options.batches; ++index) {
     ASSIGN_OR_RETURN(DataBatch batch, eval_data.Next());
@@ -237,11 +261,33 @@ absl::StatusOr<double> Evaluate(cuda::Executor& executor,
       return absl::InvalidArgumentError(
           "objective normalization count must be positive");
     }
-    ASSIGN_OR_RETURN(double batch_sum, CopyLossSum(executor, pass.loss));
-    loss_sum += batch_sum;
+    if (pass.loss.size_bytes() == 0 ||
+        pass.loss.size_bytes() % sizeof(float) != 0 ||
+        pass.loss.size_bytes() / sizeof(float) >
+            static_cast<size_t>(std::numeric_limits<int>::max())) {
+      return absl::InvalidArgumentError(
+          "objective loss must contain a supported number of FP32 values");
+    }
+    if (&pass.loss.executor() != &executor) {
+      return absl::InvalidArgumentError(
+          "objective loss belongs to a different CUDA Executor");
+    }
+    if (normalization_count >
+        std::numeric_limits<int64_t>::max() - pass.normalization_count) {
+      return absl::OutOfRangeError("evaluation normalization count overflowed");
+    }
     normalization_count += pass.normalization_count;
+    const bool final_batch = index + 1 == options.batches;
+    const float output_scale =
+        final_batch ? 1.0f / static_cast<float>(normalization_count) : 1.0f;
+    AddLossKernel<<<1, 1, 0, executor.stream()>>>(
+        static_cast<const float*>(pass.loss.data()),
+        static_cast<int>(pass.loss.size_bytes() / sizeof(float)), output_scale,
+        static_cast<float*>(mean_loss.data()));
+    RETURN_IF_ERROR(
+        cuda::CudaStatus(cudaGetLastError(), "AddLossKernel launch"));
   }
-  return loss_sum / normalization_count;
+  return mean_loss;
 }
 
 absl::StatusOr<TrainingResult> Train(cuda::Executor& executor,
@@ -260,9 +306,11 @@ absl::StatusOr<TrainingResult> Train(cuda::Executor& executor,
       initial_loss = *options.initial_loss;
     } else {
       ASSIGN_OR_RETURN(
-          initial_loss,
+          auto device_initial_loss,
           Evaluate(executor, objective, evaluation_data,
                    EvaluationOptions{.batches = options.evaluation_batches}));
+      ASSIGN_OR_RETURN(initial_loss,
+                       ReadDeviceLoss(executor, device_initial_loss));
       if (options.evaluation_callback) {
         options.evaluation_callback(options.initial_step, initial_loss);
       }
@@ -300,9 +348,11 @@ absl::StatusOr<TrainingResult> Train(cuda::Executor& executor,
          (has_step_limit && updates_completed == options.max_steps));
     if (should_evaluate) {
       ASSIGN_OR_RETURN(
-          double training_loss,
+          auto device_training_loss,
           Evaluate(executor, objective, evaluation_data,
                    EvaluationOptions{.batches = options.evaluation_batches}));
+      ASSIGN_OR_RETURN(double training_loss,
+                       ReadDeviceLoss(executor, device_training_loss));
       if (options.evaluation_callback) {
         options.evaluation_callback(steps_completed, training_loss);
       }

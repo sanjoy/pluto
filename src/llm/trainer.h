@@ -139,11 +139,16 @@ class SparseAutoEncoderObjective final : public TrainingObjective {
 };
 
 // Computes the mean FP32 loss produced by objective over the requested data.
-// Evaluate() never runs backward or mutates weights. It resets eval_data so
-// repeated calls measure the same batches.
-absl::StatusOr<double> Evaluate(cuda::Executor& executor,
+//
+// The returned Buffer contains one device-resident float and remains ordered
+// on executor's stream. Evaluate() performs no device-to-host transfer or
+// synchronization; callers that need the numeric value on the CPU must make
+// that synchronization boundary explicit. Evaluate() never runs backward or
+// mutates weights. It resets eval_data so repeated calls measure the same
+// batches.
+absl::StatusOr<Buffer> Evaluate(cuda::Executor& executor,
                                 const TrainingObjective& objective,
-                                DataSetIterator& eval_tokens,
+                                DataSetIterator& eval_data,
                                 const EvaluationOptions& options);
 
 // Runs the common forward/loss/backward/update loop for any TrainingObjective.

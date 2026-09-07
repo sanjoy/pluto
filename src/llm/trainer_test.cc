@@ -133,6 +133,24 @@ class FixedActivationDataSetIterator final : public DataSetIterator {
   int32_t batch_size_;
 };
 
+absl::StatusOr<float> ReadEvaluationLoss(cuda::Executor& executor,
+                                         const Buffer& loss) {
+  if (&loss.executor() != &executor || loss.size_bytes() != sizeof(float)) {
+    return absl::InvalidArgumentError(
+        "evaluation result must be one FP32 value on the test executor");
+  }
+  float host_loss;
+  const cudaError_t error =
+      cudaMemcpyAsync(&host_loss, loss.data(), sizeof(host_loss),
+                      cudaMemcpyDeviceToHost, executor.stream());
+  if (error != cudaSuccess) {
+    return cuda::CudaStatus(error, "cudaMemcpyAsync(test evaluation result)");
+  }
+  const absl::Status synchronized = executor.Synchronize();
+  if (!synchronized.ok()) return synchronized;
+  return host_loss;
+}
+
 class TrainerTest : public testing::Test {
  protected:
   void SetUp() override {
@@ -168,7 +186,7 @@ class TrainerTest : public testing::Test {
   std::vector<int> corpus_;
 };
 
-TEST_F(TrainerTest, EvaluateAveragesLossesAndResetsDataset) {
+TEST_F(TrainerTest, EvaluateReturnsDeviceMeanAndResetsDataset) {
   FakeModel model;
   auto loss = MakeLoss();
   auto data = MakeData();
@@ -179,14 +197,20 @@ TEST_F(TrainerTest, EvaluateAveragesLossesAndResetsDataset) {
   auto mean =
       Evaluate(*executor_, objective, **data, EvaluationOptions{.batches = 2});
   ASSERT_TRUE(mean.ok()) << mean.status();
-  EXPECT_DOUBLE_EQ(*mean, 2.5);
+  EXPECT_EQ(&mean->executor(), executor_.get());
+  EXPECT_EQ(mean->size_bytes(), sizeof(float));
+  auto host_mean = ReadEvaluationLoss(*executor_, *mean);
+  ASSERT_TRUE(host_mean.ok()) << host_mean.status();
+  EXPECT_FLOAT_EQ(*host_mean, 2.5f);
   EXPECT_EQ(model.forward_calls, 2);
   EXPECT_EQ((*loss)->forward_calls, 2);
 
   auto repeated =
       Evaluate(*executor_, objective, **data, EvaluationOptions{.batches = 2});
   ASSERT_TRUE(repeated.ok()) << repeated.status();
-  EXPECT_DOUBLE_EQ(*repeated, *mean);
+  auto repeated_host_mean = ReadEvaluationLoss(*executor_, *repeated);
+  ASSERT_TRUE(repeated_host_mean.ok()) << repeated_host_mean.status();
+  EXPECT_FLOAT_EQ(*repeated_host_mean, *host_mean);
 }
 
 TEST_F(TrainerTest, EvaluateRejectsADatasetFromAnotherExecutor) {
@@ -257,8 +281,10 @@ TEST_F(TrainerTest, TrainsAndEvaluatesSparseAutoEncoderDataBatches) {
   auto initial =
       Evaluate(*executor_, objective, data, EvaluationOptions{.batches = 1});
   ASSERT_TRUE(initial.ok()) << initial.status();
-  EXPECT_TRUE(std::isfinite(*initial));
-  EXPECT_GE(*initial, 0.0);
+  auto host_initial = ReadEvaluationLoss(*executor_, *initial);
+  ASSERT_TRUE(host_initial.ok()) << host_initial.status();
+  EXPECT_TRUE(std::isfinite(*host_initial));
+  EXPECT_GE(*host_initial, 0.0);
 
   FakeOptimizer optimizer;
   std::vector<int> evaluation_steps;
