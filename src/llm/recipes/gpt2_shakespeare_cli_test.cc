@@ -25,6 +25,13 @@ TEST(Gpt2ShakespeareCliTest, ParsesOnlyNamedModes) {
             Gpt2ShakespeareMode::kInferModel);
   EXPECT_EQ(*ParseGpt2ShakespeareMode("train_sae"),
             Gpt2ShakespeareMode::kTrainSparseAutoEncoder);
+  EXPECT_EQ(*ParseGpt2ShakespeareMode("infer_SAE"),
+            Gpt2ShakespeareMode::kInferSparseAutoEncoder);
+  EXPECT_EQ(*ParseGpt2ShakespeareMode("infer_sae"),
+            Gpt2ShakespeareMode::kInferSparseAutoEncoder);
+  EXPECT_EQ(
+      Gpt2ShakespeareModeName(Gpt2ShakespeareMode::kInferSparseAutoEncoder),
+      "infer_SAE");
   EXPECT_FALSE(ParseGpt2ShakespeareMode("").ok());
   EXPECT_FALSE(ParseGpt2ShakespeareMode("train").ok());
 }
@@ -69,6 +76,31 @@ TEST(Gpt2ShakespeareCliTest, SparseTrainingAllowsResumeButNotModelEvalFlags) {
       Validate(Gpt2ShakespeareMode::kTrainSparseAutoEncoder, {}, "/model", "")
           .code(),
       absl::StatusCode::kInvalidArgument);
+}
+
+TEST(Gpt2ShakespeareCliTest, SparseInferenceRequiresBothCheckpoints) {
+  constexpr auto mode = Gpt2ShakespeareMode::kInferSparseAutoEncoder;
+  EXPECT_TRUE(
+      Validate(mode, {"sparse_autoencoder_from", "inference_from", "prompt"})
+          .ok());
+  EXPECT_EQ(Validate(mode, {}, "", "/gpt2/step_1").code(),
+            absl::StatusCode::kInvalidArgument);
+  EXPECT_EQ(Validate(mode, {}, "/sae/step_1", "").code(),
+            absl::StatusCode::kInvalidArgument);
+  for (absl::string_view flag :
+       {"resume_from", "steps", "batch_size", "corpus", "checkpoint_every",
+        "checkpoint_dir", "learning_rate", "eval_batches", "test_fraction",
+        "train_until_loss", "training_eval_interval", "log_file",
+        "generation_tokens", "temperature"}) {
+    EXPECT_EQ(Validate(mode, {flag}).code(), absl::StatusCode::kInvalidArgument)
+        << flag;
+  }
+  EXPECT_FALSE(
+      Validate(Gpt2ShakespeareMode::kInferModel, {"sparse_autoencoder_from"})
+          .ok());
+  EXPECT_FALSE(
+      Validate(Gpt2ShakespeareMode::kTrainSparseAutoEncoder, {"inference_from"})
+          .ok());
 }
 
 TEST(Gpt2ShakespeareCliTest, RejectsFlagsMissingFromThePolicy) {

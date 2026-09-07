@@ -105,6 +105,54 @@ TEST_F(LayersTest, BackwardAcceptsReconstructionGradientAlone) {
   EXPECT_EQ(input_gradient->front().size_bytes(), input->size_bytes());
 }
 
+TEST_F(LayersTest, StatisticsAreOptInAndValidateTheirTapeAndRowLimit) {
+  auto input = Buffer::Allocate(*executor_, 16 * 16 * sizeof(float));
+  auto default_layer =
+      SparseAutoEncoderLayer::Create(*executor_, 16, 16, DataType::FP16);
+  auto stats_layer = SparseAutoEncoderLayer::Create(
+      *executor_, 16, 16, DataType::FP16,
+      SparseAutoEncoderLayer::Mode::kCollectStatistics);
+  ASSERT_TRUE(input.ok()) << input.status();
+  ASSERT_TRUE(default_layer.ok()) << default_layer.status();
+  ASSERT_TRUE(stats_layer.ok()) << stats_layer.status();
+  ASSERT_EQ(cudaMemsetAsync(input->data(), 0, input->size_bytes(),
+                            executor_->stream()),
+            cudaSuccess);
+  Tape default_tape;
+  Tape stats_tape;
+  ASSERT_TRUE(
+      (*default_layer)->fwd(*executor_, BufferVec{*input}, &default_tape).ok());
+  ASSERT_TRUE(
+      (*stats_layer)->fwd(*executor_, BufferVec{*input}, &stats_tape).ok());
+  EXPECT_EQ(default_tape.intermediates.size(), 2u);
+  EXPECT_EQ(stats_tape.intermediates.size(), 3u);
+  EXPECT_EQ((*default_layer)
+                ->ReadZStatistics(*executor_, default_tape)
+                .status()
+                .code(),
+            absl::StatusCode::kFailedPrecondition);
+  EXPECT_EQ((*stats_layer)->ReadZStatistics(*executor_, Tape{}).status().code(),
+            absl::StatusCode::kFailedPrecondition);
+  for (int invalid_rows : {-1, 17}) {
+    EXPECT_EQ((*stats_layer)
+                  ->ReadZStatistics(*executor_, stats_tape, invalid_rows)
+                  .status()
+                  .code(),
+              absl::StatusCode::kInvalidArgument);
+  }
+  auto other_executor = cuda::Executor::Create();
+  ASSERT_TRUE(other_executor.ok()) << other_executor.status();
+  EXPECT_EQ((*stats_layer)
+                ->ReadZStatistics(**other_executor, stats_tape)
+                .status()
+                .code(),
+            absl::StatusCode::kInvalidArgument);
+  stats_tape.intermediates[2] = *input;
+  EXPECT_EQ(
+      (*stats_layer)->ReadZStatistics(*executor_, stats_tape).status().code(),
+      absl::StatusCode::kInvalidArgument);
+}
+
 TEST_F(LayersTest, ParallelLossHandlesGpt2BatchTenShape) {
   constexpr int kRows = 10 * 1024;
   constexpr int kInputDim = 512;

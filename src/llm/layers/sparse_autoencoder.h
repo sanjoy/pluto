@@ -11,6 +11,25 @@
 
 namespace pluto::llm {
 
+// Statistics of the post-ReLU Z, including its zeros. Counts use Z > 0;
+// standard_deviation is the population standard deviation, not a sample
+// estimate. Each result describes one forward pass, never cumulative state.
+struct SparseAutoEncoderZStatistics {
+  int rows = 0;
+  int feature_dim = 0;
+  int64_t active_count = 0;
+  double mean = 0;
+  double standard_deviation = 0;
+  double maximum = 0;
+
+  double mean_active_features() const {
+    return rows == 0 ? 0 : static_cast<double>(active_count) / rows;
+  }
+  double zero_fraction() const {
+    return rows == 0 ? 0 : 1.0 - mean_active_features() / feature_dim;
+  }
+};
+
 // A sparse autoencoder with an m-feature overcomplete representation:
 //
 //   z  = ReLU(W_enc (x - b_dec) + b_enc)
@@ -22,9 +41,11 @@ namespace pluto::llm {
 // gradients use FP32; x, z, and x1 use output_type().
 class SparseAutoEncoderLayer final : public Layer {
  public:
+  enum class Mode { kDefault, kCollectStatistics };
+
   static absl::StatusOr<std::unique_ptr<SparseAutoEncoderLayer>> Create(
       cuda::Executor& executor, int input_dim, int feature_dim,
-      DataType data_type);
+      DataType data_type, Mode mode = Mode::kDefault);
 
   // Initializes W_enc and D independently from N(0, standard_deviation^2).
   // Both biases remain zero.
@@ -56,16 +77,28 @@ class SparseAutoEncoderLayer final : public Layer {
   // with the tape, so it remains valid independently of this handle.
   absl::StatusOr<Buffer> latent_activations(const Tape& tape) const;
 
+  // In kCollectStatistics mode fwd() additionally reduces each row of Z on
+  // the GPU and saves its summary in the tape. It does not synchronize or
+  // change fwd/bwd results. The default mode has no statistics overhead.
+  //
+  // This explicit readback copies only the small row summaries into pinned
+  // host memory and synchronizes executor. Set valid_rows to the number of
+  // leading real tokens to exclude trailing padding, or zero to include all
+  // rows. Results belong to the supplied tape even after another fwd().
+  absl::StatusOr<SparseAutoEncoderZStatistics> ReadZStatistics(
+      cuda::Executor& executor, const Tape& tape, int valid_rows = 0) const;
+
  private:
   SparseAutoEncoderLayer(cuda::Executor& executor, int input_dim,
-                         int feature_dim, DataType data_type, Buffer encoder,
-                         Buffer encoder_bias, Buffer decoder,
+                         int feature_dim, DataType data_type, Mode mode,
+                         Buffer encoder, Buffer encoder_bias, Buffer decoder,
                          Buffer decoder_bias, Buffer encoder_gradient,
                          Buffer encoder_bias_gradient, Buffer decoder_gradient,
                          Buffer decoder_bias_gradient)
       : input_dim_(input_dim),
         feature_dim_(feature_dim),
         output_type_(data_type),
+        mode_(mode),
         executor_(executor),
         weights_{std::move(encoder), std::move(encoder_bias),
                  std::move(decoder), std::move(decoder_bias)},
@@ -76,6 +109,7 @@ class SparseAutoEncoderLayer final : public Layer {
   int input_dim_;
   int feature_dim_;
   DataType output_type_;
+  Mode mode_;
   cuda::Executor& executor_;
   BufferVec weights_;
   BufferVec gradients_;

@@ -39,8 +39,10 @@
 #include "src/util/status_macros.h"
 #include "src/util/tee_stream.h"
 
-ABSL_FLAG(std::string, mode, "",
-          "Required run mode: train_model, infer_model, or train_sae");
+ABSL_FLAG(
+    std::string, mode, "",
+    "Required run mode: train_model, infer_model, train_sae, or infer_SAE "
+    "(infer_sae is also accepted)");
 ABSL_FLAG(std::string, corpus, "",
           "Shakespeare corpus path; defaults to the Bazel testdata runfile");
 ABSL_FLAG(std::string, tokenizer_dir, "",
@@ -50,10 +52,11 @@ ABSL_FLAG(std::string, resume_from, "",
           "Parent directory whose latest valid step_N resumes model or SAE "
           "training");
 ABSL_FLAG(std::string, inference_from, "",
-          "Exact model step_N checkpoint required by infer_model");
-ABSL_FLAG(std::string, sparse_autoencoder_from, "",
-          "Exact GPT-2 step_N checkpoint required by train_sae to generate "
-          "fourth-block activations");
+          "Exact step_N checkpoint: GPT-2 for infer_model, SAE for infer_SAE");
+ABSL_FLAG(
+    std::string, sparse_autoencoder_from, "",
+    "Exact GPT-2 step_N checkpoint required by train_sae/infer_SAE to generate "
+    "fourth-block activations");
 ABSL_FLAG(std::string, checkpoint_dir, "",
           "Root directory for periodic step_N checkpoint directories");
 ABSL_FLAG(int, checkpoint_every, 0,
@@ -698,6 +701,111 @@ absl::Status RunInference(cuda::Executor& executor,
   return absl::OkStatus();
 }
 
+// The same embeddings and first four blocks used to train the SAE produce
+// one activation per prompt token. Pad to the model's fixed context length;
+// causal attention makes the padding invisible to all real prompt positions.
+// ReadZStatistics excludes these trailing rows, including a partial SAE tile.
+absl::Status PrintSparseAutoEncoderStatistics(
+    cuda::Executor& executor, const Gpt2Tokenizer& tokenizer,
+    const Layer& activation_generator,
+    const SparseAutoEncoderLayer& autoencoder, absl::string_view prompt,
+    const Buffer& token_buffer) {
+  ASSIGN_OR_RETURN(auto tokens, tokenizer.Encode(prompt));
+  if (tokens.empty()) {
+    std::cout << "Prompt contains no tokens; no Z statistics.\n";
+    return absl::OkStatus();
+  }
+  const int rows = static_cast<int>(
+      std::min(tokens.size(), static_cast<size_t>(kGpt2ContextLength)));
+  const size_t start = tokens.size() - rows;
+  if (start != 0) {
+    std::cout << "Prompt has " << tokens.size() << " tokens; using its last "
+              << rows << " tokens (the GPT-2 context limit).\n";
+  }
+  ASSIGN_OR_RETURN(auto context, cuda::PageLockedHostArray<int>::Allocate(
+                                     kGpt2ContextLength));
+  std::copy_n(tokens.data() + start, rows, context.data());
+  std::fill(context.begin() + rows, context.end(), context[rows - 1]);
+  RETURN_IF_ERROR(cuda::CudaStatus(
+      cudaMemcpyAsync(token_buffer.data(), context.data(), context.size_bytes(),
+                      cudaMemcpyHostToDevice, executor.stream()),
+      "copy SAE prompt context"));
+  Tape generator_tape;
+  ASSIGN_OR_RETURN(auto activations,
+                   activation_generator.fwd(executor, BufferVec{token_buffer},
+                                            &generator_tape));
+  // Inference never runs backward through the frozen GPT-2 prefix.
+  generator_tape = {};
+  Tape sae_tape;
+  ASSIGN_OR_RETURN(
+      auto reconstruction,
+      autoencoder.fwd(executor, BufferVec{activations}, &sae_tape));
+  ASSIGN_OR_RETURN(auto stats,
+                   autoencoder.ReadZStatistics(executor, sae_tape, rows));
+  std::cout << "Z statistics (prompt tokens only):\n"
+            << "  tokens: " << stats.rows << ", features: " << stats.feature_dim
+            << '\n'
+            << "  active values (Z > 0): " << stats.active_count << " / "
+            << static_cast<int64_t>(stats.rows) * stats.feature_dim << '\n'
+            << "  zero fraction: " << stats.zero_fraction() << '\n'
+            << "  mean active features per token (L0): "
+            << stats.mean_active_features() << '\n'
+            << "  mean: " << stats.mean << '\n'
+            << "  stddev: " << stats.standard_deviation << '\n'
+            << "  max: " << stats.maximum << '\n';
+  return absl::OkStatus();
+}
+
+absl::Status RunSparseAutoEncoderInference(
+    cuda::Executor& executor, const std::filesystem::path& gpt2_path,
+    const std::filesystem::path& sae_path) {
+  ASSIGN_OR_RETURN(auto gpt2_checkpoint, InspectCheckpointDirectory(gpt2_path));
+  ASSIGN_OR_RETURN(auto sae_checkpoint, InspectCheckpointDirectory(sae_path));
+  ASSIGN_OR_RETURN(auto tokenizer_directory, TokenizerDirectory());
+  ASSIGN_OR_RETURN(auto tokenizer, Gpt2Tokenizer::Load(tokenizer_directory));
+  if (tokenizer->vocab_size() != kGpt2VocabularySize) {
+    return absl::FailedPreconditionError(
+        "SAE inference requires the GPT-2 vocabulary");
+  }
+  ASSIGN_OR_RETURN(auto activation_generator,
+                   CreateActivationGenerator(
+                       executor, kSparseAutoEncoderActivationBlockCount,
+                       DataType::BF16, absl::GetFlag(FLAGS_seed)));
+  RETURN_IF_ERROR(ReadFromDirectory(executor, *activation_generator,
+                                    gpt2_checkpoint.directory));
+  ASSIGN_OR_RETURN(
+      auto autoencoder,
+      SparseAutoEncoderLayer::Create(
+          executor, kGpt2ModelWidth, kSparseAutoEncoderFeatureDimension,
+          DataType::BF16, SparseAutoEncoderLayer::Mode::kCollectStatistics));
+  RETURN_IF_ERROR(
+      ReadFromDirectory(executor, *autoencoder, sae_checkpoint.directory));
+  ASSIGN_OR_RETURN(
+      auto token_buffer,
+      Buffer::Allocate(executor, kGpt2ContextLength * sizeof(int)));
+  std::cout << "GPT-2 checkpoint: " << gpt2_checkpoint.directory.string()
+            << '\n'
+            << "SAE checkpoint: " << sae_checkpoint.directory.string() << '\n'
+            << "activation tap: after transformer block "
+            << kSparseAutoEncoderActivationBlockCount << '\n';
+  const std::string one_shot_prompt = absl::GetFlag(FLAGS_prompt);
+  if (!one_shot_prompt.empty()) {
+    return PrintSparseAutoEncoderStatistics(executor, *tokenizer,
+                                            *activation_generator, *autoencoder,
+                                            one_shot_prompt, token_buffer);
+  }
+  std::cout << "Enter a prompt (Ctrl-C or Ctrl-D to quit).\n";
+  std::string prompt;
+  while (true) {
+    std::cout << "> " << std::flush;
+    if (!std::getline(std::cin, prompt)) break;
+    RETURN_IF_ERROR(PrintSparseAutoEncoderStatistics(
+        executor, *tokenizer, *activation_generator, *autoencoder, prompt,
+        token_buffer));
+  }
+  return absl::OkStatus();
+}
+
 absl::Status Run(cuda::Executor& executor, Gpt2ShakespeareMode mode) {
   const std::filesystem::path resume_from = absl::GetFlag(FLAGS_resume_from);
   switch (mode) {
@@ -708,6 +816,10 @@ absl::Status Run(cuda::Executor& executor, Gpt2ShakespeareMode mode) {
     case Gpt2ShakespeareMode::kTrainSparseAutoEncoder:
       return RunSparseAutoEncoderTraining(
           executor, absl::GetFlag(FLAGS_sparse_autoencoder_from), resume_from);
+    case Gpt2ShakespeareMode::kInferSparseAutoEncoder:
+      return RunSparseAutoEncoderInference(
+          executor, absl::GetFlag(FLAGS_sparse_autoencoder_from),
+          absl::GetFlag(FLAGS_inference_from));
   }
   return absl::InternalError("unknown GPT-2 Shakespeare run mode");
 }

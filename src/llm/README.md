@@ -66,7 +66,8 @@ training and held-out evaluation.
 The binary uses the repository's GPT-2 tokenizer library. Point it at a
 save_pretrained tokenizer directory with PLUTO_GPT2_TOKENIZER_DIR or
 --tokenizer_dir. Every invocation requires exactly one explicit mode:
-`--mode=train_model`, `--mode=infer_model`, or `--mode=train_sae`. Flags that
+`--mode=train_model`, `--mode=infer_model`, `--mode=train_sae`, or
+`--mode=infer_SAE` (also spelled `infer_sae`). Flags that
 do not apply to the selected mode are rejected instead of being silently
 ignored.
 
@@ -142,3 +143,40 @@ To resume SAE training, keep `--sparse_autoencoder_from` pointed at the exact
 GPT-2 checkpoint and pass the parent of the SAE `step_N` directories through
 `--resume_from`. As with model training, the latest valid SAE checkpoint is
 loaded and malformed newer checkpoints are skipped with a warning.
+
+To inspect the trained SAE's feature activations Z for a prompt:
+
+```sh
+bazel build -c opt //src/llm/recipes:gpt2_shakespeare_llm
+bazel-bin/src/llm/recipes/gpt2_shakespeare_llm \
+  --mode=infer_SAE \
+  --tokenizer_dir=/path/to/gpt2 \
+  --sparse_autoencoder_from=/path/to/gpt2/checkpoints/step_13030 \
+  --inference_from=/path/to/sae/checkpoints/step_20000 \
+  --prompt='To be, or not to be'
+```
+
+Both paths must name exact checkpoint directories. `--sparse_autoencoder_from`
+selects the frozen GPT-2 weights; use the same checkpoint used for SAE training.
+`--inference_from` selects the SAE weights. The activation tap is the same
+post-fourth-block residual stream used by `train_sae`, with d=512 and m=4096.
+Omit `--prompt` to enter a prompt loop. Empty lines are skipped. Prompts longer
+than 1,024 tokens use their last 1,024 tokens with a notice, as in model inference.
+There is no generation, optimization, corpus loading, or checkpoint writing;
+training flags and generation flags are rejected in this mode.
+
+Statistics include active values (Z > 0), the fraction of zeros, mean active
+features per token (L0), and activation mean, population standard deviation,
+and maximum. Means and standard deviations include zeros. Only real prompt
+tokens are counted, never trailing context padding. Statistics are per prompt,
+not accumulated across prompts. They describe feature usage, not reconstruction
+quality or learned feature meanings.
+
+At the layer API, pass `SparseAutoEncoderLayer::Mode::kCollectStatistics` to
+`Create` to enable an extra cuTile row-reduction kernel during `fwd`. The tape
+owns four FP32 summary values per row; fwd remains asynchronous and backward
+is unchanged. `ReadZStatistics(executor, tape, valid_rows)` explicitly copies
+only the selected row summaries through page-locked memory and synchronizes.
+The default layer mode allocates no statistics buffer and launches no extra
+kernel. Statistics mode supports up to 2^24 features so FP32 row counts remain
+exact; total counts are accumulated in 64-bit integers on the host.

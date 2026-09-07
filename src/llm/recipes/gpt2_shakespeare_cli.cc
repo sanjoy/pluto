@@ -14,6 +14,7 @@ namespace {
 constexpr uint8_t kTrainModel = 1 << 0;
 constexpr uint8_t kInferModel = 1 << 1;
 constexpr uint8_t kTrainSparseAutoEncoder = 1 << 2;
+constexpr uint8_t kInferSparseAutoEncoder = 1 << 3;
 constexpr uint8_t kTrain = kTrainModel | kTrainSparseAutoEncoder;
 
 struct FlagRule {
@@ -24,8 +25,9 @@ struct FlagRule {
 constexpr FlagRule kFlagRules[] = {
     {"corpus", kTrain},
     {"resume_from", kTrain},
-    {"inference_from", kInferModel},
-    {"sparse_autoencoder_from", kTrainSparseAutoEncoder},
+    {"inference_from", kInferModel | kInferSparseAutoEncoder},
+    {"sparse_autoencoder_from",
+     kTrainSparseAutoEncoder | kInferSparseAutoEncoder},
     {"checkpoint_dir", kTrain},
     {"checkpoint_every", kTrain},
     {"steps", kTrain},
@@ -38,7 +40,7 @@ constexpr FlagRule kFlagRules[] = {
     {"test_fraction", kTrainModel},
     {"train_until_loss", kTrain},
     {"training_eval_interval", kTrain},
-    {"prompt", kInferModel},
+    {"prompt", kInferModel | kInferSparseAutoEncoder},
     {"generation_tokens", kInferModel},
     {"temperature", kInferModel},
     {"batch_size", kTrain},
@@ -53,6 +55,8 @@ uint8_t ModeMask(Gpt2ShakespeareMode mode) {
       return kInferModel;
     case Gpt2ShakespeareMode::kTrainSparseAutoEncoder:
       return kTrainSparseAutoEncoder;
+    case Gpt2ShakespeareMode::kInferSparseAutoEncoder:
+      return kInferSparseAutoEncoder;
   }
   return 0;
 }
@@ -73,8 +77,11 @@ absl::StatusOr<Gpt2ShakespeareMode> ParseGpt2ShakespeareMode(
   if (mode == "train_sae") {
     return Gpt2ShakespeareMode::kTrainSparseAutoEncoder;
   }
+  if (mode == "infer_SAE" || mode == "infer_sae") {
+    return Gpt2ShakespeareMode::kInferSparseAutoEncoder;
+  }
   return absl::InvalidArgumentError(
-      "--mode must be one of: train_model, infer_model, train_sae");
+      "--mode must be one of: train_model, infer_model, train_sae, infer_SAE");
 }
 
 absl::string_view Gpt2ShakespeareModeName(Gpt2ShakespeareMode mode) {
@@ -85,6 +92,8 @@ absl::string_view Gpt2ShakespeareModeName(Gpt2ShakespeareMode mode) {
       return "infer_model";
     case Gpt2ShakespeareMode::kTrainSparseAutoEncoder:
       return "train_sae";
+    case Gpt2ShakespeareMode::kInferSparseAutoEncoder:
+      return "infer_SAE";
   }
   return "unknown";
 }
@@ -107,14 +116,19 @@ absl::Status ValidateGpt2ShakespeareModeFlags(
           " is not valid in --mode=", Gpt2ShakespeareModeName(mode)));
     }
   }
-  if (mode == Gpt2ShakespeareMode::kInferModel && inference_from.empty()) {
+  if ((mode == Gpt2ShakespeareMode::kInferModel ||
+       mode == Gpt2ShakespeareMode::kInferSparseAutoEncoder) &&
+      inference_from.empty()) {
     return absl::InvalidArgumentError(
-        "--inference_from is required in --mode=infer_model");
+        absl::StrCat("--inference_from is required in --mode=",
+                     Gpt2ShakespeareModeName(mode)));
   }
-  if (mode == Gpt2ShakespeareMode::kTrainSparseAutoEncoder &&
+  if ((mode == Gpt2ShakespeareMode::kTrainSparseAutoEncoder ||
+       mode == Gpt2ShakespeareMode::kInferSparseAutoEncoder) &&
       sparse_autoencoder_from.empty()) {
     return absl::InvalidArgumentError(
-        "--sparse_autoencoder_from is required in --mode=train_sae");
+        absl::StrCat("--sparse_autoencoder_from is required in --mode=",
+                     Gpt2ShakespeareModeName(mode)));
   }
   return absl::OkStatus();
 }

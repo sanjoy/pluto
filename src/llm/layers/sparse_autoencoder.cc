@@ -5,6 +5,7 @@
 #include <cuda_runtime.h>
 #include <cuda_tile.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -107,6 +108,39 @@ __tile_global__ void SparseDecoderForwardKernel(
   }
   output_view.store(ct::element_cast<Activation>(accumulator), row_tile,
                     input_tile);
+}
+
+template <class Activation>
+__tile_global__ void SparseZStatisticsKernel(
+    const Activation* __restrict__ latents, int rows, int feature_dim,
+    float* __restrict__ statistics) {
+  namespace ct = ::cuda::tiles;
+  using namespace ct::literals;
+  auto latent_view = ct::partition_view{
+      ct::tensor_span{latents, ct::extents{rows, feature_dim}},
+      ct::shape{1_ic, 16_ic}};
+  auto output_view = ct::partition_view{
+      ct::tensor_span{statistics, ct::extents{rows, 4}}, ct::shape{1_ic, 1_ic}};
+  // One program per token, parallel across tokens. FP32 statistics operate
+  // on the stored Z (after BF16 rounding), not the encoder's accumulator.
+  auto count = ct::zeros<ct::tile<float, ct::shape<1, 1>>>();
+  auto sum = count;
+  auto squared_sum = count;
+  auto maximum = count;
+  auto zero = ct::zeros<ct::tile<float, ct::shape<1, 16>>>();
+  const int row = ct::bid().x;
+  for (int feature = 0; feature < feature_dim / internal::kDenseTile;
+       ++feature) {
+    auto z = ct::element_cast<float>(latent_view.load(row, feature));
+    count = count + ct::sum(ct::select(z > zero, zero + 1.0f, zero), 1_ic);
+    sum = sum + ct::sum(z, 1_ic);
+    squared_sum = squared_sum + ct::sum(z * z, 1_ic);
+    maximum = ct::max(maximum, ct::reduce_max(z, 1_ic));
+  }
+  output_view.store(count, row, 0);
+  output_view.store(sum, row, 1);
+  output_view.store(squared_sum, row, 2);
+  output_view.store(maximum, row, 3);
 }
 
 template <class Activation>
@@ -547,10 +581,15 @@ absl::Status CopyNormal(cuda::Executor& executor, Buffer& destination,
 
 absl::StatusOr<std::unique_ptr<SparseAutoEncoderLayer>>
 SparseAutoEncoderLayer::Create(cuda::Executor& executor, int input_dim,
-                               int feature_dim, DataType data_type) {
+                               int feature_dim, DataType data_type, Mode mode) {
   RETURN_IF_ERROR(internal::ValidateComputeType(data_type));
   RETURN_IF_ERROR(internal::ValidateTiledExtent(input_dim, "input_dim"));
   RETURN_IF_ERROR(internal::ValidateTiledExtent(feature_dim, "feature_dim"));
+  // Row counts are stored in FP32 alongside the moments, so keep them exact.
+  if (mode == Mode::kCollectStatistics && feature_dim > (1 << 24)) {
+    return absl::InvalidArgumentError(
+        "SAE statistics require feature_dim <= 2^24");
+  }
   const size_t encoder_bytes =
       static_cast<size_t>(feature_dim) * input_dim * sizeof(float);
   const size_t encoder_bias_bytes =
@@ -582,7 +621,7 @@ SparseAutoEncoderLayer::Create(cuda::Executor& executor, int input_dim,
         "cudaMemsetAsync(sparse autoencoder parameter)"));
   }
   return std::unique_ptr<SparseAutoEncoderLayer>(new SparseAutoEncoderLayer(
-      executor, input_dim, feature_dim, data_type, std::move(encoder),
+      executor, input_dim, feature_dim, data_type, mode, std::move(encoder),
       std::move(encoder_bias), std::move(decoder), std::move(decoder_bias),
       std::move(encoder_gradient), std::move(encoder_bias_gradient),
       std::move(decoder_gradient), std::move(decoder_bias_gradient)));
@@ -670,12 +709,84 @@ absl::StatusOr<Buffer> SparseAutoEncoderLayer::fwd(
                                    "sparse autoencoder forward launch"));
   tape->intermediates = {inputs[0], latents};
   tape->children.clear();
+  if (mode_ == Mode::kCollectStatistics) {
+    ASSIGN_OR_RETURN(auto statistics,
+                     Buffer::Allocate(executor, static_cast<size_t>(rows) * 4 *
+                                                    sizeof(float)));
+    if (output_type_ == DataType::BF16) {
+      SparseZStatisticsKernel<__nv_bfloat16><<<rows, 1, 0, executor.stream()>>>(
+          static_cast<const __nv_bfloat16*>(latents.data()), rows, feature_dim_,
+          static_cast<float*>(statistics.data()));
+    } else {
+      SparseZStatisticsKernel<float><<<rows, 1, 0, executor.stream()>>>(
+          static_cast<const float*>(latents.data()), rows, feature_dim_,
+          static_cast<float*>(statistics.data()));
+    }
+    RETURN_IF_ERROR(
+        cuda::CudaStatus(cudaGetLastError(), "SAE Z statistics launch"));
+    tape->intermediates.push_back(std::move(statistics));
+  }
   return std::move(reconstruction);
+}
+
+absl::StatusOr<SparseAutoEncoderZStatistics>
+SparseAutoEncoderLayer::ReadZStatistics(cuda::Executor& executor,
+                                        const Tape& tape,
+                                        int valid_rows) const {
+  RETURN_IF_ERROR(internal::ValidateExecutor(executor_, executor,
+                                             "SparseAutoEncoderLayer"));
+  if (tape.intermediates.size() != 3) {
+    return absl::FailedPreconditionError(
+        "ReadZStatistics requires a tape from kCollectStatistics mode");
+  }
+  RETURN_IF_ERROR(latent_activations(tape).status());
+  ASSIGN_OR_RETURN(int rows, internal::ActivationRows(
+                                 executor, tape.intermediates[0], input_dim_,
+                                 output_type_, "SAE saved input"));
+  RETURN_IF_ERROR(internal::ValidateBuffer(
+      executor, tape.intermediates[2],
+      static_cast<size_t>(rows) * 4 * sizeof(float), "SAE saved statistics"));
+  if (valid_rows < 0 || valid_rows > rows) {
+    return absl::InvalidArgumentError("valid_rows must be in [0, SAE rows]");
+  }
+  if (valid_rows != 0) rows = valid_rows;
+  ASSIGN_OR_RETURN(auto host, cuda::PageLockedHostArray<float>::Allocate(
+                                  static_cast<size_t>(rows) * 4));
+  RETURN_IF_ERROR(cuda::CudaStatus(
+      cudaMemcpyAsync(host.data(), tape.intermediates[2].data(),
+                      host.size_bytes(), cudaMemcpyDeviceToHost,
+                      executor.stream()),
+      "copy SAE Z statistics"));
+  RETURN_IF_ERROR(executor.Synchronize());
+
+  SparseAutoEncoderZStatistics result;
+  result.rows = rows;
+  result.feature_dim = feature_dim_;
+  double sum = 0;
+  double squared_sum = 0;
+  for (int row = 0; row < rows; ++row) {
+    const float* values = host.data() + static_cast<size_t>(row) * 4;
+    for (int index = 0; index < 4; ++index) {
+      if (!std::isfinite(values[index])) {
+        return absl::FailedPreconditionError("non-finite SAE Z statistics");
+      }
+    }
+    result.active_count += static_cast<int64_t>(values[0]);
+    sum += values[1];
+    squared_sum += values[2];
+    result.maximum = std::max(result.maximum, static_cast<double>(values[3]));
+  }
+  const double elements = static_cast<double>(rows) * feature_dim_;
+  result.mean = sum / elements;
+  // Roundoff may make the variance of a constant Z very slightly negative.
+  result.standard_deviation = std::sqrt(
+      std::max(0.0, squared_sum / elements - result.mean * result.mean));
+  return result;
 }
 
 absl::StatusOr<Buffer> SparseAutoEncoderLayer::latent_activations(
     const Tape& tape) const {
-  if (tape.intermediates.size() != 2) {
+  if (tape.intermediates.size() != 2 && tape.intermediates.size() != 3) {
     return absl::InvalidArgumentError(
         "latent_activations requires a tape produced by SAE fwd");
   }
@@ -696,7 +807,7 @@ absl::StatusOr<BufferVec> SparseAutoEncoderLayer::bwd(
   RETURN_IF_ERROR(internal::ValidateExecutor(executor_, executor,
                                              "SparseAutoEncoderLayer"));
   if ((output_gradients.size() != 1 && output_gradients.size() != 3) ||
-      tape.intermediates.size() != 2) {
+      (tape.intermediates.size() != 2 && tape.intermediates.size() != 3)) {
     return absl::InvalidArgumentError(
         "SAE bwd expects d_x1, optionally d_z and d_D, and a matching tape");
   }

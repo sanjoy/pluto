@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <tuple>
@@ -22,8 +23,9 @@ TEST_F(LayerReferenceTest,
       SCOPED_TRACE(testing::Message()
                    << "type=" << static_cast<int>(type) << " rows=" << rows
                    << " input=" << input_dim << " features=" << feature_dim);
-      auto device_layer = SparseAutoEncoderLayer::Create(*executor_, input_dim,
-                                                         feature_dim, type);
+      auto device_layer = SparseAutoEncoderLayer::Create(
+          *executor_, input_dim, feature_dim, type,
+          SparseAutoEncoderLayer::Mode::kCollectStatistics);
       auto reference_layer =
           SparseAutoEncoderLayerReference::Create(input_dim, feature_dim, type);
       auto device_loss = SparseAutoEncoderLossLayer::Create(
@@ -161,6 +163,95 @@ TEST_F(LayerReferenceTest,
         EXPECT_TRUE(FloatBuffersNear(device_parameter_gradients[index],
                                      reference_parameter_gradients[index],
                                      4e-2f, 2e-2f));
+      }
+    }
+  }
+}
+
+// The encoder itself is checked against the CPU reference above, including
+// backward with a statistics tape. Here a scalar reduction of the stored Z
+// isolates statistics correctness from tensor-core rounding differences.
+TEST_F(LayerReferenceTest,
+       ZStatisticsMatchScalarReductionAcrossShapesAndTypes) {
+  constexpr int kRows = 32;
+  constexpr int kInputDim = 16;
+  for (DataType type : {DataType::FP16, DataType::BF16}) {
+    for (int features : {16, 48, 4096}) {
+      for (int pattern : {0, 1, 2}) {
+        SCOPED_TRACE(testing::Message()
+                     << "type=" << static_cast<int>(type)
+                     << " features=" << features << " pattern=" << pattern);
+        auto layer = SparseAutoEncoderLayer::Create(
+            *executor_, kInputDim, features, type,
+            SparseAutoEncoderLayer::Mode::kCollectStatistics);
+        ASSERT_TRUE(layer.ok()) << layer.status();
+        // Zero parameters produce all-zero Z. A positive bias produces a
+        // constant dense Z; random weights produce mixed, row-dependent Z.
+        if (pattern == 1) {
+          auto bias = MakeRawBufferPair<float>(
+              *executor_, std::vector<float>(features, 2.0f));
+          ASSERT_TRUE(bias.ok()) << bias.status();
+          (*layer)->weights()[1] = bias->device;
+        } else if (pattern == 2) {
+          ASSERT_TRUE((*layer)->InitializeNormal(0.25f, 31).ok());
+        }
+        std::vector<float> values(kRows * kInputDim);
+        for (size_t index = 0; index < values.size(); ++index) {
+          values[index] = std::sin(0.17f * index);
+          // Trailing rows intentionally differ; including padding must
+          // change the result in the mixed case.
+          if (index >= 19 * kInputDim) values[index] *= 8;
+        }
+        auto input = MakeActivationBufferPair(*executor_, values, type);
+        ASSERT_TRUE(input.ok()) << input.status();
+        Tape tape;
+        ASSERT_TRUE(
+            (*layer)->fwd(*executor_, BufferVec{input->device}, &tape).ok());
+        auto latents = (*layer)->latent_activations(tape);
+        ASSERT_TRUE(latents.ok()) << latents.status();
+        auto z = ReadDeviceActivations(*executor_, *latents, type);
+        ASSERT_TRUE(z.ok()) << z.status();
+        // A later forward cannot overwrite a previous tape's statistics.
+        auto zero_input = MakeActivationBufferPair(
+            *executor_, std::vector<float>(kRows * kInputDim, 0), type);
+        ASSERT_TRUE(zero_input.ok()) << zero_input.status();
+        Tape later_tape;
+        ASSERT_TRUE(
+            (*layer)
+                ->fwd(*executor_, BufferVec{zero_input->device}, &later_tape)
+                .ok());
+        for (int valid_rows : {1, 19, kRows, 0}) {
+          const int rows = valid_rows == 0 ? kRows : valid_rows;
+          auto stats = (*layer)->ReadZStatistics(*executor_, tape, valid_rows);
+          ASSERT_TRUE(stats.ok()) << stats.status();
+          int64_t active = 0;
+          double sum = 0, squared_sum = 0, maximum = 0;
+          for (int index = 0; index < rows * features; ++index) {
+            const double value = (*z)[index];
+            active += value > 0;
+            sum += value;
+            squared_sum += value * value;
+            maximum = std::max(maximum, value);
+          }
+          const double elements = rows * features;
+          const double mean = sum / elements;
+          const double stddev =
+              std::sqrt(std::max(0.0, squared_sum / elements - mean * mean));
+          EXPECT_EQ(stats->rows, rows);
+          EXPECT_EQ(stats->feature_dim, features);
+          EXPECT_EQ(stats->active_count, active);
+          EXPECT_NEAR(stats->mean, mean, 2e-5);
+          EXPECT_NEAR(stats->standard_deviation, stddev, 2e-5);
+          EXPECT_DOUBLE_EQ(stats->maximum, maximum);
+          EXPECT_DOUBLE_EQ(stats->mean_active_features(),
+                           static_cast<double>(active) / rows);
+          EXPECT_NEAR(stats->zero_fraction(), 1.0 - active / elements, 1e-15);
+          if (pattern < 2) {
+            EXPECT_EQ(active, pattern == 0 ? 0 : rows * features);
+            EXPECT_DOUBLE_EQ(stats->mean, pattern == 0 ? 0 : 2);
+            EXPECT_DOUBLE_EQ(stats->standard_deviation, 0);
+          }
+        }
       }
     }
   }

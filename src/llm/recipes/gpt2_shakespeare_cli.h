@@ -11,6 +11,7 @@ enum class Gpt2ShakespeareMode {
   kTrainModel,
   kInferModel,
   kTrainSparseAutoEncoder,
+  kInferSparseAutoEncoder,
 };
 
 absl::StatusOr<Gpt2ShakespeareMode> ParseGpt2ShakespeareMode(
