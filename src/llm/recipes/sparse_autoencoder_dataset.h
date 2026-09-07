@@ -11,14 +11,6 @@
 
 namespace pluto::llm {
 
-// One batch of hidden states suitable as sparse-autoencoder input.
-// activations contains batch_size rows; the row width and element type are
-// defined by the activation generator used to create the iterator.
-struct ActivationBatch {
-  Buffer activations;
-  int batch_size;
-};
-
 // Lazily transforms token batches into hidden-state batches.
 //
 // Create() first restores activation_generator from checkpoint_directory.
@@ -31,18 +23,20 @@ struct ActivationBatch {
 //
 // The iterator borrows executor, activation_generator, and source. All three
 // must outlive it. The generator is used only for forward inference; its tape
-// is discarded after each batch and no gradients are computed.
-class SparseAutoEncoderDataSetIterator final {
+// is discarded after each batch and no gradients are computed. Returned
+// DataBatch::data buffers contain batch_size hidden-state rows; their row width
+// and element type are defined by activation_generator.
+class SparseAutoEncoderDataSetIterator final : public DataSetIterator {
  public:
   static absl::StatusOr<std::unique_ptr<SparseAutoEncoderDataSetIterator>>
   Create(cuda::Executor& executor, Layer& activation_generator,
          DataSetIterator& source,
          const std::filesystem::path& checkpoint_directory);
 
-  absl::StatusOr<ActivationBatch> Next();
+  absl::StatusOr<DataBatch> Next() override;
 
   // Restores the wrapped source's original sequence.
-  absl::Status Reset();
+  absl::Status Reset() override;
 
  private:
   SparseAutoEncoderDataSetIterator(cuda::Executor& executor,

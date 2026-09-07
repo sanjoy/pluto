@@ -53,7 +53,7 @@ SparseAutoEncoderDataSetIterator::Create(
                                            source));
 }
 
-absl::StatusOr<ActivationBatch> SparseAutoEncoderDataSetIterator::Next() {
+absl::StatusOr<DataBatch> SparseAutoEncoderDataSetIterator::Next() {
   ASSIGN_OR_RETURN(DataBatch batch, source_.Next());
   RETURN_IF_ERROR(ValidateSourceBatch(executor_, batch));
 
@@ -72,8 +72,8 @@ absl::StatusOr<ActivationBatch> SparseAutoEncoderDataSetIterator::Next() {
     return absl::InvalidArgumentError(
         "activation generator returned a buffer on a different executor");
   }
-  return ActivationBatch{
-      .activations = std::move(activations),
+  return DataBatch{
+      .data = std::move(activations),
       .batch_size = batch.batch_size,
   };
 }

@@ -119,23 +119,23 @@ TEST_F(SparseAutoEncoderDataSetTest,
   ASSERT_TRUE(data.ok()) << data.status();
   FixedTokenDataSetIterator source(*data);
 
-  auto dataset = SparseAutoEncoderDataSetIterator::Create(
+  auto concrete_dataset = SparseAutoEncoderDataSetIterator::Create(
       *executor_, **activation_generator, source, checkpoint);
-  ASSERT_TRUE(dataset.ok()) << dataset.status();
+  ASSERT_TRUE(concrete_dataset.ok()) << concrete_dataset.status();
+  std::unique_ptr<DataSetIterator> dataset = std::move(*concrete_dataset);
   EXPECT_EQ(source.next_calls(), 0);
 
-  auto batch = (*dataset)->Next();
+  auto batch = dataset->Next();
   ASSERT_TRUE(batch.ok()) << batch.status();
   EXPECT_EQ(source.next_calls(), 1);
   EXPECT_EQ(batch->batch_size, kBatchSize);
-  EXPECT_EQ(
-      batch->activations.size_bytes(),
-      static_cast<size_t>(kBatchSize) * kEmbeddingDimension * sizeof(float));
+  EXPECT_EQ(batch->data.size_bytes(), static_cast<size_t>(kBatchSize) *
+                                          kEmbeddingDimension * sizeof(float));
 
   std::vector<float> actual(kBatchSize * kEmbeddingDimension);
-  ASSERT_EQ(cudaMemcpyAsync(actual.data(), batch->activations.data(),
-                            batch->activations.size_bytes(),
-                            cudaMemcpyDeviceToHost, executor_->stream()),
+  ASSERT_EQ(cudaMemcpyAsync(actual.data(), batch->data.data(),
+                            batch->data.size_bytes(), cudaMemcpyDeviceToHost,
+                            executor_->stream()),
             cudaSuccess);
   ASSERT_TRUE(executor_->Synchronize().ok());
   for (int row = 0; row < kBatchSize; ++row) {
@@ -145,7 +145,7 @@ TEST_F(SparseAutoEncoderDataSetTest,
     }
   }
 
-  EXPECT_TRUE((*dataset)->Reset().ok());
+  EXPECT_TRUE(dataset->Reset().ok());
   EXPECT_EQ(source.reset_calls(), 1);
 }
 
