@@ -15,10 +15,12 @@
 #include "gtest/gtest.h"
 #include "src/cuda/buffer.h"
 #include "src/cuda/executor.h"
+#include "src/cuda/page_locked_host_array.h"
 #include "src/dataset/dataset.h"
 #include "src/llm/checkpoint.h"
 #include "src/llm/layer.h"
 #include "src/llm/layers/embedding.h"
+#include "src/util/status_macros.h"
 
 namespace pluto::llm {
 namespace {
@@ -68,7 +70,8 @@ class SparseAutoEncoderDataSetTest : public testing::Test {
   }
 
   absl::StatusOr<Buffer> MakeData() {
-    std::vector<int> data(2 * kBatchSize);
+    ASSIGN_OR_RETURN(auto data,
+                     cuda::PageLockedHostArray<int>::Allocate(2 * kBatchSize));
     std::iota(data.begin(), data.begin() + kBatchSize, 0);
     std::iota(data.begin() + kBatchSize, data.end(), 1);
     auto buffer = Buffer::Allocate(*executor_, data.size() * sizeof(int));
@@ -99,8 +102,10 @@ TEST_F(SparseAutoEncoderDataSetTest,
           static_cast<float>(token * 100 + column);
     }
   }
+  auto pinned_table = cuda::PageLockedHostArray<float>::CopyFrom(table);
+  ASSERT_TRUE(pinned_table.ok()) << pinned_table.status();
   ASSERT_EQ(cudaMemcpyAsync((*checkpoint_embedding)->weight().data(),
-                            table.data(), table.size() * sizeof(float),
+                            pinned_table->data(), table.size() * sizeof(float),
                             cudaMemcpyHostToDevice, executor_->stream()),
             cudaSuccess);
 
@@ -132,15 +137,17 @@ TEST_F(SparseAutoEncoderDataSetTest,
   EXPECT_EQ(batch->data.size_bytes(), static_cast<size_t>(kBatchSize) *
                                           kEmbeddingDimension * sizeof(float));
 
-  std::vector<float> actual(kBatchSize * kEmbeddingDimension);
-  ASSERT_EQ(cudaMemcpyAsync(actual.data(), batch->data.data(),
+  auto actual = cuda::PageLockedHostArray<float>::Allocate(kBatchSize *
+                                                           kEmbeddingDimension);
+  ASSERT_TRUE(actual.ok()) << actual.status();
+  ASSERT_EQ(cudaMemcpyAsync(actual->data(), batch->data.data(),
                             batch->data.size_bytes(), cudaMemcpyDeviceToHost,
                             executor_->stream()),
             cudaSuccess);
   ASSERT_TRUE(executor_->Synchronize().ok());
   for (int row = 0; row < kBatchSize; ++row) {
     for (int column = 0; column < kEmbeddingDimension; ++column) {
-      EXPECT_FLOAT_EQ(actual[row * kEmbeddingDimension + column],
+      EXPECT_FLOAT_EQ((*actual)[row * kEmbeddingDimension + column],
                       table[row * kEmbeddingDimension + column]);
     }
   }

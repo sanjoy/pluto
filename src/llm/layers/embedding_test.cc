@@ -45,14 +45,16 @@ TEST_F(LayersTest, LanguageModelingHeadUsesEmbeddingWeightTranspose) {
   std::vector<float> table(kTestVocabularySize * kTestModelWidth, 0.0f);
   table[3 * kTestModelWidth + 5] = 2.0f;
   table[7 * kTestModelWidth + 5] = 3.0f;
+  const auto pinned_table = CopyToPageLockedHostArray(table);
   ASSERT_EQ(cudaMemcpyAsync((*embedding)->weights().front().data(),
-                            table.data(), table.size() * sizeof(float),
+                            pinned_table.data(), table.size() * sizeof(float),
                             cudaMemcpyHostToDevice, executor_->stream()),
             cudaSuccess);
   std::vector<int> tokens(kTestBatchSize, 3);
+  const auto pinned_tokens = CopyToPageLockedHostArray(tokens);
   auto token_buffer = Buffer::Allocate(*executor_, tokens.size() * sizeof(int));
   ASSERT_TRUE(token_buffer.ok()) << token_buffer.status();
-  ASSERT_EQ(cudaMemcpyAsync(token_buffer->data(), tokens.data(),
+  ASSERT_EQ(cudaMemcpyAsync(token_buffer->data(), pinned_tokens.data(),
                             token_buffer->size_bytes(), cudaMemcpyHostToDevice,
                             executor_->stream()),
             cudaSuccess);
@@ -70,23 +72,27 @@ TEST_F(LayersTest, LanguageModelingHeadUsesEmbeddingWeightTranspose) {
   std::vector<float> output_gradient(kTestBatchSize * kTestVocabularySize,
                                      0.0f);
   output_gradient[7] = 1.0f;
+  const auto pinned_output_gradient =
+      CopyToPageLockedHostArray(output_gradient);
   auto gradient_buffer =
       Buffer::Allocate(*executor_, output_gradient.size() * sizeof(float));
   ASSERT_TRUE(gradient_buffer.ok()) << gradient_buffer.status();
-  ASSERT_EQ(cudaMemcpyAsync(gradient_buffer->data(), output_gradient.data(),
-                            gradient_buffer->size_bytes(),
-                            cudaMemcpyHostToDevice, executor_->stream()),
-            cudaSuccess);
+  ASSERT_EQ(
+      cudaMemcpyAsync(gradient_buffer->data(), pinned_output_gradient.data(),
+                      gradient_buffer->size_bytes(), cudaMemcpyHostToDevice,
+                      executor_->stream()),
+      cudaSuccess);
   BufferVec head_gradients = {*gradient_buffer};
   auto hidden_gradient =
       (*head)->bwd(*executor_, head_gradients, std::move(head_tape));
   ASSERT_TRUE(hidden_gradient.ok()) << hidden_gradient.status();
   ASSERT_EQ(hidden_gradient->size(), 1u);
 
-  std::vector<float> host_logits(kTestVocabularySize);
-  std::vector<float> host_hidden_gradient(kTestModelWidth);
-  std::vector<float> unchanged_table(table.size());
-  std::vector<float> table_gradient(table.size());
+  auto host_logits = AllocatePageLockedHostArray<float>(kTestVocabularySize);
+  auto host_hidden_gradient =
+      AllocatePageLockedHostArray<float>(kTestModelWidth);
+  auto unchanged_table = AllocatePageLockedHostArray<float>(table.size());
+  auto table_gradient = AllocatePageLockedHostArray<float>(table.size());
   ASSERT_EQ(cudaMemcpyAsync(host_logits.data(), logits->data(),
                             host_logits.size() * sizeof(float),
                             cudaMemcpyDeviceToHost, executor_->stream()),
@@ -135,14 +141,16 @@ TEST_F(LayersTest, Bf16HeadMasksPhysicalVocabularyPadding) {
 
   std::vector<float> table(kPaddedVocabularySize * kTestModelWidth, 0.0f);
   table[3 * kTestModelWidth + 5] = 2.0f;
+  const auto pinned_table = CopyToPageLockedHostArray(table);
   ASSERT_EQ(cudaMemcpyAsync((*embedding)->weights().front().data(),
-                            table.data(), table.size() * sizeof(float),
+                            pinned_table.data(), table.size() * sizeof(float),
                             cudaMemcpyHostToDevice, executor_->stream()),
             cudaSuccess);
   std::vector<int> tokens(kTestBatchSize, 3);
+  const auto pinned_tokens = CopyToPageLockedHostArray(tokens);
   auto token_buffer = Buffer::Allocate(*executor_, tokens.size() * sizeof(int));
   ASSERT_TRUE(token_buffer.ok()) << token_buffer.status();
-  ASSERT_EQ(cudaMemcpyAsync(token_buffer->data(), tokens.data(),
+  ASSERT_EQ(cudaMemcpyAsync(token_buffer->data(), pinned_tokens.data(),
                             token_buffer->size_bytes(), cudaMemcpyHostToDevice,
                             executor_->stream()),
             cudaSuccess);
@@ -161,7 +169,7 @@ TEST_F(LayersTest, Bf16HeadMasksPhysicalVocabularyPadding) {
   EXPECT_EQ(logits->size_bytes(),
             kTestBatchSize * kPaddedVocabularySize * sizeof(float));
 
-  std::vector<float> host_logits(kPaddedVocabularySize);
+  auto host_logits = AllocatePageLockedHostArray<float>(kPaddedVocabularySize);
   ASSERT_EQ(cudaMemcpyAsync(host_logits.data(), logits->data(),
                             host_logits.size() * sizeof(float),
                             cudaMemcpyDeviceToHost, executor_->stream()),
@@ -183,15 +191,17 @@ TEST_F(LayersTest, PositionEmbeddingRepeatsAtRuntimeContextLength) {
   for (int position = 0; position < kTestContextLength; ++position) {
     weight[position * kTestModelWidth] = static_cast<float>(position + 1);
   }
+  const auto pinned_weight = CopyToPageLockedHostArray(weight);
   ASSERT_EQ(cudaMemcpyAsync((*positions)->weights().front().data(),
-                            weight.data(), weight.size() * sizeof(float),
+                            pinned_weight.data(), weight.size() * sizeof(float),
                             cudaMemcpyHostToDevice, executor_->stream()),
             cudaSuccess);
   std::vector<float> input(kTestBatchSize * kTestModelWidth, 0.0f);
+  const auto pinned_input = CopyToPageLockedHostArray(input);
   auto input_buffer =
       Buffer::Allocate(*executor_, input.size() * sizeof(float));
   ASSERT_TRUE(input_buffer.ok()) << input_buffer.status();
-  ASSERT_EQ(cudaMemcpyAsync(input_buffer->data(), input.data(),
+  ASSERT_EQ(cudaMemcpyAsync(input_buffer->data(), pinned_input.data(),
                             input_buffer->size_bytes(), cudaMemcpyHostToDevice,
                             executor_->stream()),
             cudaSuccess);
@@ -200,7 +210,7 @@ TEST_F(LayersTest, PositionEmbeddingRepeatsAtRuntimeContextLength) {
   BufferVec inputs = {*input_buffer};
   auto output = (*positions)->fwd(*executor_, inputs, &tape);
   ASSERT_TRUE(output.ok()) << output.status();
-  std::vector<float> host_output(input.size());
+  auto host_output = AllocatePageLockedHostArray<float>(input.size());
   ASSERT_EQ(
       cudaMemcpyAsync(host_output.data(), output->data(), output->size_bytes(),
                       cudaMemcpyDeviceToHost, executor_->stream()),

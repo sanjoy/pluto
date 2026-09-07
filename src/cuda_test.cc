@@ -1,7 +1,8 @@
 #include <cuda_runtime.h>
 
-#include <array>
 #include <cstdio>
+
+#include "src/cuda/page_locked_host_array.h"
 
 namespace {
 
@@ -27,14 +28,23 @@ bool CheckCuda(cudaError_t status, const char* operation) {
 }  // namespace
 
 int main() {
-  std::array<int, kValueCount> values = {1, 2, 3, 4, 5, 6, 7, 8};
+  auto values = pluto::cuda::PageLockedHostArray<int>::Allocate(kValueCount);
+  if (!values.ok()) {
+    std::fprintf(stderr, "host allocation failed: %s\n",
+                 values.status().ToString().c_str());
+    return 1;
+  }
+  for (int index = 0; index < kValueCount; ++index) {
+    (*values)[index] = index + 1;
+  }
   int* device_values = nullptr;
 
-  if (!CheckCuda(cudaMalloc(&device_values, sizeof(values)), "cudaMalloc")) {
+  if (!CheckCuda(cudaMalloc(&device_values, values->size_bytes()),
+                 "cudaMalloc")) {
     return 1;
   }
 
-  if (!CheckCuda(cudaMemcpy(device_values, values.data(), sizeof(values),
+  if (!CheckCuda(cudaMemcpy(device_values, values->data(), values->size_bytes(),
                             cudaMemcpyHostToDevice),
                  "cudaMemcpy to device")) {
     cudaFree(device_values);
@@ -48,7 +58,7 @@ int main() {
     return 1;
   }
 
-  if (!CheckCuda(cudaMemcpy(values.data(), device_values, sizeof(values),
+  if (!CheckCuda(cudaMemcpy(values->data(), device_values, values->size_bytes(),
                             cudaMemcpyDeviceToHost),
                  "cudaMemcpy to host")) {
     cudaFree(device_values);
@@ -61,9 +71,9 @@ int main() {
 
   for (int index = 0; index < kValueCount; ++index) {
     const int expected = 2 * (index + 1);
-    if (values[index] != expected) {
+    if ((*values)[index] != expected) {
       std::fprintf(stderr, "output[%d] = %d, expected %d\n", index,
-                   values[index], expected);
+                   (*values)[index], expected);
       return 1;
     }
   }

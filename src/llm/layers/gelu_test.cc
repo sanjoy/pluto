@@ -18,20 +18,24 @@ TEST_F(LayersTest, ZeroHasZeroOutputAndHalfGradient) {
 
   std::vector<float> input(kTestBatchSize, 0.0f);
   std::vector<float> output_gradient(kTestBatchSize, 1.0f);
+  const auto pinned_input = CopyToPageLockedHostArray(input);
+  const auto pinned_output_gradient =
+      CopyToPageLockedHostArray(output_gradient);
   auto input_buffer =
       Buffer::Allocate(*executor_, input.size() * sizeof(float));
   auto gradient_buffer =
       Buffer::Allocate(*executor_, output_gradient.size() * sizeof(float));
   ASSERT_TRUE(input_buffer.ok()) << input_buffer.status();
   ASSERT_TRUE(gradient_buffer.ok()) << gradient_buffer.status();
-  ASSERT_EQ(cudaMemcpyAsync(input_buffer->data(), input.data(),
+  ASSERT_EQ(cudaMemcpyAsync(input_buffer->data(), pinned_input.data(),
                             input_buffer->size_bytes(), cudaMemcpyHostToDevice,
                             executor_->stream()),
             cudaSuccess);
-  ASSERT_EQ(cudaMemcpyAsync(gradient_buffer->data(), output_gradient.data(),
-                            gradient_buffer->size_bytes(),
-                            cudaMemcpyHostToDevice, executor_->stream()),
-            cudaSuccess);
+  ASSERT_EQ(
+      cudaMemcpyAsync(gradient_buffer->data(), pinned_output_gradient.data(),
+                      gradient_buffer->size_bytes(), cudaMemcpyHostToDevice,
+                      executor_->stream()),
+      cudaSuccess);
 
   Tape tape;
   BufferVec inputs = {*input_buffer};
@@ -41,8 +45,8 @@ TEST_F(LayersTest, ZeroHasZeroOutputAndHalfGradient) {
   auto input_gradient = (*gelu)->bwd(*executor_, gradients, std::move(tape));
   ASSERT_TRUE(input_gradient.ok()) << input_gradient.status();
 
-  std::vector<float> host_output(kTestBatchSize);
-  std::vector<float> host_gradient(kTestBatchSize);
+  auto host_output = AllocatePageLockedHostArray<float>(kTestBatchSize);
+  auto host_gradient = AllocatePageLockedHostArray<float>(kTestBatchSize);
   ASSERT_EQ(
       cudaMemcpyAsync(host_output.data(), output->data(), output->size_bytes(),
                       cudaMemcpyDeviceToHost, executor_->stream()),

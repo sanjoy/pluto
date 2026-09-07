@@ -18,6 +18,7 @@
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "src/cuda/buffer.h"
+#include "src/cuda/page_locked_host_array.h"
 #include "src/llm/layers/internal.h"
 #include "src/util/status_macros.h"
 
@@ -491,13 +492,15 @@ absl::Status CopyNormal(cuda::Executor& executor, Buffer& destination,
                         float standard_deviation, std::mt19937_64* random,
                         const char* operation) {
   std::normal_distribution<float> distribution(0.0f, standard_deviation);
-  std::vector<float> values(destination.size_bytes() / sizeof(float));
+  ASSIGN_OR_RETURN(auto values, cuda::PageLockedHostArray<float>::Allocate(
+                                    destination.size_bytes() / sizeof(float)));
   for (float& value : values) value = distribution(*random);
-  return cuda::CudaStatus(
+  RETURN_IF_ERROR(cuda::CudaStatus(
       cudaMemcpyAsync(destination.data(), values.data(),
                       destination.size_bytes(), cudaMemcpyHostToDevice,
                       executor.stream()),
-      operation);
+      operation));
+  return executor.Synchronize();
 }
 
 }  // namespace

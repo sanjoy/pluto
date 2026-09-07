@@ -28,15 +28,18 @@ TEST(Gpt2TokenizerTest, MatchesReferenceTokenIds) {
 
   auto ascii = (*tokenizer)->Encode("Hello, world!");
   ASSERT_TRUE(ascii.ok()) << ascii.status();
-  EXPECT_EQ(*ascii, (std::vector<int>{15496, 11, 995, 0}));
+  EXPECT_EQ(std::vector<int>(ascii->begin(), ascii->end()),
+            (std::vector<int>{15496, 11, 995, 0}));
 
   auto unicode = (*tokenizer)->Encode("Hello, 🌍!");
   ASSERT_TRUE(unicode.ok()) << unicode.status();
-  EXPECT_EQ(*unicode, (std::vector<int>{15496, 11, 12520, 234, 235, 0}));
+  EXPECT_EQ(std::vector<int>(unicode->begin(), unicode->end()),
+            (std::vector<int>{15496, 11, 12520, 234, 235, 0}));
 
   auto spaces = (*tokenizer)->Encode("  leading spaces");
   ASSERT_TRUE(spaces.ok()) << spaces.status();
-  EXPECT_EQ(*spaces, (std::vector<int>{220, 3756, 9029}));
+  EXPECT_EQ(std::vector<int>(spaces->begin(), spaces->end()),
+            (std::vector<int>{220, 3756, 9029}));
 }
 
 TEST(Gpt2TokenizerTest, RecognizesTheEosToken) {
@@ -44,7 +47,8 @@ TEST(Gpt2TokenizerTest, RecognizesTheEosToken) {
   ASSERT_TRUE(tokenizer.ok()) << tokenizer.status();
   auto encoded = (*tokenizer)->Encode("a<|endoftext|>b");
   ASSERT_TRUE(encoded.ok()) << encoded.status();
-  EXPECT_EQ(*encoded, (std::vector<int>{64, 50256, 65}));
+  EXPECT_EQ(std::vector<int>(encoded->begin(), encoded->end()),
+            (std::vector<int>{64, 50256, 65}));
 }
 
 TEST(Gpt2TokenizerTest, DetokenizerRoundTripsBytes) {
@@ -59,7 +63,7 @@ TEST(Gpt2TokenizerTest, DetokenizerRoundTripsBytes) {
   for (const std::string& sample : samples) {
     auto encoded = (*tokenizer)->Encode(sample);
     ASSERT_TRUE(encoded.ok()) << encoded.status();
-    auto decoded = (*detokenizer)->Decode(*encoded);
+    auto decoded = (*detokenizer)->Decode(encoded->span());
     ASSERT_TRUE(decoded.ok()) << decoded.status();
     EXPECT_EQ(*decoded, sample);
   }

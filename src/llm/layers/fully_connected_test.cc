@@ -24,20 +24,24 @@ TEST_F(LayersTest, IdentityDenseLayerHasIdentityForwardAndBackward) {
     output_gradient[index] =
         static_cast<float>(static_cast<int>(index % 9) - 4) / 8;
   }
+  const auto pinned_input = CopyToPageLockedHostArray(input);
+  const auto pinned_output_gradient =
+      CopyToPageLockedHostArray(output_gradient);
   auto input_buffer =
       Buffer::Allocate(*executor_, input.size() * sizeof(float));
   auto gradient_buffer =
       Buffer::Allocate(*executor_, output_gradient.size() * sizeof(float));
   ASSERT_TRUE(input_buffer.ok()) << input_buffer.status();
   ASSERT_TRUE(gradient_buffer.ok()) << gradient_buffer.status();
-  ASSERT_EQ(cudaMemcpyAsync(input_buffer->data(), input.data(),
+  ASSERT_EQ(cudaMemcpyAsync(input_buffer->data(), pinned_input.data(),
                             input_buffer->size_bytes(), cudaMemcpyHostToDevice,
                             executor_->stream()),
             cudaSuccess);
-  ASSERT_EQ(cudaMemcpyAsync(gradient_buffer->data(), output_gradient.data(),
-                            gradient_buffer->size_bytes(),
-                            cudaMemcpyHostToDevice, executor_->stream()),
-            cudaSuccess);
+  ASSERT_EQ(
+      cudaMemcpyAsync(gradient_buffer->data(), pinned_output_gradient.data(),
+                      gradient_buffer->size_bytes(), cudaMemcpyHostToDevice,
+                      executor_->stream()),
+      cudaSuccess);
 
   auto dense =
       FullyConnectedLayer::Create(*executor_, kTestModelWidth, DataType::FP16);
@@ -53,8 +57,8 @@ TEST_F(LayersTest, IdentityDenseLayerHasIdentityForwardAndBackward) {
   ASSERT_TRUE(input_gradients.ok()) << input_gradients.status();
   ASSERT_EQ(input_gradients->size(), 1u);
 
-  std::vector<float> host_output(input.size());
-  std::vector<float> host_input_gradient(input.size());
+  auto host_output = AllocatePageLockedHostArray<float>(input.size());
+  auto host_input_gradient = AllocatePageLockedHostArray<float>(input.size());
   ASSERT_EQ(
       cudaMemcpyAsync(host_output.data(), output->data(), output->size_bytes(),
                       cudaMemcpyDeviceToHost, executor_->stream()),
@@ -86,10 +90,11 @@ TEST_F(LayersTest, RectangularProjectionUsesDistinctInputAndOutputWidths) {
   for (size_t index = 0; index < input.size(); ++index) {
     input[index] = static_cast<float>(index % 7);
   }
+  const auto pinned_input = CopyToPageLockedHostArray(input);
   auto input_buffer =
       Buffer::Allocate(*executor_, input.size() * sizeof(float));
   ASSERT_TRUE(input_buffer.ok()) << input_buffer.status();
-  ASSERT_EQ(cudaMemcpyAsync(input_buffer->data(), input.data(),
+  ASSERT_EQ(cudaMemcpyAsync(input_buffer->data(), pinned_input.data(),
                             input_buffer->size_bytes(), cudaMemcpyHostToDevice,
                             executor_->stream()),
             cudaSuccess);
@@ -97,7 +102,8 @@ TEST_F(LayersTest, RectangularProjectionUsesDistinctInputAndOutputWidths) {
   BufferVec inputs = {*input_buffer};
   auto output = (*dense)->fwd(*executor_, inputs, &tape);
   ASSERT_TRUE(output.ok()) << output.status();
-  std::vector<float> host_output(kTestBatchSize * kOutputWidth);
+  auto host_output =
+      AllocatePageLockedHostArray<float>(kTestBatchSize * kOutputWidth);
   ASSERT_EQ(
       cudaMemcpyAsync(host_output.data(), output->data(), output->size_bytes(),
                       cudaMemcpyDeviceToHost, executor_->stream()),

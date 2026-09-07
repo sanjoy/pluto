@@ -11,6 +11,7 @@
 #include "absl/strings/string_view.h"
 #include "src/cuda/buffer.h"
 #include "src/cuda/executor.h"
+#include "src/cuda/page_locked_host_array.h"
 
 namespace pluto {
 
@@ -99,7 +100,8 @@ struct InMemoryDataSetOptions {
   uint64_t seed = 0;
 };
 
-// Produces next-token batches from a device-resident copy of a token vector.
+// Produces next-token batches from a device-resident copy of a page-locked
+// token array.
 //
 // A batch may pack multiple independent sequences, so batch_size must be a
 // multiple of context_length. Create() uploads the corpus through executor;
@@ -113,7 +115,7 @@ struct InMemoryDataSetOptions {
 class InMemoryDataSetIterator final : public DataSetIterator {
  public:
   static absl::StatusOr<std::unique_ptr<InMemoryDataSetIterator>> Create(
-      cuda::Executor& executor, std::vector<int> tokens,
+      cuda::Executor& executor, cuda::PageLockedHostArray<int> tokens,
       InMemoryDataSetOptions options);
 
   absl::StatusOr<DataBatch> Next() override;
@@ -137,8 +139,8 @@ class InMemoryDataSetIterator final : public DataSetIterator {
   size_t next_sequential_start_ = 0;
 };
 
-// Tokenizes an mmap-backed corpus and uploads the resulting token vector to an
-// in-memory dataset iterator's device storage.
+// Tokenizes an mmap-backed corpus into page-locked memory and uploads the
+// resulting token array to an in-memory dataset iterator's device storage.
 absl::StatusOr<std::unique_ptr<InMemoryDataSetIterator>>
 MakeInMemoryDataSetIterator(cuda::Executor& executor, const TextCorpus& corpus,
                             const tokenizer::Gpt2Tokenizer& tokenizer,

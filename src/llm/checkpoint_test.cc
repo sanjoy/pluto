@@ -16,6 +16,7 @@
 #include "gtest/gtest.h"
 #include "src/cuda/buffer.h"
 #include "src/cuda/executor.h"
+#include "src/cuda/page_locked_host_array.h"
 #include "src/llm/layer.h"
 
 namespace pluto::llm {
@@ -68,19 +69,25 @@ class CheckpointTest : public testing::Test {
   void CopyToDevice(Buffer& buffer,
                     const std::vector<unsigned char>& contents) {
     ASSERT_EQ(buffer.size_bytes(), contents.size());
-    ASSERT_EQ(cudaMemcpyAsync(buffer.data(), contents.data(), contents.size(),
+    auto transfer =
+        cuda::PageLockedHostArray<unsigned char>::CopyFrom(contents);
+    ASSERT_TRUE(transfer.ok()) << transfer.status();
+    ASSERT_EQ(cudaMemcpyAsync(buffer.data(), transfer->data(), contents.size(),
                               cudaMemcpyHostToDevice, executor_->stream()),
               cudaSuccess);
     ASSERT_TRUE(executor_->Synchronize().ok());
   }
 
   std::vector<unsigned char> CopyFromDevice(const Buffer& buffer) {
-    std::vector<unsigned char> result(buffer.size_bytes());
-    EXPECT_EQ(cudaMemcpyAsync(result.data(), buffer.data(), result.size(),
+    auto transfer =
+        cuda::PageLockedHostArray<unsigned char>::Allocate(buffer.size_bytes());
+    EXPECT_TRUE(transfer.ok()) << transfer.status();
+    if (!transfer.ok()) return {};
+    EXPECT_EQ(cudaMemcpyAsync(transfer->data(), buffer.data(), transfer->size(),
                               cudaMemcpyDeviceToHost, executor_->stream()),
               cudaSuccess);
     EXPECT_TRUE(executor_->Synchronize().ok());
-    return result;
+    return std::vector<unsigned char>(transfer->begin(), transfer->end());
   }
 
   std::unique_ptr<cuda::Executor> executor_;

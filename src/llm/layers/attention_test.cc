@@ -35,10 +35,11 @@ TEST_F(LayersTest, FlashAttentionIsCausalAndHasCorrectSingleTokenGradient) {
   input[kPackedWidth + 2 * kTestModelWidth] = 2.0f;
   // A future value that position zero is not allowed to observe.
   input[2 * kPackedWidth + 2 * kTestModelWidth] = 4.0f;
+  const auto pinned_input = CopyToPageLockedHostArray(input);
   auto input_buffer =
       Buffer::Allocate(*executor_, input.size() * sizeof(float));
   ASSERT_TRUE(input_buffer.ok()) << input_buffer.status();
-  ASSERT_EQ(cudaMemcpyAsync(input_buffer->data(), input.data(),
+  ASSERT_EQ(cudaMemcpyAsync(input_buffer->data(), pinned_input.data(),
                             input_buffer->size_bytes(), cudaMemcpyHostToDevice,
                             executor_->stream()),
             cudaSuccess);
@@ -50,21 +51,24 @@ TEST_F(LayersTest, FlashAttentionIsCausalAndHasCorrectSingleTokenGradient) {
 
   std::vector<float> output_gradient(kTestBatchSize * kTestModelWidth, 0.0f);
   output_gradient[0] = 1.0f;
+  const auto pinned_output_gradient =
+      CopyToPageLockedHostArray(output_gradient);
   auto gradient_buffer =
       Buffer::Allocate(*executor_, output_gradient.size() * sizeof(float));
   ASSERT_TRUE(gradient_buffer.ok()) << gradient_buffer.status();
-  ASSERT_EQ(cudaMemcpyAsync(gradient_buffer->data(), output_gradient.data(),
-                            gradient_buffer->size_bytes(),
-                            cudaMemcpyHostToDevice, executor_->stream()),
-            cudaSuccess);
+  ASSERT_EQ(
+      cudaMemcpyAsync(gradient_buffer->data(), pinned_output_gradient.data(),
+                      gradient_buffer->size_bytes(), cudaMemcpyHostToDevice,
+                      executor_->stream()),
+      cudaSuccess);
   BufferVec attention_gradients = {*gradient_buffer};
   auto input_gradient =
       (*attention)->bwd(*executor_, attention_gradients, std::move(tape));
   ASSERT_TRUE(input_gradient.ok()) << input_gradient.status();
   ASSERT_EQ(input_gradient->size(), 1u);
 
-  std::vector<float> host_output(output_gradient.size());
-  std::vector<float> host_input_gradient(input.size());
+  auto host_output = AllocatePageLockedHostArray<float>(output_gradient.size());
+  auto host_input_gradient = AllocatePageLockedHostArray<float>(input.size());
   ASSERT_EQ(
       cudaMemcpyAsync(host_output.data(), output->data(), output->size_bytes(),
                       cudaMemcpyDeviceToHost, executor_->stream()),

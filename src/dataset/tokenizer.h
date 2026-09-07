@@ -11,6 +11,7 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "src/cuda/page_locked_host_array.h"
 #include "src/dataset/gpt2_model.h"
 
 namespace pluto::tokenizer {
@@ -27,7 +28,10 @@ class Gpt2Tokenizer final {
   static absl::StatusOr<std::unique_ptr<Gpt2Tokenizer>> Load(
       const std::filesystem::path& directory);
 
-  absl::StatusOr<std::vector<int>> Encode(absl::string_view text) const;
+  // Returns page-locked storage so callers can upload token IDs with a true
+  // asynchronous CUDA transfer and no hidden pageable-memory staging copy.
+  absl::StatusOr<cuda::PageLockedHostArray<int>> Encode(
+      absl::string_view text) const;
 
   int vocab_size() const { return model_->vocab_size(); }
   int eos_token_id() const { return model_->eos_token_id(); }

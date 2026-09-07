@@ -12,4 +12,5 @@ cuda_test(
     size = "small",
     srcs = ["cuda_test.cc"],
     tags = ["requires-gpu"],
+    deps = ["//src/cuda:page_locked_host_array"],
 )

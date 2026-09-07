@@ -169,7 +169,7 @@ InMemoryDataSetIterator::InMemoryDataSetIterator(cuda::Executor& executor,
 
 absl::StatusOr<std::unique_ptr<InMemoryDataSetIterator>>
 InMemoryDataSetIterator::Create(cuda::Executor& executor,
-                                std::vector<int> tokens,
+                                cuda::PageLockedHostArray<int> tokens,
                                 InMemoryDataSetOptions options) {
   if (options.batch_size <= 0 || options.context_length <= 0 ||
       options.batch_size % options.context_length != 0) {
@@ -199,8 +199,8 @@ InMemoryDataSetIterator::Create(cuda::Executor& executor,
       cudaMemcpyAsync(corpus_buffer.data(), tokens.data(), corpus_bytes,
                       cudaMemcpyHostToDevice, executor.stream()),
       "cudaMemcpyAsync(dataset corpus)"));
-  // The by-value vector ceases to exist when Create() returns. Complete this
-  // one-time upload before releasing its storage; subsequent Next() calls
+  // The by-value pinned array ceases to exist when Create() returns. Complete
+  // this one-time upload before releasing its storage; subsequent Next() calls
   // remain fully asynchronous.
   RETURN_IF_ERROR(executor.Synchronize());
   return std::unique_ptr<InMemoryDataSetIterator>(new InMemoryDataSetIterator(

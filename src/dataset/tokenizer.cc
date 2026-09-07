@@ -14,8 +14,9 @@
 #include "absl/synchronization/mutex.h"
 #include "re2/re2.h"
 #include "re2/stringpiece.h"
-#include "src/util/status_macros.h"
+#include "src/cuda/page_locked_host_array.h"
 #include "src/dataset/gpt2_model.h"
+#include "src/util/status_macros.h"
 
 namespace pluto::tokenizer {
 namespace {
@@ -169,7 +170,7 @@ absl::Status Gpt2Tokenizer::EncodeOrdinary(absl::string_view text,
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::vector<int>> Gpt2Tokenizer::Encode(
+absl::StatusOr<cuda::PageLockedHostArray<int>> Gpt2Tokenizer::Encode(
     absl::string_view text) const {
   std::vector<int> output;
   size_t begin = 0;
@@ -182,7 +183,7 @@ absl::StatusOr<std::vector<int>> Gpt2Tokenizer::Encode(
     output.push_back(model_->eos_token_id());
     begin = special + model_->eos_token().size();
   }
-  return output;
+  return cuda::PageLockedHostArray<int>::CopyFrom(output);
 }
 
 }  // namespace pluto::tokenizer

@@ -20,6 +20,8 @@ TEST_F(LayersTest, CrossEntropyForwardAndBackwardMatchUniformSoftmax) {
   std::vector<float> logits(kTestBatchSize * kTestVocabularySize, 0.0f);
   std::vector<int> targets(kTestBatchSize);
   for (int row = 0; row < kTestBatchSize; ++row) targets[row] = row;
+  const auto pinned_logits = CopyToPageLockedHostArray(logits);
+  const auto pinned_targets = CopyToPageLockedHostArray(targets);
 
   auto logits_buffer =
       Buffer::Allocate(*executor_, logits.size() * sizeof(float));
@@ -27,11 +29,11 @@ TEST_F(LayersTest, CrossEntropyForwardAndBackwardMatchUniformSoftmax) {
       Buffer::Allocate(*executor_, targets.size() * sizeof(int));
   ASSERT_TRUE(logits_buffer.ok()) << logits_buffer.status();
   ASSERT_TRUE(target_buffer.ok()) << target_buffer.status();
-  ASSERT_EQ(cudaMemcpyAsync(logits_buffer->data(), logits.data(),
+  ASSERT_EQ(cudaMemcpyAsync(logits_buffer->data(), pinned_logits.data(),
                             logits_buffer->size_bytes(), cudaMemcpyHostToDevice,
                             executor_->stream()),
             cudaSuccess);
-  ASSERT_EQ(cudaMemcpyAsync(target_buffer->data(), targets.data(),
+  ASSERT_EQ(cudaMemcpyAsync(target_buffer->data(), pinned_targets.data(),
                             target_buffer->size_bytes(), cudaMemcpyHostToDevice,
                             executor_->stream()),
             cudaSuccess);
@@ -47,8 +49,8 @@ TEST_F(LayersTest, CrossEntropyForwardAndBackwardMatchUniformSoftmax) {
   ASSERT_TRUE(gradients.ok()) << gradients.status();
   ASSERT_EQ(gradients->size(), 1u);
 
-  std::vector<float> host_losses(kTestBatchSize);
-  std::vector<float> host_gradients(logits.size());
+  auto host_losses = AllocatePageLockedHostArray<float>(kTestBatchSize);
+  auto host_gradients = AllocatePageLockedHostArray<float>(logits.size());
   ASSERT_EQ(
       cudaMemcpyAsync(host_losses.data(), losses->data(), losses->size_bytes(),
                       cudaMemcpyDeviceToHost, executor_->stream()),
@@ -78,17 +80,19 @@ TEST_F(LayersTest, IgnoresPaddedVocabularyColumns) {
     }
   }
   std::vector<int> targets(kTestBatchSize, 0);
+  const auto pinned_logits = CopyToPageLockedHostArray(logits);
+  const auto pinned_targets = CopyToPageLockedHostArray(targets);
   auto logits_buffer =
       Buffer::Allocate(*executor_, logits.size() * sizeof(float));
   auto target_buffer =
       Buffer::Allocate(*executor_, targets.size() * sizeof(int));
   ASSERT_TRUE(logits_buffer.ok()) << logits_buffer.status();
   ASSERT_TRUE(target_buffer.ok()) << target_buffer.status();
-  ASSERT_EQ(cudaMemcpyAsync(logits_buffer->data(), logits.data(),
+  ASSERT_EQ(cudaMemcpyAsync(logits_buffer->data(), pinned_logits.data(),
                             logits_buffer->size_bytes(), cudaMemcpyHostToDevice,
                             executor_->stream()),
             cudaSuccess);
-  ASSERT_EQ(cudaMemcpyAsync(target_buffer->data(), targets.data(),
+  ASSERT_EQ(cudaMemcpyAsync(target_buffer->data(), pinned_targets.data(),
                             target_buffer->size_bytes(), cudaMemcpyHostToDevice,
                             executor_->stream()),
             cudaSuccess);
@@ -100,7 +104,7 @@ TEST_F(LayersTest, IgnoresPaddedVocabularyColumns) {
   BufferVec inputs = {*logits_buffer, *target_buffer};
   auto losses = (*loss_layer)->fwd(*executor_, inputs, &tape);
   ASSERT_TRUE(losses.ok()) << losses.status();
-  std::vector<float> host_losses(kTestBatchSize);
+  auto host_losses = AllocatePageLockedHostArray<float>(kTestBatchSize);
   ASSERT_EQ(
       cudaMemcpyAsync(host_losses.data(), losses->data(), losses->size_bytes(),
                       cudaMemcpyDeviceToHost, executor_->stream()),

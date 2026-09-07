@@ -1,13 +1,13 @@
 #include <cuda_runtime.h>
 #include <cuda_tile.h>
 
-#include <array>
 #include <cstddef>
 #include <memory>
 
 #include "gtest/gtest.h"
 #include "src/cuda/buffer.h"
 #include "src/cuda/executor.h"
+#include "src/cuda/page_locked_host_array.h"
 
 namespace pluto::cuda {
 namespace {
@@ -58,28 +58,32 @@ class CuTileTest : public testing::Test {
 };
 
 TEST_F(CuTileTest, AddsOneTilePerLogicalBlock) {
-  std::array<int, kElementCount> left_host{};
-  std::array<int, kElementCount> right_host{};
-  std::array<int, kElementCount> output_host{};
+  auto left_host = PageLockedHostArray<int>::Allocate(kElementCount);
+  auto right_host = PageLockedHostArray<int>::Allocate(kElementCount);
+  auto output_host = PageLockedHostArray<int>::Allocate(kElementCount);
+  ASSERT_TRUE(left_host.ok()) << left_host.status();
+  ASSERT_TRUE(right_host.ok()) << right_host.status();
+  ASSERT_TRUE(output_host.ok()) << output_host.status();
   for (int index = 0; index < kElementCount; ++index) {
-    left_host[index] = index;
-    right_host[index] = 3 * index + 7;
+    (*left_host)[index] = index;
+    (*right_host)[index] = 3 * index + 7;
   }
 
-  auto left = Buffer::Allocate(*executor_, sizeof(left_host));
-  auto right = Buffer::Allocate(*executor_, sizeof(right_host));
-  auto output = Buffer::Allocate(*executor_, sizeof(output_host));
+  auto left = Buffer::Allocate(*executor_, left_host->size_bytes());
+  auto right = Buffer::Allocate(*executor_, right_host->size_bytes());
+  auto output = Buffer::Allocate(*executor_, output_host->size_bytes());
   ASSERT_TRUE(left.ok()) << left.status();
   ASSERT_TRUE(right.ok()) << right.status();
   ASSERT_TRUE(output.ok()) << output.status();
 
-  ASSERT_EQ(cudaMemcpyAsync(left->data(), left_host.data(), sizeof(left_host),
-                            cudaMemcpyHostToDevice, executor_->stream()),
-            cudaSuccess);
   ASSERT_EQ(
-      cudaMemcpyAsync(right->data(), right_host.data(), sizeof(right_host),
+      cudaMemcpyAsync(left->data(), left_host->data(), left_host->size_bytes(),
                       cudaMemcpyHostToDevice, executor_->stream()),
       cudaSuccess);
+  ASSERT_EQ(cudaMemcpyAsync(right->data(), right_host->data(),
+                            right_host->size_bytes(), cudaMemcpyHostToDevice,
+                            executor_->stream()),
+            cudaSuccess);
 
   // Tile kernels use ordinary launch syntax, but their block dimension must be
   // one because the tile compiler chooses the physical thread configuration.
@@ -88,14 +92,14 @@ TEST_F(CuTileTest, AddsOneTilePerLogicalBlock) {
       static_cast<const int*>(right->data()),
       static_cast<int*>(output->data()));
   ASSERT_EQ(cudaGetLastError(), cudaSuccess);
-  ASSERT_EQ(
-      cudaMemcpyAsync(output_host.data(), output->data(), sizeof(output_host),
-                      cudaMemcpyDeviceToHost, executor_->stream()),
-      cudaSuccess);
+  ASSERT_EQ(cudaMemcpyAsync(output_host->data(), output->data(),
+                            output_host->size_bytes(), cudaMemcpyDeviceToHost,
+                            executor_->stream()),
+            cudaSuccess);
   ASSERT_TRUE(executor_->Synchronize().ok());
 
   for (int index = 0; index < kElementCount; ++index) {
-    EXPECT_EQ(output_host[index], left_host[index] + right_host[index])
+    EXPECT_EQ((*output_host)[index], (*left_host)[index] + (*right_host)[index])
         << "index " << index;
   }
 }

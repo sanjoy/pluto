@@ -22,6 +22,7 @@
 #include "absl/time/time.h"
 #include "src/cuda/buffer.h"
 #include "src/cuda/executor.h"
+#include "src/cuda/page_locked_host_array.h"
 #include "src/dataset/dataset.h"
 #include "src/dataset/detokenizer.h"
 #include "src/dataset/tokenizer.h"
@@ -157,20 +158,19 @@ absl::StatusOr<double> ReadEvaluationLoss(cuda::Executor& executor,
     return absl::InvalidArgumentError(
         "evaluation must return one FP32 scalar on its CUDA Executor");
   }
-  float host_loss;
+  ASSIGN_OR_RETURN(auto host_loss,
+                   cuda::PageLockedHostArray<float>::Allocate(1));
   RETURN_IF_ERROR(cuda::CudaStatus(
-      cudaMemcpyAsync(&host_loss, loss.data(), sizeof(host_loss),
+      cudaMemcpyAsync(host_loss.data(), loss.data(), loss.size_bytes(),
                       cudaMemcpyDeviceToHost, executor.stream()),
       "cudaMemcpyAsync(evaluation loss for logging)"));
   RETURN_IF_ERROR(executor.Synchronize());
-  return host_loss;
+  return host_loss[0];
 }
 
-absl::StatusOr<std::vector<float>> Predict(cuda::Executor& executor,
-                                           const ModelConfig& config,
-                                           const Layer& model,
-                                           const std::vector<int>& context,
-                                           const Buffer& token_buffer) {
+absl::StatusOr<cuda::PageLockedHostArray<float>> Predict(
+    cuda::Executor& executor, const ModelConfig& config, const Layer& model,
+    const std::vector<int>& context, const Buffer& token_buffer) {
   if (&token_buffer.executor() != &executor) {
     return absl::InvalidArgumentError(
         "prediction requires its token buffer's CUDA Executor");
@@ -181,7 +181,9 @@ absl::StatusOr<std::vector<float>> Predict(cuda::Executor& executor,
   const size_t context_size =
       std::min(context.size(), static_cast<size_t>(kGpt2ContextLength));
   const size_t context_start = context.size() - context_size;
-  std::vector<int> repeated_context(config.token_batch_size());
+  ASSIGN_OR_RETURN(
+      auto repeated_context,
+      cuda::PageLockedHostArray<int>::Allocate(config.token_batch_size()));
   for (int sequence = 0; sequence < config.batch_size; ++sequence) {
     for (size_t position = 0; position < context_size; ++position) {
       repeated_context[sequence * kGpt2ContextLength + position] =
@@ -202,7 +204,8 @@ absl::StatusOr<std::vector<float>> Predict(cuda::Executor& executor,
   Tape tape;
   BufferVec inputs = {token_buffer};
   ASSIGN_OR_RETURN(auto logits, model.fwd(executor, inputs, &tape));
-  std::vector<float> host_logits(kGpt2VocabularySize);
+  ASSIGN_OR_RETURN(auto host_logits, cuda::PageLockedHostArray<float>::Allocate(
+                                         kGpt2VocabularySize));
   const size_t output_row = context_size - 1;
   const auto* selected_logits = static_cast<const float*>(logits.data()) +
                                 output_row * config.padded_vocabulary_size();
@@ -227,7 +230,8 @@ absl::StatusOr<std::string> Generate(
         "positive");
   }
   if (prompt.empty()) prompt = "\n";
-  ASSIGN_OR_RETURN(std::vector<int> context, tokenizer.Encode(prompt));
+  ASSIGN_OR_RETURN(auto encoded_prompt, tokenizer.Encode(prompt));
+  std::vector<int> context(encoded_prompt.begin(), encoded_prompt.end());
   std::vector<int> generated;
   generated.reserve(generation_tokens);
 

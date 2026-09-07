@@ -13,6 +13,7 @@
 #include "absl/status/statusor.h"
 #include "src/cuda/buffer.h"
 #include "src/cuda/executor.h"
+#include "src/cuda/page_locked_host_array.h"
 #include "src/dataset/dataset.h"
 #include "src/llm/layer.h"
 #include "src/llm/layers/sparse_autoencoder.h"
@@ -98,13 +99,14 @@ absl::StatusOr<double> ReadDeviceLoss(cuda::Executor& executor,
     return absl::InvalidArgumentError(
         "evaluation result belongs to a different CUDA Executor");
   }
-  float host_loss;
+  ASSIGN_OR_RETURN(auto host_loss,
+                   cuda::PageLockedHostArray<float>::Allocate(1));
   RETURN_IF_ERROR(cuda::CudaStatus(
-      cudaMemcpyAsync(&host_loss, loss.data(), sizeof(host_loss),
+      cudaMemcpyAsync(host_loss.data(), loss.data(), loss.size_bytes(),
                       cudaMemcpyDeviceToHost, executor.stream()),
       "cudaMemcpyAsync(evaluation result)"));
   RETURN_IF_ERROR(executor.Synchronize());
-  return host_loss;
+  return host_loss[0];
 }
 
 absl::Status ValidateTrainingOptions(const TrainingOptions& options) {

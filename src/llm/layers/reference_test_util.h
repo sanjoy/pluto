@@ -16,6 +16,8 @@
 #include "absl/types/span.h"
 #include "gtest/gtest.h"
 #include "src/cuda/executor.h"
+#include "src/cuda/page_locked_host_array.h"
+#include "src/cuda/page_locked_host_buffer.h"
 #include "src/llm/layer.h"
 #include "src/llm/layers/reference_internal.h"
 #include "src/llm/layers/test_util.h"
@@ -35,11 +37,14 @@ absl::StatusOr<BufferPair> MakeRawBufferPair(cuda::Executor& executor,
   const size_t bytes = values.size() * sizeof(Element);
   ASSIGN_OR_RETURN(auto host, HostBuffer::Allocate(bytes));
   if (bytes != 0) std::memcpy(host.data(), values.data(), bytes);
+  ASSIGN_OR_RETURN(auto transfer,
+                   cuda::PageLockedHostArray<Element>::CopyFrom(values));
   ASSIGN_OR_RETURN(auto device, Buffer::Allocate(executor, bytes));
   RETURN_IF_ERROR(cuda::CudaStatus(
-      cudaMemcpyAsync(device.data(), host.data(), bytes, cudaMemcpyHostToDevice,
-                      executor.stream()),
+      cudaMemcpyAsync(device.data(), transfer.data(), bytes,
+                      cudaMemcpyHostToDevice, executor.stream()),
       "copy test buffer to device"));
+  RETURN_IF_ERROR(executor.Synchronize());
   return BufferPair{std::move(device), std::move(host)};
 }
 
@@ -52,11 +57,17 @@ inline absl::StatusOr<BufferPair> MakeActivationBufferPair(
   for (size_t index = 0; index < values.size(); ++index) {
     reference_internal::StoreActivation(&host, index, data_type, values[index]);
   }
+  ASSIGN_OR_RETURN(auto transfer,
+                   cuda::PageLockedHostBuffer::Allocate(host.size_bytes()));
+  if (host.size_bytes() != 0) {
+    std::memcpy(transfer.data(), host.data(), host.size_bytes());
+  }
   ASSIGN_OR_RETURN(auto device, Buffer::Allocate(executor, host.size_bytes()));
   RETURN_IF_ERROR(cuda::CudaStatus(
-      cudaMemcpyAsync(device.data(), host.data(), host.size_bytes(),
+      cudaMemcpyAsync(device.data(), transfer.data(), host.size_bytes(),
                       cudaMemcpyHostToDevice, executor.stream()),
       "copy activation to device"));
+  RETURN_IF_ERROR(executor.Synchronize());
   return BufferPair{std::move(device), std::move(host)};
 }
 
@@ -68,10 +79,13 @@ inline absl::Status SetFloatBufferPair(cuda::Executor& executor,
     return absl::InvalidArgumentError("parameter pair has the wrong size");
   }
   std::memcpy(host->data(), values.data(), bytes);
-  return cuda::CudaStatus(
-      cudaMemcpyAsync(device.data(), values.data(), bytes,
+  ASSIGN_OR_RETURN(auto transfer,
+                   cuda::PageLockedHostArray<float>::CopyFrom(values));
+  RETURN_IF_ERROR(cuda::CudaStatus(
+      cudaMemcpyAsync(device.data(), transfer.data(), bytes,
                       cudaMemcpyHostToDevice, executor.stream()),
-      "copy paired parameter to device");
+      "copy paired parameter to device"));
+  return executor.Synchronize();
 }
 
 inline absl::Status ZeroBufferPair(cuda::Executor& executor,
@@ -82,12 +96,13 @@ inline absl::Status ZeroBufferPair(cuda::Executor& executor,
       "clear paired buffer");
 }
 
-inline absl::StatusOr<std::vector<float>> ReadDeviceFloats(
+inline absl::StatusOr<cuda::PageLockedHostArray<float>> ReadDeviceFloats(
     cuda::Executor& executor, const Buffer& buffer) {
   if (buffer.size_bytes() % sizeof(float) != 0) {
     return absl::InvalidArgumentError("device buffer is not FP32");
   }
-  std::vector<float> values(buffer.size_bytes() / sizeof(float));
+  ASSIGN_OR_RETURN(auto values, cuda::PageLockedHostArray<float>::Allocate(
+                                    buffer.size_bytes() / sizeof(float)));
   RETURN_IF_ERROR(cuda::CudaStatus(
       cudaMemcpyAsync(values.data(), buffer.data(), buffer.size_bytes(),
                       cudaMemcpyDeviceToHost, executor.stream()),
@@ -102,17 +117,23 @@ inline std::vector<float> ReadHostFloats(const HostBuffer& buffer) {
                             values + buffer.size_bytes() / sizeof(float));
 }
 
-inline absl::StatusOr<std::vector<float>> ReadDeviceActivations(
+inline absl::StatusOr<cuda::PageLockedHostArray<float>> ReadDeviceActivations(
     cuda::Executor& executor, const Buffer& buffer, DataType data_type) {
-  ASSIGN_OR_RETURN(auto host, HostBuffer::Allocate(buffer.size_bytes()));
+  ASSIGN_OR_RETURN(auto transfer,
+                   cuda::PageLockedHostBuffer::Allocate(buffer.size_bytes()));
   RETURN_IF_ERROR(cuda::CudaStatus(
-      cudaMemcpyAsync(host.data(), buffer.data(), buffer.size_bytes(),
+      cudaMemcpyAsync(transfer.data(), buffer.data(), buffer.size_bytes(),
                       cudaMemcpyDeviceToHost, executor.stream()),
       "copy activation device buffer to host"));
   RETURN_IF_ERROR(executor.Synchronize());
+  ASSIGN_OR_RETURN(auto host, HostBuffer::Allocate(buffer.size_bytes()));
+  if (buffer.size_bytes() != 0) {
+    std::memcpy(host.data(), transfer.data(), buffer.size_bytes());
+  }
   const size_t elements = buffer.size_bytes() /
                           reference_internal::ActivationElementBytes(data_type);
-  std::vector<float> values(elements);
+  ASSIGN_OR_RETURN(auto values,
+                   cuda::PageLockedHostArray<float>::Allocate(elements));
   for (size_t index = 0; index < elements; ++index) {
     values[index] = reference_internal::LoadActivation(host, index, data_type);
   }
@@ -165,7 +186,7 @@ class LayerReferenceTest : public LayersTest {
     if (!actual.ok()) {
       return testing::AssertionFailure() << actual.status();
     }
-    return VectorsNear(*actual, ReadHostFloats(host), absolute_tolerance,
+    return VectorsNear(actual->span(), ReadHostFloats(host), absolute_tolerance,
                        relative_tolerance);
   }
 
@@ -176,7 +197,7 @@ class LayerReferenceTest : public LayersTest {
     if (!actual.ok()) {
       return testing::AssertionFailure() << actual.status();
     }
-    return VectorsNear(*actual, ReadHostActivations(host, data_type),
+    return VectorsNear(actual->span(), ReadHostActivations(host, data_type),
                        absolute_tolerance, relative_tolerance);
   }
 };

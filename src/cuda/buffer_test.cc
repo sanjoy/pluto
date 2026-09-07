@@ -2,7 +2,6 @@
 
 #include <cuda_runtime.h>
 
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -10,6 +9,7 @@
 #include <type_traits>
 
 #include "gtest/gtest.h"
+#include "src/cuda/page_locked_host_array.h"
 
 namespace pluto::cuda {
 namespace {
@@ -69,8 +69,9 @@ TEST_F(BufferTest, CopiesShareStorageUntilTheLastReferenceIsDestroyed) {
       static_cast<uint8_t*>(survivor->data()), kByteCount, 0xa5);
   ASSERT_EQ(cudaGetLastError(), cudaSuccess);
 
-  std::array<uint8_t, kByteCount> host_bytes{};
-  ASSERT_EQ(cudaMemcpyAsync(host_bytes.data(), survivor->data(), kByteCount,
+  auto host_bytes = PageLockedHostArray<uint8_t>::Allocate(kByteCount);
+  ASSERT_TRUE(host_bytes.ok()) << host_bytes.status();
+  ASSERT_EQ(cudaMemcpyAsync(host_bytes->data(), survivor->data(), kByteCount,
                             cudaMemcpyDeviceToHost, executor_->stream()),
             cudaSuccess);
 
@@ -78,7 +79,7 @@ TEST_F(BufferTest, CopiesShareStorageUntilTheLastReferenceIsDestroyed) {
   // and copy above, so the host transfer must still complete correctly.
   survivor.reset();
   ASSERT_TRUE(executor_->Synchronize().ok());
-  for (const uint8_t byte : host_bytes) EXPECT_EQ(byte, 0xa5);
+  for (const uint8_t byte : *host_bytes) EXPECT_EQ(byte, 0xa5);
 }
 
 TEST_F(BufferTest, ZeroByteBufferRetainsItsExecutorWithoutAllocatingStorage) {

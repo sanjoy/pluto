@@ -15,6 +15,7 @@
 #include "gtest/gtest.h"
 #include "src/cuda/buffer.h"
 #include "src/cuda/executor.h"
+#include "src/cuda/page_locked_host_array.h"
 #include "src/dataset/dataset.h"
 #include "src/llm/layer.h"
 #include "src/llm/layers/sparse_autoencoder.h"
@@ -61,6 +62,8 @@ class FakeLoss final : public Layer {
       return absl::Status(absl::StatusCode::kInternal,
                           "failed to initialize fake losses");
     }
+    const absl::Status synchronized = executor.Synchronize();
+    if (!synchronized.ok()) return synchronized;
     return std::unique_ptr<FakeLoss>(
         new FakeLoss(std::move(*device_losses), std::move(*gradient)));
   }
@@ -139,16 +142,17 @@ absl::StatusOr<float> ReadEvaluationLoss(cuda::Executor& executor,
     return absl::InvalidArgumentError(
         "evaluation result must be one FP32 value on the test executor");
   }
-  float host_loss;
+  auto host_loss = cuda::PageLockedHostArray<float>::Allocate(1);
+  if (!host_loss.ok()) return host_loss.status();
   const cudaError_t error =
-      cudaMemcpyAsync(&host_loss, loss.data(), sizeof(host_loss),
+      cudaMemcpyAsync(host_loss->data(), loss.data(), loss.size_bytes(),
                       cudaMemcpyDeviceToHost, executor.stream());
   if (error != cudaSuccess) {
     return cuda::CudaStatus(error, "cudaMemcpyAsync(test evaluation result)");
   }
   const absl::Status synchronized = executor.Synchronize();
   if (!synchronized.ok()) return synchronized;
-  return host_loss;
+  return (*host_loss)[0];
 }
 
 class TrainerTest : public testing::Test {
@@ -157,7 +161,9 @@ class TrainerTest : public testing::Test {
     auto executor = cuda::Executor::Create();
     ASSERT_TRUE(executor.ok()) << executor.status();
     executor_ = std::move(*executor);
-    corpus_.resize(32);
+    auto corpus = cuda::PageLockedHostArray<int>::Allocate(32);
+    ASSERT_TRUE(corpus.ok()) << corpus.status();
+    corpus_ = *corpus;
     std::iota(corpus_.begin(), corpus_.end(), 0);
   }
 
@@ -178,12 +184,14 @@ class TrainerTest : public testing::Test {
   }
 
   absl::StatusOr<std::unique_ptr<FakeLoss>> MakeLoss() {
-    const std::vector<float> losses = {1.0f, 2.0f, 3.0f, 4.0f};
-    return FakeLoss::Create(*executor_, losses);
+    auto losses = cuda::PageLockedHostArray<float>::Allocate(4);
+    if (!losses.ok()) return losses.status();
+    std::iota(losses->begin(), losses->end(), 1.0f);
+    return FakeLoss::Create(*executor_, losses->span());
   }
 
   std::unique_ptr<cuda::Executor> executor_;
-  std::vector<int> corpus_;
+  cuda::PageLockedHostArray<int> corpus_;
 };
 
 TEST_F(TrainerTest, EvaluateReturnsDeviceMeanAndResetsDataset) {
@@ -255,15 +263,17 @@ TEST_F(TrainerTest, TrainsAndEvaluatesSparseAutoEncoderDataBatches) {
   constexpr int kRows = 16;
   constexpr int kInputDimension = 16;
   constexpr int kFeatureDimension = 32;
-  std::vector<float> host_activations(kRows * kInputDimension);
-  for (size_t index = 0; index < host_activations.size(); ++index) {
-    host_activations[index] =
+  auto host_activations =
+      cuda::PageLockedHostArray<float>::Allocate(kRows * kInputDimension);
+  ASSERT_TRUE(host_activations.ok()) << host_activations.status();
+  for (size_t index = 0; index < host_activations->size(); ++index) {
+    (*host_activations)[index] =
         static_cast<float>(static_cast<int>(index % 13) - 6) / 8.0f;
   }
   auto activations =
-      Buffer::Allocate(*executor_, host_activations.size() * sizeof(float));
+      Buffer::Allocate(*executor_, host_activations->size_bytes());
   ASSERT_TRUE(activations.ok()) << activations.status();
-  ASSERT_EQ(cudaMemcpyAsync(activations->data(), host_activations.data(),
+  ASSERT_EQ(cudaMemcpyAsync(activations->data(), host_activations->data(),
                             activations->size_bytes(), cudaMemcpyHostToDevice,
                             executor_->stream()),
             cudaSuccess);

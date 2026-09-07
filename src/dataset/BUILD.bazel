@@ -12,6 +12,7 @@ cc_library(
         "//src/util:status_macros",
         "//src/cuda:buffer",
         "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings",
@@ -32,6 +33,7 @@ cc_test(
         ":tokenizer",
         "//src/cuda:buffer",
         "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
         "@cuda//:cuda_runtime",
         "@googletest//:gtest_main",
     ],
@@ -60,6 +62,7 @@ cc_library(
     deps = [
         ":gpt2_model",
         "//src/util:status_macros",
+        "//src/cuda:page_locked_host_array",
         "@abseil-cpp//absl/base:core_headers",
         "@abseil-cpp//absl/container:flat_hash_map",
         "@abseil-cpp//absl/status",

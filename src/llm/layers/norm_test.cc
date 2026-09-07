@@ -29,20 +29,24 @@ TEST_F(LayersTest, LayerNormNormalizesRowsAndRejectsConstantGradient) {
           static_cast<float>(column) / kTestModelWidth;
     }
   }
+  const auto pinned_input = CopyToPageLockedHostArray(input);
+  const auto pinned_output_gradient =
+      CopyToPageLockedHostArray(output_gradient);
   auto input_buffer =
       Buffer::Allocate(*executor_, input.size() * sizeof(float));
   auto gradient_buffer =
       Buffer::Allocate(*executor_, output_gradient.size() * sizeof(float));
   ASSERT_TRUE(input_buffer.ok()) << input_buffer.status();
   ASSERT_TRUE(gradient_buffer.ok()) << gradient_buffer.status();
-  ASSERT_EQ(cudaMemcpyAsync(input_buffer->data(), input.data(),
+  ASSERT_EQ(cudaMemcpyAsync(input_buffer->data(), pinned_input.data(),
                             input_buffer->size_bytes(), cudaMemcpyHostToDevice,
                             executor_->stream()),
             cudaSuccess);
-  ASSERT_EQ(cudaMemcpyAsync(gradient_buffer->data(), output_gradient.data(),
-                            gradient_buffer->size_bytes(),
-                            cudaMemcpyHostToDevice, executor_->stream()),
-            cudaSuccess);
+  ASSERT_EQ(
+      cudaMemcpyAsync(gradient_buffer->data(), pinned_output_gradient.data(),
+                      gradient_buffer->size_bytes(), cudaMemcpyHostToDevice,
+                      executor_->stream()),
+      cudaSuccess);
 
   Tape tape;
   BufferVec inputs = {*input_buffer};
@@ -53,8 +57,9 @@ TEST_F(LayersTest, LayerNormNormalizesRowsAndRejectsConstantGradient) {
       (*layer_norm)->bwd(*executor_, gradients, std::move(tape));
   ASSERT_TRUE(input_gradient.ok()) << input_gradient.status();
 
-  std::vector<float> host_output(kTestModelWidth);
-  std::vector<float> host_input_gradient(kTestModelWidth);
+  auto host_output = AllocatePageLockedHostArray<float>(kTestModelWidth);
+  auto host_input_gradient =
+      AllocatePageLockedHostArray<float>(kTestModelWidth);
   ASSERT_EQ(cudaMemcpyAsync(host_output.data(), output->data(),
                             host_output.size() * sizeof(float),
                             cudaMemcpyDeviceToHost, executor_->stream()),

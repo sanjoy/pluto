@@ -18,6 +18,7 @@
 #include "absl/strings/str_cat.h"
 #include "src/cuda/buffer.h"
 #include "src/cuda/executor.h"
+#include "src/cuda/page_locked_host_array.h"
 #include "src/util/status_macros.h"
 
 namespace pluto::llm {
@@ -210,7 +211,7 @@ absl::Status RemoveStaleWeightFiles(
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::vector<char>> ReadWeightFile(
+absl::StatusOr<cuda::PageLockedHostArray<char>> ReadWeightFile(
     const std::filesystem::path& path, size_t expected_size, size_t index) {
   std::error_code error;
   const bool exists = std::filesystem::exists(path, error);
@@ -238,7 +239,8 @@ absl::StatusOr<std::vector<char>> ReadWeightFile(
     return absl::InternalError(
         absl::StrCat("cannot open checkpoint weight: ", path.string()));
   }
-  std::vector<char> contents(expected_size);
+  ASSIGN_OR_RETURN(auto contents,
+                   cuda::PageLockedHostArray<char>::Allocate(expected_size));
   if (expected_size != 0) {
     input.read(contents.data(), static_cast<std::streamsize>(expected_size));
     if (!input) {
@@ -319,10 +321,13 @@ absl::Status WriteToDirectory(cuda::Executor& executor, const Layer& layer,
   const std::vector<const Buffer*> weights = UniqueWeights(layer);
   RETURN_IF_ERROR(ValidateWeights(executor, weights));
 
-  std::vector<std::vector<char>> host_weights;
+  std::vector<cuda::PageLockedHostArray<char>> host_weights;
   host_weights.reserve(weights.size());
   for (const Buffer* weight : weights) {
-    host_weights.emplace_back(weight->size_bytes());
+    ASSIGN_OR_RETURN(
+        auto host_weight,
+        cuda::PageLockedHostArray<char>::Allocate(weight->size_bytes()));
+    host_weights.push_back(std::move(host_weight));
     if (weight->size_bytes() == 0) continue;
     RETURN_IF_ERROR(cuda::CudaStatus(
         cudaMemcpyAsync(host_weights.back().data(), weight->data(),
@@ -366,7 +371,7 @@ absl::Status ReadFromDirectory(cuda::Executor& executor, Layer& layer,
         " weight files; layer requires at least ", weights.size()));
   }
 
-  std::vector<std::vector<char>> host_weights;
+  std::vector<cuda::PageLockedHostArray<char>> host_weights;
   host_weights.reserve(weights.size());
   for (size_t index = 0; index < weights.size(); ++index) {
     ASSIGN_OR_RETURN(auto contents,

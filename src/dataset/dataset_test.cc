@@ -15,6 +15,7 @@
 #include "gtest/gtest.h"
 #include "src/cuda/buffer.h"
 #include "src/cuda/executor.h"
+#include "src/cuda/page_locked_host_array.h"
 #include "src/dataset/tokenizer.h"
 
 namespace pluto {
@@ -34,24 +35,27 @@ class DataSetTest : public testing::Test {
     executor_.reset();
   }
 
-  std::vector<int> CopyToHost(const cuda::Buffer& buffer) {
-    std::vector<int> result(buffer.size_bytes() / sizeof(int));
-    EXPECT_EQ(cudaMemcpyAsync(result.data(), buffer.data(), buffer.size_bytes(),
-                              cudaMemcpyDeviceToHost, executor_->stream()),
-              cudaSuccess);
+  cuda::PageLockedHostArray<int> CopyToHost(const cuda::Buffer& buffer) {
+    auto result = cuda::PageLockedHostArray<int>::Allocate(buffer.size_bytes() /
+                                                           sizeof(int));
+    EXPECT_TRUE(result.ok()) << result.status();
+    if (!result.ok()) return {};
+    EXPECT_EQ(
+        cudaMemcpyAsync(result->data(), buffer.data(), buffer.size_bytes(),
+                        cudaMemcpyDeviceToHost, executor_->stream()),
+        cudaSuccess);
     EXPECT_TRUE(executor_->Synchronize().ok());
-    return result;
+    return *result;
   }
 
   std::vector<int> Inputs(const DataBatch& batch) {
-    std::vector<int> packed = CopyToHost(batch.data);
+    const cuda::PageLockedHostArray<int> packed = CopyToHost(batch.data);
     EXPECT_EQ(packed.size(), 2 * static_cast<size_t>(batch.batch_size));
-    packed.resize(batch.batch_size);
-    return packed;
+    return std::vector<int>(packed.begin(), packed.begin() + batch.batch_size);
   }
 
   std::vector<int> Targets(const DataBatch& batch) {
-    const std::vector<int> packed = CopyToHost(batch.data);
+    const cuda::PageLockedHostArray<int> packed = CopyToHost(batch.data);
     EXPECT_EQ(packed.size(), 2 * static_cast<size_t>(batch.batch_size));
     if (packed.size() < static_cast<size_t>(batch.batch_size)) return {};
     return std::vector<int>(packed.begin() + batch.batch_size, packed.end());
@@ -59,6 +63,14 @@ class DataSetTest : public testing::Test {
 
   std::unique_ptr<cuda::Executor> executor_;
 };
+
+cuda::PageLockedHostArray<int> MakePinnedInts(size_t size, int value = 0) {
+  auto result = cuda::PageLockedHostArray<int>::Allocate(size);
+  EXPECT_TRUE(result.ok()) << result.status();
+  if (!result.ok()) return {};
+  std::fill(result->begin(), result->end(), value);
+  return *result;
+}
 
 std::filesystem::path TokenizerDirectory() {
   const char* directory = std::getenv("PLUTO_GPT2_TOKENIZER_DIR");
@@ -68,7 +80,7 @@ std::filesystem::path TokenizerDirectory() {
 }
 
 TEST_F(DataSetTest, SequentialBatchesShiftTargetsAndReset) {
-  std::vector<int> corpus(21);
+  auto corpus = MakePinnedInts(21);
   std::iota(corpus.begin(), corpus.end(), 0);
   auto iterator = InMemoryDataSetIterator::Create(
       *executor_, corpus,
@@ -97,7 +109,7 @@ TEST_F(DataSetTest, SequentialBatchesShiftTargetsAndReset) {
 }
 
 TEST_F(DataSetTest, CorpusIsUploadedDuringCreation) {
-  std::vector<int> corpus(21);
+  auto corpus = MakePinnedInts(21);
   std::iota(corpus.begin(), corpus.end(), 0);
   auto iterator = InMemoryDataSetIterator::Create(
       *executor_, corpus,
@@ -117,7 +129,7 @@ TEST_F(DataSetTest, CorpusIsUploadedDuringCreation) {
 }
 
 TEST_F(DataSetTest, RandomOrderIsDeterministicAcrossReset) {
-  std::vector<int> corpus(100);
+  auto corpus = MakePinnedInts(100);
   std::iota(corpus.begin(), corpus.end(), 0);
   auto iterator = InMemoryDataSetIterator::Create(
       *executor_, corpus,
@@ -140,13 +152,13 @@ TEST_F(DataSetTest, RandomOrderIsDeterministicAcrossReset) {
 }
 
 TEST_F(DataSetTest, RejectsInvalidShapes) {
-  const std::vector<int> corpus(10, 1);
+  const auto corpus = MakePinnedInts(10, 1);
   EXPECT_FALSE(InMemoryDataSetIterator::Create(
                    *executor_, corpus,
                    InMemoryDataSetOptions{.batch_size = 7, .context_length = 4})
                    .ok());
   EXPECT_FALSE(InMemoryDataSetIterator::Create(
-                   *executor_, std::vector<int>{1, 2, 3, 4},
+                   *executor_, MakePinnedInts(4, 1),
                    InMemoryDataSetOptions{.batch_size = 4, .context_length = 4})
                    .ok());
 }
