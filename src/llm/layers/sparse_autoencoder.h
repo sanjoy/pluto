@@ -119,7 +119,12 @@ class SparseAutoEncoderLayer final : public Layer {
 // returns one FP32 scalar equal to
 //
 //   sum_rows (||x - x1||^2 +
-//             sparsity_penalty * sum_i z_i ||D[:, i]||^2).
+//             sparsity_penalty * sum_i z_i ||D[:, i]||_2).
+//
+// The decoder norm is not squared: rescaling a latent by c > 0 and its
+// decoder column by 1/c must leave both reconstruction and penalty unchanged.
+// At an exactly zero decoder column, bwd() chooses the zero subgradient of
+// the L2 norm. No epsilon is added to the norm, preserving scale invariance.
 //
 // bwd() accepts no upstream gradient and returns {dL/dx, dL/dx1, dL/dz,
 // dL/dD}. The last three buffers can be passed to SparseAutoEncoderLayer::bwd;

@@ -368,16 +368,16 @@ __tile_global__ void SparseDecoderBiasGradientKernel(
 
 // Decoder-column norms depend only on D, not on the activation row. Compute
 // each group of 16 norms once instead of repeating this work for every row.
-__tile_global__ void SparseLossDecoderNormSquaredKernel(
+__tile_global__ void SparseLossDecoderNormKernel(
     const float* __restrict__ decoder, int input_dim, int feature_dim,
-    float* __restrict__ decoder_norm_squared) {
+    float* __restrict__ decoder_norm) {
   namespace ct = ::cuda::tiles;
   using namespace ct::literals;
   auto decoder_view = ct::partition_view{
       ct::tensor_span{decoder, ct::extents{input_dim, feature_dim}},
       ct::shape{16_ic, 16_ic}};
   auto norm_view = ct::partition_view{
-      ct::tensor_span{decoder_norm_squared, ct::extents{feature_dim}},
+      ct::tensor_span{decoder_norm, ct::extents{feature_dim}},
       ct::shape{16_ic}};
   const int input_tiles = input_dim / internal::kDenseTile;
   const int feature_tile = ct::bid().x;
@@ -386,7 +386,8 @@ __tile_global__ void SparseLossDecoderNormSquaredKernel(
     auto directions = decoder_view.load(input_tile, feature_tile);
     norm_squared = norm_squared + ct::sum(directions * directions, 0_ic);
   }
-  norm_view.store(ct::reshape(norm_squared, ct::shape{16_ic}), feature_tile);
+  norm_view.store(ct::reshape(ct::sqrt(norm_squared), ct::shape{16_ic}),
+                  feature_tile);
 }
 
 // One tile program owns each row. It performs a modest serial reduction over
@@ -396,7 +397,7 @@ __tile_global__ void SparseLossPerRowKernel(
     const Activation* __restrict__ input,
     const Activation* __restrict__ reconstruction,
     const Activation* __restrict__ latents,
-    const float* __restrict__ decoder_norm_squared, int rows, int input_dim,
+    const float* __restrict__ decoder_norm, int rows, int input_dim,
     int feature_dim, float sparsity_penalty, float* __restrict__ row_losses) {
   namespace ct = ::cuda::tiles;
   using namespace ct::literals;
@@ -410,7 +411,7 @@ __tile_global__ void SparseLossPerRowKernel(
       ct::tensor_span{latents, ct::extents{rows, feature_dim}},
       ct::shape{1_ic, 16_ic}};
   auto norm_view = ct::partition_view{
-      ct::tensor_span{decoder_norm_squared, ct::extents{feature_dim}},
+      ct::tensor_span{decoder_norm, ct::extents{feature_dim}},
       ct::shape{16_ic}};
   auto row_loss_view = ct::partition_view{
       ct::tensor_span{row_losses, ct::extents{rows}}, ct::shape{1_ic}};
@@ -427,9 +428,9 @@ __tile_global__ void SparseLossPerRowKernel(
   for (int feature_tile = 0; feature_tile < feature_tiles; ++feature_tile) {
     auto features =
         ct::element_cast<float>(latent_view.load(row, feature_tile));
-    auto norm_squared =
+    auto norm =
         ct::reshape(norm_view.load(feature_tile), ct::shape{1_ic, 16_ic});
-    loss = loss + sparsity_penalty * ct::sum(features * norm_squared, 1_ic);
+    loss = loss + sparsity_penalty * ct::sum(features * norm, 1_ic);
   }
   row_loss_view.store(ct::reshape(loss, ct::shape{1_ic}), row);
 }
@@ -497,7 +498,7 @@ __tile_global__ void SparseLossLatentGradientKernel(
     norm_squared = norm_squared + ct::sum(directions * directions, 0_ic);
   }
   for (int row = 0; row < rows; ++row) {
-    latent_gradient_view.store(sparsity_penalty * norm_squared, row,
+    latent_gradient_view.store(sparsity_penalty * ct::sqrt(norm_squared), row,
                                feature_tile);
   }
 }
@@ -527,7 +528,20 @@ __tile_global__ void SparseLossDecoderGradientKernel(
     latent_sum = latent_sum +
                  ct::element_cast<float>(latent_view.load(row, feature_tile));
   }
-  auto scale = ct::broadcast(2.0f * sparsity_penalty * latent_sum,
+  // d||D_i||_2/dD_i = D_i/||D_i||_2. Recompute each column's norm in
+  // FP32; only the input-dimension reduction is needed here, not a reduction
+  // over the full batch. A zero column uses the valid zero subgradient.
+  auto zero = ct::zeros<ct::tile<float, ct::shape<1, 16>>>();
+  auto norm_squared = zero;
+  for (int tile = 0; tile < input_dim / internal::kDenseTile; ++tile) {
+    auto directions = decoder_view.load(tile, feature_tile);
+    norm_squared = norm_squared + ct::sum(directions * directions, 0_ic);
+  }
+  auto norm = ct::sqrt(norm_squared);
+  // Avoid evaluating 0/0 even in a masked branch. This changes only the
+  // denominator for zero columns, whose entries (and gradients) are zero.
+  auto safe_norm = ct::select(norm > zero, norm, zero + 1.0f);
+  auto scale = ct::broadcast(sparsity_penalty * latent_sum / safe_norm,
                              ct::shape{16_ic, 16_ic});
   decoder_gradient_view.store(
       decoder_view.load(input_tile, feature_tile) * scale, input_tile,
@@ -974,31 +988,31 @@ absl::StatusOr<Buffer> SparseAutoEncoderLossLayer::fwd(
                                                 feature_dim_, output_type_));
   ASSIGN_OR_RETURN(auto output, Buffer::Allocate(executor, sizeof(float)));
   ASSIGN_OR_RETURN(
-      auto decoder_norm_squared,
+      auto decoder_norm,
       Buffer::Allocate(executor,
                        static_cast<size_t>(feature_dim_) * sizeof(float)));
   ASSIGN_OR_RETURN(
       auto row_losses,
       Buffer::Allocate(executor, static_cast<size_t>(rows) * sizeof(float)));
-  SparseLossDecoderNormSquaredKernel<<<internal::TileCount(feature_dim_), 1, 0,
-                                       executor.stream()>>>(
+  SparseLossDecoderNormKernel<<<internal::TileCount(feature_dim_), 1, 0,
+                                executor.stream()>>>(
       static_cast<const float*>(inputs[3].data()), input_dim_, feature_dim_,
-      static_cast<float*>(decoder_norm_squared.data()));
+      static_cast<float*>(decoder_norm.data()));
   if (output_type_ == DataType::BF16) {
     SparseLossPerRowKernel<__nv_bfloat16><<<rows, 1, 0, executor.stream()>>>(
         static_cast<const __nv_bfloat16*>(inputs[0].data()),
         static_cast<const __nv_bfloat16*>(inputs[1].data()),
         static_cast<const __nv_bfloat16*>(inputs[2].data()),
-        static_cast<const float*>(decoder_norm_squared.data()), rows,
-        input_dim_, feature_dim_, sparsity_penalty_,
+        static_cast<const float*>(decoder_norm.data()), rows, input_dim_,
+        feature_dim_, sparsity_penalty_,
         static_cast<float*>(row_losses.data()));
   } else {
     SparseLossPerRowKernel<float><<<rows, 1, 0, executor.stream()>>>(
         static_cast<const float*>(inputs[0].data()),
         static_cast<const float*>(inputs[1].data()),
         static_cast<const float*>(inputs[2].data()),
-        static_cast<const float*>(decoder_norm_squared.data()), rows,
-        input_dim_, feature_dim_, sparsity_penalty_,
+        static_cast<const float*>(decoder_norm.data()), rows, input_dim_,
+        feature_dim_, sparsity_penalty_,
         static_cast<float*>(row_losses.data()));
   }
   SparseLossReduceKernel<<<1, 1, 0, executor.stream()>>>(

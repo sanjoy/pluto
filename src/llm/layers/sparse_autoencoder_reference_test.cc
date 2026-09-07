@@ -308,10 +308,118 @@ TEST_F(LayerReferenceTest, LossAndGradientsMatchTheStatedSumExactly) {
   std::vector<float> expected_decoder_gradient(kInputDim * kFeatureDim, 0.0f);
   for (int index = 0; index < kInputDim; ++index) {
     expected_decoder_gradient[index * kFeatureDim + index] =
-        2.0f * kPenalty * kRows * 0.25f;
+        kPenalty * kRows * 0.25f;
   }
   EXPECT_TRUE(VectorsNear(ReadHostFloats((*gradients)[3]),
                           expected_decoder_gradient, 0.0f));
+}
+
+// A column with entries (3a, -4a) has norm 5a, not 25a^2. Test exact
+// derivatives, zero/tiny columns, disabled regularization, and independent
+// positive feature rescalings. The old squared-norm loss fails these checks.
+TEST_F(LayerReferenceTest,
+       UnsquaredNormLossAndGradientsRespectFeatureRescaling) {
+  constexpr int kRows = 16;
+  constexpr int kInputDim = 32;
+  constexpr int kFeatureDim = 32;
+  for (DataType type : {DataType::FP16, DataType::BF16}) {
+    for (float penalty : {0.0f, 0.5f}) {
+      auto device_loss = SparseAutoEncoderLossLayer::Create(
+          *executor_, kInputDim, kFeatureDim, penalty, type);
+      auto reference_loss = SparseAutoEncoderLossLayerReference::Create(
+          kInputDim, kFeatureDim, penalty, type);
+      ASSERT_TRUE(device_loss.ok()) << device_loss.status();
+      ASSERT_TRUE(reference_loss.ok()) << reference_loss.status();
+      auto input = MakeActivationBufferPair(
+          *executor_, std::vector<float>(kRows * kInputDim, 1.0f), type);
+      auto reconstruction = MakeActivationBufferPair(
+          *executor_, std::vector<float>(kRows * kInputDim, 0.5f), type);
+      ASSERT_TRUE(input.ok()) << input.status();
+      ASSERT_TRUE(reconstruction.ok()) << reconstruction.status();
+      for (float scale : {0.25f, 1.0f, 8.0f}) {
+        SCOPED_TRACE(testing::Message()
+                     << "type=" << static_cast<int>(type)
+                     << " penalty=" << penalty << " scale=" << scale);
+        std::vector<float> decoder(kInputDim * kFeatureDim, 0);
+        std::vector<float> latents(kRows * kFeatureDim);
+        std::vector<float> expected_d_decoder(decoder.size(), 0);
+        std::vector<float> expected_d_latents(latents.size());
+        double expected_loss = kRows * kInputDim * 0.25;
+        for (int feature = 0; feature < kFeatureDim; ++feature) {
+          // Include exactly zero and very small but nonzero norms. An
+          // epsilon floor would change the small column's derivative.
+          const float a = feature % 4 == 0   ? 0.0f
+                          : feature % 4 == 1 ? 1e-8f
+                          : feature % 4 == 2 ? 0.25f
+                                             : 2.0f;
+          const float c = scale * (feature % 2 == 0 ? 1.0f : 2.0f);
+          const int first = feature * kFeatureDim + feature;
+          const int second =
+              ((feature + 1) % kInputDim) * kFeatureDim + feature;
+          decoder[first] = 3.0f * a / c;
+          decoder[second] = -4.0f * a / c;
+          double base_latent_sum = 0;
+          for (int row = 0; row < kRows; ++row) {
+            const float base_z = 0.25f * ((row + feature) % 5);
+            const int index = row * kFeatureDim + feature;
+            latents[index] = base_z * c;
+            expected_d_latents[index] = penalty * 5.0f * a / c;
+            base_latent_sum += base_z;
+          }
+          // The expected loss deliberately contains no c: D_i/c and c*z_i
+          // have the same penalty as the original feature, even per feature.
+          expected_loss += penalty * 5.0 * a * base_latent_sum;
+          if (a != 0) {
+            expected_d_decoder[first] = penalty * base_latent_sum * c * 0.6;
+            expected_d_decoder[second] = -penalty * base_latent_sum * c * 0.8;
+          }
+        }
+        auto latent_pair = MakeActivationBufferPair(*executor_, latents, type);
+        auto decoder_pair = MakeRawBufferPair<float>(*executor_, decoder);
+        ASSERT_TRUE(latent_pair.ok()) << latent_pair.status();
+        ASSERT_TRUE(decoder_pair.ok()) << decoder_pair.status();
+        Tape device_tape;
+        ReferenceTape reference_tape;
+        auto actual =
+            (*device_loss)
+                ->fwd(*executor_,
+                      BufferVec{input->device, reconstruction->device,
+                                latent_pair->device, decoder_pair->device},
+                      &device_tape);
+        auto reference =
+            (*reference_loss)
+                ->fwd(HostBufferVec{input->host, reconstruction->host,
+                                    latent_pair->host, decoder_pair->host},
+                      &reference_tape);
+        ASSERT_TRUE(actual.ok()) << actual.status();
+        ASSERT_TRUE(reference.ok()) << reference.status();
+        auto host_value = ReadDeviceFloats(*executor_, *actual);
+        ASSERT_TRUE(host_value.ok()) << host_value.status();
+        EXPECT_NEAR((*host_value)[0], expected_loss, 1e-3);
+        EXPECT_NEAR(ReadHostFloats(*reference)[0], expected_loss, 1e-3);
+        auto gradients =
+            (*device_loss)->bwd(*executor_, {}, std::move(device_tape));
+        auto reference_gradients =
+            (*reference_loss)->bwd({}, std::move(reference_tape));
+        ASSERT_TRUE(gradients.ok()) << gradients.status();
+        ASSERT_TRUE(reference_gradients.ok()) << reference_gradients.status();
+        const std::vector<std::vector<float>> expected = {
+            std::vector<float>(kRows * kInputDim, 1.0f),
+            std::vector<float>(kRows * kInputDim, -1.0f), expected_d_latents,
+            expected_d_decoder};
+        for (int index = 0; index < 4; ++index) {
+          auto host_gradient =
+              ReadDeviceFloats(*executor_, (*gradients)[index]);
+          ASSERT_TRUE(host_gradient.ok()) << host_gradient.status();
+          EXPECT_TRUE(
+              VectorsNear(host_gradient->span(), expected[index], 2e-5, 2e-5));
+          EXPECT_TRUE(VectorsNear(ReadHostFloats((*reference_gradients)[index]),
+                                  expected[index], 2e-5, 2e-5));
+          for (float value : *host_gradient) EXPECT_TRUE(std::isfinite(value));
+        }
+      }
+    }
+  }
 }
 
 TEST_F(LayerReferenceTest, FP8IsRejectedConsistently) {

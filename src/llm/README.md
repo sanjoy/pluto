@@ -131,7 +131,13 @@ checkpoint writes.
 To train a sparse autoencoder over the residual-stream activations after the
 fourth transformer block, pass an exact GPT-2 checkpoint. The SAE uses the full
 Shakespeare corpus, 4,096 features (eight times GPT-2's hidden width), and a
-sparsity penalty of 0.5:
+sparsity penalty of 0.5.
+
+The penalty is `0.5 * sum_i Z[i] * ||D[:, i]||_2`, using the **unsquared**
+decoder-column norm. Scaling an encoder feature and its bias by `c > 0` and
+its decoder column by `1/c` leaves both reconstruction and sparsity penalty
+unchanged. At zero decoder columns the loss backward uses the zero subgradient
+of the norm. Loss values from older squared-norm runs are not comparable.
 
 ```sh
 PLUTO_GPT2_TOKENIZER_DIR=/path/to/gpt2 bazel run //src/llm/recipes:gpt2_shakespeare_llm -- --mode=train_sae --sparse_autoencoder_from=/home/ubuntu/checkpoints/shakespeare/step_570

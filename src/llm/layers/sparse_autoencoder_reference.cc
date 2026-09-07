@@ -379,7 +379,7 @@ absl::StatusOr<HostBuffer> SparseAutoEncoderLossLayerReference::fwd(
               ri::LoadActivation(
                   inputs[2], static_cast<size_t>(row) * feature_dim_ + feature,
                   output_type_) *
-              norm_squared;
+              std::sqrt(norm_squared);
     }
   }
   *static_cast<float*>(output.data()) = loss;
@@ -430,19 +430,31 @@ absl::StatusOr<HostBufferVec> SparseAutoEncoderLossLayerReference::bwd(
         norm_squared += value * value;
       }
       d_latent[static_cast<size_t>(row) * feature_dim_ + feature] =
-          sparsity_penalty_ * norm_squared;
+          sparsity_penalty_ * std::sqrt(norm_squared);
     }
   }
-  for (int column = 0; column < input_dim_; ++column) {
-    for (int feature = 0; feature < feature_dim_; ++feature) {
-      float latent_sum = 0.0f;
-      for (int row = 0; row < rows; ++row) {
-        latent_sum += ri::LoadActivation(
-            tape.intermediates[2],
-            static_cast<size_t>(row) * feature_dim_ + feature, output_type_);
-      }
+  for (int feature = 0; feature < feature_dim_; ++feature) {
+    float norm_squared = 0.0f;
+    for (int column = 0; column < input_dim_; ++column) {
+      const float value =
+          decoder[static_cast<size_t>(column) * feature_dim_ + feature];
+      norm_squared += value * value;
+    }
+    const float norm = std::sqrt(norm_squared);
+    float latent_sum = 0.0f;
+    for (int row = 0; row < rows; ++row) {
+      latent_sum += ri::LoadActivation(
+          tape.intermediates[2],
+          static_cast<size_t>(row) * feature_dim_ + feature, output_type_);
+    }
+    for (int column = 0; column < input_dim_; ++column) {
       const size_t index = static_cast<size_t>(column) * feature_dim_ + feature;
-      d_decoder[index] = 2.0f * sparsity_penalty_ * decoder[index] * latent_sum;
+      // The derivative of a nonzero column's norm is its unit direction.
+      // At zero the norm is nondifferentiable; choose the zero subgradient
+      // instead of dividing by zero or perturbing the objective with epsilon.
+      d_decoder[index] =
+          norm == 0.0f ? 0.0f
+                       : sparsity_penalty_ * latent_sum * decoder[index] / norm;
     }
   }
   return HostBufferVec{std::move(input_gradient),
