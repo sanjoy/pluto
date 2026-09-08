@@ -1,0 +1,218 @@
+{
+  "schema_version": 1,
+  "stage": "verification_only",
+  "control": "randomized_euler_trail_preserving_directed_bigram_counts",
+  "limitations": [
+    "Not uniform over Euler trails; not a p-value or calibrated null.",
+    "Only tests order beyond pairs, not whether pair associations were learned.",
+    "Corpus used only in verification; candidate extraction must be separately audited.",
+    "Preserving pairs can force some longer substrings; rigid graphs may remain unchanged."
+  ],
+  "numpy_version": "2.5.2",
+  "generator": "numpy.random.PCG64",
+  "vocab_size": 50257,
+  "corpus_token_count": 1835163,
+  "corpus_token_sha256": "17680667f56fe95ba5903339d867d0ecc940e789b65f5d56e484ff8b33a73b21",
+  "bigram_multiset_sha256": "0e6816892071a2bc0c38d90f917f530123ee4905fef2c6fda7c2d73ffd5f969a",
+  "input_candidates": 34768,
+  "omitted_candidates_shorter_than_three": 32792,
+  "eligible_candidates_by_method": {
+    "mlp_cosine_path": 984,
+    "broken_mlp_cosine_path": 992
+  },
+  "real": {
+    "broken_mlp_cosine_path": {
+      "candidates": 992,
+      "distinct_candidate_sequences": 992,
+      "max_longest_match_tokens": 3,
+      "mean_longest_match_tokens": 2.09375,
+      "whole_candidate_matches": 0,
+      "candidates_with_match_at_least": {
+        "3": 146,
+        "4": 0,
+        "5": 0,
+        "8": 0
+      },
+      "distinct_selected_longest_substrings_at_least": {
+        "3": 9,
+        "4": 0,
+        "5": 0,
+        "8": 0
+      }
+    },
+    "mlp_cosine_path": {
+      "candidates": 984,
+      "distinct_candidate_sequences": 984,
+      "max_longest_match_tokens": 5,
+      "mean_longest_match_tokens": 3.238821138211382,
+      "whole_candidate_matches": 0,
+      "candidates_with_match_at_least": {
+        "3": 725,
+        "4": 504,
+        "5": 94,
+        "8": 0
+      },
+      "distinct_selected_longest_substrings_at_least": {
+        "3": 29,
+        "4": 17,
+        "5": 3,
+        "8": 0
+      }
+    }
+  },
+  "shuffled_corpora": [
+    {
+      "seed": 17,
+      "token_sha256": "18e84eb07d5cf74acc822afae0afd019eea5dd24ad0efdaceda10df4d7685185",
+      "bigram_multiset_sha256": "0e6816892071a2bc0c38d90f917f530123ee4905fef2c6fda7c2d73ffd5f969a",
+      "positions_different_from_original": 1737456,
+      "by_method": {
+        "broken_mlp_cosine_path": {
+          "candidates": 992,
+          "distinct_candidate_sequences": 992,
+          "max_longest_match_tokens": 3,
+          "mean_longest_match_tokens": 2.0856854838709675,
+          "whole_candidate_matches": 0,
+          "candidates_with_match_at_least": {
+            "3": 138,
+            "4": 0,
+            "5": 0,
+            "8": 0
+          },
+          "distinct_selected_longest_substrings_at_least": {
+            "3": 11,
+            "4": 0,
+            "5": 0,
+            "8": 0
+          }
+        },
+        "mlp_cosine_path": {
+          "candidates": 984,
+          "distinct_candidate_sequences": 984,
+          "max_longest_match_tokens": 7,
+          "mean_longest_match_tokens": 4.139227642276423,
+          "whole_candidate_matches": 0,
+          "candidates_with_match_at_least": {
+            "3": 713,
+            "4": 647,
+            "5": 445,
+            "8": 0
+          },
+          "distinct_selected_longest_substrings_at_least": {
+            "3": 32,
+            "4": 22,
+            "5": 10,
+            "8": 0
+          }
+        }
+      }
+    },
+    {
+      "seed": 29,
+      "token_sha256": "b1a158b0beea38f49c53059441ed33b7df44ce9bd374c82380f7700fb8973282",
+      "bigram_multiset_sha256": "0e6816892071a2bc0c38d90f917f530123ee4905fef2c6fda7c2d73ffd5f969a",
+      "positions_different_from_original": 1737369,
+      "by_method": {
+        "broken_mlp_cosine_path": {
+          "candidates": 992,
+          "distinct_candidate_sequences": 992,
+          "max_longest_match_tokens": 3,
+          "mean_longest_match_tokens": 1.969758064516129,
+          "whole_candidate_matches": 0,
+          "candidates_with_match_at_least": {
+            "3": 23,
+            "4": 0,
+            "5": 0,
+            "8": 0
+          },
+          "distinct_selected_longest_substrings_at_least": {
+            "3": 6,
+            "4": 0,
+            "5": 0,
+            "8": 0
+          }
+        },
+        "mlp_cosine_path": {
+          "candidates": 984,
+          "distinct_candidate_sequences": 984,
+          "max_longest_match_tokens": 8,
+          "mean_longest_match_tokens": 4.1310975609756095,
+          "whole_candidate_matches": 1,
+          "candidates_with_match_at_least": {
+            "3": 739,
+            "4": 633,
+            "5": 421,
+            "8": 1
+          },
+          "distinct_selected_longest_substrings_at_least": {
+            "3": 36,
+            "4": 24,
+            "5": 14,
+            "8": 1
+          }
+        }
+      }
+    },
+    {
+      "seed": 43,
+      "token_sha256": "53d738090183ee9dce92f54a91d8b83e9f116d8d2bcd29c3bef357565e545549",
+      "bigram_multiset_sha256": "0e6816892071a2bc0c38d90f917f530123ee4905fef2c6fda7c2d73ffd5f969a",
+      "positions_different_from_original": 1737083,
+      "by_method": {
+        "broken_mlp_cosine_path": {
+          "candidates": 992,
+          "distinct_candidate_sequences": 992,
+          "max_longest_match_tokens": 3,
+          "mean_longest_match_tokens": 1.9808467741935485,
+          "whole_candidate_matches": 0,
+          "candidates_with_match_at_least": {
+            "3": 34,
+            "4": 0,
+            "5": 0,
+            "8": 0
+          },
+          "distinct_selected_longest_substrings_at_least": {
+            "3": 9,
+            "4": 0,
+            "5": 0,
+            "8": 0
+          }
+        },
+        "mlp_cosine_path": {
+          "candidates": 984,
+          "distinct_candidate_sequences": 984,
+          "max_longest_match_tokens": 7,
+          "mean_longest_match_tokens": 4.0721544715447155,
+          "whole_candidate_matches": 0,
+          "candidates_with_match_at_least": {
+            "3": 738,
+            "4": 641,
+            "5": 430,
+            "8": 0
+          },
+          "distinct_selected_longest_substrings_at_least": {
+            "3": 34,
+            "4": 23,
+            "5": 13,
+            "8": 0
+          }
+        }
+      }
+    }
+  ],
+  "sources": {
+    "candidates": {
+      "path": "/tmp/pluto-weight-extraction.BNGaKw/mlp_reviewed.jsonl",
+      "sha256": "16569e7c6af8cd7e712775a748ff506904f4a9442da4d7311c332824561437d1"
+    },
+    "corpus_token_ids": {
+      "path": "/tmp/pluto-native-corpus.KMY7AZ/shakespeare.tokens.bin",
+      "sha256": "17680667f56fe95ba5903339d867d0ecc940e789b65f5d56e484ff8b33a73b21"
+    },
+    "code_sha256": {
+      "controls.py": "5b635e68e9911dda51ea14b8a608a0ac72060c277dab33df22861c154fbd6cfb",
+      "verify.py": "5aadff964ee7a591d531bcf0b2e190009fdef34e7e2c30eab38bc23c691ad270",
+      "checkpoint.py": "66d5a2ed2767caef7a5a07b892c958c5e04c8de5df32fe114f68cb2373b578da"
+    }
+  }
+}
