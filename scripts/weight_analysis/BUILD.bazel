@@ -1,0 +1,16 @@
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+
+cc_binary(
+    name = "tokenize_corpus",
+    srcs = ["tokenize_corpus.cc"],
+    deps = [
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset:detokenizer",
+        "//src/dataset:tokenizer",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
