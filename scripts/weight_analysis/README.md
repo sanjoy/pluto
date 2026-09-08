@@ -6,6 +6,9 @@ decompressor. Running the language model to generate text does **not** satisfy
 that goal. The current tools are experiments toward it, not a completed
 decompressor or proof that arbitrary passages can be recovered from weights.
 
+Verified findings and artifact hashes are recorded in the
+[research report](/home/ubuntu/code/pluto/research/weight_memorization/REPORT.md).
+
 ## Evidence contract
 
 1. **Extraction reads checkpoint weights and the tokenizer vocabulary only.**
@@ -32,8 +35,8 @@ decompressor or proof that arbitrary passages can be recovered from weights.
 The latest uncompressed GPT-2 checkpoint inspected is
 `/home/ubuntu/checkpoints/shakespeare/step_13030`, not a newer SAE checkpoint.
 It contains 100 distinct FP32 tensors: 51,483,648 parameters / 205,934,592 bytes.
-The recipe has 8 blocks, residual width512, 8 heads, FFN width2048, and a tied
-50,257-token embedding/unembedding (physically padded to50,272 rows).
+The recipe has 8 blocks, residual width 512, 8 heads, FFN width 2,048, and a tied
+50,257-token embedding/unembedding (physically padded to 50,272 rows).
 
 `checkpoint.py` reproduces the actual C++ traversal, validates every filename
 and size, and exposes read-only NumPy memory maps. Dense matrices are stored
@@ -146,6 +149,60 @@ invariance, tensor orientation, byte addresses, exact matching against a
 brute-force oracle, UTF-8 boundaries, and refusal to overwrite artifacts.
 These tests verify the implementation, not the hypothesis that real passages
 are stored in the same simple form.
+
+## Signed aggregate MLP probe and stronger path control
+
+`aggregate.py` forms `A = W1 @ diag(g) @ W2` and scores
+`E[source] @ A @ E[target].T`. Unlike the individual-neuron probe, it retains
+all positive and negative contributions before ranking tokens. The default
+gate is `g=1`; `--gate=bias_gelu` instead uses the analytic tanh-GELU derivative
+at the fixed bias point. Neither mode evaluates contextual activations.
+The optional bias gate is an approximation, not the trained model's gate.
+
+Source selection uses write norms over the entire vocabulary. Target scores
+are cosine-normalized, with raw scores and norms also recorded. Paths pool
+positive edges across blocks; they can terminate before their requested
+maximum length. This is still a pairwise operator, not a multi-token memory
+model, even though every neuron contributes. `neuron_contributions()` returns
+all signed terms for exact algebraic replay; a few largest terms alone are not
+a complete explanation of the sum.
+
+```sh
+OPENBLAS_NUM_THREADS=8 python -m scripts.weight_analysis.aggregate \
+  --checkpoint /home/ubuntu/checkpoints/shakespeare/step_13030 \
+  --tokenizer-dir /home/ubuntu/datasets/tokenizer/gpt2 \
+  --output /tmp/aggregate_candidates.jsonl --include-control
+```
+
+`controls.py` is **verification only**. It shuffles the native corpus using a
+randomized Euler trail that preserves every directed adjacent token pair and
+its count, every unigram count, and the endpoint tokens. It then checks the
+same frozen candidates. Thus it tests whether path matches provide evidence
+for ordering beyond token pairs, rather than merely outperforming arbitrary
+vocabulary labels. It does not sample trails uniformly and produces no
+p-values. Some longer sequences are forced by their bigrams, so even this
+control cannot isolate all forms of learning or memorization.
+
+The control excludes candidates shorter than three tokens because pair counts
+are identical by construction. Its denominators are therefore different from
+the full extraction report and explicitly recorded. Whole-candidate matches
+are reported separately from matches to internal substrings.
+
+```sh
+python -m scripts.weight_analysis.controls \
+  --corpus-token-ids /tmp/shakespeare_native.bin \
+  --candidates /tmp/mlp_candidates.jsonl \
+  --output /tmp/mlp_bigram_controls.json
+
+OPENBLAS_NUM_THREADS=8 python -m unittest \
+  scripts.weight_analysis.aggregate_test \
+  scripts.weight_analysis.controls_test
+```
+
+For the first MLP experiment the bigram-preserving shuffles contain **more**
+four- and five-token path matches than the actual corpus. Consequently the
+initial formatting-heavy matches do not demonstrate passage-specific storage.
+See the research report for exact denominators and all three fixed seeds.
 
 ## Research grounding and next questions
 
