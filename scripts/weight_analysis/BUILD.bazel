@@ -108,3 +108,22 @@ cc_test(
         "@googletest//:gtest_main",
     ],
 )
+
+cc_binary(
+    name = "neuron_probe",
+    srcs = ["neuron_probe_main.cc"],
+    deps = [
+        ":causal_probe_lib",
+        "//src/cuda:executor",
+        "//src/llm:checkpoint",
+        "//src/llm:cross_entropy_loss",
+        "//src/llm:layer",
+        "//src/llm/recipes:gpt2",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+    ],
+)

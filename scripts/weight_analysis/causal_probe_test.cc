@@ -180,6 +180,193 @@ TEST_F(ProbeTest, InterventionRejectsAliasesInvalidIndicesAndNonfinite) {
   EXPECT_FALSE(WeightIntervention::Capture(**other, {*a}, {0}).ok());
 }
 
+TEST_F(ProbeTest, MlpRowsUsePristineDosesAndLeaveOtherRowsAndBiasUntouched) {
+  const std::vector<float> matrix{1,  2,     3,  -0.0f, -2.5f, 8,  7,  8,  9,
+                                  10, -0.0f, 12, 13,    -14,   15, 16, 17, 18};
+  const std::vector<float> bias{3.25f, -0.0f, -7.0f};
+  auto weight = Upload(matrix);
+  auto output_bias = Upload(bias);
+  ASSERT_TRUE(weight.ok());
+  ASSERT_TRUE(output_bias.ok());
+  const auto layer_alias = *weight;
+  std::vector<int> selected{4, 1};  // Nonconsecutive and deliberately unsorted.
+  auto intervention =
+      MlpRowIntervention::Capture(*executor_, *weight, 6, 3, selected);
+  ASSERT_TRUE(intervention.ok()) << intervention.status();
+  selected = {2};  // The helper must own the frozen feature IDs too.
+  // In particular, half after half is not quarter, and half after zero is
+  // not zero. A dose of one must restore negative-zero bytes exactly.
+  for (float dose : {0.5f, 0.5f, 0.0f, 0.5f, 1.0f, 0.0f, 1.0f}) {
+    ASSERT_TRUE((*intervention)->Apply(dose).ok());
+    auto actual = Download(layer_alias);
+    auto actual_bias = Download(*output_bias);
+    ASSERT_TRUE(actual.ok());
+    ASSERT_TRUE(actual_bias.ok());
+    auto expected = matrix;
+    for (int row : {1, 4}) {
+      for (int column = 0; column < 3; ++column) {
+        const int offset = row * 3 + column;
+        if (dose == 0) expected[offset] = 0.0f;
+        if (dose == 0.5f) expected[offset] = matrix[offset] * 0.5f;
+      }
+    }
+    EXPECT_EQ(std::memcmp(actual->data(), expected.data(),
+                          expected.size() * sizeof(float)),
+              0);
+    EXPECT_EQ(std::memcmp(actual_bias->data(), bias.data(),
+                          bias.size() * sizeof(float)),
+              0);
+  }
+  EXPECT_TRUE((*intervention)->RestoreAndVerify().ok());
+  EXPECT_TRUE((*intervention)->RestoreAndVerify().ok());
+}
+
+TEST_F(ProbeTest, MlpRowsRetainTargetAfterOriginalHandleIsReleased) {
+  const std::vector<float> matrix{1, 2, -0.0f, -4, 5, 6};
+  auto weight = Upload(matrix);
+  ASSERT_TRUE(weight.ok());
+  void* target = weight->data();
+  auto intervention =
+      MlpRowIntervention::Capture(*executor_, *weight, 3, 2, {1});
+  ASSERT_TRUE(intervention.ok());
+  // No layer alias remains: only the helper now owns this allocation.
+  weight = absl::CancelledError("release caller's handle");
+  ASSERT_TRUE((*intervention)->Apply(0.5f).ok());
+  auto actual = cuda::PageLockedHostArray<float>::Allocate(matrix.size());
+  ASSERT_TRUE(actual.ok());
+  ASSERT_EQ(cudaMemcpyAsync(actual->data(), target, actual->size_bytes(),
+                            cudaMemcpyDeviceToHost, executor_->stream()),
+            cudaSuccess);
+  ASSERT_TRUE(executor_->Synchronize().ok());
+  EXPECT_TRUE(std::signbit((*actual)[2]));
+  EXPECT_EQ((*actual)[3], -2);
+  ASSERT_TRUE((*intervention)->RestoreAndVerify().ok());
+  ASSERT_EQ(cudaMemcpyAsync(actual->data(), target, actual->size_bytes(),
+                            cudaMemcpyDeviceToHost, executor_->stream()),
+            cudaSuccess);
+  ASSERT_TRUE(executor_->Synchronize().ok());
+  EXPECT_EQ(std::memcmp(actual->data(), matrix.data(), actual->size_bytes()),
+            0);
+}
+
+TEST_F(ProbeTest, MlpRowsDestructorRestoresPristineSelectedBytes) {
+  const std::vector<float> matrix{1, -0.0f, 3, 4, -5, -0.0f};
+  auto weight = Upload(matrix);
+  ASSERT_TRUE(weight.ok());
+  {
+    auto intervention =
+        MlpRowIntervention::Capture(*executor_, *weight, 3, 2, {2, 0});
+    ASSERT_TRUE(intervention.ok());
+    ASSERT_TRUE((*intervention)->Apply(0).ok());
+  }
+  auto actual = Download(*weight);
+  ASSERT_TRUE(actual.ok());
+  EXPECT_EQ(std::memcmp(actual->data(), matrix.data(), actual->size_bytes()),
+            0);
+}
+
+TEST_F(ProbeTest,
+       MlpRowsRejectInvalidSelectionsAndPhysicalShapesWithoutMutation) {
+  const std::vector<float> matrix{1, 2, -0.0f, 4, 5, 6};
+  auto weight = Upload(matrix);
+  ASSERT_TRUE(weight.ok());
+  for (const std::vector<int>& ids :
+       std::vector<std::vector<int>>{{}, {-1}, {3}, {1, 1}, {0, 2, 0}}) {
+    EXPECT_FALSE(
+        MlpRowIntervention::Capture(*executor_, *weight, 3, 2, ids).ok());
+  }
+  for (const auto& shape :
+       std::vector<std::vector<int>>{{0, 2},
+                                     {3, 0},
+                                     {-1, 2},
+                                     {3, -1},
+                                     {3, 3},
+                                     {2, 2},
+                                     {std::numeric_limits<int>::max(),
+                                      std::numeric_limits<int>::max()}}) {
+    EXPECT_FALSE(MlpRowIntervention::Capture(*executor_, *weight, shape[0],
+                                             shape[1], {0})
+                     .ok());
+  }
+  auto empty = cuda::Buffer::Allocate(*executor_, 0);
+  auto unaligned = cuda::Buffer::Allocate(*executor_, 7);
+  ASSERT_TRUE(empty.ok());
+  ASSERT_TRUE(unaligned.ok());
+  EXPECT_FALSE(MlpRowIntervention::Capture(*executor_, *empty, 1, 1, {0}).ok());
+  EXPECT_FALSE(
+      MlpRowIntervention::Capture(*executor_, *unaligned, 1, 2, {0}).ok());
+  auto other = cuda::Executor::Create();
+  ASSERT_TRUE(other.ok());
+  EXPECT_FALSE(MlpRowIntervention::Capture(**other, *weight, 3, 2, {0}).ok());
+  auto actual = Download(*weight);
+  ASSERT_TRUE(actual.ok());
+  EXPECT_EQ(std::memcmp(actual->data(), matrix.data(), actual->size_bytes()),
+            0);
+}
+
+TEST_F(ProbeTest, MlpRowsRejectNonfiniteValuesEvenInUnselectedRows) {
+  for (float invalid : {std::numeric_limits<float>::quiet_NaN(),
+                        std::numeric_limits<float>::infinity(),
+                        -std::numeric_limits<float>::infinity()}) {
+    auto weight = Upload({1, 2, invalid, 4});
+    ASSERT_TRUE(weight.ok());
+    EXPECT_FALSE(
+        MlpRowIntervention::Capture(*executor_, *weight, 2, 2, {0}).ok());
+    EXPECT_FALSE(
+        MlpRowIntervention::Capture(*executor_, *weight, 2, 2, {1}).ok());
+  }
+}
+
+TEST_F(ProbeTest, MlpRowsInvalidDoseLeavesActiveDoseUntouched) {
+  auto weight = Upload({2, 4, 6, 8});
+  ASSERT_TRUE(weight.ok());
+  auto intervention =
+      MlpRowIntervention::Capture(*executor_, *weight, 2, 2, {0, 1});
+  ASSERT_TRUE(intervention.ok());
+  ASSERT_TRUE((*intervention)->Apply(0.5f).ok());
+  for (float invalid :
+       {-1.0f, 0.25f, 2.0f, std::numeric_limits<float>::quiet_NaN(),
+        std::numeric_limits<float>::infinity()}) {
+    EXPECT_FALSE((*intervention)->Apply(invalid).ok());
+    auto actual = Download(*weight);
+    ASSERT_TRUE(actual.ok());
+    for (int i = 0; i < 4; ++i) EXPECT_EQ((*actual)[i], i + 1);
+  }
+  EXPECT_TRUE((*intervention)->Apply(1).ok());
+}
+
+TEST_F(ProbeTest, MlpRowsRestoreDetectsButDoesNotOverwriteUnselectedMutation) {
+  const std::vector<float> matrix{1, 2, 3, 4, 5, -0.0f};
+  auto weight = Upload(matrix);
+  ASSERT_TRUE(weight.ok());
+  auto intervention =
+      MlpRowIntervention::Capture(*executor_, *weight, 3, 2, {0});
+  ASSERT_TRUE(intervention.ok());
+  ASSERT_TRUE((*intervention)->Apply(0).ok());
+  auto replacement = cuda::PageLockedHostArray<float>::CopyFrom({99});
+  ASSERT_TRUE(replacement.ok());
+  ASSERT_EQ(cudaMemcpyAsync(static_cast<float*>(weight->data()) + 4,
+                            replacement->data(), sizeof(float),
+                            cudaMemcpyHostToDevice, executor_->stream()),
+            cudaSuccess);
+  ASSERT_TRUE(executor_->Synchronize().ok());
+  EXPECT_EQ((*intervention)->RestoreAndVerify().code(),
+            absl::StatusCode::kDataLoss);
+  auto actual = Download(*weight);
+  ASSERT_TRUE(actual.ok());
+  EXPECT_EQ((*actual)[0], 1);   // Selected rows did restore.
+  EXPECT_EQ((*actual)[4], 99);  // The helper must not write this row.
+  // Repair only our test's unrelated corruption so the explicit restoration
+  // gate can pass; this also avoids an expected destructor failure message.
+  (*replacement)[0] = matrix[4];
+  ASSERT_EQ(cudaMemcpyAsync(static_cast<float*>(weight->data()) + 4,
+                            replacement->data(), sizeof(float),
+                            cudaMemcpyHostToDevice, executor_->stream()),
+            cudaSuccess);
+  ASSERT_TRUE(executor_->Synchronize().ok());
+  EXPECT_TRUE((*intervention)->RestoreAndVerify().ok());
+}
+
 TEST_F(ProbeTest, PackedBatchUsesGlobalTargetHalfAndRejectsBadInputs) {
   const std::vector<int32_t> values{0, 1, 2, 3, 4, 5, 6, 0, 2, 2, 2, 3,
                                     1, 2, 3, 4, 5, 6, 0, 1, 2, 2, 3, 4};

@@ -81,6 +81,49 @@ class WeightIntervention final {
   bool dirty_ = false;
 };
 
+// A validation-only intervention on selected neuron rows of a row-major FP32
+// MLP output matrix W2[input_feature, output]. Bias is intentionally absent:
+// changing a neuron's output contribution must not change the branch bias.
+// The target Buffer is retained by reference count, so all layer aliases see
+// the same bytes even after the caller releases its original handle.
+//
+// Apply always derives its dose from the pristine snapshot, not the previous
+// dose; repeated half/zero/one calls are allowed. Only selected rows are ever
+// written. RestoreAndVerify checks the ENTIRE matrix against its snapshot,
+// detecting unrelated row mutations rather than silently overwriting them.
+// The caller must keep the Executor alive, avoid concurrent matrix mutation,
+// and explicitly check restoration before declaring a measurement complete.
+// The destructor's best-effort restore is only an error-path safety net.
+class MlpRowIntervention final {
+ public:
+  static absl::StatusOr<std::unique_ptr<MlpRowIntervention>> Capture(
+      cuda::Executor& executor, const cuda::Buffer& output_weight,
+      int input_features, int output_width, absl::Span<const int> feature_ids);
+  ~MlpRowIntervention();
+  MlpRowIntervention(const MlpRowIntervention&) = delete;
+  MlpRowIntervention& operator=(const MlpRowIntervention&) = delete;
+
+  // Exactly 0, 0.5, or 1. A dose of 1 performs verified byte restoration,
+  // including signed zeros, instead of floating-point multiplication.
+  absl::Status Apply(float scale);
+  absl::Status RestoreAndVerify();
+
+ private:
+  MlpRowIntervention(cuda::Executor& executor, cuda::Buffer target,
+                     cuda::Buffer backup,
+                     cuda::PageLockedHostArray<float> original,
+                     cuda::PageLockedHostArray<float> staging,
+                     std::vector<int> feature_ids, size_t output_width);
+  cuda::Executor& executor_;
+  cuda::Buffer target_;
+  cuda::Buffer backup_;
+  cuda::PageLockedHostArray<float> original_;
+  cuda::PageLockedHostArray<float> staging_;
+  std::vector<int> feature_ids_;
+  size_t output_width_;
+  bool dirty_ = false;
+};
+
 struct Measurements {
   cuda::PageLockedHostArray<float> losses;
   cuda::PageLockedHostArray<int32_t> argmax;

@@ -268,6 +268,125 @@ absl::Status WeightIntervention::RestoreAndVerify() {
   return absl::OkStatus();
 }
 
+MlpRowIntervention::MlpRowIntervention(
+    cuda::Executor& executor, cuda::Buffer target, cuda::Buffer backup,
+    cuda::PageLockedHostArray<float> original,
+    cuda::PageLockedHostArray<float> staging, std::vector<int> feature_ids,
+    size_t output_width)
+    : executor_(executor),
+      target_(std::move(target)),
+      backup_(std::move(backup)),
+      original_(std::move(original)),
+      staging_(std::move(staging)),
+      feature_ids_(std::move(feature_ids)),
+      output_width_(output_width) {}
+
+absl::StatusOr<std::unique_ptr<MlpRowIntervention>> MlpRowIntervention::Capture(
+    cuda::Executor& executor, const cuda::Buffer& output_weight,
+    int input_features, int output_width, absl::Span<const int> feature_ids) {
+  if (input_features <= 0 || output_width <= 0 || feature_ids.empty() ||
+      size_t(input_features) > std::numeric_limits<size_t>::max() /
+                                   sizeof(float) / size_t(output_width) ||
+      output_weight.size_bytes() !=
+          size_t(input_features) * size_t(output_width) * sizeof(float) ||
+      &output_weight.executor() != &executor) {
+    return absl::InvalidArgumentError(
+        "invalid FP32 MLP output matrix shape, executor, or empty row group");
+  }
+  std::unordered_set<int> seen;
+  for (int feature : feature_ids) {
+    if (feature < 0 || feature >= input_features ||
+        !seen.insert(feature).second) {
+      return absl::InvalidArgumentError(
+          "MLP feature IDs must be unique and in range");
+    }
+  }
+  ASSIGN_OR_RETURN(auto backup, cuda::Buffer::Allocate(
+                                    executor, output_weight.size_bytes()));
+  const size_t count = output_weight.size_bytes() / sizeof(float);
+  ASSIGN_OR_RETURN(auto original,
+                   cuda::PageLockedHostArray<float>::Allocate(count));
+  ASSIGN_OR_RETURN(auto staging,
+                   cuda::PageLockedHostArray<float>::Allocate(count));
+  // Own every asynchronous endpoint before the first copy. Destruction also
+  // synchronizes failed captures, so no pinned allocation can expire early.
+  auto result = std::unique_ptr<MlpRowIntervention>(new MlpRowIntervention(
+      executor, output_weight, std::move(backup), std::move(original),
+      std::move(staging), {feature_ids.begin(), feature_ids.end()},
+      size_t(output_width)));
+  RETURN_IF_ERROR(Transfer(executor, result->backup_.data(),
+                           output_weight.data(), output_weight.size_bytes(),
+                           cudaMemcpyDeviceToDevice));
+  RETURN_IF_ERROR(Transfer(executor, result->original_.data(),
+                           output_weight.data(), output_weight.size_bytes(),
+                           cudaMemcpyDeviceToHost));
+  RETURN_IF_ERROR(executor.Synchronize());
+  for (float value : result->original_) {
+    if (!std::isfinite(value)) {
+      return absl::InvalidArgumentError("nonfinite MLP output weight");
+    }
+  }
+  return result;
+}
+
+MlpRowIntervention::~MlpRowIntervention() {
+  if (dirty_) {
+    const auto status = RestoreAndVerify();
+    if (!status.ok())
+      std::cerr << "Emergency MLP row restore failed: " << status << '\n';
+  }
+  (void)executor_.Synchronize();
+}
+
+absl::Status MlpRowIntervention::Apply(float scale) {
+  if (scale != 0.0f && scale != 0.5f && scale != 1.0f) {
+    return absl::InvalidArgumentError("MLP row scale must be 0, 0.5, or 1");
+  }
+  if (scale == 1.0f) return RestoreAndVerify();
+  dirty_ = true;
+  const size_t row_bytes = output_width_ * sizeof(float);
+  for (int feature : feature_ids_) {
+    const size_t offset = size_t(feature) * output_width_;
+    auto* target = static_cast<float*>(target_.data()) + offset;
+    if (scale == 0.0f) {
+      RETURN_IF_ERROR(cuda::CudaStatus(
+          cudaMemsetAsync(target, 0, row_bytes, executor_.stream()),
+          "zero selected MLP output row"));
+    } else {
+      for (size_t column = 0; column < output_width_; ++column) {
+        staging_[offset + column] = original_[offset + column] * scale;
+      }
+      RETURN_IF_ERROR(Transfer(executor_, target, staging_.data() + offset,
+                               row_bytes, cudaMemcpyHostToDevice));
+    }
+  }
+  return executor_.Synchronize();
+}
+
+absl::Status MlpRowIntervention::RestoreAndVerify() {
+  // Mark dirty before submitting work so a failed explicit restore is retried
+  // on destruction. Never write unselected rows, even if verification fails.
+  dirty_ = true;
+  const size_t row_bytes = output_width_ * sizeof(float);
+  for (int feature : feature_ids_) {
+    const size_t offset = size_t(feature) * output_width_;
+    RETURN_IF_ERROR(Transfer(executor_,
+                             static_cast<float*>(target_.data()) + offset,
+                             static_cast<const float*>(backup_.data()) + offset,
+                             row_bytes, cudaMemcpyDeviceToDevice));
+  }
+  RETURN_IF_ERROR(Transfer(executor_, staging_.data(), target_.data(),
+                           target_.size_bytes(), cudaMemcpyDeviceToHost));
+  RETURN_IF_ERROR(executor_.Synchronize());
+  if (std::memcmp(original_.data(), staging_.data(), target_.size_bytes()) !=
+      0) {
+    return absl::DataLossError(
+        "MLP output matrix differs from pristine snapshot after row restore");
+  }
+  dirty_ = false;
+  return absl::OkStatus();
+}
+
 absl::StatusOr<Measurements> EvaluatePassages(
     cuda::Executor& executor, const llm::Layer& model,
     const llm::Layer& loss_layer, const PackedBatch& batch, int batch_sequences,
