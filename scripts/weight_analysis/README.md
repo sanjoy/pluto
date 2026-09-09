@@ -22,6 +22,13 @@ has broad effects, while halving either of the last two MLPs hurts every sampled
 prefix passage and improves every sampled suffix passage. This is functional
 dependence, not uniquely located text or an analytical decompressor.
 
+The [fine-grained follow-up](/home/ubuntu/code/pluto/research/weight_memorization/NEURON_MAPPING_RESULTS.md)
+tests 64 fixed groups of late-MLP neurons with disjoint discovery/confirmation
+targets in the same passages. All 69 arms pass integrity checks, but only 5 of
+16 selected groups remain in the top confirmation quartile, with broad
+collateral effects. The complete losses, addresses, and alternate numerical
+audit are retained; this is again model-based reliance mapping, not extraction.
+
 The [checkpoint-difference feasibility audit](/home/ubuntu/code/pluto/research/weight_memorization/CHECKPOINT_DELTA_FEASIBILITY.md)
 also explains why saved ten-step AdamW weight differences are not raw gradients.
 The follow-up [trajectory audit](/home/ubuntu/code/pluto/research/weight_memorization/CHECKPOINT_TRAJECTORY_RESULTS.md)
