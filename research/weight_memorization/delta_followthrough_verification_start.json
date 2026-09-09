@@ -1,0 +1,95 @@
+{
+  "stage": "followthrough_verification_start_before_corpus_access",
+  "created_utc": "2026-09-09T05:18:38.047192+00:00",
+  "frozen": {
+    "path": "/tmp/pluto-delta-followthrough.VjsYYn/run/frozen.json",
+    "bytes": 1335379,
+    "sha256": "b42aba12eb4cb5072a58cca6daaf94aab4fd9539627d31875f02ce60b17797ed"
+  },
+  "verification_sources": {
+    "delta_followthrough_verify.py": {
+      "path": "/home/ubuntu/code/pluto/scripts/weight_analysis/delta_followthrough_verify.py",
+      "bytes": 14097,
+      "sha256": "bb4923a6356b0147f5cf04464c827efefb0489b6ce9ffdf3f5aa882f6d145899"
+    },
+    "restart_delta_verify.py": {
+      "path": "/home/ubuntu/code/pluto/scripts/weight_analysis/restart_delta_verify.py",
+      "bytes": 21246,
+      "sha256": "e774d0cebbc1062febff82d0dacf40550de545429b08a463428ddc6f6fee0cbc"
+    },
+    "verify.py": {
+      "path": "/home/ubuntu/code/pluto/scripts/weight_analysis/verify.py",
+      "bytes": 24170,
+      "sha256": "5aadff964ee7a591d531bcf0b2e190009fdef34e7e2c30eab38bc23c691ad270"
+    },
+    "vocabulary_verify.py": {
+      "path": "/home/ubuntu/code/pluto/scripts/weight_analysis/vocabulary_verify.py",
+      "bytes": 12528,
+      "sha256": "053a9862e580812e2503ad335e7eb7fd43d8dacfad8baec604b25b4dbf0e236b"
+    },
+    "causal_validation.py": {
+      "path": "/home/ubuntu/code/pluto/scripts/weight_analysis/causal_validation.py",
+      "bytes": 30820,
+      "sha256": "7c39c68fdd080d88fc29457f642e3c40b25238146d6a6221df2116f11cde9c3f"
+    },
+    "replay_sampler.cc": {
+      "path": "/home/ubuntu/code/pluto/scripts/weight_analysis/replay_sampler.cc",
+      "bytes": 4593,
+      "sha256": "5fc52e2111920fd2e777a18037efd8cdbc80b386fe833397d6804521e9a75a64"
+    },
+    "sampler_binary": {
+      "path": "/tmp/pluto-replay-sampler",
+      "bytes": 71992,
+      "sha256": "028cecb76ac9d719a15dbaf391df998aa257d84a9a74216ec3c0a06893defa65"
+    }
+  },
+  "input_paths_not_yet_opened": {
+    "corpus": "/home/ubuntu/code/pluto/testdata/shakespeare.txt",
+    "native_tokens": "/tmp/pluto-native-corpus.KMY7AZ/shakespeare.tokens.bin",
+    "native_offsets": "/tmp/pluto-native-corpus.KMY7AZ/shakespeare.tokens.bin.offsets.bin",
+    "tokenizer": "/home/ubuntu/datasets/tokenizer/gpt2/tokenizer.json"
+  },
+  "phases_by_batch": {
+    "1": {
+      "predicted": [
+        100,
+        110
+      ],
+      "previous": [
+        90,
+        100
+      ],
+      "next": [
+        110,
+        120
+      ],
+      "reset": [
+        0,
+        10
+      ]
+    },
+    "10": {
+      "predicted": [
+        1000,
+        1100
+      ],
+      "previous": [
+        900,
+        1000
+      ],
+      "next": [
+        1100,
+        1200
+      ],
+      "reset": [
+        0,
+        100
+      ]
+    }
+  },
+  "conditional_seed": 17,
+  "alternative_seeds": [
+    10000,
+    10999
+  ]
+}
