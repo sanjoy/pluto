@@ -4,6 +4,7 @@ import contextlib
 import copy
 import hashlib
 import io
+import itertools
 import json
 from pathlib import Path
 import tempfile
@@ -54,6 +55,46 @@ class StructureTest(unittest.TestCase):
         # Nonbreaking space is Unicode whitespace, deliberately not ASCII.
         self.assertEqual(report["overall"]["ascii_whitespace_only_paths"], 1)
         self.assertEqual(report["overall"]["ascii_whitespace_only_fraction"], 0.25)
+
+    def test_varied_prefix_does_not_hide_repetitive_generated_tails(self):
+        candidates = [candidate([9, 8] + [1] * 14, "constant", "first"),
+                      candidate([9, 8] + [1, 2] * 7, "alternating", "second"),
+                      candidate([9, 8] + [1, 2] * 7, "duplicate", "second")]
+        report = diagnostics.analyze(candidates, 10)
+        overall = report["overall"]
+        self.assertEqual(overall["histograms"]["truncated_period"], {"16": 3})
+        self.assertEqual(overall["histograms"]["longest_constant_suffix"], {"1": 2, "14": 1})
+        self.assertEqual(overall["histograms"]["longest_alternating_two_token_suffix"], {"0": 1, "14": 2})
+        self.assertEqual(overall["constant_suffix_at_least_eight_paths"], 1)
+        self.assertEqual(overall["alternating_suffix_at_least_eight_paths"], 2)
+        self.assertEqual(report["by_method"]["second"]["distinct_paths"], 1)
+        self.assertEqual(report["by_method"]["first"]["constant_suffix_at_least_eight_paths"], 1)
+
+    def test_suffix_boundaries_odd_cycles_and_eight_token_threshold(self):
+        for sequence, constant, alternating in (
+                ([1], 1, 0), ([1] * 8, 8, 0), ([1, 2, 1], 1, 0),
+                ([1, 2, 1, 2], 1, 4), ([9, 1, 2, 1, 2, 1], 1, 5),
+                ([9] + [1] * 7, 7, 0), ([9] + [1, 2] * 4, 1, 8),
+                ([1, 2, 1, 2, 2], 2, 0)):
+            with self.subTest(sequence=sequence):
+                result = diagnostics.analyze([candidate(sequence)], 10)["overall"]
+                self.assertEqual(result["histograms"]["longest_constant_suffix"], {str(constant): 1})
+                self.assertEqual(result["histograms"]["longest_alternating_two_token_suffix"], {str(alternating): 1})
+                self.assertEqual(result["constant_suffix_at_least_eight_paths"], int(constant >= 8))
+                self.assertEqual(result["alternating_suffix_at_least_eight_paths"], int(alternating >= 8))
+
+    def test_suffixes_match_brute_force_enumeration(self):
+        for length in range(1, 8):
+            for tokens in itertools.product(range(2), repeat=length):
+                suffixes = [tokens[start:] for start in range(length)]
+                constant = max(len(s) for s in suffixes if len(set(s)) == 1)
+                alternating = max((len(s) for s in suffixes
+                                   if len(s) >= 4 and s[-1] != s[-2]
+                                   and all(s[i] == s[i - 2] for i in range(2, len(s)))),
+                                  default=0)
+                result = diagnostics.analyze([candidate(list(tokens))], 2)["overall"]
+                self.assertEqual(result["histograms"]["longest_constant_suffix"], {str(constant): 1})
+                self.assertEqual(result["histograms"]["longest_alternating_two_token_suffix"], {str(alternating): 1})
 
     def test_cache_duplicate_sequences_even_across_methods(self):
         candidates = [candidate([0, 1, 0, 1], "a", "real"),

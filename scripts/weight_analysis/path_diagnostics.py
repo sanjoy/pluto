@@ -50,6 +50,17 @@ def analyze(candidates, vocab_size, token_bytes=None):
                 adjacent += before == after
                 run = run + 1 if before == after else 1
                 longest = max(longest, run)
+            # A varied seed can hide a degenerate generated tail from whole-
+            # path period tests. The final run above is the constant suffix.
+            # Extend the last two distinct IDs backwards by the period-two
+            # equality; fewer than four tokens is not a repeated two-ID cycle.
+            alternating_suffix = 0
+            if len(tokens) >= 4 and tokens[-1] != tokens[-2]:
+                start = len(tokens) - 2
+                while start > 0 and tokens[start - 1] == tokens[start + 1]:
+                    start -= 1
+                if len(tokens) - start >= 4:
+                    alternating_suffix = len(tokens) - start
             whitespace = None
             if token_bytes is not None:
                 if any(token not in token_bytes for token in tokens):
@@ -57,6 +68,8 @@ def analyze(candidates, vocab_size, token_bytes=None):
                 whitespace = b"".join(token_bytes[token] for token in tokens).isspace()
             cache[tokens] = dict(length=len(tokens), unique_token_ids=len(set(tokens)),
                                  adjacent_equal_pairs=adjacent, longest_same_token_run=longest,
+                                 longest_constant_suffix=run,
+                                 longest_alternating_two_token_suffix=alternating_suffix,
                                  truncated_period=period, exact_tiling_period=exact,
                                  ascii_whitespace_only=whitespace)
         methods[candidate["method"]].append(tokens)
@@ -64,7 +77,9 @@ def analyze(candidates, vocab_size, token_bytes=None):
     def summarize(sequences):
         stats = [cache[seq] for seq in sequences]
         histogram_fields = ("length", "unique_token_ids", "adjacent_equal_pairs",
-                            "longest_same_token_run", "truncated_period", "exact_tiling_period")
+                            "longest_same_token_run", "longest_constant_suffix",
+                            "longest_alternating_two_token_suffix",
+                            "truncated_period", "exact_tiling_period")
         whitespace = sum(s["ascii_whitespace_only"] for s in stats) if token_bytes is not None else None
         return {
             "candidate_records": len(sequences),
@@ -75,6 +90,8 @@ def analyze(candidates, vocab_size, token_bytes=None):
             "constant_token_paths": sum(s["unique_token_ids"] == 1 for s in stats),
             "repeating_one_token_paths": sum(s["length"] >= 2 and s["truncated_period"] == 1 for s in stats),
             "alternating_two_token_paths": sum(s["length"] >= 4 and s["truncated_period"] == 2 for s in stats),
+            "constant_suffix_at_least_eight_paths": sum(s["longest_constant_suffix"] >= 8 for s in stats),
+            "alternating_suffix_at_least_eight_paths": sum(s["longest_alternating_two_token_suffix"] >= 8 for s in stats),
             "ascii_whitespace_only_paths": whitespace,
             "ascii_whitespace_only_fraction": whitespace / len(stats) if stats and whitespace is not None else None,
         }
@@ -85,6 +102,7 @@ def analyze(candidates, vocab_size, token_bytes=None):
         "vocab_size": vocab_size,
         "period_definition": "truncated p: token[i]=token[i-p] for all i>=p; exact tiling additionally requires length divisible by p; p=length always allowed",
         "two_token_cycle_definition": "at least four tokens, minimal truncated period exactly two; a truncated final repetition is allowed",
+        "suffix_definition": "longest constant or alternating two-distinct-ID suffix, regardless of prefix; alternating suffix is zero unless at least four tokens; nondividing final repetitions allowed",
         "whitespace_definition": "exact token bytes concatenated, nonempty ASCII whitespace only; null if no decoder supplied",
         "limitations": ["Structural description, never a filter or corpus match measurement.",
                         "Counts include repeated records; distinct_paths separately measures duplication.",
