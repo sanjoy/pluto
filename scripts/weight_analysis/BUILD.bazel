@@ -1,4 +1,7 @@
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+load("@rules_cuda//cuda:defs.bzl", "cuda_library")
 
 cc_binary(
     name = "tokenize_corpus",
@@ -12,5 +15,96 @@ cc_binary(
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings",
         "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cuda_library(
+    name = "token_argmax",
+    srcs = ["token_argmax.cc"],
+    hdrs = ["token_argmax.h"],
+    copts = ["--enable-tile", "-std=c++20"],
+    host_copts = ["-std=c++20"],
+    deps = [
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_test(
+    name = "token_argmax_test",
+    srcs = ["token_argmax_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":token_argmax",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "causal_probe_lib",
+    srcs = ["causal_probe.cc"],
+    hdrs = ["causal_probe.h"],
+    deps = [
+        ":token_argmax",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/llm:layer",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_binary(
+    name = "causal_probe",
+    srcs = ["causal_probe_main.cc"],
+    deps = [
+        ":causal_probe_lib",
+        "//src/cuda:executor",
+        "//src/llm:checkpoint",
+        "//src/llm:cross_entropy_loss",
+        "//src/llm:layer",
+        "//src/llm/recipes:gpt2",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/strings",
+    ],
+)
+
+cc_test(
+    name = "causal_probe_test",
+    srcs = ["causal_probe_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":causal_probe_lib",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/llm:cross_entropy_loss",
+        "//src/llm:layer",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
     ],
 )
