@@ -2,7 +2,18 @@
 
 Date: 2026-09-08. Tool implementation: commit `c7f08bd`.
 
-## Outcome
+## Latest status — 2026-09-09
+
+Four weight-only strategies have been tested; none has demonstrated a
+passage-specific decompressor. The newest joint QK-by-OV probe matched
+**0 of 4,096 intact-model triples**, and its selected graph cannot form
+longer paths. Separately, read-only forward validation measured loss
+**0.557 on a current prefix sample versus 5.455 on a suffix sample**;
+this is not full-corpus evaluation or proof of complete memorization.
+Inference was never used as an extractor. Initial evidence and subsequent
+controls are preserved below; the original goal remains unresolved.
+
+## Initial milestone outcome
 
 Static weight inspection finds learned short token associations, especially
 Shakespeare's punctuation and line formatting. It has **not recovered a passage
@@ -515,5 +526,103 @@ All **8 signed-aggregate tests** passed.
 
 The initial results and first control JSON remain unchanged. This follow-up
 adds a third analytical strategy and stronger negative evidence against the
-current static-path decompressor, without asserting that a more complete
+current static-path decompression hypothesis, without asserting that a more complete
 weight-only method cannot work.
+
+## Validation only: the checkpoint fits the current prefix much better
+
+A separate read-only GPU evaluation loaded step 13,030, took **zero optimizer
+steps**, and wrote no checkpoint. It evaluated the first 64 sequential
+1,024-target windows from each current 90/10 corpus split: **65,536 targets per
+split**, not the whole corpus.
+
+| Current split sample | Cross-entropy, nats/target | Perplexity |
+| --- | ---: | ---: |
+| Training-prefix sample | 0.556957 | 1.745 |
+| Test-suffix sample | 5.45537 | 234.011 |
+
+The initial/final evaluations repeat the same windows and give the same
+printed losses; they are not independent replications. All 100 checkpoint
+weight hashes before and after agree, and were independently checked against
+the files. Runtime was 50.7 seconds.
+
+This shows strongly split-specific fit, not zero loss, full memorization,
+token accuracy, or successful free-running reconstruction. “Test” names the
+current suffix; its historically held-out status remains unverified.
+Perplexities derive from rounded logged losses.
+[validation_results.json](/home/ubuntu/code/pluto/research/weight_memorization/validation_results.json)
+preserves the raw log, complete command, hashes, and sample definitions.
+**No outputs from this evaluation enter any extractor.** It is validation
+using model forward passes, not the requested weight-only decompressor.
+
+```sh
+bazel-bin/src/llm/recipes/gpt2_shakespeare_llm \
+  --mode=train_model --resume_from=/home/ubuntu/checkpoints/shakespeare \
+  --steps=0 --checkpoint_every=0 --batch_size=1 --eval_batches=64 \
+  --test_fraction=0.1 --corpus=testdata/shakespeare.txt \
+  --tokenizer_dir=/home/ubuntu/datasets/tokenizer/gpt2 \
+  --log_file="$analysis_dir/validation.log"
+```
+
+Confirm the logged resumed checkpoint: `--resume_from` selects the latest
+valid checkpoint and could select a different one if the directory changes.
+
+## Follow-up 3: joint QK-by-OV token interactions
+
+The fourth analytical strategy jointly conditions on two token embeddings
+rather than chaining independent pairs. In block 0 it contracts signed QK
+routing differences with OV write differences across all heads. This is the
+first derivative of two-position attention at zero score scale—not the
+trained-scale attention output. Contextual LayerNorm, positions, other blocks,
+and nonlinear effects remain absent; there are no model forward passes.
+
+Selection was fixed at 128 current tokens by query norm, eight previous
+tokens per current token by joint-write norm, and four destinations per pair.
+Each final/early/broken run emitted exactly **4,096 distinct triples**.
+Broken routing shifts intact OV operators relative to QK heads.
+
+| Weight setting | Candidates containing a matching pair | Complete three-token matches | Complete matches in bigram shuffles (17 / 29 / 43) |
+| --- | ---: | ---: | --- |
+| Final intact | 481 / 4,096 | **0 / 4,096** | 0 / 0 / 0 |
+| Early step 10 | 75 / 4,096 | 0 / 4,096 | 0 / 0 / 0 |
+| Final broken routing | 698 / 4,096 | 1 / 4,096 | 0 / 0 / 0 |
+
+The lone broken-control match is ` traitor's uncle`, appearing once. It is
+**not a recovery by the intact model**, and does not rescue this experiment.
+All vocabulary-label-shuffled runs have zero complete matches.
+
+### Why no longer paths were emitted
+
+Paths require overlapping triples: `(b,a,c)` must connect to `(a,c,d)`.
+A corpus-blind audit of the frozen candidates found **zero exact overlaps in
+all three runs**. In the final run, the 64 selected previous-token IDs and
+128 current-token IDs are entirely disjoint, making extension structurally
+impossible under this selection. Early/broken sets overlap in 10/1 IDs, but
+still have no exact connecting token pairs.
+
+Thus zero generated paths is a limitation of this disconnected selected
+graph, not evidence that the model cannot represent longer sequences.
+The complete matches and connectivity audit are separately recorded in
+[trigram_results.json](/home/ubuntu/code/pluto/research/weight_memorization/trigram_results.json),
+alongside hashes, provenance, and all three complete bigram-control reports.
+
+```sh
+OPENBLAS_NUM_THREADS=8 /home/ubuntu/.venv/bin/python \
+  -m scripts.weight_analysis.trigram \
+  --checkpoint /home/ubuntu/checkpoints/shakespeare/step_13030 \
+  --tokenizer-dir /home/ubuntu/datasets/tokenizer/gpt2 --block 0 \
+  --current-count 128 --previous-count 8 --top-k 4 --chunk-size 2048 \
+  --path-length 12 --path-starts 256 --beam-width 4 \
+  --output "$analysis_dir/trigram.jsonl"
+```
+
+Then use the earlier native `verify` and `controls` commands on this frozen
+file. For the broken setting add `--broken-routing-control`; for the early
+setting change only the checkpoint and output paths. All **14 trigram tests**
+passed.
+
+The next unresolved issues are a corpus-blind selection that admits a
+connected overlap graph, and a faithful residual-space geometry/routing
+approximation. Those would be new protocols, not retroactive fixes to this
+negative result. **Four static strategies have now been tested; no
+passage-specific analytical decompressor has been demonstrated.**
