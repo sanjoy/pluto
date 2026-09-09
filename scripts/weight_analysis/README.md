@@ -248,6 +248,79 @@ and `controls.py`, just as for the earlier probes. A matched triple still is
 not sufficient evidence of passage decompression. This remains an experiment
 toward the original goal, not a replacement of that goal with token statistics.
 
+## Corrected coordinates, closed vocabulary, and order-matched controls
+
+`closed_trigram.py` follows a separately committed
+[protocol](/home/ubuntu/code/pluto/research/weight_memorization/CLOSED_GRAPH_PROTOCOL.md).
+It uses the actual first LayerNorm's learned scale/bias and position-zero/one
+embedding rows to prepare static input dictionaries. Arithmetic is FP64;
+BF16 intermediate rounding is not emulated. The original tied embedding,
+not the normalized input dictionary, supplies output-token directions.
+
+Select a 128-token vocabulary from a declared selector checkpoint, then score
+all ordered pairs and top-four destinations within that same set. The same
+final-selected token IDs are supplied to normalized, raw-input, broken-routing,
+and early-checkpoint variants. This removes the earlier disjoint-endpoint
+problem, but restricts every proposed word to a potentially unsuitable small
+vocabulary. An early control given final-selected IDs has that explicit learned
+prior. Negative finite top scores are retained; scores are not probabilities.
+
+```sh
+OPENBLAS_NUM_THREADS=8 python -m scripts.weight_analysis.closed_trigram \
+  --checkpoint /home/ubuntu/checkpoints/shakespeare/step_13030 \
+  --vocabulary-checkpoint /home/ubuntu/checkpoints/shakespeare/step_13030 \
+  --tokenizer-dir /home/ubuntu/datasets/tokenizer/gpt2 \
+  --output /tmp/closed_normalized.jsonl
+
+python -m scripts.weight_analysis.higher_order_controls \
+  --corpus-token-ids /tmp/shakespeare_native.bin \
+  --candidates /tmp/closed_normalized.jsonl \
+  --output /tmp/closed_trigram_controls.json
+```
+
+Run all four protocol arms and freeze their hashes before corpus verification.
+The higher-order control shuffles an Euler trail on observed token-pair nodes,
+preserving **every trigram multiplicity**, lower-order counts, and endpoint
+pairs. It tests only candidates of length four or more. This is needed because
+trigram-conditioned graph paths can match ordinary local transitions without
+containing passage-specific information. Both control families remain
+nonuniform descriptive diagnostics, not significance tests.
+
+The frozen closed-graph experiment produced connected twelve-token paths, but
+none matched even a corpus pair. A later verification-only coverage audit
+found that its vocabulary cannot express any three-token corpus substring.
+No candidates were retuned to hide this outcome; see the research report.
+
+### Check the attention approximation without executing attention
+
+`routing_audit.py` uses exactly the same selected dictionaries. For a head's
+score difference `g` and projected value difference `v`, the exact correction
+relative to uniform routing is `0.5*tanh(g/2)*v`, while the static probe uses
+`g*v/4`. Its error is bounded by
+
+```text
+max(|g|-2, 0) * ||v|| / 4 <= error <= min(|g|^3/48, |g|/4) * ||v||.
+```
+
+The audit evaluates neither tanh nor softmax: these inequalities follow from
+their ranges and derivatives. It records per-head and stacked-head bounds,
+with ratios relative to the linear correction norm. **They are not bounds on
+summed-head errors, full model logits, or candidate-ranking errors.** A zero
+lower bound is inconclusive; an upper bound can constrain numerical error in
+the specified head correction without making it a complete model.
+
+```sh
+OPENBLAS_NUM_THREADS=8 python -m scripts.weight_analysis.routing_audit \
+  --checkpoint /home/ubuntu/checkpoints/shakespeare/step_13030 \
+  --vocabulary-checkpoint /home/ubuntu/checkpoints/shakespeare/step_13030 \
+  --output /tmp/closed_routing_audit.json
+
+OPENBLAS_NUM_THREADS=8 python -m unittest \
+  scripts.weight_analysis.closed_trigram_test \
+  scripts.weight_analysis.higher_order_controls_test \
+  scripts.weight_analysis.routing_audit_test
+```
+
 ## Research grounding and next questions
 
 - [Geva et al.,2021](https://aclanthology.org/2021.emnlp-main.446/) motivate MLP
