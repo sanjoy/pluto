@@ -447,7 +447,10 @@ def authenticate_plan(plan):
             raise ValueError(f"frozen input changed: {name}")
     snapshot = plan["checkpoint"]
     checkpoint = GPT2Checkpoint(snapshot["checkpoint_directory"], check_finite=True)
-    after = checkpoint.provenance(hash_weights=True)
+    # TensorSpec metadata contains tuples, which JSON necessarily stores as
+    # lists. Compare canonical JSON values, not their Python container types.
+    after = json.loads(json.dumps(checkpoint.provenance(hash_weights=True),
+                                  allow_nan=False))
     if (snapshot.get("unique_weight_files") != 100
             or len(snapshot.get("weight_sha256", {})) != 100 or after != snapshot):
         raise ValueError("checkpoint weights, layout, or source provenance changed")

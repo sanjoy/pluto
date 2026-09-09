@@ -11,6 +11,7 @@ from contextlib import ExitStack
 import numpy as np
 
 from . import causal_validation as cv
+from .checkpoint import GPT2Config
 
 
 def fixture():
@@ -336,6 +337,36 @@ class FilesTest(unittest.TestCase):
             with self.assertRaises(ValueError): cv.authenticate_plan(plan)
         source.write_bytes(b"modified")
         with self.assertRaisesRegex(ValueError, "input changed"): cv.authenticate_plan(plan)
+
+    def test_real_checkpoint_provenance_survives_json_roundtrip(self):
+        # A real 100-tensor checkpoint with tiny physical dimensions exercises
+        # TensorSpec.to_dict and GPT2Checkpoint.provenance, not a mock that
+        # accidentally gives the before/after snapshots identical list types.
+        config = GPT2Config(vocab_size=2, padded_vocab_size=2, context_length=2,
+                            n_layers=8, d_model=2, n_heads=1, d_ff=3)
+        directory = self.root / "tiny_checkpoint"
+        directory.mkdir()
+        for spec in cv.tensor_manifest(config):
+            (directory / spec.filename).write_bytes(bytes(spec.nbytes))
+        checkpoint = cv.GPT2Checkpoint(directory, config, check_finite=True)
+        before = checkpoint.provenance(hash_weights=True)
+        self.assertIsInstance(before["tensors"][0]["shape"], tuple)
+        path = self.root / "real_provenance.json"
+        cv.write_report(path, {"inputs": {}, "checkpoint": before})
+        loaded = cv.read_json(path)
+        self.assertIsInstance(loaded["checkpoint"]["tensors"][0]["shape"], list)
+        # Only construction is redirected to the small layout; all provenance,
+        # tensor metadata, and file hashing are the real implementation.
+        with mock.patch.object(cv, "GPT2Checkpoint", return_value=checkpoint):
+            self.assertEqual(cv.authenticate_plan(loaded), before["weight_sha256"])
+            altered = copy.deepcopy(loaded)
+            altered["checkpoint"]["tensors"][6]["shape"][0] += 1
+            with self.assertRaisesRegex(ValueError, "provenance changed"):
+                cv.authenticate_plan(altered)
+            weight = directory / "weight_6.bin"
+            weight.write_bytes(np.ones(4, dtype="<f4").tobytes())
+            with self.assertRaisesRegex(ValueError, "provenance changed"):
+                cv.authenticate_plan(loaded)
 
     def test_cli_dispatch_and_required_parameters(self):
         with mock.patch.object(cv, "report_files") as run:
