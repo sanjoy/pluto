@@ -204,6 +204,50 @@ four- and five-token path matches than the actual corpus. Consequently the
 initial formatting-heavy matches do not demonstrate passage-specific storage.
 See the research report for exact denominators and all three fixed seeds.
 
+## Joint attention routing/content probe
+
+`trigram.py` moves beyond independent pairs. For previous token `b`, current
+token `a`, and candidate next token `c`, it forms this static weight contraction:
+
+```text
+r_h(a,b) = (E[a] WQ[h] + bQ[h]) · ((E[b] - E[a]) WK[h]) / sqrt(head_dim)
+write(a,b) = sum_h r_h(a,b) * ((E[b] - E[a]) WV[h] WO[h]) / 4
+score(b,a,c) = cosine(write(a,b), E[c])
+```
+
+The write is the exact first derivative of two-position attention when its
+routing scores are scaled from zero (uniform routing). That identity is
+checked against finite differences in tests; the extractor itself does not
+execute softmax or transformer layers. It is **not** the full attention output
+or a guarantee that the approximation is accurate at the trained score scale.
+LayerNorm, position embeddings, residuals, MLPs, and later blocks are omitted.
+
+The default searches block zero: 128 high-query-norm current tokens, eight
+previous tokens per current selected by the norm of the signed total write,
+and four destinations per pair. Each search considers the full vocabulary,
+but this is only a small subset of all possible triples. Paths must overlap
+in both conditioning tokens: `(b,a,c)` can be followed by `(a,c,d)`, never by
+an edge sharing just one token. They may terminate early or not exist at all.
+
+The broken control rotates **intact OV head pairs relative to QK heads**. This
+preserves each routing and content operator while testing their association;
+it differs from the earlier OV control that breaks value/output pairing.
+
+```sh
+OPENBLAS_NUM_THREADS=8 python -m scripts.weight_analysis.trigram \
+  --checkpoint /home/ubuntu/checkpoints/shakespeare/step_13030 \
+  --tokenizer-dir /home/ubuntu/datasets/tokenizer/gpt2 \
+  --output /tmp/trigram_candidates.jsonl
+
+OPENBLAS_NUM_THREADS=8 python -m unittest scripts.weight_analysis.trigram_test
+```
+
+Repeat with `--broken-routing-control` and a fresh output name; run the same
+settings on the early checkpoint. Verify frozen candidates with `verify.py`
+and `controls.py`, just as for the earlier probes. A matched triple still is
+not sufficient evidence of passage decompression. This remains an experiment
+toward the original goal, not a replacement of that goal with token statistics.
+
 ## Research grounding and next questions
 
 - [Geva et al.,2021](https://aclanthology.org/2021.emnlp-main.446/) motivate MLP
