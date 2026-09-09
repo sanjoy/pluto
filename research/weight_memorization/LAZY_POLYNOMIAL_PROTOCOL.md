@@ -111,6 +111,10 @@ Report visited-pair score gaps and the existing analytical Taylor error bounds
 where available: large gaps can make the first-order approximation inaccurate.
 Bounds concern separate head corrections, not full-network predictions or the
 quality of decoded text. Different arms may visit different later pairs.
+For the first-order arm, a sum-of-head upper bound can additionally yield a
+conservative sufficient condition for retaining the raw top1 target of exact
+two-position attention. This is an ideal-arithmetic diagnostic computed in
+FP64, not an interval proof, full-model certificate, or path-order guarantee.
 
 Verification uses the full current Shakespeare file and its exact native token
 export, checking every token's byte alignment. Report full-candidate versus
