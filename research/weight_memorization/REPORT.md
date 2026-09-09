@@ -411,3 +411,109 @@ All **11 control tests** passed, including exact bigram/unigram preservation,
 endpoint preservation, fixed-seed determinism, and candidate immutability.
 The initial JSON is intentionally unchanged; this is additional evidence,
 not a rewritten initial result.
+
+## Follow-up 2: retain all signed MLP contributions
+
+The first probe keeps a strongest positive neuron association, discarding
+cancellations. This follow-up instead forms each block's full signed operator
+
+```text
+A = W1 @ W2
+raw(source,target) =
+  sum_j (E[source] @ W1[:,j]) * (W2[j,:] @ E[target].T)
+```
+
+All 2,048 neuron terms contribute before ranking. Vocabulary targets are
+ranked by `cosine(E[source] @ A, E[target])`; sources are the top 256 projected
+write norms per block, with four targets each. The graph search has up to
+eight tokens, 128 starts, and beam width four. Identity gates are fixed at
+one. The implementation's alternative fixed bias-GELU derivative gate was
+**not run** on these checkpoints.
+
+This remains a linear surrogate, omitting contextual GELU, normalization,
+attention, positions, biases, residual additions, and model forward passes.
+Weights are analyzed in FP64, not replayed with the GPU's exact arithmetic.
+Broken pairing shifts output rows relative to input columns. It preserves the
+vectors but reselects source tokens for the altered aggregate operator.
+
+The [aggregate evidence record](/home/ubuntu/code/pluto/research/weight_memorization/aggregate_results.json)
+contains separate final/early summaries, exact path-length histograms,
+byte-addressed matched-edge examples, source and artifact hashes, and both
+complete bigram-control reports.
+
+### Pair and path results
+
+| Setting | Exact matching pair candidates | Bounded path candidates | Path candidates with ≥4-token match | Maximum path match |
+| --- | ---: | ---: | ---: | ---: |
+| Step 13,030, signed aggregate | 795 / 8,192 | 128 | 2 | 5 |
+| Step 13,030, broken aggregate | 56 / 8,192 | 128 | 0 | 1 |
+| Step 10, signed aggregate | 78 / 8,192 | 128 | 0 | 3 |
+
+These results support learned short associations, with a stronger broken-pair
+contrast than the first per-neuron pair probe. Different source selection
+prevents interpreting that contrast as a controlled improvement in corpus
+coverage or text recovery.
+
+Actual path lengths are crucial:
+
+| Setting | Length 2 | Length 3 | Length 4 | Length 7 | Length 8 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Final signed aggregate | 120 | 5 | 1 | 0 | 2 |
+| Final broken aggregate | 1 | 127 | 0 | 0 | 0 |
+| Early signed aggregate | 8 | 0 | 2 | 1 | 117 |
+
+Only eight real final-checkpoint candidates are even eligible for a
+three-or-more-token test. The bounded graph often terminates after a pair;
+calling every proposal an eight-token sequence would be misleading.
+
+The two longer matches are ` man, and I am` (five tokens, one occurrence)
+and ` not so much as` (four tokens, five occurrences). Three complete
+three-token candidates are ` o'er`, ` e'er`, and ` ne'er`, which occur
+295, 78, and 195 times respectively. These are recognizable orthographic and
+language fragments, not recovered passages.
+
+### The same bigram control remains decisive for interpretation
+
+Among the **eight** eligible final signed-aggregate candidates:
+
+| Verification corpus | Candidates with ≥4-token match | Candidates with ≥5-token match | Whole-candidate matches |
+| --- | ---: | ---: | ---: |
+| Original Shakespeare | 2 / 8 | 1 / 8 | 3 / 8 |
+| Bigram shuffle, seed 17 | 3 / 8 | 1 / 8 | 6 / 8 |
+| Bigram shuffle, seed 29 | 3 / 8 | 1 / 8 | 6 / 8 |
+| Bigram shuffle, seed 43 | 3 / 8 | 1 / 8 | 6 / 8 |
+
+Maximum match length is five in all four corpora. None recovers an
+eight-token final-checkpoint candidate. The 127 eligible broken-aggregate
+paths have no three-token matches in any corpus. The 120 eligible early
+paths have no four-token matches in any corpus.
+
+Retaining cancellations changes the candidate associations and yields more
+word-bearing examples, but does not establish Shakespeare-specific ordering
+beyond the bigrams preserved in the shuffled corpus. The three uniform-looking
+control outcomes are three deterministic seeded realizations, not a p-value.
+The few eligible final paths also make broad claims about this strategy
+premature.
+
+### Reproduce this follow-up
+
+```sh
+OPENBLAS_NUM_THREADS=8 /home/ubuntu/.venv/bin/python \
+  -m scripts.weight_analysis.aggregate \
+  --checkpoint /home/ubuntu/checkpoints/shakespeare/step_13030 \
+  --tokenizer-dir /home/ubuntu/datasets/tokenizer/gpt2 \
+  --gate identity --source-count 256 --top-k 4 --chunk-size 4096 \
+  --path-length 8 --path-starts 128 --blocks all --include-control \
+  --output "$analysis_dir/aggregate.jsonl"
+```
+
+Verify this frozen candidate file with the same native-ID/byte-offset
+`verify` command, then run `controls` with seeds 17, 29, and 43, using fresh
+output paths. For the early experiment substitute the existing extracted
+`step_10` checkpoint and omit `--include-control`, exactly as recorded.
+All **8 signed-aggregate tests** passed.
+
+The initial results and first control JSON remain unchanged. This follow-up
+adds a third analytical strategy and stronger negative evidence against the
+current static-path decompressor, without asserting that a more complete
+weight-only method cannot work.
