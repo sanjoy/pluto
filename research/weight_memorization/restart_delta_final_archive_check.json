@@ -1,0 +1,213 @@
+{
+  "complete": true,
+  "checked_utc": "2026-09-09T05:05:36.505237+00:00",
+  "frozen": {
+    "path": "/tmp/pluto-restart-delta.fZs3LQ/run/frozen.json",
+    "bytes": 2751277,
+    "sha256": "a16d908bf7b496d6fbabf601d32d93e1e2bf6af5b83e2a428eec2825a59211ca"
+  },
+  "unchanged_archive_count": 40,
+  "archives": [
+    {
+      "path": "/home/ubuntu/checkpoints/shakespeare/step_550.tar.gz",
+      "bytes": 190250674,
+      "sha256": "7d3802a8f3f58c6a0faaaecc927ad8165dfe7bb463456386b9f493f23908bc20"
+    },
+    {
+      "path": "/home/ubuntu/checkpoints/shakespeare/step_560.tar.gz",
+      "bytes": 190258039,
+      "sha256": "e20adc58cd947e0de427ab6d7c303f23b9db225ad41f7eb6a12ec40381cf0a28"
+    },
+    {
+      "path": "/home/ubuntu/checkpoints/shakespeare/step_570.tar.gz",
+      "bytes": 190267277,
+      "sha256": "ce4438240f3780cc21ce4813e985fcb34a53d9da24f15954c0a7f0733fc12b84"
+    },
+    {
+      "path": "/home/ubuntu/checkpoints/shakespeare/step_580.tar.gz",
+      "bytes": 190281067,
+      "sha256": "49f91a65691826040ba5a75dfafa9be589f20e6f4bb0cb27c9d592fe4adfce54"
+    },
+    {
+      "path": "/home/ubuntu/checkpoints/shakespeare/step_590.tar.gz",
+      "bytes": 190284862,
+      "sha256": "fa5eeb5e43691b0efac91997b143fe23eaa6c6c7a700b09d49a29dc5a12b81f0"
+    },
+    {
+      "path": "/home/ubuntu/checkpoints/shakespeare/step_600.tar.gz",
+      "bytes": 190287334,
+      "sha256": "379d5fea34f2e9713bcd6253f3ef575e2a18621c875d2e235e7958a21d01df21"
+    },
+    {
+      "path": "/home/ubuntu/checkpoints/shakespeare/step_610.tar.gz",
+      "bytes": 190300796,
+      "sha256": "a77432149c33233ce0cc7976f8d05706248c53a8d5cb64f942fe02eb91a0ed8b"
+    },
+    {
+      "path": "/home/ubuntu/checkpoints/shakespeare/step_620.tar.gz",
+      "bytes": 190319638,
+      "sha256": "1df7c3f90503b1198c7e2d7bd057be6ddec42881a63043229ea844f11706175d"
+    },
+    {
+      "path": "/home/ubuntu/checkpoints/shakespeare/step_1750.tar.gz",
+      "bytes": 191411120,
+      "sha256": "dd7dcc782765d5d00cf627dc8c6ce2e427a6782aabcb60dbc3f962dd7487fdf0"
+    },
+    {
+      "path": "/home/ubuntu/checkpoints/shakespeare/step_1760.tar.gz",
+      "bytes": 191415483,
+      "sha256": "2f8015a6e25904a2ad2e295314c831d4cac73d8519ebd0ccffb32755c44b574b"
+    },
+    {
+      "path": "/home/ubuntu/checkpoints/shakespeare/step_1770.tar.gz",
+      "bytes": 191415333,
+      "sha256": "737e854c8d40bde2fe6c0e8574e4883b5fb7c7c52de97be7155917a14570f803"
+    },
+    {
+      "path": "/home/ubuntu/checkpoints/shakespeare/step_1780.tar.gz",
+      "bytes": 191418814,
+      "sha256": "ebd9bde6a0123f715692a729ded82df2ba8ac1fb74a59757e72f6ca201acf2b9"
+    },
+    {
+      "path": "/home/ubuntu/checkpoints/shakespeare/step_1790.tar.gz",
+      "bytes": 191419639,
+      "sha256": "bd73dc64777045f13342722565c4959ef9c303d8ec40b152aa75834d35726ee4"
+    },
+    {
+      "path": "/home/ubuntu/checkpoints/shakespeare/step_1800.tar.gz",
+      "bytes": 191419615,
+      "sha256": "2f0664e5f9d7bf04a475e90d5665d8814217bc62c65b8ba2bfab0fd6da805c50"
+    },
+    {
+      "path": "/home/ubuntu/checkpoints/shakespeare/step_1810.tar.gz",
+      "bytes": 191420250,
+      "sha256": "9cddd2cb9c8d36fa23a0869a047692bf569a7b27b20f51e6c77e99bd4c39e784"
+    },
+    {
+      "path": "/home/ubuntu/checkpoints/shakespeare/step_1820.tar.gz",
+      "bytes": 191421505,
+      "sha256": "504bd736a3ee665c1a54cb511eb6093942b038009d25b164f1cb7021720d8570"
+    },
+    {
+      "path": "/home/ubuntu/checkpoints/shakespeare/step_4250.tar.gz",
+      "bytes": 191727220,
+      "sha256": "ef20f16d184ff782dad8b74e9582f1fa16120ac613c4dbe29a7fefa7a9070c3b"
+    },
+    {
+      "path": "/home/ubuntu/checkpoints/shakespeare/step_4260.tar.gz",
+      "bytes": 191724840,
+      "sha256": "010beec19e0d86ffbb4c801af7387c0d120204e803f69a689f3b90ea6aba39b0"
+    },
+    {
+      "path": "/home/ubuntu/checkpoints/shakespeare/step_4270.tar.gz",
+      "bytes": 191724800,
+      "sha256": "650e928957917f7ad1ac806398b608e21c6157909af646aa8e542051a5df0a5a"
+    },
+    {
+      "path": "/home/ubuntu/checkpoints/shakespeare/step_4280.tar.gz",
+      "bytes": 191721867,
+      "sha256": "9149fc59b178580cb26e17bf09f8ab1d56ebd08573dcac347ea65a2618df9eb7"
+    },
+    {
+      "path": "/home/ubuntu/checkpoints/shakespeare/step_4290.tar.gz",
+      "bytes": 191717625,
+      "sha256": "21fdac7749983cb96942866f48c0b0b3e108b87139e498b12c82e091eab4cd71"
+    },
+    {
+      "path": "/home/ubuntu/checkpoints/shakespeare/step_4300.tar.gz",
+      "bytes": 191719051,
+      "sha256": "254e076310f81d32380745e285c321f67b285d8d4721c9dc113d4fd48f1fec51"
+    },
+    {
+      "path": "/home/ubuntu/checkpoints/shakespeare/step_4310.tar.gz",
+      "bytes": 191717321,
+      "sha256": "42c1ed8590d74c14af3f4cec93bc71bb77d770f602577dc4bd7876fa51dd1b36"
+    },
+    {
+      "path": "/home/ubuntu/checkpoints/shakespeare/step_4320.tar.gz",
+      "bytes": 191719515,
+      "sha256": "36f95a295a705067a6e5b0bea06b4504f3f9b6a5f9afecc4ee6927bbcb9496f4"
+    },
+    {
+      "path": "/home/ubuntu/checkpoints/shakespeare/step_7200.tar.gz",
+      "bytes": 191599536,
+      "sha256": "4331cecfa8a60e1958e6b1582719704a10a62df670a9f089bc34d89012b5ee0d"
+    },
+    {
+      "path": "/home/ubuntu/checkpoints/shakespeare/step_7210.tar.gz",
+      "bytes": 191605047,
+      "sha256": "842351c836002c06d8171199342f64c2ed2fb46f16d19ddc311777dd05165c09"
+    },
+    {
+      "path": "/home/ubuntu/checkpoints/shakespeare/step_7220.tar.gz",
+      "bytes": 191611551,
+      "sha256": "b424095557fda4528bf2c49c7ee236bdb689218fcd822fb6e59d543fc73ba49b"
+    },
+    {
+      "path": "/home/ubuntu/checkpoints/shakespeare/step_7230.tar.gz",
+      "bytes": 191614469,
+      "sha256": "5bccd3e4de70408c27f93325ac32f87b346ee4725f04617054787ae4907d7365"
+    },
+    {
+      "path": "/home/ubuntu/checkpoints/shakespeare/step_7240.tar.gz",
+      "bytes": 191622958,
+      "sha256": "325752900ae67829b99f04dbac458768c8273741c0bb813710ffd318e52c60bc"
+    },
+    {
+      "path": "/home/ubuntu/checkpoints/shakespeare/step_7250.tar.gz",
+      "bytes": 191624280,
+      "sha256": "826ba731aacf683e46144dc42b87ad7a7f3478e86fd67b0adefe722fe3d2b321"
+    },
+    {
+      "path": "/home/ubuntu/checkpoints/shakespeare/step_7260.tar.gz",
+      "bytes": 191631477,
+      "sha256": "5746fbd2f4eb2eea57828122e87c1df37c4cb8be5ea8c33457cd987542cdb86c"
+    },
+    {
+      "path": "/home/ubuntu/checkpoints/shakespeare/step_7270.tar.gz",
+      "bytes": 191641789,
+      "sha256": "81c7f618161d013bbb340ecbe1d2a03780dff487596a492e1e2313201173196d"
+    },
+    {
+      "path": "/home/ubuntu/checkpoints/shakespeare/step_8130.tar.gz",
+      "bytes": 191609334,
+      "sha256": "dd12aacdf8533c259b52c187c29ec21d30f5553c5f6e4b5a1e8e588cac25992e"
+    },
+    {
+      "path": "/home/ubuntu/checkpoints/shakespeare/step_8140.tar.gz",
+      "bytes": 191619521,
+      "sha256": "922e6e0b7909af2d0574c8d0a202a2a5422130b70ff01c6e7e5ca4700bb0b759"
+    },
+    {
+      "path": "/home/ubuntu/checkpoints/shakespeare/step_8150.tar.gz",
+      "bytes": 191629663,
+      "sha256": "2e4274a5c91891eda16efe4ea5f7aa92a316cf31bbf87ad0d3227eb71a3ab67a"
+    },
+    {
+      "path": "/home/ubuntu/checkpoints/shakespeare/step_8160.tar.gz",
+      "bytes": 191606782,
+      "sha256": "a4c33a4cb7358b7f2ee1e214ca9bfa8fe425352e5831ebf2cf36acf6a1c6b93e"
+    },
+    {
+      "path": "/home/ubuntu/checkpoints/shakespeare/step_8170.tar.gz",
+      "bytes": 191600777,
+      "sha256": "ecde84e199e1623cba3f865feed6820939e98b407dd315ffd62cdeac9fe0e47e"
+    },
+    {
+      "path": "/home/ubuntu/checkpoints/shakespeare/step_8180.tar.gz",
+      "bytes": 191614289,
+      "sha256": "a82a01d86a28e0bc38527a6dc063bb2086c3ac6f18ec72d56b1df52fdebcdac8"
+    },
+    {
+      "path": "/home/ubuntu/checkpoints/shakespeare/step_8190.tar.gz",
+      "bytes": 191587350,
+      "sha256": "a4e5511b297ac0ed26f313e461f422d9a103bc733356a7ef2880a435aeb8e72e"
+    },
+    {
+      "path": "/home/ubuntu/checkpoints/shakespeare/step_8200.tar.gz",
+      "bytes": 191573843,
+      "sha256": "3eb04a3cd71c48a9571eb21c81a2091ddfcd16055adc769da1fc9fe87bcb3cfa"
+    }
+  ],
+  "scope": "Full SHA256 after verification; does not reread members or recompute numerical activities."
+}

@@ -1,0 +1,296 @@
+{
+  "stage": "verification_start_before_corpus_or_tokenizer_reads",
+  "started_utc": "2026-09-09T04:56:46.474084+00:00",
+  "frozen": {
+    "path": "/tmp/pluto-restart-delta.fZs3LQ/run/frozen.json",
+    "sha256": "a16d908bf7b496d6fbabf601d32d93e1e2bf6af5b83e2a428eec2825a59211ca",
+    "bytes": 2751277
+  },
+  "candidate_file": {
+    "path": "/tmp/pluto-restart-delta.fZs3LQ/run/candidates.json",
+    "bytes": 443239,
+    "sha256": "2aeee3c0b5054c2bf6a63df38a6dcac20b064351839434bc0c48301d05af18e3"
+  },
+  "authenticated_frozen_sources": {
+    "restart_delta.py": {
+      "path": "/home/ubuntu/code/pluto/scripts/weight_analysis/restart_delta.py",
+      "bytes": 12531,
+      "sha256": "bc4a1408a840eb406b3dfcb63d983efbabc253cbbc7afadc34d2913d745083da"
+    },
+    "checkpoint_archive.py": {
+      "path": "/home/ubuntu/code/pluto/scripts/weight_analysis/checkpoint_archive.py",
+      "bytes": 11649,
+      "sha256": "4f8c1e53ba9ca04277bb63ce9cb81fb373f2b1a7b4b800832b560d5e7a2c2022"
+    },
+    "checkpoint.py": {
+      "path": "/home/ubuntu/code/pluto/scripts/weight_analysis/checkpoint.py",
+      "bytes": 15713,
+      "sha256": "66d5a2ed2767caef7a5a07b892c958c5e04c8de5df32fe114f68cb2373b578da"
+    },
+    "late_mlp_paths.py": {
+      "path": "/home/ubuntu/code/pluto/scripts/weight_analysis/late_mlp_paths.py",
+      "bytes": 18575,
+      "sha256": "05a1df03fe054d0f44197d7c9babd3784300551090a7d71017ad008e28554691"
+    },
+    "protocol": {
+      "path": "/home/ubuntu/code/pluto/research/weight_memorization/RESTART_DELTA_PROTOCOL.md",
+      "bytes": 5376,
+      "sha256": "9f00d63089aa1eb9e354d28b6d96abbda2ecb168b80eb7cce7c221185f66f482"
+    },
+    "history_inventory": {
+      "path": "/home/ubuntu/code/pluto/research/weight_memorization/checkpoint_history_inventory.json",
+      "bytes": 1753596,
+      "sha256": "b6b449127c760bab21a2bf088cde8128e222a056644119b204ae927f6c2905dc"
+    }
+  },
+  "authenticated_frozen_files": {
+    "interval_550_560": {
+      "path": "/tmp/pluto-restart-delta.fZs3LQ/run/interval_550_560.npz",
+      "bytes": 804620,
+      "sha256": "e3b280a2e8b39c41b5b033586c721918f634f4f2ff1d9c5ea77ace40864a0d32"
+    },
+    "interval_560_570": {
+      "path": "/tmp/pluto-restart-delta.fZs3LQ/run/interval_560_570.npz",
+      "bytes": 804620,
+      "sha256": "edce42efe6706d5c4e5c30eaea6bc6d8c396ddf06758e9d8669d599f921f107b"
+    },
+    "interval_570_580": {
+      "path": "/tmp/pluto-restart-delta.fZs3LQ/run/interval_570_580.npz",
+      "bytes": 804620,
+      "sha256": "f8e141610459bac105675ee216e1136da891bcc5d0c0202142fcc6cb244ad370"
+    },
+    "interval_580_590": {
+      "path": "/tmp/pluto-restart-delta.fZs3LQ/run/interval_580_590.npz",
+      "bytes": 804620,
+      "sha256": "37292114754329fbb0ac4908a72a2e39facb6501ff5ae8c5ac90ebf67d6c02da"
+    },
+    "interval_590_600": {
+      "path": "/tmp/pluto-restart-delta.fZs3LQ/run/interval_590_600.npz",
+      "bytes": 804620,
+      "sha256": "8566cfa1914ecdb2c6b72019762e8201238366f104b4c578399f42ae0b9133ed"
+    },
+    "interval_600_610": {
+      "path": "/tmp/pluto-restart-delta.fZs3LQ/run/interval_600_610.npz",
+      "bytes": 804620,
+      "sha256": "5d831544b465aab5e642490a9c866dfc19ec1566c62df43338c930fa9b6770f6"
+    },
+    "interval_610_620": {
+      "path": "/tmp/pluto-restart-delta.fZs3LQ/run/interval_610_620.npz",
+      "bytes": 804620,
+      "sha256": "6d7ce3241b5eb3845311933fc8b6760b68884c9c158f0a737721c3ba76797dfa"
+    },
+    "interval_1750_1760": {
+      "path": "/tmp/pluto-restart-delta.fZs3LQ/run/interval_1750_1760.npz",
+      "bytes": 804620,
+      "sha256": "e4976c8207931b8a65c83a34c6008db520fa3d51e30b0b8d0d7eb8d01ef087c8"
+    },
+    "interval_1760_1770": {
+      "path": "/tmp/pluto-restart-delta.fZs3LQ/run/interval_1760_1770.npz",
+      "bytes": 804620,
+      "sha256": "f543cc674aa91b3ffe4edca79f929c980d65147d6fc35e94b0f59fdf372f40f3"
+    },
+    "interval_1770_1780": {
+      "path": "/tmp/pluto-restart-delta.fZs3LQ/run/interval_1770_1780.npz",
+      "bytes": 804620,
+      "sha256": "a27fadc69a0d93e4f63968aa04a55c39b85ce94f71abf5a1320d85d039ac20f6"
+    },
+    "interval_1780_1790": {
+      "path": "/tmp/pluto-restart-delta.fZs3LQ/run/interval_1780_1790.npz",
+      "bytes": 804620,
+      "sha256": "7b3f1e1fe2f27a0d5ef17f13186d558cfd17af13bf4c0c63b1bec980ae26b916"
+    },
+    "interval_1790_1800": {
+      "path": "/tmp/pluto-restart-delta.fZs3LQ/run/interval_1790_1800.npz",
+      "bytes": 804620,
+      "sha256": "b2e80255bfa30f6fabad30ffedcb409ea314af60cfcaf98154f44b3d60eb67ed"
+    },
+    "interval_1800_1810": {
+      "path": "/tmp/pluto-restart-delta.fZs3LQ/run/interval_1800_1810.npz",
+      "bytes": 804620,
+      "sha256": "efdce22818f90f7e38a51636138a8b8df87809a9d8b4635dc145e71ac00a82ac"
+    },
+    "interval_1810_1820": {
+      "path": "/tmp/pluto-restart-delta.fZs3LQ/run/interval_1810_1820.npz",
+      "bytes": 804620,
+      "sha256": "a2a69422bc11a882af4d658de5a640ced5348759c00dd5d6c95ea20d3cd0524c"
+    },
+    "interval_4250_4260": {
+      "path": "/tmp/pluto-restart-delta.fZs3LQ/run/interval_4250_4260.npz",
+      "bytes": 804620,
+      "sha256": "1e9f8ce52680a2a15ae82ee61937238adb71801f8d899e7ec0028fefaa2130b1"
+    },
+    "interval_4260_4270": {
+      "path": "/tmp/pluto-restart-delta.fZs3LQ/run/interval_4260_4270.npz",
+      "bytes": 804620,
+      "sha256": "939cb1a98ee1ae499da57268b2e4fb93e6df540320f761030164a746d04339f4"
+    },
+    "interval_4270_4280": {
+      "path": "/tmp/pluto-restart-delta.fZs3LQ/run/interval_4270_4280.npz",
+      "bytes": 804620,
+      "sha256": "5cb7c4d592234c4f463abccd952f332b0c49d8b748d462349e1a16c7bb34c884"
+    },
+    "interval_4280_4290": {
+      "path": "/tmp/pluto-restart-delta.fZs3LQ/run/interval_4280_4290.npz",
+      "bytes": 804620,
+      "sha256": "9a17a968443748986458902d0fc31c5748a55dd825c27dd22b14c7c87b9f2926"
+    },
+    "interval_4290_4300": {
+      "path": "/tmp/pluto-restart-delta.fZs3LQ/run/interval_4290_4300.npz",
+      "bytes": 804620,
+      "sha256": "d1257f771bae24b3f2c0018d726cf9c00055678d17fee8a7a27f3a26ffcc0f46"
+    },
+    "interval_4300_4310": {
+      "path": "/tmp/pluto-restart-delta.fZs3LQ/run/interval_4300_4310.npz",
+      "bytes": 804620,
+      "sha256": "39869212dce884b4e6b1cb051069325ed4945a21faa631d1142d0ee8a391b8e6"
+    },
+    "interval_4310_4320": {
+      "path": "/tmp/pluto-restart-delta.fZs3LQ/run/interval_4310_4320.npz",
+      "bytes": 804620,
+      "sha256": "e0c57c603b86847e02d703b37bc7b46f86e545ac526ac0496628fc34592771e3"
+    },
+    "interval_7200_7210": {
+      "path": "/tmp/pluto-restart-delta.fZs3LQ/run/interval_7200_7210.npz",
+      "bytes": 804620,
+      "sha256": "23bf76edb4bd81696a9d0b79c32f094fdb7d0df3be7f0e0f05b32fdd6966d659"
+    },
+    "interval_7210_7220": {
+      "path": "/tmp/pluto-restart-delta.fZs3LQ/run/interval_7210_7220.npz",
+      "bytes": 804620,
+      "sha256": "c0260f2978ab6e9f2f862fdc6c7fbaedf705f26e3e0e236f0450cd2b3646d7ae"
+    },
+    "interval_7220_7230": {
+      "path": "/tmp/pluto-restart-delta.fZs3LQ/run/interval_7220_7230.npz",
+      "bytes": 804620,
+      "sha256": "39eb8d71b7b0a67f0ae002aad30bbcbe30064b21c14fe196f336218daf399f93"
+    },
+    "interval_7230_7240": {
+      "path": "/tmp/pluto-restart-delta.fZs3LQ/run/interval_7230_7240.npz",
+      "bytes": 804620,
+      "sha256": "5afa085d3b5854423d50c7fe79d18b702ebaf930f17efd1ba14930ef69c5846e"
+    },
+    "interval_7240_7250": {
+      "path": "/tmp/pluto-restart-delta.fZs3LQ/run/interval_7240_7250.npz",
+      "bytes": 804620,
+      "sha256": "3bdd6c2525b90097143874db7b9619886aec0ea25432800a2e18e6c1d9b8fd5e"
+    },
+    "interval_7250_7260": {
+      "path": "/tmp/pluto-restart-delta.fZs3LQ/run/interval_7250_7260.npz",
+      "bytes": 804620,
+      "sha256": "c5d01e6c90f4b3b6658483587a6c3c3290959bc7a3cfe3f74784d42346e438b1"
+    },
+    "interval_7260_7270": {
+      "path": "/tmp/pluto-restart-delta.fZs3LQ/run/interval_7260_7270.npz",
+      "bytes": 804620,
+      "sha256": "8f22382b59f7135e9a2cf49fcd3e77ee25effc4afd15cfb01b81e6c6b5c45ce7"
+    },
+    "interval_8130_8140": {
+      "path": "/tmp/pluto-restart-delta.fZs3LQ/run/interval_8130_8140.npz",
+      "bytes": 804620,
+      "sha256": "938c1f732263f0170a985b8b290c86e8e27bfafff750c767ab8f3771c57437c5"
+    },
+    "interval_8140_8150": {
+      "path": "/tmp/pluto-restart-delta.fZs3LQ/run/interval_8140_8150.npz",
+      "bytes": 804620,
+      "sha256": "db0d51f1aa72b2e7ed1887b9cfa5e2324fdea4a9863dab38774af40bf0c49124"
+    },
+    "interval_8150_8160": {
+      "path": "/tmp/pluto-restart-delta.fZs3LQ/run/interval_8150_8160.npz",
+      "bytes": 804620,
+      "sha256": "42a9130531b10cabffa3d5497ec733d696353def9f8cdbf083db5a665de8a212"
+    },
+    "interval_8160_8170": {
+      "path": "/tmp/pluto-restart-delta.fZs3LQ/run/interval_8160_8170.npz",
+      "bytes": 804620,
+      "sha256": "69b5f243c973b8a24865d3c8ea9c225f507fd332ea17803ed9d6fd8b18e47f7e"
+    },
+    "interval_8170_8180": {
+      "path": "/tmp/pluto-restart-delta.fZs3LQ/run/interval_8170_8180.npz",
+      "bytes": 804620,
+      "sha256": "7e165abe94d81a6a368d54eb0ee0387b6a9f9f5953d9f79fb51d2139a9744815"
+    },
+    "interval_8180_8190": {
+      "path": "/tmp/pluto-restart-delta.fZs3LQ/run/interval_8180_8190.npz",
+      "bytes": 804620,
+      "sha256": "e1389d446c3814d2245f1238570fb64906698308a874332a2e97daa0e8fa6745"
+    },
+    "interval_8190_8200": {
+      "path": "/tmp/pluto-restart-delta.fZs3LQ/run/interval_8190_8200.npz",
+      "bytes": 804620,
+      "sha256": "9ccd6ae1d70a770fdc7ea422a8d3cb045573cdb364a3c156bc754e5956d3a238"
+    },
+    "complete_scores": {
+      "path": "/tmp/pluto-restart-delta.fZs3LQ/run/scores.npz",
+      "bytes": 17300392,
+      "sha256": "c030537959499df3e85f834a3cef98aa458a5aeefd1c3f234634e494ba2c3e6d"
+    },
+    "candidates": {
+      "path": "/tmp/pluto-restart-delta.fZs3LQ/run/candidates.json",
+      "bytes": 443239,
+      "sha256": "2aeee3c0b5054c2bf6a63df38a6dcac20b064351839434bc0c48301d05af18e3"
+    },
+    "plan": {
+      "path": "/tmp/pluto-restart-delta.fZs3LQ/run/plan.json",
+      "bytes": 4421,
+      "sha256": "eb8bf67c146b91eda962688234dc23787307570a41bcce4038429096878db788"
+    }
+  },
+  "verification_sources": {
+    "restart_delta_verify.py": {
+      "path": "/home/ubuntu/code/pluto/scripts/weight_analysis/restart_delta_verify.py",
+      "sha256": "e774d0cebbc1062febff82d0dacf40550de545429b08a463428ddc6f6fee0cbc",
+      "bytes": 21246
+    },
+    "verify.py": {
+      "path": "/home/ubuntu/code/pluto/scripts/weight_analysis/verify.py",
+      "sha256": "5aadff964ee7a591d531bcf0b2e190009fdef34e7e2c30eab38bc23c691ad270",
+      "bytes": 24170
+    },
+    "vocabulary_verify.py": {
+      "path": "/home/ubuntu/code/pluto/scripts/weight_analysis/vocabulary_verify.py",
+      "sha256": "053a9862e580812e2503ad335e7eb7fd43d8dacfad8baec604b25b4dbf0e236b",
+      "bytes": 12528
+    },
+    "causal_validation.py": {
+      "path": "/home/ubuntu/code/pluto/scripts/weight_analysis/causal_validation.py",
+      "sha256": "7c39c68fdd080d88fc29457f642e3c40b25238146d6a6221df2116f11cde9c3f",
+      "bytes": 30820
+    },
+    "replay_sampler.cc": {
+      "path": "/home/ubuntu/code/pluto/scripts/weight_analysis/replay_sampler.cc",
+      "sha256": "5fc52e2111920fd2e777a18037efd8cdbc80b386fe833397d6804521e9a75a64",
+      "bytes": 4593
+    },
+    "dataset.cc": {
+      "path": "/home/ubuntu/code/pluto/src/dataset/dataset.cc",
+      "sha256": "13c4656f39aba558f3ab7e2bd1643d0dbbf9c33d89b974443cf3a76d647d1695",
+      "bytes": 10119
+    },
+    "dataset.h": {
+      "path": "/home/ubuntu/code/pluto/src/dataset/dataset.h",
+      "sha256": "28946f237bb65f7588d9ab1b2146e5a35bd88923259cf05156cd7c19a2129455",
+      "bytes": 5214
+    },
+    "sampler_binary": {
+      "path": "/tmp/pluto-replay-sampler",
+      "sha256": "028cecb76ac9d719a15dbaf391df998aa257d84a9a74216ec3c0a06893defa65",
+      "bytes": 71992
+    }
+  },
+  "corpus_input_paths_not_yet_opened": {
+    "corpus": "/home/ubuntu/code/pluto/testdata/shakespeare.txt",
+    "native_tokens": "/tmp/pluto-native-corpus.KMY7AZ/shakespeare.tokens.bin",
+    "native_offsets": "/tmp/pluto-native-corpus.KMY7AZ/shakespeare.tokens.bin.offsets.bin",
+    "tokenizer": "/home/ubuntu/datasets/tokenizer/gpt2/tokenizer.json"
+  },
+  "fixed_conditions": {
+    "context": 1024,
+    "window_counts": [
+      10,
+      100
+    ],
+    "actual_seed": 17,
+    "alternative_first": 10000,
+    "alternative_count": 1000
+  }
+}

@@ -1,0 +1,1398 @@
+{
+  "all_corpus_counts_in_rank_order_exact": true,
+  "checks": [
+    {
+      "alternatives_maximum": 2,
+      "alternatives_mean": 0.041,
+      "name": "endpoint_norm_580",
+      "seed17_overlap": 0,
+      "variant": "real",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 9,
+      "alternatives_mean": 4.838,
+      "name": "endpoint_norm_580",
+      "seed17_overlap": 4,
+      "variant": "identity_shuffled",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 25,
+      "alternatives_mean": 5.88,
+      "name": "ordinary_before_raw_580",
+      "seed17_overlap": 1,
+      "variant": "real",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 11,
+      "alternatives_mean": 5.218,
+      "name": "ordinary_before_raw_580",
+      "seed17_overlap": 2,
+      "variant": "identity_shuffled",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 18,
+      "alternatives_mean": 2.897,
+      "name": "boundary_raw_580",
+      "seed17_overlap": 15,
+      "variant": "real",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 9,
+      "alternatives_mean": 3.271,
+      "name": "boundary_raw_580",
+      "seed17_overlap": 3,
+      "variant": "identity_shuffled",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 37,
+      "alternatives_mean": 26.067,
+      "name": "ordinary_after_raw_580",
+      "seed17_overlap": 39,
+      "variant": "real",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 12,
+      "alternatives_mean": 5.19,
+      "name": "ordinary_after_raw_580",
+      "seed17_overlap": 3,
+      "variant": "identity_shuffled",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 24,
+      "alternatives_mean": 4.662,
+      "name": "ordinary_before_adjusted_580",
+      "seed17_overlap": 3,
+      "variant": "real",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 15,
+      "alternatives_mean": 6.919,
+      "name": "ordinary_before_adjusted_580",
+      "seed17_overlap": 11,
+      "variant": "identity_shuffled",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 37,
+      "alternatives_mean": 19.396,
+      "name": "boundary_adjusted_580",
+      "seed17_overlap": 73,
+      "variant": "real",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 13,
+      "alternatives_mean": 5.529,
+      "name": "boundary_adjusted_580",
+      "seed17_overlap": 6,
+      "variant": "identity_shuffled",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 27,
+      "alternatives_mean": 3.017,
+      "name": "ordinary_after_adjusted_580",
+      "seed17_overlap": 0,
+      "variant": "real",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 10,
+      "alternatives_mean": 4.377,
+      "name": "ordinary_after_adjusted_580",
+      "seed17_overlap": 3,
+      "variant": "identity_shuffled",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 0,
+      "alternatives_mean": 0,
+      "name": "endpoint_norm_1780",
+      "seed17_overlap": 0,
+      "variant": "real",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 11,
+      "alternatives_mean": 5.513,
+      "name": "endpoint_norm_1780",
+      "seed17_overlap": 5,
+      "variant": "identity_shuffled",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 21,
+      "alternatives_mean": 5.215,
+      "name": "ordinary_before_raw_1780",
+      "seed17_overlap": 3,
+      "variant": "real",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 10,
+      "alternatives_mean": 3.78,
+      "name": "ordinary_before_raw_1780",
+      "seed17_overlap": 3,
+      "variant": "identity_shuffled",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 15,
+      "alternatives_mean": 2.293,
+      "name": "boundary_raw_1780",
+      "seed17_overlap": 4,
+      "variant": "real",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 7,
+      "alternatives_mean": 2.462,
+      "name": "boundary_raw_1780",
+      "seed17_overlap": 1,
+      "variant": "identity_shuffled",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 31,
+      "alternatives_mean": 15.063,
+      "name": "ordinary_after_raw_1780",
+      "seed17_overlap": 33,
+      "variant": "real",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 12,
+      "alternatives_mean": 5.571,
+      "name": "ordinary_after_raw_1780",
+      "seed17_overlap": 6,
+      "variant": "identity_shuffled",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 22,
+      "alternatives_mean": 3.83,
+      "name": "ordinary_before_adjusted_1780",
+      "seed17_overlap": 2,
+      "variant": "real",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 12,
+      "alternatives_mean": 6.324,
+      "name": "ordinary_before_adjusted_1780",
+      "seed17_overlap": 6,
+      "variant": "identity_shuffled",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 42,
+      "alternatives_mean": 8.831,
+      "name": "boundary_adjusted_1780",
+      "seed17_overlap": 91,
+      "variant": "real",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 10,
+      "alternatives_mean": 4.557,
+      "name": "boundary_adjusted_1780",
+      "seed17_overlap": 4,
+      "variant": "identity_shuffled",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 33,
+      "alternatives_mean": 2.066,
+      "name": "ordinary_after_adjusted_1780",
+      "seed17_overlap": 0,
+      "variant": "real",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 9,
+      "alternatives_mean": 4.571,
+      "name": "ordinary_after_adjusted_1780",
+      "seed17_overlap": 4,
+      "variant": "identity_shuffled",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 0,
+      "alternatives_mean": 0,
+      "name": "endpoint_norm_4280",
+      "seed17_overlap": 0,
+      "variant": "real",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 10,
+      "alternatives_mean": 4.633,
+      "name": "endpoint_norm_4280",
+      "seed17_overlap": 4,
+      "variant": "identity_shuffled",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 26,
+      "alternatives_mean": 4.122,
+      "name": "ordinary_before_raw_4280",
+      "seed17_overlap": 7,
+      "variant": "real",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 14,
+      "alternatives_mean": 6.642,
+      "name": "ordinary_before_raw_4280",
+      "seed17_overlap": 10,
+      "variant": "identity_shuffled",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 19,
+      "alternatives_mean": 2.382,
+      "name": "boundary_raw_4280",
+      "seed17_overlap": 24,
+      "variant": "real",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 12,
+      "alternatives_mean": 5.687,
+      "name": "boundary_raw_4280",
+      "seed17_overlap": 7,
+      "variant": "identity_shuffled",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 37,
+      "alternatives_mean": 15.578,
+      "name": "ordinary_after_raw_4280",
+      "seed17_overlap": 46,
+      "variant": "real",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 9,
+      "alternatives_mean": 4.805,
+      "name": "ordinary_after_raw_4280",
+      "seed17_overlap": 7,
+      "variant": "identity_shuffled",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 22,
+      "alternatives_mean": 3.223,
+      "name": "ordinary_before_adjusted_4280",
+      "seed17_overlap": 1,
+      "variant": "real",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 12,
+      "alternatives_mean": 5.083,
+      "name": "ordinary_before_adjusted_4280",
+      "seed17_overlap": 5,
+      "variant": "identity_shuffled",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 42,
+      "alternatives_mean": 5.116,
+      "name": "boundary_adjusted_4280",
+      "seed17_overlap": 123,
+      "variant": "real",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 7,
+      "alternatives_mean": 2.131,
+      "name": "boundary_adjusted_4280",
+      "seed17_overlap": 3,
+      "variant": "identity_shuffled",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 17,
+      "alternatives_mean": 1.947,
+      "name": "ordinary_after_adjusted_4280",
+      "seed17_overlap": 0,
+      "variant": "real",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 9,
+      "alternatives_mean": 3.973,
+      "name": "ordinary_after_adjusted_4280",
+      "seed17_overlap": 4,
+      "variant": "identity_shuffled",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 0,
+      "alternatives_mean": 0,
+      "name": "endpoint_norm_7230",
+      "seed17_overlap": 0,
+      "variant": "real",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 11,
+      "alternatives_mean": 5.372,
+      "name": "endpoint_norm_7230",
+      "seed17_overlap": 4,
+      "variant": "identity_shuffled",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 19,
+      "alternatives_mean": 4.001,
+      "name": "ordinary_before_raw_7230",
+      "seed17_overlap": 1,
+      "variant": "real",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 12,
+      "alternatives_mean": 5.776,
+      "name": "ordinary_before_raw_7230",
+      "seed17_overlap": 5,
+      "variant": "identity_shuffled",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 15,
+      "alternatives_mean": 3.138,
+      "name": "boundary_raw_7230",
+      "seed17_overlap": 13,
+      "variant": "real",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 11,
+      "alternatives_mean": 4.844,
+      "name": "boundary_raw_7230",
+      "seed17_overlap": 6,
+      "variant": "identity_shuffled",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 38,
+      "alternatives_mean": 16.349,
+      "name": "ordinary_after_raw_7230",
+      "seed17_overlap": 55,
+      "variant": "real",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 11,
+      "alternatives_mean": 5.143,
+      "name": "ordinary_after_raw_7230",
+      "seed17_overlap": 5,
+      "variant": "identity_shuffled",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 16,
+      "alternatives_mean": 2.509,
+      "name": "ordinary_before_adjusted_7230",
+      "seed17_overlap": 6,
+      "variant": "real",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 15,
+      "alternatives_mean": 7.626,
+      "name": "ordinary_before_adjusted_7230",
+      "seed17_overlap": 7,
+      "variant": "identity_shuffled",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 35,
+      "alternatives_mean": 5.096,
+      "name": "boundary_adjusted_7230",
+      "seed17_overlap": 126,
+      "variant": "real",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 10,
+      "alternatives_mean": 4.35,
+      "name": "boundary_adjusted_7230",
+      "seed17_overlap": 4,
+      "variant": "identity_shuffled",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 23,
+      "alternatives_mean": 1.871,
+      "name": "ordinary_after_adjusted_7230",
+      "seed17_overlap": 0,
+      "variant": "real",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 9,
+      "alternatives_mean": 4.07,
+      "name": "ordinary_after_adjusted_7230",
+      "seed17_overlap": 5,
+      "variant": "identity_shuffled",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 0,
+      "alternatives_mean": 0,
+      "name": "endpoint_norm_8160",
+      "seed17_overlap": 0,
+      "variant": "real",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 9,
+      "alternatives_mean": 4.115,
+      "name": "endpoint_norm_8160",
+      "seed17_overlap": 4,
+      "variant": "identity_shuffled",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 25,
+      "alternatives_mean": 4.724,
+      "name": "ordinary_before_raw_8160",
+      "seed17_overlap": 13,
+      "variant": "real",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 11,
+      "alternatives_mean": 4.32,
+      "name": "ordinary_before_raw_8160",
+      "seed17_overlap": 4,
+      "variant": "identity_shuffled",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 19,
+      "alternatives_mean": 2.622,
+      "name": "boundary_raw_8160",
+      "seed17_overlap": 17,
+      "variant": "real",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 10,
+      "alternatives_mean": 5.32,
+      "name": "boundary_raw_8160",
+      "seed17_overlap": 3,
+      "variant": "identity_shuffled",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 38,
+      "alternatives_mean": 18.815,
+      "name": "ordinary_after_raw_8160",
+      "seed17_overlap": 50,
+      "variant": "real",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 11,
+      "alternatives_mean": 5.148,
+      "name": "ordinary_after_raw_8160",
+      "seed17_overlap": 5,
+      "variant": "identity_shuffled",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 23,
+      "alternatives_mean": 2.44,
+      "name": "ordinary_before_adjusted_8160",
+      "seed17_overlap": 3,
+      "variant": "real",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 12,
+      "alternatives_mean": 5.921,
+      "name": "ordinary_before_adjusted_8160",
+      "seed17_overlap": 4,
+      "variant": "identity_shuffled",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 41,
+      "alternatives_mean": 4.314,
+      "name": "boundary_adjusted_8160",
+      "seed17_overlap": 123,
+      "variant": "real",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 13,
+      "alternatives_mean": 5.905,
+      "name": "boundary_adjusted_8160",
+      "seed17_overlap": 3,
+      "variant": "identity_shuffled",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 19,
+      "alternatives_mean": 1.957,
+      "name": "ordinary_after_adjusted_8160",
+      "seed17_overlap": 0,
+      "variant": "real",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 9,
+      "alternatives_mean": 3.797,
+      "name": "ordinary_after_adjusted_8160",
+      "seed17_overlap": 4,
+      "variant": "identity_shuffled",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 36,
+      "alternatives_mean": 22.87,
+      "name": "shared_ordinary_before_raw",
+      "seed17_overlap": 24,
+      "variant": "real",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 9,
+      "alternatives_mean": 2.972,
+      "name": "shared_ordinary_before_raw",
+      "seed17_overlap": 3,
+      "variant": "identity_shuffled",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 31,
+      "alternatives_mean": 5.322,
+      "name": "shared_boundary_raw",
+      "seed17_overlap": 9,
+      "variant": "real",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 8,
+      "alternatives_mean": 3.353,
+      "name": "shared_boundary_raw",
+      "seed17_overlap": 1,
+      "variant": "identity_shuffled",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 22,
+      "alternatives_mean": 8.95,
+      "name": "shared_ordinary_after_raw",
+      "seed17_overlap": 23,
+      "variant": "real",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 13,
+      "alternatives_mean": 5.034,
+      "name": "shared_ordinary_after_raw",
+      "seed17_overlap": 5,
+      "variant": "identity_shuffled",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 24,
+      "alternatives_mean": 12.912,
+      "name": "shared_ordinary_before_adjusted",
+      "seed17_overlap": 11,
+      "variant": "real",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 10,
+      "alternatives_mean": 5.274,
+      "name": "shared_ordinary_before_adjusted",
+      "seed17_overlap": 5,
+      "variant": "identity_shuffled",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 38,
+      "alternatives_mean": 5.984,
+      "name": "shared_boundary_adjusted",
+      "seed17_overlap": 125,
+      "variant": "real",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 8,
+      "alternatives_mean": 3.559,
+      "name": "shared_boundary_adjusted",
+      "seed17_overlap": 4,
+      "variant": "identity_shuffled",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 25,
+      "alternatives_mean": 1.804,
+      "name": "shared_ordinary_after_adjusted",
+      "seed17_overlap": 0,
+      "variant": "real",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 9,
+      "alternatives_mean": 4.139,
+      "name": "shared_ordinary_after_adjusted",
+      "seed17_overlap": 4,
+      "variant": "identity_shuffled",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 0,
+      "alternatives_mean": 0,
+      "name": "shared_endpoint_norm",
+      "seed17_overlap": 0,
+      "variant": "real",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 10,
+      "alternatives_mean": 3.032,
+      "name": "shared_endpoint_norm",
+      "seed17_overlap": 4,
+      "variant": "identity_shuffled",
+      "windows": 10
+    },
+    {
+      "alternatives_maximum": 3,
+      "alternatives_mean": 0.351,
+      "name": "endpoint_norm_580",
+      "seed17_overlap": 0,
+      "variant": "real",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 22,
+      "alternatives_mean": 14.742,
+      "name": "endpoint_norm_580",
+      "seed17_overlap": 14,
+      "variant": "identity_shuffled",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 76,
+      "alternatives_mean": 36.057,
+      "name": "ordinary_before_raw_580",
+      "seed17_overlap": 24,
+      "variant": "real",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 27,
+      "alternatives_mean": 19.504,
+      "name": "ordinary_before_raw_580",
+      "seed17_overlap": 20,
+      "variant": "identity_shuffled",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 44,
+      "alternatives_mean": 21.769,
+      "name": "boundary_raw_580",
+      "seed17_overlap": 49,
+      "variant": "real",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 25,
+      "alternatives_mean": 15.077,
+      "name": "boundary_raw_580",
+      "seed17_overlap": 15,
+      "variant": "identity_shuffled",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 87,
+      "alternatives_mean": 64.768,
+      "name": "ordinary_after_raw_580",
+      "seed17_overlap": 71,
+      "variant": "real",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 24,
+      "alternatives_mean": 16.382,
+      "name": "ordinary_after_raw_580",
+      "seed17_overlap": 14,
+      "variant": "identity_shuffled",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 59,
+      "alternatives_mean": 31.062,
+      "name": "ordinary_before_adjusted_580",
+      "seed17_overlap": 25,
+      "variant": "real",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 31,
+      "alternatives_mean": 23.42,
+      "name": "ordinary_before_adjusted_580",
+      "seed17_overlap": 29,
+      "variant": "identity_shuffled",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 99,
+      "alternatives_mean": 80.267,
+      "name": "boundary_adjusted_580",
+      "seed17_overlap": 128,
+      "variant": "real",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 30,
+      "alternatives_mean": 22.231,
+      "name": "boundary_adjusted_580",
+      "seed17_overlap": 19,
+      "variant": "identity_shuffled",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 51,
+      "alternatives_mean": 24.565,
+      "name": "ordinary_after_adjusted_580",
+      "seed17_overlap": 105,
+      "variant": "real",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 24,
+      "alternatives_mean": 15.197,
+      "name": "ordinary_after_adjusted_580",
+      "seed17_overlap": 15,
+      "variant": "identity_shuffled",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 0,
+      "alternatives_mean": 0,
+      "name": "endpoint_norm_1780",
+      "seed17_overlap": 0,
+      "variant": "real",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 31,
+      "alternatives_mean": 20.215,
+      "name": "endpoint_norm_1780",
+      "seed17_overlap": 20,
+      "variant": "identity_shuffled",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 64,
+      "alternatives_mean": 38.947,
+      "name": "ordinary_before_raw_1780",
+      "seed17_overlap": 44,
+      "variant": "real",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 28,
+      "alternatives_mean": 19.228,
+      "name": "ordinary_before_raw_1780",
+      "seed17_overlap": 23,
+      "variant": "identity_shuffled",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 44,
+      "alternatives_mean": 20.086,
+      "name": "boundary_raw_1780",
+      "seed17_overlap": 54,
+      "variant": "real",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 20,
+      "alternatives_mean": 12.553,
+      "name": "boundary_raw_1780",
+      "seed17_overlap": 21,
+      "variant": "identity_shuffled",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 83,
+      "alternatives_mean": 64.699,
+      "name": "ordinary_after_raw_1780",
+      "seed17_overlap": 86,
+      "variant": "real",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 28,
+      "alternatives_mean": 19.625,
+      "name": "ordinary_after_raw_1780",
+      "seed17_overlap": 19,
+      "variant": "identity_shuffled",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 56,
+      "alternatives_mean": 29.422,
+      "name": "ordinary_before_adjusted_1780",
+      "seed17_overlap": 37,
+      "variant": "real",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 28,
+      "alternatives_mean": 20.118,
+      "name": "ordinary_before_adjusted_1780",
+      "seed17_overlap": 20,
+      "variant": "identity_shuffled",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 84,
+      "alternatives_mean": 54.582,
+      "name": "boundary_adjusted_1780",
+      "seed17_overlap": 128,
+      "variant": "real",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 30,
+      "alternatives_mean": 20.171,
+      "name": "boundary_adjusted_1780",
+      "seed17_overlap": 14,
+      "variant": "identity_shuffled",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 53,
+      "alternatives_mean": 17.575,
+      "name": "ordinary_after_adjusted_1780",
+      "seed17_overlap": 117,
+      "variant": "real",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 26,
+      "alternatives_mean": 18.029,
+      "name": "ordinary_after_adjusted_1780",
+      "seed17_overlap": 18,
+      "variant": "identity_shuffled",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 0,
+      "alternatives_mean": 0,
+      "name": "endpoint_norm_4280",
+      "seed17_overlap": 0,
+      "variant": "real",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 25,
+      "alternatives_mean": 17.539,
+      "name": "endpoint_norm_4280",
+      "seed17_overlap": 17,
+      "variant": "identity_shuffled",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 62,
+      "alternatives_mean": 34.217,
+      "name": "ordinary_before_raw_4280",
+      "seed17_overlap": 37,
+      "variant": "real",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 32,
+      "alternatives_mean": 23.645,
+      "name": "ordinary_before_raw_4280",
+      "seed17_overlap": 22,
+      "variant": "identity_shuffled",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 46,
+      "alternatives_mean": 21.811,
+      "name": "boundary_raw_4280",
+      "seed17_overlap": 68,
+      "variant": "real",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 33,
+      "alternatives_mean": 23.788,
+      "name": "boundary_raw_4280",
+      "seed17_overlap": 24,
+      "variant": "identity_shuffled",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 93,
+      "alternatives_mean": 71.018,
+      "name": "ordinary_after_raw_4280",
+      "seed17_overlap": 120,
+      "variant": "real",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 26,
+      "alternatives_mean": 17.176,
+      "name": "ordinary_after_raw_4280",
+      "seed17_overlap": 17,
+      "variant": "identity_shuffled",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 62,
+      "alternatives_mean": 26.203,
+      "name": "ordinary_before_adjusted_4280",
+      "seed17_overlap": 28,
+      "variant": "real",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 25,
+      "alternatives_mean": 18.868,
+      "name": "ordinary_before_adjusted_4280",
+      "seed17_overlap": 17,
+      "variant": "identity_shuffled",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 90,
+      "alternatives_mean": 38.199,
+      "name": "boundary_adjusted_4280",
+      "seed17_overlap": 126,
+      "variant": "real",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 21,
+      "alternatives_mean": 11.908,
+      "name": "boundary_adjusted_4280",
+      "seed17_overlap": 11,
+      "variant": "identity_shuffled",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 44,
+      "alternatives_mean": 16.912,
+      "name": "ordinary_after_adjusted_4280",
+      "seed17_overlap": 101,
+      "variant": "real",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 27,
+      "alternatives_mean": 15.73,
+      "name": "ordinary_after_adjusted_4280",
+      "seed17_overlap": 15,
+      "variant": "identity_shuffled",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 0,
+      "alternatives_mean": 0,
+      "name": "endpoint_norm_7230",
+      "seed17_overlap": 0,
+      "variant": "real",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 28,
+      "alternatives_mean": 18.827,
+      "name": "endpoint_norm_7230",
+      "seed17_overlap": 18,
+      "variant": "identity_shuffled",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 56,
+      "alternatives_mean": 32.235,
+      "name": "ordinary_before_raw_7230",
+      "seed17_overlap": 39,
+      "variant": "real",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 23,
+      "alternatives_mean": 16.795,
+      "name": "ordinary_before_raw_7230",
+      "seed17_overlap": 16,
+      "variant": "identity_shuffled",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 49,
+      "alternatives_mean": 27.863,
+      "name": "boundary_raw_7230",
+      "seed17_overlap": 77,
+      "variant": "real",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 28,
+      "alternatives_mean": 18.788,
+      "name": "boundary_raw_7230",
+      "seed17_overlap": 18,
+      "variant": "identity_shuffled",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 98,
+      "alternatives_mean": 76.996,
+      "name": "ordinary_after_raw_7230",
+      "seed17_overlap": 125,
+      "variant": "real",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 27,
+      "alternatives_mean": 18.643,
+      "name": "ordinary_after_raw_7230",
+      "seed17_overlap": 17,
+      "variant": "identity_shuffled",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 49,
+      "alternatives_mean": 22.744,
+      "name": "ordinary_before_adjusted_7230",
+      "seed17_overlap": 17,
+      "variant": "real",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 31,
+      "alternatives_mean": 23.817,
+      "name": "ordinary_before_adjusted_7230",
+      "seed17_overlap": 27,
+      "variant": "identity_shuffled",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 76,
+      "alternatives_mean": 38.111,
+      "name": "boundary_adjusted_7230",
+      "seed17_overlap": 128,
+      "variant": "real",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 26,
+      "alternatives_mean": 17.57,
+      "name": "boundary_adjusted_7230",
+      "seed17_overlap": 19,
+      "variant": "identity_shuffled",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 48,
+      "alternatives_mean": 16.132,
+      "name": "ordinary_after_adjusted_7230",
+      "seed17_overlap": 104,
+      "variant": "real",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 23,
+      "alternatives_mean": 16.21,
+      "name": "ordinary_after_adjusted_7230",
+      "seed17_overlap": 15,
+      "variant": "identity_shuffled",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 0,
+      "alternatives_mean": 0,
+      "name": "endpoint_norm_8160",
+      "seed17_overlap": 0,
+      "variant": "real",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 25,
+      "alternatives_mean": 16.962,
+      "name": "endpoint_norm_8160",
+      "seed17_overlap": 17,
+      "variant": "identity_shuffled",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 65,
+      "alternatives_mean": 36.807,
+      "name": "ordinary_before_raw_8160",
+      "seed17_overlap": 37,
+      "variant": "real",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 28,
+      "alternatives_mean": 19.213,
+      "name": "ordinary_before_raw_8160",
+      "seed17_overlap": 22,
+      "variant": "identity_shuffled",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 51,
+      "alternatives_mean": 23.84,
+      "name": "boundary_raw_8160",
+      "seed17_overlap": 56,
+      "variant": "real",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 27,
+      "alternatives_mean": 17.976,
+      "name": "boundary_raw_8160",
+      "seed17_overlap": 13,
+      "variant": "identity_shuffled",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 95,
+      "alternatives_mean": 76.483,
+      "name": "ordinary_after_raw_8160",
+      "seed17_overlap": 125,
+      "variant": "real",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 30,
+      "alternatives_mean": 20.372,
+      "name": "ordinary_after_raw_8160",
+      "seed17_overlap": 17,
+      "variant": "identity_shuffled",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 54,
+      "alternatives_mean": 21.059,
+      "name": "ordinary_before_adjusted_8160",
+      "seed17_overlap": 14,
+      "variant": "real",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 29,
+      "alternatives_mean": 19.762,
+      "name": "ordinary_before_adjusted_8160",
+      "seed17_overlap": 19,
+      "variant": "identity_shuffled",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 79,
+      "alternatives_mean": 34.447,
+      "name": "boundary_adjusted_8160",
+      "seed17_overlap": 128,
+      "variant": "real",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 26,
+      "alternatives_mean": 18.67,
+      "name": "boundary_adjusted_8160",
+      "seed17_overlap": 20,
+      "variant": "identity_shuffled",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 45,
+      "alternatives_mean": 16.8,
+      "name": "ordinary_after_adjusted_8160",
+      "seed17_overlap": 113,
+      "variant": "real",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 26,
+      "alternatives_mean": 16.759,
+      "name": "ordinary_after_adjusted_8160",
+      "seed17_overlap": 20,
+      "variant": "identity_shuffled",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 100,
+      "alternatives_mean": 85.045,
+      "name": "shared_ordinary_before_raw",
+      "seed17_overlap": 83,
+      "variant": "real",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 24,
+      "alternatives_mean": 16.105,
+      "name": "shared_ordinary_before_raw",
+      "seed17_overlap": 16,
+      "variant": "identity_shuffled",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 63,
+      "alternatives_mean": 42.279,
+      "name": "shared_boundary_raw",
+      "seed17_overlap": 111,
+      "variant": "real",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 22,
+      "alternatives_mean": 13.887,
+      "name": "shared_boundary_raw",
+      "seed17_overlap": 14,
+      "variant": "identity_shuffled",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 76,
+      "alternatives_mean": 55.627,
+      "name": "shared_ordinary_after_raw",
+      "seed17_overlap": 80,
+      "variant": "real",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 29,
+      "alternatives_mean": 18.403,
+      "name": "shared_ordinary_after_raw",
+      "seed17_overlap": 15,
+      "variant": "identity_shuffled",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 60,
+      "alternatives_mean": 50.126,
+      "name": "shared_ordinary_before_adjusted",
+      "seed17_overlap": 49,
+      "variant": "real",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 27,
+      "alternatives_mean": 18.424,
+      "name": "shared_ordinary_before_adjusted",
+      "seed17_overlap": 20,
+      "variant": "identity_shuffled",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 81,
+      "alternatives_mean": 41.673,
+      "name": "shared_boundary_adjusted",
+      "seed17_overlap": 128,
+      "variant": "real",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 23,
+      "alternatives_mean": 15.25,
+      "name": "shared_boundary_adjusted",
+      "seed17_overlap": 13,
+      "variant": "identity_shuffled",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 45,
+      "alternatives_mean": 15.761,
+      "name": "shared_ordinary_after_adjusted",
+      "seed17_overlap": 118,
+      "variant": "real",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 23,
+      "alternatives_mean": 16.433,
+      "name": "shared_ordinary_after_adjusted",
+      "seed17_overlap": 17,
+      "variant": "identity_shuffled",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 0,
+      "alternatives_mean": 0,
+      "name": "shared_endpoint_norm",
+      "seed17_overlap": 0,
+      "variant": "real",
+      "windows": 100
+    },
+    {
+      "alternatives_maximum": 27,
+      "alternatives_mean": 17.223,
+      "name": "shared_endpoint_norm",
+      "seed17_overlap": 18,
+      "variant": "identity_shuffled",
+      "windows": 100
+    }
+  ],
+  "complete": true,
+  "created_utc": "2026-09-09T05:09:26.536786+00:00",
+  "draws_per_row": 100,
+  "independent_overlap_lists_exact": 168,
+  "independent_sampler_rows_exact": 1001,
+  "inputs": {
+    "corpus": {
+      "bytes": 5436475,
+      "path": "/home/ubuntu/code/pluto/testdata/shakespeare.txt",
+      "sha256": "4249913cc5998b89bb845fffe1c200dfe6094d4dbe5c0b77b3e806fc680c2f3f"
+    },
+    "native_offsets": {
+      "bytes": 14681312,
+      "path": "/tmp/pluto-native-corpus.KMY7AZ/shakespeare.tokens.bin.offsets.bin",
+      "sha256": "a293ed2ff6c54855f6a615bfbe84d966bd99ff1789f075dc1b98cea731f88fe3"
+    },
+    "native_tokens": {
+      "bytes": 7340652,
+      "path": "/tmp/pluto-native-corpus.KMY7AZ/shakespeare.tokens.bin",
+      "sha256": "17680667f56fe95ba5903339d867d0ecc940e789b65f5d56e484ff8b33a73b21"
+    },
+    "tokenizer": {
+      "bytes": 3557680,
+      "path": "/home/ubuntu/datasets/tokenizer/gpt2/tokenizer.json",
+      "sha256": "1fe93b6152957cf9cfd6d89002467f789ce8b3f3e000b3a2edf27c808ddd0b9e"
+    }
+  },
+  "limitations": [
+    "Audits conditional replay, not historical sampler state.",
+    "No token order reconstruction.",
+    "Native export byte validation and extraction ranking authentication are separate checks."
+  ],
+  "report": {
+    "bytes": 7845298,
+    "path": "/tmp/pluto-restart-delta.fZs3LQ/run/verification.json",
+    "sha256": "1dcb37992b2e821184e066bc3c49bb3c9b547b410b355a4d9b227c3aaec4b536"
+  },
+  "sources": {
+    "replay_sampler_test.py": {
+      "bytes": 6871,
+      "path": "/home/ubuntu/code/pluto/scripts/weight_analysis/replay_sampler_test.py",
+      "sha256": "1a06281f4d95c47c87c69983e3cbc6d47230664696e315c25cae36c891111182"
+    },
+    "restart_delta_replay_audit.py": {
+      "bytes": 8853,
+      "path": "/home/ubuntu/code/pluto/scripts/weight_analysis/restart_delta_replay_audit.py",
+      "sha256": "269d22a9f9492489b8ac1ea97ab979492d19048c4efdad29b522ccdfddb4dd38"
+    }
+  }
+}
