@@ -1,0 +1,185 @@
+{
+  "schema_version": 1,
+  "stage": "synthetic_optimizer_identifiability_controls",
+  "seed": 20260909,
+  "runtime": {
+    "python_version": "3.12.3 (main, Jan 22 2026, 20:57:42) [GCC 13.3.0]",
+    "python_implementation": "CPython",
+    "python_executable": "/usr/bin/python3.12",
+    "platform": "Linux-6.8.0-1046-nvidia-64k-aarch64-with-glibc2.39",
+    "machine": "aarch64",
+    "environment": {
+      "OPENBLAS_NUM_THREADS": "4",
+      "OMP_NUM_THREADS": "4"
+    }
+  },
+  "rank_two_first_step": {
+    "sgd": {
+      "reference_rank": 2,
+      "observed_rank": 2,
+      "reference_singular_values": [
+        11.024361294017258,
+        9.524361294017261,
+        1.2703427103731858e-15,
+        3.7327921008388537e-16,
+        1.3605613350146986e-16,
+        7.127438259264397e-17
+      ],
+      "observed_singular_values": [
+        11.024361294017258,
+        9.524361294017261,
+        1.2703427103731854e-15,
+        3.7327921008388556e-16,
+        1.360561335014699e-16,
+        7.127438259264397e-17
+      ],
+      "reference_rank_cutoff": 1.4687399688485215e-14,
+      "observed_rank_cutoff": 1.4687399688485215e-14,
+      "relative_energy_outside_reference_span": 2.763575630541127e-31,
+      "observed_zero": false
+    },
+    "adam": {
+      "reference_rank": 2,
+      "observed_rank": 6,
+      "reference_singular_values": [
+        11.024361294017258,
+        9.524361294017261,
+        1.2703427103731858e-15,
+        3.7327921008388537e-16,
+        1.3605613350146986e-16,
+        7.127438259264397e-17
+      ],
+      "observed_singular_values": [
+        3.8637032782381437,
+        3.8637032751062983,
+        1.4142135237233597,
+        1.4142135220652285,
+        1.0352761377303397,
+        1.03527613642704
+      ],
+      "reference_rank_cutoff": 1.4687399688485215e-14,
+      "observed_rank_cutoff": 5.147486807783621e-15,
+      "relative_energy_outside_reference_span": 0.2370370300478035,
+      "observed_zero": false
+    }
+  },
+  "rank_one_zero_epsilon_limit": {
+    "reference_rank": 1,
+    "observed_rank": 1,
+    "reference_singular_values": [
+      231.46544018492264,
+      1.4329262126035954e-14,
+      1.599619126477511e-30,
+      2.291142919925661e-47,
+      2.9228061869771497e-63
+    ],
+    "observed_singular_values": [
+      5.477225575051662,
+      5.49566242554299e-16,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "reference_rank_cutoff": 3.083739133179577e-13,
+    "observed_rank_cutoff": 7.297130333385742e-15,
+    "relative_energy_outside_reference_span": 0.5153846153846153,
+    "observed_zero": false
+  },
+  "ten_steps_fixed_input_span": {
+    "sgd_sum": {
+      "reference_rank": 2,
+      "observed_rank": 2,
+      "reference_singular_values": [
+        7.695918713477062,
+        1.331478559930106
+      ],
+      "observed_singular_values": [
+        24.582305989341606,
+        11.37661115854656,
+        2.6468335040106487e-15,
+        1.7678890147378434e-15,
+        7.46657890744924e-16,
+        4.9629360101735567e-17
+      ],
+      "reference_rank_cutoff": 1.0253023381615016e-14,
+      "observed_rank_cutoff": 3.2750210529297527e-14,
+      "relative_energy_outside_reference_span": 2.1611577790646928e-31,
+      "observed_zero": false
+    },
+    "adam_endpoint": {
+      "reference_rank": 2,
+      "observed_rank": 6,
+      "reference_singular_values": [
+        7.695918713477062,
+        1.331478559930106
+      ],
+      "observed_singular_values": [
+        18.54080822859172,
+        11.846969347657879,
+        2.232872552978502,
+        0.3861846138827134,
+        0.09575925893689086,
+        0.002393902138519983
+      ],
+      "reference_rank_cutoff": 1.0253023381615016e-14,
+      "observed_rank_cutoff": 2.470131862865051e-14,
+      "relative_energy_outside_reference_span": 0.06908773479881003,
+      "observed_zero": false
+    },
+    "known_final_first_moment": {
+      "reference_rank": 2,
+      "observed_rank": 2,
+      "reference_singular_values": [
+        7.695918713477062,
+        1.331478559930106
+      ],
+      "observed_singular_values": [
+        1.8515430033266898,
+        0.6237451428300882,
+        2.568634124071568e-16,
+        1.3538812175634308e-16,
+        7.060298975596892e-17,
+        4.4445367226638874e-17
+      ],
+      "reference_rank_cutoff": 1.0253023381615016e-14,
+      "observed_rank_cutoff": 2.4667508080522846e-15,
+      "relative_energy_outside_reference_span": 1.2939815141201379e-31,
+      "observed_zero": false
+    },
+    "endpoint_weighted_update_max_error": 2.5273116932567063e-12,
+    "recover_each_gradient_with_saved_moments_max_error": 1.7763568394002505e-15,
+    "pure_decay_corrected_residual_max_abs": 1.4802973661668755e-12
+  },
+  "known_first_step_ideal_inverse": {
+    "max_gradient_error": 1.6415127213065261e-07,
+    "minimum_distance_of_update_to_unit_magnitude": 1.904761903759322e-09,
+    "maximum_inverse_absolute_derivative": 2756250002.9015365,
+    "assumptions": "known zero moments, first local step, known epsilon and normalized update, ideal real arithmetic"
+  },
+  "fp32_scalar_collision": {
+    "gradients": [
+      0.001,
+      0.002
+    ],
+    "rounded_weights": [
+      0.9996700286865234,
+      0.9996700286865234
+    ],
+    "weight_bits_hex": [
+      "0x3f7fea60",
+      "0x3f7fea60"
+    ],
+    "same_bits": true
+  },
+  "limitations": [
+    "Not a CUDA bitwise optimizer replay or real-gradient recovery.",
+    "Synthetic constant input span is a controlled positive case, not a real-batch assumption.",
+    "Rank or observed-span containment alone cannot identify tokens.",
+    "Conditional first-step invertibility does not imply ten-step checkpoint invertibility."
+  ],
+  "source": {
+    "path": "/home/ubuntu/code/pluto/scripts/weight_analysis/optimizer_geometry.py",
+    "bytes": 9314,
+    "sha256": "554268ec64f0acd39ab9bf6c8ca546eeb22cf388fed57c80f779575b9954910b"
+  }
+}

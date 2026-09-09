@@ -24,6 +24,12 @@ dependence, not uniquely located text or an analytical decompressor.
 
 The [checkpoint-difference feasibility audit](/home/ubuntu/code/pluto/research/weight_memorization/CHECKPOINT_DELTA_FEASIBILITY.md)
 also explains why saved ten-step AdamW weight differences are not raw gradients.
+The follow-up [trajectory audit](/home/ubuntu/code/pluto/research/weight_memorization/CHECKPOINT_TRAJECTORY_RESULTS.md)
+adds executable optimizer counterexamples and measures all four latest unpacked
+checkpoint intervals. Embedding changes have a dominant direction but a broad
+singular-value tail; shared shifts, rigid motion, and fitted scale explain much
+of their energy. These descriptive measurements are neither raw-gradient
+recovery nor an update-to-text decoder. All checkpoint weights remain unchanged.
 
 The new [late-MLP polynomial protocol](/home/ubuntu/code/pluto/research/weight_memorization/LATE_MLP_POLYNOMIAL_PROTOCOL.md)
 tests a static cross-layer interaction between MLPs 6 and 7. This layer choice
