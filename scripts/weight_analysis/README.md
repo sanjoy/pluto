@@ -1,10 +1,17 @@
 # Analytic weight-to-text investigation
 
-The newer vocabulary-recovery experiment has its own fixed
+The vocabulary-recovery experiment has its own fixed
 [protocol](/home/ubuntu/code/pluto/research/weight_memorization/VOCABULARY_PROTOCOL.md)
 and [verified findings](/home/ubuntu/code/pluto/research/weight_memorization/VOCABULARY_RESULTS.md).
 It tests a context-independent output-head term and does not change any prior
 frozen extraction or restore the user's stashed reports.
+
+The subsequent wider-vocabulary attention-polynomial experiment also has a
+fixed [protocol](/home/ubuntu/code/pluto/research/weight_memorization/LAZY_POLYNOMIAL_PROTOCOL.md)
+and [verified findings](/home/ubuntu/code/pluto/research/weight_memorization/LAZY_POLYNOMIAL_RESULTS.md).
+None of its 5,120 sixteen-token paths contains a four-token corpus substring.
+It documents learned local ranking changes, repetition, and the gap between
+those associations and passage recovery.
 
 Goal: understand how Pluto's Shakespeare GPT-2 stores its training text, map
 recoverable portions to precise weight groups, and seek a simple analytical
@@ -327,6 +334,56 @@ OPENBLAS_NUM_THREADS=8 python -m unittest \
   scripts.weight_analysis.routing_audit_test
 ```
 
+## Wider-vocabulary lazy attention polynomial
+
+`lazy_trigram.py` follows the fixed
+[five-arm protocol](/home/ubuntu/code/pluto/research/weight_memorization/LAZY_POLYNOMIAL_PROTOCOL.md).
+It selects 8,192 IDs from the previously frozen final embedding-centroid
+ranking, uses all 256 ordered pairs of the first 16 ranked IDs as starts, and
+permits every token repetition. It computes only visited two-token contexts;
+beam width four and length sixteen bound the search. Every path records its
+cached edges for exact replay. There is no evolving transformer hidden state:
+the same token pair always has the same outgoing edges, at positions zero/one.
+
+The three components are uniform-routing output `w0`, the routing derivative
+`w1`, and their first-order sum `w0+w1`. Destination scores are signed
+`unit(write) dot (E[token] - mean_ALL_LOGICAL_VOCAB(E))`, with no target-norm
+division. This preserves raw-dot destination ordering, removes an arbitrary
+common output translation from the path score, and keeps tiny nonzero write
+directions. It does **not** turn the scores into full-model logits or likelihoods.
+Write norms and cancellation ratios expose the risk of amplifying small sums.
+
+```sh
+OPENBLAS_NUM_THREADS=4 OMP_NUM_THREADS=4 python -m scripts.weight_analysis.lazy_trigram \
+  --checkpoint /home/ubuntu/checkpoints/shakespeare/step_13030 \
+  --rankings /tmp/pluto-vocabulary-offset.hFYW8aCk/rankings.json \
+  --component first_order --output /tmp/final_first_order.jsonl
+
+python -m scripts.weight_analysis.path_diagnostics \
+  --candidates /tmp/final_first_order.jsonl \
+  --tokenizer-dir /home/ubuntu/datasets/tokenizer/gpt2 \
+  --output /tmp/final_first_order.structure.json
+
+OPENBLAS_NUM_THREADS=4 python -m unittest discover \
+  -s scripts/weight_analysis -t . -p '*_test.py' -q
+```
+
+Run and freeze **all five** protocol arms before opening the corpus. Structural
+diagnostics come first and never filter candidates: they distinguish whole-path
+periods from long constant/alternating tails hidden behind varied seed tokens.
+Then use the native-token verifier and both shuffle controls described above.
+Separate complete paths from their cached three-token edges and from internal
+substring matches; a seed-only match is not a generated continuation.
+
+`attention_certificates.py` adds a **summed-head upper** error bound, separate
+from `routing_audit.py`'s stacked-head diagnostics. When the approximate raw
+top-token margin exceeds its worst-case perturbation, the same top token is
+guaranteed in ideal real arithmetic for this exact two-position attention
+subproblem. The implementation reports an ordinary-FP64 sufficient-condition
+check, not an interval proof or a certificate for GPT-2, path order, or text
+recovery. An unsatisfied condition is inconclusive. Independent scalar-oracle
+tests check the polynomial using only toy weights, never the real model.
+
 ## Research grounding and next questions
 
 - [Geva et al.,2021](https://aclanthology.org/2021.emnlp-main.446/) motivate MLP
@@ -342,9 +399,11 @@ OPENBLAS_NUM_THREADS=8 python -m unittest \
 - [ROME](https://arxiv.org/abs/2202.05262) offers causal localization/editing
   techniques, useful for validating a map but not themselves a decompressor.
 
-Next experiments should retain signed multi-neuron contributions, examine
-cross-layer virtual operators, compare early/late checkpoints, and test causal
-specificity of candidate weight groups. If activation-assisted discovery is
-needed, keep its data dependence explicit and evaluate any resulting analytical
-extractor separately. The original weight-to-text mapping/decompression goal
-remains open until supported by actual recovered passages and controls.
+Signed multi-neuron contributions, early/late comparisons, and the wider
+first-block graph have now been tested without passage recovery. The next
+direction should be cross-layer operators and independent causal specificity
+of candidate weight groups, not another unsupported expansion of the same
+stationary graph. If activation-assisted discovery is needed, keep its data
+dependence explicit and evaluate any resulting analytical extractor separately.
+The original weight-to-text mapping/decompression goal remains open until
+supported by actual recovered passages and controls.
