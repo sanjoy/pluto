@@ -13,6 +13,18 @@ None of its 5,120 sixteen-token paths contains a four-token corpus substring.
 It documents learned local ranking changes, repetition, and the gap between
 those associations and passage recovery.
 
+The next experiment is explicitly **model-based causal validation**, not an
+extractor. Its fixed [protocol](/home/ubuntu/code/pluto/research/weight_memorization/CAUSAL_VALIDATION_PROTOCOL.md)
+and [verified results](/home/ubuntu/code/pluto/research/weight_memorization/CAUSAL_VALIDATION_RESULTS.md)
+include all 35 arms, a byte-addressed 32-passage index, checkpoint-file group
+addresses, exact restoration checks, and reproduction commands. The first MLP
+has broad effects, while halving either of the last two MLPs hurts every sampled
+prefix passage and improves every sampled suffix passage. This is functional
+dependence, not uniquely located text or an analytical decompressor.
+
+The [checkpoint-difference feasibility audit](/home/ubuntu/code/pluto/research/weight_memorization/CHECKPOINT_DELTA_FEASIBILITY.md)
+also explains why saved ten-step AdamW weight differences are not raw gradients.
+
 Goal: understand how Pluto's Shakespeare GPT-2 stores its training text, map
 recoverable portions to precise weight groups, and seek a simple analytical
 decompressor. Running the language model to generate text does **not** satisfy
