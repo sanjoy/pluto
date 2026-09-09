@@ -25,6 +25,17 @@ dependence, not uniquely located text or an analytical decompressor.
 The [checkpoint-difference feasibility audit](/home/ubuntu/code/pluto/research/weight_memorization/CHECKPOINT_DELTA_FEASIBILITY.md)
 also explains why saved ten-step AdamW weight differences are not raw gradients.
 
+The new [late-MLP polynomial protocol](/home/ubuntu/code/pluto/research/weight_memorization/LATE_MLP_POLYNOMIAL_PROTOCOL.md)
+tests a static cross-layer interaction between MLPs 6 and 7. This layer choice
+is informed by the causal experiment, not an independent data-free discovery.
+`late_mlp_polynomial.py` compiles fixed weight-derived coefficients and optimizes
+complete sixteen-token strings without a model forward. The coefficients use
+declared proxy anchors and omit attention and actual contextual normalization;
+the resulting score is neither a GPT-2 logit nor its full Taylor polynomial.
+`late_mlp_paths.py` freezes each plan before searching, retains every restart,
+and checks checkpoint/source identities before emitting candidates. Follow the
+protocol's five arms and freeze all candidates before corpus verification.
+
 Goal: understand how Pluto's Shakespeare GPT-2 stores its training text, map
 recoverable portions to precise weight groups, and seek a simple analytical
 decompressor. Running the language model to generate text does **not** satisfy
