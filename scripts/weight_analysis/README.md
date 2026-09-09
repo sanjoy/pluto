@@ -1,5 +1,11 @@
 # Analytic weight-to-text investigation
 
+The newer vocabulary-recovery experiment has its own fixed
+[protocol](/home/ubuntu/code/pluto/research/weight_memorization/VOCABULARY_PROTOCOL.md)
+and [verified findings](/home/ubuntu/code/pluto/research/weight_memorization/VOCABULARY_RESULTS.md).
+It tests a context-independent output-head term and does not change any prior
+frozen extraction or restore the user's stashed reports.
+
 Goal: understand how Pluto's Shakespeare GPT-2 stores its training text, map
 recoverable portions to precise weight groups, and seek a simple analytical
 decompressor. Running the language model to generate text does **not** satisfy
