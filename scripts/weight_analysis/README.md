@@ -35,6 +35,11 @@ the resulting score is neither a GPT-2 logit nor its full Taylor polynomial.
 `late_mlp_paths.py` freezes each plan before searching, retains every restart,
 and checks checkpoint/source identities before emitting candidates. Follow the
 protocol's five arms and freeze all candidates before corpus verification.
+The [verified results](/home/ubuntu/code/pluto/research/weight_memorization/LATE_MLP_POLYNOMIAL_RESULTS.md)
+show no passage recovery: final-weight arms reach at most two tokens, and the
+early baseline's sixteen-space match survives all six n-gram shuffle controls.
+An exploratory scalar-envelope audit also exposes large errors in the local
+quadratic approximation; this does not measure the complete model's error.
 
 Goal: understand how Pluto's Shakespeare GPT-2 stores its training text, map
 recoverable portions to precise weight groups, and seek a simple analytical
@@ -406,6 +411,46 @@ subproblem. The implementation reports an ordinary-FP64 sufficient-condition
 check, not an interval proof or a certificate for GPT-2, path order, or text
 recovery. An unsatisfied condition is inconclusive. Independent scalar-oracle
 tests check the polynomial using only toy weights, never the real model.
+
+### Late-MLP cross-layer polynomial
+
+The exact score, anchors, controls and search budget are fixed in
+`research/weight_memorization/LATE_MLP_POLYNOMIAL_PROTOCOL.md`. A single arm is:
+
+```sh
+OPENBLAS_NUM_THREADS=8 OMP_NUM_THREADS=8 python -m scripts.weight_analysis.late_mlp_paths \
+  --checkpoint /home/ubuntu/checkpoints/shakespeare/step_13030 \
+  --selection-checkpoint /home/ubuntu/checkpoints/shakespeare/step_13030 \
+  --tokenizer-dir /home/ubuntu/datasets/tokenizer/gpt2 \
+  --mode full --label final_full --output /tmp/new_final_full.jsonl
+```
+
+Use new output paths. Repeat with modes/labels `affine/final_affine`,
+`no_cross/final_no_cross`, and `broken/final_broken`. The fifth arm uses mode
+`full`, label `early_full`, and the early checkpoint as `--checkpoint`; its
+`--selection-checkpoint` remains the final checkpoint. The frozen experiment's
+early copy is `/tmp/pluto-attention-early.ee35wjay/step_10`, not initialization.
+Default search settings are exactly the protocol's 8,192 vocabulary IDs,
+64 sixteen-token starts, eight alternating sweeps, seed 20260909, alpha 0.125.
+
+Each run writes an exclusive `.plan.json` before compilation, candidate JSONL
+after search, and `.metadata.json` on completion. The latter includes all
+coordinate-update traces, fixed-coefficient hashes before/after search,
+source/checkpoint integrity checks, and repetition/order diagnostics. Plans
+record runtime and requested thread settings. Freeze all five completed
+candidate/plan/metadata identities before invoking any corpus verifier.
+The score is a declared static approximation, not a contextual GPT-2 logit;
+coordinate ascent is not guaranteed to find its global maximum.
+
+`late_mlp_experiment freeze --run-dir DIR` independently checks all five named
+arms and writes `combined.jsonl` plus `frozen.json`. Run this before verification
+in a fresh reproduction. Its timestamp cannot establish that no other earlier
+corpus check occurred. `late_mlp_experiment summarize --run-dir DIR
+--native-tokens FILE --split 1650781 --output NEW.json` retains all candidate
+denominators and reports full/current-prefix/current-suffix exact matches.
+`late_mlp_envelope --plan FILE --metadata FILE --output NEW.json` is a separate,
+weight-only diagnostic of the frozen scalar approximation, not an extractor or
+a bound on the complete model's logit error.
 
 ## Research grounding and next questions
 
