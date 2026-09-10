@@ -1,6 +1,7 @@
 #include "src/llm/recipes/gpt2_shakespeare_cli.h"
 
 #include <initializer_list>
+#include <limits>
 
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
@@ -39,7 +40,8 @@ TEST(Gpt2ShakespeareCliTest, ParsesOnlyNamedModes) {
 TEST(Gpt2ShakespeareCliTest, ModelTrainingAcceptsOnlyTrainingFlags) {
   EXPECT_TRUE(Validate(Gpt2ShakespeareMode::kTrainModel,
                        {"corpus", "resume_from", "checkpoint_dir", "steps",
-                        "test_fraction", "batch_size"})
+                        "test_fraction", "batch_size", "training_seconds",
+                        "checkpoint_initial"})
                   .ok());
   EXPECT_EQ(
       Validate(Gpt2ShakespeareMode::kTrainModel, {"inference_from"}).code(),
@@ -59,6 +61,12 @@ TEST(Gpt2ShakespeareCliTest, InferenceAcceptsOnlyInferenceFlags) {
             absl::StatusCode::kInvalidArgument);
   EXPECT_EQ(Validate(Gpt2ShakespeareMode::kInferModel, {"steps"}).code(),
             absl::StatusCode::kInvalidArgument);
+  EXPECT_EQ(
+      Validate(Gpt2ShakespeareMode::kInferModel, {"training_seconds"}).code(),
+      absl::StatusCode::kInvalidArgument);
+  EXPECT_EQ(
+      Validate(Gpt2ShakespeareMode::kInferModel, {"checkpoint_initial"}).code(),
+      absl::StatusCode::kInvalidArgument);
   EXPECT_EQ(Validate(Gpt2ShakespeareMode::kInferModel, {}, "", "/model").code(),
             absl::StatusCode::kInvalidArgument);
 }
@@ -66,7 +74,8 @@ TEST(Gpt2ShakespeareCliTest, InferenceAcceptsOnlyInferenceFlags) {
 TEST(Gpt2ShakespeareCliTest, SparseTrainingAllowsResumeButNotModelEvalFlags) {
   EXPECT_TRUE(Validate(Gpt2ShakespeareMode::kTrainSparseAutoEncoder,
                        {"sparse_autoencoder_from", "resume_from", "steps",
-                        "checkpoint_dir", "batch_size"})
+                        "checkpoint_dir", "batch_size", "training_seconds",
+                        "checkpoint_initial"})
                   .ok());
   EXPECT_EQ(
       Validate(Gpt2ShakespeareMode::kTrainSparseAutoEncoder, {"test_fraction"})
@@ -91,7 +100,8 @@ TEST(Gpt2ShakespeareCliTest, SparseInferenceRequiresBothCheckpoints) {
        {"resume_from", "steps", "batch_size", "corpus", "checkpoint_every",
         "checkpoint_dir", "learning_rate", "eval_batches", "test_fraction",
         "train_until_loss", "training_eval_interval", "log_file",
-        "generation_tokens", "temperature"}) {
+        "generation_tokens", "temperature", "training_seconds",
+        "checkpoint_initial"}) {
     EXPECT_EQ(Validate(mode, {flag}).code(), absl::StatusCode::kInvalidArgument)
         << flag;
   }
@@ -106,6 +116,17 @@ TEST(Gpt2ShakespeareCliTest, SparseInferenceRequiresBothCheckpoints) {
 TEST(Gpt2ShakespeareCliTest, RejectsFlagsMissingFromThePolicy) {
   EXPECT_EQ(Validate(Gpt2ShakespeareMode::kTrainModel, {"new_flag"}).code(),
             absl::StatusCode::kInternal);
+}
+
+TEST(Gpt2ShakespeareCliTest, TrainingSecondsMustBePositiveAndFinite) {
+  EXPECT_TRUE(ValidateGpt2ShakespeareTrainingSeconds(14'400.0).ok());
+  EXPECT_TRUE(ValidateGpt2ShakespeareTrainingSeconds(1e-9).ok());
+  for (double invalid : {0.0, -1.0, std::numeric_limits<double>::infinity(),
+                         -std::numeric_limits<double>::infinity(),
+                         std::numeric_limits<double>::quiet_NaN()}) {
+    EXPECT_EQ(ValidateGpt2ShakespeareTrainingSeconds(invalid).code(),
+              absl::StatusCode::kInvalidArgument);
+  }
 }
 
 }  // namespace

@@ -25,13 +25,22 @@ struct EvaluationOptions {
 
 struct TrainingOptions {
   // Hard cap on optimizer updates. kUnlimitedTrainingSteps runs until an
-  // explicit stop-loss condition or callback error; zero is evaluation-only.
+  // explicit loss/time limit or callback error; zero is evaluation-only.
   int max_steps = 0;
 
   // Logical step represented by the input model weights. The first optimizer
   // update completes initial_step + 1. Callbacks and TrainingResult use this
   // absolute numbering so resumed runs continue checkpoint step numbers.
   int initial_step = 0;
+
+  // Optional positive finite wall-clock budget, in seconds. Timing starts
+  // after initial evaluation, dataset reset, and gradient initialization.
+  // Periodic evaluation and step callbacks count toward the budget. With a
+  // budget, each optimizer update is synchronized on executor's stream before
+  // checking the deadline, so a timeout always leaves completed weights.
+  // Final evaluation after detecting a timeout is outside the budget. An
+  // absent budget preserves the usual asynchronous update scheduling.
+  std::optional<double> training_seconds;
 
   // When stop_loss or evaluation_callback is enabled, run an evaluation at
   // this update interval and after the final update.
@@ -70,6 +79,10 @@ struct TrainingResult {
   // Absolute logical step, including TrainingOptions::initial_step.
   int steps_completed;
   bool reached_stop_loss;
+  bool reached_time_limit = false;
+  // Elapsed time in the update loop, excluding initial setup and any final
+  // evaluation triggered by an already-expired time limit.
+  double elapsed_training_seconds = 0.0;
 };
 
 // Everything retained from an objective's forward pass until evaluation

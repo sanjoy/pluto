@@ -3,6 +3,7 @@
 #include <cuda_runtime.h>
 #include <cuda_tile.h>
 
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -116,6 +117,12 @@ absl::Status ValidateTrainingOptions(const TrainingOptions& options) {
   }
   if (options.initial_step < 0) {
     return absl::InvalidArgumentError("initial_step must be non-negative");
+  }
+  if (options.training_seconds.has_value() &&
+      (!std::isfinite(*options.training_seconds) ||
+       *options.training_seconds <= 0.0)) {
+    return absl::InvalidArgumentError(
+        "training_seconds must be finite and positive");
   }
   if (options.max_steps != kUnlimitedTrainingSteps &&
       options.max_steps >
@@ -325,9 +332,21 @@ absl::StatusOr<TrainingResult> Train(cuda::Executor& executor,
 
   RETURN_IF_ERROR(training_data.Reset());
   RETURN_IF_ERROR(optimizer.ZeroGrad());
+  if (options.training_seconds.has_value()) {
+    // Do not charge queued initialization work to the training budget.
+    RETURN_IF_ERROR(executor.Synchronize());
+  }
+  const auto training_start = std::chrono::steady_clock::now();
+  const auto elapsed_seconds = [&training_start]() {
+    return std::chrono::duration<double>(std::chrono::steady_clock::now() -
+                                         training_start)
+        .count();
+  };
   const bool has_step_limit = options.max_steps != kUnlimitedTrainingSteps;
   int updates_completed = 0;
   int steps_completed = options.initial_step;
+  bool reached_time_limit = false;
+  double elapsed_training_seconds = 0.0;
   while (!has_step_limit || updates_completed < options.max_steps) {
     if (steps_completed == std::numeric_limits<int>::max()) {
       return absl::OutOfRangeError("training step number overflowed");
@@ -336,18 +355,27 @@ absl::StatusOr<TrainingResult> Train(cuda::Executor& executor,
     ASSIGN_OR_RETURN(auto pass, objective.Forward(executor, batch));
     RETURN_IF_ERROR(objective.Backward(executor, std::move(pass)));
     RETURN_IF_ERROR(optimizer.Step());
+    if (options.training_seconds.has_value()) {
+      // CUDA launches are asynchronous. The clock must measure completed
+      // optimizer work, not how quickly the host fills the stream's queue.
+      RETURN_IF_ERROR(executor.Synchronize());
+    }
     ++updates_completed;
     ++steps_completed;
     if (options.step_callback) {
       RETURN_IF_ERROR(options.step_callback(steps_completed));
     }
+    elapsed_training_seconds = elapsed_seconds();
+    reached_time_limit = options.training_seconds.has_value() &&
+                         elapsed_training_seconds >= *options.training_seconds;
 
     const bool evaluation_enabled =
         options.stop_loss >= 0.0 || options.evaluation_callback;
     const bool should_evaluate =
         evaluation_enabled &&
         (steps_completed % options.evaluation_interval == 0 ||
-         (has_step_limit && updates_completed == options.max_steps));
+         (has_step_limit && updates_completed == options.max_steps) ||
+         reached_time_limit);
     if (should_evaluate) {
       ASSIGN_OR_RETURN(
           auto device_training_loss,
@@ -358,15 +386,30 @@ absl::StatusOr<TrainingResult> Train(cuda::Executor& executor,
       if (options.evaluation_callback) {
         options.evaluation_callback(steps_completed, training_loss);
       }
+      if (!reached_time_limit) {
+        // A periodic evaluation can itself cross the deadline. Its weights
+        // already correspond to the final completed update in that case.
+        elapsed_training_seconds = elapsed_seconds();
+        reached_time_limit =
+            options.training_seconds.has_value() &&
+            elapsed_training_seconds >= *options.training_seconds;
+      }
       if (options.stop_loss >= 0.0 && training_loss <= options.stop_loss) {
-        return TrainingResult{.steps_completed = steps_completed,
-                              .reached_stop_loss = true};
+        return TrainingResult{
+            .steps_completed = steps_completed,
+            .reached_stop_loss = true,
+            .reached_time_limit = reached_time_limit,
+            .elapsed_training_seconds = elapsed_training_seconds};
       }
     }
+    if (reached_time_limit) break;
   }
   RETURN_IF_ERROR(executor.Synchronize());
+  if (!reached_time_limit) elapsed_training_seconds = elapsed_seconds();
   return TrainingResult{.steps_completed = steps_completed,
-                        .reached_stop_loss = false};
+                        .reached_stop_loss = false,
+                        .reached_time_limit = reached_time_limit,
+                        .elapsed_training_seconds = elapsed_training_seconds};
 }
 
 }  // namespace pluto::llm

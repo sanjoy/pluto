@@ -2,10 +2,14 @@
 
 #include <cuda_runtime.h>
 
+#include <atomic>
+#include <chrono>
 #include <cmath>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <numeric>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -104,6 +108,7 @@ class FakeOptimizer final : public Optimizer {
   }
   absl::Status Step() override {
     ++steps;
+    if (step_action) return step_action();
     return absl::OkStatus();
   }
   int step() const override { return steps; }
@@ -111,6 +116,7 @@ class FakeOptimizer final : public Optimizer {
 
   int zero_grad_calls = 0;
   int steps = 0;
+  std::function<absl::Status()> step_action;
 };
 
 class FixedActivationDataSetIterator final : public DataSetIterator {
@@ -251,6 +257,7 @@ TEST_F(TrainerTest, TrainRunsForwardBackwardAndOptimizerSteps) {
   ASSERT_TRUE(result.ok()) << result.status();
   EXPECT_EQ(result->steps_completed, 3);
   EXPECT_FALSE(result->reached_stop_loss);
+  EXPECT_FALSE(result->reached_time_limit);
   EXPECT_EQ(model.forward_calls, 3);
   EXPECT_EQ(model.backward_calls, 3);
   EXPECT_EQ((*loss)->forward_calls, 3);
@@ -512,6 +519,122 @@ TEST_F(TrainerTest, UnlimitedTrainingRunsUntilCallbackStopsIt) {
   EXPECT_EQ(model.backward_calls, 3);
 }
 
+TEST_F(TrainerTest, TimeLimitWaitsForStreamWorkAndEvaluatesTheFinalStep) {
+  FakeModel model;
+  FakeOptimizer optimizer;
+  auto loss = MakeLoss();
+  auto training_data = MakeData();
+  auto evaluation_data = MakeData();
+  ASSERT_TRUE(loss.ok()) << loss.status();
+  ASSERT_TRUE(training_data.ok()) << training_data.status();
+  ASSERT_TRUE(evaluation_data.ok()) << evaluation_data.status();
+  LanguageModelingObjective objective(model, **loss);
+
+  // Delay stream completion without delaying the host's launch. A deadline
+  // check that only times queued work would call step_callback too early.
+  std::atomic<bool> update_completed = false;
+  optimizer.step_action = [&]() {
+    return cuda::CudaStatus(
+        cudaLaunchHostFunc(
+            executor_->stream(),
+            [](void* state) {
+              std::this_thread::sleep_for(std::chrono::milliseconds(40));
+              static_cast<std::atomic<bool>*>(state)->store(true);
+            },
+            &update_completed),
+        "cudaLaunchHostFunc(test optimizer completion)");
+  };
+  std::vector<int> evaluation_steps;
+  auto result =
+      Train(*executor_, objective, optimizer, **training_data,
+            TrainingOptions{.max_steps = kUnlimitedTrainingSteps,
+                            .initial_step = 570,
+                            .training_seconds = 0.01,
+                            .evaluation_interval = 100,
+                            .evaluation_tokens = evaluation_data->get(),
+                            .evaluation_callback =
+                                [&](int step, double value) {
+                                  evaluation_steps.push_back(step);
+                                  EXPECT_DOUBLE_EQ(value, 2.5);
+                                },
+                            .step_callback =
+                                [&](int step) {
+                                  EXPECT_TRUE(update_completed.load());
+                                  EXPECT_EQ(step, 571);
+                                  return absl::OkStatus();
+                                }});
+  // Always finish the callback before its stack-owned state is destroyed,
+  // including when the training call unexpectedly returns an error.
+  ASSERT_TRUE(executor_->Synchronize().ok());
+  ASSERT_TRUE(result.ok()) << result.status();
+  EXPECT_EQ(result->steps_completed, 571);
+  EXPECT_TRUE(result->reached_time_limit);
+  EXPECT_FALSE(result->reached_stop_loss);
+  EXPECT_GE(result->elapsed_training_seconds, 0.04);
+  EXPECT_EQ(optimizer.steps, 1);
+  EXPECT_EQ(model.backward_calls, 1);
+  EXPECT_EQ(evaluation_steps, (std::vector<int>{571}));
+}
+
+TEST_F(TrainerTest, TinyBudgetCompletesOneRealOptimizerUpdate) {
+  constexpr int kRows = 16;
+  constexpr int kInputDimension = 16;
+  constexpr int kFeatureDimension = 32;
+  auto activations =
+      Buffer::Allocate(*executor_, kRows * kInputDimension * sizeof(float));
+  ASSERT_TRUE(activations.ok()) << activations.status();
+  ASSERT_EQ(cudaMemsetAsync(activations->data(), 0, activations->size_bytes(),
+                            executor_->stream()),
+            cudaSuccess);
+  auto model = SparseAutoEncoderLayer::Create(
+      *executor_, kInputDimension, kFeatureDimension, DataType::FP16);
+  auto loss = SparseAutoEncoderLossLayer::Create(
+      *executor_, kInputDimension, kFeatureDimension, 0.5f, DataType::FP16);
+  ASSERT_TRUE(model.ok()) << model.status();
+  ASSERT_TRUE(loss.ok()) << loss.status();
+  ASSERT_TRUE((*model)->InitializeNormal(0.05f, 19).ok());
+  auto optimizer = Optimizer::Create(*executor_, **model, AdamWConfig{});
+  ASSERT_TRUE(optimizer.ok()) << optimizer.status();
+  FixedActivationDataSetIterator data(*activations, kRows);
+  SparseAutoEncoderObjective objective(**model, **loss);
+  std::vector<int> evaluation_steps;
+
+  auto result =
+      Train(*executor_, objective, **optimizer, data,
+            TrainingOptions{.max_steps = kUnlimitedTrainingSteps,
+                            .training_seconds = 1e-9,
+                            .evaluation_interval = 100,
+                            .evaluation_callback = [&](int step, double value) {
+                              evaluation_steps.push_back(step);
+                              EXPECT_TRUE(std::isfinite(value));
+                            }});
+  ASSERT_TRUE(result.ok()) << result.status();
+  EXPECT_EQ(result->steps_completed, 1);
+  EXPECT_EQ((*optimizer)->step(), 1);
+  EXPECT_EQ(cudaStreamQuery(executor_->stream()), cudaSuccess);
+  EXPECT_TRUE(result->reached_time_limit);
+  EXPECT_FALSE(result->reached_stop_loss);
+  EXPECT_GE(result->elapsed_training_seconds, 1e-9);
+  EXPECT_EQ(evaluation_steps, (std::vector<int>{1}));
+}
+
+TEST_F(TrainerTest, StepCapCanStopBeforeTimeBudget) {
+  FakeModel model;
+  FakeOptimizer optimizer;
+  auto loss = MakeLoss();
+  auto data = MakeData();
+  ASSERT_TRUE(loss.ok()) << loss.status();
+  ASSERT_TRUE(data.ok()) << data.status();
+  LanguageModelingObjective objective(model, **loss);
+  auto result =
+      Train(*executor_, objective, optimizer, **data,
+            TrainingOptions{.max_steps = 1, .training_seconds = 3600.0});
+  ASSERT_TRUE(result.ok()) << result.status();
+  EXPECT_EQ(result->steps_completed, 1);
+  EXPECT_FALSE(result->reached_time_limit);
+  EXPECT_GT(result->elapsed_training_seconds, 0.0);
+}
+
 TEST_F(TrainerTest, RejectsInvalidOptions) {
   FakeModel model;
   FakeOptimizer optimizer;
@@ -521,6 +644,16 @@ TEST_F(TrainerTest, RejectsInvalidOptions) {
   ASSERT_TRUE(data.ok()) << data.status();
   LanguageModelingObjective objective(model, **loss);
 
+  for (double invalid : {0.0, -1.0, std::numeric_limits<double>::infinity(),
+                         -std::numeric_limits<double>::infinity(),
+                         std::numeric_limits<double>::quiet_NaN()}) {
+    EXPECT_EQ(
+        Train(*executor_, objective, optimizer, **data,
+              TrainingOptions{.max_steps = 1, .training_seconds = invalid})
+            .status()
+            .code(),
+        absl::StatusCode::kInvalidArgument);
+  }
   EXPECT_FALSE(
       Evaluate(*executor_, objective, **data, EvaluationOptions{.batches = 0})
           .ok());

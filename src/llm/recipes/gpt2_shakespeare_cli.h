@@ -19,6 +19,10 @@ absl::StatusOr<Gpt2ShakespeareMode> ParseGpt2ShakespeareMode(
 
 absl::string_view Gpt2ShakespeareModeName(Gpt2ShakespeareMode mode);
 
+// Validates an explicitly supplied --training_seconds. The omitted flag leaves
+// time-based stopping disabled; explicit zero is rejected to catch mistakes.
+absl::Status ValidateGpt2ShakespeareTrainingSeconds(double training_seconds);
+
 // Rejects explicitly supplied flags that the selected mode does not consume.
 // inference_from and sparse_autoencoder_from are passed separately because
 // their modes require non-empty values, not merely explicit flag presence.

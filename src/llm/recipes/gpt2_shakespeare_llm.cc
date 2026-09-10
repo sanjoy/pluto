@@ -9,6 +9,7 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <optional>
 #include <random>
 #include <string>
 #include <vector>
@@ -57,12 +58,21 @@ ABSL_FLAG(
     std::string, sparse_autoencoder_from, "",
     "Exact GPT-2 step_N checkpoint required by train_sae/infer_SAE to generate "
     "fourth-block activations");
-ABSL_FLAG(std::string, checkpoint_dir, "",
-          "Root directory for periodic step_N checkpoint directories");
+ABSL_FLAG(
+    std::string, checkpoint_dir, "",
+    "Root directory for periodic and final step_N checkpoint directories");
 ABSL_FLAG(int, checkpoint_every, 0,
-          "Write a checkpoint every N optimizer steps; zero disables writes");
+          "Write a checkpoint every N optimizer steps; zero disables periodic "
+          "writes (checkpoint_dir still enables a final checkpoint)");
+ABSL_FLAG(bool, checkpoint_initial, false,
+          "Also save the initial weights at step_N before training; requires "
+          "checkpoint_dir or resume_from");
 ABSL_FLAG(int, steps, -1,
-          "Maximum AdamW updates in this invocation; omitted runs forever");
+          "Maximum AdamW updates in this invocation; omitted has no step cap");
+ABSL_FLAG(double, training_seconds, 0.0,
+          "Optional positive finite training wall-clock budget in seconds; "
+          "omitted disables the time limit. Includes periodic evaluation and "
+          "checkpointing; excludes setup and final evaluation/checkpointing");
 ABSL_FLAG(double, learning_rate, 3e-4, "AdamW learning rate");
 ABSL_FLAG(double, adam_beta1, 0.9, "AdamW first-moment decay");
 ABSL_FLAG(double, adam_beta2, 0.95, "AdamW second-moment decay");
@@ -117,7 +127,9 @@ absl::StatusOr<Gpt2ShakespeareMode> ParseAndValidateRunMode() {
   AddIfExplicitlySet(FLAGS_sparse_autoencoder_from, &explicitly_set);
   AddIfExplicitlySet(FLAGS_checkpoint_dir, &explicitly_set);
   AddIfExplicitlySet(FLAGS_checkpoint_every, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_checkpoint_initial, &explicitly_set);
   AddIfExplicitlySet(FLAGS_steps, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_training_seconds, &explicitly_set);
   AddIfExplicitlySet(FLAGS_learning_rate, &explicitly_set);
   AddIfExplicitlySet(FLAGS_adam_beta1, &explicitly_set);
   AddIfExplicitlySet(FLAGS_adam_beta2, &explicitly_set);
@@ -135,7 +147,22 @@ absl::StatusOr<Gpt2ShakespeareMode> ParseAndValidateRunMode() {
   RETURN_IF_ERROR(ValidateGpt2ShakespeareModeFlags(
       mode, explicitly_set, absl::GetFlag(FLAGS_inference_from),
       absl::GetFlag(FLAGS_sparse_autoencoder_from)));
+  if (FLAGS_training_seconds.IsSpecifiedOnCommandLine()) {
+    RETURN_IF_ERROR(ValidateGpt2ShakespeareTrainingSeconds(
+        absl::GetFlag(FLAGS_training_seconds)));
+  }
   return mode;
+}
+
+std::optional<double> TrainingSecondsFromFlags() {
+  if (!FLAGS_training_seconds.IsSpecifiedOnCommandLine()) return std::nullopt;
+  return absl::GetFlag(FLAGS_training_seconds);
+}
+
+const char* TrainingStopReason(const TrainingResult& result) {
+  if (result.reached_time_limit) return "time_limit";
+  if (result.reached_stop_loss) return "stop_loss";
+  return "step_limit";
 }
 
 std::string CurrentTimestamp() {
@@ -319,9 +346,11 @@ absl::Status RunTraining(cuda::Executor& executor,
   if (checkpoint_every < 0) {
     return absl::InvalidArgumentError("checkpoint_every must be non-negative");
   }
-  if (checkpoint_every > 0 && checkpoint_root.empty()) {
+  if ((checkpoint_every > 0 || absl::GetFlag(FLAGS_checkpoint_initial)) &&
+      checkpoint_root.empty()) {
     return absl::InvalidArgumentError(
-        "checkpoint_dir must not be empty when checkpoint_every is positive");
+        "checkpoint_dir must not be empty when checkpoint_every is positive "
+        "or checkpoint_initial is enabled");
   }
 
   ASSIGN_OR_RETURN(auto corpus, LoadTextCorpus(CorpusPath()));
@@ -417,9 +446,25 @@ absl::Status RunTraining(cuda::Executor& executor,
          << "initial training loss: " << initial_training_loss << '\n'
          << "initial test loss: " << initial_test_loss << '\n';
 
+  int last_checkpoint_step = -1;
+  const auto save_checkpoint = [&](int step) -> absl::Status {
+    if (checkpoint_root.empty() || step == last_checkpoint_step) {
+      return absl::OkStatus();
+    }
+    const auto checkpoint = checkpoint_root / absl::StrCat("step_", step);
+    RETURN_IF_ERROR(WriteToDirectory(executor, *model, checkpoint));
+    last_checkpoint_step = step;
+    logger << '[' << CurrentTimestamp()
+           << "] wrote checkpoint: " << checkpoint.string() << '\n';
+    return absl::OkStatus();
+  };
+  if (absl::GetFlag(FLAGS_checkpoint_initial)) {
+    RETURN_IF_ERROR(save_checkpoint(initial_step));
+  }
   TrainingOptions training_options{
       .max_steps = absl::GetFlag(FLAGS_steps),
       .initial_step = initial_step,
+      .training_seconds = TrainingSecondsFromFlags(),
       .evaluation_interval = absl::GetFlag(FLAGS_training_eval_interval),
       .evaluation_batches = eval_batches,
       .stop_loss = absl::GetFlag(FLAGS_train_until_loss),
@@ -432,23 +477,31 @@ absl::Status RunTraining(cuda::Executor& executor,
           },
   };
   if (checkpoint_every > 0) {
-    training_options.step_callback =
-        [&executor, &logger, model_ptr = model.get(), checkpoint_every,
-         checkpoint_root](int steps_completed) -> absl::Status {
+    training_options.step_callback = [&save_checkpoint,
+                                      checkpoint_every](int steps_completed) {
       if (steps_completed % checkpoint_every != 0) {
         return absl::OkStatus();
       }
-      const std::filesystem::path checkpoint =
-          checkpoint_root / absl::StrCat("step_", steps_completed);
-      RETURN_IF_ERROR(WriteToDirectory(executor, *model_ptr, checkpoint));
-      logger << '[' << CurrentTimestamp()
-             << "] wrote checkpoint: " << checkpoint.string() << '\n';
-      return absl::OkStatus();
+      return save_checkpoint(steps_completed);
     };
   }
+  if (training_options.training_seconds.has_value()) {
+    logger << "training budget seconds: " << *training_options.training_seconds
+           << '\n';
+  }
+  logger << '[' << CurrentTimestamp()
+         << "] training started at step: " << initial_step << '\n';
   ASSIGN_OR_RETURN(
       auto training_result,
       Train(executor, objective, *optimizer, *training_data, training_options));
+  logger << '[' << CurrentTimestamp()
+         << "] training stopped at step: " << training_result.steps_completed
+         << '\n'
+         << "training stop reason: " << TrainingStopReason(training_result)
+         << '\n'
+         << "training elapsed seconds: "
+         << training_result.elapsed_training_seconds << '\n';
+  RETURN_IF_ERROR(save_checkpoint(training_result.steps_completed));
   ASSIGN_OR_RETURN(auto final_training_loss_buffer,
                    Evaluate(executor, objective, *training_evaluation_data,
                             evaluation_options));
@@ -459,9 +512,7 @@ absl::Status RunTraining(cuda::Executor& executor,
       Evaluate(executor, objective, *test_evaluation_data, evaluation_options));
   ASSIGN_OR_RETURN(double final_test_loss,
                    ReadEvaluationLoss(executor, final_test_loss_buffer));
-  logger << "training stopped at step: " << training_result.steps_completed
-         << '\n'
-         << "final training loss: " << final_training_loss << '\n'
+  logger << "final training loss: " << final_training_loss << '\n'
          << "final test loss: " << final_test_loss << '\n';
 
   return absl::OkStatus();
@@ -492,9 +543,11 @@ absl::Status RunSparseAutoEncoderTraining(
   if (checkpoint_every < 0) {
     return absl::InvalidArgumentError("checkpoint_every must be non-negative");
   }
-  if (checkpoint_every > 0 && checkpoint_root.empty()) {
+  if ((checkpoint_every > 0 || absl::GetFlag(FLAGS_checkpoint_initial)) &&
+      checkpoint_root.empty()) {
     return absl::InvalidArgumentError(
-        "checkpoint_dir must not be empty when checkpoint_every is positive");
+        "checkpoint_dir must not be empty when checkpoint_every is positive "
+        "or checkpoint_initial is enabled");
   }
 
   ASSIGN_OR_RETURN(auto corpus, LoadTextCorpus(CorpusPath()));
@@ -596,9 +649,25 @@ absl::Status RunSparseAutoEncoderTraining(
          << "starting SAE step: " << initial_step << '\n'
          << "initial loss per activation: " << initial_loss << '\n';
 
+  int last_checkpoint_step = -1;
+  const auto save_checkpoint = [&](int step) -> absl::Status {
+    if (checkpoint_root.empty() || step == last_checkpoint_step) {
+      return absl::OkStatus();
+    }
+    const auto checkpoint = checkpoint_root / absl::StrCat("step_", step);
+    RETURN_IF_ERROR(WriteToDirectory(executor, *autoencoder, checkpoint));
+    last_checkpoint_step = step;
+    logger << '[' << CurrentTimestamp()
+           << "] wrote SAE checkpoint: " << checkpoint.string() << '\n';
+    return absl::OkStatus();
+  };
+  if (absl::GetFlag(FLAGS_checkpoint_initial)) {
+    RETURN_IF_ERROR(save_checkpoint(initial_step));
+  }
   TrainingOptions training_options{
       .max_steps = absl::GetFlag(FLAGS_steps),
       .initial_step = initial_step,
+      .training_seconds = TrainingSecondsFromFlags(),
       .evaluation_interval = absl::GetFlag(FLAGS_training_eval_interval),
       .evaluation_batches = eval_batches,
       .stop_loss = absl::GetFlag(FLAGS_train_until_loss),
@@ -611,32 +680,36 @@ absl::Status RunSparseAutoEncoderTraining(
           },
   };
   if (checkpoint_every > 0) {
-    training_options.step_callback =
-        [&executor, &logger, autoencoder_ptr = autoencoder.get(),
-         checkpoint_every,
-         checkpoint_root](int steps_completed) -> absl::Status {
+    training_options.step_callback = [&save_checkpoint,
+                                      checkpoint_every](int steps_completed) {
       if (steps_completed % checkpoint_every != 0) {
         return absl::OkStatus();
       }
-      const std::filesystem::path checkpoint =
-          checkpoint_root / absl::StrCat("step_", steps_completed);
-      RETURN_IF_ERROR(WriteToDirectory(executor, *autoencoder_ptr, checkpoint));
-      logger << '[' << CurrentTimestamp()
-             << "] wrote SAE checkpoint: " << checkpoint.string() << '\n';
-      return absl::OkStatus();
+      return save_checkpoint(steps_completed);
     };
   }
+  if (training_options.training_seconds.has_value()) {
+    logger << "training budget seconds: " << *training_options.training_seconds
+           << '\n';
+  }
+  logger << '[' << CurrentTimestamp()
+         << "] SAE training started at step: " << initial_step << '\n';
   ASSIGN_OR_RETURN(auto training_result,
                    Train(executor, objective, *optimizer, *training_activations,
                          training_options));
+  logger << '[' << CurrentTimestamp() << "] SAE training stopped at step: "
+         << training_result.steps_completed << '\n'
+         << "training stop reason: " << TrainingStopReason(training_result)
+         << '\n'
+         << "training elapsed seconds: "
+         << training_result.elapsed_training_seconds << '\n';
+  RETURN_IF_ERROR(save_checkpoint(training_result.steps_completed));
   ASSIGN_OR_RETURN(auto final_loss_buffer,
                    Evaluate(executor, objective, *evaluation_activations,
                             evaluation_options));
   ASSIGN_OR_RETURN(double final_loss,
                    ReadEvaluationLoss(executor, final_loss_buffer));
-  logger << "SAE training stopped at step: " << training_result.steps_completed
-         << '\n'
-         << "final loss per activation: " << final_loss << '\n';
+  logger << "final loss per activation: " << final_loss << '\n';
   return absl::OkStatus();
 }
 

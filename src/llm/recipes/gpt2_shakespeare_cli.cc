@@ -1,5 +1,6 @@
 #include "src/llm/recipes/gpt2_shakespeare_cli.h"
 
+#include <cmath>
 #include <cstdint>
 
 #include "absl/status/status.h"
@@ -30,7 +31,9 @@ constexpr FlagRule kFlagRules[] = {
      kTrainSparseAutoEncoder | kInferSparseAutoEncoder},
     {"checkpoint_dir", kTrain},
     {"checkpoint_every", kTrain},
+    {"checkpoint_initial", kTrain},
     {"steps", kTrain},
+    {"training_seconds", kTrain},
     {"learning_rate", kTrain},
     {"adam_beta1", kTrain},
     {"adam_beta2", kTrain},
@@ -69,6 +72,14 @@ const FlagRule* FindRule(absl::string_view name) {
 }
 
 }  // namespace
+
+absl::Status ValidateGpt2ShakespeareTrainingSeconds(double training_seconds) {
+  if (!std::isfinite(training_seconds) || training_seconds <= 0.0) {
+    return absl::InvalidArgumentError(
+        "--training_seconds must be finite and positive");
+  }
+  return absl::OkStatus();
+}
 
 absl::StatusOr<Gpt2ShakespeareMode> ParseGpt2ShakespeareMode(
     absl::string_view mode) {
