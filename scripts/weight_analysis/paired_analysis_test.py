@@ -95,6 +95,34 @@ class PairedAnalysisTest(unittest.TestCase):
         self.assertEqual(len(result['pairs']), 1)
         self.assertEqual(len(result['checkpoints']), 2)
 
+    def test_all_matched_steps_include_initialization_and_reuse_endpoint_scores(self):
+        _, _, inventories, _, _ = self.completed_fixture()
+        result = analysis.plan_comparisons(inventories['original'], inventories['replacement'],
+                                          200, 230, all_matched_steps=True)
+        self.assertEqual(result['matched_steps'], [0, 100, 200])
+        self.assertEqual([pair['name'] for pair in result['pairs']],
+                         ['final', 'initial', 'matched_step_100', 'matched_step_200'])
+        self.assertEqual(len(result['checkpoints']), 6)
+        self.assertEqual(result['behavior_aliases'], {
+            inventories['replacement'][0]['path']: inventories['original'][0]['path']})
+        same_endpoint = analysis.plan_comparisons(
+            inventories['original'], inventories['replacement'], 200, 200,
+            all_matched_steps=True)
+        self.assertEqual(same_endpoint['matched_steps'], [0, 100, 200])
+        self.assertEqual([pair['name'] for pair in same_endpoint['pairs']],
+                         ['final', 'initial', 'matched_step_100'])
+        self.assertEqual(len(same_endpoint['checkpoints']), 5)
+
+    def test_all_matched_steps_cli_is_opt_in(self):
+        arguments = [value for name in ('root', 'cases', 'probe', 'output')
+                     for value in ('--' + name, '/unused')]
+        with mock.patch.object(analysis, 'analyze') as analyze, \
+                mock.patch.object(analysis.signal, 'signal'):
+            analysis.main(arguments)
+            self.assertFalse(analyze.call_args.kwargs['all_matched_steps'])
+            analysis.main(arguments + ['--all-matched-steps'])
+            self.assertTrue(analyze.call_args.kwargs['all_matched_steps'])
+
     def test_no_common_positive_step_is_reported_not_fabricated(self):
         result = analysis.plan_comparisons({0: {}, 3: {'path': 'a'}},
                                             {0: {}, 5: {'path': 'b'}}, 3, 5)
@@ -316,6 +344,113 @@ class PairedAnalysisTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'nonfinite initial'):
                 analysis.analyze(self.root, cases, probe, self.root / 'new_analysis')
         run.assert_not_called()
+
+    def deterministic_fixture(self):
+        manifest, state, inventories, cases, probe = self.completed_fixture()
+        manifest['determinism'] = {'required': True}
+        for arm in ('control_a', 'control_b'):
+            directory = self.root / arm / 'checkpoints'
+            directory.mkdir(parents=True)
+            inventories[arm] = {}
+            for step in range(3):
+                path = directory / f'step_{step}'
+                path.mkdir()
+                inventories[arm][step] = {'step': step, 'path': str(path), 'sha256': {}}
+        for arm, inventory in inventories.items():
+            for step, item in inventory.items():
+                path = Path(item['path']) / 'weight_0.bin'
+                value = 'initial' if step == 0 else f'{"control" if arm.startswith("control_") else arm}:{step}'
+                path.write_text(value)
+                item['sha256'] = {'weight_0.bin': analysis.checkpoint.sha256_file(path)}
+            dump(self.root / arm / 'checkpoints.json', list(inventory.values()))
+        evidence = analysis.paired_training.compare_determinism_controls(
+            list(inventories['control_a'].values()), list(inventories['control_b'].values()))
+        state['determinism_gate'] = evidence
+        dump(self.root / 'determinism_gate.json', evidence)
+        dump(self.root / 'manifest.json', manifest)
+        dump(self.root / 'state.json', state)
+        case_data = json.loads(cases.read_text())
+        case_data['manifest'] = analysis._record(self.root / 'manifest.json')
+        dump(cases, case_data)
+        return manifest, state, inventories, cases, probe
+
+    def fake_checkpoint(self, directory, **kwargs):
+        # Tiny checkpoint layout, but exercise the real file-hash verifier.
+        return mock.Mock(directory=Path(directory),
+                         manifest=[mock.Mock(filename='weight_0.bin')])
+
+    def test_deterministic_gate_independently_hashes_every_control_weight(self):
+        manifest, state, inventories, _, _ = self.deterministic_fixture()
+        with mock.patch.object(analysis.checkpoint, 'GPT2Checkpoint', side_effect=self.fake_checkpoint):
+            result = analysis.validate_determinism_gate(
+                self.root, state, manifest, inventories['initial'][0])
+            self.assertEqual(len(result['checkpoints']), 6)
+            self.assertEqual(result['evidence'], state['determinism_gate'])
+            path = Path(inventories['control_b'][1]['path']) / 'weight_0.bin'
+            path.write_text('changed after training')
+            with self.assertRaisesRegex(ValueError, 'differs from completed inventory'):
+                analysis.validate_determinism_gate(
+                    self.root, state, manifest, inventories['initial'][0])
+
+    def test_missing_control_step_or_modified_gate_blocks_validation(self):
+        manifest, state, inventories, _, _ = self.deterministic_fixture()
+        with mock.patch.object(analysis.checkpoint, 'GPT2Checkpoint', side_effect=self.fake_checkpoint):
+            evidence = state['determinism_gate']
+            evidence['checkpoints']['control_b'][1]['sha256']['weight_0.bin'] = 'fabricated'
+            dump(self.root / 'determinism_gate.json', evidence)
+            with self.assertRaisesRegex(ValueError, 'gate evidence disagrees with current'):
+                analysis.validate_determinism_gate(
+                    self.root, state, manifest, inventories['initial'][0])
+            dump(self.root / 'control_b' / 'checkpoints.json',
+                 [item for step, item in inventories['control_b'].items() if step != 1])
+            with self.assertRaisesRegex(ValueError, 'exactly control steps'):
+                analysis.validate_determinism_gate(
+                    self.root, state, manifest, inventories['initial'][0])
+
+    def test_changed_control_prevents_all_gpu_scoring(self):
+        _, _, inventories, cases, probe = self.deterministic_fixture()
+        (Path(inventories['control_a'][2]['path']) / 'weight_0.bin').write_text('corrupt')
+        with mock.patch.object(analysis.paired_training, 'verify_frozen_inputs'), \
+                mock.patch.object(analysis.checkpoint, 'GPT2Checkpoint', side_effect=self.fake_checkpoint), \
+                mock.patch.object(analysis, '_run_probe') as run:
+            with self.assertRaisesRegex(ValueError, 'differs from completed inventory'):
+                analysis.analyze(self.root, cases, probe, self.root / 'new_analysis',
+                                 all_matched_steps=True)
+        run.assert_not_called()
+
+    def test_full_matched_pipeline_retains_gate_evidence_and_shared_initial_score(self):
+        _, state, inventories, cases, probe = self.deterministic_fixture()
+        output = self.root / 'new_analysis'
+        scored = {}
+
+        def fake_probe(binary, checkpoint_path, batch, score_dir, log):
+            scored[str(score_dir)] = checkpoint_path
+            return {'command': [str(binary)], 'returncode': 0}
+
+        def fake_summary(case_path, score_dir, summary_path):
+            result = {'probe_metadata': {'checkpoint_directory': scored[str(score_dir)]},
+                      'groups': [{'mean_token_nll': 1.}]}
+            dump(summary_path, result)
+            return result
+
+        with mock.patch.object(analysis.paired_training, 'verify_frozen_inputs'), \
+                mock.patch.object(analysis.checkpoint, 'GPT2Checkpoint', side_effect=self.fake_checkpoint), \
+                mock.patch.object(analysis.paired_weight_diff, 'compare_checkpoints',
+                                  return_value={'model': {'delta_l2': 2.}}) as compare, \
+                mock.patch.object(analysis, '_run_probe', side_effect=fake_probe) as run, \
+                mock.patch.object(analysis.paired_word_cases, 'summarize', side_effect=fake_summary):
+            result = analysis.analyze(self.root, cases, probe, output, all_matched_steps=True)
+        self.assertEqual(run.call_count, 6)
+        self.assertEqual(compare.call_count, 4)
+        self.assertEqual(result['plan']['matched_steps'], [0, 100, 200])
+        self.assertEqual(result['determinism_verification']['evidence'], state['determinism_gate'])
+        original_zero = inventories['original'][0]['path']
+        replacement_zero = inventories['replacement'][0]['path']
+        self.assertEqual(result['behavior'][replacement_zero]['shared_score_from'], original_zero)
+        self.assertEqual(result['behavior'][replacement_zero]['report'],
+                         result['behavior'][original_zero]['report'])
+        self.assertIn(str(self.root / 'determinism_gate.json'),
+                      [record['path'] for record in result['terminal_records']])
 
 
 if __name__ == '__main__':

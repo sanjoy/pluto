@@ -1,0 +1,108 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+
+# A new package keeps all live observers' parent BUILD/source hashes intact.
+# This initial target is CPU-only. Native replay will depend directly on
+# public production libraries, not the parent package's private diagnostics.
+cc_library(
+    name = "selection",
+    srcs = ["selection.cc"],
+    hdrs = ["selection.h"],
+    copts = ["-std=c++20"],
+    deps = [
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "selection_test",
+    srcs = ["selection_test.cc"],
+    copts = ["-std=c++20"],
+    deps = [
+        ":selection",
+        "@abseil-cpp//absl/types:span",
+        "@googletest//:gtest_main",
+    ],
+)
+
+# Standalone native tail replay. It intentionally has no dependency on any
+# private target in //scripts/weight_analysis and does not define a CLI yet.
+cc_library(
+    name = "probe_lib",
+    srcs = ["probe.cc"],
+    hdrs = ["probe.h"],
+    copts = ["-std=c++20"],
+    deps = [
+        ":selection",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/llm:attention",
+        "//src/llm:combinators",
+        "//src/llm:embedding",
+        "//src/llm:fully_connected",
+        "//src/llm:gelu",
+        "//src/llm:layer",
+        "//src/llm:norm",
+        "//src/llm/recipes:gpt2",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+# Prepared, not run during timed training. Controllers must reject skipped
+# native tests; a successful CPU build is not a GPU correctness result.
+cc_test(
+    name = "probe_gpu_test",
+    size = "large",
+    timeout = "long",
+    srcs = ["probe_gpu_test.cc"],
+    copts = ["-std=c++20"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":probe_lib",
+        ":selection",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/llm:layer",
+        "//src/llm/recipes:gpt2",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "probe",
+    srcs = ["main.cc"],
+    copts = ["-std=c++20"],
+    deps = [
+        ":probe_lib",
+        ":selection",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/llm:checkpoint",
+        "//src/llm:layer",
+        "//src/llm/recipes:gpt2",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)

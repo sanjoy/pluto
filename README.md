@@ -1,8 +1,48 @@
-# Pluto data utilities
+# Pluto
 
-This repository contains small C++ libraries for the local FineWeb-Edu data
-pipeline. They use Bazel/Bzlmod, C++17, Abseil status types and containers, and
-GoogleTest.
+Pluto is a minimalist ML framework for running experiments. It provides small,
+composable C++ libraries for building models, training them on the GPU, and
+inspecting what they learn. The goal is to keep the implementation easy to
+understand and change, with explicit computation and memory ownership.
+
+The repository includes:
+
+- GPU layers, CPU reference implementations, composition, AdamW, reusable
+  training/evaluation loops, and weight checkpoints in [`src/llm`](src/llm).
+- GPT-2 and sparse-autoencoder experiments in
+  [`src/llm/recipes`](src/llm/recipes), including training and inference on
+  Shakespeare.
+- CUDA execution, device buffers, and page-locked host memory in
+  [`src/cuda`](src/cuda), with CUDA/cuTile C++ kernels.
+- Tokenization, dataset iterators, and data-preparation utilities in
+  [`src/dataset`](src/dataset) and [`src/parquet`](src/parquet).
+- Weight-analysis tools in [`scripts/weight_analysis`](scripts/weight_analysis)
+  and experiment protocols and findings in [`research`](research).
+
+Pluto uses Bazel/Bzlmod, C++20, Abseil, and GoogleTest. It is an experimental
+framework, not a comprehensive collection of ML operators or data formats.
+
+## Running an experiment
+
+The GPT-2 Shakespeare recipe supports `train_model`, `infer_model`, `train_sae`,
+and `infer_SAE` modes. For a bounded training run:
+
+```bash
+bazel build -c opt //src/llm/recipes:gpt2_shakespeare_llm
+bazel-bin/src/llm/recipes/gpt2_shakespeare_llm \
+  --mode=train_model \
+  --tokenizer_dir=/path/to/datasets/tokenizer/gpt2 \
+  --corpus=testdata/shakespeare.txt \
+  --batch_size=1 \
+  --steps=100
+```
+
+The local CUDA toolkit is configured at `/usr/local/cuda` in
+[`MODULE.bazel`](MODULE.bazel); the checked-in [`.bazelrc`](.bazelrc) targets
+Hopper (`sm_90`). See the [model and recipe guide](src/llm/README.md) for
+architecture, numeric policy, checkpointing, inference, and SAE examples, and
+the [determinism notes](src/llm/DETERMINISM.md) for reproducibility constraints.
+Checkpoints currently save model weights, not optimizer or data-iterator state.
 
 ## GPU buffer
 
@@ -41,8 +81,9 @@ bazel test //src/cuda:cutile_test
 ```
 
 CUDA Tile C++ requires CUDA 13.3 or newer, C++20, and NVCC's
-`--enable-tile` option. Those language and compiler options are scoped to the
-cuTile target in `src/cuda/BUILD.bazel`; the rest of the project remains C++17.
+`--enable-tile` option. CUDA targets configure their tile compiler options;
+the project-wide C++20 setting keeps host and CUDA translation units on the
+same language-mode ABI.
 
 ## GPT-2 tokenizer libraries
 

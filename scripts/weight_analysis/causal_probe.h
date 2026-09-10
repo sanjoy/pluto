@@ -29,6 +29,28 @@ struct ProbeArm {
 std::vector<ProbeArm> CausalArms();
 std::vector<size_t> Gpt2WeightByteSizes();
 
+struct CheckpointFileInfo {
+  std::filesystem::path path;
+  uintmax_t bytes;
+  std::filesystem::file_time_type modified;
+};
+
+// Accepts the exact physical GPT-2 weight layout and, optionally, patch.json
+// written by paired_weight_patch.py. The metadata is not a weight and does not
+// relax any weight count, canonical filename, or byte-size requirement. Rejects
+// symlinks at the supplied directory and all entries, and rejects other files
+// or subdirectories. This is a layout check, not validation of the JSON
+// payload. The returned snapshot lists weights by index, followed by optional
+// metadata.
+absl::StatusOr<std::vector<CheckpointFileInfo>> InspectGpt2CheckpointFiles(
+    const std::filesystem::path& directory);
+
+// Rechecks the complete allowed layout, including optional metadata, against
+// the snapshot. These are stat checks, not cryptographic integrity checks;
+// evidence runners must still hash input files before and after a probe.
+absl::Status VerifyCheckpointFilesUnchanged(
+    const std::vector<CheckpointFileInfo>& files);
+
 // Matches checkpoint traversal: the tied embedding is counted only at its
 // first occurrence. Returned handles SHARE storage; replacing one would not
 // replace the handles cached inside composed layers. Mutate bytes instead.

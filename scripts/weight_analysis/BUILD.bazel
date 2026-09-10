@@ -3,6 +3,91 @@ load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("@rules_cuda//cuda:defs.bzl", "cuda_library")
 
+cc_library(
+    name = "source_value_probe_lib",
+    srcs = ["source_value_probe.cc"],
+    hdrs = ["source_value_probe.h"],
+    deps = [
+        ":causal_probe_lib",
+        ":phrase_probe_lib",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/llm:attention",
+        "//src/llm:combinators",
+        "//src/llm:fully_connected",
+        "//src/llm:gelu",
+        "//src/llm:layer",
+        "//src/llm:norm",
+        "//src/llm/recipes:gpt2",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_binary(
+    name = "source_value_probe",
+    srcs = ["source_value_probe_main.cc"],
+    deps = [
+        ":causal_probe_lib",
+        ":embedding_factorial_probe_lib",
+        ":phrase_probe_lib",
+        ":source_value_probe_lib",
+        ":token_trace_probe_lib",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/llm:checkpoint",
+        "//src/llm:layer",
+        "//src/llm/recipes:gpt2",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_test(
+    name = "source_value_probe_test",
+    srcs = ["source_value_probe_test.cc"],
+    deps = [
+        ":source_value_probe_lib",
+        "@googletest//:gtest_main",
+    ],
+)
+
+# Build while timed arms are active, but run only after they finish.
+cc_test(
+    name = "source_value_probe_gpu_test",
+    srcs = ["source_value_probe_gpu_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":causal_probe_lib",
+        ":phrase_probe_lib",
+        ":source_value_probe_lib",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/llm:attention",
+        "//src/llm:layer",
+        "//src/llm/recipes:gpt2",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
 cc_binary(
     name = "replay_sampler",
     srcs = ["replay_sampler.cc"],
@@ -109,6 +194,15 @@ cc_binary(
         "@abseil-cpp//absl/flags:parse",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/strings",
+    ],
+)
+
+cc_test(
+    name = "checkpoint_validation_test",
+    srcs = ["checkpoint_validation_test.cc"],
+    deps = [
+        ":causal_probe_lib",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -318,6 +412,77 @@ cc_test(
         "//src/cuda:page_locked_host_array",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "embedding_factorial_probe_lib",
+    srcs = ["embedding_factorial_probe.cc"],
+    hdrs = ["embedding_factorial_probe.h"],
+    deps = [
+        ":phrase_probe_lib",
+        ":token_trace_probe_lib",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/llm/recipes:gpt2",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_binary(
+    name = "embedding_factorial_probe",
+    srcs = ["embedding_factorial_probe_main.cc"],
+    deps = [
+        ":causal_probe_lib",
+        ":embedding_factorial_probe_lib",
+        ":phrase_probe_lib",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/llm:checkpoint",
+        "//src/llm:layer",
+        "//src/llm/recipes:gpt2",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_test(
+    name = "embedding_factorial_probe_test",
+    srcs = ["embedding_factorial_probe_test.cc"],
+    deps = [
+        ":embedding_factorial_probe_lib",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "embedding_factorial_probe_gpu_test",
+    srcs = ["embedding_factorial_probe_gpu_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":causal_probe_lib",
+        ":embedding_factorial_probe_lib",
+        ":phrase_probe_lib",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/llm:layer",
+        "//src/llm/recipes:gpt2",
         "@abseil-cpp//absl/types:span",
         "@cuda//:cuda_runtime",
         "@googletest//:gtest_main",

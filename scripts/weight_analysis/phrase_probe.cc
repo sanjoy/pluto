@@ -55,55 +55,6 @@ static_assert(llm::kGpt2AttentionHeads == 8 &&
               llm::kGpt2FeedForwardWidth == 2048);
 static_assert(sizeof(int) == sizeof(int32_t) && sizeof(float) == 4);
 
-struct CheckpointFile {
-  fs::path path;
-  uintmax_t bytes;
-  fs::file_time_type modified;
-};
-
-absl::StatusOr<std::vector<CheckpointFile>> InspectFiles(const fs::path& path) {
-  if (!fs::is_directory(path)) {
-    return absl::InvalidArgumentError("checkpoint is not a directory");
-  }
-  const auto expected = Gpt2WeightByteSizes();
-  size_t count = 0;
-  for (const auto& entry : fs::directory_iterator(path)) {
-    if (entry.is_symlink() || !entry.is_regular_file()) {
-      return absl::InvalidArgumentError(
-          "checkpoint contains non-regular entry");
-    }
-    ++count;
-  }
-  if (count != expected.size()) {
-    return absl::InvalidArgumentError(
-        "checkpoint must contain exactly 100 files");
-  }
-  std::vector<CheckpointFile> files;
-  for (size_t i = 0; i < expected.size(); ++i) {
-    const auto weight = path / absl::StrCat("weight_", i, ".bin");
-    if (!fs::is_regular_file(weight) || fs::is_symlink(weight) ||
-        fs::file_size(weight) != expected[i]) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("bad checkpoint file: ", weight.string()));
-    }
-    files.push_back({weight, expected[i], fs::last_write_time(weight)});
-  }
-  return files;
-}
-
-absl::Status VerifyFilesUnchanged(const std::vector<CheckpointFile>& files) {
-  for (const auto& file : files) {
-    if (!fs::is_regular_file(file.path) || fs::is_symlink(file.path) ||
-        fs::file_size(file.path) != file.bytes ||
-        fs::last_write_time(file.path) != file.modified) {
-      return absl::DataLossError("checkpoint file stat changed during probe");
-    }
-  }
-  // These are explicitly stat checks, not cryptographic integrity claims.
-  // The external evidence runner hashes complete input files before/after.
-  return absl::OkStatus();
-}
-
 absl::Status CheckFinite(const cuda::PageLockedHostArray<uint8_t>& bytes,
                          bool fp32) {
   const size_t stride = fp32 ? 4 : 2;
@@ -199,7 +150,10 @@ absl::Status Run() {
     }
     if (parent == parent.parent_path()) break;
   }
-  ASSIGN_OR_RETURN(auto checkpoint_files, InspectFiles(checkpoint));
+  // Validate the supplied path, not its already-canonicalized symlink target.
+  ASSIGN_OR_RETURN(auto checkpoint_files,
+                   InspectGpt2CheckpointFiles(
+                       fs::absolute(absl::GetFlag(FLAGS_checkpoint))));
   RETURN_IF_ERROR(CreateNewOutputDirectory(output));
 
   // Executor outlives every device buffer and all queued stream-ordered frees.
@@ -421,7 +375,7 @@ absl::Status Run() {
       CheckEqual(baseline, clean, "final clean replay prefix logits"));
   RETURN_IF_ERROR(WriteExclusive(output / "clean_replay.logits.f32",
                                  clean.data(), clean.size_bytes()));
-  RETURN_IF_ERROR(VerifyFilesUnchanged(checkpoint_files));
+  RETURN_IF_ERROR(VerifyCheckpointFilesUnchanged(checkpoint_files));
   RETURN_IF_ERROR(executor->Synchronize());
 
   std::ostringstream metadata;

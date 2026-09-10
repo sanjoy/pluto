@@ -61,6 +61,82 @@ std::vector<size_t> Gpt2WeightByteSizes() {
   return sizes;
 }
 
+absl::StatusOr<std::vector<CheckpointFileInfo>> InspectGpt2CheckpointFiles(
+    const std::filesystem::path& directory) {
+  namespace fs = std::filesystem;
+  try {
+    if (fs::is_symlink(directory) || !fs::is_directory(directory)) {
+      return absl::InvalidArgumentError(
+          "checkpoint must be a directory, not a symlink");
+    }
+    const auto sizes = Gpt2WeightByteSizes();
+    std::unordered_set<std::string> expected_names;
+    for (size_t i = 0; i < sizes.size(); ++i) {
+      expected_names.insert(absl::StrCat("weight_", i, ".bin"));
+    }
+    bool has_metadata = false;
+    for (const auto& entry : fs::directory_iterator(directory)) {
+      if (entry.is_symlink() || !entry.is_regular_file()) {
+        return absl::InvalidArgumentError(
+            "checkpoint contains a symlink or non-regular entry");
+      }
+      const auto name = entry.path().filename().string();
+      if (name == "patch.json") {
+        has_metadata = true;
+      } else if (expected_names.erase(name) != 1) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("unexpected checkpoint entry: ", name));
+      }
+    }
+    if (!expected_names.empty()) {
+      return absl::InvalidArgumentError(
+          "checkpoint must contain all 100 canonical GPT-2 weight files");
+    }
+    std::vector<CheckpointFileInfo> files;
+    files.reserve(sizes.size() + has_metadata);
+    for (size_t i = 0; i < sizes.size(); ++i) {
+      const auto path = directory / absl::StrCat("weight_", i, ".bin");
+      if (fs::is_symlink(path) || !fs::is_regular_file(path) ||
+          fs::file_size(path) != sizes[i]) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("checkpoint weight layout mismatch: ", path.string()));
+      }
+      files.push_back({path, sizes[i], fs::last_write_time(path)});
+    }
+    if (has_metadata) {
+      const auto path = directory / "patch.json";
+      if (fs::is_symlink(path) || !fs::is_regular_file(path)) {
+        return absl::InvalidArgumentError("invalid checkpoint patch metadata");
+      }
+      files.push_back({path, fs::file_size(path), fs::last_write_time(path)});
+    }
+    return files;
+  } catch (const fs::filesystem_error& error) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("cannot inspect checkpoint: ", error.what()));
+  }
+}
+
+absl::Status VerifyCheckpointFilesUnchanged(
+    const std::vector<CheckpointFileInfo>& files) {
+  if (files.empty()) {
+    return absl::InvalidArgumentError("empty checkpoint stat snapshot");
+  }
+  const auto current =
+      InspectGpt2CheckpointFiles(files.front().path.parent_path());
+  if (!current.ok() || current->size() != files.size()) {
+    return absl::DataLossError("checkpoint layout changed during probe");
+  }
+  for (size_t i = 0; i < files.size(); ++i) {
+    if ((*current)[i].path != files[i].path ||
+        (*current)[i].bytes != files[i].bytes ||
+        (*current)[i].modified != files[i].modified) {
+      return absl::DataLossError("checkpoint file stat changed during probe");
+    }
+  }
+  return absl::OkStatus();
+}
+
 absl::StatusOr<std::vector<cuda::Buffer>> UniqueWeights(
     cuda::Executor& executor, absl::Span<const cuda::Buffer> weights) {
   std::vector<cuda::Buffer> unique;

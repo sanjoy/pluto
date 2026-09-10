@@ -7,9 +7,11 @@ step count: periodic common-step checkpoints are the causal comparison.
 
 Nothing here removes checkpoints or resumes a partially completed arm. An
 interrupted experiment requires inspection, since Pluto's checkpoints do not
-contain optimizer or sampler state. GPU atomic sums can still introduce
-numerical nondeterminism; short unchanged-corpus repeats measure its onset,
-not an upper bound on four-hour divergence.
+contain optimizer or sampler state. With --require-determinism, two short
+unchanged-corpus repeats must have identical weights at every saved step before
+either long arm can start. This checks the fixed-step contract on the same
+hardware/build/runtime; it is not a proof for all possible training workloads.
+Without that opt-in, legacy experiments only measure short-run numerical drift.
 """
 
 import argparse
@@ -27,7 +29,15 @@ import time
 
 import numpy as np
 
+from scripts.weight_analysis import checkpoint as checkpoint_module
 from scripts.weight_analysis.checkpoint import GPT2Checkpoint, sha256_file
+
+
+# Capture provenance at import, before a long preparation or run can outlive an
+# edit to its working-tree source. A Git commit alone omits uncommitted changes.
+SOURCE_PATHS = {'paired_training.py': Path(__file__).resolve(),
+                'checkpoint.py': Path(checkpoint_module.__file__).resolve()}
+IMPORTED_SOURCE_HASHES = {name: sha256_file(path) for name, path in SOURCE_PATHS.items()}
 
 
 def utc_now():
@@ -122,6 +132,22 @@ def freeze_file(source, destination, *, executable=False):
             'bytes': destination.stat().st_size}
 
 
+def freeze_sources(root):
+    """Preserve the launcher/helper sources, rejecting edits since import."""
+    for name, path in SOURCE_PATHS.items():
+        if sha256_file(path) != IMPORTED_SOURCE_HASHES[name]:
+            raise ValueError(f'experiment source changed since import: {path}')
+    destination = root / 'source'
+    destination.mkdir()
+    records = {}
+    for name, path in SOURCE_PATHS.items():
+        record = freeze_file(path, destination / name)
+        if record['sha256'] != IMPORTED_SOURCE_HASHES[name]:
+            raise ValueError(f'experiment source changed while copying: {path}')
+        records[name] = dict(record, original_path=str(path))
+    return records
+
+
 def prepare(args):
     root = args.output.resolve()
     if not math.isfinite(args.seconds) or args.seconds <= 0 or args.batch_size <= 0:
@@ -137,6 +163,7 @@ def prepare(args):
     (root / 'bin').mkdir()
     (root / 'inputs').mkdir()
     (root / 'tokenizer').mkdir()
+    source_files = freeze_sources(root)
     binaries = {}
     for name, path in [('trainer', args.trainer), ('tokenize_corpus', args.tokenizer_binary),
                        ('replay_sampler', args.sampler_binary)]:
@@ -182,9 +209,23 @@ def prepare(args):
                                     capture_output=True, text=True, check=True).stdout.strip()
     commit = subprocess.run(['git', 'rev-parse', 'HEAD'], capture_output=True,
                             text=True, check=True).stdout.strip()
+    require_determinism = getattr(args, 'require_determinism', False)
+    limitations = ['time-matched endpoints can have different step counts',
+                   'checkpoints contain weights, not AdamW or sampler state']
+    if require_determinism:
+        limitations.extend([
+            'bitwise reproducibility requires the same hardware/build/runtime, '
+            'inputs, seed, starting state, and completed step count',
+            'short repeatability controls check the tested workload, not every '
+            'possible workload or the complete four-hour trajectory'])
+    else:
+        limitations.extend([
+            'CUDA atomic sums are not guaranteed bitwise deterministic',
+            'short repeatability controls do not bound long-run drift'])
     manifest = {
         'format': 'pluto-paired-corpus-training-v1', 'created_utc': utc_now(),
         'root': str(root), 'code_commit': commit, 'binaries': binaries,
+        'source_files': source_files,
         'tokenizer_files': tokenizer_files, 'inputs': inputs, 'alignment': alignments,
         'replacement': {'from': 'Exeunt', 'to': 'Nuveth', 'case_sensitive': True},
         'split_byte': boundary, 'seconds_per_arm': args.seconds,
@@ -198,10 +239,14 @@ def prepare(args):
                      'engine': 'std::mt19937_64', 'implementation': implementation,
                      'prefix_command': sample_command, 'prefix_path': str(sample_path),
                      'prefix_sha256': sha256_file(sample_path)},
-        'limitations': ['CUDA atomic sums are not guaranteed bitwise deterministic',
-                        'time-matched endpoints can have different step counts',
-                        'short repeatability controls do not bound long-run drift',
-                        'checkpoints contain weights, not AdamW or sampler state']}
+        'determinism': {
+            'required': require_determinism,
+            'contract': ('same hardware/build/runtime, inputs, seed, starting state, '
+                         'and completed step count'),
+            'preflight': ('exact per-weight SHA-256 equality for control_a and '
+                          'control_b at steps 0, 1, and 2 before long arms'
+                          if require_determinism else 'measure short-run drift only')},
+        'limitations': limitations}
     write_json(root / 'manifest.json', manifest, exclusive=True)
     write_json(root / 'state.json', {'phase': 'prepared', 'updated_utc': utc_now()}, exclusive=True)
     print(json.dumps({'root': str(root), 'replacements': source.count(b'Exeunt'),
@@ -224,6 +269,10 @@ def training_command(manifest, name, arm, *, steps=None, seconds=None, resume=Tr
             # Short repeatability controls use the same completed-step
             # synchronization as the timed arms, but hit their step cap first.
             flags['training_seconds'] = manifest['seconds_per_arm']
+            if manifest.get('determinism', {}).get('required', False):
+                # Save every control step: matching initialization or endpoints
+                # alone would miss a divergence at an intermediate update.
+                flags['checkpoint_every'] = 1
     if seconds is not None:
         flags['training_seconds'] = seconds
     return [manifest['binaries']['trainer']['path']] + [
@@ -246,9 +295,42 @@ def checkpoint_inventory(directory):
     return sorted(checkpoints, key=lambda value: value['step'])
 
 
+def compare_determinism_controls(control_a, control_b, *, expected_steps=2):
+    """Require all saved weights to match at each fixed control step.
+
+    Inventories are obtained by validating and hashing the actual checkpoint
+    files, not inferred from a successful process exit or identical losses.
+    Missing/duplicate steps or empty inventories must not vacuously pass.
+    The returned evidence retains both checkpoint paths and every file hash.
+    """
+    expected = set(range(expected_steps + 1))
+    by_step = {}
+    for name, inventory in [('control_a', control_a), ('control_b', control_b)]:
+        steps = [item['step'] for item in inventory]
+        if len(set(steps)) != len(steps) or set(steps) != expected:
+            raise ValueError(f'{name} must contain exactly control steps '
+                             f'{sorted(expected)}; found {steps}')
+        by_step[name] = {item['step']: item for item in inventory}
+        for item in inventory:
+            if not item['sha256']:
+                raise ValueError(f'{name} step {item["step"]} has no weight hashes')
+    for step in sorted(expected):
+        a = by_step['control_a'][step]['sha256']
+        b = by_step['control_b'][step]['sha256']
+        if a != b:
+            changed = [name for name in sorted(set(a) | set(b)) if a.get(name) != b.get(name)]
+            raise ValueError(f'determinism control mismatch at step {step}: '
+                             f'{len(changed)} weight files differ: {changed}')
+    return {'status': 'verified', 'verified_utc': utc_now(),
+            'method': 'exact SHA-256 equality for every weight at every control step',
+            'steps': sorted(expected),
+            'checkpoints': {'control_a': control_a, 'control_b': control_b}}
+
+
 def verify_frozen_inputs(manifest):
     """Recheck provenance before every child, including the second long arm."""
     records = list(manifest['binaries'].values()) + list(manifest['tokenizer_files'].values())
+    records.extend(manifest.get('source_files', {}).values())
     for record in manifest['inputs'].values():
         for key in ('text', 'token_ids', 'offsets'):
             records.append({'path': record[key], 'sha256': record[key + '_sha256']})
@@ -257,6 +339,9 @@ def verify_frozen_inputs(manifest):
     for record in records:
         if sha256_file(record['path']) != record['sha256']:
             raise ValueError(f'frozen experiment input changed: {record["path"]}')
+    for name, record in manifest.get('source_files', {}).items():
+        if IMPORTED_SOURCE_HASHES.get(name) != record['sha256']:
+            raise ValueError(f'loaded experiment source differs from prepared source: {name}')
 
 
 def parse_training_result(log_text, *, seconds=None, expected_steps=None):
@@ -359,6 +444,19 @@ def run(root):
                 state['updated_utc'] = utc_now()
                 write_json(root / 'state.json', state)
                 print(f'{utc_now()} completed {name}: step={record["final_step"]}', flush=True)
+                if (name == 'control_b' and
+                        manifest.get('determinism', {}).get('required', False)):
+                    # Re-read both directories at the gate, rather than trusting
+                    # stale inventories from when the first control finished.
+                    evidence = compare_determinism_controls(
+                        checkpoint_inventory(root / 'control_a' / 'checkpoints'),
+                        checkpoint_inventory(root / 'control_b' / 'checkpoints'))
+                    write_json(root / 'determinism_gate.json', evidence, exclusive=True)
+                    state['determinism_gate'] = evidence
+                    state['updated_utc'] = utc_now()
+                    write_json(root / 'state.json', state)
+                    print(f'{utc_now()} verified exact deterministic controls at '
+                          'steps 0, 1, and 2', flush=True)
             state['phase'] = 'training_complete'
         except BaseException as error:
             state['phase'] = 'failed'
@@ -369,7 +467,7 @@ def run(root):
             write_json(root / 'state.json', state)
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest='command', required=True)
     prep = sub.add_parser('prepare')
@@ -379,9 +477,11 @@ def main():
     prep.add_argument('--batch-size', type=int, default=10)
     prep.add_argument('--seed', type=int, default=17)
     prep.add_argument('--test-fraction', type=float, default=0.1)
+    prep.add_argument('--require-determinism', action='store_true',
+                      help='require identical fixed-step repeat controls before long arms')
     execute = sub.add_parser('run')
     execute.add_argument('--output', type=Path, required=True)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.command == 'prepare':
         prepare(args)
     else:

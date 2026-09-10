@@ -71,6 +71,25 @@ Other uses of shared subword pieces remain in the corpus. Their differences
 cannot be assigned exclusively to an edited word. In addition, the same rows
 are the output classifier weights, so changed targets directly train them.
 
+Counts in the complete native-tokenized training split help interpret the
+ranking. These are corpus counts, not random-window training exposures:
+
+| Piece | Original corpus | Replacement corpus |
+| --- | ---: | ---: |
+| ` Nu` | 0 | 883 |
+| `Ex` | 53 | 0 |
+| `uve` | 0 | 53 |
+| `ve` | 81 | 964 |
+| `th` | 244 | 1,180 |
+| `e` | 1,127 | 191 |
+| `unt` | 977 | 41 |
+| ` Ex` | 943 | 60 |
+| `N` | 134 | 187 |
+
+Thus the three largest row differences belong to tokens entirely gained or
+lost by the intervention. The others remain shared with unrelated text. Counts
+were independently recomputed from the manifest-hash-verified native exports.
+
 ## Broader differences at step 300
 
 Embedding delta L2 is 9.8446; the combined nonembedding delta L2 is 5.3329.

@@ -151,23 +151,40 @@ def _inventory(root, arm):
     return result
 
 
-def plan_comparisons(original, replacement, original_final, replacement_final):
-    """Time-matched final pair plus largest available matched positive step."""
+def plan_comparisons(original, replacement, original_final, replacement_final, *,
+                     all_matched_steps=False):
+    """Plan endpoints plus the latest common step, or every common saved step.
+
+    A coincident endpoint pair also serves its matched-step comparison. Identical
+    step_0 copies share one probe result; aliases make that reuse explicit.
+    """
     if original_final not in original or replacement_final not in replacement:
         raise ValueError('final checkpoint absent from inventory')
     pairs = [{'name': 'final', 'original': original[original_final],
               'replacement': replacement[replacement_final]}]
     common = sorted((set(original) & set(replacement)) - {0})
     matched = common[-1] if common else None
-    if matched is not None and (matched != original_final or matched != replacement_final):
-        pairs.append({'name': 'matched_step', 'original': original[matched],
-                      'replacement': replacement[matched]})
+    selected = sorted(set(original) & set(replacement)) if all_matched_steps else (
+        [] if matched is None else [matched])
+    for step in selected:
+        if step == original_final == replacement_final:
+            continue
+        name = ('initial' if step == 0 else f'matched_step_{step}') if all_matched_steps else 'matched_step'
+        pairs.append({'name': name, 'original': original[step], 'replacement': replacement[step]})
     unique = {item['path']: item for pair in pairs for item in (pair['original'], pair['replacement'])}
+    aliases = {}
+    if all_matched_steps and 0 in original and 0 in replacement:
+        a, b = original[0], replacement[0]
+        if a.get('sha256') and a['sha256'] == b.get('sha256') and a['path'] != b['path']:
+            aliases[b['path']] = a['path']
+            unique.pop(b['path'], None)
     return {'pairs': pairs, 'checkpoints': list(unique.values()), 'matched_step': matched,
+            'matched_steps': sorted(set(original) & set(replacement)) if all_matched_steps else selected,
+            'all_matched_steps': all_matched_steps, 'behavior_aliases': aliases,
             'matched_is_final_pair': matched is not None and matched == original_final == replacement_final}
 
 
-def validate_completion(root, state, manifest):
+def validate_completion(root, state, manifest, *, all_matched_steps=False):
     """Independent log/command/inventory gates, not the phase string alone."""
     if state.get('phase') != 'training_complete' or manifest['seconds_per_arm'] != 14400:
         raise ValueError('expected completed four-hour-per-arm experiment')
@@ -191,7 +208,8 @@ def validate_completion(root, state, manifest):
         if inventories[arm][0]['sha256'] != initial_hashes:
             raise ValueError(f'{arm} step_0 differs from shared initialization')
     plan = plan_comparisons(inventories['original'], inventories['replacement'],
-                            state['runs']['original']['final_step'], state['runs']['replacement']['final_step'])
+                            state['runs']['original']['final_step'], state['runs']['replacement']['final_step'],
+                            all_matched_steps=all_matched_steps)
     plan['initial'] = inventories['initial'][0]
     plan['initial_copies'] = [inventories[arm][0] for arm in ('original', 'replacement')]
     return plan
@@ -204,6 +222,36 @@ def _verify_checkpoint(item):
     if actual != item['sha256']:
         raise ValueError(f'checkpoint differs from completed inventory: {item["path"]}')
     return {'path': str(model.directory), 'weight_sha256': actual}
+
+
+def validate_determinism_gate(root, state, manifest, initial):
+    """Independently rehash the controls and verify the saved preflight evidence.
+
+    The trainer's verified flag is not sufficient: every control weight must
+    still match its inventory, its paired repeat, and the published gate.
+    """
+    if not manifest.get('determinism', {}).get('required', False):
+        return None
+    inventories = {arm: list(_inventory(root, arm).values())
+                   for arm in ('control_a', 'control_b')}
+    items = [item for inventory in inventories.values() for item in inventory]
+    verified = [_verify_checkpoint(item) for item in items]
+    current = paired_training.compare_determinism_controls(
+        inventories['control_a'], inventories['control_b'])
+    for item in items:
+        if item['step'] == 0 and item['sha256'] != initial['sha256']:
+            raise ValueError('determinism control differs from shared initialization')
+    evidence = _json(root / 'determinism_gate.json')
+    if state.get('determinism_gate') != evidence:
+        raise ValueError('determinism gate evidence disagrees with terminal state')
+    if (not isinstance(evidence.get('verified_utc'), str) or
+            {key: value for key, value in evidence.items() if key != 'verified_utc'} !=
+            {key: value for key, value in current.items() if key != 'verified_utc'}):
+        raise ValueError('determinism gate evidence disagrees with current control checkpoints')
+    return {'evidence': evidence, 'independently_verified_utc': current['verified_utc'],
+            'items': items, 'checkpoints': verified,
+            'records': [_record(root / 'determinism_gate.json'),
+                        *(_record(root / arm / 'checkpoints.json') for arm in inventories)]}
 
 
 def _run_probe(probe, checkpoint_path, batch_path, output, log_path):
@@ -230,7 +278,8 @@ def _run_probe(probe, checkpoint_path, batch_path, output, log_path):
     return {'command': command, 'pid': child.pid, 'returncode': returncode, 'log': _record(log_path)}
 
 
-def analyze(root, cases_path, probe, output, *, wait=False, poll_seconds=30):
+def analyze(root, cases_path, probe, output, *, wait=False, poll_seconds=30,
+            all_matched_steps=False):
     if Path(output).is_symlink():
         raise FileExistsError(output)
     root, cases_path, probe, output = (Path(path).resolve() for path in (root, cases_path, probe, output))
@@ -250,10 +299,12 @@ def analyze(root, cases_path, probe, output, *, wait=False, poll_seconds=30):
     frozen.append(cases['packed_batch'])
     output.mkdir()
     _write(output / 'request.json', {'root': str(root), 'wait_for_training': wait,
+                                    'all_matched_steps': all_matched_steps,
                                     'frozen_inputs': frozen, 'loaded_sources': LOADED_SOURCES})
     try:
         state, handles = wait_for_training(root, wait=wait, poll_seconds=poll_seconds)
-        plan = validate_completion(root, state, manifest)
+        plan = validate_completion(root, state, manifest, all_matched_steps=all_matched_steps)
+        determinism = validate_determinism_gate(root, state, manifest, plan['initial'])
         paired_training.verify_frozen_inputs(manifest)
         for record in frozen:
             if _record(record['path']) != record:
@@ -261,10 +312,15 @@ def analyze(root, cases_path, probe, output, *, wait=False, poll_seconds=30):
         checked = [plan['initial'], *plan['initial_copies'], *plan['checkpoints']]
         checkpoints = [_verify_checkpoint(item) for item in checked]
         terminal_records = [_record(root / 'state.json')]
+        if determinism is not None:
+            checked.extend(determinism['items'])
+            checkpoints.extend(determinism['checkpoints'])
+            terminal_records.extend(determinism['records'])
         for arm in ('initial', 'original', 'replacement'):
             terminal_records += [_record(root / arm / 'checkpoints.json'), _record(root / arm / 'train.log')]
         _write(output / 'analysis_plan.json', {'plan': plan, 'terminal_state': state,
                                               'verified_process_identities': handles,
+                                              'determinism_verification': determinism,
                                               'checkpoints': checkpoints, 'terminal_records': terminal_records})
         weights = {}
         for pair in plan['pairs']:
@@ -289,6 +345,8 @@ def analyze(root, cases_path, probe, output, *, wait=False, poll_seconds=30):
                 raise ValueError('probe output names an unexpected checkpoint')
             behaviors[item['path']] = {'process': process, 'report': _record(summary_path),
                                        'groups': summary['groups']}
+        for alias, source in plan['behavior_aliases'].items():
+            behaviors[alias] = dict(behaviors[source], shared_score_from=source)
         for item in checked:
             _verify_checkpoint(item)
         for record in [*frozen, *terminal_records]:
@@ -299,6 +357,7 @@ def analyze(root, cases_path, probe, output, *, wait=False, poll_seconds=30):
                   'weights': weights, 'behavior': behaviors, 'frozen_inputs': frozen,
                   'loaded_sources': LOADED_SOURCES, 'terminal_records': terminal_records,
                   'checkpoints': checkpoints,
+                  'determinism_verification': determinism,
                   'limitations': ['Different final step counts confound time-matched weight differences.',
                                   'Matched-step deltas still include nonlinear training-trajectory effects.',
                                   'Behavioral tests use frozen sampled contexts, not all possible prompts.']}
@@ -314,13 +373,16 @@ def main(argv=None):
     for name in ('root', 'cases', 'probe', 'output'):
         parser.add_argument('--' + name, type=Path, required=True)
     parser.add_argument('--wait-for-training', action='store_true')
+    parser.add_argument('--all-matched-steps', action='store_true',
+                        help='score shared initialization and every common saved step plus endpoints')
     args = parser.parse_args(argv)
 
     def interrupted(signum, frame):
         raise KeyboardInterrupt(f'analysis received signal {signum}')
 
     signal.signal(signal.SIGTERM, interrupted)
-    analyze(args.root, args.cases, args.probe, args.output, wait=args.wait_for_training)
+    analyze(args.root, args.cases, args.probe, args.output, wait=args.wait_for_training,
+            all_matched_steps=args.all_matched_steps)
 
 
 if __name__ == '__main__':
