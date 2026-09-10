@@ -88,6 +88,31 @@ pure forgetting. The raw delta includes every downstream training consequence,
 plus numerical divergence. The same final weights cannot establish universal
 absence of the original word under every possible prompt.
 
+### Preselected word-row transfer check
+
+Before observing the four-hour endpoints, fix the first selective patch to the
+union of native token IDs in both words, with and without leading space:
+`45, 68, 303, 400, 1475, 2797, 3109, 21733, 45177`. At the latest shared
+positive step, create independent original-model checkpoint copies with these
+nine embedding rows replaced by the replacement-model rows, and perform the
+reverse patch as well. Use the already frozen word/control cases for all
+conditions, reporting changes in three-token negative log probability and
+unrelated continuation loss separately for training/test and prefix domains.
+The set is determined by the spelling intervention, not by final delta ranks.
+
+Preserve both source checkpoints and all patched copies. Verify that selected
+rows are exact donor bytes and every unselected byte is unchanged. These rows
+are shared by the input embedding and LM head: transfer would identify a
+functional contribution of this joint parameter set, not an exclusively
+input-side mechanism or proof of a unique memory location. A failed transfer
+is also informative; do not expand the selected set without labeling further
+patches as exploratory.
+
+The queued final postprocessor covers endpoints and the latest common step.
+After both arms finish, also run the read-only weight comparison for each
+earlier common positive checkpoint, as required by analysis item 2 above.
+The short step-2 controls remain separate from this long-run trajectory.
+
 ## Usage
 
 From the repository root, build the optimized trainer and native validators:
