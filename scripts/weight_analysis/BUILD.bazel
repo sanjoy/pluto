@@ -94,6 +94,24 @@ cc_binary(
     ],
 )
 
+cc_binary(
+    name = "paired_loss_probe",
+    srcs = ["paired_loss_probe_main.cc"],
+    deps = [
+        ":causal_probe_lib",
+        "//src/cuda:executor",
+        "//src/llm:checkpoint",
+        "//src/llm:cross_entropy_loss",
+        "//src/llm:layer",
+        "//src/llm/recipes:gpt2",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/strings",
+    ],
+)
+
 cc_test(
     name = "causal_probe_test",
     srcs = ["causal_probe_test.cc"],

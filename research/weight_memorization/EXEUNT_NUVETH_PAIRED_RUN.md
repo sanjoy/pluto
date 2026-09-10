@@ -74,6 +74,42 @@ replacement corpus
 40f4d3326f1a8abf737adc0dbac8e168044875b166d8d7ab6083fbf25da5d795
 ```
 
-Final steps, elapsed training times, losses, weight comparisons, and behavioral
+## Early two-update controls (not the four-hour result)
+
+All controls completed two updates from byte-identical step_0 files. Original
+control A ended at training/test loss 8.76844/8.6767; the comparison below uses
+the complete FP32 checkpoint tensors, not rounded logged losses.
+
+Across all weights, the original-vs-original repeat difference has L2 norm
+0.03123350 (0.01962% of weight norm). Original-vs-replacement has L2 0.04023048,
+only 1.288 times larger. Thus global early differences are substantially
+confounded by numerical run-to-run variation.
+
+Nevertheless, the **seven largest embedding-row differences** in the
+replacement comparison are all constituent tokens of Exeunt/Nuveth. Several
+stand well above the corresponding unchanged-data repeat variation:
+
+| Token piece | ID | Replacement delta L2 | Repeat delta L2 | Ratio |
+| --- | ---: | ---: | ---: | ---: |
+| `unt` | 2797 | 0.00924474 | 0.0000232964 | 396.8 |
+| `ve` | 303 | 0.00921043 | 0.00000147955 | 6,225.1 |
+| ` Nu` | 21733 | 0.00909185 | 0.00000137529 | 6,610.8 |
+| `Ex` | 3109 | 0.00882267 | 0.0000602149 | 146.5 |
+| ` Ex` | 1475 | 0.00600423 | 0.0000243522 | 246.6 |
+| `th` | 400 | 0.00530857 | 0.0000301525 | 176.1 |
+| `e` | 68 | 0.00195537 | 0.000780016 | 2.5 |
+
+These are descriptive ratios from one pair of repeat controls, not statistical
+significance tests. The embeddings also serve as tied output weights, so a
+changed training target directly affects them; this is not evidence that a
+whole word or its contextual mechanism lives in a single row. Short-run repeat
+variation cannot bound long-run numerical divergence.
+
+Full evidence is retained in the experiment's `analysis/` directory:
+`control_repeat_step2.json`, `control_replacement_step2.json`, and
+`control_token_rows_step2.json`, with input checkpoint SHA-256 hashes.
+
+The original four-hour arm started its training budget at **02:17:30 UTC**.
+Final steps, elapsed times, losses, long-run weight comparisons, and behavioral
 results remain to be measured. Raw weight deltas alone will not be described
 as a localized word memory.
