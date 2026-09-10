@@ -187,3 +187,37 @@ behavior change cannot by itself separate input-embedding and output effects.
 All 93 CPU tests for paired training, comparisons, word cases, postprocessing,
 sampling replay, and selective patches passed. Neither four-hour endpoint nor
 final behavioral evaluation is complete at the time of this update.
+
+## First periodic checkpoint: original arm, step 100
+
+The original arm saved `original/checkpoints/step_100` at **03:26:08 UTC**.
+At **03:26:15 UTC**, its fixed four-batch training evaluation reported loss
+**5.32169**, down from the initial **10.7495**. This is not a new test-split
+evaluation, and the replacement arm has not started yet. Thus these numbers
+show ordinary learning progress, not the effect of replacing Exeunt.
+
+CPU-only validation found exactly 100 expected weight files, all with correct
+sizes and all finite: **51,483,648 FP32 parameters**, **205,934,592 bytes**.
+Their FP64 weight L2 norm is `169.032921957187`. Directory/file identities,
+sizes, modes, modification times, and change times were unchanged across the
+audit. The source checkpoint was neither modified nor copied over.
+
+Aggregate checkpoint SHA-256:
+`766b1f2b40b7f2e8755fc9dc52a87b29b69b790a32b348fa85ace3e29ab63af7`.
+The aggregate hashes UTF-8 records `filename SHA256(file)\n`, sorted
+lexicographically by filename; it is not a hash of concatenated weight bytes.
+
+The verified sampling schedule for these 100 updates contains 1,024,000 target
+token exposures, including 595 complete Exeunt exposures covering 443 distinct
+training occurrences. The later replacement run is configured to use those
+same windows. Its actual step-100 checkpoint remains pending.
+
+At 03:27 UTC, the original trainer and waiting postprocessor were both live,
+and the trainer was still the only GPU workload. The first 100 updates plus
+their periodic evaluation took approximately 68 minutes 45 seconds. The
+four-hour endpoints and paired/behavioral comparisons remain incomplete.
+
+Commit `bf472c9` fixes the first long-run causal check to bidirectional transfer
+of the nine word-token embedding rows at the latest common positive step,
+using the frozen cases. It also explicitly retains the earlier common-step
+weight comparisons from the original protocol. Neither has been run yet.
