@@ -142,3 +142,48 @@ Frozen scorer SHA-256:
 
 `word_evaluation_provenance.json` records canonical paths and all case/scorer
 hashes. The actual score dumps do not exist yet.
+
+## Sampling exposure and pending final analysis
+
+An independent CPU check compared the native input and target slices at the
+frozen sampler's starts. The first update has **zero changed input tokens and
+zero changed target tokens**. Through the second update, there are 18 changed
+input slots and 18 changed target slots, comprising six distinct complete word
+replacements (five with leading space, one without). This explains why the
+two-update control can already expose a direct token-row signal even though
+the corpus edit is small. It does not eliminate floating-point nondeterminism.
+
+`analysis/sampler_exposure_prefix.json` records cumulative target exposures.
+For a sequence starting at `s`, targets occupy `[s+1, s+1024]` inclusive;
+a complete three-token replacement must fit entirely within that interval.
+Repeated visits count separately. The following are consequences of the
+frozen sampling schedule, **not claims that the live run reached these steps**:
+
+| Updates | Complete word exposures | Distinct training occurrences |
+| --- | ---: | ---: |
+| 2 | 6 | 6 |
+| 100 | 595 | 443 |
+| 200 | 1,190 | 679 |
+| 300 | 1,772 | 789 |
+| 400 | 2,381 | 862 |
+
+Commit `c84d239` adds a postprocessor that waits for the supervised training
+to finish, independently validates both terminal runs and checkpoint hashes,
+then compares the final endpoints and the latest common positive step.
+It also scores the frozen word/control cases with the native model. The
+waiting process was launched at approximately 02:36 UTC; output is reserved under
+`analysis_final/`, with its log at `postprocess.log`. A live process check at
+02:42 UTC confirmed that the original trainer was the only GPU workload and
+the postprocessor was still waiting. These are launch observations, not final
+results. A missing or failed process must be diagnosed, not silently restarted.
+
+Commit `16f2637` adds independent selective checkpoint copies for a possible
+causal follow-up: replace only selected tensors or embedding rows with donor
+bytes, preserve all other bytes, and verify both source checkpoints unchanged.
+Use only completed, immutable checkpoints. No real checkpoint has been patched
+yet. An embedding-row patch changes the tied output head too, so any resulting
+behavior change cannot by itself separate input-embedding and output effects.
+
+All 93 CPU tests for paired training, comparisons, word cases, postprocessing,
+sampling replay, and selective patches passed. Neither four-hour endpoint nor
+final behavioral evaluation is complete at the time of this update.
