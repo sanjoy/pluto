@@ -1,6 +1,7 @@
 # Exeunt / Nuveth paired run — September 10, 2026
 
-Status: **running; not yet an analysis result**. The supervisor started at
+Status: **original arm complete; replacement arm running; no final paired
+analysis yet**. The supervisor started at
 2026-09-10 02:10:40 UTC. It first creates the shared initialization and runs
 three short controls, then trains the original and replacement arms for four
 hours each, sequentially on the GH200. Check authoritative `state.json` and
@@ -283,3 +284,46 @@ Aggregate SHA-256, using the previously defined filename/hash convention:
 
 The original trainer, supervisor, and waiting postprocessor were still live.
 The replacement run and all long-run paired comparisons remained pending.
+
+## Original four-hour arm completed; replacement arm started
+
+The original run exited successfully, with `time_limit` as its stop reason:
+
+| Quantity | Original arm |
+| --- | ---: |
+| Completed optimizer steps | 350 |
+| Training-loop elapsed seconds | 14,434.2 |
+| Final fixed four-batch training loss | 4.54467 |
+| Final fixed four-batch test loss | 4.54401 |
+| Final checkpoint save time | 06:18:12 UTC |
+| Supervisor completion record | 06:18:27 UTC |
+
+The 34.2-second overshoot is the completed-update stopping rule, not another
+training phase. Final evaluation/checkpointing are outside the timed loop.
+The final weights are preserved at `original/checkpoints/step_350`.
+
+An independent post-exit audit rehashed the frozen inputs, checked the actual
+command and terminal log against the manifest/state, and rescanned **all five
+original checkpoints**: steps 0, 100, 200, 300, and 350. Every file was finite
+and correctly sized, and all hashes matched the supervisor's completed
+inventory. The step-100/200/300 aggregate hashes also matched their earlier
+in-training audit records. Original step_0 still matches the canonical shared
+initialization. No checkpoint was deleted or overwritten.
+
+Final checkpoint FP64 weight L2 norm: `238.20016433663847`.
+Final aggregate SHA-256, with the same filename/hash-record convention:
+`3163ec85daafac0c615420af636647d156803faec6bbe241e0fbfbeed1654367`.
+
+The replacement child (PID 1636507, start ticks 124374306) was launched by the
+same supervisor. It saved its own step_0 and started its four-hour training
+budget at **06:18:44 UTC**. Its actual command matches the frozen replacement
+configuration, and all **100 actual step_0 file hashes** match the canonical
+initialization byte-for-byte. Its initial training/test losses were
+10.7496/10.7207; edited evaluation targets can change initial loss even with
+identical weights.
+
+The replacement trainer was verified as the only GPU workload; the existing
+postprocessor was still live and waiting. The second four-hour endpoint,
+long-run matched-step weight comparisons, native behavioral scores, and
+preselected bidirectional row patches are still pending. Expected training
+completion is around 10:20 UTC, followed by analysis.
