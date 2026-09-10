@@ -118,7 +118,7 @@ absl::StatusOr<HostBufferVec> EmbeddingLookupLayerReference::bwd(
   const auto* tokens = static_cast<const int*>(tape.intermediates[0].data());
   const auto* d_output = static_cast<const float*>(output_gradients[0].data());
   auto* d_table = static_cast<float*>(gradient_.data());
-  // Repeated tokens add into the same table row, matching device atomics.
+  // Repeated tokens add in input-row order, matching the device's sorted gather.
   for (int row = 0; row < rows; ++row) {
     for (int column = 0; column < embedding_dim_; ++column) {
       d_table[static_cast<size_t>(tokens[row]) * embedding_dim_ + column] +=

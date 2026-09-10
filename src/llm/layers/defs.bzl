@@ -3,7 +3,7 @@
 load("@rules_cuda//cuda:defs.bzl", "cuda_library", "cuda_test")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
-def layer_library(name):
+def layer_library(name, extra_deps = []):
     cuda_library(
         name = name,
         srcs = ["layers/{}.cc".format(name)],
@@ -26,7 +26,7 @@ def layer_library(name):
             "@abseil-cpp//absl/strings",
             "@abseil-cpp//absl/types:span",
             "@cuda//:cuda_runtime",
-        ],
+        ] + extra_deps,
     )
 
 def layer_reference_library(name):

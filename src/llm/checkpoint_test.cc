@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -271,6 +272,27 @@ TEST(CheckpointDirectoryTest, FindsNumericallyLatestStepDirectory) {
   auto trailing = InspectCheckpointDirectory(trailing_separator);
   ASSERT_TRUE(trailing.ok()) << trailing.status();
   EXPECT_EQ(trailing->step, 42);
+}
+
+TEST(CheckpointDirectoryTest, EqualStepsDoNotDependOnDirectoryCreationOrder) {
+  for (bool reversed : {false, true}) {
+    const std::filesystem::path parent =
+        std::filesystem::path(testing::TempDir()) /
+        (reversed ? "checkpoint-aliases-reverse" : "checkpoint-aliases");
+    std::vector<std::string> names{"step_007", "step_07", "step_7", "step_6"};
+    if (reversed) std::reverse(names.begin(), names.end());
+    for (const std::string& name : names) {
+      ASSERT_TRUE(std::filesystem::create_directories(parent / name));
+    }
+    auto latest = FindLatestCheckpoint(parent);
+    ASSERT_TRUE(latest.ok()) << latest.status();
+    EXPECT_EQ(latest->directory, parent / "step_7");
+    // With no canonical spelling, the shortest zero-padded alias wins.
+    ASSERT_TRUE(std::filesystem::remove(parent / "step_7"));
+    latest = FindLatestCheckpoint(parent);
+    ASSERT_TRUE(latest.ok()) << latest.status();
+    EXPECT_EQ(latest->directory, parent / "step_07");
+  }
 }
 
 TEST(CheckpointDirectoryTest, RejectsMissingMalformedAndEmptyParents) {

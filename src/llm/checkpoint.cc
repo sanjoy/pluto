@@ -289,7 +289,17 @@ absl::StatusOr<std::vector<CheckpointInfo>> FindCheckpoints(
   }
   std::sort(checkpoints.begin(), checkpoints.end(),
             [](const CheckpointInfo& left, const CheckpointInfo& right) {
-              return left.step > right.step;
+              if (left.step != right.step) return left.step > right.step;
+              // Leading-zero aliases (step_7, step_07) represent the same
+              // step. Directory enumeration is not ordered: prefer the
+              // shortest spelling, then use lexical order as a total tie
+              // break, including during malformed-checkpoint fallback.
+              const auto left_name = left.directory.filename().native();
+              const auto right_name = right.directory.filename().native();
+              if (left_name.size() != right_name.size()) {
+                return left_name.size() < right_name.size();
+              }
+              return left_name < right_name;
             });
   return checkpoints;
 }

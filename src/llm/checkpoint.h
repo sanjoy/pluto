@@ -21,6 +21,8 @@ absl::StatusOr<CheckpointInfo> InspectCheckpointDirectory(
 
 // Finds the direct child directory named step_N with the numerically largest N.
 // Unrelated entries are ignored. Returns NotFound when no checkpoint exists.
+// Equal-step aliases prefer the fewest leading zeros, then lexical filename
+// order, so filesystem enumeration order never selects the checkpoint.
 absl::StatusOr<CheckpointInfo> FindLatestCheckpoint(
     const std::filesystem::path& parent_directory);
 
@@ -39,7 +41,8 @@ absl::Status ReadFromDirectory(cuda::Executor& executor, Layer& layer,
                                const std::filesystem::path& directory);
 
 // Tries step_N children from newest to oldest and restores the first valid
-// checkpoint. Malformed or concurrently removed candidates invoke
+// checkpoint, using FindLatestCheckpoint's equal-step tie rule. Malformed or
+// concurrently removed candidates invoke
 // on_malformed_checkpoint before the previous step is tried. Other failures,
 // such as an executor mismatch or CUDA error, are returned immediately.
 absl::StatusOr<CheckpointInfo> ReadLatestCheckpoint(

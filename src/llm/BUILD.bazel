@@ -26,6 +26,54 @@ cc_library(
 )
 
 cc_library(
+    name = "sampling",
+    srcs = ["sampling.cc"],
+    hdrs = ["sampling.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "sampling_test",
+    srcs = ["sampling_test.cc"],
+    deps = [
+        ":sampling",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "determinism_test",
+    size = "medium",
+    srcs = ["determinism_test.cc"],
+    copts = ["-std=c++20"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":layer",
+        ":layer_reference_test_util",
+        ":layers",
+        ":optimizer",
+        ":sampling",
+        ":trainer",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "checkpoint",
     srcs = ["checkpoint.cc"],
     hdrs = ["checkpoint.h"],
@@ -94,7 +142,7 @@ cc_library(
 layer_library("attention")
 layer_library("combinators")
 layer_library("cross_entropy_loss")
-layer_library("embedding")
+layer_library("embedding", ["@cuda//:cub"])
 layer_library("fully_connected")
 layer_library("gelu")
 layer_library("norm")
@@ -247,7 +295,10 @@ cc_library(
     ],
 )
 
-layer_test("attention")
+layer_test("attention", [
+    ":attention_reference",
+    ":layer_reference_test_util",
+])
 layer_test("combinators", [
     ":fully_connected",
     "//src/util:status_macros",

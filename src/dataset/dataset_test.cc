@@ -151,6 +151,32 @@ TEST_F(DataSetTest, RandomOrderIsDeterministicAcrossReset) {
   EXPECT_EQ(Inputs(*reset), expected);
 }
 
+TEST_F(DataSetTest, SeededIteratorsAreIndependentAndReplayWholeBatches) {
+  auto corpus = MakePinnedInts(193);
+  std::iota(corpus.begin(), corpus.end(), 0);
+  const InMemoryDataSetOptions options{
+      .batch_size = 32, .context_length = 8,
+      .order = InMemoryDataSetOrder::kRandom, .seed = 987654321};
+  auto first = InMemoryDataSetIterator::Create(*executor_, corpus, options);
+  auto second = InMemoryDataSetIterator::Create(*executor_, corpus, options);
+  auto unrelated = InMemoryDataSetIterator::Create(*executor_, corpus, options);
+  ASSERT_TRUE(first.ok()) << first.status();
+  ASSERT_TRUE(second.ok()) << second.status();
+  ASSERT_TRUE(unrelated.ok()) << unrelated.status();
+  for (int repeat = 0; repeat < 16; ++repeat) {
+    auto a = (*first)->Next();
+    ASSERT_TRUE(a.ok()) << a.status();
+    // Resetting/consuming another iterator must not perturb training's RNG.
+    ASSERT_TRUE((*unrelated)->Reset().ok());
+    ASSERT_TRUE((*unrelated)->Next().ok());
+    ASSERT_TRUE((*unrelated)->Next().ok());
+    auto b = (*second)->Next();
+    ASSERT_TRUE(b.ok()) << b.status();
+    EXPECT_EQ(Inputs(*a), Inputs(*b));
+    EXPECT_EQ(Targets(*a), Targets(*b));
+  }
+}
+
 TEST_F(DataSetTest, RejectsInvalidShapes) {
   const auto corpus = MakePinnedInts(10, 1);
   EXPECT_FALSE(InMemoryDataSetIterator::Create(

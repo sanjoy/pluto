@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <random>
 #include <type_traits>
@@ -503,11 +504,17 @@ __tile_global__ void SparseLossLatentGradientKernel(
   }
 }
 
+// Reduce one feature group exactly once, in a fixed row/input-tile order.
+// Separating this scale from the pointwise decoder gradient avoids repeating
+// both reductions for every input tile. It also avoids expanding a reduced
+// 1x16 tile to 16x16 here: CUDA 13.3's lowering of that mixed-layout broadcast
+// generated out-of-bounds shared-memory writes. The linear scratch has only
+// feature_dim FP32 elements and stays on the executor's stream.
 template <class Activation>
-__tile_global__ void SparseLossDecoderGradientKernel(
+__tile_global__ void SparseLossDecoderScaleKernel(
     const Activation* __restrict__ latents, const float* __restrict__ decoder,
     int rows, int input_dim, int feature_dim, float sparsity_penalty,
-    float* __restrict__ decoder_gradient) {
+    float* __restrict__ decoder_scale) {
   namespace ct = ::cuda::tiles;
   using namespace ct::literals;
   auto latent_view = ct::partition_view{
@@ -516,13 +523,10 @@ __tile_global__ void SparseLossDecoderGradientKernel(
   auto decoder_view = ct::partition_view{
       ct::tensor_span{decoder, ct::extents{input_dim, feature_dim}},
       ct::shape{16_ic, 16_ic}};
-  auto decoder_gradient_view = ct::partition_view{
-      ct::tensor_span{decoder_gradient, ct::extents{input_dim, feature_dim}},
-      ct::shape{16_ic, 16_ic}};
-  const int feature_tiles = feature_dim / internal::kDenseTile;
-  const int block = ct::bid().x;
-  const int input_tile = block / feature_tiles;
-  const int feature_tile = block % feature_tiles;
+  auto scale_view = ct::partition_view{
+      ct::tensor_span{decoder_scale, ct::extents{feature_dim}},
+      ct::shape{16_ic}};
+  const int feature_tile = ct::bid().x;
   auto latent_sum = ct::zeros<ct::tile<float, ct::shape<1, 16>>>();
   for (int row = 0; row < rows; ++row) {
     latent_sum = latent_sum +
@@ -541,11 +545,37 @@ __tile_global__ void SparseLossDecoderGradientKernel(
   // Avoid evaluating 0/0 even in a masked branch. This changes only the
   // denominator for zero columns, whose entries (and gradients) are zero.
   auto safe_norm = ct::select(norm > zero, norm, zero + 1.0f);
-  auto scale = ct::broadcast(sparsity_penalty * latent_sum / safe_norm,
-                             ct::shape{16_ic, 16_ic});
-  decoder_gradient_view.store(
-      decoder_view.load(input_tile, feature_tile) * scale, input_tile,
-      feature_tile);
+  auto scale = sparsity_penalty * latent_sum / safe_norm;
+  scale_view.store(ct::reshape(scale, ct::shape{16_ic}), feature_tile);
+}
+
+// Each program owns 16 adjacent decoder entries. All operands have the same
+// linear layout, so no cross-warp broadcast or shared-memory transpose is
+// needed. A feature group's scale is reused by every decoder row.
+__tile_global__ void SparseLossDecoderGradientKernel(
+    const float* __restrict__ decoder, const float* __restrict__ decoder_scale,
+    int64_t elements, int feature_dim, int grid_blocks,
+    float* __restrict__ decoder_gradient) {
+  namespace ct = ::cuda::tiles;
+  using namespace ct::literals;
+  auto decoder_view = ct::partition_view{
+      ct::tensor_span{decoder, ct::extents{elements}}, ct::shape{16_ic}};
+  auto scale_view = ct::partition_view{
+      ct::tensor_span{decoder_scale, ct::extents{feature_dim}},
+      ct::shape{16_ic}};
+  auto gradient_view = ct::partition_view{
+      ct::tensor_span{decoder_gradient, ct::extents{elements}},
+      ct::shape{16_ic}};
+  // Use 64-bit offsets for tables exceeding INT_MAX elements. The grid-stride
+  // loop also keeps the launch legal when the tile count exceeds CUDA's
+  // signed-32-bit x-grid limit; ownership remains disjoint between programs.
+  const int64_t tiles = elements / internal::kDenseTile;
+  for (int64_t block = ct::bid().x; block < tiles; block += grid_blocks) {
+    const int feature_tile =
+        static_cast<int>(block % (feature_dim / internal::kDenseTile));
+    gradient_view.store(
+        decoder_view.load(block) * scale_view.load(feature_tile), block);
+  }
 }
 
 absl::StatusOr<int> ValidateLossInputs(cuda::Executor& executor,
@@ -1051,6 +1081,10 @@ absl::StatusOr<BufferVec> SparseAutoEncoderLossLayer::bwd(
       auto decoder_gradient,
       Buffer::Allocate(executor, static_cast<size_t>(input_dim_) *
                                      feature_dim_ * sizeof(float)));
+  ASSIGN_OR_RETURN(
+      auto decoder_scale,
+      Buffer::Allocate(executor,
+                       static_cast<size_t>(feature_dim_) * sizeof(float)));
   const int reconstruction_elements = rows * input_dim_;
   if (output_type_ == DataType::BF16) {
     SparseLossReconstructionGradientKernel<__nv_bfloat16>
@@ -1060,13 +1094,12 @@ absl::StatusOr<BufferVec> SparseAutoEncoderLossLayer::bwd(
             static_cast<const __nv_bfloat16*>(tape.intermediates[1].data()),
             reconstruction_elements, static_cast<float*>(input_gradient.data()),
             static_cast<float*>(reconstruction_gradient.data()));
-    SparseLossDecoderGradientKernel<__nv_bfloat16>
-        <<<internal::TileCount(input_dim_) * internal::TileCount(feature_dim_),
-           1, 0, executor.stream()>>>(
+    SparseLossDecoderScaleKernel<__nv_bfloat16>
+        <<<internal::TileCount(feature_dim_), 1, 0, executor.stream()>>>(
             static_cast<const __nv_bfloat16*>(tape.intermediates[2].data()),
             static_cast<const float*>(tape.intermediates[3].data()), rows,
             input_dim_, feature_dim_, sparsity_penalty_,
-            static_cast<float*>(decoder_gradient.data()));
+            static_cast<float*>(decoder_scale.data()));
   } else {
     SparseLossReconstructionGradientKernel<float>
         <<<internal::TileCount(reconstruction_elements), 1, 0,
@@ -1075,14 +1108,23 @@ absl::StatusOr<BufferVec> SparseAutoEncoderLossLayer::bwd(
             static_cast<const float*>(tape.intermediates[1].data()),
             reconstruction_elements, static_cast<float*>(input_gradient.data()),
             static_cast<float*>(reconstruction_gradient.data()));
-    SparseLossDecoderGradientKernel<float>
-        <<<internal::TileCount(input_dim_) * internal::TileCount(feature_dim_),
-           1, 0, executor.stream()>>>(
+    SparseLossDecoderScaleKernel<float>
+        <<<internal::TileCount(feature_dim_), 1, 0, executor.stream()>>>(
             static_cast<const float*>(tape.intermediates[2].data()),
             static_cast<const float*>(tape.intermediates[3].data()), rows,
             input_dim_, feature_dim_, sparsity_penalty_,
-            static_cast<float*>(decoder_gradient.data()));
+            static_cast<float*>(decoder_scale.data()));
   }
+  const int64_t decoder_elements =
+      static_cast<int64_t>(input_dim_) * feature_dim_;
+  const int decoder_blocks = static_cast<int>(
+      std::min<int64_t>(decoder_elements / internal::kDenseTile,
+                        std::numeric_limits<int>::max()));
+  SparseLossDecoderGradientKernel<<<decoder_blocks, 1, 0, executor.stream()>>>(
+      static_cast<const float*>(tape.intermediates[3].data()),
+      static_cast<const float*>(decoder_scale.data()), decoder_elements,
+      feature_dim_, decoder_blocks,
+      static_cast<float*>(decoder_gradient.data()));
   SparseLossLatentGradientKernel<<<internal::TileCount(feature_dim_), 1, 0,
                                    executor.stream()>>>(
       static_cast<const float*>(tape.intermediates[3].data()), rows, input_dim_,

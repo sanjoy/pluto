@@ -33,6 +33,7 @@
 #include "src/llm/layers/cross_entropy_loss.h"
 #include "src/llm/layers/sparse_autoencoder.h"
 #include "src/llm/optimizer.h"
+#include "src/llm/sampling.h"
 #include "src/llm/recipes/gpt2.h"
 #include "src/llm/recipes/gpt2_shakespeare_cli.h"
 #include "src/llm/recipes/sparse_autoencoder_dataset.h"
@@ -91,7 +92,8 @@ ABSL_FLAG(int, seed, 17, "Deterministic initialization and sampling seed");
 ABSL_FLAG(std::string, prompt, "",
           "One inference prompt; empty starts the inference prompt loop");
 ABSL_FLAG(int, generation_tokens, 300, "Tokens generated after each prompt");
-ABSL_FLAG(double, temperature, 0.8, "Sampling temperature");
+ABSL_FLAG(double, temperature, 0.8,
+          "Sampling temperature; zero uses deterministic greedy decoding");
 ABSL_FLAG(int, batch_size, 1,
           "Number of context-length sequences per training/evaluation batch");
 ABSL_FLAG(std::string, log_file, "/tmp/train.log",
@@ -296,12 +298,7 @@ absl::StatusOr<std::string> Generate(
     const Gpt2Tokenizer& tokenizer, const Gpt2Detokenizer& detokenizer,
     std::string prompt, int generation_tokens, double temperature,
     std::mt19937& random, const Buffer& token_buffer) {
-  if (generation_tokens < 0 || !std::isfinite(temperature) ||
-      temperature <= 0.0) {
-    return absl::InvalidArgumentError(
-        "generation_tokens must be non-negative and temperature finite and "
-        "positive");
-  }
+  RETURN_IF_ERROR(ValidateGenerationOptions(generation_tokens, temperature));
   if (prompt.empty()) prompt = "\n";
   ASSIGN_OR_RETURN(auto encoded_prompt, tokenizer.Encode(prompt));
   std::vector<int> context(encoded_prompt.begin(), encoded_prompt.end());
@@ -311,14 +308,8 @@ absl::StatusOr<std::string> Generate(
   for (int index = 0; index < generation_tokens; ++index) {
     ASSIGN_OR_RETURN(auto logits,
                      Predict(executor, config, model, context, token_buffer));
-    const float maximum = *std::max_element(logits.begin(), logits.end());
-    std::vector<double> probabilities(kGpt2VocabularySize);
-    for (int token = 0; token < kGpt2VocabularySize; ++token) {
-      probabilities[token] = std::exp((logits[token] - maximum) / temperature);
-    }
-    std::discrete_distribution<int> sample(probabilities.begin(),
-                                           probabilities.end());
-    const int next = sample(random);
+    ASSIGN_OR_RETURN(const int next,
+                     SelectNextToken(logits.span(), temperature, random));
     context.push_back(next);
     generated.push_back(next);
   }
@@ -731,12 +722,7 @@ absl::Status RunInference(cuda::Executor& executor,
 
   const int generation_tokens = absl::GetFlag(FLAGS_generation_tokens);
   const double temperature = absl::GetFlag(FLAGS_temperature);
-  if (generation_tokens < 0 || !std::isfinite(temperature) ||
-      temperature <= 0.0) {
-    return absl::InvalidArgumentError(
-        "generation_tokens must be non-negative and temperature finite and "
-        "positive");
-  }
+  RETURN_IF_ERROR(ValidateGenerationOptions(generation_tokens, temperature));
 
   const ModelConfig config{.batch_size = 1};
   RETURN_IF_ERROR(config.Validate());
@@ -749,7 +735,10 @@ absl::Status RunInference(cuda::Executor& executor,
   std::cout << "loaded checkpoint: " << checkpoint.directory.string()
             << " (step " << checkpoint.step << ")\n";
 
-  std::mt19937 random(absl::GetFlag(FLAGS_seed) + 1);
+  // Offset in the engine's unsigned type: an INT_MAX CLI seed must not cause
+  // signed overflow before conversion to the generator's seed type.
+  std::mt19937 random(
+      static_cast<std::mt19937::result_type>(absl::GetFlag(FLAGS_seed)) + 1);
   const std::string one_shot_prompt = absl::GetFlag(FLAGS_prompt);
   if (!one_shot_prompt.empty()) {
     ASSIGN_OR_RETURN(auto completion,

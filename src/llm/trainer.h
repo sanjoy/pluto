@@ -40,6 +40,9 @@ struct TrainingOptions {
   // checking the deadline, so a timeout always leaves completed weights.
   // Final evaluation after detecting a timeout is outside the budget. An
   // absent budget preserves the usual asynchronous update scheduling.
+  // Wall-clock stopping cannot guarantee the same final step on repeated
+  // runs. For byte-identical final weights, use max_steps without a time
+  // budget; fixed-seed trajectories remain reproducible at matching steps.
   std::optional<double> training_seconds;
 
   // When stop_loss or evaluation_callback is enabled, run an evaluation at

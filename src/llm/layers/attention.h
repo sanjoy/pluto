@@ -12,7 +12,8 @@ namespace pluto::llm {
 // by a d_model -> 3*d_model projection. It streams visible keys/values and
 // maintains FP32 online-softmax statistics without materializing the quadratic
 // attention matrix. Backward recomputes probabilities and emits packed FP32
-// dQ/dK/dV gradients.
+// dQ/dK/dV gradients with fixed-order, single-writer reductions. Backward uses
+// three FP32 statistics per row/head and no floating-point atomic additions.
 class AttentionLayer final : public Layer {
  public:
   static absl::StatusOr<std::unique_ptr<AttentionLayer>> Create(

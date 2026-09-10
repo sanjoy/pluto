@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cub/device/device_radix_sort.cuh>
 #include <memory>
 #include <random>
 #include <type_traits>
@@ -54,26 +55,62 @@ __tile_global__ void EmbeddingForwardKernel(const int* __restrict__ tokens,
       width_tile);
 }
 
-__tile_global__ void EmbeddingBackwardKernel(
-    const int* __restrict__ tokens, const float* __restrict__ output_gradient,
-    int rows, int embedding_dim, float* __restrict__ table_gradient) {
+// The low bits make every key unique: radix sorting groups equal tokens and
+// puts their contributions in input-row order, independently of GPU scheduling.
+__tile_global__ void EmbeddingRowKeysKernel(const int* __restrict__ tokens,
+                                            int rows, uint64_t* keys) {
   namespace ct = ::cuda::tiles;
   using namespace ct::literals;
   auto token_view = ct::partition_view{
       ct::tensor_span{tokens, ct::extents{rows}}, ct::shape{1_ic}};
+  auto key_view = ct::partition_view{ct::tensor_span{keys, ct::extents{rows}},
+                                     ct::shape{1_ic}};
+  const int row = ct::bid().x;
+  const int token = static_cast<int>(token_view.load(row));
+  key_view.store(
+      ct::full<ct::tile<uint64_t, ct::shape<1>>>(
+          (static_cast<uint64_t>(token) << 32) | static_cast<uint64_t>(row)),
+      row);
+}
+
+__tile_global__ void EmbeddingBackwardKernel(
+    const uint64_t* __restrict__ sorted_keys,
+    const float* __restrict__ output_gradient, int rows, int padded_vocab_size,
+    int embedding_dim, float* __restrict__ table_gradient) {
+  namespace ct = ::cuda::tiles;
+  using namespace ct::literals;
+  auto key_view = ct::partition_view{
+      ct::tensor_span{sorted_keys, ct::extents{rows}}, ct::shape{1_ic}};
   auto gradient_view = ct::partition_view{
       ct::tensor_span{output_gradient, ct::extents{rows, embedding_dim}},
       ct::shape{1_ic, 16_ic}};
+  auto table_view = ct::partition_view{
+      ct::tensor_span{table_gradient,
+                      ct::extents{padded_vocab_size, embedding_dim}},
+      ct::shape{1_ic, 16_ic}};
   const int width_tiles = embedding_dim / internal::kDenseTile;
   const int block = ct::bid().x;
-  const int row = block / width_tiles;
+  const int start = block / width_tiles;
   const int width_tile = block % width_tiles;
-  const int token = static_cast<int>(token_view.load(row));
-  auto offsets = ct::iota<ct::tile<int, ct::shape<1, 16>>>() +
-                 width_tile * internal::kDenseTile;
-  auto pointers = table_gradient + token * embedding_dim + offsets;
-  ct::atomic_add<ct::memory_order::relaxed>(
-      pointers, gradient_view.load(row, width_tile));
+  const uint64_t key = static_cast<uint64_t>(key_view.load(start));
+  const uint64_t token = key >> 32;
+  if (token >= static_cast<uint64_t>(padded_vocab_size)) return;
+  if (start > 0 &&
+      (static_cast<uint64_t>(key_view.load(start - 1)) >> 32) == token)
+    return;
+
+  // Only the first row of each segment owns its table tile. Start from the
+  // existing gradient, which may already contain the tied LM head's gradient.
+  // A floating-point atomic scatter is not equivalent: its addition order
+  // changes with scheduling and can perturb every subsequent optimizer step.
+  auto accumulator = table_view.load(static_cast<int>(token), width_tile);
+  for (int index = start; index < rows; ++index) {
+    const uint64_t next = static_cast<uint64_t>(key_view.load(index));
+    if ((next >> 32) != token) break;
+    const int row = static_cast<int>(next & 0xffffffffULL);
+    accumulator = accumulator + gradient_view.load(row, width_tile);
+  }
+  table_view.store(accumulator, static_cast<int>(token), width_tile);
 }
 
 template <class Activation>
@@ -231,16 +268,24 @@ __tile_global__ void PositionEmbeddingBackwardKernel(
   auto gradient_view = ct::partition_view{
       ct::tensor_span{output_gradient, ct::extents{rows, embedding_dim}},
       ct::shape{1_ic, 16_ic}};
+  auto position_view = ct::partition_view{
+      ct::tensor_span{position_gradient,
+                      ct::extents{context_length, embedding_dim}},
+      ct::shape{1_ic, 16_ic}};
   const int width_tiles = embedding_dim / internal::kDenseTile;
   const int block = ct::bid().x;
-  const int row = block / width_tiles;
+  const int position = block / width_tiles;
   const int width_tile = block % width_tiles;
-  auto offsets = ct::iota<ct::tile<int, ct::shape<1, 16>>>() +
-                 width_tile * internal::kDenseTile;
-  auto pointers =
-      position_gradient + (row % context_length) * embedding_dim + offsets;
-  ct::atomic_add<ct::memory_order::relaxed>(
-      pointers, gradient_view.load(row, width_tile));
+  // One writer per position/width tile, with a fixed sequence-row order.
+  // Unvisited positions stay untouched, including for a partial context.
+  auto accumulator = position_view.load(position, width_tile);
+  // Use a wider loop counter: the final stride may exceed INT_MAX even
+  // though every visited row fits the validated int-sized input.
+  for (int64_t row = position; row < rows; row += context_length) {
+    accumulator =
+        accumulator + gradient_view.load(static_cast<int>(row), width_tile);
+  }
+  position_view.store(accumulator, position, width_tile);
 }
 
 absl::Status CopyNormalInitialization(cuda::Executor& executor, Buffer& weight,
@@ -373,11 +418,37 @@ absl::StatusOr<BufferVec> EmbeddingLookupLayer::bwd(
       executor, output_gradients[0],
       static_cast<size_t>(rows) * embedding_dim_ * sizeof(float),
       "embedding output gradient"));
+  // Sorting integer keys is deterministic and uses only linear scratch space.
+  // All scratch is stream-ordered; no host transfer or synchronization is
+  // needed.
+  ASSIGN_OR_RETURN(
+      auto keys,
+      Buffer::Allocate(executor, static_cast<size_t>(rows) * sizeof(uint64_t)));
+  ASSIGN_OR_RETURN(
+      auto sorted_keys,
+      Buffer::Allocate(executor, static_cast<size_t>(rows) * sizeof(uint64_t)));
+  auto* keys_ptr = static_cast<uint64_t*>(keys.data());
+  auto* sorted_ptr = static_cast<uint64_t*>(sorted_keys.data());
+  size_t sort_bytes = 0;
+  RETURN_IF_ERROR(cuda::CudaStatus(
+      cub::DeviceRadixSort::SortKeys(nullptr, sort_bytes, keys_ptr, sorted_ptr,
+                                     rows, 0, 64, executor.stream()),
+      "query embedding sort scratch"));
+  ASSIGN_OR_RETURN(auto scratch, Buffer::Allocate(executor, sort_bytes));
+  EmbeddingRowKeysKernel<<<rows, 1, 0, executor.stream()>>>(
+      static_cast<const int*>(tape.intermediates[0].data()), rows, keys_ptr);
+  RETURN_IF_ERROR(
+      cuda::CudaStatus(cudaGetLastError(), "EmbeddingRowKeysKernel launch"));
+  RETURN_IF_ERROR(cuda::CudaStatus(
+      cub::DeviceRadixSort::SortKeys(scratch.data(), sort_bytes, keys_ptr,
+                                     sorted_ptr, rows, 0, 64,
+                                     executor.stream()),
+      "sort embedding rows"));
   EmbeddingBackwardKernel<<<rows * internal::TileCount(embedding_dim_), 1, 0,
                             executor.stream()>>>(
-      static_cast<const int*>(tape.intermediates[0].data()),
-      static_cast<const float*>(output_gradients[0].data()), rows,
-      embedding_dim_, static_cast<float*>(gradient_.data()));
+      sorted_ptr, static_cast<const float*>(output_gradients[0].data()), rows,
+      padded_vocab_size_, embedding_dim_,
+      static_cast<float*>(gradient_.data()));
   RETURN_IF_ERROR(
       cuda::CudaStatus(cudaGetLastError(), "EmbeddingBackwardKernel launch"));
   return BufferVec{};
@@ -589,7 +660,8 @@ absl::StatusOr<BufferVec> PositionEmbeddingLayer::bwd(
   ASSIGN_OR_RETURN(int rows, internal::MatrixRows(
                                  executor, output_gradients[0], embedding_dim_,
                                  "position-embedding output gradient"));
-  PositionEmbeddingBackwardKernel<<<rows * internal::TileCount(embedding_dim_),
+  PositionEmbeddingBackwardKernel<<<std::min(rows, context_length_) *
+                                        internal::TileCount(embedding_dim_),
                                     1, 0, executor.stream()>>>(
       static_cast<const float*>(output_gradients[0].data()), rows,
       context_length_, embedding_dim_, static_cast<float*>(gradient_.data()));

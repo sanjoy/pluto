@@ -19,7 +19,7 @@ TEST_F(LayerReferenceTest,
   for (DataType type : {DataType::FP16, DataType::BF16}) {
     for (const auto [rows, input_dim, feature_dim] :
          {std::tuple{16, 16, 16}, std::tuple{32, 16, 32},
-          std::tuple{16, 32, 16}}) {
+          std::tuple{16, 32, 16}, std::tuple{48, 32, 96}}) {
       SCOPED_TRACE(testing::Message()
                    << "type=" << static_cast<int>(type) << " rows=" << rows
                    << " input=" << input_dim << " features=" << feature_dim);

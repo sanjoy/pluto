@@ -38,6 +38,28 @@ DataType::FP16 remains a compatibility path with FP32 activation storage and
 FP16 matrix-multiply operands. DataType::FP8 is deliberately unimplemented
 until an explicit scaling policy exists.
 
+## Reproducibility
+
+Training and inference are deterministic on the same GPU architecture, build,
+CUDA/compiler runtime, and C++ standard library. Replaying the same seed,
+input data, configuration, and starting state produces bit-identical weights
+at matching optimizer steps. This applies to BF16 and the legacy FP16 path,
+including SAE training. See [DETERMINISM.md](DETERMINISM.md) for the audit,
+regression tests, and implementation details.
+
+For reproducible final weights, use `--steps=N` without `--training_seconds`:
+a wall-clock budget can stop at different steps on different runs. Checkpoints
+currently contain weights, not optimizer or iterator state; two identical
+warm-start runs replay, but resuming is not equivalent to uninterrupted
+training. Keep evaluation cadence, corpus split, and all other options fixed.
+
+Inference supports all finite nonnegative temperatures. `--temperature=0`
+selects the largest logit, breaking ties by lowest token ID, without consuming
+random numbers. Positive temperatures use the seeded sampling generator. The
+interactive prompt loop retains that generator across prompts: reproduce the
+entire prompt sequence, or use a fresh `--prompt=...` invocation for independent
+replays. Timestamps and elapsed-time logs naturally differ between runs.
+
 ## Layer organization
 
 Reusable layer families live under src/llm/layers: embedding and the tied LM

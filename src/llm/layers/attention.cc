@@ -74,12 +74,15 @@ __tile_global__ void FlashAttentionForwardKernel(
                     head_tile_start + output_tile);
 }
 
+// Query-owned reduction: each block owns 16 dQ components and visits keys in
+// ascending order. Only output tile zero writes this row/head's softmax and
+// backward statistics; the following kernel reads them on the same stream.
 template <class Activation>
-__tile_global__ void FlashAttentionBackwardKernel(
+__tile_global__ void FlashAttentionQueryBackwardKernel(
     const Activation* __restrict__ qkv, const Activation* __restrict__ output,
     const float* __restrict__ output_gradient, int rows, int context_length,
     int num_heads, int embedding_dim, float scale,
-    float* __restrict__ qkv_gradient) {
+    float* __restrict__ qkv_gradient, float* __restrict__ row_statistics) {
   namespace ct = ::cuda::tiles;
   using namespace ct::literals;
   auto qkv_view = ct::partition_view{
@@ -91,9 +94,14 @@ __tile_global__ void FlashAttentionBackwardKernel(
   auto gradient_view = ct::partition_view{
       ct::tensor_span{output_gradient, ct::extents{rows, embedding_dim}},
       ct::shape{1_ic, 16_ic}};
+  auto qkv_gradient_view = ct::partition_view{
+      ct::tensor_span{qkv_gradient, ct::extents{rows, 3 * embedding_dim}},
+      ct::shape{1_ic, 16_ic}};
+  auto statistics_view = ct::partition_view{
+      ct::tensor_span{row_statistics, ct::extents{rows * num_heads, 3}},
+      ct::shape{1_ic, 1_ic}};
 
   const int dimension_tiles = embedding_dim / internal::kDenseTile;
-  const int packed_dimension = 3 * embedding_dim;
   const int head_dimension = embedding_dim / num_heads;
   const int head_tiles = head_dimension / internal::kDenseTile;
   const int block = ct::bid().x;
@@ -133,14 +141,15 @@ __tile_global__ void FlashAttentionBackwardKernel(
                  ct::exp(score - new_maximum);
     maximum = new_maximum;
   }
+  if (output_tile == 0) {
+    const int statistics_row = row * num_heads + head;
+    statistics_view.store(maximum, statistics_row, 0);
+    statistics_view.store(normalizer, statistics_row, 1);
+    statistics_view.store(delta, statistics_row, 2);
+  }
 
   const int tile = head_tile_start + output_tile;
-  auto lane_offsets =
-      ct::iota<ct::tile<int, ct::shape<1, 16>>>() + tile * internal::kDenseTile;
-  auto query_gradient_pointers =
-      qkv_gradient + row * packed_dimension + lane_offsets;
-  auto query = ct::element_cast<float>(qkv_view.load(row, tile));
-  auto d_output = gradient_view.load(row, tile);
+  auto query_gradient = ct::zeros<ct::tile<float, ct::shape<1, 16>>>();
   for (int key_position = 0; key_position <= query_position; ++key_position) {
     const int key_row = sequence_start + key_position;
     auto score = ct::zeros<ct::tile<float, ct::shape<1, 1>>>();
@@ -165,17 +174,86 @@ __tile_global__ void FlashAttentionBackwardKernel(
     auto d_score = probability * (d_probability - delta);
     auto key =
         ct::element_cast<float>(qkv_view.load(key_row, dimension_tiles + tile));
-    auto key_gradient_pointers = qkv_gradient + key_row * packed_dimension +
-                                 embedding_dim + lane_offsets;
-    auto value_gradient_pointers = qkv_gradient + key_row * packed_dimension +
-                                   2 * embedding_dim + lane_offsets;
-    ct::atomic_add<ct::memory_order::relaxed>(query_gradient_pointers,
-                                              d_score * key * scale);
-    ct::atomic_add<ct::memory_order::relaxed>(key_gradient_pointers,
-                                              d_score * query * scale);
-    ct::atomic_add<ct::memory_order::relaxed>(value_gradient_pointers,
-                                              probability * d_output);
+    query_gradient = query_gradient + d_score * key * scale;
   }
+  qkv_gradient_view.store(query_gradient, row, tile);
+}
+
+// Key-owned reduction: each block owns 16 dK and dV components, gathers all
+// visible queries in ascending order, and stores once. Recomputing the pair's
+// score avoids quadratic partial-gradient storage and unordered FP32 atomics.
+template <class Activation>
+__tile_global__ void FlashAttentionKeyValueBackwardKernel(
+    const Activation* __restrict__ qkv,
+    const float* __restrict__ output_gradient,
+    const float* __restrict__ row_statistics, int rows, int context_length,
+    int num_heads, int embedding_dim, float scale,
+    float* __restrict__ qkv_gradient) {
+  namespace ct = ::cuda::tiles;
+  using namespace ct::literals;
+  auto qkv_view = ct::partition_view{
+      ct::tensor_span{qkv, ct::extents{rows, 3 * embedding_dim}},
+      ct::shape{1_ic, 16_ic}};
+  auto gradient_view = ct::partition_view{
+      ct::tensor_span{output_gradient, ct::extents{rows, embedding_dim}},
+      ct::shape{1_ic, 16_ic}};
+  auto statistics_view = ct::partition_view{
+      ct::tensor_span{row_statistics, ct::extents{rows * num_heads, 3}},
+      ct::shape{1_ic, 1_ic}};
+  auto qkv_gradient_view = ct::partition_view{
+      ct::tensor_span{qkv_gradient, ct::extents{rows, 3 * embedding_dim}},
+      ct::shape{1_ic, 16_ic}};
+
+  const int dimension_tiles = embedding_dim / internal::kDenseTile;
+  const int head_dimension = embedding_dim / num_heads;
+  const int head_tiles = head_dimension / internal::kDenseTile;
+  const int block = ct::bid().x;
+  const int output_tile = block % head_tiles;
+  const int row_and_head = block / head_tiles;
+  const int key_row = row_and_head / num_heads;
+  const int head = row_and_head % num_heads;
+  const int sequence_start = (key_row / context_length) * context_length;
+  const int key_position = key_row % context_length;
+  const int head_tile_start = head * head_tiles;
+  const int tile = head_tile_start + output_tile;
+  auto key_gradient = ct::zeros<ct::tile<float, ct::shape<1, 16>>>();
+  auto value_gradient = ct::zeros<ct::tile<float, ct::shape<1, 16>>>();
+
+  for (int query_position = key_position; query_position < context_length;
+       ++query_position) {
+    const int query_row = sequence_start + query_position;
+    auto score = ct::zeros<ct::tile<float, ct::shape<1, 1>>>();
+    auto d_probability = ct::zeros<ct::tile<float, ct::shape<1, 1>>>();
+    for (int dimension_tile = 0; dimension_tile < head_tiles;
+         ++dimension_tile) {
+      const int full_tile = head_tile_start + dimension_tile;
+      score =
+          score +
+          ct::sum(ct::element_cast<float>(qkv_view.load(query_row, full_tile)) *
+                      ct::element_cast<float>(
+                          qkv_view.load(key_row, dimension_tiles + full_tile)),
+                  1_ic);
+      d_probability =
+          d_probability +
+          ct::sum(gradient_view.load(query_row, full_tile) *
+                      ct::element_cast<float>(qkv_view.load(
+                          key_row, 2 * dimension_tiles + full_tile)),
+                  1_ic);
+    }
+    score = score * scale;
+    const int statistics_row = query_row * num_heads + head;
+    auto maximum = statistics_view.load(statistics_row, 0);
+    auto normalizer = statistics_view.load(statistics_row, 1);
+    auto delta = statistics_view.load(statistics_row, 2);
+    auto probability = ct::exp(score - maximum) / normalizer;
+    auto d_score = probability * (d_probability - delta);
+    auto query = ct::element_cast<float>(qkv_view.load(query_row, tile));
+    key_gradient = key_gradient + d_score * query * scale;
+    value_gradient =
+        value_gradient + probability * gradient_view.load(query_row, tile);
+  }
+  qkv_gradient_view.store(key_gradient, key_row, dimension_tiles + tile);
+  qkv_gradient_view.store(value_gradient, key_row, 2 * dimension_tiles + tile);
 }
 
 }  // namespace
@@ -252,6 +330,10 @@ absl::StatusOr<BufferVec> AttentionLayer::bwd(
   ASSIGN_OR_RETURN(int rows, internal::MatrixRows(executor, output_gradients[0],
                                                   embedding_dim_,
                                                   "attention output gradient"));
+  if (rows % context_length_ != 0) {
+    return absl::InvalidArgumentError(
+        "attention gradient rows must be divisible by context_length");
+  }
   RETURN_IF_ERROR(internal::ValidateBuffer(
       executor, tape.intermediates[0],
       static_cast<size_t>(rows) * 3 * embedding_dim_ *
@@ -266,31 +348,55 @@ absl::StatusOr<BufferVec> AttentionLayer::bwd(
       auto qkv_gradient,
       Buffer::Allocate(executor, static_cast<size_t>(rows) * 3 *
                                      embedding_dim_ * sizeof(float)));
-  RETURN_IF_ERROR(cuda::CudaStatus(
-      cudaMemsetAsync(qkv_gradient.data(), 0, qkv_gradient.size_bytes(),
-                      executor.stream()),
-      "cudaMemsetAsync(attention Q/K/V gradient)"));
+  // All gradient components are written exactly once by one of the two
+  // kernels. The only workspace is (maximum, normalizer, delta) per row/head.
+  ASSIGN_OR_RETURN(
+      auto row_statistics,
+      Buffer::Allocate(executor, static_cast<size_t>(rows) * num_heads_ * 3 *
+                                     sizeof(float)));
   const int head_dimension = embedding_dim_ / num_heads_;
   const int blocks = rows * num_heads_ * internal::TileCount(head_dimension);
   const float scale = 1.0f / std::sqrt(static_cast<float>(head_dimension));
   if (output_type_ == DataType::BF16) {
-    FlashAttentionBackwardKernel<__nv_bfloat16>
+    FlashAttentionQueryBackwardKernel<__nv_bfloat16>
         <<<blocks, 1, 0, executor.stream()>>>(
             static_cast<const __nv_bfloat16*>(tape.intermediates[0].data()),
             static_cast<const __nv_bfloat16*>(tape.intermediates[1].data()),
             static_cast<const float*>(output_gradients[0].data()), rows,
             context_length_, num_heads_, embedding_dim_, scale,
-            static_cast<float*>(qkv_gradient.data()));
+            static_cast<float*>(qkv_gradient.data()),
+            static_cast<float*>(row_statistics.data()));
   } else {
-    FlashAttentionBackwardKernel<float><<<blocks, 1, 0, executor.stream()>>>(
-        static_cast<const float*>(tape.intermediates[0].data()),
-        static_cast<const float*>(tape.intermediates[1].data()),
-        static_cast<const float*>(output_gradients[0].data()), rows,
-        context_length_, num_heads_, embedding_dim_, scale,
-        static_cast<float*>(qkv_gradient.data()));
+    FlashAttentionQueryBackwardKernel<float>
+        <<<blocks, 1, 0, executor.stream()>>>(
+            static_cast<const float*>(tape.intermediates[0].data()),
+            static_cast<const float*>(tape.intermediates[1].data()),
+            static_cast<const float*>(output_gradients[0].data()), rows,
+            context_length_, num_heads_, embedding_dim_, scale,
+            static_cast<float*>(qkv_gradient.data()),
+            static_cast<float*>(row_statistics.data()));
   }
   RETURN_IF_ERROR(cuda::CudaStatus(cudaGetLastError(),
-                                   "FlashAttentionBackwardKernel launch"));
+                                   "FlashAttentionQueryBackwardKernel launch"));
+  if (output_type_ == DataType::BF16) {
+    FlashAttentionKeyValueBackwardKernel<__nv_bfloat16>
+        <<<blocks, 1, 0, executor.stream()>>>(
+            static_cast<const __nv_bfloat16*>(tape.intermediates[0].data()),
+            static_cast<const float*>(output_gradients[0].data()),
+            static_cast<const float*>(row_statistics.data()), rows,
+            context_length_, num_heads_, embedding_dim_, scale,
+            static_cast<float*>(qkv_gradient.data()));
+  } else {
+    FlashAttentionKeyValueBackwardKernel<float>
+        <<<blocks, 1, 0, executor.stream()>>>(
+            static_cast<const float*>(tape.intermediates[0].data()),
+            static_cast<const float*>(output_gradients[0].data()),
+            static_cast<const float*>(row_statistics.data()), rows,
+            context_length_, num_heads_, embedding_dim_, scale,
+            static_cast<float*>(qkv_gradient.data()));
+  }
+  RETURN_IF_ERROR(cuda::CudaStatus(
+      cudaGetLastError(), "FlashAttentionKeyValueBackwardKernel launch"));
   return BufferVec{std::move(qkv_gradient)};
 }
 
