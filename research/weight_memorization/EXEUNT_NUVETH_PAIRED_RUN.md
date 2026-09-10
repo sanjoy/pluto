@@ -1,7 +1,8 @@
 # Exeunt / Nuveth paired run — September 10, 2026
 
-Status: **original arm complete; replacement arm running; no final paired
-analysis yet**. The supervisor started at
+Status: **original arm complete; replacement arm running; matched-step weight
+comparisons available through step 300; final behavioral analysis pending**.
+The supervisor started at
 2026-09-10 02:10:40 UTC. It first creates the shared initialization and runs
 three short controls, then trains the original and replacement arms for four
 hours each, sequentially on the GH200. Check authoritative `state.json` and
@@ -327,3 +328,20 @@ postprocessor was still live and waiting. The second four-hour endpoint,
 long-run matched-step weight comparisons, native behavioral scores, and
 preselected bidirectional row patches are still pending. Expected training
 completion is around 10:20 UTC, followed by analysis.
+
+## Matched-step comparisons available while replacement finishes
+
+At 09:58 UTC the replacement trainer, supervisor, and waiting postprocessor
+were verified live; no analysis workload was using the GPU. Replacement
+checkpoints 100, 200, and 300 are complete and finite. Their training losses
+are 5.32332, 4.96383, and 4.66770, respectively. Both step_0 copies still match
+the shared initialization, all 24 manifest-listed frozen files rehash
+correctly, and replaying the CPU sampler reproduces all 10,000 preserved
+starts. Current relevant training source matches recorded commit `5d9211f`.
+
+Read-only full-weight comparisons at steps 100, 200, and 300 now exist under
+`analysis/matched_step_N.json`, plus `analysis/matched_token_rows.json`.
+The main interim finding is a clearly ranked lexical signal inside a much
+broader training-trajectory difference. See `EXEUNT_NUVETH_PAIRED_RESULTS.md`
+for the numbers and interpretation limits. No final endpoint comparison or
+native behavioral scoring has yet occurred.
