@@ -113,3 +113,32 @@ The original four-hour arm started its training budget at **02:17:30 UTC**.
 Final steps, elapsed times, losses, long-run weight comparisons, and behavioral
 results remain to be measured. Raw weight deltas alone will not be described
 as a localized word memory.
+
+## Frozen behavioral tests
+
+Before any final-model scoring, prepared 160 cases in `word_cases/`:
+16 word contexts from training and 16 from test, each crossed with both native
+prefix versions and both candidate words (128 cases), plus 16 unchanged
+three-token control continuations per split (32 cases). Both native word
+tokenization variants are represented in each split. Contexts were selected
+using only corpus data and seed 17, not model predictions.
+
+Prefixes use up to 128 preceding native tokens and reset positions to zero.
+The three teacher-forced conditional probabilities are measured at temperature
+1 and multiplied in log space. No following delimiter is scored, so this is
+the probability of a particular three-token spelling, not a universal measure
+of complete-word generation or training-set memorization.
+
+Code commits: `276a9d5` adds the native read-only scorer; `3ece9f1` adds the
+case preparation and score summaries. All 59 CPU experiment/sampler tests
+pass. The native scorer's optimized build and pre-CUDA rejection checks pass;
+its real GPU evaluation is deliberately deferred until both training arms end.
+
+Frozen packed inputs SHA-256 (1,310,720 bytes):
+`1ae973d97c703df6a1c803f6d947ead56658607cbe820a5cd828ad1abbb9dd6e`.
+
+Frozen scorer SHA-256:
+`d7a755565f776c330b6070442bc01546d321f35516c16b23fd090aa458765330`.
+
+`word_evaluation_provenance.json` records canonical paths and all case/scorer
+hashes. The actual score dumps do not exist yet.
