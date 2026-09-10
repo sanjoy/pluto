@@ -268,3 +268,18 @@ For the 31 controls with no selected prefix or target token, hidden states at
 all three scored positions likewise remain unchanged; their probabilities can
 still move because changed alternative-token logits alter the denominator.
 These are architectural consequences, not yet measured patch results.
+
+## Third periodic checkpoint: original arm, step 300
+
+Saved `original/checkpoints/step_300` at **05:43:38 UTC**. The fixed four-batch
+training loss at **05:43:46 UTC** was **4.66297**, compared with 4.96954 at
+step 200. About 34 minutes of the four-hour budget remained at this point.
+
+CPU-only validation found all 100 expected files correctly sized and all
+51,483,648 FP32 parameters finite. FP64 weight L2 norm:
+`221.37128140627962`. The files and directory were unchanged during the audit.
+Aggregate SHA-256, using the previously defined filename/hash convention:
+`2b8ed8b358a62c8024405109a6e5751acc510122e453e1c6f886505cb9deeece`.
+
+The original trainer, supervisor, and waiting postprocessor were still live.
+The replacement run and all long-run paired comparisons remained pending.
