@@ -237,3 +237,34 @@ as step 100:
 
 The original trainer, supervisor, and waiting postprocessor remained live.
 No GPU analysis was launched and no weight files were modified or deleted.
+
+## Frozen-case overlap audit for the nine-row patch
+
+A CPU-only audit rechecked the frozen case-file and packed-input hashes, plus
+each prefix hash and target alignment. **All 32 distinct word contexts have
+identical original/replacement prefix token arrays** in this selected sample.
+The two recorded prefix-domain conditions must therefore not be counted as
+independent evidence or as coverage of changed prefixes. Keep the frozen cases;
+report the 16 distinct contexts per split and check duplicate-condition results
+for consistency rather than manufacturing extra sample size.
+
+| Cases | Distinct contexts | Prefix contains a patched ID | Target contains a patched ID |
+| --- | ---: | ---: | ---: |
+| Training word contexts, either prefix domain | 16 | 0 | All word candidates |
+| Test word contexts, either prefix domain | 16 | 3 | All word candidates |
+| Training controls | 16 | 1 | 0 |
+| Test controls | 16 | 0 | 0 |
+
+The three test word prefixes intersect rows 45 (`N`) and/or 400 (`th`). The one
+overlapping training control is case 68, `training:control:445853`, whose prefix
+contains row 2797 (`unt`), without containing an edited Exeunt occurrence.
+
+Interpretation for a row-only patch with every other weight fixed: on the 29
+word contexts without a selected prefix token, hidden states for the **first**
+word prediction are mathematically unchanged, so its probability changes come
+from the tied output-head rows and softmax normalization. Later teacher-forced
+word predictions can also change through their patched input-token embeddings.
+For the 31 controls with no selected prefix or target token, hidden states at
+all three scored positions likewise remain unchanged; their probabilities can
+still move because changed alternative-token logits alter the denominator.
+These are architectural consequences, not yet measured patch results.
