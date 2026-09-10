@@ -221,3 +221,19 @@ Commit `bf472c9` fixes the first long-run causal check to bidirectional transfer
 of the nine word-token embedding rows at the latest common positive step,
 using the frozen cases. It also explicitly retains the earlier common-step
 weight comparisons from the original protocol. Neither has been run yet.
+
+## Second periodic checkpoint: original arm, step 200
+
+Saved `original/checkpoints/step_200` at **04:34:53 UTC**; the fixed four-batch
+training loss at **04:35:00 UTC** was **4.96954** (step 100: 5.32169).
+This remains a training-only progress report, not a paired-corpus comparison.
+
+CPU validation again found exactly 100 correctly sized files containing
+51,483,648 finite FP32 parameters (205,934,592 bytes). FP64 weight L2 norm:
+`188.5169101379556`. Directory/file stat identities were unchanged during
+validation. Aggregate SHA-256, using the same filename/hash-record convention
+as step 100:
+`464017f2a3263d518fadd14dd9609dd3f0dd13b34e42d5ca2fac2ad500d8de84`.
+
+The original trainer, supervisor, and waiting postprocessor remained live.
+No GPU analysis was launched and no weight files were modified or deleted.
