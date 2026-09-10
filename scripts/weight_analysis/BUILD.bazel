@@ -4,6 +4,11 @@ load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("@rules_cuda//cuda:defs.bzl", "cuda_library")
 
 cc_binary(
+    name = "replay_sampler",
+    srcs = ["replay_sampler.cc"],
+)
+
+cc_binary(
     name = "tokenize_corpus",
     srcs = ["tokenize_corpus.cc"],
     deps = [
