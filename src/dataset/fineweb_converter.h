@@ -18,10 +18,10 @@ struct FineWebConversionOptions {
 // Projects the text column from a FineWeb Parquet shard, encodes each document
 // with the supplied tokenizer, and writes a tokenized-document file. The output
 // is published atomically, so an error cannot leave a file that looks complete.
-absl::Status ConvertFineWebParquetFile(
-    cuda::Executor& executor, const std::filesystem::path& input_path,
-    const std::filesystem::path& output_path,
-    const tokenizer::Gpt2Tokenizer& tokenizer,
-    FineWebConversionOptions options = {});
+absl::Status ConvertFineWebParquetFile(cuda::Executor& executor,
+                                       const std::filesystem::path& input_path,
+                                       const std::filesystem::path& output_path,
+                                       const tokenizer::Tokenizer& tokenizer,
+                                       FineWebConversionOptions options = {});
 
 }  // namespace pluto::tokenized

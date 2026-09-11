@@ -17,7 +17,7 @@
 #include "absl/strings/str_cat.h"
 #include "src/cuda/executor.h"
 #include "src/dataset/fineweb_converter.h"
-#include "src/dataset/tokenizer.h"
+#include "src/dataset/gpt2_tokenizer.h"
 #include "src/util/status_macros.h"
 
 ABSL_FLAG(std::string, input_dir, "",

@@ -20,6 +20,8 @@
 #include "src/cuda/buffer.h"
 #include "src/cuda/executor.h"
 #include "src/cuda/page_locked_host_array.h"
+#include "src/dataset/gpt2_tokenizer.h"
+#include "src/dataset/plain_text_tokenizer.h"
 #include "src/dataset/tokenizer.h"
 
 namespace pluto {
@@ -450,6 +452,60 @@ TEST_F(DataSetTest, TokenizesMappedCorpusIntoSequentialDataset) {
             std::vector<int>(expected->begin(), expected->begin() + 4));
   EXPECT_EQ(Targets(*batch),
             std::vector<int>(expected->begin() + 1, expected->begin() + 5));
+}
+
+TEST_F(DataSetTest, PlainTextBaseInterfaceCreatesShiftedGpuBatches) {
+  // Include NUL and a non-UTF-8 byte: this path must dispatch to the supplied
+  // byte tokenizer, not assume that every corpus uses GPT-2 tokenization.
+  const std::string text(
+      "ab\0cd\xff"
+      "efghi",
+      11);
+  const auto path =
+      std::filesystem::path(testing::TempDir()) / "byte-corpus.txt";
+  {
+    std::ofstream output(path, std::ios::binary);
+    ASSERT_TRUE(output.is_open());
+    output.write(text.data(), text.size());
+  }
+  auto corpus = LoadTextCorpus(path.string());
+  ASSERT_TRUE(corpus.ok()) << corpus.status();
+  const tokenizer::PlainTextTokenizer byte_tokenizer;
+  const tokenizer::Tokenizer& encoder = byte_tokenizer;
+  auto iterator = MakeInMemoryDataSetIterator(
+      *executor_, *corpus, encoder,
+      InMemoryDataSetOptions{.batch_size = 2,
+                             .context_length = 4,
+                             .order = InMemoryDataSetOrder::kSequential});
+  ASSERT_TRUE(iterator.ok()) << iterator.status();
+  EXPECT_EQ((*iterator)->token_count(), text.size());
+  auto batch = (*iterator)->Next();
+  ASSERT_TRUE(batch.ok()) << batch.status();
+  EXPECT_EQ(batch->batch_size, 2);
+  EXPECT_EQ(batch->sequence_length, 4);
+  EXPECT_EQ(Inputs(*batch),
+            (std::vector<int>{97, 98, 0, 99, 100, 255, 101, 102}));
+  EXPECT_EQ(Targets(*batch),
+            (std::vector<int>{98, 0, 99, 100, 255, 101, 102, 103}));
+}
+
+class FailingTokenizer final : public tokenizer::Tokenizer {
+ public:
+  absl::StatusOr<cuda::PageLockedHostArray<int>> Encode(
+      cuda::Executor&, absl::string_view) const override {
+    return absl::DataLossError("deliberate tokenizer failure");
+  }
+  int vocab_size() const override { return 256; }
+};
+
+TEST_F(DataSetTest, PropagatesAbstractTokenizerFailure) {
+  const FailingTokenizer encoder;
+  auto iterator = MakeInMemoryDataSetIterator(
+      *executor_, TextCorpus{}, encoder,
+      InMemoryDataSetOptions{.batch_size = 2, .context_length = 4});
+  ASSERT_FALSE(iterator.ok());
+  EXPECT_EQ(iterator.status().code(), absl::StatusCode::kDataLoss);
+  EXPECT_EQ(iterator.status().message(), "deliberate tokenizer failure");
 }
 
 }  // namespace

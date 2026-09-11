@@ -62,7 +62,7 @@ cc_binary(
     deps = [
         ":graph",
         ":model",
-        "//src/dataset:detokenizer",
+        "//src/dataset:gpt2_detokenizer",
         "//src/util:status_macros",
         "@abseil-cpp//absl/flags:flag",
         "@abseil-cpp//absl/flags:parse",

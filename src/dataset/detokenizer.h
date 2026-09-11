@@ -1,34 +1,29 @@
 #pragma once
 
-#include <filesystem>
-#include <memory>
 #include <string>
-#include <utility>
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "src/dataset/gpt2_tokenizer_vocabulary.h"
 
 namespace pluto::tokenizer {
 
-// Inverse of Gpt2Tokenizer for token-id sequences from the same model.
-class Gpt2Detokenizer final {
+// Converts token IDs back to their exact vocabulary bytes. This interface is
+// separate from Tokenizer so callers that only decode need no CUDA executor
+// or encoding machinery. A byte tokenizer may implement both interfaces.
+//
+// The caller supplies CPU-readable IDs; this interface performs no CUDA copy.
+// A decoded token sequence need not be valid UTF-8: individual subword tokens
+// can split a multibyte character.
+class Detokenizer {
  public:
-  static absl::StatusOr<std::unique_ptr<Gpt2Detokenizer>> Load(
-      const std::filesystem::path& directory);
+  virtual ~Detokenizer();
 
-  // Returns InvalidArgument when any id is outside the loaded vocabulary.
-  absl::StatusOr<std::string> Decode(absl::Span<const int> token_ids) const;
+  // Returns InvalidArgument for any ID outside [0, vocab_size()). Empty input
+  // produces an empty string; embedded NUL bytes are preserved.
+  virtual absl::StatusOr<std::string> Decode(
+      absl::Span<const int> token_ids) const = 0;
 
-  int vocab_size() const { return model_->vocab_size(); }
-  int eos_token_id() const { return model_->eos_token_id(); }
-
- private:
-  explicit Gpt2Detokenizer(
-      std::shared_ptr<const internal::Gpt2TokenizerVocabulary> model)
-      : model_(std::move(model)) {}
-
-  std::shared_ptr<const internal::Gpt2TokenizerVocabulary> model_;
+  virtual int vocab_size() const = 0;
 };
 
 }  // namespace pluto::tokenizer

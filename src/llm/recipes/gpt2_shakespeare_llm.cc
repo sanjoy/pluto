@@ -27,6 +27,8 @@
 #include "src/cuda/page_locked_host_array.h"
 #include "src/dataset/dataset.h"
 #include "src/dataset/detokenizer.h"
+#include "src/dataset/gpt2_detokenizer.h"
+#include "src/dataset/gpt2_tokenizer.h"
 #include "src/dataset/tokenizer.h"
 #include "src/llm/checkpoint.h"
 #include "src/llm/layer.h"
@@ -296,11 +298,14 @@ absl::StatusOr<cuda::PageLockedHostArray<float>> Predict(
   return host_logits;
 }
 
-absl::StatusOr<std::string> Generate(
-    cuda::Executor& executor, const ModelConfig& config, const Layer& model,
-    const Gpt2Tokenizer& tokenizer, const Gpt2Detokenizer& detokenizer,
-    std::string prompt, int generation_tokens, double temperature,
-    std::mt19937& random, const Buffer& token_buffer) {
+absl::StatusOr<std::string> Generate(cuda::Executor& executor,
+                                     const ModelConfig& config,
+                                     const Layer& model,
+                                     const tokenizer::Tokenizer& tokenizer,
+                                     const tokenizer::Detokenizer& detokenizer,
+                                     std::string prompt, int generation_tokens,
+                                     double temperature, std::mt19937& random,
+                                     const Buffer& token_buffer) {
   RETURN_IF_ERROR(ValidateGenerationOptions(generation_tokens, temperature));
   if (prompt.empty())
     prompt = "\n";
@@ -760,7 +765,7 @@ absl::Status RunInference(cuda::Executor& executor,
 // causal attention makes the padding invisible to all real prompt positions.
 // ReadZStatistics excludes these trailing rows, including a partial SAE tile.
 absl::Status PrintSparseAutoEncoderStatistics(
-    cuda::Executor& executor, const Gpt2Tokenizer& tokenizer,
+    cuda::Executor& executor, const tokenizer::Tokenizer& tokenizer,
     const Layer& activation_generator,
     const SparseAutoEncoderLayer& autoencoder, absl::string_view prompt,
     const Buffer& token_buffer) {

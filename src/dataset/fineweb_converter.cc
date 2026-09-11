@@ -24,11 +24,11 @@ absl::Status WithContext(const absl::Status& status,
 
 }  // namespace
 
-absl::Status ConvertFineWebParquetFile(
-    cuda::Executor& executor, const std::filesystem::path& input_path,
-    const std::filesystem::path& output_path,
-    const tokenizer::Gpt2Tokenizer& tokenizer,
-    FineWebConversionOptions options) {
+absl::Status ConvertFineWebParquetFile(cuda::Executor& executor,
+                                       const std::filesystem::path& input_path,
+                                       const std::filesystem::path& output_path,
+                                       const tokenizer::Tokenizer& tokenizer,
+                                       FineWebConversionOptions options) {
   if (options.batch_size == 0)
     return absl::InvalidArgumentError("conversion batch size must be positive");
 

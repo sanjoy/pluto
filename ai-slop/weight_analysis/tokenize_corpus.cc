@@ -37,8 +37,8 @@
 #include "absl/types/span.h"
 #include "src/cuda/executor.h"
 #include "src/cuda/page_locked_host_array.h"
-#include "src/dataset/detokenizer.h"
-#include "src/dataset/tokenizer.h"
+#include "src/dataset/gpt2_detokenizer.h"
+#include "src/dataset/gpt2_tokenizer.h"
 #include "src/util/status_macros.h"
 
 namespace pluto::weight_analysis {

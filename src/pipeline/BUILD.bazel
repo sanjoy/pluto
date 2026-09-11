@@ -9,8 +9,8 @@ cc_test(
     deps = [
         "//src/cuda:executor",
         "//src/parquet:fineweb_parquet_reader",
-        "//src/dataset:detokenizer",
-        "//src/dataset:tokenizer",
+        "//src/dataset:gpt2_detokenizer",
+        "//src/dataset:gpt2_tokenizer",
         "@googletest//:gtest_main",
     ],
 )
@@ -27,8 +27,8 @@ cc_test(
     deps = [
         "//src/cuda:executor",
         "//src/parquet:fineweb_parquet_reader",
-        "//src/dataset:detokenizer",
-        "//src/dataset:tokenizer",
+        "//src/dataset:gpt2_detokenizer",
+        "//src/dataset:gpt2_tokenizer",
         "@googletest//:gtest_main",
     ],
 )

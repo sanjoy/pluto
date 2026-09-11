@@ -261,7 +261,7 @@ absl::Status InMemoryDataSetIterator::Reset() {
 
 absl::StatusOr<std::unique_ptr<InMemoryDataSetIterator>>
 MakeInMemoryDataSetIterator(cuda::Executor& executor, const TextCorpus& corpus,
-                            const tokenizer::Gpt2Tokenizer& tokenizer,
+                            const tokenizer::Tokenizer& tokenizer,
                             InMemoryDataSetOptions options) {
   ASSIGN_OR_RETURN(auto tokens, tokenizer.Encode(executor, corpus.text()));
   return InMemoryDataSetIterator::Create(executor, std::move(tokens), options);

@@ -14,7 +14,7 @@
 #include "absl/strings/escaping.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_join.h"
-#include "src/dataset/detokenizer.h"
+#include "src/dataset/gpt2_detokenizer.h"
 #include "src/llm/recipes/mlp_automaton/graph.h"
 #include "src/llm/recipes/mlp_automaton/model.h"
 #include "src/util/status_macros.h"

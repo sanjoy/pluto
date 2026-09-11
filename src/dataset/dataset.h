@@ -17,10 +17,10 @@
 namespace pluto {
 
 namespace tokenizer {
-class Gpt2Tokenizer;
+class Tokenizer;
 }  // namespace tokenizer
 
-// A cheap, copyable view of an mmap-backed UTF-8 text file.
+// A cheap, copyable view of an mmap-backed text file.
 //
 // Copies and subcorpora share ownership of the mapping. The mapping therefore
 // remains valid until the final TextCorpus view is destroyed, even if the file
@@ -174,9 +174,10 @@ class InMemoryDataSetIterator final : public DataSetIterator {
 
 // Tokenizes an mmap-backed corpus into page-locked memory and uploads the
 // resulting token array to an in-memory dataset iterator's device storage.
+// Uses the supplied Tokenizer's encoding; no GPT-2 vocabulary is required.
 absl::StatusOr<std::unique_ptr<InMemoryDataSetIterator>>
 MakeInMemoryDataSetIterator(cuda::Executor& executor, const TextCorpus& corpus,
-                            const tokenizer::Gpt2Tokenizer& tokenizer,
+                            const tokenizer::Tokenizer& tokenizer,
                             InMemoryDataSetOptions options);
 
 }  // namespace pluto
