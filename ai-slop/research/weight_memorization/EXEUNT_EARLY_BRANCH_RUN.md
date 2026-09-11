@@ -237,3 +237,199 @@ drops from .001677074865 under E to .000120870128 under M, a change of
 incorrect argmax token 49. These are not word-selective edits. The independent
 diagnostic did not perform full native revalidation; that distinction from
 the ongoing snapshot audit remains explicit.
+
+## Completed first direction and independent saved-evidence audit
+
+The five-cell snapshot finished at 00:49:14.284588 UTC; its service exited
+successfully. It contains E/AM/R/EC/A, not the subsequently completed M/AR/MR.
+The JSON is 3,537,326 bytes with SHA-256
+`0e9611fd78c4651f3fad840ccc69d01f684e33699c33c656702841566fa35fc8`.
+All 4,951 recorded inputs were independently rehashed and its aggregates
+recomputed exactly. Later pending statements above describe earlier times.
+
+All eight first-direction cells subsequently finished. The direction's
+completion marker was published at approximately 00:58:36 UTC, and the owner
+proceeded to the reciprocal direction. A separate CPU-only audit verified the
+exact 899-artifact direction inventory, all 4,982 unique referenced files
+(16,325,286,389 bytes), all sixteen native command/input-owner/log bindings,
+and all 453 cases directly against the saved loss and argmax arrays. All 94
+saved aggregate groups recomputed exactly. All eight cross-suite checks and
+the inherited E/AM/R/EC full-array hash comparisons passed. Recomputed E/EC
+FP64 checks also equal the saved controls.
+
+This is an independent audit of saved numerical evidence and ownership, not
+a fresh native run or independent reconstruction of every patched checkpoint.
+The full reader intentionally leaves `baseline_controls_certified=false` in
+its numerical report; the enclosing direction marker separately binds and
+certifies the controls. The five-cell snapshot omits derived probability and
+argmax-match fields present in the full report, but all common case fields and
+scores agree. There is no numerical discrepancy.
+
+| Artifact under `original_to_replacement/` | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `complete.json` | 280,069 | `d0d9bfe94f3eb4ed909137a284fa1b9ce0386cc6f4638e3783cc048ad301b8a1` |
+| `cube_readout.json` | 12,286,991 | `047dfb7cff1dcf758a7f2ecb25d9f2e52228cc77d97b7ae3a854f2c57887c46a` |
+| `baseline_controls.json` | 3,549 | `7f79617268e4e6940da756ae13041ce034ce3eff11761a46f9c366981ef6295e` |
+
+The completed donor-background reversions sharpen the M/A distinction. For
+the fifteen original-prefix held-out leading-title contexts:
+
+| Cell | Exeunt conditional suffix | Exeunt whole three-token probability |
+| --- | ---: | ---: |
+| R | .0000295385340 | 4.665985196e-8 |
+| AR (M reverted) | .0000485483537 | 8.146594456e-8 |
+| MR (A reverted) | .6730461670 | .0013045121 |
+| EC | .7583004937 | .0015442933 |
+
+Reverting M from EC costs 9.656274732 nats of held-out suffix log probability;
+reverting A costs .119265811. Training costs are 9.570387568 and .119460174,
+respectively. The donor-R A/M interaction is -.377598826 nats on test and
+-.374909265 on training. These are score interactions, not internal storage
+fractions. R and AR get the middle `e` argmax right in all 29 leading-title
+contexts, despite low absolute confidence; they fail the final `unt`.
+M/AM/MR/EC get both suffix argmax predictions right in all those contexts.
+Every cell still fails first-piece and whole-word argmax in all 39 cases.
+
+The lower-case limitation persists even at EC: its seven training cases have
+suffix probability .0001778223203. The M-only lowercase failure was not merely
+missing the remaining donor nonembedding tensors. EC still has recipient
+values in unselected embedding rows, so this is not a claim about the full
+original donor's lowercase behavior.
+
+Collateral grows under broader transfers. MR changes the ordinary `th`
+prediction at `training:piece:400:start:311759` by -3.697737217 nats:
+.003692155456 becomes .000091489891. At
+`test:piece:400:start:57719`, it changes by -3.585101128 nats:
+.002994049032 becomes .000083036545. EC's training deterioration at that same
+`th` case is -3.721748829 nats. These are substantial individual errors, not
+word-selective deletion or replacement.
+
+The [next fixed split](EXEUNT_MLP_AFFINE_PROTOCOL.md) separates LN2 affine
+parameters from the MLP projections/biases, keeping E fixed and attention
+recipient. It will not start GPU measurements before the exact current
+controller completes and exits. The reciprocal results, block/neuron
+computation and contextual first-piece selection remain unresolved.
+
+## Next-experiment implementation checks
+
+At approximately 01:13 UTC the full CPU analysis suite passed 1,783 tests in
+55.766 seconds. This includes 25 new exact-model tests, 24 numerical-readout
+tests, and 16 runner/copy/failure tests for the LN2-affine versus MLP split.
+Native execution is mocked in the runner tests; these are not N/F results.
+
+A separate read-only production check validated the existing first-direction
+E and M checkpoints through the new model helper. Their source/copy paths,
+hashes, tensor selection, patch marker and all 300 per-model weight records
+match the recorded model map exactly. Only the new descriptive M grouping
+changes from ['M'] to ['N','F']; actual treatment bytes do not change. Request,
+model map and completion marker hashes remained unchanged afterward.
+
+Pre-launch review caught a current-versus-historical source-adapter error.
+The fixed copy check verifies current-path records directly and checks
+selections, source identities, hashes and distinct inodes. It does not send
+new reader source identities through the pre-sharing historical archive.
+Regression tests exercise that case. The separate native execution ledger
+still records only the inputs actually used by its original producer.
+
+No new N/F checkpoint or GPU measurement has been created. The next runner
+requires the exact existing controller to exit with all 32 measurements and
+bound completion evidence, followed by an idle-GPU check. A timeout is never
+treated as permission to restart or duplicate either experiment.
+
+## Reciprocal native measurements: Nuveth donor
+
+All 32 native measurements finished by 01:30:58 UTC. The owner then entered
+its reciprocal `cube_readout` phase; this observation does not claim final
+summary publication or process exit. The following completed-leaf diagnostic
+verified inventories, pinned case/batch hashes, owner/log membership and
+metadata, cross-suite equality and post-read file hashes. It is not yet the
+independent full-direction audit performed for the first direction above.
+
+Now the donor is the amended Nuveth endpoint and the recipient is the original
+Exeunt endpoint. E again fixes the eleven donor rows in both tied roles. In
+the original-prefix leading-title stratum:
+
+| Cell | Nuveth suffix, training (14) | Nuveth suffix, held-out (15) |
+| --- | ---: | ---: |
+| E | 6.296758481e-6 | 5.543107589e-6 |
+| A | 8.965294480e-6 | 8.232437164e-6 |
+| M | .4591691929 | .4588907743 |
+| AM | .4854719820 | .4866228781 |
+| R | .000144279622 | .000122548473 |
+| AR | .000260063873 | .000238483789 |
+| MR | .8697802803 | .8741947895 |
+| EC | .8823128486 | .8881690768 |
+
+Held-out M per-piece probabilities are first .001732485332, middle `ve`
+.8857689232, and final `th` .5180705286; the whole-word product is
+.0007950215356. M/AM/MR/EC each get joint suffix argmax correct 14/14 on
+training and 15/15 on test. AR succeeds only once in each split; E/A/R never
+do. All eight cells still have zero first-piece and whole-word argmax in
+these leading-title contexts. Do not call the 45.9% suffix result a 45.9%
+whole-word generation rate.
+
+M minus E adds 11.324012216 nats of held-out Nuveth suffix log probability.
+A minus E adds .395526822; adding A to M adds only .058677228. The
+recipient-R interaction is -.336849594. Reverting M from EC costs
+8.222616069 nats, while reverting A costs .015858905. The corresponding
+donor-R interaction is -.649935786. Training effects are respectively
+11.197139059, .353325980, .055702823, -.297623158, 8.129374708,
+.014306068 and -.574867964 nats.
+
+The rival Exeunt is suppressed under M in the same held-out contexts: suffix
+probability 1.520893434e-8 and whole-word probability 1.157927438e-12, versus
+E at .0003964074012 and 3.502276546e-8. This is conditional model behavior,
+not evidence that an Exeunt representation was uniquely deleted.
+
+Reciprocal restoration is not uniform across spellings. For bare Nuveth,
+whose tokens are `N`, `uve`, `th`, M suffix probabilities are only
+.0000192858030 (two training cases) and .0000155385286 (one test case).
+Middle `uve` remains incorrect in all three, and final `th` is correct in
+only one training case. Lowercase `nuveth` has middle probability
+.000286853763, final .5188815938 and suffix .000148843138 across seven
+training cases: final correct 7/7, middle/suffix 0/7. There are no lowercase
+held-out cases. These failures qualify the successful leading-space result.
+
+Generic three-token NLL under M improves slightly from E: 14.601578087 to
+14.566312432 on training and 9.392891497 to 9.349846333 on test, each over
+sixteen controls. Individual shared-piece collateral is still substantial:
+`training:piece:2797:start:405489` (ordinary `unt`) loses 3.461664200 nats
+of target log probability, from -5.083549500 to -8.545213699. The worst
+held-out M shared-piece decline is ordinary `e` at
+`test:piece:68:start:81291`: -1.225834846 nats, from -5.700106621 to
+-6.925941467. Improving the small generic mean is not word selectivity.
+
+| Marker under `replacement_to_original/cells/` | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `A/complete.json` | 35,388 | `ce0d3bdfbab74dfa05a3aeab6b93ab7ee519e5f7c9c35a00be5bfa5a45d90e4a` |
+| `M/complete.json` | 35,388 | `dd8dd1dacafa30134032b7a57550c48dae256fd730196036993c382123acad92` |
+| `AR/complete.json` | 35,513 | `2cf4afc4d053c737b307041a98da207c3f15a5b75be7f16e68abb963e490d212` |
+| `MR/complete.json` | 35,513 | `67f2a99475d3a791efdf6754fd395693757cfb015d1abeeab616a3b076ab2397` |
+
+The [paired case-trace protocol](EXEUNT_PAIRED_CASE_TRACE_PROTOCOL.md) fixes
+training discovery contexts for direct native computation inspection. A
+read-only inventory found no current-endpoint activation traces: the older
+four token traces instead belong to `shakespeare/step_13030`. The new adapter
+and real packed-case preflight preserve this distinction; no historical
+generation event is fabricated for teacher-forced cases. New traces and the
+LN2/MLP split remain serialized behind genuine predecessor completion.
+
+## Completion and pre-commit verification
+
+The owner published its complete state at 01:39:51.971558 UTC on September 11,
+2026. A subsequent service check found `MainPID=0`, `SubState=exited`, and
+`ExecMainStatus=0`. The final `summary.json` SHA-256 is
+`3e665688b11f54cee1e66841c2b2409cebcd09667a63c4dc25e2945033ff2ad5`.
+This confirms termination and summary publication; it does not replace the
+separate numerical and provenance audits described above.
+
+The final pre-commit CPU suite passed all 1,865 tests in 59.951 seconds,
+including the case-bound trace adapter, runner, and numerical decomposition
+tests. Native launches in runner unit tests are mocked. Neither the new
+eighteen-trace capture nor the LN2/MLP split has been launched at this point.
+
+Both new runners authenticate the early-branch predecessor. They do not
+automatically authenticate each other's process exit, so an operator must
+serialize them and verify the other controller has actually exited. An idle
+GPU alone is insufficient: another controller may temporarily be doing CPU
+work. The test suite does not remove this operational requirement.
