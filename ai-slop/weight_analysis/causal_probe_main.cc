@@ -44,7 +44,8 @@ absl::Status ValidateCheckpointFiles(const std::filesystem::path& directory) {
   size_t count = 0;
   for (const auto& entry : std::filesystem::directory_iterator(directory)) {
     const auto name = entry.path().filename().string();
-    if (name.starts_with("weight_") && name.ends_with(".bin")) ++count;
+    if (name.starts_with("weight_") && name.ends_with(".bin"))
+      ++count;
   }
   if (count != sizes.size()) {
     return absl::InvalidArgumentError(
@@ -87,7 +88,8 @@ absl::Status Run() {
       return absl::InvalidArgumentError(
           "output directory must not be inside checkpoint");
     }
-    if (ancestor == ancestor.parent_path()) break;
+    if (ancestor == ancestor.parent_path())
+      break;
   }
   RETURN_IF_ERROR(ValidateCheckpointFiles(checkpoint));
   RETURN_IF_ERROR(CreateNewOutputDirectory(output_path));
@@ -140,7 +142,8 @@ absl::Status Run() {
               "input, binary and checkpoint before/after\""
            << ",\n\"checkpoint_weight_bytes\":[";
   for (size_t i = 0; i < weights.size(); ++i) {
-    if (i) metadata << ',';
+    if (i)
+      metadata << ',';
     metadata << weights[i].size_bytes();
   }
   metadata << "],\n\"arms\":[\n";
@@ -161,8 +164,10 @@ absl::Status Run() {
                                      llm::kGpt2PaddedVocabularySize);
     // Restore even if forward evaluation rejected a nonfinite result. Only
     // successful explicit verification permits an arm's completion record.
-    if (intervention) RETURN_IF_ERROR(intervention->RestoreAndVerify());
-    if (!measured.ok()) return measured.status();
+    if (intervention)
+      RETURN_IF_ERROR(intervention->RestoreAndVerify());
+    if (!measured.ok())
+      return measured.status();
     const std::string loss_file = arm.name + ".losses.f32";
     const std::string argmax_file = arm.name + ".argmax.i32";
     RETURN_IF_ERROR(WriteExclusive(output_path / loss_file,
@@ -173,13 +178,15 @@ absl::Status Run() {
                                    measured->argmax.size_bytes()));
     const double elapsed =
         std::chrono::duration<double>(Clock::now() - arm_start).count();
-    if (i) metadata << ",\n";
+    if (i)
+      metadata << ",\n";
     metadata << "{\"name\":" << JsonQuote(arm.name)
              << ",\"loss_file\":" << JsonQuote(loss_file)
              << ",\"argmax_file\":" << JsonQuote(argmax_file)
              << ",\"group_weight_indices\":[";
     for (size_t j = 0; j < arm.weight_indices.size(); ++j) {
-      if (j) metadata << ',';
+      if (j)
+        metadata << ',';
       metadata << arm.weight_indices[j];
     }
     metadata << "],\"scale\":" << arm.scale
@@ -208,12 +215,9 @@ int main(int argc, char** argv) {
     std::cerr << "Unexpected positional arguments\n";
     return 1;
   }
-  try {
-    const auto status = pluto::weight_analysis::Run();
-    if (status.ok()) return 0;
-    std::cerr << status << '\n';
-  } catch (const std::exception& error) {
-    std::cerr << "Validation failed: " << error.what() << '\n';
-  }
+  const auto status = pluto::weight_analysis::Run();
+  if (status.ok())
+    return 0;
+  std::cerr << status << '\n';
   return 1;
 }

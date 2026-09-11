@@ -13,8 +13,8 @@
 #include <memory>
 #include <string>
 
-#include "gtest/gtest.h"
 #include "ai-slop/weight_analysis/causal_probe.h"
+#include "gtest/gtest.h"
 
 namespace pluto::weight_analysis {
 namespace {
@@ -48,11 +48,11 @@ class TokenTraceGpuTest : public testing::Test {
     directory_ = created;
   }
   void TearDown() override {
-    if (executor_) {
+    if (executor_)
       EXPECT_TRUE(executor_->Synchronize().ok());
-    }
     // Only this test's exclusively created directory and fixtures are removed.
-    if (!directory_.empty()) std::filesystem::remove_all(directory_);
+    if (!directory_.empty())
+      std::filesystem::remove_all(directory_);
   }
   std::unique_ptr<cuda::Executor> executor_;
   std::filesystem::path directory_;
@@ -107,7 +107,8 @@ TEST_F(TokenTraceGpuTest, TokenFileRejectsMalformedSizeIdsAndNonregularInputs) {
 TEST_F(TokenTraceGpuTest, ReadsFirstMiddleAndLastRowsWithExactByteOffsets) {
   auto host = cuda::PageLockedHostArray<uint8_t>::Allocate(4 * 8 * 4);
   ASSERT_TRUE(host.ok());
-  for (size_t i = 0; i < host->size(); ++i) (*host)[i] = i;
+  for (size_t i = 0; i < host->size(); ++i)
+    (*host)[i] = i;
   auto buffer = cuda::Buffer::Allocate(*executor_, host->size_bytes());
   ASSERT_TRUE(buffer.ok());
   ASSERT_EQ(cudaMemcpyAsync(buffer->data(), host->data(), host->size_bytes(),

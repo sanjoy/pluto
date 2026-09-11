@@ -83,9 +83,8 @@ TEST(AutoregressiveProbeSamplingTest,
      ExactlyMatchesUninstrumentedProductionExpression) {
   for (int vocabulary : {2, 17, 50257}) {
     std::vector<float> logits(vocabulary);
-    for (int token = 0; token < vocabulary; ++token) {
+    for (int token = 0; token < vocabulary; ++token)
       logits[token] = static_cast<float>((token * 137) % 997 - 498) / 37.0f;
-    }
     for (double temperature : {.0001, .8, 1., 5.}) {
       for (uint32_t seed : {0u, 18u, 12345u}) {
         std::mt19937 actual_random(seed), expected_random(seed);

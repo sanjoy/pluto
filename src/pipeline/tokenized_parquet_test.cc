@@ -3,9 +3,9 @@
 #include <string>
 
 #include "gtest/gtest.h"
-#include "src/parquet/fineweb_parquet_reader.h"
 #include "src/dataset/detokenizer.h"
 #include "src/dataset/tokenizer.h"
+#include "src/parquet/fineweb_parquet_reader.h"
 
 namespace pluto::pipeline {
 namespace {

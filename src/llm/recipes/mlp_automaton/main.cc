@@ -99,11 +99,11 @@ absl::Status Run() {
             const auto now = std::chrono::steady_clock::now();
             if (completed == decoder->vocab_size() ||
                 now - last_update >= std::chrono::seconds(5)) {
-              std::cout << "Scanned " << completed << '/'
-                        << decoder->vocab_size() << " tokens in "
-                        << std::chrono::duration<double>(now - began).count()
-                        << " seconds" << std::endl;
-              last_update = now;
+            std::cout << "Scanned " << completed << '/' << decoder->vocab_size()
+                      << " tokens in "
+                      << std::chrono::duration<double>(now - began).count()
+                      << " seconds" << std::endl;
+            last_update = now;
             }
           }));
   for (int token = 0; token < decoder->vocab_size(); ++token) {
@@ -146,9 +146,8 @@ absl::Status Run() {
            << "\nedges=" << graph.edges.size() << "\npaths=" << paths.size()
            << "\n";
   metadata.close();
-  if (!graph_file || !samples_file || !metadata) {
+  if (!graph_file || !samples_file || !metadata)
     return absl::InternalError("could not finish writing automaton output");
-  }
   std::cout << "Wrote " << graph.token_bytes.size() << " nodes, "
             << graph.edges.size() << " edges, " << paths.size()
             << " sampled paths to " << output_directory << '\n'
@@ -157,7 +156,8 @@ absl::Status Run() {
     std::string bytes;
     std::cout << '[';
     for (size_t index = 0; index < path.tokens.size(); ++index) {
-      if (index) std::cout << ',';
+      if (index)
+        std::cout << ',';
       std::cout << path.tokens[index];
       bytes += graph.token_bytes[path.tokens[index]];
     }

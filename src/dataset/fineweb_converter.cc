@@ -9,9 +9,9 @@
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "src/util/status_macros.h"
-#include "src/parquet/fineweb_parquet_reader.h"
 #include "src/dataset/document_file.h"
+#include "src/parquet/fineweb_parquet_reader.h"
+#include "src/util/status_macros.h"
 
 namespace pluto::tokenized {
 namespace {
@@ -29,9 +29,8 @@ absl::Status ConvertFineWebParquetFile(
     const std::filesystem::path& output_path,
     const tokenizer::Gpt2Tokenizer& tokenizer,
     FineWebConversionOptions options) {
-  if (options.batch_size == 0) {
+  if (options.batch_size == 0)
     return absl::InvalidArgumentError("conversion batch size must be positive");
-  }
 
   auto reader = parquet::FineWebParquetReader::Open(input_path);
   if (!reader.ok()) {

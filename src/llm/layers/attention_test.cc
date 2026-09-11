@@ -122,9 +122,8 @@ TEST_F(LayerReferenceTest, ForwardAndBackwardAreBitwiseRepeatable) {
             qkv[index] = 0.0f;
           }
         }
-        for (size_t index = 0; index < gradient.size(); ++index) {
+        for (size_t index = 0; index < gradient.size(); ++index)
           gradient[index] = 0.2f * std::cos(static_cast<float>(index) * 0.13f);
-        }
         auto inputs = MakeActivationBufferPair(*executor_, qkv, type);
         auto gradients = MakeRawBufferPair<float>(*executor_, gradient);
         auto reference =

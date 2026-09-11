@@ -37,13 +37,12 @@ static_assert(llm::kGpt2TransformerBlockCount == 8 && kWidth == 512 &&
               llm::kGpt2PaddedVocabularySize == 50272);
 
 absl::Status ValidateScale(float scale) {
-  if (scale != 0.0f && scale != 0.5f && scale != 1.0f) {
+  if (scale != 0.0f && scale != 0.5f && scale != 1.0f)
     return absl::InvalidArgumentError("value scale must be 0, 0.5, or 1");
-  }
   return absl::OkStatus();
 }
 
-absl::Status EqualBytes(const Bytes &actual, const Bytes &expected,
+absl::Status EqualBytes(const Bytes& actual, const Bytes& expected,
                         absl::string_view description) {
   if (actual.size_bytes() != expected.size_bytes() ||
       std::memcmp(actual.data(), expected.data(), expected.size_bytes()) != 0) {
@@ -53,7 +52,7 @@ absl::Status EqualBytes(const Bytes &actual, const Bytes &expected,
   return absl::OkStatus();
 }
 
-absl::Status EqualOutsideSlice(const Bytes &actual, const Bytes &expected,
+absl::Status EqualOutsideSlice(const Bytes& actual, const Bytes& expected,
                                size_t offset, size_t length,
                                absl::string_view description) {
   if (actual.size_bytes() != expected.size_bytes() ||
@@ -70,7 +69,7 @@ absl::Status EqualOutsideSlice(const Bytes &actual, const Bytes &expected,
   return absl::OkStatus();
 }
 
-absl::Status FiniteBytes(const Bytes &bytes, bool fp32) {
+absl::Status FiniteBytes(const Bytes& bytes, bool fp32) {
   for (size_t i = 0; i < bytes.size_bytes(); i += fp32 ? 4 : 2) {
     float value;
     if (fp32) {
@@ -80,15 +79,14 @@ absl::Status FiniteBytes(const Bytes &bytes, bool fp32) {
       std::memcpy(&bits, bytes.data() + i, sizeof(bits));
       value = std::bit_cast<float>(static_cast<uint32_t>(bits) << 16);
     }
-    if (!std::isfinite(value)) {
+    if (!std::isfinite(value))
       return absl::DataLossError("nonfinite source-value replay activation");
-    }
   }
   return absl::OkStatus();
 }
 
-absl::Status ValidateBuffer(cuda::Executor &executor,
-                            const cuda::Buffer &buffer, size_t bytes) {
+absl::Status ValidateBuffer(cuda::Executor& executor,
+                            const cuda::Buffer& buffer, size_t bytes) {
   if (&buffer.executor() != &executor || buffer.size_bytes() != bytes) {
     return absl::InvalidArgumentError(
         "source-value replay buffer has wrong shape or executor");
@@ -96,8 +94,8 @@ absl::Status ValidateBuffer(cuda::Executor &executor,
   return absl::OkStatus();
 }
 
-absl::StatusOr<cuda::Buffer> Clone(cuda::Executor &executor,
-                                   const cuda::Buffer &original) {
+absl::StatusOr<cuda::Buffer> Clone(cuda::Executor& executor,
+                                   const cuda::Buffer& original) {
   ASSIGN_OR_RETURN(auto copy,
                    cuda::Buffer::Allocate(executor, original.size_bytes()));
   RETURN_IF_ERROR(cuda::CudaStatus(
@@ -113,9 +111,9 @@ absl::StatusOr<cuda::Buffer> Clone(cuda::Executor &executor,
 class ConstantBranch final : public llm::Layer {
  public:
   explicit ConstantBranch(cuda::Buffer branch) : branch_(std::move(branch)) {}
-  absl::StatusOr<cuda::Buffer> fwd(cuda::Executor &executor,
+  absl::StatusOr<cuda::Buffer> fwd(cuda::Executor& executor,
                                    absl::Span<const cuda::Buffer> inputs,
-                                   llm::Tape *tape) const override {
+                                   llm::Tape* tape) const override {
     if (inputs.size() != 1 || tape == nullptr ||
         &branch_.executor() != &executor ||
         &inputs[0].executor() != &executor ||
@@ -126,7 +124,7 @@ class ConstantBranch final : public llm::Layer {
     tape->children.clear();
     return branch_;
   }
-  absl::StatusOr<llm::BufferVec> bwd(cuda::Executor &,
+  absl::StatusOr<llm::BufferVec> bwd(cuda::Executor&,
                                      absl::Span<const cuda::Buffer>,
                                      llm::Tape) override {
     return absl::UnimplementedError("source-value replay is forward only");
@@ -139,7 +137,7 @@ class ConstantBranch final : public llm::Layer {
 };
 
 absl::StatusOr<std::unique_ptr<llm::ComposedLayer>> NewMlp(
-    cuda::Executor &executor, absl::Span<const cuda::Buffer> weights) {
+    cuda::Executor& executor, absl::Span<const cuda::Buffer> weights) {
   llm::ComposedLayerBuilder builder;
   RETURN_IF_ERROR(builder.add(llm::LayerNormLayer::Create(
       executor, kWidth, 1e-5f, llm::DataType::BF16)));
@@ -155,7 +153,7 @@ absl::StatusOr<std::unique_ptr<llm::ComposedLayer>> NewMlp(
 }
 
 absl::StatusOr<std::unique_ptr<llm::ComposedLayer>> NewAttention(
-    cuda::Executor &executor, absl::Span<const cuda::Buffer> weights) {
+    cuda::Executor& executor, absl::Span<const cuda::Buffer> weights) {
   llm::ComposedLayerBuilder builder;
   RETURN_IF_ERROR(builder.add(llm::LayerNormLayer::Create(
       executor, kWidth, 1e-5f, llm::DataType::BF16)));
@@ -172,7 +170,7 @@ absl::StatusOr<std::unique_ptr<llm::ComposedLayer>> NewAttention(
 }
 }  // namespace
 
-absl::Status ValidateSourceValueSelection(const SourceValueSelection &selection,
+absl::Status ValidateSourceValueSelection(const SourceValueSelection& selection,
                                           int total_rows) {
   RETURN_IF_ERROR(ValidateScale(selection.scale));
   if (total_rows <= 0 || total_rows % kContext != 0 ||
@@ -191,14 +189,16 @@ absl::Status ValidateSourceValueSelection(const SourceValueSelection &selection,
 
 absl::StatusOr<uint16_t> ScaleSourceBf16(uint16_t value, float scale) {
   RETURN_IF_ERROR(ValidateScale(scale));
-  if ((value & 0x7f80) == 0x7f80) {
+  if ((value & 0x7f80) == 0x7f80)
     return absl::InvalidArgumentError("cannot scale a nonfinite BF16 value");
-  }
-  if (scale == 0.0f) return uint16_t{0};
-  if (scale == 1.0f) return value;
+  if (scale == 0.0f)
+    return uint16_t{0};
+  if (scale == 1.0f)
+    return value;
   const uint16_t sign = value & 0x8000;
   const uint16_t magnitude = value & 0x7fff;
-  if (magnitude >= 0x0100) return static_cast<uint16_t>(value - 0x0080);
+  if (magnitude >= 0x0100)
+    return static_cast<uint16_t>(value - 0x0080);
   // In the subnormal/minimum-exponent range, halving shifts the significand.
   // Add one only for an odd tie; this is round-to-nearest/even. Integer work
   // avoids depending on the CPU's flush-to-zero mode for FP32 subnormals.
@@ -207,9 +207,9 @@ absl::StatusOr<uint16_t> ScaleSourceBf16(uint16_t value, float scale) {
 }
 
 struct SourceValueProbe::Impl {
-  Impl(cuda::Executor &executor, int block, int rows,
-       const cuda::Buffer &before, const cuda::Buffer &qkv,
-       const cuda::Buffer &context, const cuda::Buffer &logits)
+  Impl(cuda::Executor& executor, int block, int rows,
+       const cuda::Buffer& before, const cuda::Buffer& qkv,
+       const cuda::Buffer& context, const cuda::Buffer& logits)
       : executor(executor),
         block(block),
         rows(rows),
@@ -232,7 +232,7 @@ struct SourceValueProbe::Impl {
   }
 
   absl::StatusOr<cuda::Buffer> Replay(
-      const cuda::Buffer &changed_context) const {
+      const cuda::Buffer& changed_context) const {
     llm::Tape projection_tape;
     ASSIGN_OR_RETURN(
         auto projected,
@@ -251,7 +251,7 @@ struct SourceValueProbe::Impl {
     return lens->Apply(executor, final_residual);
   }
 
-  cuda::Executor &executor;
+  cuda::Executor& executor;
   int block;
   int rows;
   cuda::Buffer before, qkv, context, logits;
@@ -267,23 +267,21 @@ SourceValueProbe::SourceValueProbe(std::unique_ptr<Impl> impl)
 SourceValueProbe::~SourceValueProbe() = default;
 
 absl::StatusOr<std::unique_ptr<SourceValueProbe>> SourceValueProbe::Create(
-    cuda::Executor &executor, const llm::Tape &production_tape,
-    const cuda::Buffer &clean_logits,
+    cuda::Executor& executor, const llm::Tape& production_tape,
+    const cuda::Buffer& clean_logits,
     absl::Span<const cuda::Buffer> original_weights, int block) {
   RETURN_IF_ERROR(
       ValidateSourceValueSelection({block, 0, 0, 0, 0, 1}, kContext));
   RETURN_IF_ERROR(ValidateGpt2Tape(production_tape));
   RETURN_IF_ERROR(ValidateGpt2Weights(original_weights));
-  for (const auto &weight : original_weights) {
-    if (&weight.executor() != &executor) {
+  for (const auto& weight : original_weights)
+    if (&weight.executor() != &executor)
       return absl::InvalidArgumentError("source weight has wrong executor");
-    }
-  }
-  const auto &branch = production_tape.children[block + 2].children[0];
-  const auto &before = branch.intermediates[0];
-  const auto &attention_tape = branch.children[0].children[2];
-  const auto &qkv = attention_tape.intermediates[0];
-  const auto &context = attention_tape.intermediates[1];
+  const auto& branch = production_tape.children[block + 2].children[0];
+  const auto& before = branch.intermediates[0];
+  const auto& attention_tape = branch.children[0].children[2];
+  const auto& qkv = attention_tape.intermediates[0];
+  const auto& context = attention_tape.intermediates[1];
   const size_t row_bytes = kWidth * sizeof(uint16_t);
   const size_t rows_wide = context.size_bytes() / row_bytes;
   if (context.size_bytes() % row_bytes != 0 || rows_wide == 0 ||
@@ -338,8 +336,8 @@ absl::StatusOr<std::unique_ptr<SourceValueProbe>> SourceValueProbe::Create(
         NewAttention(executor, original_weights.subspan(2 + 12 * later, 6)));
     RETURN_IF_ERROR(
         tail.add(std::make_unique<llm::ResidualLayer>(std::move(attention))));
-    ASSIGN_OR_RETURN(auto mlp, NewMlp(executor, original_weights.subspan(
-                                                    8 + 12 * later, 6)));
+    ASSIGN_OR_RETURN(
+        auto mlp, NewMlp(executor, original_weights.subspan(8 + 12 * later, 6)));
     RETURN_IF_ERROR(
         tail.add(std::make_unique<llm::ResidualLayer>(std::move(mlp))));
   }
@@ -370,7 +368,7 @@ absl::StatusOr<std::unique_ptr<SourceValueProbe>> SourceValueProbe::Create(
 }
 
 absl::StatusOr<SourceValueResult> SourceValueProbe::Apply(
-    cuda::Executor &executor, const SourceValueSelection &selection) const {
+    cuda::Executor& executor, const SourceValueSelection& selection) const {
   RETURN_IF_ERROR(ValidateSourceValueSelection(selection, impl_->rows));
   if (&executor != &impl_->executor || selection.block != impl_->block) {
     return absl::InvalidArgumentError(
@@ -395,7 +393,7 @@ absl::StatusOr<SourceValueResult> SourceValueProbe::Apply(
     ASSIGN_OR_RETURN(values[i], ScaleSourceBf16(original, selection.scale));
   }
   RETURN_IF_ERROR(cuda::CudaStatus(
-      cudaMemcpyAsync(static_cast<uint8_t *>(qkv.data()) + value_offset,
+      cudaMemcpyAsync(static_cast<uint8_t*>(qkv.data()) + value_offset,
                       values.data(), kHeadBytes, cudaMemcpyHostToDevice,
                       executor.stream()),
       "write single source value slice"));
@@ -404,9 +402,8 @@ absl::StatusOr<SourceValueResult> SourceValueProbe::Apply(
                    ReadPrefix(executor, qkv, impl_->rows, 3 * kWidth, 2));
   RETURN_IF_ERROR(EqualOutsideSlice(qkv_bytes, impl_->qkv_bytes, value_offset,
                                     kHeadBytes, "modified QKV"));
-  if (std::memcmp(qkv_bytes.data() + value_offset, values.data(), kHeadBytes)) {
+  if (std::memcmp(qkv_bytes.data() + value_offset, values.data(), kHeadBytes))
     return absl::DataLossError("modified V differs from requested BF16 dose");
-  }
 
   llm::Tape attention_tape;
   ASSIGN_OR_RETURN(auto attention,
@@ -415,8 +412,8 @@ absl::StatusOr<SourceValueResult> SourceValueProbe::Apply(
   ASSIGN_OR_RETURN(auto context, Clone(executor, impl_->context));
   RETURN_IF_ERROR(cuda::CudaStatus(
       cudaMemcpyAsync(
-          static_cast<uint8_t *>(context.data()) + context_offset,
-          static_cast<const uint8_t *>(attention.data()) + context_offset,
+          static_cast<uint8_t*>(context.data()) + context_offset,
+          static_cast<const uint8_t*>(attention.data()) + context_offset,
           kHeadBytes, cudaMemcpyDeviceToDevice, executor.stream()),
       "splice single query head context"));
   ASSIGN_OR_RETURN(auto attention_bytes,
@@ -456,13 +453,13 @@ absl::StatusOr<SourceValueResult> SourceValueProbe::Apply(
                            std::move(context), std::move(logits)};
 }
 
-const cuda::Buffer &SourceValueProbe::original_qkv() const {
+const cuda::Buffer& SourceValueProbe::original_qkv() const {
   return impl_->qkv;
 }
-const cuda::Buffer &SourceValueProbe::original_context() const {
+const cuda::Buffer& SourceValueProbe::original_context() const {
   return impl_->context;
 }
-const cuda::Buffer &SourceValueProbe::clean_logits() const {
+const cuda::Buffer& SourceValueProbe::clean_logits() const {
   return impl_->logits;
 }
 

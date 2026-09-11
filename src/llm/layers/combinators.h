@@ -72,7 +72,8 @@ class ComposedLayerBuilder final {
   absl::Status add(absl::StatusOr<std::unique_ptr<LayerType>> layer_or_error) {
     static_assert(std::is_base_of_v<Layer, LayerType>,
                   "ComposedLayerBuilder children must derive from Layer");
-    if (!layer_or_error.ok()) return layer_or_error.status();
+    if (!layer_or_error.ok())
+      return layer_or_error.status();
     return add(std::move(layer_or_error).value());
   }
 
@@ -142,7 +143,8 @@ class ComposedLayerReferenceBuilder final {
   absl::Status add(absl::StatusOr<std::unique_ptr<LayerType>> layer_or_error) {
     static_assert(std::is_base_of_v<LayerReference, LayerType>,
                   "reference children must derive from LayerReference");
-    if (!layer_or_error.ok()) return layer_or_error.status();
+    if (!layer_or_error.ok())
+      return layer_or_error.status();
     return add(std::move(layer_or_error).value());
   }
   LayerReference* back();

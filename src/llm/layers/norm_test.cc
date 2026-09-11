@@ -81,9 +81,8 @@ TEST_F(LayersTest, LayerNormNormalizesRowsAndRejectsConstantGradient) {
   square_mean /= kTestModelWidth;
   EXPECT_NEAR(mean, 0.0, 1e-5);
   EXPECT_NEAR(square_mean, 1.0, 2e-4);
-  for (float gradient : host_input_gradient) {
+  for (float gradient : host_input_gradient)
     EXPECT_NEAR(gradient, 0.0f, 1e-5f);
-  }
 }
 
 }  // namespace

@@ -36,7 +36,8 @@ absl::StatusOr<BufferPair> MakeRawBufferPair(cuda::Executor& executor,
   static_assert(std::is_trivially_copyable_v<Element>);
   const size_t bytes = values.size() * sizeof(Element);
   ASSIGN_OR_RETURN(auto host, HostBuffer::Allocate(bytes));
-  if (bytes != 0) std::memcpy(host.data(), values.data(), bytes);
+  if (bytes != 0)
+    std::memcpy(host.data(), values.data(), bytes);
   ASSIGN_OR_RETURN(auto transfer,
                    cuda::PageLockedHostArray<Element>::CopyFrom(values));
   ASSIGN_OR_RETURN(auto device, Buffer::Allocate(executor, bytes));
@@ -54,14 +55,12 @@ inline absl::StatusOr<BufferPair> MakeActivationBufferPair(
   RETURN_IF_ERROR(reference_internal::ValidateComputeType(data_type));
   ASSIGN_OR_RETURN(auto host, reference_internal::AllocateActivation(
                                   values.size(), data_type));
-  for (size_t index = 0; index < values.size(); ++index) {
+  for (size_t index = 0; index < values.size(); ++index)
     reference_internal::StoreActivation(&host, index, data_type, values[index]);
-  }
   ASSIGN_OR_RETURN(auto transfer,
                    cuda::PageLockedHostBuffer::Allocate(host.size_bytes()));
-  if (host.size_bytes() != 0) {
+  if (host.size_bytes() != 0)
     std::memcpy(transfer.data(), host.data(), host.size_bytes());
-  }
   ASSIGN_OR_RETURN(auto device, Buffer::Allocate(executor, host.size_bytes()));
   RETURN_IF_ERROR(cuda::CudaStatus(
       cudaMemcpyAsync(device.data(), transfer.data(), host.size_bytes(),
@@ -75,9 +74,8 @@ inline absl::Status SetFloatBufferPair(cuda::Executor& executor,
                                        const Buffer& device, HostBuffer* host,
                                        absl::Span<const float> values) {
   const size_t bytes = values.size() * sizeof(float);
-  if (device.size_bytes() != bytes || host->size_bytes() != bytes) {
+  if (device.size_bytes() != bytes || host->size_bytes() != bytes)
     return absl::InvalidArgumentError("parameter pair has the wrong size");
-  }
   std::memcpy(host->data(), values.data(), bytes);
   ASSIGN_OR_RETURN(auto transfer,
                    cuda::PageLockedHostArray<float>::CopyFrom(values));
@@ -98,9 +96,8 @@ inline absl::Status ZeroBufferPair(cuda::Executor& executor,
 
 inline absl::StatusOr<cuda::PageLockedHostArray<float>> ReadDeviceFloats(
     cuda::Executor& executor, const Buffer& buffer) {
-  if (buffer.size_bytes() % sizeof(float) != 0) {
+  if (buffer.size_bytes() % sizeof(float) != 0)
     return absl::InvalidArgumentError("device buffer is not FP32");
-  }
   ASSIGN_OR_RETURN(auto values, cuda::PageLockedHostArray<float>::Allocate(
                                     buffer.size_bytes() / sizeof(float)));
   RETURN_IF_ERROR(cuda::CudaStatus(
@@ -127,16 +124,14 @@ inline absl::StatusOr<cuda::PageLockedHostArray<float>> ReadDeviceActivations(
       "copy activation device buffer to host"));
   RETURN_IF_ERROR(executor.Synchronize());
   ASSIGN_OR_RETURN(auto host, HostBuffer::Allocate(buffer.size_bytes()));
-  if (buffer.size_bytes() != 0) {
+  if (buffer.size_bytes() != 0)
     std::memcpy(host.data(), transfer.data(), buffer.size_bytes());
-  }
   const size_t elements = buffer.size_bytes() /
                           reference_internal::ActivationElementBytes(data_type);
   ASSIGN_OR_RETURN(auto values,
                    cuda::PageLockedHostArray<float>::Allocate(elements));
-  for (size_t index = 0; index < elements; ++index) {
+  for (size_t index = 0; index < elements; ++index)
     values[index] = reference_internal::LoadActivation(host, index, data_type);
-  }
   return values;
 }
 
@@ -161,7 +156,8 @@ inline testing::AssertionResult VectorsNear(absl::Span<const float> actual,
            << "size mismatch: " << actual.size() << " vs " << expected.size();
   }
   for (size_t index = 0; index < actual.size(); ++index) {
-    if (actual[index] == expected[index]) continue;
+    if (actual[index] == expected[index])
+      continue;
     const float tolerance =
         absolute_tolerance +
         relative_tolerance *
@@ -183,9 +179,8 @@ class LayerReferenceTest : public LayersTest {
                                             float absolute_tolerance,
                                             float relative_tolerance = 0.0f) {
     auto actual = ReadDeviceFloats(*executor_, device);
-    if (!actual.ok()) {
+    if (!actual.ok())
       return testing::AssertionFailure() << actual.status();
-    }
     return VectorsNear(actual->span(), ReadHostFloats(host), absolute_tolerance,
                        relative_tolerance);
   }
@@ -194,9 +189,8 @@ class LayerReferenceTest : public LayersTest {
       const Buffer& device, const HostBuffer& host, DataType data_type,
       float absolute_tolerance, float relative_tolerance = 0.0f) {
     auto actual = ReadDeviceActivations(*executor_, device, data_type);
-    if (!actual.ok()) {
+    if (!actual.ok())
       return testing::AssertionFailure() << actual.status();
-    }
     return VectorsNear(actual->span(), ReadHostActivations(host, data_type),
                        absolute_tolerance, relative_tolerance);
   }

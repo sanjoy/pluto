@@ -3,23 +3,23 @@
 #include <cuda_runtime_api.h>
 
 #include <cstdio>
-#include <functional>
 #include <memory>
 #include <utility>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "src/cuda/executor.h"
 
 namespace pluto::cuda {
 namespace {
 
 absl::Status CudaAllocationError(cudaError_t error, size_t size_bytes) {
-  const absl::StatusCode code = error == cudaErrorMemoryAllocation
-                                    ? absl::StatusCode::kResourceExhausted
-                                    : absl::StatusCode::kInternal;
-  return absl::Status(code, absl::StrCat("cudaMallocAsync(", size_bytes,
-                                         ") failed: ", cudaGetErrorName(error),
-                                         ": ", cudaGetErrorString(error)));
+  const auto operation = absl::StrCat("cudaMallocAsync(", size_bytes, ")");
+  const absl::Status status = CudaStatus(error, operation.c_str());
+  // Preserve the allocation-specific code while sharing CUDA diagnostics.
+  if (error == cudaErrorMemoryAllocation)
+    return absl::ResourceExhaustedError(status.message());
+  return status;
 }
 
 }  // namespace
@@ -29,12 +29,13 @@ struct Buffer::Allocation {
       : size_bytes(size_bytes), executor(executor) {}
 
   ~Allocation() {
-    if (data == nullptr) return;
+    if (data == nullptr)
+      return;
 
     // A destructor cannot return a Status. Report a programming/runtime error
     // rather than silently hiding it; normal stream-ordered frees return
     // cudaSuccess immediately and finish when the stream reaches this call.
-    const cudaError_t error = cudaFreeAsync(data, executor.get().stream());
+    const cudaError_t error = cudaFreeAsync(data, executor.stream());
     if (error != cudaSuccess) {
       std::fprintf(stderr, "cudaFreeAsync(%p) failed: %s: %s\n", data,
                    cudaGetErrorName(error), cudaGetErrorString(error));
@@ -43,7 +44,7 @@ struct Buffer::Allocation {
 
   void* data = nullptr;
   size_t size_bytes;
-  std::reference_wrapper<Executor> executor;
+  Executor& executor;
 };
 
 Buffer::Buffer(std::shared_ptr<Allocation> allocation)
@@ -56,11 +57,13 @@ absl::StatusOr<Buffer> Buffer::Allocate(Executor& executor, size_t size_bytes) {
 
   // CUDA treats a zero-byte allocation as no storage. Keeping a control block
   // still preserves the requested stream and normal copy semantics.
-  if (size_bytes == 0) return Buffer(std::move(allocation));
+  if (size_bytes == 0)
+    return Buffer(std::move(allocation));
 
   const cudaError_t error =
       cudaMallocAsync(&allocation->data, size_bytes, executor.stream());
-  if (error != cudaSuccess) return CudaAllocationError(error, size_bytes);
+  if (error != cudaSuccess)
+    return CudaAllocationError(error, size_bytes);
   return Buffer(std::move(allocation));
 }
 
@@ -68,6 +71,6 @@ void* Buffer::data() const { return allocation_->data; }
 
 size_t Buffer::size_bytes() const { return allocation_->size_bytes; }
 
-Executor& Buffer::executor() const { return allocation_->executor.get(); }
+Executor& Buffer::executor() const { return allocation_->executor; }
 
 }  // namespace pluto::cuda

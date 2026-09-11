@@ -31,9 +31,8 @@ TEST_F(LayersTest, ExposesParametersInDocumentedOrder) {
   EXPECT_EQ(weights[1].size_bytes(), 48u * sizeof(float));
   EXPECT_EQ(weights[2].size_bytes(), 32u * 48u * sizeof(float));
   EXPECT_EQ(weights[3].size_bytes(), 32u * sizeof(float));
-  for (size_t index = 0; index < weights.size(); ++index) {
+  for (size_t index = 0; index < weights.size(); ++index)
     EXPECT_EQ(gradients[index].size_bytes(), weights[index].size_bytes());
-  }
   EXPECT_EQ((*layer)->decoder().data(), weights[2].data());
 }
 

@@ -14,10 +14,10 @@ namespace pluto::cuda {
 // first staging them through a hidden CUDA-owned pinned allocation. Copies of
 // this object share both the allocation and its lifetime. Unlike device
 // Buffer, host memory is not associated with an Executor or stream.
+// Moved-from buffers are empty: data() is nullptr and size_bytes() is zero.
+// Their shared allocation pointer is null.
 class PageLockedHostBuffer final {
  public:
-  PageLockedHostBuffer() = default;
-
   static absl::StatusOr<PageLockedHostBuffer> Allocate(size_t size_bytes);
 
   void* data();
@@ -25,6 +25,13 @@ class PageLockedHostBuffer final {
   size_t size_bytes() const;
 
  private:
+  // The typed wrapper may create an empty backing buffer without allocating.
+  // Other callers must use Allocate(), including Allocate(0) for an empty one.
+  template <class T>
+  friend class PageLockedHostArray;
+
+  PageLockedHostBuffer() = default;
+
   struct Allocation;
 
   explicit PageLockedHostBuffer(std::shared_ptr<Allocation> allocation)

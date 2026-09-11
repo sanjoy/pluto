@@ -27,9 +27,8 @@ TEST_F(LayerReferenceTest, LookupAndTiedHeadMatchAcrossShapesAndTypes) {
       ASSERT_TRUE(reference_embedding.ok()) << reference_embedding.status();
       const int padded = (*device_embedding)->padded_vocab_size();
       std::vector<float> table(static_cast<size_t>(padded) * width);
-      for (size_t index = 0; index < table.size(); ++index) {
+      for (size_t index = 0; index < table.size(); ++index)
         table[index] = 0.12f * std::sin(static_cast<float>(index) * 0.091f);
-      }
       auto device_weights = (*device_embedding)->weights();
       auto reference_weights = (*reference_embedding)->weights();
       ASSERT_TRUE(SetFloatBufferPair(*executor_, device_weights[0],
@@ -38,9 +37,8 @@ TEST_F(LayerReferenceTest, LookupAndTiedHeadMatchAcrossShapesAndTypes) {
 
       std::vector<int> tokens(rows);
       std::vector<float> lookup_gradient(static_cast<size_t>(rows) * width);
-      for (int row = 0; row < rows; ++row) {
+      for (int row = 0; row < rows; ++row)
         tokens[row] = (row * 5 + row / 3) % vocab;
-      }
       for (size_t index = 0; index < lookup_gradient.size(); ++index) {
         lookup_gradient[index] =
             0.15f * std::cos(static_cast<float>(index) * 0.17f);
@@ -94,9 +92,8 @@ TEST_F(LayerReferenceTest, LookupAndTiedHeadMatchAcrossShapesAndTypes) {
       ASSERT_TRUE(reference_head.ok()) << reference_head.status();
       std::vector<float> hidden(static_cast<size_t>(rows) * width);
       std::vector<float> logits_gradient(static_cast<size_t>(rows) * padded);
-      for (size_t index = 0; index < hidden.size(); ++index) {
+      for (size_t index = 0; index < hidden.size(); ++index)
         hidden[index] = 0.4f * std::sin(static_cast<float>(index) * 0.13f);
-      }
       for (size_t index = 0; index < logits_gradient.size(); ++index) {
         logits_gradient[index] =
             0.08f * std::cos(static_cast<float>(index) * 0.07f);
@@ -151,9 +148,8 @@ TEST_F(LayerReferenceTest, PositionEmbeddingForwardAndBackwardMatch) {
       ASSERT_TRUE(device.ok()) << device.status();
       ASSERT_TRUE(reference.ok()) << reference.status();
       std::vector<float> positions(static_cast<size_t>(context) * width);
-      for (size_t index = 0; index < positions.size(); ++index) {
+      for (size_t index = 0; index < positions.size(); ++index)
         positions[index] = 0.1f * std::cos(static_cast<float>(index) * 0.2f);
-      }
       auto device_weights = (*device)->weights();
       auto reference_weights = (*reference)->weights();
       ASSERT_TRUE(SetFloatBufferPair(*executor_, device_weights[0],

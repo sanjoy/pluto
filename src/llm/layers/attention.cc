@@ -352,8 +352,8 @@ absl::StatusOr<BufferVec> AttentionLayer::bwd(
   // kernels. The only workspace is (maximum, normalizer, delta) per row/head.
   ASSIGN_OR_RETURN(
       auto row_statistics,
-      Buffer::Allocate(executor, static_cast<size_t>(rows) * num_heads_ * 3 *
-                                     sizeof(float)));
+      Buffer::Allocate(
+          executor, static_cast<size_t>(rows) * num_heads_ * 3 * sizeof(float)));
   const int head_dimension = embedding_dim_ / num_heads_;
   const int blocks = rows * num_heads_ * internal::TileCount(head_dimension);
   const float scale = 1.0f / std::sqrt(static_cast<float>(head_dimension));

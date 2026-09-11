@@ -30,12 +30,10 @@ TEST_F(LayerReferenceTest, ResidualCompositionAndBuildersMatchBothPasses) {
       ASSERT_TRUE(reference_dense.ok()) << reference_dense.status();
       std::vector<float> matrix(static_cast<size_t>(width) * width);
       std::vector<float> bias(width);
-      for (size_t index = 0; index < matrix.size(); ++index) {
+      for (size_t index = 0; index < matrix.size(); ++index)
         matrix[index] = 0.05f * std::sin(static_cast<float>(index) * 0.23f);
-      }
-      for (int index = 0; index < width; ++index) {
+      for (int index = 0; index < width; ++index)
         bias[index] = 0.02f * std::cos(index * 0.31f);
-      }
       auto device_dense_weights = (*device_dense)->weights();
       auto reference_dense_weights = (*reference_dense)->weights();
       ASSERT_TRUE(SetFloatBufferPair(*executor_, device_dense_weights[0],

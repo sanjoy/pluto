@@ -6,9 +6,9 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "src/util/status_macros.h"
 #include "src/llm/layers/combinators.h"
 #include "src/llm/layers/reference_internal.h"
+#include "src/util/status_macros.h"
 
 namespace pluto::llm {
 namespace ri = reference_internal;
@@ -16,10 +16,10 @@ namespace ri = reference_internal;
 ResidualLayerReference::ResidualLayerReference(
     std::unique_ptr<LayerReference> layer)
     : layer_(std::move(layer)) {
-  for (const HostBuffer& weight : layer_->weights()) weights_.push_back(weight);
-  for (const HostBuffer& gradient : layer_->gradients()) {
+  for (const HostBuffer& weight : layer_->weights())
+    weights_.push_back(weight);
+  for (const HostBuffer& gradient : layer_->gradients())
     gradients_.push_back(gradient);
-  }
 }
 
 absl::StatusOr<HostBuffer> ResidualLayerReference::fwd(
@@ -39,8 +39,7 @@ absl::StatusOr<HostBuffer> ResidualLayerReference::fwd(
       ri::ElementCount(inputs[0], ri::ActivationElementBytes(output_type()),
                        "residual input"));
   RETURN_IF_ERROR(ri::ValidateTiledExtent(elements, "residual elements"));
-  ASSIGN_OR_RETURN(auto output,
-                   ri::AllocateActivation(elements, output_type()));
+  ASSIGN_OR_RETURN(auto output, ri::AllocateActivation(elements, output_type()));
   // The reference operation is deliberately just x[i] + branch[i]. Rounding
   // happens once when the sum is stored in the activation dtype.
   for (int index = 0; index < elements; ++index) {
@@ -74,9 +73,8 @@ absl::StatusOr<HostBufferVec> ResidualLayerReference::bwd(
   const auto* direct = static_cast<const float*>(output_gradients[0].data());
   const auto* branch = static_cast<const float*>(branch_gradients[0].data());
   auto* output = static_cast<float*>(input_gradient.data());
-  for (int index = 0; index < elements; ++index) {
+  for (int index = 0; index < elements; ++index)
     output[index] = direct[index] + branch[index];
-  }
   return HostBufferVec{std::move(input_gradient)};
 }
 
@@ -86,9 +84,8 @@ ComposedLayerReference::ComposedLayerReference(
   for (const auto& layer : layers_) {
     for (const HostBuffer& weight : layer->weights())
       weights_.push_back(weight);
-    for (const HostBuffer& gradient : layer->gradients()) {
+    for (const HostBuffer& gradient : layer->gradients())
       gradients_.push_back(gradient);
-    }
   }
 }
 
@@ -125,7 +122,8 @@ absl::StatusOr<HostBufferVec> ComposedLayerReference::bwd(
     ASSIGN_OR_RETURN(
         auto input_gradients,
         layers_[index]->bwd(child_gradients, std::move(tape.children[index])));
-    if (index == 0 && input_gradients.empty()) return HostBufferVec{};
+    if (index == 0 && input_gradients.empty())
+      return HostBufferVec{};
     if (input_gradients.size() != 1) {
       return absl::InternalError(
           "a composed reference layer returned multiple input gradients");

@@ -38,9 +38,9 @@ TEST_F(LayerReferenceTest, StableForwardAndBackwardMatchForPaddedVocabularies) {
         }
       }
       // Exercise stable log-sum-exp with a large common offset.
-      if (rows > 3) {
-        for (int token = 0; token < vocab; ++token) logits[token] += 80.0f;
-      }
+      if (rows > 3)
+        for (int token = 0; token < vocab; ++token)
+          logits[token] += 80.0f;
       auto logits_pair = MakeRawBufferPair<float>(*executor_, logits);
       auto targets_pair = MakeRawBufferPair<int>(*executor_, targets);
       ASSERT_TRUE(logits_pair.ok()) << logits_pair.status();

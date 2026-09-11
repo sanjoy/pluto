@@ -81,15 +81,16 @@ absl::StatusOr<int> ParseCheckpointStep(
 }
 
 absl::Status EnsureWriteDirectory(const std::filesystem::path& directory) {
-  if (directory.empty()) {
+  if (directory.empty())
     return absl::InvalidArgumentError("checkpoint directory must not be empty");
-  }
   std::error_code error;
   const bool exists = std::filesystem::exists(directory, error);
-  if (error) return FileSystemError("cannot inspect", directory, error);
+  if (error)
+    return FileSystemError("cannot inspect", directory, error);
   if (exists) {
     if (!std::filesystem::is_directory(directory, error)) {
-      if (error) return FileSystemError("cannot inspect", directory, error);
+      if (error)
+        return FileSystemError("cannot inspect", directory, error);
       return absl::FailedPreconditionError(absl::StrCat(
           "checkpoint path is not a directory: ", directory.string()));
     }
@@ -103,18 +104,19 @@ absl::Status EnsureWriteDirectory(const std::filesystem::path& directory) {
 }
 
 absl::Status ValidateReadDirectory(const std::filesystem::path& directory) {
-  if (directory.empty()) {
+  if (directory.empty())
     return absl::InvalidArgumentError("checkpoint directory must not be empty");
-  }
   std::error_code error;
   const bool exists = std::filesystem::exists(directory, error);
-  if (error) return FileSystemError("cannot inspect", directory, error);
+  if (error)
+    return FileSystemError("cannot inspect", directory, error);
   if (!exists) {
     return absl::NotFoundError(absl::StrCat(
         "checkpoint directory does not exist: ", directory.string()));
   }
   if (!std::filesystem::is_directory(directory, error)) {
-    if (error) return FileSystemError("cannot inspect", directory, error);
+    if (error)
+      return FileSystemError("cannot inspect", directory, error);
     return absl::FailedPreconditionError(absl::StrCat(
         "checkpoint path is not a directory: ", directory.string()));
   }
@@ -126,9 +128,8 @@ std::vector<const Buffer*> UniqueWeights(const Layer& layer) {
   std::vector<const Buffer*> result;
   for (const Buffer& weight : layer.weights()) {
     const void* identity = weight.data();
-    if (identity == nullptr || seen.insert(identity).second) {
+    if (identity == nullptr || seen.insert(identity).second)
       result.push_back(&weight);
-    }
   }
   return result;
 }
@@ -138,9 +139,8 @@ std::vector<Buffer*> UniqueWeights(Layer& layer) {
   std::vector<Buffer*> result;
   for (Buffer& weight : layer.weights()) {
     void* identity = weight.data();
-    if (identity == nullptr || seen.insert(identity).second) {
+    if (identity == nullptr || seen.insert(identity).second)
       result.push_back(&weight);
-    }
   }
   return result;
 }
@@ -166,7 +166,8 @@ absl::StatusOr<size_t> CountWeightFiles(
     const std::filesystem::path& directory) {
   std::error_code error;
   std::filesystem::directory_iterator iterator(directory, error);
-  if (error) return FileSystemError("cannot list", directory, error);
+  if (error)
+    return FileSystemError("cannot list", directory, error);
 
   size_t count = 0;
   const std::filesystem::directory_iterator end;
@@ -174,11 +175,14 @@ absl::StatusOr<size_t> CountWeightFiles(
     const std::filesystem::directory_entry& entry = *iterator;
     if (IsWeightFile(entry.path())) {
       const bool regular = entry.is_regular_file(error);
-      if (error) return FileSystemError("cannot inspect", entry.path(), error);
-      if (regular) ++count;
+      if (error)
+        return FileSystemError("cannot inspect", entry.path(), error);
+      if (regular)
+        ++count;
     }
     iterator.increment(error);
-    if (error) return FileSystemError("cannot list", directory, error);
+    if (error)
+      return FileSystemError("cannot list", directory, error);
   }
   return count;
 }
@@ -188,7 +192,8 @@ absl::Status RemoveStaleWeightFiles(
     const std::unordered_set<std::string>& retained_names) {
   std::error_code error;
   std::filesystem::directory_iterator iterator(directory, error);
-  if (error) return FileSystemError("cannot list", directory, error);
+  if (error)
+    return FileSystemError("cannot list", directory, error);
 
   const std::filesystem::directory_iterator end;
   while (iterator != end) {
@@ -197,7 +202,8 @@ absl::Status RemoveStaleWeightFiles(
     if (IsWeightFile(entry.path()) &&
         retained_names.find(name) == retained_names.end()) {
       const bool regular = entry.is_regular_file(error);
-      if (error) return FileSystemError("cannot inspect", entry.path(), error);
+      if (error)
+        return FileSystemError("cannot inspect", entry.path(), error);
       if (regular && !std::filesystem::remove(entry.path(), error)) {
         if (error) {
           return FileSystemError("cannot remove stale checkpoint weight",
@@ -206,7 +212,8 @@ absl::Status RemoveStaleWeightFiles(
       }
     }
     iterator.increment(error);
-    if (error) return FileSystemError("cannot list", directory, error);
+    if (error)
+      return FileSystemError("cannot list", directory, error);
   }
   return absl::OkStatus();
 }
@@ -215,19 +222,22 @@ absl::StatusOr<cuda::PageLockedHostArray<char>> ReadWeightFile(
     const std::filesystem::path& path, size_t expected_size, size_t index) {
   std::error_code error;
   const bool exists = std::filesystem::exists(path, error);
-  if (error) return FileSystemError("cannot inspect", path, error);
+  if (error)
+    return FileSystemError("cannot inspect", path, error);
   if (!exists) {
     return absl::NotFoundError(
         absl::StrCat("checkpoint weight file is missing: ", path.string()));
   }
   const bool regular = std::filesystem::is_regular_file(path, error);
-  if (error) return FileSystemError("cannot inspect", path, error);
+  if (error)
+    return FileSystemError("cannot inspect", path, error);
   if (!regular) {
     return absl::DataLossError(absl::StrCat(
         "checkpoint weight is not a regular file: ", path.string()));
   }
   const uintmax_t actual_size = std::filesystem::file_size(path, error);
-  if (error) return FileSystemError("cannot determine size of", path, error);
+  if (error)
+    return FileSystemError("cannot determine size of", path, error);
   if (actual_size != expected_size) {
     return absl::DataLossError(
         absl::StrCat("checkpoint weight ", index, " has ", actual_size,
@@ -261,14 +271,16 @@ absl::StatusOr<std::vector<CheckpointInfo>> FindCheckpoints(
 
   std::error_code error;
   std::filesystem::directory_iterator iterator(parent_directory, error);
-  if (error) return FileSystemError("cannot list", parent_directory, error);
+  if (error)
+    return FileSystemError("cannot list", parent_directory, error);
 
   std::vector<CheckpointInfo> checkpoints;
   const std::filesystem::directory_iterator end;
   while (iterator != end) {
     const std::filesystem::directory_entry& entry = *iterator;
     const bool is_directory = entry.is_directory(error);
-    if (error) return FileSystemError("cannot inspect", entry.path(), error);
+    if (error)
+      return FileSystemError("cannot inspect", entry.path(), error);
     if (is_directory) {
       absl::StatusOr<int> step = ParseCheckpointStep(entry.path());
       if (step.ok()) {
@@ -279,7 +291,8 @@ absl::StatusOr<std::vector<CheckpointInfo>> FindCheckpoints(
       }
     }
     iterator.increment(error);
-    if (error) return FileSystemError("cannot list", parent_directory, error);
+    if (error)
+      return FileSystemError("cannot list", parent_directory, error);
   }
 
   if (checkpoints.empty()) {
@@ -289,16 +302,16 @@ absl::StatusOr<std::vector<CheckpointInfo>> FindCheckpoints(
   }
   std::sort(checkpoints.begin(), checkpoints.end(),
             [](const CheckpointInfo& left, const CheckpointInfo& right) {
-              if (left.step != right.step) return left.step > right.step;
+              if (left.step != right.step)
+                return left.step > right.step;
               // Leading-zero aliases (step_7, step_07) represent the same
               // step. Directory enumeration is not ordered: prefer the
               // shortest spelling, then use lexical order as a total tie
               // break, including during malformed-checkpoint fallback.
               const auto left_name = left.directory.filename().native();
               const auto right_name = right.directory.filename().native();
-              if (left_name.size() != right_name.size()) {
+              if (left_name.size() != right_name.size())
                 return left_name.size() < right_name.size();
-              }
               return left_name < right_name;
             });
   return checkpoints;
@@ -338,7 +351,8 @@ absl::Status WriteToDirectory(cuda::Executor& executor, const Layer& layer,
         auto host_weight,
         cuda::PageLockedHostArray<char>::Allocate(weight->size_bytes()));
     host_weights.push_back(std::move(host_weight));
-    if (weight->size_bytes() == 0) continue;
+    if (weight->size_bytes() == 0)
+      continue;
     RETURN_IF_ERROR(cuda::CudaStatus(
         cudaMemcpyAsync(host_weights.back().data(), weight->data(),
                         weight->size_bytes(), cudaMemcpyDeviceToHost,
@@ -391,7 +405,8 @@ absl::Status ReadFromDirectory(cuda::Executor& executor, Layer& layer,
   }
 
   for (size_t index = 0; index < weights.size(); ++index) {
-    if (weights[index]->size_bytes() == 0) continue;
+    if (weights[index]->size_bytes() == 0)
+      continue;
     RETURN_IF_ERROR(cuda::CudaStatus(
         cudaMemcpyAsync(weights[index]->data(), host_weights[index].data(),
                         weights[index]->size_bytes(), cudaMemcpyHostToDevice,
@@ -411,9 +426,12 @@ absl::StatusOr<CheckpointInfo> ReadLatestCheckpoint(
   for (const CheckpointInfo& checkpoint : checkpoints) {
     absl::Status status =
         ReadFromDirectory(executor, layer, checkpoint.directory);
-    if (status.ok()) return checkpoint;
-    if (!IsMalformedCheckpoint(status)) return status;
-    if (newest_error.ok()) newest_error = status;
+    if (status.ok())
+      return checkpoint;
+    if (!IsMalformedCheckpoint(status))
+      return status;
+    if (newest_error.ok())
+      newest_error = status;
     on_malformed_checkpoint(checkpoint, status);
   }
   return newest_error;

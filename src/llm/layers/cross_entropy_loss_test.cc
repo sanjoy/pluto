@@ -19,7 +19,8 @@ namespace {
 TEST_F(LayersTest, CrossEntropyForwardAndBackwardMatchUniformSoftmax) {
   std::vector<float> logits(kTestBatchSize * kTestVocabularySize, 0.0f);
   std::vector<int> targets(kTestBatchSize);
-  for (int row = 0; row < kTestBatchSize; ++row) targets[row] = row;
+  for (int row = 0; row < kTestBatchSize; ++row)
+    targets[row] = row;
   const auto pinned_logits = CopyToPageLockedHostArray(logits);
   const auto pinned_targets = CopyToPageLockedHostArray(targets);
 

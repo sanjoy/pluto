@@ -38,12 +38,13 @@ static_assert(llm::kGpt2VocabularySize == 50257 &&
               llm::kGpt2AttentionHeadDimension == 64 &&
               llm::kGpt2FeedForwardWidth == 2048);
 
-absl::Status ValidateCheckpointFiles(const fs::path &directory) {
+absl::Status ValidateCheckpointFiles(const fs::path& directory) {
   const auto sizes = Gpt2WeightByteSizes();
   size_t count = 0;
-  for (const auto &entry : fs::directory_iterator(directory)) {
+  for (const auto& entry : fs::directory_iterator(directory)) {
     const auto name = entry.path().filename().string();
-    if (name.starts_with("weight_") && name.ends_with(".bin")) ++count;
+    if (name.starts_with("weight_") && name.ends_with(".bin"))
+      ++count;
   }
   if (count != sizes.size())
     return absl::InvalidArgumentError(
@@ -77,7 +78,8 @@ absl::Status Run() {
   for (auto parent = resolved_output;; parent = parent.parent_path()) {
     if (parent == checkpoint.directory)
       return absl::InvalidArgumentError("output must not be inside checkpoint");
-    if (parent == parent.parent_path()) break;
+    if (parent == parent.parent_path())
+      break;
   }
   RETURN_IF_ERROR(ValidateCheckpointFiles(checkpoint.directory));
   RETURN_IF_ERROR(CreateNewOutputDirectory(output));
@@ -162,18 +164,15 @@ absl::Status Run() {
 }  // namespace
 }  // namespace pluto::weight_analysis
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   const auto remaining = absl::ParseCommandLine(argc, argv);
   if (remaining.size() != 1) {
     std::cerr << "Unexpected positional arguments\n";
     return 1;
   }
-  try {
-    const auto status = pluto::weight_analysis::Run();
-    if (status.ok()) return 0;
-    std::cerr << status << '\n';
-  } catch (const std::exception &error) {
-    std::cerr << "Scoring failed: " << error.what() << '\n';
-  }
+  const auto status = pluto::weight_analysis::Run();
+  if (status.ok())
+    return 0;
+  std::cerr << status << '\n';
   return 1;
 }

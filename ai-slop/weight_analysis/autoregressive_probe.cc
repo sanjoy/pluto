@@ -73,13 +73,15 @@ class ExclusiveStream {
     return std::unique_ptr<ExclusiveStream>(new ExclusiveStream(fd));
   }
   ~ExclusiveStream() {
-    if (fd_ >= 0) close(fd_);
+    if (fd_ >= 0)
+      close(fd_);
   }
   absl::Status Append(const void* bytes, size_t count) {
     const auto* cursor = static_cast<const char*>(bytes);
     while (count) {
       const auto written = write(fd_, cursor, count);
-      if (written < 0 && errno == EINTR) continue;
+      if (written < 0 && errno == EINTR)
+        continue;
       if (written <= 0)
         return absl::InternalError("diagnostic stream write failed");
       cursor += written;
@@ -150,7 +152,8 @@ std::string Ints(absl::Span<const int> values) {
   std::ostringstream output;
   output << '[';
   for (size_t i = 0; i < values.size(); ++i) {
-    if (i) output << ',';
+    if (i)
+      output << ',';
     output << values[i];
   }
   output << ']';
@@ -204,9 +207,8 @@ absl::StatusOr<cuda::PageLockedHostArray<float>> PredictSelectedRow(
 }
 
 absl::Status Run() {
-  if constexpr (std::endian::native != std::endian::little) {
+  if constexpr (std::endian::native != std::endian::little)
     return absl::UnimplementedError("probe requires a little-endian host");
-  }
   const auto started = std::chrono::steady_clock::now();
   const int steps = absl::GetFlag(FLAGS_steps);
   const int seed = absl::GetFlag(FLAGS_seed);
@@ -230,7 +232,8 @@ absl::Status Run() {
       return absl::InvalidArgumentError(
           "output directory must not be inside input data");
     }
-    if (ancestor == ancestor.parent_path()) break;
+    if (ancestor == ancestor.parent_path())
+      break;
   }
   ASSIGN_OR_RETURN(auto files, InspectCheckpoint(checkpoint));
   RETURN_IF_ERROR(CreateNewOutputDirectory(output));
@@ -287,11 +290,10 @@ absl::Status Run() {
     ASSIGN_OR_RETURN(auto logits,
                      PredictSelectedRow(*executor, *model, padded, token_buffer,
                                         window.output_row));
-    ASSIGN_OR_RETURN(auto decision, SampleProductionLogits(
-                                        logits.span(), temperature, random));
+    ASSIGN_OR_RETURN(auto decision,
+                     SampleProductionLogits(logits.span(), temperature, random));
     const int next = decision.token_id;
-    ASSIGN_OR_RETURN(auto piece,
-                     decoder->Decode(absl::MakeConstSpan(&next, 1)));
+    ASSIGN_OR_RETURN(auto piece, decoder->Decode(absl::MakeConstSpan(&next, 1)));
     const size_t byte_start = generated_bytes.size();
     generated_bytes.append(piece);
     RETURN_IF_ERROR(logits_file->Append(logits.data(), logits.size_bytes()));
@@ -434,12 +436,9 @@ int main(int argc, char** argv) {
     std::cerr << "Unexpected positional arguments\n";
     return 1;
   }
-  try {
-    const auto status = pluto::weight_analysis::Run();
-    if (status.ok()) return 0;
-    std::cerr << status << '\n';
-  } catch (const std::exception& error) {
-    std::cerr << "Autoregressive probe failed: " << error.what() << '\n';
-  }
+  const auto status = pluto::weight_analysis::Run();
+  if (status.ok())
+    return 0;
+  std::cerr << status << '\n';
   return 1;
 }

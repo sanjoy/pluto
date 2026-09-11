@@ -10,8 +10,8 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "src/util/status_macros.h"
 #include "src/llm/layer.h"
+#include "src/util/status_macros.h"
 
 namespace pluto::llm::reference_internal {
 
@@ -26,9 +26,8 @@ inline size_t ActivationElementBytes(DataType type) {
 }
 
 inline absl::Status ValidateComputeType(DataType type) {
-  if (type == DataType::FP16 || type == DataType::BF16) {
+  if (type == DataType::FP16 || type == DataType::BF16)
     return absl::OkStatus();
-  }
   // FP8 arithmetic is meaningless without the same per-tensor scale used by
   // the device kernel. The production backend rejects FP8 for that reason, so
   // the reference rejects it too instead of inventing a different contract.
@@ -116,24 +115,22 @@ inline uint16_t FloatToHalf(float value) {
   const uint32_t exponent = (bits >> 23) & 0xffu;
   uint32_t mantissa = bits & 0x7fffffu;
 
-  if (exponent == 0xffu) {
+  if (exponent == 0xffu)
     return static_cast<uint16_t>(sign | (mantissa == 0 ? 0x7c00u : 0x7e00u));
-  }
 
   int half_exponent = static_cast<int>(exponent) - 127 + 15;
-  if (half_exponent >= 31) {
+  if (half_exponent >= 31)
     return static_cast<uint16_t>(sign | 0x7c00u);
-  }
   if (half_exponent <= 0) {
-    if (half_exponent < -10) return static_cast<uint16_t>(sign);
+    if (half_exponent < -10)
+      return static_cast<uint16_t>(sign);
     mantissa |= 0x800000u;
     const int shift = 14 - half_exponent;
     uint32_t rounded = mantissa >> shift;
     const uint32_t remainder = mantissa & ((1u << shift) - 1u);
     const uint32_t halfway = 1u << (shift - 1);
-    if (remainder > halfway || (remainder == halfway && (rounded & 1u) != 0)) {
+    if (remainder > halfway || (remainder == halfway && (rounded & 1u) != 0))
       ++rounded;
-    }
     return static_cast<uint16_t>(sign | rounded);
   }
 
@@ -145,9 +142,8 @@ inline uint16_t FloatToHalf(float value) {
     if (rounded_mantissa == 0x400u) {
       rounded_mantissa = 0;
       ++half_exponent;
-      if (half_exponent >= 31) {
+      if (half_exponent >= 31)
         return static_cast<uint16_t>(sign | 0x7c00u);
-      }
     }
   }
   return static_cast<uint16_t>(
@@ -187,19 +183,17 @@ inline float QuantizeMmaOperand(float value, DataType type) {
 
 inline float LoadActivation(const HostBuffer& buffer, size_t index,
                             DataType type) {
-  if (type == DataType::BF16) {
+  if (type == DataType::BF16)
     return Bf16ToFloat(static_cast<const uint16_t*>(buffer.data())[index]);
-  }
   return static_cast<const float*>(buffer.data())[index];
 }
 
 inline void StoreActivation(HostBuffer* buffer, size_t index, DataType type,
                             float value) {
-  if (type == DataType::BF16) {
+  if (type == DataType::BF16)
     static_cast<uint16_t*>(buffer->data())[index] = FloatToBf16(value);
-  } else {
+  else
     static_cast<float*>(buffer->data())[index] = value;
-  }
 }
 
 inline absl::StatusOr<HostBuffer> AllocateActivation(size_t elements,
@@ -210,7 +204,8 @@ inline absl::StatusOr<HostBuffer> AllocateActivation(size_t elements,
 inline absl::StatusOr<HostBuffer> AllocateFloats(size_t elements,
                                                  bool clear = false) {
   ASSIGN_OR_RETURN(auto buffer, HostBuffer::Allocate(elements * sizeof(float)));
-  if (clear) std::memset(buffer.data(), 0, buffer.size_bytes());
+  if (clear)
+    std::memset(buffer.data(), 0, buffer.size_bytes());
   return buffer;
 }
 

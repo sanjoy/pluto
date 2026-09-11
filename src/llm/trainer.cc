@@ -40,9 +40,8 @@ __tile_global__ void AddLossKernel(const float* __restrict__ losses,
   auto accumulator_view = ct::partition_view{
       ct::tensor_span{accumulator, ct::extents{1}}, ct::shape{1_ic}};
   auto sum = accumulator_view.load(0);
-  for (int index = 0; index < loss_count; ++index) {
+  for (int index = 0; index < loss_count; ++index)
     sum = sum + loss_view.load(index);
-  }
   accumulator_view.store(sum * output_scale, 0);
 }
 
@@ -57,9 +56,8 @@ struct LanguageModelingBatch {
 // modeling objective unpacks those two contiguous halves here.
 absl::StatusOr<LanguageModelingBatch> PrepareLanguageModelingBatch(
     cuda::Executor& executor, const DataBatch& batch) {
-  if (batch.batch_size <= 0) {
+  if (batch.batch_size <= 0)
     return absl::InvalidArgumentError("dataset returned an empty batch");
-  }
   const size_t token_bytes =
       static_cast<size_t>(batch.batch_size) * sizeof(int);
   if (batch.data.size_bytes() != 2 * token_bytes) {
@@ -115,9 +113,8 @@ absl::Status ValidateTrainingOptions(const TrainingOptions& options) {
     return absl::InvalidArgumentError(
         "max_steps must be non-negative or kUnlimitedTrainingSteps");
   }
-  if (options.initial_step < 0) {
+  if (options.initial_step < 0)
     return absl::InvalidArgumentError("initial_step must be non-negative");
-  }
   if (options.training_seconds.has_value() &&
       (!std::isfinite(*options.training_seconds) ||
        *options.training_seconds <= 0.0)) {
@@ -133,9 +130,8 @@ absl::Status ValidateTrainingOptions(const TrainingOptions& options) {
     return absl::InvalidArgumentError(
         "training evaluation counts must be positive");
   }
-  if (!std::isfinite(options.stop_loss)) {
+  if (!std::isfinite(options.stop_loss))
     return absl::InvalidArgumentError("stop_loss must be finite");
-  }
   if (options.initial_loss.has_value() &&
       (!std::isfinite(*options.initial_loss) || *options.initial_loss < 0.0)) {
     return absl::InvalidArgumentError(
@@ -175,8 +171,7 @@ absl::StatusOr<ObjectiveForwardPass> LanguageModelingObjective::Forward(
                    PrepareLanguageModelingBatch(executor, data_batch));
   Tape model_tape;
   BufferVec model_inputs = {batch.tokens};
-  ASSIGN_OR_RETURN(auto output,
-                   model_.fwd(executor, model_inputs, &model_tape));
+  ASSIGN_OR_RETURN(auto output, model_.fwd(executor, model_inputs, &model_tape));
   Tape loss_tape;
   BufferVec loss_inputs = {output, batch.targets};
   ASSIGN_OR_RETURN(auto losses,
@@ -252,9 +247,8 @@ absl::StatusOr<Buffer> Evaluate(cuda::Executor& executor,
                                 const TrainingObjective& objective,
                                 DataSetIterator& eval_data,
                                 const EvaluationOptions& options) {
-  if (options.batches <= 0) {
+  if (options.batches <= 0)
     return absl::InvalidArgumentError("evaluation batches must be positive");
-  }
   RETURN_IF_ERROR(eval_data.Reset());
   ASSIGN_OR_RETURN(auto mean_loss, Buffer::Allocate(executor, sizeof(float)));
   RETURN_IF_ERROR(cuda::CudaStatus(
@@ -320,9 +314,8 @@ absl::StatusOr<TrainingResult> Train(cuda::Executor& executor,
                    EvaluationOptions{.batches = options.evaluation_batches}));
       ASSIGN_OR_RETURN(initial_loss,
                        ReadDeviceLoss(executor, device_initial_loss));
-      if (options.evaluation_callback) {
+      if (options.evaluation_callback)
         options.evaluation_callback(options.initial_step, initial_loss);
-      }
     }
     if (initial_loss <= options.stop_loss) {
       return TrainingResult{.steps_completed = options.initial_step,
@@ -348,9 +341,8 @@ absl::StatusOr<TrainingResult> Train(cuda::Executor& executor,
   bool reached_time_limit = false;
   double elapsed_training_seconds = 0.0;
   while (!has_step_limit || updates_completed < options.max_steps) {
-    if (steps_completed == std::numeric_limits<int>::max()) {
+    if (steps_completed == std::numeric_limits<int>::max())
       return absl::OutOfRangeError("training step number overflowed");
-    }
     ASSIGN_OR_RETURN(DataBatch batch, training_data.Next());
     ASSIGN_OR_RETURN(auto pass, objective.Forward(executor, batch));
     RETURN_IF_ERROR(objective.Backward(executor, std::move(pass)));
@@ -362,9 +354,8 @@ absl::StatusOr<TrainingResult> Train(cuda::Executor& executor,
     }
     ++updates_completed;
     ++steps_completed;
-    if (options.step_callback) {
+    if (options.step_callback)
       RETURN_IF_ERROR(options.step_callback(steps_completed));
-    }
     elapsed_training_seconds = elapsed_seconds();
     reached_time_limit = options.training_seconds.has_value() &&
                          elapsed_training_seconds >= *options.training_seconds;
@@ -383,9 +374,8 @@ absl::StatusOr<TrainingResult> Train(cuda::Executor& executor,
                    EvaluationOptions{.batches = options.evaluation_batches}));
       ASSIGN_OR_RETURN(double training_loss,
                        ReadDeviceLoss(executor, device_training_loss));
-      if (options.evaluation_callback) {
+      if (options.evaluation_callback)
         options.evaluation_callback(steps_completed, training_loss);
-      }
       if (!reached_time_limit) {
         // A periodic evaluation can itself cross the deadline. Its weights
         // already correspond to the final completed update in that case.
@@ -402,10 +392,12 @@ absl::StatusOr<TrainingResult> Train(cuda::Executor& executor,
             .elapsed_training_seconds = elapsed_training_seconds};
       }
     }
-    if (reached_time_limit) break;
+    if (reached_time_limit)
+      break;
   }
   RETURN_IF_ERROR(executor.Synchronize());
-  if (!reached_time_limit) elapsed_training_seconds = elapsed_seconds();
+  if (!reached_time_limit)
+    elapsed_training_seconds = elapsed_seconds();
   return TrainingResult{.steps_completed = steps_completed,
                         .reached_stop_loss = false,
                         .reached_time_limit = reached_time_limit,

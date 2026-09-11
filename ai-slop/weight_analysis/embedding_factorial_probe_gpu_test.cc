@@ -4,9 +4,9 @@
 #include <array>
 #include <cstring>
 
-#include "gtest/gtest.h"
 #include "ai-slop/weight_analysis/causal_probe.h"
 #include "ai-slop/weight_analysis/embedding_factorial_probe.h"
+#include "gtest/gtest.h"
 #include "src/llm/recipes/gpt2.h"
 
 namespace pluto::weight_analysis {
@@ -31,9 +31,8 @@ TEST(EmbeddingFactorialGpuTest, NativeDiagonalsAndCausalInputExposure) {
   constexpr int patched_token = 5;
   auto replacement_row = cuda::PageLockedHostArray<float>::Allocate(width);
   ASSERT_TRUE(replacement_row.ok());
-  for (int i = 0; i < width; ++i) {
+  for (int i = 0; i < width; ++i)
     (*replacement_row)[i] = ((i % 13) - 6) * 0.05f;
-  }
   ASSERT_EQ(
       cudaMemcpyAsync(
           static_cast<float*>((*weights_j)[0].data()) + patched_token * width,

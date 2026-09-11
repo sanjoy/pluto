@@ -40,9 +40,8 @@ using Bytes = cuda::PageLockedHostArray<uint8_t>;
 
 absl::Status Same(const void* actual, const void* expected, size_t bytes,
                   const std::string& label) {
-  if (std::memcmp(actual, expected, bytes) != 0) {
+  if (std::memcmp(actual, expected, bytes) != 0)
     return absl::DataLossError(absl::StrCat(label, " bytes differ"));
-  }
   return absl::OkStatus();
 }
 
@@ -108,7 +107,8 @@ absl::Status ValidateTape(const llm::Tape& tape) {
     return bad();
   for (int block = 0; block < 8; ++block) {
     const auto& body = tape.children[block + 2];
-    if (!body.intermediates.empty() || body.children.size() != 2) return bad();
+    if (!body.intermediates.empty() || body.children.size() != 2)
+      return bad();
     for (int branch = 0; branch < 2; ++branch) {
       const auto& residual = body.children[branch];
       if (residual.intermediates.size() != 1 || residual.children.size() != 1)
@@ -139,7 +139,8 @@ std::vector<size_t> WeightSizes() {
   }
   elements.push_back(kWidth);
   elements.push_back(kWidth);
-  for (auto& size : elements) size *= sizeof(float);
+  for (auto& size : elements)
+    size *= sizeof(float);
   return elements;
 }
 
@@ -258,9 +259,9 @@ struct Probe::Impl {
                                      &projection_tape));
     llm::ResidualLayer residual(
         std::make_unique<ConstantBranch>(std::move(projected)));
-    ASSIGN_OR_RETURN(auto after,
-                     residual.fwd(executor, absl::MakeConstSpan(&before, 1),
-                                  &residual_tape));
+    ASSIGN_OR_RETURN(
+        auto after,
+        residual.fwd(executor, absl::MakeConstSpan(&before, 1), &residual_tape));
     ASSIGN_OR_RETURN(
         auto final,
         tail->fwd(executor, absl::MakeConstSpan(&after, 1), &tail_tape));
@@ -427,13 +428,13 @@ absl::StatusOr<std::unique_ptr<Probe>> Probe::Create(
                        executor, kVocabulary, kWidth, llm::DataType::BF16));
   RETURN_IF_ERROR(
       CopyWeights(executor, weights.subspan(0, 1), impl->embedding->weights()));
-  ASSIGN_OR_RETURN(impl->norm,
-                   llm::LayerNormLayer::Create(executor, kWidth, 1e-5f,
-                                               llm::DataType::BF16));
+  ASSIGN_OR_RETURN(
+      impl->norm,
+      llm::LayerNormLayer::Create(executor, kWidth, 1e-5f, llm::DataType::BF16));
   RETURN_IF_ERROR(
       CopyWeights(executor, weights.subspan(98, 2), impl->norm->weights()));
-  ASSIGN_OR_RETURN(impl->head, llm::LanguageModelingHeadLayer::Create(
-                                   impl->embedding.get()));
+  ASSIGN_OR_RETURN(
+      impl->head, llm::LanguageModelingHeadLayer::Create(impl->embedding.get()));
   ASSIGN_OR_RETURN(auto attention, llm::AttentionLayer::Create(
                                        executor, kContext, kGeometry.heads,
                                        kWidth, llm::DataType::BF16));
@@ -449,8 +450,7 @@ absl::StatusOr<std::unique_ptr<Probe>> Probe::Create(
                        "clean native attention replay"));
   ASSIGN_OR_RETURN(auto native_logits, impl->Replay(native_context));
   RETURN_IF_ERROR(Shape(executor, native_logits, logits.size_bytes()));
-  ASSIGN_OR_RETURN(auto native_values,
-                   Download<float>(executor, native_logits));
+  ASSIGN_OR_RETURN(auto native_values, Download<float>(executor, native_logits));
   RETURN_IF_ERROR(Same(native_values.data(), impl->logit_values.data(),
                        native_values.size_bytes(),
                        "clean all-row padded-logit tail replay"));
@@ -461,9 +461,8 @@ absl::StatusOr<std::unique_ptr<Probe>> Probe::Create(
 absl::StatusOr<Result> Probe::Apply(cuda::Executor& executor,
                                     const Selection& selection) const {
   RETURN_IF_ERROR(ValidateSelection(kGeometry, selection, impl_->rows));
-  if (&executor != &impl_->executor || selection.block != impl_->block) {
+  if (&executor != &impl_->executor || selection.block != impl_->block)
     return absl::InvalidArgumentError("head-context block/executor differs");
-  }
   RETURN_IF_ERROR(impl_->Verify());
   ASSIGN_OR_RETURN(auto expected, cuda::PageLockedHostArray<uint16_t>::Allocate(
                                       impl_->context_bytes.size()));

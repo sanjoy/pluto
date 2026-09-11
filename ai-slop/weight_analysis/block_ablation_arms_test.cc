@@ -40,7 +40,8 @@ std::set<int> Expected(int first, int end, bool attention, bool mlp) {
   for (int block = first; block < end; ++block) {
     if (attention)
       result.insert(kAttention[block].begin(), kAttention[block].end());
-    if (mlp) result.insert(kMlp[block].begin(), kMlp[block].end());
+    if (mlp)
+      result.insert(kMlp[block].begin(), kMlp[block].end());
   }
   return result;
 }
@@ -108,9 +109,8 @@ TEST(BlockAblationArmsTest, CumulativeStopsDisableExactlyTheFollowingBlocks) {
     const auto& removed = arms.at("keep_through_b" + std::to_string(last));
     EXPECT_EQ(removed, Expected(last + 1, 8, true, true));
     EXPECT_EQ(removed.size(), static_cast<size_t>(7 - last) * 4);
-    for (int retained : Expected(0, last + 1, true, true)) {
+    for (int retained : Expected(0, last + 1, true, true))
       EXPECT_EQ(removed.count(retained), 0u);
-    }
   }
 }
 
@@ -128,11 +128,9 @@ TEST(BlockAblationArmsTest, GroupAndIsolationArmsHaveExactSets) {
   isolated.insert(1);
   EXPECT_EQ(arms.at("isolated_b0"), isolated);
   EXPECT_EQ(isolated.size(), 31u);
-  for (const std::string name : {"isolated_b0", "b0_mlp_with_positions"}) {
-    for (int b0_mlp : {8, 9, 10, 11, 12, 13}) {
+  for (const std::string name : {"isolated_b0", "b0_mlp_with_positions"})
+    for (int b0_mlp : {8, 9, 10, 11, 12, 13})
       EXPECT_EQ(arms.at(name).count(b0_mlp), 0u);
-    }
-  }
 }
 
 TEST(BlockAblationArmsTest, EveryArmHasUniqueValidIndicesAndProtectsReadout) {
@@ -152,9 +150,8 @@ TEST(BlockAblationArmsTest, EveryArmHasUniqueValidIndicesAndProtectsReadout) {
       EXPECT_NE(index, 0);
       EXPECT_NE(index, 98);
       EXPECT_NE(index, 99);
-      if (index == 1) {
+      if (index == 1)
         EXPECT_EQ(arm.name, "isolated_b0");
-      }
     }
   }
 }

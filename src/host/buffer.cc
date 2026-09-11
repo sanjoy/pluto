@@ -2,10 +2,7 @@
 
 #include <cstddef>
 #include <memory>
-#include <new>
 #include <utility>
-
-#include "absl/status/status.h"
 
 namespace pluto::host {
 
@@ -22,11 +19,7 @@ struct Buffer::Allocation {
 };
 
 absl::StatusOr<Buffer> Buffer::Allocate(size_t size_bytes) {
-  try {
-    return Buffer(std::make_shared<Allocation>(size_bytes));
-  } catch (const std::bad_alloc&) {
-    return absl::ResourceExhaustedError("host buffer allocation failed");
-  }
+  return Buffer(std::make_shared<Allocation>(size_bytes));
 }
 
 void* Buffer::data() {

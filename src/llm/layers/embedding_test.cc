@@ -27,16 +27,17 @@ absl::Status WriteTestBuffer(cuda::Executor& executor,
                              const Buffer& destination,
                              const std::vector<Element>& values) {
   const size_t bytes = values.size() * sizeof(Element);
-  if (destination.size_bytes() != bytes) {
+  if (destination.size_bytes() != bytes)
     return absl::InvalidArgumentError("test buffer has the wrong size");
-  }
   auto pinned = cuda::PageLockedHostArray<Element>::CopyFrom(values);
-  if (!pinned.ok()) return pinned.status();
+  if (!pinned.ok())
+    return pinned.status();
   auto status = cuda::CudaStatus(
       cudaMemcpyAsync(destination.data(), pinned->data(), bytes,
                       cudaMemcpyHostToDevice, executor.stream()),
       "copy determinism test input");
-  if (!status.ok()) return status;
+  if (!status.ok())
+    return status;
   return executor.Synchronize();
 }
 
@@ -44,34 +45,39 @@ template <class Element>
 absl::StatusOr<Buffer> MakeTestBuffer(cuda::Executor& executor,
                                       const std::vector<Element>& values) {
   auto buffer = Buffer::Allocate(executor, values.size() * sizeof(Element));
-  if (!buffer.ok()) return buffer.status();
+  if (!buffer.ok())
+    return buffer.status();
   auto status = WriteTestBuffer(executor, *buffer, values);
-  if (!status.ok()) return status;
+  if (!status.ok())
+    return status;
   return std::move(*buffer);
 }
 
 absl::StatusOr<std::vector<uint32_t>> ReadTestFloatBits(
     cuda::Executor& executor, const Buffer& buffer) {
-  if (buffer.size_bytes() % sizeof(uint32_t) != 0) {
+  if (buffer.size_bytes() % sizeof(uint32_t) != 0)
     return absl::InvalidArgumentError("test output is not an FP32 buffer");
-  }
   auto pinned = cuda::PageLockedHostArray<uint32_t>::Allocate(
       buffer.size_bytes() / sizeof(uint32_t));
-  if (!pinned.ok()) return pinned.status();
+  if (!pinned.ok())
+    return pinned.status();
   auto status = cuda::CudaStatus(
       cudaMemcpyAsync(pinned->data(), buffer.data(), buffer.size_bytes(),
                       cudaMemcpyDeviceToHost, executor.stream()),
       "read determinism test output");
-  if (!status.ok()) return status;
+  if (!status.ok())
+    return status;
   status = executor.Synchronize();
-  if (!status.ok()) return status;
+  if (!status.ok())
+    return status;
   return std::vector<uint32_t>(pinned->begin(), pinned->end());
 }
 
 std::vector<uint32_t> TestFloatBits(const std::vector<float>& values) {
   std::vector<uint32_t> result;
   result.reserve(values.size());
-  for (float value : values) result.push_back(std::bit_cast<uint32_t>(value));
+  for (float value : values)
+    result.push_back(std::bit_cast<uint32_t>(value));
   return result;
 }
 
@@ -276,9 +282,8 @@ TEST_F(LayersTest, PositionEmbeddingRepeatsAtRuntimeContextLength) {
   ASSERT_TRUE(positions.ok()) << positions.status();
 
   std::vector<float> weight(kTestContextLength * kTestModelWidth, 0.0f);
-  for (int position = 0; position < kTestContextLength; ++position) {
+  for (int position = 0; position < kTestContextLength; ++position)
     weight[position * kTestModelWidth] = static_cast<float>(position + 1);
-  }
   const auto pinned_weight = CopyToPageLockedHostArray(weight);
   ASSERT_EQ(cudaMemcpyAsync((*positions)->weights().front().data(),
                             pinned_weight.data(), weight.size() * sizeof(float),
@@ -380,7 +385,8 @@ TEST_F(LayersTest, LookupBackwardIsBitwiseRepeatableInOriginalRowOrder) {
           // Compare the entire physical table: unobserved logical rows and
           // padding must preserve their original bytes as well.
           EXPECT_EQ(*actual, TestFloatBits(expected));
-          if (repeat == 0) first_results[pass] = *actual;
+          if (repeat == 0)
+            first_results[pass] = *actual;
           EXPECT_EQ(*actual, first_results[pass]);
         }
       }
@@ -403,7 +409,8 @@ TEST_F(LayersTest, PositionBackwardIsBitwiseRepeatableWithPartialContexts) {
           InitialTestGradient(static_cast<size_t>(context) * width);
       std::vector<int> destinations(rows);
       std::array<std::vector<float>, 2> output_gradients;
-      for (int row = 0; row < rows; ++row) destinations[row] = row % context;
+      for (int row = 0; row < rows; ++row)
+        destinations[row] = row % context;
       for (int pass = 0; pass < 2; ++pass) {
         output_gradients[pass].resize(static_cast<size_t>(rows) * width);
         for (int row = 0; row < rows; ++row) {
@@ -451,7 +458,8 @@ TEST_F(LayersTest, PositionBackwardIsBitwiseRepeatableWithPartialContexts) {
               ReadTestFloatBits(*executor_, (*positions)->gradients()[0]);
           ASSERT_TRUE(actual.ok()) << actual.status();
           EXPECT_EQ(*actual, TestFloatBits(expected));
-          if (repeat == 0) first_results[pass] = *actual;
+          if (repeat == 0)
+            first_results[pass] = *actual;
           EXPECT_EQ(*actual, first_results[pass]);
         }
       }
@@ -477,7 +485,8 @@ TEST_F(LayersTest, LookupBackwardPreservesRealTiedHeadGradientAcrossPasses) {
     ASSERT_TRUE(
         WriteTestBuffer(*executor_, (*embedding)->weight(), table).ok());
     std::vector<int> tokens(kRows);
-    for (int row = 0; row < kRows; ++row) tokens[row] = row % 2 == 0 ? 3 : 7;
+    for (int row = 0; row < kRows; ++row)
+      tokens[row] = row % 2 == 0 ? 3 : 7;
     auto token_buffer = MakeTestBuffer(*executor_, tokens);
     ASSERT_TRUE(token_buffer.ok()) << token_buffer.status();
     std::vector<float> logits_gradient(static_cast<size_t>(kRows) * padded,
@@ -528,7 +537,8 @@ TEST_F(LayersTest, LookupBackwardPreservesRealTiedHeadGradientAcrossPasses) {
             ReadTestFloatBits(*executor_, (*embedding)->gradients()[0]);
         ASSERT_TRUE(actual.ok()) << actual.status();
         EXPECT_EQ(*actual, TestFloatBits(expected));
-        if (repeat == 0) first_results[pass] = *actual;
+        if (repeat == 0)
+          first_results[pass] = *actual;
         EXPECT_EQ(*actual, first_results[pass]);
       }
     }

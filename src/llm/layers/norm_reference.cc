@@ -6,9 +6,9 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "src/util/status_macros.h"
 #include "src/llm/layers/norm.h"
 #include "src/llm/layers/reference_internal.h"
+#include "src/util/status_macros.h"
 
 namespace pluto::llm {
 namespace ri = reference_internal;
@@ -17,18 +17,16 @@ absl::StatusOr<std::unique_ptr<LayerNormLayerReference>>
 LayerNormLayerReference::Create(int embedding_dim, float epsilon,
                                 DataType data_type) {
   RETURN_IF_ERROR(ri::ValidateComputeType(data_type));
-  if (!(epsilon > 0.0f)) {
+  if (!(epsilon > 0.0f))
     return absl::InvalidArgumentError("layer-norm epsilon must be positive");
-  }
   RETURN_IF_ERROR(ri::ValidateTiledExtent(embedding_dim, "embedding_dim"));
   ASSIGN_OR_RETURN(auto gamma, ri::AllocateFloats(embedding_dim));
   ASSIGN_OR_RETURN(auto beta, ri::AllocateFloats(embedding_dim, true));
   ASSIGN_OR_RETURN(auto d_gamma, ri::AllocateFloats(embedding_dim, true));
   ASSIGN_OR_RETURN(auto d_beta, ri::AllocateFloats(embedding_dim, true));
   auto* gamma_values = static_cast<float*>(gamma.data());
-  for (int column = 0; column < embedding_dim; ++column) {
+  for (int column = 0; column < embedding_dim; ++column)
     gamma_values[column] = 1.0f;
-  }
   return std::unique_ptr<LayerNormLayerReference>(new LayerNormLayerReference(
       embedding_dim, epsilon, data_type, std::move(gamma), std::move(beta),
       std::move(d_gamma), std::move(d_beta)));

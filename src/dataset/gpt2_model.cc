@@ -61,29 +61,29 @@ class JsonCursor {
 
   bool Consume(char expected) {
     SkipWhitespace();
-    if (position_ >= input_.size() || input_[position_] != expected) {
+    if (position_ >= input_.size() || input_[position_] != expected)
       return false;
-    }
     ++position_;
     return true;
   }
 
   absl::Status Expect(char expected) {
-    if (Consume(expected)) return absl::OkStatus();
+    if (Consume(expected))
+      return absl::OkStatus();
     return JsonError(position_,
                      absl::StrCat("expected '", std::string(1, expected), "'"));
   }
 
   absl::StatusOr<std::string> ParseString() {
     SkipWhitespace();
-    if (position_ >= input_.size() || input_[position_++] != '"') {
+    if (position_ >= input_.size() || input_[position_++] != '"')
       return JsonError(position_, "expected string");
-    }
 
     std::string result;
     while (position_ < input_.size()) {
       const unsigned char byte = input_[position_++];
-      if (byte == '"') return result;
+      if (byte == '"')
+        return result;
       if (byte < 0x20)
         return JsonError(position_ - 1, "control byte in string");
       if (byte != '\\') {
@@ -91,9 +91,8 @@ class JsonCursor {
         continue;
       }
 
-      if (position_ >= input_.size()) {
+      if (position_ >= input_.size())
         return JsonError(position_, "truncated string escape");
-      }
       const char escape = input_[position_++];
       switch (escape) {
         case '"':
@@ -130,9 +129,8 @@ class JsonCursor {
             }
             position_ += 2;
             ASSIGN_OR_RETURN(uint32_t low, ParseHexQuad());
-            if (low < 0xdc00 || low > 0xdfff) {
+            if (low < 0xdc00 || low > 0xdfff)
               return JsonError(position_, "invalid low surrogate");
-            }
             scalar = 0x10000 + ((scalar - 0xd800) << 10) + (low - 0xdc00);
           } else if (scalar >= 0xdc00 && scalar <= 0xdfff) {
             return JsonError(position_, "unexpected low surrogate");
@@ -170,22 +168,27 @@ class JsonCursor {
       }
       case '{': {
         ++position_;
-        if (Consume('}')) return absl::OkStatus();
+        if (Consume('}'))
+          return absl::OkStatus();
         while (true) {
           auto key = ParseString();
-          if (!key.ok()) return key.status();
+          if (!key.ok())
+            return key.status();
           RETURN_IF_ERROR(Expect(':'));
           RETURN_IF_ERROR(SkipValue());
-          if (Consume('}')) return absl::OkStatus();
+          if (Consume('}'))
+            return absl::OkStatus();
           RETURN_IF_ERROR(Expect(','));
         }
       }
       case '[': {
         ++position_;
-        if (Consume(']')) return absl::OkStatus();
+        if (Consume(']'))
+          return absl::OkStatus();
         while (true) {
           RETURN_IF_ERROR(SkipValue());
-          if (Consume(']')) return absl::OkStatus();
+          if (Consume(']'))
+            return absl::OkStatus();
           RETURN_IF_ERROR(Expect(','));
         }
       }
@@ -199,7 +202,8 @@ class JsonCursor {
           }
           ++position_;
         }
-        if (begin == position_) return JsonError(begin, "expected value");
+        if (begin == position_)
+          return JsonError(begin, "expected value");
         return absl::OkStatus();
       }
     }
@@ -207,9 +211,8 @@ class JsonCursor {
 
  private:
   absl::StatusOr<uint32_t> ParseHexQuad() {
-    if (position_ + 4 > input_.size()) {
+    if (position_ + 4 > input_.size())
       return JsonError(position_, "truncated Unicode escape");
-    }
     uint32_t value = 0;
     for (int i = 0; i < 4; ++i) {
       const char c = input_[position_++];
@@ -233,15 +236,16 @@ class JsonCursor {
 absl::Status ParseVocabulary(JsonCursor* cursor,
                              absl::flat_hash_map<std::string, int>* vocab) {
   RETURN_IF_ERROR(cursor->Expect('{'));
-  if (cursor->Consume('}')) return absl::OkStatus();
+  if (cursor->Consume('}'))
+    return absl::OkStatus();
   while (true) {
     ASSIGN_OR_RETURN(auto token, cursor->ParseString());
     RETURN_IF_ERROR(cursor->Expect(':'));
     ASSIGN_OR_RETURN(int id, cursor->ParseNonnegativeInt());
-    if (!vocab->emplace(std::move(token), id).second) {
+    if (!vocab->emplace(std::move(token), id).second)
       return JsonError(cursor->position(), "duplicate vocabulary token");
-    }
-    if (cursor->Consume('}')) return absl::OkStatus();
+    if (cursor->Consume('}'))
+      return absl::OkStatus();
     RETURN_IF_ERROR(cursor->Expect(','));
   }
 }
@@ -249,7 +253,8 @@ absl::Status ParseVocabulary(JsonCursor* cursor,
 absl::Status ParseMerges(JsonCursor* cursor,
                          absl::flat_hash_map<std::string, int>* ranks) {
   RETURN_IF_ERROR(cursor->Expect('['));
-  if (cursor->Consume(']')) return absl::OkStatus();
+  if (cursor->Consume(']'))
+    return absl::OkStatus();
 
   int rank = 0;
   while (true) {
@@ -266,15 +271,15 @@ absl::Status ParseMerges(JsonCursor* cursor,
       // string. GPT-2 alphabet symbols themselves never contain ASCII space.
       ASSIGN_OR_RETURN(auto merge, cursor->ParseString());
       const size_t separator = merge.find(' ');
-      if (separator == std::string::npos) {
+      if (separator == std::string::npos)
         return JsonError(cursor->position(), "merge is not a token pair");
-      }
       left = merge.substr(0, separator);
       right = merge.substr(separator + 1);
     }
     ranks->emplace(MergeKey(left, right), rank++);
 
-    if (cursor->Consume(']')) return absl::OkStatus();
+    if (cursor->Consume(']'))
+      return absl::OkStatus();
     RETURN_IF_ERROR(cursor->Expect(','));
   }
 }
@@ -283,18 +288,19 @@ absl::Status ParseModel(JsonCursor* cursor,
                         absl::flat_hash_map<std::string, int>* vocab,
                         absl::flat_hash_map<std::string, int>* ranks) {
   RETURN_IF_ERROR(cursor->Expect('{'));
-  if (cursor->Consume('}')) return absl::OkStatus();
+  if (cursor->Consume('}'))
+    return absl::OkStatus();
   while (true) {
     ASSIGN_OR_RETURN(auto key, cursor->ParseString());
     RETURN_IF_ERROR(cursor->Expect(':'));
-    if (key == "vocab") {
+    if (key == "vocab")
       RETURN_IF_ERROR(ParseVocabulary(cursor, vocab));
-    } else if (key == "merges") {
+    else if (key == "merges")
       RETURN_IF_ERROR(ParseMerges(cursor, ranks));
-    } else {
+    else
       RETURN_IF_ERROR(cursor->SkipValue());
-    }
-    if (cursor->Consume('}')) return absl::OkStatus();
+    if (cursor->Consume('}'))
+      return absl::OkStatus();
     RETURN_IF_ERROR(cursor->Expect(','));
   }
 }
@@ -304,7 +310,8 @@ absl::Status ParseTokenizerJson(absl::string_view json,
                                 absl::flat_hash_map<std::string, int>* ranks) {
   JsonCursor cursor(json);
   RETURN_IF_ERROR(cursor.Expect('{'));
-  if (cursor.Consume('}')) return JsonError(0, "missing model");
+  if (cursor.Consume('}'))
+    return JsonError(0, "missing model");
 
   bool found_model = false;
   while (true) {
@@ -316,43 +323,42 @@ absl::Status ParseTokenizerJson(absl::string_view json,
     } else {
       RETURN_IF_ERROR(cursor.SkipValue());
     }
-    if (cursor.Consume('}')) break;
+    if (cursor.Consume('}'))
+      break;
     RETURN_IF_ERROR(cursor.Expect(','));
   }
-  if (!found_model || vocab->empty() || ranks->empty()) {
+  if (!found_model || vocab->empty() || ranks->empty())
     return JsonError(cursor.position(), "missing byte-level BPE model");
-  }
   return absl::OkStatus();
 }
 
 absl::StatusOr<std::string> ReadFile(const std::filesystem::path& path) {
   std::ifstream stream(path, std::ios::binary | std::ios::ate);
-  if (!stream) {
+  if (!stream)
     return absl::NotFoundError(absl::StrCat("cannot open ", path.string()));
-  }
   const std::streamoff size = stream.tellg();
-  if (size < 0) {
+  if (size < 0)
     return absl::InternalError(absl::StrCat("cannot size ", path.string()));
-  }
   std::string contents(static_cast<size_t>(size), '\0');
   stream.seekg(0);
-  if (!contents.empty() && !stream.read(contents.data(), size)) {
+  if (!contents.empty() && !stream.read(contents.data(), size))
     return absl::DataLossError(absl::StrCat("cannot read ", path.string()));
-  }
   return contents;
 }
 
 std::array<std::string, 256> MakeByteEncoder() {
   std::array<bool, 256> direct{};
-  for (int byte = 33; byte <= 126; ++byte) direct[byte] = true;
-  for (int byte = 161; byte <= 172; ++byte) direct[byte] = true;
-  for (int byte = 174; byte <= 255; ++byte) direct[byte] = true;
+  for (int byte = 33; byte <= 126; ++byte)
+    direct[byte] = true;
+  for (int byte = 161; byte <= 172; ++byte)
+    direct[byte] = true;
+  for (int byte = 174; byte <= 255; ++byte)
+    direct[byte] = true;
 
   std::array<std::string, 256> encoder;
   uint32_t replacement = 256;
-  for (int byte = 0; byte < 256; ++byte) {
+  for (int byte = 0; byte < 256; ++byte)
     AppendUtf8(direct[byte] ? byte : replacement++, &encoder[byte]);
-  }
   return encoder;
 }
 
@@ -380,7 +386,8 @@ std::string MergeKey(absl::string_view left, absl::string_view right) {
 }
 
 absl::StatusOr<uint32_t> ConsumeUtf8(absl::string_view* input) {
-  if (input->empty()) return absl::OutOfRangeError("end of UTF-8 input");
+  if (input->empty())
+    return absl::OutOfRangeError("end of UTF-8 input");
   const auto first = static_cast<unsigned char>((*input)[0]);
   int length = 0;
   uint32_t value = 0;
@@ -399,14 +406,12 @@ absl::StatusOr<uint32_t> ConsumeUtf8(absl::string_view* input) {
   } else {
     return absl::InvalidArgumentError("invalid UTF-8 leading byte");
   }
-  if (input->size() < static_cast<size_t>(length)) {
+  if (input->size() < static_cast<size_t>(length))
     return absl::InvalidArgumentError("truncated UTF-8 scalar");
-  }
   for (int i = 1; i < length; ++i) {
     const auto byte = static_cast<unsigned char>((*input)[i]);
-    if ((byte & 0xc0) != 0x80) {
+    if ((byte & 0xc0) != 0x80)
       return absl::InvalidArgumentError("invalid UTF-8 continuation byte");
-    }
     value = (value << 6) | (byte & 0x3f);
   }
   static constexpr uint32_t kMinimum[] = {0, 0, 0x80, 0x800, 0x10000};
@@ -427,9 +432,8 @@ absl::StatusOr<std::shared_ptr<const Gpt2Model>> Gpt2Model::Load(
     absl::MutexLock lock(cache.mutex);
     const auto found = cache.models.find(cache_key);
     if (found != cache.models.end()) {
-      if (std::shared_ptr<const Gpt2Model> model = found->second.lock()) {
+      if (std::shared_ptr<const Gpt2Model> model = found->second.lock())
         return model;
-      }
     }
   }
 
@@ -452,15 +456,13 @@ absl::StatusOr<std::shared_ptr<const Gpt2Model>> Gpt2Model::Load(
     seen[id] = true;
     model->decoder_[id] = token;
   }
-  if (std::find(seen.begin(), seen.end(), false) != seen.end()) {
+  if (std::find(seen.begin(), seen.end(), false) != seen.end())
     return absl::InvalidArgumentError("vocabulary ids are not contiguous");
-  }
 
   model->eos_token_ = "<|endoftext|>";
   const auto eos = model->encoder_.find(model->eos_token_);
-  if (eos == model->encoder_.end()) {
+  if (eos == model->encoder_.end())
     return absl::InvalidArgumentError("GPT-2 EOS token is missing");
-  }
   model->eos_token_id_ = eos->second;
 
   model->byte_encoder_ = MakeByteEncoder();

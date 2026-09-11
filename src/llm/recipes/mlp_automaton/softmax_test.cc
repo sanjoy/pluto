@@ -20,15 +20,14 @@ namespace {
 TopTransition Reference(const float* row, int vocabulary) {
   int winner = 0;
   for (int token = 0; token < vocabulary; ++token) {
-    if (!std::isfinite(row[token])) {
+    if (!std::isfinite(row[token]))
       return {-1, std::numeric_limits<float>::quiet_NaN()};
-    }
-    if (row[token] > row[winner]) winner = token;
+    if (row[token] > row[winner])
+      winner = token;
   }
   double denominator = 0;
-  for (int token = 0; token < vocabulary; ++token) {
+  for (int token = 0; token < vocabulary; ++token)
     denominator += std::exp(static_cast<double>(row[token]) - row[winner]);
-  }
   return {winner, static_cast<float>(1.0 / denominator)};
 }
 
@@ -41,9 +40,8 @@ class TopTransitionsTest : public testing::Test {
   }
 
   void TearDown() override {
-    if (executor_) {
+    if (executor_)
       EXPECT_TRUE(executor_->Synchronize().ok());
-    }
   }
 
   void Check(const std::vector<float>& logits, int rows, int vocabulary,

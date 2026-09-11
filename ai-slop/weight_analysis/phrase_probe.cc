@@ -58,9 +58,8 @@ static_assert(sizeof(int) == sizeof(int32_t) && sizeof(float) == 4);
 absl::Status CheckFinite(const cuda::PageLockedHostArray<uint8_t>& bytes,
                          bool fp32) {
   const size_t stride = fp32 ? 4 : 2;
-  if (bytes.size_bytes() % stride) {
+  if (bytes.size_bytes() % stride)
     return absl::InvalidArgumentError("misaligned native tensor byte count");
-  }
   for (size_t i = 0; i < bytes.size_bytes(); i += stride) {
     float value;
     if (fp32) {
@@ -135,8 +134,8 @@ absl::Status Run() {
     return absl::InvalidArgumentError(
         "required: --checkpoint --tokenizer --output_dir");
   }
-  ASSIGN_OR_RETURN(auto neurons, ParseNeuronInterventions(
-                                     absl::GetFlag(FLAGS_ablate_neuron)));
+  ASSIGN_OR_RETURN(auto neurons,
+                   ParseNeuronInterventions(absl::GetFlag(FLAGS_ablate_neuron)));
   const auto checkpoint = fs::canonical(absl::GetFlag(FLAGS_checkpoint));
   const auto tokenizer_path = fs::canonical(absl::GetFlag(FLAGS_tokenizer));
   const auto output = fs::absolute(absl::GetFlag(FLAGS_output_dir));
@@ -148,12 +147,13 @@ absl::Status Run() {
       return absl::InvalidArgumentError(
           "output must not be inside an input directory");
     }
-    if (parent == parent.parent_path()) break;
+    if (parent == parent.parent_path())
+      break;
   }
   // Validate the supplied path, not its already-canonicalized symlink target.
-  ASSIGN_OR_RETURN(auto checkpoint_files,
-                   InspectGpt2CheckpointFiles(
-                       fs::absolute(absl::GetFlag(FLAGS_checkpoint))));
+  ASSIGN_OR_RETURN(
+      auto checkpoint_files,
+      InspectGpt2CheckpointFiles(fs::absolute(absl::GetFlag(FLAGS_checkpoint))));
   RETURN_IF_ERROR(CreateNewOutputDirectory(output));
 
   // Executor outlives every device buffer and all queued stream-ordered frees.
@@ -170,9 +170,8 @@ absl::Status Run() {
   }
   const std::string prompt = absl::GetFlag(FLAGS_prompt);
   ASSIGN_OR_RETURN(auto encoded, tokenizer->Encode(prompt));
-  if (encoded.empty() || encoded.size() > kContext) {
+  if (encoded.empty() || encoded.size() > kContext)
     return absl::InvalidArgumentError("prompt must encode to 1..1024 tokens");
-  }
   ASSIGN_OR_RETURN(auto decoded, detokenizer->Decode(encoded.span()));
   if (decoded != prompt)
     return absl::DataLossError("native tokenizer round trip failed");
@@ -214,11 +213,9 @@ absl::Status Run() {
   frames.insert(frames.begin(),
                 {"embedding", std::move(embedding), kWidth, false, true});
   std::map<std::string, const TraceFrame*> by_name;
-  for (const auto& frame : frames) {
-    if (!by_name.emplace(frame.name, &frame).second) {
+  for (const auto& frame : frames)
+    if (!by_name.emplace(frame.name, &frame).second)
       return absl::InternalError("duplicate native frame name");
-    }
-  }
   for (int block = 0; block < 8; ++block) {
     const auto p = absl::StrCat("blocks.", block, ".");
     const std::string before =
@@ -243,7 +240,8 @@ absl::Status Run() {
     const auto filename = frame.name + (frame.fp32 ? ".f32" : ".bf16");
     RETURN_IF_ERROR(
         WriteExclusive(output / filename, host.data(), host.size_bytes()));
-    if (!first_file) files_json << ',';
+    if (!first_file)
+      files_json << ',';
     first_file = false;
     files_json << JsonQuote(frame.name) << ':'
                << TensorJson(filename, frame.fp32 ? "float32" : "bf16", rows,
@@ -272,13 +270,13 @@ absl::Status Run() {
     ASSIGN_OR_RETURN(auto host,
                      ReadPrefix(*executor, logits, rows, kPaddedVocabulary, 4));
     RETURN_IF_ERROR(CheckFinite(host, true));
-    if (i + 1 == residual_names.size()) {
+    if (i + 1 == residual_names.size())
       RETURN_IF_ERROR(CheckEqual(baseline, host, "final native lens logits"));
-    }
     const auto filename = "lens." + name + ".f32";
     RETURN_IF_ERROR(
         WriteExclusive(output / filename, host.data(), host.size_bytes()));
-    if (i) lens_json << ',';
+    if (i)
+      lens_json << ',';
     lens_json << JsonQuote(name) << ':'
               << TensorJson(filename, "float32", rows, kPaddedVocabulary,
                             "native_diagnostic_final_norm_and_tied_head");
@@ -306,11 +304,13 @@ absl::Status Run() {
     const auto filename = name + ".logits.f32";
     RETURN_IF_ERROR(
         WriteExclusive(output / filename, result.data(), result.size_bytes()));
-    if (arm_count++) interventions_json << ',';
+    if (arm_count++)
+      interventions_json << ',';
     interventions_json << "{\"name\":" << JsonQuote(name)
                        << ",\"kind\":" << JsonQuote(kind)
                        << ",\"block\":" << block;
-    if (element >= 0) interventions_json << ",\"head_or_neuron\":" << element;
+    if (element >= 0)
+      interventions_json << ",\"head_or_neuron\":" << element;
     interventions_json << ",\"scale\":0,\"logits_file\":" << JsonQuote(filename)
                        << ",\"shape\":[" << rows << ',' << kPaddedVocabulary
                        << ']' << ",\"restoration_verified_bytes\":true}";
@@ -330,7 +330,8 @@ absl::Status Run() {
         // Even an invalid forward result must restore before propagating its
         // error. RestoreAndVerify checks device bytes against pristine weights.
         RETURN_IF_ERROR(intervention->RestoreAndVerify());
-        if (!result.ok()) return result.status();
+        if (!result.ok())
+          return result.status();
         const std::string kind = mlp ? "mlp_branch" : "attention_branch";
         RETURN_IF_ERROR(
             save_arm(absl::StrCat("ablation.block", block, ".", kind), kind,
@@ -349,7 +350,8 @@ absl::Status Run() {
         RETURN_IF_ERROR(intervention->Apply(0));
         auto result = ForwardPrefix(*executor, *model, input, rows);
         RETURN_IF_ERROR(intervention->RestoreAndVerify());
-        if (!result.ok()) return result.status();
+        if (!result.ok())
+          return result.status();
         RETURN_IF_ERROR(
             save_arm(absl::StrCat("ablation.block", block, ".head", head),
                      "attention_head", block, head, *result));
@@ -365,7 +367,8 @@ absl::Status Run() {
     RETURN_IF_ERROR(intervention->Apply(0));
     auto result = ForwardPrefix(*executor, *model, input, rows);
     RETURN_IF_ERROR(intervention->RestoreAndVerify());
-    if (!result.ok()) return result.status();
+    if (!result.ok())
+      return result.status();
     RETURN_IF_ERROR(
         save_arm(absl::StrCat("ablation.block", block, ".neuron", neuron),
                  "mlp_neuron", block, neuron, *result));
@@ -383,14 +386,16 @@ absl::Status Run() {
            << "{\"schema_version\":1,\"complete\":true,\"prompt\":"
            << JsonQuote(prompt) << ",\"token_ids\":[";
   for (int i = 0; i < rows; ++i) {
-    if (i) metadata << ',';
+    if (i)
+      metadata << ',';
     metadata << encoded[i];
   }
   metadata << "],\"token_pieces\":[";
   for (int i = 0; i < rows; ++i) {
     ASSIGN_OR_RETURN(auto piece,
                      detokenizer->Decode(encoded.span().subspan(i, 1)));
-    if (i) metadata << ',';
+    if (i)
+      metadata << ',';
     metadata << JsonQuote(piece);
   }
   metadata
@@ -442,12 +447,9 @@ int main(int argc, char** argv) {
     std::cerr << "Unexpected positional arguments\n";
     return 1;
   }
-  try {
-    const auto status = pluto::weight_analysis::Run();
-    if (status.ok()) return 0;
-    std::cerr << status << '\n';
-  } catch (const std::exception& error) {
-    std::cerr << "Phrase probe failed: " << error.what() << '\n';
-  }
+  const auto status = pluto::weight_analysis::Run();
+  if (status.ok())
+    return 0;
+  std::cerr << status << '\n';
   return 1;
 }

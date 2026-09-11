@@ -31,11 +31,11 @@ class ProbeTest : public testing::Test {
     directory_ = created;
   }
   void TearDown() override {
-    if (executor_) {
+    if (executor_)
       EXPECT_TRUE(executor_->Synchronize().ok());
-    }
     // This exclusively created test-owned directory contains only fixtures.
-    if (!directory_.empty()) std::filesystem::remove_all(directory_);
+    if (!directory_.empty())
+      std::filesystem::remove_all(directory_);
   }
   absl::StatusOr<cuda::Buffer> Upload(absl::Span<const float> values) {
     ASSIGN_OR_RETURN(auto host,
@@ -83,7 +83,8 @@ TEST_F(ProbeTest, FrozenArmOrderAndPhysicalByteLayout) {
   const auto sizes = Gpt2WeightByteSizes();
   ASSERT_EQ(sizes.size(), 100U);
   size_t total = 0;
-  for (size_t size : sizes) total += size;
+  for (size_t size : sizes)
+    total += size;
   EXPECT_EQ(total, 205934592U);
   EXPECT_EQ(sizes[6], 512U * 512 * 4);
   EXPECT_EQ(sizes[12], 2048U * 512 * 4);
@@ -137,8 +138,10 @@ TEST_F(ProbeTest, HalfAndZeroIncludeBiasAndRestoreNegativeZeroBytes) {
   auto zero_bias = Download(layer_bias);
   ASSERT_TRUE(zero_matrix.ok());
   ASSERT_TRUE(zero_bias.ok());
-  for (float x : *zero_matrix) EXPECT_EQ(x, 0);
-  for (float x : *zero_bias) EXPECT_EQ(x, 0);
+  for (float x : *zero_matrix)
+    EXPECT_EQ(x, 0);
+  for (float x : *zero_bias)
+    EXPECT_EQ(x, 0);
   ASSERT_TRUE((*intervention)->RestoreAndVerify().ok());
   auto restored_matrix = Download(layer_matrix);
   auto restored_bias = Download(layer_bias);
@@ -206,8 +209,10 @@ TEST_F(ProbeTest, MlpRowsUsePristineDosesAndLeaveOtherRowsAndBiasUntouched) {
     for (int row : {1, 4}) {
       for (int column = 0; column < 3; ++column) {
         const int offset = row * 3 + column;
-        if (dose == 0) expected[offset] = 0.0f;
-        if (dose == 0.5f) expected[offset] = matrix[offset] * 0.5f;
+        if (dose == 0)
+          expected[offset] = 0.0f;
+        if (dose == 0.5f)
+          expected[offset] = matrix[offset] * 0.5f;
       }
     }
     EXPECT_EQ(std::memcmp(actual->data(), expected.data(),
@@ -330,7 +335,8 @@ TEST_F(ProbeTest, MlpRowsInvalidDoseLeavesActiveDoseUntouched) {
     EXPECT_FALSE((*intervention)->Apply(invalid).ok());
     auto actual = Download(*weight);
     ASSERT_TRUE(actual.ok());
-    for (int i = 0; i < 4; ++i) EXPECT_EQ((*actual)[i], i + 1);
+    for (int i = 0; i < 4; ++i)
+      EXPECT_EQ((*actual)[i], i + 1);
   }
   EXPECT_TRUE((*intervention)->Apply(1).ok());
 }
@@ -425,8 +431,8 @@ class ToyModel final : public llm::Layer {
                         cudaMemcpyDeviceToHost, executor.stream()),
         "toy tokens"));
     RETURN_IF_ERROR(executor.Synchronize());
-    ASSIGN_OR_RETURN(auto logits, cuda::PageLockedHostArray<float>::Allocate(
-                                      rows * padded_));
+    ASSIGN_OR_RETURN(auto logits,
+                     cuda::PageLockedHostArray<float>::Allocate(rows * padded_));
     for (size_t row = 0; row < rows; ++row) {
       for (int col = 0; col < padded_; ++col) {
         logits[row * padded_ + col] = col >= vocab_        ? -1e30f

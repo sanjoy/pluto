@@ -74,7 +74,8 @@ absl::StatusOr<std::unique_ptr<AdamWOptimizer>> AdamWOptimizer::Create(
   for (size_t index = 0; index < model_weights.size(); ++index) {
     Buffer& weight = model_weights[index];
     Buffer& gradient = model_gradients[index];
-    if (!seen.insert(weight.data()).second) continue;
+    if (!seen.insert(weight.data()).second)
+      continue;
     if (&weight.executor() != &executor || &gradient.executor() != &executor ||
         weight.size_bytes() != gradient.size_bytes() ||
         weight.size_bytes() % sizeof(float) != 0) {
@@ -100,9 +101,8 @@ absl::StatusOr<std::unique_ptr<AdamWOptimizer>> AdamWOptimizer::Create(
     first_moments.push_back(std::move(first));
     second_moments.push_back(std::move(second));
   }
-  if (weights.empty()) {
+  if (weights.empty())
     return absl::InvalidArgumentError("AdamW model has no parameters");
-  }
   auto optimizer = std::unique_ptr<AdamWOptimizer>(new AdamWOptimizer(
       executor, config, std::move(weights), std::move(gradients),
       std::move(first_moments), std::move(second_moments)));

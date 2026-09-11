@@ -24,7 +24,7 @@ struct SourceValueSelection {
 
 // CPU-only validation. Only the predeclared doses 0, 0.5, and 1 are accepted.
 // The full row count must fit native kernels' signed-int element counters.
-absl::Status ValidateSourceValueSelection(const SourceValueSelection &selection,
+absl::Status ValidateSourceValueSelection(const SourceValueSelection& selection,
                                           int total_rows);
 
 // Exact finite BF16 scaling for the three supported doses. Zero produces
@@ -60,17 +60,17 @@ struct SourceValueResult {
 class SourceValueProbe final {
  public:
   static absl::StatusOr<std::unique_ptr<SourceValueProbe>> Create(
-      cuda::Executor &executor, const llm::Tape &production_tape,
-      const cuda::Buffer &clean_logits,
+      cuda::Executor& executor, const llm::Tape& production_tape,
+      const cuda::Buffer& clean_logits,
       absl::Span<const cuda::Buffer> original_weights, int block);
   ~SourceValueProbe();
 
   absl::StatusOr<SourceValueResult> Apply(
-      cuda::Executor &executor, const SourceValueSelection &selection) const;
+      cuda::Executor& executor, const SourceValueSelection& selection) const;
 
-  const cuda::Buffer &original_qkv() const;
-  const cuda::Buffer &original_context() const;
-  const cuda::Buffer &clean_logits() const;
+  const cuda::Buffer& original_qkv() const;
+  const cuda::Buffer& original_context() const;
+  const cuda::Buffer& clean_logits() const;
 
  private:
   struct Impl;

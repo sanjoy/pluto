@@ -18,11 +18,14 @@ bool Finite(uint16_t bits) { return (bits & 0x7f80) != 0x7f80; }
 // the exponent. Smaller values shift into/subdivide the subnormal range;
 // two low bits determine whether the halfway result needs an even rounding.
 uint16_t ScaleValidated(uint16_t bits, float scale) {
-  if (scale == 0.0f) return 0;
-  if (scale == 1.0f) return bits;
+  if (scale == 0.0f)
+    return 0;
+  if (scale == 1.0f)
+    return bits;
   const uint16_t sign = bits & 0x8000;
   const uint16_t magnitude = bits & 0x7fff;
-  if (magnitude >= 0x100) return sign | (magnitude - 0x80);
+  if (magnitude >= 0x100)
+    return sign | (magnitude - 0x80);
   return sign | ((magnitude >> 1) + ((magnitude & 3) == 3 ? 1 : 0));
 }
 
@@ -67,13 +70,13 @@ absl::Status ScaleContext(absl::Span<const uint16_t> original,
                           const Geometry& geometry,
                           const Selection& selection) {
   const auto status = ValidateSelection(geometry, selection, total_rows);
-  if (!status.ok()) return status;
+  if (!status.ok())
+    return status;
   const size_t width =
       static_cast<size_t>(geometry.heads) * geometry.head_dimension;
   const size_t elements = static_cast<size_t>(total_rows) * width;
-  if (original.size() != elements || destination.size() != elements) {
+  if (original.size() != elements || destination.size() != elements)
     return absl::InvalidArgumentError("head-context array shape differs");
-  }
   // std::less gives a total pointer order even for unrelated allocations;
   // ordinary relational pointer comparisons would not provide that guarantee.
   const std::less<const uint16_t*> before;
@@ -81,9 +84,8 @@ absl::Status ScaleContext(absl::Span<const uint16_t> original,
       before(destination.data(), original.data() + original.size())) {
     return absl::InvalidArgumentError("head-context arrays must not overlap");
   }
-  if (!std::all_of(original.begin(), original.end(), Finite)) {
+  if (!std::all_of(original.begin(), original.end(), Finite))
     return absl::InvalidArgumentError("nonfinite original BF16 context");
-  }
   std::copy(original.begin(), original.end(), destination.begin());
   for (int query = 0; query < geometry.context_length; ++query) {
     const bool selected_query = query == selection.query_position;

@@ -34,6 +34,7 @@ cc_library(
     hdrs = ["page_locked_host_buffer.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":executor",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings",

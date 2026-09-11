@@ -65,9 +65,8 @@ absl::StatusOr<EncodedCorpus> EncodeAndValidate(
   offsets.reserve(tokens.size() + 1);
   offsets.push_back(0);
   for (const int token : tokens) {
-    if (token < 0 || token >= encoder.vocab_size()) {
+    if (token < 0 || token >= encoder.vocab_size())
       return absl::DataLossError("native encoder returned an invalid token ID");
-    }
     if (token_bytes[token].empty()) {
       ASSIGN_OR_RETURN(token_bytes[token],
                        decoder.Decode(absl::MakeConstSpan(&token, 1)));
@@ -95,8 +94,10 @@ class NewOutput final {
  public:
   explicit NewOutput(std::filesystem::path path) : path_(std::move(path)) {}
   ~NewOutput() {
-    if (descriptor_ >= 0) close(descriptor_);
-    if (created_ && !committed_) unlink(path_.c_str());
+    if (descriptor_ >= 0)
+      close(descriptor_);
+    if (created_ && !committed_)
+      unlink(path_.c_str());
   }
   NewOutput(const NewOutput&) = delete;
   NewOutput& operator=(const NewOutput&) = delete;
@@ -118,7 +119,8 @@ class NewOutput final {
     while (position < bytes.size()) {
       const ssize_t written =
           write(descriptor_, bytes.data() + position, bytes.size() - position);
-      if (written < 0 && errno == EINTR) continue;
+      if (written < 0 && errno == EINTR)
+        continue;
       if (written <= 0) {
         return absl::InternalError(absl::StrCat("cannot write ", path_.string(),
                                                 ": ", std::strerror(errno)));
@@ -156,9 +158,8 @@ absl::Status WriteLittleEndian(NewOutput& output, const Range& values,
   bytes.reserve(kChunkBytes);
   for (const auto value : values) {
     const uint64_t bits = static_cast<uint64_t>(value);
-    for (int index = 0; index < width; ++index) {
+    for (int index = 0; index < width; ++index)
       bytes.push_back(static_cast<unsigned char>((bits >> (8 * index)) & 255));
-    }
     if (bytes.size() >= kChunkBytes) {
       RETURN_IF_ERROR(output.Write(bytes));
       bytes.clear();
@@ -181,7 +182,8 @@ absl::Status Export(const std::filesystem::path& tokenizer_directory,
   }
   const std::string corpus((std::istreambuf_iterator<char>(input)),
                            std::istreambuf_iterator<char>());
-  if (input.bad()) return absl::DataLossError("error reading corpus bytes");
+  if (input.bad())
+    return absl::DataLossError("error reading corpus bytes");
   ASSIGN_OR_RETURN(auto encoded, EncodeAndValidate(*encoder, *decoder, corpus));
 
   NewOutput ids(output_path);

@@ -63,9 +63,8 @@ inline absl::StatusOr<int> MatrixRows(cuda::Executor& executor,
         name, " is not a non-empty float matrix with ", columns, " columns"));
   }
   const size_t rows = buffer.size_bytes() / row_bytes;
-  if (rows > static_cast<size_t>(std::numeric_limits<int>::max())) {
+  if (rows > static_cast<size_t>(std::numeric_limits<int>::max()))
     return absl::InvalidArgumentError(absl::StrCat(name, " has too many rows"));
-  }
   return static_cast<int>(rows);
 }
 
@@ -86,9 +85,8 @@ inline absl::StatusOr<int> ActivationRows(cuda::Executor& executor,
                      columns, " columns"));
   }
   const size_t rows = buffer.size_bytes() / row_bytes;
-  if (rows > static_cast<size_t>(std::numeric_limits<int>::max())) {
+  if (rows > static_cast<size_t>(std::numeric_limits<int>::max()))
     return absl::InvalidArgumentError(absl::StrCat(name, " has too many rows"));
-  }
   return static_cast<int>(rows);
 }
 
@@ -113,9 +111,8 @@ inline absl::StatusOr<int> ElementCount(cuda::Executor& executor,
 }
 
 inline absl::Status ValidateComputeType(DataType data_type) {
-  if (data_type == DataType::FP16 || data_type == DataType::BF16) {
+  if (data_type == DataType::FP16 || data_type == DataType::BF16)
     return absl::OkStatus();
-  }
   return absl::UnimplementedError(
       "FP8 requires an explicit scaling policy; this cuTile backend currently "
       "implements FP16 and BF16 compute with FP32 master weights");

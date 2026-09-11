@@ -68,9 +68,8 @@ class CompactReader {
   size_t position() const { return position_; }
 
   absl::StatusOr<uint8_t> ReadByte() {
-    if (position_ >= input_.size()) {
+    if (position_ >= input_.size())
       return absl::DataLossError("truncated compact-protocol value");
-    }
     return input_[position_++];
   }
 
@@ -78,11 +77,11 @@ class CompactReader {
     uint64_t value = 0;
     for (int shift = 0; shift < 64; shift += 7) {
       ASSIGN_OR_RETURN(uint8_t byte, ReadByte());
-      if (shift == 63 && (byte & 0xfe) != 0) {
+      if (shift == 63 && (byte & 0xfe) != 0)
         return absl::DataLossError("compact-protocol varint overflow");
-      }
       value |= static_cast<uint64_t>(byte & 0x7f) << shift;
-      if ((byte & 0x80) == 0) return value;
+      if ((byte & 0x80) == 0)
+        return value;
     }
     return absl::DataLossError("unterminated compact-protocol varint");
   }
@@ -106,9 +105,8 @@ class CompactReader {
 
   absl::StatusOr<absl::string_view> ReadBinary() {
     ASSIGN_OR_RETURN(uint64_t length, ReadVarint());
-    if (length > input_.size() - position_) {
+    if (length > input_.size() - position_)
       return absl::DataLossError("truncated compact-protocol binary");
-    }
     const char* data = reinterpret_cast<const char*>(input_.data() + position_);
     position_ += static_cast<size_t>(length);
     return absl::string_view(data, static_cast<size_t>(length));
@@ -117,7 +115,8 @@ class CompactReader {
   absl::StatusOr<FieldHeader> ReadFieldHeader(int16_t* previous_id) {
     ASSIGN_OR_RETURN(uint8_t encoded, ReadByte());
     const auto type = static_cast<CompactType>(encoded & 0x0f);
-    if (type == CompactType::kStop) return FieldHeader{0, type};
+    if (type == CompactType::kStop)
+      return FieldHeader{0, type};
 
     int16_t id = 0;
     const int16_t delta = encoded >> 4;
@@ -141,9 +140,8 @@ class CompactReader {
     if (size == 15) {
       ASSIGN_OR_RETURN(size, ReadVarint());
     }
-    if (size > std::numeric_limits<uint32_t>::max()) {
+    if (size > std::numeric_limits<uint32_t>::max())
       return absl::ResourceExhaustedError("compact-protocol list is too large");
-    }
     return ListHeader{static_cast<uint32_t>(size),
                       static_cast<CompactType>(encoded & 0x0f)};
   }
@@ -155,7 +153,8 @@ class CompactReader {
       case CompactType::kBooleanFalse:
         if (collection_value && type != CompactType::kStop) {
           auto ignored = ReadByte();
-          if (!ignored.ok()) return ignored.status();
+          if (!ignored.ok())
+            return ignored.status();
         }
         return absl::OkStatus();
       case CompactType::kByte: {
@@ -177,14 +176,14 @@ class CompactReader {
       case CompactType::kList:
       case CompactType::kSet: {
         ASSIGN_OR_RETURN(auto list, ReadListHeader());
-        for (uint32_t i = 0; i < list.size; ++i) {
+        for (uint32_t i = 0; i < list.size; ++i)
           RETURN_IF_ERROR(Skip(list.type, true));
-        }
         return absl::OkStatus();
       }
       case CompactType::kMap: {
         ASSIGN_OR_RETURN(uint64_t size, ReadVarint());
-        if (size == 0) return absl::OkStatus();
+        if (size == 0)
+          return absl::OkStatus();
         ASSIGN_OR_RETURN(uint8_t types, ReadByte());
         const auto key_type = static_cast<CompactType>(types >> 4);
         const auto value_type = static_cast<CompactType>(types & 0x0f);
@@ -198,7 +197,8 @@ class CompactReader {
         int16_t previous_id = 0;
         while (true) {
           ASSIGN_OR_RETURN(auto field, ReadFieldHeader(&previous_id));
-          if (field.type == CompactType::kStop) return absl::OkStatus();
+          if (field.type == CompactType::kStop)
+            return absl::OkStatus();
           RETURN_IF_ERROR(Skip(field.type));
         }
       }
@@ -208,9 +208,8 @@ class CompactReader {
 
  private:
   absl::Status SkipBytes(size_t count) {
-    if (count > input_.size() - position_) {
+    if (count > input_.size() - position_)
       return absl::DataLossError("truncated compact-protocol fixed value");
-    }
     position_ += count;
     return absl::OkStatus();
   }
@@ -282,7 +281,8 @@ struct PageHeader {
 
 absl::Status ExpectWireType(CompactType actual, CompactType expected,
                             absl::string_view field) {
-  if (actual == expected) return absl::OkStatus();
+  if (actual == expected)
+    return absl::OkStatus();
   return absl::DataLossError(absl::StrCat("wrong wire type for ", field));
 }
 
@@ -290,7 +290,8 @@ absl::Status ParseColumnMetadata(CompactReader* reader, ColumnChunk* column) {
   int16_t previous_id = 0;
   while (true) {
     ASSIGN_OR_RETURN(auto field, reader->ReadFieldHeader(&previous_id));
-    if (field.type == CompactType::kStop) return absl::OkStatus();
+    if (field.type == CompactType::kStop)
+      return absl::OkStatus();
 
     switch (field.id) {
       case 1: {
@@ -345,7 +346,8 @@ absl::Status ParseColumnChunk(CompactReader* reader, ColumnChunk* column) {
   int16_t previous_id = 0;
   while (true) {
     ASSIGN_OR_RETURN(auto field, reader->ReadFieldHeader(&previous_id));
-    if (field.type == CompactType::kStop) return absl::OkStatus();
+    if (field.type == CompactType::kStop)
+      return absl::OkStatus();
     if (field.id == 3) {
       RETURN_IF_ERROR(
           ExpectWireType(field.type, CompactType::kStruct, "column metadata"));
@@ -360,16 +362,15 @@ absl::Status ParseRowGroup(CompactReader* reader, RowGroup* row_group) {
   int16_t previous_id = 0;
   while (true) {
     ASSIGN_OR_RETURN(auto field, reader->ReadFieldHeader(&previous_id));
-    if (field.type == CompactType::kStop) return absl::OkStatus();
+    if (field.type == CompactType::kStop)
+      return absl::OkStatus();
     if (field.id == 1) {
       ASSIGN_OR_RETURN(auto list, reader->ReadListHeader());
-      if (list.type != CompactType::kStruct) {
+      if (list.type != CompactType::kStruct)
         return absl::DataLossError("row-group columns are not structs");
-      }
       row_group->columns.resize(list.size);
-      for (ColumnChunk& column : row_group->columns) {
+      for (ColumnChunk& column : row_group->columns)
         RETURN_IF_ERROR(ParseColumnChunk(reader, &column));
-      }
     } else if (field.id == 3) {
       ASSIGN_OR_RETURN(row_group->num_rows, reader->ReadI64());
     } else {
@@ -385,18 +386,17 @@ absl::StatusOr<FileMetadata> ParseFileMetadata(
   int16_t previous_id = 0;
   while (true) {
     ASSIGN_OR_RETURN(auto field, reader.ReadFieldHeader(&previous_id));
-    if (field.type == CompactType::kStop) break;
+    if (field.type == CompactType::kStop)
+      break;
     if (field.id == 3) {
       ASSIGN_OR_RETURN(metadata.num_rows, reader.ReadI64());
     } else if (field.id == 4) {
       ASSIGN_OR_RETURN(auto list, reader.ReadListHeader());
-      if (list.type != CompactType::kStruct) {
+      if (list.type != CompactType::kStruct)
         return absl::DataLossError("row groups are not structs");
-      }
       metadata.row_groups.resize(list.size);
-      for (RowGroup& row_group : metadata.row_groups) {
+      for (RowGroup& row_group : metadata.row_groups)
         RETURN_IF_ERROR(ParseRowGroup(&reader, &row_group));
-      }
     } else {
       RETURN_IF_ERROR(reader.Skip(field.type));
     }
@@ -409,7 +409,8 @@ absl::Status ParseDataPageHeader(CompactReader* reader,
   int16_t previous_id = 0;
   while (true) {
     ASSIGN_OR_RETURN(auto field, reader->ReadFieldHeader(&previous_id));
-    if (field.type == CompactType::kStop) return absl::OkStatus();
+    if (field.type == CompactType::kStop)
+      return absl::OkStatus();
     if (field.id == 1 || field.id == 2) {
       ASSIGN_OR_RETURN(int32_t value, reader->ReadI32());
       if (field.id == 1)
@@ -427,7 +428,8 @@ absl::Status ParseDictionaryPageHeader(CompactReader* reader,
   int16_t previous_id = 0;
   while (true) {
     ASSIGN_OR_RETURN(auto field, reader->ReadFieldHeader(&previous_id));
-    if (field.type == CompactType::kStop) return absl::OkStatus();
+    if (field.type == CompactType::kStop)
+      return absl::OkStatus();
     if (field.id == 1 || field.id == 2) {
       ASSIGN_OR_RETURN(int32_t value, reader->ReadI32());
       if (field.id == 1)
@@ -447,7 +449,8 @@ absl::StatusOr<PageHeader> ParsePageHeader(absl::Span<const uint8_t> input,
   int16_t previous_id = 0;
   while (true) {
     ASSIGN_OR_RETURN(auto field, reader.ReadFieldHeader(&previous_id));
-    if (field.type == CompactType::kStop) break;
+    if (field.type == CompactType::kStop)
+      break;
     if (field.id >= 1 && field.id <= 3) {
       ASSIGN_OR_RETURN(int32_t value, reader.ReadI32());
       if (field.id == 1)
@@ -464,9 +467,8 @@ absl::StatusOr<PageHeader> ParsePageHeader(absl::Span<const uint8_t> input,
       RETURN_IF_ERROR(reader.Skip(field.type));
     }
   }
-  if (header.uncompressed_size < 0 || header.compressed_size < 0) {
+  if (header.uncompressed_size < 0 || header.compressed_size < 0)
     return absl::DataLossError("page header has invalid sizes");
-  }
   *bytes_read = reader.position();
   return header;
 }
@@ -480,7 +482,8 @@ uint32_t LoadLittle32(absl::Span<const uint8_t> bytes) {
 
 uint64_t LoadLittle64(absl::Span<const uint8_t> bytes) {
   uint64_t value = 0;
-  for (int index = 7; index >= 0; --index) value = (value << 8) | bytes[index];
+  for (int index = 7; index >= 0; --index)
+    value = (value << 8) | bytes[index];
   return value;
 }
 
@@ -493,9 +496,8 @@ absl::StatusOr<std::string> DecompressSnappy(
     return absl::DataLossError("Snappy page has an invalid uncompressed size");
   }
   std::string output(actual_size, '\0');
-  if (!snappy::RawUncompress(data, compressed.size(), output.data())) {
+  if (!snappy::RawUncompress(data, compressed.size(), output.data()))
     return absl::DataLossError("Snappy page decompression failed");
-  }
   return output;
 }
 
@@ -526,23 +528,20 @@ absl::Status AppendPlain(absl::Span<const uint8_t> bytes, size_t count,
   for (size_t index = 0; index < count; ++index) {
     switch (output->type) {
       case PhysicalType::kByteArray: {
-        if (bytes.size() - position < 4) {
+        if (bytes.size() - position < 4)
           return absl::DataLossError("truncated PLAIN byte-array length");
-        }
         const uint32_t length = LoadLittle32(bytes.subspan(position, 4));
         position += 4;
-        if (length > bytes.size() - position) {
+        if (length > bytes.size() - position)
           return absl::DataLossError("truncated PLAIN byte array");
-        }
         output->strings.emplace_back(
             reinterpret_cast<const char*>(bytes.data() + position), length);
         position += length;
         break;
       }
       case PhysicalType::kDouble: {
-        if (bytes.size() - position < 8) {
+        if (bytes.size() - position < 8)
           return absl::DataLossError("truncated PLAIN double");
-        }
         const uint64_t bits = LoadLittle64(bytes.subspan(position, 8));
         double value = 0;
         std::memcpy(&value, &bits, sizeof(value));
@@ -551,9 +550,8 @@ absl::Status AppendPlain(absl::Span<const uint8_t> bytes, size_t count,
         break;
       }
       case PhysicalType::kInt64: {
-        if (bytes.size() - position < 8) {
+        if (bytes.size() - position < 8)
           return absl::DataLossError("truncated PLAIN int64");
-        }
         const uint64_t bits = LoadLittle64(bytes.subspan(position, 8));
         int64_t value = 0;
         std::memcpy(&value, &bits, sizeof(value));
@@ -571,21 +569,20 @@ absl::StatusOr<uint64_t> ReadUnsignedVarint(absl::Span<const uint8_t> bytes,
                                             size_t* position) {
   uint64_t value = 0;
   for (int shift = 0; shift < 64; shift += 7) {
-    if (*position >= bytes.size()) {
+    if (*position >= bytes.size())
       return absl::DataLossError("truncated RLE/bit-packed header");
-    }
     const uint8_t byte = bytes[(*position)++];
     value |= static_cast<uint64_t>(byte & 0x7f) << shift;
-    if ((byte & 0x80) == 0) return value;
+    if ((byte & 0x80) == 0)
+      return value;
   }
   return absl::DataLossError("RLE/bit-packed header overflow");
 }
 
 absl::StatusOr<std::vector<uint32_t>> DecodeHybrid(
     absl::Span<const uint8_t> bytes, int bit_width, size_t value_count) {
-  if (bit_width < 0 || bit_width > 32) {
+  if (bit_width < 0 || bit_width > 32)
     return absl::DataLossError("invalid RLE/bit-packed bit width");
-  }
   std::vector<uint32_t> values;
   values.reserve(value_count);
   size_t position = 0;
@@ -594,27 +591,23 @@ absl::StatusOr<std::vector<uint32_t>> DecodeHybrid(
     if ((header & 1) == 0) {
       const uint64_t run_length = header >> 1;
       const size_t byte_width = (bit_width + 7) / 8;
-      if (run_length == 0 || byte_width > bytes.size() - position) {
+      if (run_length == 0 || byte_width > bytes.size() - position)
         return absl::DataLossError("invalid RLE run");
-      }
       uint32_t value = 0;
-      for (size_t i = 0; i < byte_width; ++i) {
+      for (size_t i = 0; i < byte_width; ++i)
         value |= static_cast<uint32_t>(bytes[position++]) << (8 * i);
-      }
       const size_t append =
           std::min<uint64_t>(run_length, value_count - values.size());
       values.insert(values.end(), append, value);
     } else {
       const uint64_t groups = header >> 1;
-      if (groups == 0 || groups > std::numeric_limits<size_t>::max() / 8) {
+      if (groups == 0 || groups > std::numeric_limits<size_t>::max() / 8)
         return absl::DataLossError("invalid bit-packed run");
-      }
       const size_t run_values = static_cast<size_t>(groups) * 8;
       const size_t packed_bytes =
           (run_values * static_cast<size_t>(bit_width) + 7) / 8;
-      if (packed_bytes > bytes.size() - position) {
+      if (packed_bytes > bytes.size() - position)
         return absl::DataLossError("truncated bit-packed run");
-      }
       for (size_t i = 0; i < run_values && values.size() < value_count; ++i) {
         uint32_t value = 0;
         const size_t start_bit = i * static_cast<size_t>(bit_width);
@@ -633,9 +626,8 @@ absl::StatusOr<std::vector<uint32_t>> DecodeHybrid(
 
 absl::Status AppendDictionaryValue(const ColumnData& dictionary, uint32_t index,
                                    ColumnData* output) {
-  if (index >= dictionary.size()) {
+  if (index >= dictionary.size())
     return absl::DataLossError("dictionary index is out of range");
-  }
   switch (output->type) {
     case PhysicalType::kByteArray:
       output->strings.push_back(dictionary.strings[index]);
@@ -656,32 +648,30 @@ absl::Status DecodeDataPage(absl::Span<const uint8_t> bytes,
   if (header.num_values < 0)
     return absl::DataLossError("invalid data-page count");
   const size_t count = static_cast<size_t>(header.num_values);
-  if (bytes.size() < 4) return absl::DataLossError("missing definition levels");
+  if (bytes.size() < 4)
+    return absl::DataLossError("missing definition levels");
 
   // Every column is optional in the Arrow schema, so max definition level is
   // one. The inspected shards contain no nulls; rejecting nulls lets the public
   // record type remain compact and avoids optional branches in downstream code.
   const uint32_t definition_size = LoadLittle32(bytes.first(4));
-  if (definition_size > bytes.size() - 4) {
+  if (definition_size > bytes.size() - 4)
     return absl::DataLossError("truncated definition levels");
-  }
   ASSIGN_OR_RETURN(auto definitions,
                    DecodeHybrid(bytes.subspan(4, definition_size), 1, count));
-  if (std::find(definitions.begin(), definitions.end(), 0) !=
-      definitions.end()) {
+  if (std::find(definitions.begin(), definitions.end(), 0) != definitions.end())
     return absl::UnimplementedError("null FineWeb values are not supported");
-  }
   bytes = bytes.subspan(4 + definition_size);
 
   if (header.encoding == Encoding::kRleDictionary ||
       header.encoding == Encoding::kPlainDictionary) {
-    if (bytes.empty()) return absl::DataLossError("missing dictionary indexes");
+    if (bytes.empty())
+      return absl::DataLossError("missing dictionary indexes");
     const int bit_width = bytes[0];
     ASSIGN_OR_RETURN(auto indexes,
                      DecodeHybrid(bytes.subspan(1), bit_width, count));
-    for (const uint32_t index : indexes) {
+    for (const uint32_t index : indexes)
       RETURN_IF_ERROR(AppendDictionaryValue(dictionary, index, output));
-    }
     return absl::OkStatus();
   }
   if (header.encoding == Encoding::kPlain) {
@@ -738,19 +728,16 @@ absl::Status ValidateMetadata(FileMetadata* metadata, int64_t file_size) {
       }
     }
   }
-  if (first_row != metadata->num_rows) {
+  if (first_row != metadata->num_rows)
     return absl::DataLossError("footer row count does not match row groups");
-  }
   return absl::OkStatus();
 }
 
 absl::Status ValidateRange(int64_t first, size_t count, int64_t num_rows) {
-  if (first < 0 || first > num_rows) {
+  if (first < 0 || first > num_rows)
     return absl::OutOfRangeError("first row is outside the file");
-  }
-  if (count > static_cast<uint64_t>(num_rows - first)) {
+  if (count > static_cast<uint64_t>(num_rows - first))
     return absl::OutOfRangeError("requested rows extend past end of file");
-  }
   return absl::OkStatus();
 }
 
@@ -758,20 +745,21 @@ absl::Status ValidateRange(int64_t first, size_t count, int64_t num_rows) {
 
 struct FineWebParquetReader::Impl {
   ~Impl() {
-    if (file_descriptor >= 0) close(file_descriptor);
+    if (file_descriptor >= 0)
+      close(file_descriptor);
   }
 
   absl::StatusOr<std::string> ReadRange(int64_t offset, size_t size) const {
-    if (offset < 0 || size > static_cast<uint64_t>(file_size - offset)) {
+    if (offset < 0 || size > static_cast<uint64_t>(file_size - offset))
       return absl::OutOfRangeError("read range is outside the Parquet file");
-    }
     std::string output(size, '\0');
     size_t done = 0;
     while (done < size) {
       const ssize_t result = pread(file_descriptor, output.data() + done,
                                    size - done, offset + done);
       if (result < 0) {
-        if (errno == EINTR) continue;
+        if (errno == EINTR)
+          continue;
         return absl::ErrnoToStatus(errno, "pread failed");
       }
       if (result == 0)
@@ -821,9 +809,8 @@ struct FineWebParquetReader::Impl {
         size_t consumed = 0;
         RETURN_IF_ERROR(AppendPlain(body, page.dictionary.num_values,
                                     &dictionary, &consumed));
-        if (consumed != body.size()) {
+        if (consumed != body.size())
           return absl::DataLossError("dictionary page has trailing bytes");
-        }
       } else if (page.type == PageType::kDataPage) {
         RETURN_IF_ERROR(DecodeDataPage(body, page.data, dictionary, &output));
       } else if (page.type == PageType::kDataPageV2) {
@@ -831,9 +818,8 @@ struct FineWebParquetReader::Impl {
       }
       remaining = remaining.subspan(header_size + page.compressed_size);
     }
-    if (output.size() != static_cast<size_t>(row_group.num_rows)) {
+    if (output.size() != static_cast<size_t>(row_group.num_rows))
       return absl::DataLossError("decoded column row count is wrong");
-    }
     return output;
   }
 
@@ -867,16 +853,14 @@ FineWebParquetReader::Open(const std::filesystem::path& path) {
 
   ASSIGN_OR_RETURN(auto prefix, impl->ReadRange(0, 4));
   ASSIGN_OR_RETURN(auto trailer, impl->ReadRange(impl->file_size - 8, 8));
-  if (prefix != kParquetMagic || trailer.substr(4) != kParquetMagic) {
+  if (prefix != kParquetMagic || trailer.substr(4) != kParquetMagic)
     return absl::DataLossError("Parquet magic bytes are missing");
-  }
 
   const auto* trailer_bytes = reinterpret_cast<const uint8_t*>(trailer.data());
   const uint32_t footer_size =
       LoadLittle32(absl::Span<const uint8_t>(trailer_bytes, 4));
-  if (footer_size > static_cast<uint64_t>(impl->file_size - 12)) {
+  if (footer_size > static_cast<uint64_t>(impl->file_size - 12))
     return absl::DataLossError("Parquet footer size is invalid");
-  }
   ASSIGN_OR_RETURN(
       auto footer,
       impl->ReadRange(impl->file_size - 8 - footer_size, footer_size));
@@ -901,21 +885,23 @@ absl::StatusOr<std::vector<std::string>> FineWebParquetReader::ReadTextRows(
     int64_t first, size_t count) const {
   RETURN_IF_ERROR(ValidateRange(first, count, num_rows()));
   std::vector<std::string> records;
-  if (count == 0) return records;
+  if (count == 0)
+    return records;
   records.reserve(count);
   const int64_t end = first + static_cast<int64_t>(count);
   for (const RowGroup& row_group : impl_->metadata.row_groups) {
     const int64_t group_end = row_group.first_row + row_group.num_rows;
-    if (group_end <= first) continue;
-    if (row_group.first_row >= end) break;
+    if (group_end <= first)
+      continue;
+    if (row_group.first_row >= end)
+      break;
     ASSIGN_OR_RETURN(auto column, impl_->DecodeColumn(row_group, 0));
     const size_t local_begin = static_cast<size_t>(
         std::max(first, row_group.first_row) - row_group.first_row);
     const size_t local_end =
         static_cast<size_t>(std::min(end, group_end) - row_group.first_row);
-    for (size_t i = local_begin; i < local_end; ++i) {
+    for (size_t i = local_begin; i < local_end; ++i)
       records.push_back(std::move(column.strings[i]));
-    }
   }
   return records;
 }
@@ -924,13 +910,16 @@ absl::StatusOr<std::vector<FineWebRecord>> FineWebParquetReader::ReadRows(
     int64_t first, size_t count) const {
   RETURN_IF_ERROR(ValidateRange(first, count, num_rows()));
   std::vector<FineWebRecord> records;
-  if (count == 0) return records;
+  if (count == 0)
+    return records;
   records.reserve(count);
   const int64_t end = first + static_cast<int64_t>(count);
   for (const RowGroup& row_group : impl_->metadata.row_groups) {
     const int64_t group_end = row_group.first_row + row_group.num_rows;
-    if (group_end <= first) continue;
-    if (row_group.first_row >= end) break;
+    if (group_end <= first)
+      continue;
+    if (row_group.first_row >= end)
+      break;
 
     std::vector<ColumnData> columns;
     columns.reserve(kColumnNames.size());

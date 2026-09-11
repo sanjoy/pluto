@@ -5,9 +5,9 @@
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "src/parquet/fineweb_parquet_reader.h"
 #include "src/dataset/detokenizer.h"
 #include "src/dataset/tokenizer.h"
+#include "src/parquet/fineweb_parquet_reader.h"
 
 namespace pluto::pipeline {
 namespace {
@@ -29,9 +29,8 @@ TEST(FineWebIntegrationTest, SamplesEveryShardAndRoundTripsItsText) {
   std::vector<std::filesystem::path> shards;
   for (const auto& entry :
        std::filesystem::directory_iterator(parquet_directory)) {
-    if (entry.is_regular_file() && entry.path().extension() == ".parquet") {
+    if (entry.is_regular_file() && entry.path().extension() == ".parquet")
       shards.push_back(entry.path());
-    }
   }
   std::sort(shards.begin(), shards.end());
   ASSERT_FALSE(shards.empty());

@@ -449,9 +449,8 @@ __tile_global__ void SparseLossReduceKernel(
   auto output_view = ct::partition_view{ct::tensor_span{output, ct::extents{1}},
                                         ct::shape{1_ic}};
   auto loss = ct::zeros<ct::tile<float, ct::shape<1>>>();
-  for (int row = 0; row < rows; ++row) {
+  for (int row = 0; row < rows; ++row)
     loss = loss + row_loss_view.load(row);
-  }
   output_view.store(loss, 0);
 }
 
@@ -612,7 +611,8 @@ absl::Status CopyNormal(cuda::Executor& executor, Buffer& destination,
   std::normal_distribution<float> distribution(0.0f, standard_deviation);
   ASSIGN_OR_RETURN(auto values, cuda::PageLockedHostArray<float>::Allocate(
                                     destination.size_bytes() / sizeof(float)));
-  for (float& value : values) value = distribution(*random);
+  for (float& value : values)
+    value = distribution(*random);
   RETURN_IF_ERROR(cuda::CudaStatus(
       cudaMemcpyAsync(destination.data(), values.data(),
                       destination.size_bytes(), cudaMemcpyHostToDevice,
@@ -790,10 +790,10 @@ SparseAutoEncoderLayer::ReadZStatistics(cuda::Executor& executor,
   RETURN_IF_ERROR(internal::ValidateBuffer(
       executor, tape.intermediates[2],
       static_cast<size_t>(rows) * 4 * sizeof(float), "SAE saved statistics"));
-  if (valid_rows < 0 || valid_rows > rows) {
+  if (valid_rows < 0 || valid_rows > rows)
     return absl::InvalidArgumentError("valid_rows must be in [0, SAE rows]");
-  }
-  if (valid_rows != 0) rows = valid_rows;
+  if (valid_rows != 0)
+    rows = valid_rows;
   ASSIGN_OR_RETURN(auto host, cuda::PageLockedHostArray<float>::Allocate(
                                   static_cast<size_t>(rows) * 4));
   RETURN_IF_ERROR(cuda::CudaStatus(
@@ -810,11 +810,9 @@ SparseAutoEncoderLayer::ReadZStatistics(cuda::Executor& executor,
   double squared_sum = 0;
   for (int row = 0; row < rows; ++row) {
     const float* values = host.data() + static_cast<size_t>(row) * 4;
-    for (int index = 0; index < 4; ++index) {
-      if (!std::isfinite(values[index])) {
+    for (int index = 0; index < 4; ++index)
+      if (!std::isfinite(values[index]))
         return absl::FailedPreconditionError("non-finite SAE Z statistics");
-      }
-    }
     result.active_count += static_cast<int64_t>(values[0]);
     sum += values[1];
     squared_sum += values[2];
@@ -880,14 +878,12 @@ absl::StatusOr<BufferVec> SparseAutoEncoderLayer::bwd(
         "SAE direct decoder gradient"));
   }
 
-  ASSIGN_OR_RETURN(
-      auto latent_gradient,
-      Buffer::Allocate(
-          executor, static_cast<size_t>(rows) * feature_dim_ * sizeof(float)));
-  ASSIGN_OR_RETURN(
-      auto preactivation_gradient,
-      Buffer::Allocate(
-          executor, static_cast<size_t>(rows) * feature_dim_ * sizeof(float)));
+  ASSIGN_OR_RETURN(auto latent_gradient,
+                   Buffer::Allocate(executor, static_cast<size_t>(rows) *
+                                                  feature_dim_ * sizeof(float)));
+  ASSIGN_OR_RETURN(auto preactivation_gradient,
+                   Buffer::Allocate(executor, static_cast<size_t>(rows) *
+                                                  feature_dim_ * sizeof(float)));
   ASSIGN_OR_RETURN(auto input_gradient,
                    Buffer::Allocate(executor, static_cast<size_t>(rows) *
                                                   input_dim_ * sizeof(float)));
@@ -1073,14 +1069,12 @@ absl::StatusOr<BufferVec> SparseAutoEncoderLossLayer::bwd(
   ASSIGN_OR_RETURN(auto reconstruction_gradient,
                    Buffer::Allocate(executor, static_cast<size_t>(rows) *
                                                   input_dim_ * sizeof(float)));
-  ASSIGN_OR_RETURN(
-      auto latent_gradient,
-      Buffer::Allocate(
-          executor, static_cast<size_t>(rows) * feature_dim_ * sizeof(float)));
-  ASSIGN_OR_RETURN(
-      auto decoder_gradient,
-      Buffer::Allocate(executor, static_cast<size_t>(input_dim_) *
-                                     feature_dim_ * sizeof(float)));
+  ASSIGN_OR_RETURN(auto latent_gradient,
+                   Buffer::Allocate(executor, static_cast<size_t>(rows) *
+                                                  feature_dim_ * sizeof(float)));
+  ASSIGN_OR_RETURN(auto decoder_gradient,
+                   Buffer::Allocate(executor, static_cast<size_t>(input_dim_) *
+                                                  feature_dim_ * sizeof(float)));
   ASSIGN_OR_RETURN(
       auto decoder_scale,
       Buffer::Allocate(executor,

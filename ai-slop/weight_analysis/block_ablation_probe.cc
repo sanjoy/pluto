@@ -44,18 +44,17 @@ absl::StatusOr<cuda::PageLockedHostArray<float>> TraceRows(
     const cuda::Buffer& tokens) {
   llm::Tape tape;
   ASSIGN_OR_RETURN(auto logits, model.fwd(executor, {tokens}, &tape));
-  ASSIGN_OR_RETURN(auto result, cuda::PageLockedHostArray<float>::Allocate(
-                                    kCases * kPadded));
+  ASSIGN_OR_RETURN(auto result,
+                   cuda::PageLockedHostArray<float>::Allocate(kCases * kPadded));
   for (int item = 0; item < kCases; ++item) {
     ASSIGN_OR_RETURN(
         auto row, ReadSelectedRow(executor, logits, (item + 1) * kContext - 1,
                                   kPadded, sizeof(float)));
     std::memcpy(result.data() + item * kPadded, row.data(), row.size_bytes());
   }
-  for (float value : result) {
+  for (float value : result)
     if (!std::isfinite(value))
       return absl::DataLossError("nonfinite trace logit");
-  }
   return result;
 }
 
@@ -90,18 +89,17 @@ absl::Status Run() {
       (std::filesystem::canonical(output.parent_path()) / output.filename())
           .lexically_normal();
   for (auto ancestor = resolved_output;; ancestor = ancestor.parent_path()) {
-    if (ancestor == resolved_checkpoint) {
+    if (ancestor == resolved_checkpoint)
       return absl::InvalidArgumentError("output cannot be inside checkpoint");
-    }
-    if (ancestor == ancestor.parent_path()) break;
+    if (ancestor == ancestor.parent_path())
+      break;
   }
   ASSIGN_OR_RETURN(auto snapshot, InspectGpt2CheckpointFiles(checkpoint));
   RETURN_IF_ERROR(CreateNewOutputDirectory(output));
   ASSIGN_OR_RETURN(auto executor, cuda::Executor::Create());
   ASSIGN_OR_RETURN(auto batch, LoadPackedBatch(batch_path, kContext, kVocab));
-  if (batch.passage_count != 8) {
+  if (batch.passage_count != 8)
     return absl::InvalidArgumentError("frozen study requires eight passages");
-  }
   ASSIGN_OR_RETURN(auto trace_ids, cuda::PageLockedHostArray<int32_t>::Allocate(
                                        kCases * kContext));
   for (int item = 0; item < kCases; ++item) {
@@ -154,9 +152,12 @@ absl::Status Run() {
         EvaluatePassages(*executor, *model, *loss, batch, 4, kVocab, kPadded);
     auto trace = TraceRows(*executor, *model, trace_tokens);
     // Drain and explicitly certify restoration even when an evaluation failed.
-    if (intervention) RETURN_IF_ERROR(intervention->RestoreAndVerify());
-    if (!measured.ok()) return measured.status();
-    if (!trace.ok()) return trace.status();
+    if (intervention)
+      RETURN_IF_ERROR(intervention->RestoreAndVerify());
+    if (!measured.ok())
+      return measured.status();
+    if (!trace.ok())
+      return trace.status();
     if (index == 0) {
       clean_losses = measured->losses;
       clean_argmax = measured->argmax;
@@ -175,10 +176,12 @@ absl::Status Run() {
                                    measured->argmax.size_bytes()));
     RETURN_IF_ERROR(WriteExclusive(output / trace_file, trace->data(),
                                    trace->size_bytes()));
-    if (index) metadata << ',';
+    if (index)
+      metadata << ',';
     metadata << "{\"name\":" << JsonQuote(arm.name) << ",\"indices\":[";
     for (size_t item = 0; item < arm.weight_indices.size(); ++item) {
-      if (item) metadata << ',';
+      if (item)
+        metadata << ',';
       metadata << arm.weight_indices[item];
     }
     metadata << "],\"scale\":" << arm.scale
@@ -210,13 +213,11 @@ absl::Status Run() {
 }  // namespace pluto::weight_analysis
 
 int main(int argc, char** argv) {
-  if (absl::ParseCommandLine(argc, argv).size() != 1) return 1;
-  try {
-    const auto status = pluto::weight_analysis::Run();
-    if (status.ok()) return 0;
-    std::cerr << status << '\n';
-  } catch (const std::exception& error) {
-    std::cerr << error.what() << '\n';
-  }
+  if (absl::ParseCommandLine(argc, argv).size() != 1)
+    return 1;
+  const auto status = pluto::weight_analysis::Run();
+  if (status.ok())
+    return 0;
+  std::cerr << status << '\n';
   return 1;
 }

@@ -19,9 +19,8 @@ TEST(HeadContextSelectionTest, ExhaustiveFiniteHalfMatchesNearestValueOracle) {
   // This independent oracle searches all representable positive BF16 values
   // instead of duplicating the implementation's bit-shift/exponent branches.
   std::vector<double> numbers;
-  for (uint32_t bits = 0; bits < 0x7f80; ++bits) {
+  for (uint32_t bits = 0; bits < 0x7f80; ++bits)
     numbers.push_back(std::bit_cast<float>(bits << 16));
-  }
   for (uint32_t bits = 0; bits <= 0xffff; ++bits) {
     if ((bits & 0x7f80) == 0x7f80) {
       EXPECT_FALSE(ScaleBf16(bits, 0.5f).ok());
@@ -45,10 +44,10 @@ TEST(HeadContextSelectionTest, ExhaustiveFiniteHalfMatchesNearestValueOracle) {
 
 TEST(HeadContextSelectionTest, RejectsEveryNonfiniteEncodingAndUndeclaredDose) {
   for (uint32_t bits = 0; bits <= 0xffff; ++bits) {
-    if ((bits & 0x7f80) != 0x7f80) continue;
-    for (float scale : {0.0f, 0.5f, 1.0f}) {
+    if ((bits & 0x7f80) != 0x7f80)
+      continue;
+    for (float scale : {0.0f, 0.5f, 1.0f})
       EXPECT_FALSE(ScaleBf16(bits, scale).ok());
-    }
   }
   for (float scale :
        {-1.0f, 0.25f, 2.0f, std::numeric_limits<float>::infinity(),
@@ -103,9 +102,8 @@ TEST(HeadContextSelectionTest, OtherQueryScopeHasEmptyEffectForLengthOne) {
 
 TEST(HeadContextSelectionTest, SelectionGeometryOverflowAndScopeAreValidated) {
   EXPECT_TRUE(ValidateSelection(kSmall, kSelection, 8).ok());
-  for (int rows : {-1, 0, 7, std::numeric_limits<int>::max()}) {
+  for (int rows : {-1, 0, 7, std::numeric_limits<int>::max()})
     EXPECT_FALSE(ValidateSelection(kSmall, kSelection, rows).ok());
-  }
   for (Geometry geometry :
        {Geometry{0, 4, 2, 3}, Geometry{8, 0, 2, 3}, Geometry{8, 4, 0, 3},
         Geometry{8, 4, 2, 0},

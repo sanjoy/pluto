@@ -123,7 +123,8 @@ TEST(MlpAutomatonGraphTest, StopsAtEosEvenWhenItHasAnOutgoingEdge) {
   auto sampled = SamplePaths(graph, 100, 16, 17);
   ASSERT_TRUE(sampled.ok()) << sampled.status();
   ASSERT_EQ(sampled->size(), 5u);
-  for (const Path& result : *sampled) EXPECT_NE(result.tokens[0], 5);
+  for (const Path& result : *sampled)
+    EXPECT_NE(result.tokens[0], 5);
 }
 
 TEST(MlpAutomatonGraphTest, TokenLimitIncludesTheStartingToken) {

@@ -86,9 +86,8 @@ absl::Status SparseAutoEncoderLayerReference::InitializeNormal(
   for (size_t parameter : {size_t{0}, size_t{2}}) {
     auto* values = static_cast<float*>(weights_[parameter].data());
     const size_t elements = weights_[parameter].size_bytes() / sizeof(float);
-    for (size_t index = 0; index < elements; ++index) {
+    for (size_t index = 0; index < elements; ++index)
       values[index] = distribution(random);
-    }
   }
   std::memset(weights_[1].data(), 0, weights_[1].size_bytes());
   std::memset(weights_[3].data(), 0, weights_[3].size_bytes());
@@ -401,9 +400,8 @@ absl::StatusOr<HostBufferVec> SparseAutoEncoderLossLayerReference::bwd(
                    ri::AllocateFloats(static_cast<size_t>(rows) * input_dim_));
   ASSIGN_OR_RETURN(auto reconstruction_gradient,
                    ri::AllocateFloats(static_cast<size_t>(rows) * input_dim_));
-  ASSIGN_OR_RETURN(
-      auto latent_gradient,
-      ri::AllocateFloats(static_cast<size_t>(rows) * feature_dim_));
+  ASSIGN_OR_RETURN(auto latent_gradient,
+                   ri::AllocateFloats(static_cast<size_t>(rows) * feature_dim_));
   ASSIGN_OR_RETURN(
       auto decoder_gradient,
       ri::AllocateFloats(static_cast<size_t>(input_dim_) * feature_dim_));

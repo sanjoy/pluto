@@ -56,7 +56,8 @@ __global__ void TopTransitionsKernel(const float* __restrict__ logits,
     __syncthreads();
   }
   if (invalid[0]) {
-    if (lane == 0) output[blockIdx.x] = {-1, CUDART_NAN_F};
+    if (lane == 0)
+      output[blockIdx.x] = {-1, CUDART_NAN_F};
     return;
   }
 
@@ -72,11 +73,13 @@ __global__ void TopTransitionsKernel(const float* __restrict__ logits,
   values[lane] = denominator;
   __syncthreads();
   for (int offset = kThreads / 2; offset > 0; offset /= 2) {
-    if (lane < offset) values[lane] += values[lane + offset];
+    if (lane < offset)
+      values[lane] += values[lane + offset];
     __syncthreads();
   }
   // At the maximum the unnormalized probability is exactly exp(0)=1.
-  if (lane == 0) output[blockIdx.x] = {token, 1.0f / values[0]};
+  if (lane == 0)
+    output[blockIdx.x] = {token, 1.0f / values[0]};
 }
 
 }  // namespace
@@ -109,13 +112,15 @@ absl::StatusOr<cuda::Buffer> ReadTopTransitions(cuda::Executor& executor,
   }
   auto output = cuda::Buffer::Allocate(
       executor, static_cast<size_t>(rows) * sizeof(TopTransition));
-  if (!output.ok()) return output.status();
+  if (!output.ok())
+    return output.status();
   TopTransitionsKernel<<<rows, kThreads, 0, executor.stream()>>>(
       static_cast<const float*>(fp32_logits.data()), logical_vocab,
       padded_vocab, static_cast<TopTransition*>(output->data()));
   auto status =
       cuda::CudaStatus(cudaGetLastError(), "TopTransitionsKernel launch");
-  if (!status.ok()) return status;
+  if (!status.ok())
+    return status;
   return std::move(*output);
 }
 

@@ -30,7 +30,8 @@ class DataSetTest : public testing::Test {
   }
 
   void TearDown() override {
-    if (executor_ == nullptr) return;
+    if (executor_ == nullptr)
+      return;
     EXPECT_TRUE(executor_->Synchronize().ok());
     executor_.reset();
   }
@@ -39,7 +40,8 @@ class DataSetTest : public testing::Test {
     auto result = cuda::PageLockedHostArray<int>::Allocate(buffer.size_bytes() /
                                                            sizeof(int));
     EXPECT_TRUE(result.ok()) << result.status();
-    if (!result.ok()) return {};
+    if (!result.ok())
+      return {};
     EXPECT_EQ(
         cudaMemcpyAsync(result->data(), buffer.data(), buffer.size_bytes(),
                         cudaMemcpyDeviceToHost, executor_->stream()),
@@ -57,7 +59,8 @@ class DataSetTest : public testing::Test {
   std::vector<int> Targets(const DataBatch& batch) {
     const cuda::PageLockedHostArray<int> packed = CopyToHost(batch.data);
     EXPECT_EQ(packed.size(), 2 * static_cast<size_t>(batch.batch_size));
-    if (packed.size() < static_cast<size_t>(batch.batch_size)) return {};
+    if (packed.size() < static_cast<size_t>(batch.batch_size))
+      return {};
     return std::vector<int>(packed.begin() + batch.batch_size, packed.end());
   }
 
@@ -67,7 +70,8 @@ class DataSetTest : public testing::Test {
 cuda::PageLockedHostArray<int> MakePinnedInts(size_t size, int value = 0) {
   auto result = cuda::PageLockedHostArray<int>::Allocate(size);
   EXPECT_TRUE(result.ok()) << result.status();
-  if (!result.ok()) return {};
+  if (!result.ok())
+    return {};
   std::fill(result->begin(), result->end(), value);
   return *result;
 }
@@ -100,11 +104,15 @@ TEST_F(DataSetTest, SequentialBatchesShiftTargetsAndReset) {
 
   auto second = (*iterator)->Next();
   ASSERT_TRUE(second.ok()) << second.status();
+  // Retaining the first handle does not request a snapshot or a new allocation.
+  EXPECT_EQ(second->data.data(), first->data.data());
+  EXPECT_EQ(Inputs(*first), (std::vector<int>{8, 9, 10, 11, 12, 13, 14, 15}));
   EXPECT_EQ(Inputs(*second), (std::vector<int>{8, 9, 10, 11, 12, 13, 14, 15}));
 
   ASSERT_TRUE((*iterator)->Reset().ok());
   auto reset = (*iterator)->Next();
   ASSERT_TRUE(reset.ok()) << reset.status();
+  EXPECT_EQ(reset->data.data(), first->data.data());
   EXPECT_EQ(Inputs(*reset), first_tokens);
 }
 
@@ -154,9 +162,10 @@ TEST_F(DataSetTest, RandomOrderIsDeterministicAcrossReset) {
 TEST_F(DataSetTest, SeededIteratorsAreIndependentAndReplayWholeBatches) {
   auto corpus = MakePinnedInts(193);
   std::iota(corpus.begin(), corpus.end(), 0);
-  const InMemoryDataSetOptions options{
-      .batch_size = 32, .context_length = 8,
-      .order = InMemoryDataSetOrder::kRandom, .seed = 987654321};
+  const InMemoryDataSetOptions options{.batch_size = 32,
+                                       .context_length = 8,
+                                       .order = InMemoryDataSetOrder::kRandom,
+                                       .seed = 987654321};
   auto first = InMemoryDataSetIterator::Create(*executor_, corpus, options);
   auto second = InMemoryDataSetIterator::Create(*executor_, corpus, options);
   auto unrelated = InMemoryDataSetIterator::Create(*executor_, corpus, options);

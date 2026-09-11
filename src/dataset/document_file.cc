@@ -53,10 +53,12 @@ absl::Status ReadExactly(int file_descriptor, uint64_t offset,
         pread(file_descriptor, output.data() + done, output.size() - done,
               static_cast<off_t>(offset + done));
     if (result < 0) {
-      if (errno == EINTR) continue;
+      if (errno == EINTR)
+        continue;
       return absl::ErrnoToStatus(errno, "pread failed");
     }
-    if (result == 0) return absl::DataLossError("unexpected end of file");
+    if (result == 0)
+      return absl::DataLossError("unexpected end of file");
     done += static_cast<size_t>(result);
   }
   return absl::OkStatus();
@@ -68,12 +70,12 @@ absl::Status WriteExactly(int file_descriptor, absl::Span<const uint8_t> data) {
     const ssize_t result =
         write(file_descriptor, data.data() + done, data.size() - done);
     if (result < 0) {
-      if (errno == EINTR) continue;
+      if (errno == EINTR)
+        continue;
       return absl::ErrnoToStatus(errno, "write failed");
     }
-    if (result == 0) {
+    if (result == 0)
       return absl::InternalError("write made no progress");
-    }
     done += static_cast<size_t>(result);
   }
   return absl::OkStatus();
@@ -87,12 +89,12 @@ absl::Status PwriteExactly(int file_descriptor, uint64_t offset,
         pwrite(file_descriptor, data.data() + done, data.size() - done,
                static_cast<off_t>(offset + done));
     if (result < 0) {
-      if (errno == EINTR) continue;
+      if (errno == EINTR)
+        continue;
       return absl::ErrnoToStatus(errno, "pwrite failed");
     }
-    if (result == 0) {
+    if (result == 0)
       return absl::InternalError("pwrite made no progress");
-    }
     done += static_cast<size_t>(result);
   }
   return absl::OkStatus();
@@ -102,7 +104,8 @@ absl::Status PwriteExactly(int file_descriptor, uint64_t offset,
 
 struct DocumentFileReader::Impl {
   ~Impl() {
-    if (file_descriptor >= 0) close(file_descriptor);
+    if (file_descriptor >= 0)
+      close(file_descriptor);
   }
 
   int file_descriptor = -1;
@@ -161,9 +164,8 @@ absl::StatusOr<std::unique_ptr<DocumentFileReader>> DocumentFileReader::Open(
     }
     impl->offsets[index + 1] = impl->offsets[index] + token_bytes;
   }
-  if (impl->offsets.back() != impl->file_size) {
+  if (impl->offsets.back() != impl->file_size)
     return absl::DataLossError("tokenized-document file has trailing bytes");
-  }
 
   return std::unique_ptr<DocumentFileReader>(
       new DocumentFileReader(std::move(impl)));
@@ -175,9 +177,8 @@ uint32_t DocumentFileReader::num_documents() const {
 
 absl::StatusOr<uint32_t> DocumentFileReader::document_length(
     uint32_t index) const {
-  if (index >= impl_->lengths.size()) {
+  if (index >= impl_->lengths.size())
     return absl::OutOfRangeError("document index is outside the file");
-  }
   return impl_->lengths[index];
 }
 
@@ -189,22 +190,25 @@ absl::StatusOr<std::vector<uint16_t>> DocumentFileReader::ReadDocument(
                               absl::MakeSpan(encoded)));
 
   std::vector<uint16_t> tokens(length);
-  for (size_t token = 0; token < tokens.size(); ++token) {
+  for (size_t token = 0; token < tokens.size(); ++token)
     tokens[token] = LoadLittle16(encoded.data() + 2 * token);
-  }
   return tokens;
 }
 
 struct DocumentFileWriter::Impl {
   ~Impl() {
-    if (file_descriptor >= 0) close(file_descriptor);
-    if (!published && !temporary_path.empty()) unlink(temporary_path.c_str());
+    if (file_descriptor >= 0)
+      close(file_descriptor);
+    if (!published && !temporary_path.empty())
+      unlink(temporary_path.c_str());
   }
 
   absl::Status FlushPayload() {
-    if (payload.empty()) return absl::OkStatus();
+    if (payload.empty())
+      return absl::OkStatus();
     auto status = WriteExactly(file_descriptor, payload);
-    if (status.ok()) payload.clear();
+    if (status.ok())
+      payload.clear();
     return status;
   }
 
@@ -247,9 +251,8 @@ absl::StatusOr<std::unique_ptr<DocumentFileWriter>> DocumentFileWriter::Create(
   }
 
   const uint64_t header_size = 4 + 4 * static_cast<uint64_t>(num_documents);
-  if (header_size > static_cast<uint64_t>(std::numeric_limits<off_t>::max())) {
+  if (header_size > static_cast<uint64_t>(std::numeric_limits<off_t>::max()))
     return absl::ResourceExhaustedError("document-length table is too large");
-  }
   if (ftruncate(impl->file_descriptor, static_cast<off_t>(header_size)) != 0 ||
       lseek(impl->file_descriptor, static_cast<off_t>(header_size), SEEK_SET) <
           0) {
@@ -262,21 +265,17 @@ absl::StatusOr<std::unique_ptr<DocumentFileWriter>> DocumentFileWriter::Create(
 
 absl::Status DocumentFileWriter::AddDocument(
     absl::Span<const uint16_t> token_ids) {
-  if (impl_->finalization_started) {
+  if (impl_->finalization_started)
     return absl::FailedPreconditionError("writer is already being finalized");
-  }
-  if (impl_->lengths.size() >= impl_->expected_documents) {
+  if (impl_->lengths.size() >= impl_->expected_documents)
     return absl::OutOfRangeError("more documents supplied than declared");
-  }
-  if (token_ids.size() > std::numeric_limits<uint32_t>::max()) {
+  if (token_ids.size() > std::numeric_limits<uint32_t>::max())
     return absl::ResourceExhaustedError("document has too many tokens");
-  }
 
   impl_->lengths.push_back(static_cast<uint32_t>(token_ids.size()));
   for (const uint16_t token : token_ids) {
-    if (impl_->payload.size() + 2 > kPayloadBufferSize) {
+    if (impl_->payload.size() + 2 > kPayloadBufferSize)
       RETURN_IF_ERROR(impl_->FlushPayload());
-    }
     impl_->payload.push_back(static_cast<uint8_t>(token));
     impl_->payload.push_back(static_cast<uint8_t>(token >> 8));
   }
@@ -284,9 +283,8 @@ absl::Status DocumentFileWriter::AddDocument(
 }
 
 absl::Status DocumentFileWriter::Close() {
-  if (impl_->finalization_started) {
+  if (impl_->finalization_started)
     return absl::FailedPreconditionError("writer has already been finalized");
-  }
   impl_->finalization_started = true;
   if (impl_->lengths.size() != impl_->expected_documents) {
     return absl::FailedPreconditionError(
@@ -297,18 +295,16 @@ absl::Status DocumentFileWriter::Close() {
   RETURN_IF_ERROR(impl_->FlushPayload());
   std::vector<uint8_t> header(4 + 4 * impl_->lengths.size());
   StoreLittle32(impl_->expected_documents, header.data());
-  for (size_t index = 0; index < impl_->lengths.size(); ++index) {
+  for (size_t index = 0; index < impl_->lengths.size(); ++index)
     StoreLittle32(impl_->lengths[index], header.data() + 4 + 4 * index);
-  }
   RETURN_IF_ERROR(PwriteExactly(impl_->file_descriptor, 0, header));
   if (close(impl_->file_descriptor) != 0) {
     impl_->file_descriptor = -1;
     return absl::ErrnoToStatus(errno, "cannot close tokenized-document file");
   }
   impl_->file_descriptor = -1;
-  if (rename(impl_->temporary_path.c_str(), impl_->final_path.c_str()) != 0) {
+  if (rename(impl_->temporary_path.c_str(), impl_->final_path.c_str()) != 0)
     return absl::ErrnoToStatus(errno, "cannot publish tokenized-document file");
-  }
   impl_->published = true;
   return absl::OkStatus();
 }

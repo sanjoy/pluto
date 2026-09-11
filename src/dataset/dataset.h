@@ -82,6 +82,13 @@ class DataSetIterator {
  public:
   virtual ~DataSetIterator() = default;
 
+  // Returns the next batch, which may alias storage returned by earlier calls.
+  // Reference counting keeps that storage alive, but does not preserve its
+  // contents: consume or copy a batch before the next call overwrites it.
+  // InMemoryDataSetIterator allocates no new batch storage in Next(); it reuses
+  // the same buffer on every call. Other implementations (such as the SAE
+  // activation iterator) may allocate, so this is not an interface-wide
+  // promise.
   virtual absl::StatusOr<DataBatch> Next() = 0;
   virtual absl::Status Reset() = 0;
 };
@@ -118,6 +125,9 @@ class InMemoryDataSetIterator final : public DataSetIterator {
       cuda::Executor& executor, cuda::PageLockedHostArray<int> tokens,
       InMemoryDataSetOptions options);
 
+  // Reuses the buffer allocated by Create(), without allocating new memory.
+  // Enqueue consumers on the same executor before calling Next() again; reads
+  // on other streams must finish before the buffer is overwritten.
   absl::StatusOr<DataBatch> Next() override;
   absl::Status Reset() override;
 

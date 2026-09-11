@@ -62,9 +62,8 @@ class PhraseProbeGpuTest : public testing::Test {
     executor_ = std::move(*executor);
   }
   void TearDown() override {
-    if (executor_) {
+    if (executor_)
       EXPECT_TRUE(executor_->Synchronize().ok());
-    }
   }
   std::unique_ptr<cuda::Executor> executor_;
 };
@@ -119,9 +118,8 @@ TEST_F(PhraseProbeGpuTest,
   constexpr int kWidth = 16;
   auto host = cuda::PageLockedHostArray<uint16_t>::Allocate(kRows * kWidth);
   ASSERT_TRUE(host.ok());
-  for (size_t i = 0; i < host->size(); ++i) {
+  for (size_t i = 0; i < host->size(); ++i)
     (*host)[i] = static_cast<uint16_t>(0x3e80 + i + ((i % 2) ? 0x8000 : 0));
-  }
   auto input = cuda::Buffer::Allocate(*executor_, host->size_bytes());
   ASSERT_TRUE(input.ok());
   ASSERT_EQ(cudaMemcpyAsync(input->data(), host->data(), host->size_bytes(),
@@ -227,8 +225,10 @@ TEST_F(PhraseProbeGpuTest,
       residual.children.resize(1);
       auto& leaves = residual.children[0].children;
       leaves.resize(4);
-      for (auto& leaf : leaves) leaf.intermediates.push_back(*buffer);
-      if (branch == 0) leaves[2].intermediates.push_back(*buffer);
+      for (auto& leaf : leaves)
+        leaf.intermediates.push_back(*buffer);
+      if (branch == 0)
+        leaves[2].intermediates.push_back(*buffer);
     }
   }
   EXPECT_TRUE(ValidateGpt2Tape(tape).ok());

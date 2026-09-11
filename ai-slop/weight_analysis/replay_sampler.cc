@@ -34,10 +34,11 @@ constexpr std::string_view kUsage =
 bool ParseUnsigned(std::string_view text, uint64_t& result) {
   // Reject signs, spaces, suffixes, and overflow, rather than accepting a
   // partially parsed or wrapped bound and emitting plausible-looking starts.
-  if (text.empty()) return false;
-  for (char character : text) {
-    if (character < '0' || character > '9') return false;
-  }
+  if (text.empty())
+    return false;
+  for (char character : text)
+    if (character < '0' || character > '9')
+      return false;
   const auto parsed =
       std::from_chars(text.data(), text.data() + text.size(), result);
   return parsed.ec == std::errc{} && parsed.ptr == text.data() + text.size();
@@ -71,18 +72,16 @@ int main(int argc, char** argv) {
     std::cout << '\n';
     return 0;
   }
-  if (argc != 6) return Error("expected exactly five positional arguments");
+  if (argc != 6)
+    return Error("expected exactly five positional arguments");
   uint64_t values[5] = {};
-  for (int index = 0; index < 5; ++index) {
-    if (!ParseUnsigned(argv[index + 1], values[index])) {
+  for (int index = 0; index < 5; ++index)
+    if (!ParseUnsigned(argv[index + 1], values[index]))
       return Error("argument is not an unsigned decimal uint64");
-    }
-  }
   const auto [total_tokens, context, sequence_count, seed_start, seed_count] =
       values;
-  if (context == 0 || context > std::numeric_limits<int>::max()) {
+  if (context == 0 || context > std::numeric_limits<int>::max())
     return Error("context must be positive and fit dataset's int context");
-  }
   if (total_tokens <= context ||
       total_tokens > std::numeric_limits<size_t>::max() / sizeof(int)) {
     return Error("token count must exceed context and fit dataset storage");
@@ -91,9 +90,8 @@ int main(int argc, char** argv) {
       seed_count > 10000 || sequence_count > 1000000 / seed_count) {
     return Error("requested counts exceed the positive bounded-output limits");
   }
-  if (seed_start > std::numeric_limits<uint64_t>::max() - (seed_count - 1)) {
+  if (seed_start > std::numeric_limits<uint64_t>::max() - (seed_count - 1))
     return Error("last seed would overflow uint64");
-  }
 
   std::ios::sync_with_stdio(false);
   // The bounds and engine/distribution types intentionally match dataset.cc.
@@ -105,9 +103,8 @@ int main(int argc, char** argv) {
     std::mt19937_64 random(seed);
     std::uniform_int_distribution<size_t> random_start(0, maximum_start);
     std::cout << seed;
-    for (uint64_t sequence = 0; sequence < sequence_count; ++sequence) {
+    for (uint64_t sequence = 0; sequence < sequence_count; ++sequence)
       std::cout << ' ' << random_start(random);
-    }
     std::cout << '\n';
   }
   std::cout.flush();

@@ -33,17 +33,18 @@ class PageLockedHostArray final {
           "page-locked host array byte size overflows size_t");
     }
     auto buffer = PageLockedHostBuffer::Allocate(size * sizeof(T));
-    if (!buffer.ok()) return buffer.status();
+    if (!buffer.ok())
+      return buffer.status();
     return PageLockedHostArray(std::move(*buffer), size);
   }
 
   static absl::StatusOr<PageLockedHostArray> CopyFrom(
       absl::Span<const T> values) {
     auto result = Allocate(values.size());
-    if (!result.ok()) return result.status();
-    if (!values.empty()) {
+    if (!result.ok())
+      return result.status();
+    if (!values.empty())
       std::memcpy(result->data(), values.data(), values.size() * sizeof(T));
-    }
     return result;
   }
 

@@ -119,9 +119,9 @@ absl::StatusOr<BufferVec> GeluLayer::bwd(
       static_cast<size_t>(elements) *
           internal::ActivationElementBytes(output_type_),
       "GELU saved input"));
-  ASSIGN_OR_RETURN(auto input_gradient,
-                   Buffer::Allocate(executor, static_cast<size_t>(elements) *
-                                                  sizeof(float)));
+  ASSIGN_OR_RETURN(
+      auto input_gradient,
+      Buffer::Allocate(executor, static_cast<size_t>(elements) * sizeof(float)));
   if (output_type_ == DataType::BF16) {
     GeluBackwardKernel<__nv_bfloat16>
         <<<internal::TileCount(elements), 1, 0, executor.stream()>>>(

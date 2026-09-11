@@ -174,9 +174,8 @@ absl::StatusOr<std::unique_ptr<LayerNormLayer>> LayerNormLayer::Create(
     cuda::Executor& executor, int embedding_dim, float epsilon,
     DataType data_type) {
   RETURN_IF_ERROR(internal::ValidateComputeType(data_type));
-  if (!(epsilon > 0.0f)) {
+  if (!(epsilon > 0.0f))
     return absl::InvalidArgumentError("layer-norm epsilon must be positive");
-  }
   RETURN_IF_ERROR(
       internal::ValidateTiledExtent(embedding_dim, "embedding_dim"));
   const size_t bytes = static_cast<size_t>(embedding_dim) * sizeof(float);
@@ -248,9 +247,9 @@ absl::StatusOr<BufferVec> LayerNormLayer::bwd(
     return absl::InvalidArgumentError(
         "LayerNormLayer bwd received an incompatible gradient or tape");
   }
-  ASSIGN_OR_RETURN(int rows, internal::MatrixRows(
-                                 executor, output_gradients[0], embedding_dim_,
-                                 "layer-norm output gradient"));
+  ASSIGN_OR_RETURN(int rows, internal::MatrixRows(executor, output_gradients[0],
+                                                  embedding_dim_,
+                                                  "layer-norm output gradient"));
   RETURN_IF_ERROR(internal::ValidateBuffer(
       executor, tape.intermediates[0],
       static_cast<size_t>(rows) * embedding_dim_ *
@@ -258,8 +257,8 @@ absl::StatusOr<BufferVec> LayerNormLayer::bwd(
       "layer-norm saved input"));
   ASSIGN_OR_RETURN(
       auto input_gradient,
-      Buffer::Allocate(executor, static_cast<size_t>(rows) * embedding_dim_ *
-                                     sizeof(float)));
+      Buffer::Allocate(
+          executor, static_cast<size_t>(rows) * embedding_dim_ * sizeof(float)));
   const int blocks = rows * internal::TileCount(embedding_dim_);
   if (output_type_ == DataType::BF16) {
     LayerNormInputGradientKernel<__nv_bfloat16>

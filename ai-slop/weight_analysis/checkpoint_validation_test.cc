@@ -5,8 +5,8 @@
 #include <fstream>
 #include <string>
 
-#include "gtest/gtest.h"
 #include "ai-slop/weight_analysis/causal_probe.h"
+#include "gtest/gtest.h"
 
 namespace pluto::weight_analysis {
 namespace {
@@ -35,7 +35,8 @@ class CheckpointValidationTest : public testing::Test {
   }
 
   void TearDown() override {
-    if (!root_.empty()) fs::remove_all(root_);
+    if (!root_.empty())
+      fs::remove_all(root_);
   }
 
   fs::path Weight(size_t index) const {
@@ -56,9 +57,8 @@ TEST_F(CheckpointValidationTest, AcceptsOriginalAndPatchedLayouts) {
   auto plain = InspectGpt2CheckpointFiles(checkpoint_);
   ASSERT_TRUE(plain.ok()) << plain.status();
   ASSERT_EQ(plain->size(), 100U);
-  for (size_t i = 0; i < plain->size(); ++i) {
+  for (size_t i = 0; i < plain->size(); ++i)
     EXPECT_EQ((*plain)[i].path, Weight(i));
-  }
   EXPECT_TRUE(VerifyCheckpointFilesUnchanged(*plain).ok());
 
   AddMetadata();

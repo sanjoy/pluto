@@ -10,9 +10,9 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "src/util/status_macros.h"
 #include "src/llm/layers/embedding.h"
 #include "src/llm/layers/reference_internal.h"
+#include "src/util/status_macros.h"
 
 namespace pluto::llm {
 namespace ri = reference_internal;
@@ -28,9 +28,8 @@ absl::Status InitializeBufferNormal(HostBuffer* buffer,
   std::normal_distribution<float> distribution(0.0f, standard_deviation);
   auto* values = static_cast<float*>(buffer->data());
   const size_t elements = buffer->size_bytes() / sizeof(float);
-  for (size_t index = 0; index < elements; ++index) {
+  for (size_t index = 0; index < elements; ++index)
     values[index] = distribution(random);
-  }
   return absl::OkStatus();
 }
 
@@ -40,9 +39,8 @@ absl::StatusOr<std::unique_ptr<EmbeddingLookupLayerReference>>
 EmbeddingLookupLayerReference::Create(int vocab_size, int embedding_dim,
                                       DataType data_type) {
   RETURN_IF_ERROR(ri::ValidateComputeType(data_type));
-  if (vocab_size <= 0) {
+  if (vocab_size <= 0)
     return absl::InvalidArgumentError("vocab_size must be positive");
-  }
   RETURN_IF_ERROR(ri::ValidateTiledExtent(embedding_dim, "embedding_dim"));
   const int padded_vocab_size = ri::RoundUpToTile(vocab_size);
   const size_t elements =
@@ -60,9 +58,8 @@ absl::Status EmbeddingLookupLayerReference::InitializeIdentity(float scale) {
   std::fill(table,
             table + static_cast<size_t>(padded_vocab_size_) * embedding_dim_,
             0.0f);
-  for (int index = 0; index < std::min(vocab_size_, embedding_dim_); ++index) {
+  for (int index = 0; index < std::min(vocab_size_, embedding_dim_); ++index)
     table[static_cast<size_t>(index) * embedding_dim_ + index] = scale;
-  }
   return absl::OkStatus();
 }
 
@@ -77,8 +74,8 @@ absl::StatusOr<HostBuffer> EmbeddingLookupLayerReference::fwd(
     return absl::InvalidArgumentError(
         "EmbeddingLookupLayerReference fwd expects token IDs and a tape");
   }
-  ASSIGN_OR_RETURN(
-      int rows, ri::ElementCount(inputs[0], sizeof(int), "embedding tokens"));
+  ASSIGN_OR_RETURN(int rows,
+                   ri::ElementCount(inputs[0], sizeof(int), "embedding tokens"));
   ASSIGN_OR_RETURN(auto output, ri::AllocateActivation(
                                     static_cast<size_t>(rows) * embedding_dim_,
                                     output_type_));
@@ -87,9 +84,8 @@ absl::StatusOr<HostBuffer> EmbeddingLookupLayerReference::fwd(
   // A lookup really is just this nested loop. Keeping it scalar also makes
   // token bounds and the FP32-master-to-activation conversion unambiguous.
   for (int row = 0; row < rows; ++row) {
-    if (tokens[row] < 0 || tokens[row] >= vocab_size_) {
+    if (tokens[row] < 0 || tokens[row] >= vocab_size_)
       return absl::InvalidArgumentError("embedding token is out of range");
-    }
     for (int column = 0; column < embedding_dim_; ++column) {
       ri::StoreActivation(
           &output, static_cast<size_t>(row) * embedding_dim_ + column,
@@ -118,7 +114,8 @@ absl::StatusOr<HostBufferVec> EmbeddingLookupLayerReference::bwd(
   const auto* tokens = static_cast<const int*>(tape.intermediates[0].data());
   const auto* d_output = static_cast<const float*>(output_gradients[0].data());
   auto* d_table = static_cast<float*>(gradient_.data());
-  // Repeated tokens add in input-row order, matching the device's sorted gather.
+  // Repeated tokens add in input-row order, matching the device's sorted
+  // gather.
   for (int row = 0; row < rows; ++row) {
     for (int column = 0; column < embedding_dim_; ++column) {
       d_table[static_cast<size_t>(tokens[row]) * embedding_dim_ + column] +=
@@ -255,9 +252,8 @@ absl::StatusOr<std::unique_ptr<PositionEmbeddingLayerReference>>
 PositionEmbeddingLayerReference::Create(int context_length, int embedding_dim,
                                         DataType data_type) {
   RETURN_IF_ERROR(ri::ValidateComputeType(data_type));
-  if (context_length <= 0) {
+  if (context_length <= 0)
     return absl::InvalidArgumentError("context_length must be positive");
-  }
   RETURN_IF_ERROR(ri::ValidateTiledExtent(embedding_dim, "embedding_dim"));
   const size_t elements = static_cast<size_t>(context_length) * embedding_dim;
   ASSIGN_OR_RETURN(auto weight, ri::AllocateFloats(elements, true));

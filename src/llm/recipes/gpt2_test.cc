@@ -24,7 +24,8 @@ class Gpt2Test : public testing::Test {
   }
 
   void TearDown() override {
-    if (executor_ == nullptr) return;
+    if (executor_ == nullptr)
+      return;
     EXPECT_TRUE(executor_->Synchronize().ok());
     executor_.reset();
   }

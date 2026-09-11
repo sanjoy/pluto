@@ -57,9 +57,11 @@ class FakeLoss final : public Layer {
       cuda::Executor& executor, absl::Span<const float> losses) {
     auto device_losses =
         Buffer::Allocate(executor, losses.size() * sizeof(float));
-    if (!device_losses.ok()) return device_losses.status();
+    if (!device_losses.ok())
+      return device_losses.status();
     auto gradient = Buffer::Allocate(executor, losses.size() * sizeof(float));
-    if (!gradient.ok()) return gradient.status();
+    if (!gradient.ok())
+      return gradient.status();
     if (cudaMemcpyAsync(device_losses->data(), losses.data(),
                         device_losses->size_bytes(), cudaMemcpyHostToDevice,
                         executor.stream()) != cudaSuccess) {
@@ -67,7 +69,8 @@ class FakeLoss final : public Layer {
                           "failed to initialize fake losses");
     }
     const absl::Status synchronized = executor.Synchronize();
-    if (!synchronized.ok()) return synchronized;
+    if (!synchronized.ok())
+      return synchronized;
     return std::unique_ptr<FakeLoss>(
         new FakeLoss(std::move(*device_losses), std::move(*gradient)));
   }
@@ -108,7 +111,8 @@ class FakeOptimizer final : public Optimizer {
   }
   absl::Status Step() override {
     ++steps;
-    if (step_action) return step_action();
+    if (step_action)
+      return step_action();
     return absl::OkStatus();
   }
   int step() const override { return steps; }
@@ -149,15 +153,16 @@ absl::StatusOr<float> ReadEvaluationLoss(cuda::Executor& executor,
         "evaluation result must be one FP32 value on the test executor");
   }
   auto host_loss = cuda::PageLockedHostArray<float>::Allocate(1);
-  if (!host_loss.ok()) return host_loss.status();
+  if (!host_loss.ok())
+    return host_loss.status();
   const cudaError_t error =
       cudaMemcpyAsync(host_loss->data(), loss.data(), loss.size_bytes(),
                       cudaMemcpyDeviceToHost, executor.stream());
-  if (error != cudaSuccess) {
+  if (error != cudaSuccess)
     return cuda::CudaStatus(error, "cudaMemcpyAsync(test evaluation result)");
-  }
   const absl::Status synchronized = executor.Synchronize();
-  if (!synchronized.ok()) return synchronized;
+  if (!synchronized.ok())
+    return synchronized;
   return (*host_loss)[0];
 }
 
@@ -174,7 +179,8 @@ class TrainerTest : public testing::Test {
   }
 
   void TearDown() override {
-    if (executor_ == nullptr) return;
+    if (executor_ == nullptr)
+      return;
     EXPECT_TRUE(executor_->Synchronize().ok());
     executor_.reset();
   }
@@ -191,7 +197,8 @@ class TrainerTest : public testing::Test {
 
   absl::StatusOr<std::unique_ptr<FakeLoss>> MakeLoss() {
     auto losses = cuda::PageLockedHostArray<float>::Allocate(4);
-    if (!losses.ok()) return losses.status();
+    if (!losses.ok())
+      return losses.status();
     std::iota(losses->begin(), losses->end(), 1.0f);
     return FakeLoss::Create(*executor_, losses->span());
   }
@@ -480,9 +487,8 @@ TEST_F(TrainerTest, StepCallbackRunsAfterUpdatesAndPropagatesErrors) {
                 .initial_step = 570,
                 .step_callback = [&](int steps_completed) -> absl::Status {
                   callback_steps.push_back(steps_completed);
-                  if (steps_completed == 572) {
+                  if (steps_completed == 572)
                     return absl::UnavailableError("checkpoint failed");
-                  }
                   return absl::OkStatus();
                 }});
 
@@ -507,9 +513,8 @@ TEST_F(TrainerTest, UnlimitedTrainingRunsUntilCallbackStopsIt) {
       *executor_, objective, optimizer, **data,
       TrainingOptions{.max_steps = kUnlimitedTrainingSteps,
                       .step_callback = [](int steps_completed) -> absl::Status {
-                        if (steps_completed == 3) {
+                        if (steps_completed == 3)
                           return absl::CancelledError("test requested stop");
-                        }
                         return absl::OkStatus();
                       }});
 

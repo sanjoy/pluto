@@ -80,7 +80,8 @@ absl::Status Bad(absl::string_view text) {
 
 absl::StatusOr<fs::path> CanonicalExisting(const std::string& text,
                                            bool directory) {
-  if (text.empty()) return Bad("required input path is empty");
+  if (text.empty())
+    return Bad("required input path is empty");
   const fs::path supplied = fs::absolute(text).lexically_normal();
   if (fs::is_symlink(supplied) ||
       (directory ? !fs::is_directory(supplied)
@@ -127,7 +128,8 @@ absl::Status CompareDisk(const FileInfo& file, const void* bytes, size_t size) {
     }
     offset += count;
   }
-  if (input.peek() != EOF) return absl::DataLossError("trailing input bytes");
+  if (input.peek() != EOF)
+    return absl::DataLossError("trailing input bytes");
   return VerifyStat(file);
 }
 
@@ -150,15 +152,15 @@ absl::StatusOr<std::vector<T>> ReadSmall(const FileInfo& file, size_t minimum,
 std::vector<size_t> WeightSizes() {
   std::vector<size_t> sizes{size_t{kPadded} * kWidth,
                             size_t{kContext} * kWidth};
-  for (int block = 0; block < 8; ++block) {
+  for (int block = 0; block < 8; ++block)
     for (size_t n :
          {512ULL, 512ULL, 512ULL * 1536, 1536ULL, 512ULL * 512, 512ULL, 512ULL,
           512ULL, 512ULL * 2048, 2048ULL, 2048ULL * 512, 512ULL})
       sizes.push_back(n);
-  }
   sizes.push_back(kWidth);
   sizes.push_back(kWidth);
-  for (auto& size : sizes) size *= sizeof(float);
+  for (auto& size : sizes)
+    size *= sizeof(float);
   return sizes;
 }
 
@@ -212,7 +214,8 @@ absl::Status WriteExclusive(const fs::path& path, const void* bytes,
     const size_t count = std::min<size_t>(size - offset, 64 * 1024 * 1024);
     const ssize_t written =
         ::write(fd, static_cast<const uint8_t*>(bytes) + offset, count);
-    if (written < 0 && errno == EINTR) continue;
+    if (written < 0 && errno == EINTR)
+      continue;
     if (written <= 0) {
       const std::string reason = std::strerror(errno);
       ::close(fd);
@@ -220,14 +223,15 @@ absl::Status WriteExclusive(const fs::path& path, const void* bytes,
     }
     offset += static_cast<size_t>(written);
   }
-  if (::close(fd) != 0) return absl::InternalError("output close failed");
+  if (::close(fd) != 0)
+    return absl::InternalError("output close failed");
   return absl::OkStatus();
 }
 
 std::string Quote(const std::string& value) {
   std::ostringstream output;
   output << '"';
-  for (unsigned char byte : value) {
+  for (unsigned char byte : value)
     if (byte == '"' || byte == '\\')
       output << '\\' << static_cast<char>(byte);
     else if (byte < 32)
@@ -235,7 +239,6 @@ std::string Quote(const std::string& value) {
              << static_cast<int>(byte) << std::dec;
     else
       output << static_cast<char>(byte);
-  }
   output << '"';
   return output.str();
 }
@@ -341,14 +344,17 @@ absl::Status Run(const std::vector<std::string>& argv) {
     }
   }
   const auto output_text = absl::GetFlag(FLAGS_output_dir);
-  if (output_text.empty()) return Bad("output_dir is required");
+  if (output_text.empty())
+    return Bad("output_dir is required");
   const fs::path output = fs::absolute(output_text).lexically_normal();
   ASSIGN_OR_RETURN(auto output_parent,
                    CanonicalExisting(output.parent_path().string(), true));
   (void)output_parent;
   for (auto parent = output;; parent = parent.parent_path()) {
-    if (parent == checkpoint) return Bad("output cannot be inside checkpoint");
-    if (parent == parent.parent_path()) break;
+    if (parent == checkpoint)
+      return Bad("output cannot be inside checkpoint");
+    if (parent == parent.parent_path())
+      break;
   }
   // All flags, disk layouts, historical rows and prefix checks above are CPU
   // only. Existing output fails before creating any CUDA context.
@@ -379,8 +385,8 @@ absl::Status Run(const std::vector<std::string>& argv) {
     snapshots.push_back(std::move(bytes));
   }
   llm::Tape tape;
-  ASSIGN_OR_RETURN(
-      auto clean, model->fwd(*executor, absl::MakeConstSpan(&input, 1), &tape));
+  ASSIGN_OR_RETURN(auto clean,
+                   model->fwd(*executor, absl::MakeConstSpan(&input, 1), &tape));
   ASSIGN_OR_RETURN(auto probe,
                    Probe::Create(*executor, *model, input, tape, clean, block));
   ASSIGN_OR_RETURN(auto clean_values,
@@ -448,7 +454,8 @@ absl::Status Run(const std::vector<std::string>& argv) {
         return absl::DataLossError(
             "repeated all-query zero differs from calibration full logits");
       }
-      if (!first_arm) arms << ',';
+      if (!first_arm)
+        arms << ',';
       first_arm = false;
       arms << "{\"directory\":" << Quote(name)
            << ",\"scope\":" << Quote(scope_name)
@@ -536,7 +543,8 @@ absl::Status Run(const std::vector<std::string>& argv) {
               "result\":false,\"goal_completion_claimed\":false"
            << ",\"command\":[";
   for (size_t i = 0; i < argv.size(); ++i) {
-    if (i) metadata << ',';
+    if (i)
+      metadata << ',';
     metadata << Quote(argv[i]);
   }
   metadata << "]}\n";
@@ -550,12 +558,9 @@ absl::Status Run(const std::vector<std::string>& argv) {
 int main(int argc, char** argv) {
   const std::vector<std::string> command(argv, argv + argc);
   absl::ParseCommandLine(argc, argv);
-  try {
-    const auto status = pluto::weight_analysis::head_context::Run(command);
-    if (status.ok()) return 0;
-    std::cerr << status << '\n';
-  } catch (const std::exception& error) {
-    std::cerr << error.what() << '\n';
-  }
+  const auto status = pluto::weight_analysis::head_context::Run(command);
+  if (status.ok())
+    return 0;
+  std::cerr << status << '\n';
   return 1;
 }

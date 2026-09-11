@@ -12,6 +12,7 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <system_error>
 #include <unordered_set>
 #include <utility>
 
@@ -64,69 +65,92 @@ std::vector<size_t> Gpt2WeightByteSizes() {
 absl::StatusOr<std::vector<CheckpointFileInfo>> InspectGpt2CheckpointFiles(
     const std::filesystem::path& directory) {
   namespace fs = std::filesystem;
-  try {
-    if (fs::is_symlink(directory) || !fs::is_directory(directory)) {
-      return absl::InvalidArgumentError(
-          "checkpoint must be a directory, not a symlink");
-    }
-    const auto sizes = Gpt2WeightByteSizes();
-    std::unordered_set<std::string> expected_names;
-    for (size_t i = 0; i < sizes.size(); ++i) {
-      expected_names.insert(absl::StrCat("weight_", i, ".bin"));
-    }
-    bool has_metadata = false;
-    for (const auto& entry : fs::directory_iterator(directory)) {
-      if (entry.is_symlink() || !entry.is_regular_file()) {
-        return absl::InvalidArgumentError(
-            "checkpoint contains a symlink or non-regular entry");
-      }
-      const auto name = entry.path().filename().string();
-      if (name == "patch.json") {
-        has_metadata = true;
-      } else if (expected_names.erase(name) != 1) {
-        return absl::InvalidArgumentError(
-            absl::StrCat("unexpected checkpoint entry: ", name));
-      }
-    }
-    if (!expected_names.empty()) {
-      return absl::InvalidArgumentError(
-          "checkpoint must contain all 100 canonical GPT-2 weight files");
-    }
-    std::vector<CheckpointFileInfo> files;
-    files.reserve(sizes.size() + has_metadata);
-    for (size_t i = 0; i < sizes.size(); ++i) {
-      const auto path = directory / absl::StrCat("weight_", i, ".bin");
-      if (fs::is_symlink(path) || !fs::is_regular_file(path) ||
-          fs::file_size(path) != sizes[i]) {
-        return absl::InvalidArgumentError(
-            absl::StrCat("checkpoint weight layout mismatch: ", path.string()));
-      }
-      files.push_back({path, sizes[i], fs::last_write_time(path)});
-    }
-    if (has_metadata) {
-      const auto path = directory / "patch.json";
-      if (fs::is_symlink(path) || !fs::is_regular_file(path)) {
-        return absl::InvalidArgumentError("invalid checkpoint patch metadata");
-      }
-      files.push_back({path, fs::file_size(path), fs::last_write_time(path)});
-    }
-    return files;
-  } catch (const fs::filesystem_error& error) {
+  // Filesystem failures are recoverable input errors. Use error_code overloads
+  // explicitly: the build disables exceptions, so throwing overloads cannot be
+  // caught here (and allocation failures intentionally terminate the process).
+  std::error_code error;
+  const auto inspection_error = [&] {
     return absl::InvalidArgumentError(
-        absl::StrCat("cannot inspect checkpoint: ", error.what()));
+        absl::StrCat("cannot inspect checkpoint: ", error.message()));
+  };
+  const auto directory_status = fs::symlink_status(directory, error);
+  if (error)
+    return inspection_error();
+  if (!fs::is_directory(directory_status)) {
+    return absl::InvalidArgumentError(
+        "checkpoint must be a directory, not a symlink");
   }
+  const auto sizes = Gpt2WeightByteSizes();
+  std::unordered_set<std::string> expected_names;
+  for (size_t i = 0; i < sizes.size(); ++i)
+    expected_names.insert(absl::StrCat("weight_", i, ".bin"));
+  bool has_metadata = false;
+  fs::directory_iterator entry(directory, error);
+  if (error)
+    return inspection_error();
+  const fs::directory_iterator end;
+  while (entry != end) {
+    const auto status = entry->symlink_status(error);
+    if (error)
+      return inspection_error();
+    if (!fs::is_regular_file(status)) {
+      return absl::InvalidArgumentError(
+          "checkpoint contains a symlink or non-regular entry");
+    }
+    const auto name = entry->path().filename().string();
+    if (name == "patch.json") {
+      has_metadata = true;
+    } else if (expected_names.erase(name) != 1) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("unexpected checkpoint entry: ", name));
+    }
+    entry.increment(error);
+    if (error)
+      return inspection_error();
+  }
+  if (!expected_names.empty()) {
+    return absl::InvalidArgumentError(
+        "checkpoint must contain all 100 canonical GPT-2 weight files");
+  }
+  std::vector<CheckpointFileInfo> files;
+  files.reserve(sizes.size() + has_metadata);
+  // Recheck each file while collecting its metadata, since the directory may
+  // have changed since enumeration. Reject symlinks as before.
+  for (size_t i = 0; i < sizes.size() + has_metadata; ++i) {
+    const bool metadata = i == sizes.size();
+    const auto path =
+        directory /
+        (metadata ? "patch.json" : absl::StrCat("weight_", i, ".bin"));
+    const auto status = fs::symlink_status(path, error);
+    if (error)
+      return inspection_error();
+    if (!fs::is_regular_file(status)) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "checkpoint contains a non-regular file: ", path.string()));
+    }
+    const auto bytes = fs::file_size(path, error);
+    if (error)
+      return inspection_error();
+    if (!metadata && bytes != sizes[i]) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("checkpoint weight layout mismatch: ", path.string()));
+    }
+    const auto modified = fs::last_write_time(path, error);
+    if (error)
+      return inspection_error();
+    files.push_back({path, bytes, modified});
+  }
+  return files;
 }
 
 absl::Status VerifyCheckpointFilesUnchanged(
     const std::vector<CheckpointFileInfo>& files) {
-  if (files.empty()) {
+  if (files.empty())
     return absl::InvalidArgumentError("empty checkpoint stat snapshot");
-  }
   const auto current =
       InspectGpt2CheckpointFiles(files.front().path.parent_path());
-  if (!current.ok() || current->size() != files.size()) {
+  if (!current.ok() || current->size() != files.size())
     return absl::DataLossError("checkpoint layout changed during probe");
-  }
   for (size_t i = 0; i < files.size(); ++i) {
     if ((*current)[i].path != files[i].path ||
         (*current)[i].bytes != files[i].bytes ||
@@ -142,19 +166,18 @@ absl::StatusOr<std::vector<cuda::Buffer>> UniqueWeights(
   std::vector<cuda::Buffer> unique;
   std::unordered_set<const void*> seen;
   for (const auto& weight : weights) {
-    if (&weight.executor() != &executor || weight.size_bytes() == 0) {
+    if (&weight.executor() != &executor || weight.size_bytes() == 0)
       return absl::InvalidArgumentError("wrong executor or empty weight");
-    }
-    if (seen.insert(weight.data()).second) unique.push_back(weight);
+    if (seen.insert(weight.data()).second)
+      unique.push_back(weight);
   }
   return unique;
 }
 
 absl::Status ValidateGpt2Weights(absl::Span<const cuda::Buffer> weights) {
   const auto sizes = Gpt2WeightByteSizes();
-  if (weights.size() != sizes.size()) {
+  if (weights.size() != sizes.size())
     return absl::InvalidArgumentError("expected 100 unique GPT-2 weights");
-  }
   for (size_t i = 0; i < sizes.size(); ++i) {
     if (weights[i].size_bytes() != sizes[i]) {
       return absl::InvalidArgumentError(
@@ -179,15 +202,14 @@ absl::StatusOr<PackedBatch> LoadPackedBatch(const std::filesystem::path& path,
                                             int vocab_size) {
   static_assert(sizeof(float) == 4 && sizeof(int32_t) == 4);
   static_assert(std::numeric_limits<float>::is_iec559);
-  if constexpr (std::endian::native != std::endian::little) {
+  if constexpr (std::endian::native != std::endian::little)
     return absl::UnimplementedError("probe requires a little-endian host");
-  }
-  if (context_length <= 0 || vocab_size <= 0) {
+  if (context_length <= 0 || vocab_size <= 0)
     return absl::InvalidArgumentError("invalid input shape or vocabulary");
-  }
   std::error_code error;
   const uintmax_t bytes = std::filesystem::file_size(path, error);
-  if (error) return absl::InvalidArgumentError("cannot stat token batch");
+  if (error)
+    return absl::InvalidArgumentError("cannot stat token batch");
   const uint64_t passage_bytes = uint64_t{2} * context_length * sizeof(int32_t);
   if (!bytes || bytes % passage_bytes ||
       bytes / (2 * sizeof(int32_t)) > std::numeric_limits<int>::max()) {
@@ -200,21 +222,17 @@ absl::StatusOr<PackedBatch> LoadPackedBatch(const std::filesystem::path& path,
       input.peek() != std::ifstream::traits_type::eof()) {
     return absl::DataLossError("short or changed token batch");
   }
-  for (int32_t token : tokens) {
-    if (token < 0 || token >= vocab_size) {
+  for (int32_t token : tokens)
+    if (token < 0 || token >= vocab_size)
       return absl::InvalidArgumentError("token outside logical vocabulary");
-    }
-  }
   PackedBatch batch{std::move(tokens), context_length,
                     static_cast<int>(bytes / passage_bytes)};
   for (int i = 0; i < batch.passage_count; ++i) {
     auto x = batch.inputs(i, 1);
     auto y = batch.targets(i, 1);
-    for (int j = 0; j + 1 < context_length; ++j) {
-      if (y[j] != x[j + 1]) {
+    for (int j = 0; j + 1 < context_length; ++j)
+      if (y[j] != x[j + 1])
         return absl::InvalidArgumentError("targets are not next-token shifted");
-      }
-    }
   }
   return batch;
 }
@@ -251,7 +269,8 @@ std::string JsonQuote(const std::string& text) {
 absl::StatusOr<std::unique_ptr<WeightIntervention>> WeightIntervention::Capture(
     cuda::Executor& executor, absl::Span<const cuda::Buffer> weights,
     absl::Span<const int> indices) {
-  if (indices.empty()) return absl::InvalidArgumentError("empty intervention");
+  if (indices.empty())
+    return absl::InvalidArgumentError("empty intervention");
   auto result =
       std::unique_ptr<WeightIntervention>(new WeightIntervention(executor));
   std::unordered_set<const void*> seen;
@@ -280,11 +299,9 @@ absl::StatusOr<std::unique_ptr<WeightIntervention>> WeightIntervention::Capture(
     RETURN_IF_ERROR(Transfer(executor, snapshot.original.data(), weight.data(),
                              weight.size_bytes(), cudaMemcpyDeviceToHost));
     RETURN_IF_ERROR(executor.Synchronize());
-    for (float value : snapshot.original) {
-      if (!std::isfinite(value)) {
+    for (float value : snapshot.original)
+      if (!std::isfinite(value))
         return absl::InvalidArgumentError("nonfinite intervention weight");
-      }
-    }
   }
   return result;
 }
@@ -300,9 +317,8 @@ WeightIntervention::~WeightIntervention() {
 }
 
 absl::Status WeightIntervention::Apply(float scale) {
-  if (dirty_ || (scale != 0.0f && scale != 0.5f)) {
+  if (dirty_ || (scale != 0.0f && scale != 0.5f))
     return absl::InvalidArgumentError("restore first; scale must be 0 or 0.5");
-  }
   dirty_ = true;
   for (auto& snapshot : snapshots_) {
     if (scale == 0) {
@@ -312,9 +328,8 @@ absl::Status WeightIntervention::Apply(float scale) {
           "zero branch output weight"));
     } else {
       // Always scale the pristine FP32 originals, never a preceding dose.
-      for (size_t i = 0; i < snapshot.original.size(); ++i) {
+      for (size_t i = 0; i < snapshot.original.size(); ++i)
         snapshot.staging[i] = snapshot.original[i] * scale;
-      }
       RETURN_IF_ERROR(
           Transfer(executor_, snapshot.target.data(), snapshot.staging.data(),
                    snapshot.target.size_bytes(), cudaMemcpyHostToDevice));
@@ -377,8 +392,8 @@ absl::StatusOr<std::unique_ptr<MlpRowIntervention>> MlpRowIntervention::Capture(
           "MLP feature IDs must be unique and in range");
     }
   }
-  ASSIGN_OR_RETURN(auto backup, cuda::Buffer::Allocate(
-                                    executor, output_weight.size_bytes()));
+  ASSIGN_OR_RETURN(auto backup,
+                   cuda::Buffer::Allocate(executor, output_weight.size_bytes()));
   const size_t count = output_weight.size_bytes() / sizeof(float);
   ASSIGN_OR_RETURN(auto original,
                    cuda::PageLockedHostArray<float>::Allocate(count));
@@ -397,11 +412,9 @@ absl::StatusOr<std::unique_ptr<MlpRowIntervention>> MlpRowIntervention::Capture(
                            output_weight.data(), output_weight.size_bytes(),
                            cudaMemcpyDeviceToHost));
   RETURN_IF_ERROR(executor.Synchronize());
-  for (float value : result->original_) {
-    if (!std::isfinite(value)) {
+  for (float value : result->original_)
+    if (!std::isfinite(value))
       return absl::InvalidArgumentError("nonfinite MLP output weight");
-    }
-  }
   return result;
 }
 
@@ -415,10 +428,10 @@ MlpRowIntervention::~MlpRowIntervention() {
 }
 
 absl::Status MlpRowIntervention::Apply(float scale) {
-  if (scale != 0.0f && scale != 0.5f && scale != 1.0f) {
+  if (scale != 0.0f && scale != 0.5f && scale != 1.0f)
     return absl::InvalidArgumentError("MLP row scale must be 0, 0.5, or 1");
-  }
-  if (scale == 1.0f) return RestoreAndVerify();
+  if (scale == 1.0f)
+    return RestoreAndVerify();
   dirty_ = true;
   const size_t row_bytes = output_width_ * sizeof(float);
   for (int feature : feature_ids_) {
@@ -429,9 +442,8 @@ absl::Status MlpRowIntervention::Apply(float scale) {
           cudaMemsetAsync(target, 0, row_bytes, executor_.stream()),
           "zero selected MLP output row"));
     } else {
-      for (size_t column = 0; column < output_width_; ++column) {
+      for (size_t column = 0; column < output_width_; ++column)
         staging_[offset + column] = original_[offset + column] * scale;
-      }
       RETURN_IF_ERROR(Transfer(executor_, target, staging_.data() + offset,
                                row_bytes, cudaMemcpyHostToDevice));
     }
@@ -501,10 +513,8 @@ absl::StatusOr<Measurements> EvaluatePassages(
     llm::Tape model_tape;
     llm::Tape loss_tape;
     ASSIGN_OR_RETURN(auto logits, model.fwd(executor, {inputs}, &model_tape));
-    if (logits.size_bytes() !=
-        size_t(rows) * padded_vocab_size * sizeof(float)) {
+    if (logits.size_bytes() != size_t(rows) * padded_vocab_size * sizeof(float))
       return absl::DataLossError("model did not return expected FP32 logits");
-    }
     ASSIGN_OR_RETURN(auto loss,
                      loss_layer.fwd(executor, {logits, targets}, &loss_tape));
     if (loss.size_bytes() != bytes)
@@ -539,7 +549,8 @@ absl::Status WriteExclusive(const std::filesystem::path& path,
   const char* current = static_cast<const char*>(bytes);
   while (size) {
     ssize_t written = write(fd, current, size);
-    if (written < 0 && errno == EINTR) continue;
+    if (written < 0 && errno == EINTR)
+      continue;
     if (written <= 0) {
       close(fd);
       return absl::DataLossError("failed writing probe artifact");
@@ -547,7 +558,8 @@ absl::Status WriteExclusive(const std::filesystem::path& path,
     current += written;
     size -= written;
   }
-  if (close(fd)) return absl::DataLossError("failed closing probe artifact");
+  if (close(fd))
+    return absl::DataLossError("failed closing probe artifact");
   return absl::OkStatus();
 }
 

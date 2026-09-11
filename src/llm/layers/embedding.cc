@@ -8,6 +8,11 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+// We use CUB directly, not Thrust algorithms. Its iterator traits otherwise
+// pull in Thrust's CUDA execution policy, which contains unconditional C++
+// exception handlers. Select the CPP policy for those unused Thrust facilities;
+// cub::DeviceRadixSort still runs CUDA kernels on the supplied executor stream.
+#define THRUST_DEVICE_SYSTEM THRUST_DEVICE_SYSTEM_CPP
 #include <cub/device/device_radix_sort.cuh>
 #include <memory>
 #include <random>
@@ -94,7 +99,8 @@ __tile_global__ void EmbeddingBackwardKernel(
   const int width_tile = block % width_tiles;
   const uint64_t key = static_cast<uint64_t>(key_view.load(start));
   const uint64_t token = key >> 32;
-  if (token >= static_cast<uint64_t>(padded_vocab_size)) return;
+  if (token >= static_cast<uint64_t>(padded_vocab_size))
+    return;
   if (start > 0 &&
       (static_cast<uint64_t>(key_view.load(start - 1)) >> 32) == token)
     return;
@@ -106,7 +112,8 @@ __tile_global__ void EmbeddingBackwardKernel(
   auto accumulator = table_view.load(static_cast<int>(token), width_tile);
   for (int index = start; index < rows; ++index) {
     const uint64_t next = static_cast<uint64_t>(key_view.load(index));
-    if ((next >> 32) != token) break;
+    if ((next >> 32) != token)
+      break;
     const int row = static_cast<int>(next & 0xffffffffULL);
     accumulator = accumulator + gradient_view.load(row, width_tile);
   }
@@ -299,7 +306,8 @@ absl::Status CopyNormalInitialization(cuda::Executor& executor, Buffer& weight,
   std::normal_distribution<float> distribution(0.0f, standard_deviation);
   ASSIGN_OR_RETURN(auto values, cuda::PageLockedHostArray<float>::Allocate(
                                     weight.size_bytes() / sizeof(float)));
-  for (float& value : values) value = distribution(random);
+  for (float& value : values)
+    value = distribution(random);
   RETURN_IF_ERROR(cuda::CudaStatus(
       cudaMemcpyAsync(weight.data(), values.data(), weight.size_bytes(),
                       cudaMemcpyHostToDevice, executor.stream()),
@@ -324,9 +332,8 @@ absl::StatusOr<std::unique_ptr<EmbeddingLookupLayer>>
 EmbeddingLookupLayer::Create(cuda::Executor& executor, int vocab_size,
                              int embedding_dim, DataType data_type) {
   RETURN_IF_ERROR(internal::ValidateComputeType(data_type));
-  if (vocab_size <= 0) {
+  if (vocab_size <= 0)
     return absl::InvalidArgumentError("vocab_size must be positive");
-  }
   RETURN_IF_ERROR(
       internal::ValidateTiledExtent(embedding_dim, "embedding_dim"));
   const int padded_vocab_size = internal::RoundUpToTile(vocab_size);
@@ -350,9 +357,8 @@ absl::Status EmbeddingLookupLayer::InitializeIdentity(float scale) {
                                     static_cast<size_t>(padded_vocab_size_) *
                                     embedding_dim_));
   std::fill(values.begin(), values.end(), 0.0f);
-  for (int index = 0; index < std::min(vocab_size_, embedding_dim_); ++index) {
+  for (int index = 0; index < std::min(vocab_size_, embedding_dim_); ++index)
     values[static_cast<size_t>(index) * embedding_dim_ + index] = scale;
-  }
   RETURN_IF_ERROR(cuda::CudaStatus(
       cudaMemcpyAsync(weight_.data(), values.data(), weight_.size_bytes(),
                       cudaMemcpyHostToDevice, executor_.stream()),
@@ -411,9 +417,9 @@ absl::StatusOr<BufferVec> EmbeddingLookupLayer::bwd(
     return absl::InvalidArgumentError(
         "EmbeddingLookupLayer bwd received an incompatible gradient or tape");
   }
-  ASSIGN_OR_RETURN(
-      int rows, internal::ElementCount(executor, tape.intermediates[0],
-                                       sizeof(int), "embedding token input"));
+  ASSIGN_OR_RETURN(int rows,
+                   internal::ElementCount(executor, tape.intermediates[0],
+                                          sizeof(int), "embedding token input"));
   RETURN_IF_ERROR(internal::ValidateBuffer(
       executor, output_gradients[0],
       static_cast<size_t>(rows) * embedding_dim_ * sizeof(float),
@@ -587,9 +593,8 @@ absl::StatusOr<std::unique_ptr<PositionEmbeddingLayer>>
 PositionEmbeddingLayer::Create(cuda::Executor& executor, int context_length,
                                int embedding_dim, DataType data_type) {
   RETURN_IF_ERROR(internal::ValidateComputeType(data_type));
-  if (context_length <= 0) {
+  if (context_length <= 0)
     return absl::InvalidArgumentError("context_length must be positive");
-  }
   RETURN_IF_ERROR(
       internal::ValidateTiledExtent(embedding_dim, "embedding_dim"));
   const size_t bytes =

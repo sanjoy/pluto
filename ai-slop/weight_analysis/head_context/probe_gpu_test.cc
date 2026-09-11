@@ -11,9 +11,9 @@
 #include <optional>
 #include <utility>
 
-#include "gtest/gtest.h"
 #include "ai-slop/weight_analysis/head_context/probe.h"
 #include "ai-slop/weight_analysis/head_context/selection.h"
+#include "gtest/gtest.h"
 #include "src/cuda/page_locked_host_array.h"
 #include "src/llm/recipes/gpt2.h"
 #include "src/util/status_macros.h"
@@ -61,9 +61,8 @@ class HeadContextGpuTest : public ::testing::Test {
   void SetUp() override {
     int devices = 0;
     const auto availability = cudaGetDeviceCount(&devices);
-    if (availability != cudaSuccess || devices == 0) {
+    if (availability != cudaSuccess || devices == 0)
       GTEST_SKIP() << "CUDA device unavailable; no native replay validated";
-    }
     auto executor = cuda::Executor::Create();
     ASSERT_TRUE(executor.ok()) << executor.status();
     executor_ = std::move(*executor);
@@ -77,7 +76,8 @@ class HeadContextGpuTest : public ::testing::Test {
     auto tokens = cuda::PageLockedHostArray<int32_t>::Allocate(rows_);
     ASSERT_TRUE(tokens.ok()) << tokens.status();
     tokens_ = std::move(*tokens);
-    for (int i = 0; i < rows_; ++i) tokens_[i] = (17 * i + 3) % 1000;
+    for (int i = 0; i < rows_; ++i)
+      tokens_[i] = (17 * i + 3) % 1000;
     auto input = cuda::Buffer::Allocate(*executor_, tokens_.size_bytes());
     ASSERT_TRUE(input.ok()) << input.status();
     input_ = std::move(*input);

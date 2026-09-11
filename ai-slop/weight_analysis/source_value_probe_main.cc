@@ -75,7 +75,8 @@ absl::Status CompareFile(const fs::path& path, const void* expected,
     }
     offset += count;
   }
-  if (stream.peek() != EOF) return absl::DataLossError("trailing file bytes");
+  if (stream.peek() != EOF)
+    return absl::DataLossError("trailing file bytes");
   return absl::OkStatus();
 }
 
@@ -111,8 +112,8 @@ absl::Status CheckBytes(const Bytes& a, const Bytes& b) {
 absl::Status SaveTensor(cuda::Executor& executor, const fs::path& path,
                         const cuda::Buffer& buffer, int width,
                         size_t element_bytes) {
-  ASSIGN_OR_RETURN(
-      auto bytes, ReadPrefix(executor, buffer, kContext, width, element_bytes));
+  ASSIGN_OR_RETURN(auto bytes,
+                   ReadPrefix(executor, buffer, kContext, width, element_bytes));
   RETURN_IF_ERROR(CheckFinite(bytes, element_bytes));
   return WriteExclusive(path, bytes.data(), bytes.size_bytes());
 }
@@ -135,9 +136,8 @@ absl::StatusOr<FactorialTokenScore> SaveLogits(cuda::Executor& executor,
 }
 
 absl::Status Run() {
-  if constexpr (std::endian::native != std::endian::little) {
+  if constexpr (std::endian::native != std::endian::little)
     return absl::UnimplementedError("native evidence requires little endian");
-  }
   const int block = absl::GetFlag(FLAGS_block);
   const int head = absl::GetFlag(FLAGS_head);
   const int target = absl::GetFlag(FLAGS_target_id);
@@ -170,10 +170,10 @@ absl::Status Run() {
   const auto output = fs::absolute(absl::GetFlag(FLAGS_output_dir));
   for (auto parent = fs::weakly_canonical(output);;
        parent = parent.parent_path()) {
-    if (parent == fs::canonical(checkpoint)) {
+    if (parent == fs::canonical(checkpoint))
       return absl::InvalidArgumentError("output must not be inside checkpoint");
-    }
-    if (parent == parent.parent_path()) break;
+    if (parent == parent.parent_path())
+      break;
   }
   // Fail before touching CUDA for an already-used evidence directory.
   RETURN_IF_ERROR(CreateNewOutputDirectory(output));
@@ -183,9 +183,8 @@ absl::Status Run() {
   const int query = absl::GetFlag(FLAGS_query) == -1
                         ? static_cast<int>(encoded.size()) - 1
                         : absl::GetFlag(FLAGS_query);
-  if (query >= static_cast<int>(encoded.size())) {
+  if (query >= static_cast<int>(encoded.size()))
     return absl::InvalidArgumentError("query must be inside the actual prefix");
-  }
   for (int source : sources) {
     if (source >= static_cast<int>(encoded.size())) {
       return absl::InvalidArgumentError(
@@ -228,19 +227,16 @@ absl::Status Run() {
   // too; a stat-only check would not authenticate these input bytes.
   std::string patch;
   if (files.size() == 101) {
-    if (files.back().bytes > 16 * 1024 * 1024) {
+    if (files.back().bytes > 16 * 1024 * 1024)
       return absl::InvalidArgumentError("patch metadata exceeds 16 MiB");
-    }
     patch.resize(files.back().bytes);
     std::ifstream stream(files.back().path, std::ios::binary);
-    if (!stream.read(patch.data(), patch.size()) || stream.peek() != EOF) {
+    if (!stream.read(patch.data(), patch.size()) || stream.peek() != EOF)
       return absl::DataLossError("could not snapshot patch metadata");
-    }
   }
   llm::Tape tape;
-  ASSIGN_OR_RETURN(
-      auto original,
-      model->fwd(*executor, absl::MakeConstSpan(&input, 1), &tape));
+  ASSIGN_OR_RETURN(auto original,
+                   model->fwd(*executor, absl::MakeConstSpan(&input, 1), &tape));
   ASSIGN_OR_RETURN(auto baseline,
                    ReadSelectedRow(*executor, original, query, kPadded, 4));
   const auto expected = absl::GetFlag(FLAGS_expected_logits);
@@ -258,10 +254,9 @@ absl::Status Run() {
   // Pick the rival from the clean forward once and hold it fixed across doses.
   const auto* baseline_values = reinterpret_cast<const float*>(baseline.data());
   int rival = target == 0 ? 1 : 0;
-  for (int id = 0; id < kVocabulary; ++id) {
+  for (int id = 0; id < kVocabulary; ++id)
     if (id != target && baseline_values[id] > baseline_values[rival])
       rival = id;
-  }
   const double baseline_margin =
       static_cast<double>(baseline_values[target]) - baseline_values[rival];
   RETURN_IF_ERROR(WriteExclusive(output / "tokens.i32", encoded.data(),
@@ -301,7 +296,8 @@ absl::Status Run() {
                                  result.replayed_attention, kWidth, 2));
       RETURN_IF_ERROR(SaveTensor(*executor, arm / "spliced_context.bf16",
                                  result.spliced_context, kWidth, 2));
-      if (!first) arms << ',';
+      if (!first)
+        arms << ',';
       first = false;
       arms << "{\"directory\":" << JsonQuote(name) << ",\"source\":" << source
            << ",\"source_token_id\":" << encoded[source]
@@ -330,9 +326,8 @@ absl::Status Run() {
   // forward. No model computation occurs after this certification.
   // Evidence orchestrators additionally hash all files/binaries before/after.
   for (size_t i = 0; i < weights.size(); ++i) {
-    ASSIGN_OR_RETURN(
-        auto actual,
-        ReadPrefix(*executor, weights[i], weights[i].size_bytes() / 4, 1, 4));
+    ASSIGN_OR_RETURN(auto actual, ReadPrefix(*executor, weights[i],
+                                             weights[i].size_bytes() / 4, 1, 4));
     RETURN_IF_ERROR(CheckBytes(actual, snapshots[i]));
     RETURN_IF_ERROR(CompareFile(files[i].path, snapshots[i].data(),
                                 snapshots[i].size_bytes()));
@@ -344,9 +339,8 @@ absl::Status Run() {
       CompareFile(input_path, encoded.data(), encoded.size_bytes()));
   ASSIGN_OR_RETURN(auto input_after,
                    ReadPrefix(*executor, input, kContext, 1, 4));
-  if (std::memcmp(input_after.data(), padded.data(), padded.size_bytes())) {
+  if (std::memcmp(input_after.data(), padded.data(), padded.size_bytes()))
     return absl::DataLossError("original device input changed");
-  }
   if (!expected.empty())
     RETURN_IF_ERROR(
         CompareFile(expected, baseline.data(), baseline.size_bytes()));
@@ -386,12 +380,9 @@ absl::Status Run() {
 
 int main(int argc, char** argv) {
   absl::ParseCommandLine(argc, argv);
-  try {
-    const auto status = pluto::weight_analysis::Run();
-    if (status.ok()) return 0;
-    std::cerr << status << '\n';
-  } catch (const std::exception& error) {
-    std::cerr << error.what() << '\n';
-  }
+  const auto status = pluto::weight_analysis::Run();
+  if (status.ok())
+    return 0;
+  std::cerr << status << '\n';
   return 1;
 }

@@ -1,0 +1,12 @@
+BasedOnStyle: Google
+# Keep one-statement control-flow bodies unbraced, on their own line.
+RemoveBracesLLVM: true
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+DerivePointerAlignment: false
+PointerAlignment: Left
+
+# This macro is NOT one C++ statement. Model its expansion so clang-format
+# preserves braces when it is the only apparent statement in a control body.
+Macros:
+  - 'ASSIGN_OR_RETURN(lhs, expression)=auto status_or = expression; if (!status_or.ok()) return status_or.status(); lhs = std::move(status_or).value()'

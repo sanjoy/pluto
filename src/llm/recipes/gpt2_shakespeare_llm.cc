@@ -33,10 +33,10 @@
 #include "src/llm/layers/cross_entropy_loss.h"
 #include "src/llm/layers/sparse_autoencoder.h"
 #include "src/llm/optimizer.h"
-#include "src/llm/sampling.h"
 #include "src/llm/recipes/gpt2.h"
 #include "src/llm/recipes/gpt2_shakespeare_cli.h"
 #include "src/llm/recipes/sparse_autoencoder_dataset.h"
+#include "src/llm/sampling.h"
 #include "src/llm/trainer.h"
 #include "src/util/status_macros.h"
 #include "src/util/tee_stream.h"
@@ -114,7 +114,8 @@ static_assert(kSparseAutoEncoderActivationBlockCount <=
 template <class T>
 void AddIfExplicitlySet(const absl::Flag<T>& flag,
                         std::vector<absl::string_view>* names) {
-  if (flag.IsSpecifiedOnCommandLine()) names->push_back(flag.Name());
+  if (flag.IsSpecifiedOnCommandLine())
+    names->push_back(flag.Name());
 }
 
 // Validates only explicit command-line uses. Defaults for flags owned by other
@@ -157,13 +158,16 @@ absl::StatusOr<Gpt2ShakespeareMode> ParseAndValidateRunMode() {
 }
 
 std::optional<double> TrainingSecondsFromFlags() {
-  if (!FLAGS_training_seconds.IsSpecifiedOnCommandLine()) return std::nullopt;
+  if (!FLAGS_training_seconds.IsSpecifiedOnCommandLine())
+    return std::nullopt;
   return absl::GetFlag(FLAGS_training_seconds);
 }
 
 const char* TrainingStopReason(const TrainingResult& result) {
-  if (result.reached_time_limit) return "time_limit";
-  if (result.reached_stop_loss) return "stop_loss";
+  if (result.reached_time_limit)
+    return "time_limit";
+  if (result.reached_stop_loss)
+    return "stop_loss";
   return "step_limit";
 }
 
@@ -179,12 +183,10 @@ struct ModelConfig {
   int padded_vocabulary_size() const { return kGpt2PaddedVocabularySize; }
 
   absl::Status Validate() const {
-    if (batch_size <= 0) {
+    if (batch_size <= 0)
       return absl::InvalidArgumentError("batch_size must be positive");
-    }
-    if (batch_size > std::numeric_limits<int>::max() / kGpt2ContextLength) {
+    if (batch_size > std::numeric_limits<int>::max() / kGpt2ContextLength)
       return absl::InvalidArgumentError("batch_size is too large");
-    }
     return absl::OkStatus();
   }
 };
@@ -201,13 +203,15 @@ AdamWConfig OptimizerConfigFromFlags() {
 
 std::string CorpusPath() {
   const std::string requested = absl::GetFlag(FLAGS_corpus);
-  if (!requested.empty()) return requested;
+  if (!requested.empty())
+    return requested;
 
   if (const char* test_srcdir = std::getenv("TEST_SRCDIR")) {
     if (const char* workspace = std::getenv("TEST_WORKSPACE")) {
       const std::string runfile = absl::StrCat(test_srcdir, "/", workspace,
                                                "/testdata/shakespeare.txt");
-      if (std::filesystem::exists(runfile)) return runfile;
+      if (std::filesystem::exists(runfile))
+        return runfile;
     }
   }
   return "testdata/shakespeare.txt";
@@ -215,10 +219,10 @@ std::string CorpusPath() {
 
 absl::StatusOr<std::filesystem::path> TokenizerDirectory() {
   const std::string requested = absl::GetFlag(FLAGS_tokenizer_dir);
-  if (!requested.empty()) return std::filesystem::path(requested);
-  if (const char* environment = std::getenv("PLUTO_GPT2_TOKENIZER_DIR")) {
+  if (!requested.empty())
+    return std::filesystem::path(requested);
+  if (const char* environment = std::getenv("PLUTO_GPT2_TOKENIZER_DIR"))
     return std::filesystem::path(environment);
-  }
   return absl::FailedPreconditionError(
       "set --tokenizer_dir or PLUTO_GPT2_TOKENIZER_DIR to the GPT-2 "
       "tokenizer directory");
@@ -250,9 +254,8 @@ absl::StatusOr<cuda::PageLockedHostArray<float>> Predict(
     return absl::InvalidArgumentError(
         "prediction requires its token buffer's CUDA Executor");
   }
-  if (context.empty()) {
+  if (context.empty())
     return absl::InvalidArgumentError("prediction context must not be empty");
-  }
   const size_t context_size =
       std::min(context.size(), static_cast<size_t>(kGpt2ContextLength));
   const size_t context_start = context.size() - context_size;
@@ -299,7 +302,8 @@ absl::StatusOr<std::string> Generate(
     std::string prompt, int generation_tokens, double temperature,
     std::mt19937& random, const Buffer& token_buffer) {
   RETURN_IF_ERROR(ValidateGenerationOptions(generation_tokens, temperature));
-  if (prompt.empty()) prompt = "\n";
+  if (prompt.empty())
+    prompt = "\n";
   ASSIGN_OR_RETURN(auto encoded_prompt, tokenizer.Encode(prompt));
   std::vector<int> context(encoded_prompt.begin(), encoded_prompt.end());
   std::vector<int> generated;
@@ -319,9 +323,8 @@ absl::StatusOr<std::string> Generate(
 absl::Status RunTraining(cuda::Executor& executor,
                          const std::filesystem::path& resume_from) {
   const std::string log_path = absl::GetFlag(FLAGS_log_file);
-  if (log_path.empty()) {
+  if (log_path.empty())
     return absl::InvalidArgumentError("log_file must not be empty");
-  }
   std::ofstream log_file(log_path, std::ios::out | std::ios::trunc);
   if (!log_file.is_open()) {
     return absl::FailedPreconditionError(
@@ -331,12 +334,10 @@ absl::Status RunTraining(cuda::Executor& executor,
   logger << "training log: " << log_path << '\n';
   const int checkpoint_every = absl::GetFlag(FLAGS_checkpoint_every);
   std::filesystem::path checkpoint_root = absl::GetFlag(FLAGS_checkpoint_dir);
-  if (checkpoint_root.empty() && !resume_from.empty()) {
+  if (checkpoint_root.empty() && !resume_from.empty())
     checkpoint_root = resume_from;
-  }
-  if (checkpoint_every < 0) {
+  if (checkpoint_every < 0)
     return absl::InvalidArgumentError("checkpoint_every must be non-negative");
-  }
   if ((checkpoint_every > 0 || absl::GetFlag(FLAGS_checkpoint_initial)) &&
       checkpoint_root.empty()) {
     return absl::InvalidArgumentError(
@@ -439,9 +440,8 @@ absl::Status RunTraining(cuda::Executor& executor,
 
   int last_checkpoint_step = -1;
   const auto save_checkpoint = [&](int step) -> absl::Status {
-    if (checkpoint_root.empty() || step == last_checkpoint_step) {
+    if (checkpoint_root.empty() || step == last_checkpoint_step)
       return absl::OkStatus();
-    }
     const auto checkpoint = checkpoint_root / absl::StrCat("step_", step);
     RETURN_IF_ERROR(WriteToDirectory(executor, *model, checkpoint));
     last_checkpoint_step = step;
@@ -449,9 +449,8 @@ absl::Status RunTraining(cuda::Executor& executor,
            << "] wrote checkpoint: " << checkpoint.string() << '\n';
     return absl::OkStatus();
   };
-  if (absl::GetFlag(FLAGS_checkpoint_initial)) {
+  if (absl::GetFlag(FLAGS_checkpoint_initial))
     RETURN_IF_ERROR(save_checkpoint(initial_step));
-  }
   TrainingOptions training_options{
       .max_steps = absl::GetFlag(FLAGS_steps),
       .initial_step = initial_step,
@@ -470,9 +469,8 @@ absl::Status RunTraining(cuda::Executor& executor,
   if (checkpoint_every > 0) {
     training_options.step_callback = [&save_checkpoint,
                                       checkpoint_every](int steps_completed) {
-      if (steps_completed % checkpoint_every != 0) {
+      if (steps_completed % checkpoint_every != 0)
         return absl::OkStatus();
-      }
       return save_checkpoint(steps_completed);
     };
   }
@@ -515,9 +513,8 @@ absl::Status RunSparseAutoEncoderTraining(
   ASSIGN_OR_RETURN(const CheckpointInfo gpt2_checkpoint,
                    InspectCheckpointDirectory(gpt2_checkpoint_path));
   const std::string log_path = absl::GetFlag(FLAGS_log_file);
-  if (log_path.empty()) {
+  if (log_path.empty())
     return absl::InvalidArgumentError("log_file must not be empty");
-  }
   std::ofstream log_file(log_path, std::ios::out | std::ios::trunc);
   if (!log_file.is_open()) {
     return absl::FailedPreconditionError(
@@ -528,12 +525,10 @@ absl::Status RunSparseAutoEncoderTraining(
 
   const int checkpoint_every = absl::GetFlag(FLAGS_checkpoint_every);
   std::filesystem::path checkpoint_root = absl::GetFlag(FLAGS_checkpoint_dir);
-  if (checkpoint_root.empty() && !resume_from.empty()) {
+  if (checkpoint_root.empty() && !resume_from.empty())
     checkpoint_root = resume_from;
-  }
-  if (checkpoint_every < 0) {
+  if (checkpoint_every < 0)
     return absl::InvalidArgumentError("checkpoint_every must be non-negative");
-  }
   if ((checkpoint_every > 0 || absl::GetFlag(FLAGS_checkpoint_initial)) &&
       checkpoint_root.empty()) {
     return absl::InvalidArgumentError(
@@ -642,9 +637,8 @@ absl::Status RunSparseAutoEncoderTraining(
 
   int last_checkpoint_step = -1;
   const auto save_checkpoint = [&](int step) -> absl::Status {
-    if (checkpoint_root.empty() || step == last_checkpoint_step) {
+    if (checkpoint_root.empty() || step == last_checkpoint_step)
       return absl::OkStatus();
-    }
     const auto checkpoint = checkpoint_root / absl::StrCat("step_", step);
     RETURN_IF_ERROR(WriteToDirectory(executor, *autoencoder, checkpoint));
     last_checkpoint_step = step;
@@ -652,9 +646,8 @@ absl::Status RunSparseAutoEncoderTraining(
            << "] wrote SAE checkpoint: " << checkpoint.string() << '\n';
     return absl::OkStatus();
   };
-  if (absl::GetFlag(FLAGS_checkpoint_initial)) {
+  if (absl::GetFlag(FLAGS_checkpoint_initial))
     RETURN_IF_ERROR(save_checkpoint(initial_step));
-  }
   TrainingOptions training_options{
       .max_steps = absl::GetFlag(FLAGS_steps),
       .initial_step = initial_step,
@@ -673,9 +666,8 @@ absl::Status RunSparseAutoEncoderTraining(
   if (checkpoint_every > 0) {
     training_options.step_callback = [&save_checkpoint,
                                       checkpoint_every](int steps_completed) {
-      if (steps_completed % checkpoint_every != 0) {
+      if (steps_completed % checkpoint_every != 0)
         return absl::OkStatus();
-      }
       return save_checkpoint(steps_completed);
     };
   }
@@ -710,8 +702,7 @@ absl::Status RunInference(cuda::Executor& executor,
                    InspectCheckpointDirectory(checkpoint_path));
   ASSIGN_OR_RETURN(auto tokenizer_directory, TokenizerDirectory());
   ASSIGN_OR_RETURN(auto tokenizer, Gpt2Tokenizer::Load(tokenizer_directory));
-  ASSIGN_OR_RETURN(auto detokenizer,
-                   Gpt2Detokenizer::Load(tokenizer_directory));
+  ASSIGN_OR_RETURN(auto detokenizer, Gpt2Detokenizer::Load(tokenizer_directory));
   if (tokenizer->vocab_size() != kGpt2VocabularySize ||
       detokenizer->vocab_size() != kGpt2VocabularySize) {
     return absl::FailedPreconditionError(absl::StrCat(
@@ -753,7 +744,8 @@ absl::Status RunInference(cuda::Executor& executor,
   std::string prompt;
   while (true) {
     std::cout << "> " << std::flush;
-    if (!std::getline(std::cin, prompt)) break;
+    if (!std::getline(std::cin, prompt))
+      break;
     ASSIGN_OR_RETURN(
         auto completion,
         Generate(executor, config, *model, *tokenizer, *detokenizer, prompt,
@@ -784,8 +776,8 @@ absl::Status PrintSparseAutoEncoderStatistics(
     std::cout << "Prompt has " << tokens.size() << " tokens; using its last "
               << rows << " tokens (the GPT-2 context limit).\n";
   }
-  ASSIGN_OR_RETURN(auto context, cuda::PageLockedHostArray<int>::Allocate(
-                                     kGpt2ContextLength));
+  ASSIGN_OR_RETURN(auto context,
+                   cuda::PageLockedHostArray<int>::Allocate(kGpt2ContextLength));
   std::copy_n(tokens.data() + start, rows, context.data());
   std::fill(context.begin() + rows, context.end(), context[rows - 1]);
   RETURN_IF_ERROR(cuda::CudaStatus(
@@ -799,9 +791,8 @@ absl::Status PrintSparseAutoEncoderStatistics(
   // Inference never runs backward through the frozen GPT-2 prefix.
   generator_tape = {};
   Tape sae_tape;
-  ASSIGN_OR_RETURN(
-      auto reconstruction,
-      autoencoder.fwd(executor, BufferVec{activations}, &sae_tape));
+  ASSIGN_OR_RETURN(auto reconstruction,
+                   autoencoder.fwd(executor, BufferVec{activations}, &sae_tape));
   ASSIGN_OR_RETURN(auto stats,
                    autoencoder.ReadZStatistics(executor, sae_tape, rows));
   std::cout << "Z statistics (prompt tokens only):\n"
@@ -842,9 +833,8 @@ absl::Status RunSparseAutoEncoderInference(
           DataType::BF16, SparseAutoEncoderLayer::Mode::kCollectStatistics));
   RETURN_IF_ERROR(
       ReadFromDirectory(executor, *autoencoder, sae_checkpoint.directory));
-  ASSIGN_OR_RETURN(
-      auto token_buffer,
-      Buffer::Allocate(executor, kGpt2ContextLength * sizeof(int)));
+  ASSIGN_OR_RETURN(auto token_buffer,
+                   Buffer::Allocate(executor, kGpt2ContextLength * sizeof(int)));
   std::cout << "GPT-2 checkpoint: " << gpt2_checkpoint.directory.string()
             << '\n'
             << "SAE checkpoint: " << sae_checkpoint.directory.string() << '\n'
@@ -860,7 +850,8 @@ absl::Status RunSparseAutoEncoderInference(
   std::string prompt;
   while (true) {
     std::cout << "> " << std::flush;
-    if (!std::getline(std::cin, prompt)) break;
+    if (!std::getline(std::cin, prompt))
+      break;
     RETURN_IF_ERROR(PrintSparseAutoEncoderStatistics(
         executor, *tokenizer, *activation_generator, *autoencoder, prompt,
         token_buffer));

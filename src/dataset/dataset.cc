@@ -27,6 +27,10 @@
 namespace pluto {
 namespace {
 
+// Tokenizer output uses native int, while the packed device batch schema
+// specifies int32 token IDs. Uploads, slice offsets, and copies below use
+// sizeof(int) without conversion, so a different width would violate that
+// layout.
 static_assert(sizeof(int) == sizeof(int32_t));
 
 class ScopedFileDescriptor {
@@ -35,7 +39,8 @@ class ScopedFileDescriptor {
   ScopedFileDescriptor(const ScopedFileDescriptor&) = delete;
   ScopedFileDescriptor& operator=(const ScopedFileDescriptor&) = delete;
   ~ScopedFileDescriptor() {
-    if (descriptor_ >= 0) close(descriptor_);
+    if (descriptor_ >= 0)
+      close(descriptor_);
   }
 
   int get() const { return descriptor_; }
@@ -61,7 +66,8 @@ TextCorpus::TextCorpus(std::shared_ptr<const Mapping> mapping, size_t offset,
     : mapping_(std::move(mapping)), offset_(offset), size_(size) {}
 
 absl::string_view TextCorpus::text() const {
-  if (size_ == 0) return {};
+  if (size_ == 0)
+    return {};
   const auto* data = static_cast<const char*>(mapping_->address);
   return absl::string_view(data + offset_, size_);
 }
@@ -73,16 +79,14 @@ absl::StatusOr<TextCorpus> TextCorpus::SubCorpus(size_t offset,
                                               " exceeds corpus size ", size_));
   }
   const size_t available = size_ - offset;
-  if (length == absl::string_view::npos || length > available) {
+  if (length == absl::string_view::npos || length > available)
     length = available;
-  }
   return TextCorpus(mapping_, offset_ + offset, length);
 }
 
 absl::StatusOr<TextCorpus> LoadTextCorpus(absl::string_view path) {
-  if (path.empty()) {
+  if (path.empty())
     return absl::InvalidArgumentError("text corpus path must not be empty");
-  }
   if (path.find('\0') != absl::string_view::npos) {
     return absl::InvalidArgumentError(
         "text corpus path must not contain a NUL byte");
@@ -105,7 +109,8 @@ absl::StatusOr<TextCorpus> LoadTextCorpus(absl::string_view path) {
         absl::StrCat("text corpus is too large to map: ", path_string));
   }
   const size_t size = static_cast<size_t>(attributes.st_size);
-  if (size == 0) return TextCorpus(nullptr, 0, 0);
+  if (size == 0)
+    return TextCorpus(nullptr, 0, 0);
 
   void* address = mmap(nullptr, size, PROT_READ, MAP_PRIVATE, file.get(), 0);
   if (address == MAP_FAILED) {
@@ -123,9 +128,8 @@ absl::StatusOr<CorpusSplit> SplitCorpus(const TextCorpus& corpus,
     return absl::InvalidArgumentError(
         "test_fraction must be finite and strictly between zero and one");
   }
-  if (corpus.empty()) {
+  if (corpus.empty())
     return absl::InvalidArgumentError("cannot split an empty text corpus");
-  }
 
   const size_t approximate_boundary = static_cast<size_t>(
       static_cast<double>(corpus.size()) * (1.0 - test_fraction));
@@ -180,9 +184,8 @@ InMemoryDataSetIterator::Create(cuda::Executor& executor,
     return absl::InvalidArgumentError(
         "the corpus must contain more than context_length tokens");
   }
-  if (tokens.size() > std::numeric_limits<size_t>::max() / sizeof(int)) {
+  if (tokens.size() > std::numeric_limits<size_t>::max() / sizeof(int))
     return absl::InvalidArgumentError("the corpus is too large");
-  }
   if (static_cast<size_t>(options.batch_size) >
       std::numeric_limits<size_t>::max() / (2 * sizeof(int))) {
     return absl::InvalidArgumentError("batch_size is too large");

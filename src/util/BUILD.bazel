@@ -1,5 +1,6 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
+load("@rules_cuda//cuda:defs.bzl", "cuda_test")
 
 cc_library(
     name = "status_macros",
@@ -37,4 +38,19 @@ cc_test(
         ":tee_stream",
         "@googletest//:gtest_main",
     ],
+)
+
+# Compile the same policy checks with both host C++ and NVCC.
+cc_test(
+    name = "no_exceptions_test",
+    size = "small",
+    srcs = ["no_exceptions_test.cc"],
+    deps = ["@googletest//:gtest_main"],
+)
+
+cuda_test(
+    name = "nvcc_no_exceptions_test",
+    size = "small",
+    srcs = ["no_exceptions_test.cc"],
+    deps = ["@googletest//:gtest_main"],
 )

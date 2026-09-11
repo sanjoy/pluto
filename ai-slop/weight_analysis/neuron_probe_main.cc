@@ -141,7 +141,8 @@ absl::Status ValidateCheckpointFiles(const std::filesystem::path& directory) {
   size_t count = 0;
   for (const auto& entry : std::filesystem::directory_iterator(directory)) {
     const auto name = entry.path().filename().string();
-    if (name.starts_with("weight_") && name.ends_with(".bin")) ++count;
+    if (name.starts_with("weight_") && name.ends_with(".bin"))
+      ++count;
   }
   if (count != sizes.size()) {
     return absl::InvalidArgumentError(
@@ -187,14 +188,14 @@ absl::Status Run() {
       return absl::InvalidArgumentError(
           "output directory must not be inside checkpoint");
     }
-    if (ancestor == ancestor.parent_path()) break;
+    if (ancestor == ancestor.parent_path())
+      break;
   }
   // Reject malformed partitions before creating a model or running a forward.
   ASSIGN_OR_RETURN(const auto groups, LoadNeuronGroups(groups_path));
   const auto arms = Arms(groups);
-  if (arms.size() != kArmCount) {
+  if (arms.size() != kArmCount)
     return absl::InternalError("unexpected frozen intervention count");
-  }
   RETURN_IF_ERROR(ValidateCheckpointFiles(checkpoint));
   RETURN_IF_ERROR(CreateNewOutputDirectory(output_path));
   // The executor outlives all allocations and queued asynchronous frees.
@@ -250,7 +251,8 @@ absl::Status Run() {
               "input, groups, binary and checkpoint before/after\""
            << ",\n\"checkpoint_weight_bytes\":[";
   for (size_t i = 0; i < weights.size(); ++i) {
-    if (i) metadata << ',';
+    if (i)
+      metadata << ',';
     metadata << weights[i].size_bytes();
   }
   metadata << "],\n\"arms\":[\n";
@@ -278,9 +280,12 @@ absl::Status Run() {
     // bias is never passed to the row helper; whole-branch controls scale both
     // output weights AND bias. Only explicit byte verification certifies an
     // arm.
-    if (rows) RETURN_IF_ERROR(rows->RestoreAndVerify());
-    if (whole) RETURN_IF_ERROR(whole->RestoreAndVerify());
-    if (!measured.ok()) return measured.status();
+    if (rows)
+      RETURN_IF_ERROR(rows->RestoreAndVerify());
+    if (whole)
+      RETURN_IF_ERROR(whole->RestoreAndVerify());
+    if (!measured.ok())
+      return measured.status();
     const std::string loss_file = arm.name + ".losses.f32";
     const std::string argmax_file = arm.name + ".argmax.i32";
     RETURN_IF_ERROR(WriteExclusive(output_path / loss_file,
@@ -291,24 +296,26 @@ absl::Status Run() {
                                    measured->argmax.size_bytes()));
     const double elapsed =
         std::chrono::duration<double>(Clock::now() - arm_start).count();
-    if (i) metadata << ",\n";
+    if (i)
+      metadata << ",\n";
     metadata << "{\"name\":" << JsonQuote(arm.name)
              << ",\"kind\":" << JsonQuote(arm.kind) << ",\"block\":";
-    if (arm.block < 0) {
+    if (arm.block < 0)
       metadata << "null";
-    } else {
+    else
       metadata << arm.block;
-    }
     metadata << ",\"loss_file\":" << JsonQuote(loss_file)
              << ",\"argmax_file\":" << JsonQuote(argmax_file)
              << ",\"group_weight_indices\":[";
     for (size_t j = 0; j < arm.weight_indices.size(); ++j) {
-      if (j) metadata << ',';
+      if (j)
+        metadata << ',';
       metadata << arm.weight_indices[j];
     }
     metadata << "],\"selected_rows\":[";
     for (size_t j = 0; j < arm.selected_rows.size(); ++j) {
-      if (j) metadata << ',';
+      if (j)
+        metadata << ',';
       metadata << arm.selected_rows[j];
     }
     metadata << "],\"scale\":" << arm.scale
@@ -338,12 +345,9 @@ int main(int argc, char** argv) {
     std::cerr << "Unexpected positional arguments\n";
     return 1;
   }
-  try {
-    const auto status = pluto::weight_analysis::Run();
-    if (status.ok()) return 0;
-    std::cerr << status << '\n';
-  } catch (const std::exception& error) {
-    std::cerr << "Validation failed: " << error.what() << '\n';
-  }
+  const auto status = pluto::weight_analysis::Run();
+  if (status.ok())
+    return 0;
+  std::cerr << status << '\n';
   return 1;
 }

@@ -13,7 +13,7 @@ namespace pluto::cuda {
 // to OkStatus; failures include both CUDA's symbolic name and description.
 absl::Status CudaStatus(cudaError_t error, const char* operation);
 
-// Owns the CUDA execution context used by one stream-ordered computation.
+// Owns the CUDA execution context used by stream-ordered computations.
 //
 // Executor is deliberately small today: its only state is one explicitly
 // created, non-default CUDA stream. Passing the Executor through APIs keeps

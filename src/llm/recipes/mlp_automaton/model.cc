@@ -99,16 +99,15 @@ absl::StatusOr<std::unique_ptr<Layer>> CreateReadout(
 
 absl::Status LoadB0Weights(cuda::Executor& executor, Layer& readout,
                            const std::filesystem::path& directory) {
-  if (directory.empty()) {
+  if (directory.empty())
     return absl::InvalidArgumentError("checkpoint directory must not be empty");
-  }
   std::vector<Buffer*> weights;
   std::unordered_set<const void*> seen;
   for (Buffer& weight : readout.weights()) {
-    if (&weight.executor() != &executor) {
+    if (&weight.executor() != &executor)
       return absl::InvalidArgumentError("weight belongs to another executor");
-    }
-    if (seen.insert(weight.data()).second) weights.push_back(&weight);
+    if (seen.insert(weight.data()).second)
+      weights.push_back(&weight);
   }
   if (weights.size() != kCheckpointIndices.size()) {
     return absl::InvalidArgumentError(
@@ -158,9 +157,8 @@ absl::StatusOr<cuda::PageLockedHostArray<TopTransition>> ScanVocabulary(
   for (int start = 0; start < vocab_size;) {
     const int count = std::min(batch_size, vocab_size - start);
     const int rows = (count + kTile - 1) / kTile * kTile;
-    for (int row = 0; row < rows; ++row) {
+    for (int row = 0; row < rows; ++row)
       ids[row] = row < count ? start + row : 0;
-    }
     ASSIGN_OR_RETURN(auto tokens,
                      Buffer::Allocate(executor, rows * sizeof(int32_t)));
     RETURN_IF_ERROR(cuda::CudaStatus(

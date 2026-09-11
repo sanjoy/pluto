@@ -87,9 +87,8 @@ TEST_F(LayersTest, RectangularProjectionUsesDistinctInputAndOutputWidths) {
   ASSERT_TRUE((*dense)->InitializeIdentity().ok());
 
   std::vector<float> input(kTestBatchSize * kTestModelWidth);
-  for (size_t index = 0; index < input.size(); ++index) {
+  for (size_t index = 0; index < input.size(); ++index)
     input[index] = static_cast<float>(index % 7);
-  }
   const auto pinned_input = CopyToPageLockedHostArray(input);
   auto input_buffer =
       Buffer::Allocate(*executor_, input.size() * sizeof(float));
@@ -115,9 +114,8 @@ TEST_F(LayersTest, RectangularProjectionUsesDistinctInputAndOutputWidths) {
       EXPECT_FLOAT_EQ(host_output[row * kOutputWidth + column],
                       input[row * kTestModelWidth + column]);
     }
-    for (int column = kTestModelWidth; column < kOutputWidth; ++column) {
+    for (int column = kTestModelWidth; column < kOutputWidth; ++column)
       EXPECT_FLOAT_EQ(host_output[row * kOutputWidth + column], 0.0f);
-    }
   }
 }
 

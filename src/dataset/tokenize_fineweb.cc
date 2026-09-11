@@ -15,9 +15,9 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "src/util/status_macros.h"
 #include "src/dataset/fineweb_converter.h"
 #include "src/dataset/tokenizer.h"
+#include "src/util/status_macros.h"
 
 ABSL_FLAG(std::string, input_dir, "",
           "Directory containing FineWeb .parquet shards.");
@@ -82,12 +82,10 @@ absl::Status RunConversion() {
     return absl::InvalidArgumentError(
         "--input_dir, --output_dir, and --tokenizer_dir are required");
   }
-  if (requested_jobs < 0) {
+  if (requested_jobs < 0)
     return absl::InvalidArgumentError("--jobs cannot be negative");
-  }
-  if (requested_batch_size <= 0) {
+  if (requested_batch_size <= 0)
     return absl::InvalidArgumentError("--batch_size must be positive");
-  }
 
   ASSIGN_OR_RETURN(auto shards, FindParquetShards(input_dir));
 
@@ -110,11 +108,10 @@ absl::Status RunConversion() {
       return absl::ErrnoToStatus(
           error.value(), absl::StrCat("cannot inspect ", output.string()));
     }
-    if (exists && !overwrite) {
+    if (exists && !overwrite)
       ++skipped;
-    } else {
+    else
       work.push_back({input, output});
-    }
   }
 
   if (work.empty()) {
@@ -143,7 +140,8 @@ absl::Status RunConversion() {
 
   std::cout << "Converting " << work.size() << " shard(s) with " << worker_count
             << " worker(s)";
-  if (skipped != 0) std::cout << "; skipping " << skipped << " existing";
+  if (skipped != 0)
+    std::cout << "; skipping " << skipped << " existing";
   std::cout << ".\n";
 
   std::atomic<size_t> next{0};
@@ -156,7 +154,8 @@ absl::Status RunConversion() {
     workers.emplace_back([&, worker] {
       while (!stop.load(std::memory_order_relaxed)) {
         const size_t index = next.fetch_add(1, std::memory_order_relaxed);
-        if (index >= work.size()) return;
+        if (index >= work.size())
+          return;
         const WorkItem& item = work[index];
         {
           std::lock_guard<std::mutex> lock(mutex);
@@ -184,7 +183,8 @@ absl::Status RunConversion() {
       }
     });
   }
-  for (std::thread& worker : workers) worker.join();
+  for (std::thread& worker : workers)
+    worker.join();
   return failure;
 }
 

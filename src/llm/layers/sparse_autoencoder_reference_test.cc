@@ -200,7 +200,8 @@ TEST_F(LayerReferenceTest,
           values[index] = std::sin(0.17f * index);
           // Trailing rows intentionally differ; including padding must
           // change the result in the mixed case.
-          if (index >= 19 * kInputDim) values[index] *= 8;
+          if (index >= 19 * kInputDim)
+            values[index] *= 8;
         }
         auto input = MakeActivationBufferPair(*executor_, values, type);
         ASSERT_TRUE(input.ok()) << input.status();
@@ -270,9 +271,8 @@ TEST_F(LayerReferenceTest, LossAndGradientsMatchTheStatedSumExactly) {
   std::vector<float> reconstruction(kRows * kInputDim, 0.5f);
   std::vector<float> latents(kRows * kFeatureDim, 0.25f);
   std::vector<float> decoder(kInputDim * kFeatureDim, 0.0f);
-  for (int index = 0; index < kInputDim; ++index) {
+  for (int index = 0; index < kInputDim; ++index)
     decoder[index * kFeatureDim + index] = 1.0f;
-  }
   auto input_pair = MakeActivationBufferPair(*executor_, input, DataType::FP16);
   auto reconstruction_pair =
       MakeActivationBufferPair(*executor_, reconstruction, DataType::FP16);
@@ -415,7 +415,8 @@ TEST_F(LayerReferenceTest,
               VectorsNear(host_gradient->span(), expected[index], 2e-5, 2e-5));
           EXPECT_TRUE(VectorsNear(ReadHostFloats((*reference_gradients)[index]),
                                   expected[index], 2e-5, 2e-5));
-          for (float value : *host_gradient) EXPECT_TRUE(std::isfinite(value));
+          for (float value : *host_gradient)
+            EXPECT_TRUE(std::isfinite(value));
         }
       }
     }

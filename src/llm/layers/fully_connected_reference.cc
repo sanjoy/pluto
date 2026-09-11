@@ -11,9 +11,9 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "src/util/status_macros.h"
 #include "src/llm/layers/fully_connected.h"
 #include "src/llm/layers/reference_internal.h"
+#include "src/util/status_macros.h"
 
 namespace pluto::llm {
 namespace ri = reference_internal;
@@ -42,9 +42,8 @@ absl::Status FullyConnectedLayerReference::InitializeIdentity(float scale) {
   auto* matrix = static_cast<float*>(weights_[0].data());
   std::fill(matrix, matrix + static_cast<size_t>(input_dim_) * output_dim_,
             0.0f);
-  for (int index = 0; index < std::min(input_dim_, output_dim_); ++index) {
+  for (int index = 0; index < std::min(input_dim_, output_dim_); ++index)
     matrix[static_cast<size_t>(index) * output_dim_ + index] = scale;
-  }
   std::memset(weights_[1].data(), 0, weights_[1].size_bytes());
   return absl::OkStatus();
 }
@@ -59,9 +58,8 @@ absl::Status FullyConnectedLayerReference::InitializeNormal(
   std::normal_distribution<float> distribution(0.0f, standard_deviation);
   auto* matrix = static_cast<float*>(weights_[0].data());
   const size_t elements = weights_[0].size_bytes() / sizeof(float);
-  for (size_t index = 0; index < elements; ++index) {
+  for (size_t index = 0; index < elements; ++index)
     matrix[index] = distribution(random);
-  }
   return absl::OkStatus();
 }
 

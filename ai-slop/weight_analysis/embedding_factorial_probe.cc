@@ -40,9 +40,8 @@ absl::Status ValidateFactorialRows(absl::Span<const int32_t> rows,
 absl::StatusOr<std::vector<int32_t>> LoadFactorialRows(
     const std::filesystem::path& path, int case_count, int rows_per_case,
     int context_length) {
-  if constexpr (std::endian::native != std::endian::little) {
+  if constexpr (std::endian::native != std::endian::little)
     return absl::UnimplementedError("selected-row files require little endian");
-  }
   if (case_count <= 0 || rows_per_case <= 0 || context_length <= 0 ||
       rows_per_case > context_length) {
     return absl::InvalidArgumentError("invalid selected-row geometry");
@@ -75,10 +74,10 @@ absl::StatusOr<FactorialTokenScore> ScoreFactorialToken(
   }
   int argmax = 0;
   for (size_t i = 0; i < logits.size(); ++i) {
-    if (!std::isfinite(logits[i])) {
+    if (!std::isfinite(logits[i]))
       return absl::DataLossError("nonfinite logical-vocabulary logit");
-    }
-    if (logits[i] > logits[argmax]) argmax = i;
+    if (logits[i] > logits[argmax])
+      argmax = i;
   }
   const double maximum = logits[argmax];
   double sum = 0;
@@ -112,9 +111,8 @@ absl::StatusOr<std::vector<int>> ChangedEmbeddingRows(
     }
     if (std::memcmp(original.data() + row * width, patched.data() + row * width,
                     width * sizeof(float))) {
-      if (row >= static_cast<size_t>(vocabulary)) {
+      if (row >= static_cast<size_t>(vocabulary))
         return absl::InvalidArgumentError("embedding padding changed");
-      }
       changed.push_back(row);
     }
   }
@@ -154,11 +152,9 @@ absl::StatusOr<FactorialMeasurements> EvaluateEmbeddingFactorial(
   }
   RETURN_IF_ERROR(ValidateFactorialRows(selected_rows, 1, selected_rows.size(),
                                         static_cast<int>(rows)));
-  for (int target : targets) {
-    if (target < 0 || target >= vocabulary) {
+  for (int target : targets)
+    if (target < 0 || target >= vocabulary)
       return absl::InvalidArgumentError("target is not a logical token ID");
-    }
-  }
   FactorialMeasurements result;
   for (int input = 0; input < 2; ++input) {
     for (int head = 0; head < 2; ++head) {

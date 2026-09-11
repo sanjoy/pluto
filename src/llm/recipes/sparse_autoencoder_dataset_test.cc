@@ -64,7 +64,8 @@ class SparseAutoEncoderDataSetTest : public testing::Test {
   }
 
   void TearDown() override {
-    if (executor_ == nullptr) return;
+    if (executor_ == nullptr)
+      return;
     EXPECT_TRUE(executor_->Synchronize().ok());
     executor_.reset();
   }
@@ -75,15 +76,16 @@ class SparseAutoEncoderDataSetTest : public testing::Test {
     std::iota(data.begin(), data.begin() + kBatchSize, 0);
     std::iota(data.begin() + kBatchSize, data.end(), 1);
     auto buffer = Buffer::Allocate(*executor_, data.size() * sizeof(int));
-    if (!buffer.ok()) return buffer.status();
+    if (!buffer.ok())
+      return buffer.status();
     const cudaError_t error =
         cudaMemcpyAsync(buffer->data(), data.data(), buffer->size_bytes(),
                         cudaMemcpyHostToDevice, executor_->stream());
-    if (error != cudaSuccess) {
+    if (error != cudaSuccess)
       return cuda::CudaStatus(error, "cudaMemcpyAsync(test tokens)");
-    }
     const absl::Status sync = executor_->Synchronize();
-    if (!sync.ok()) return sync;
+    if (!sync.ok())
+      return sync;
     return *buffer;
   }
 

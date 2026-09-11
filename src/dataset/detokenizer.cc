@@ -8,8 +8,8 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "src/util/status_macros.h"
 #include "src/dataset/gpt2_model.h"
+#include "src/util/status_macros.h"
 
 namespace pluto::tokenizer {
 
@@ -24,9 +24,8 @@ absl::StatusOr<std::string> Gpt2Detokenizer::Decode(
     absl::Span<const int> token_ids) const {
   std::string byte_encoded;
   for (const int id : token_ids) {
-    if (id < 0 || id >= model_->vocab_size()) {
+    if (id < 0 || id >= model_->vocab_size())
       return absl::InvalidArgumentError("token id is outside the vocabulary");
-    }
     byte_encoded.append(model_->decoder()[id]);
   }
 

@@ -108,7 +108,8 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> MakeLanguageModel(
 absl::StatusOr<std::string> ReadBytes(cuda::Executor& executor,
                                       absl::Span<const Buffer> buffers) {
   size_t size = 0;
-  for (const Buffer& buffer : buffers) size += buffer.size_bytes();
+  for (const Buffer& buffer : buffers)
+    size += buffer.size_bytes();
   ASSIGN_OR_RETURN(auto staging,
                    cuda::PageLockedHostArray<unsigned char>::Allocate(size));
   size_t offset = 0;
@@ -130,14 +131,12 @@ absl::StatusOr<std::string> ReadMeanLoss(cuda::Executor& executor,
   ASSIGN_OR_RETURN(auto loss, Evaluate(executor, objective, data,
                                        EvaluationOptions{.batches = 2}));
   ASSIGN_OR_RETURN(auto bytes, ReadBytes(executor, {loss}));
-  if (bytes.size() != sizeof(float)) {
+  if (bytes.size() != sizeof(float))
     return absl::InternalError("Evaluate did not return one FP32 scalar");
-  }
   float value;
   std::memcpy(&value, bytes.data(), sizeof(value));
-  if (!std::isfinite(value)) {
+  if (!std::isfinite(value))
     return absl::InternalError("replay evaluation produced a nonfinite loss");
-  }
   return bytes;
 }
 
@@ -198,9 +197,8 @@ absl::Status RecordTraining(cuda::Executor& executor, Layer& model,
   };
   ASSIGN_OR_RETURN(auto result,
                    Train(executor, objective, *optimizer, training, options));
-  if (result.steps_completed != kUpdates || optimizer->step() != kUpdates) {
+  if (result.steps_completed != kUpdates || optimizer->step() != kUpdates)
     return absl::InternalError("replay did not perform all requested updates");
-  }
   return absl::OkStatus();
 }
 
@@ -320,9 +318,8 @@ absl::StatusOr<Trajectory> RunSparseAutoEncoder(
   ASSIGN_OR_RETURN(auto loss, SparseAutoEncoderLossLayer::Create(
                                   *executor, kWidth, kFeatures, 0.5f, type));
   std::vector<float> values(kRows * kWidth);
-  for (size_t index = 0; index < values.size(); ++index) {
+  for (size_t index = 0; index < values.size(); ++index)
     values[index] = (static_cast<int>(index % 29) - 14) * 0.0625f;
-  }
   ASSIGN_OR_RETURN(auto activation,
                    MakeActivationBufferPair(*executor, values, type));
   FixedActivationDataSet training({activation.device, kRows});
@@ -417,9 +414,8 @@ TEST_P(DeterministicTrainingTest, TransformerTrainingAndSamplingReplayExactly) {
   ASSERT_TRUE(second.ok()) << second.status();
   ExpectIdenticalTrajectory(*first, *second);
   ASSERT_EQ(first->completions.size(), 3u);
-  for (const auto& completion : first->completions) {
+  for (const auto& completion : first->completions)
     EXPECT_EQ(completion.size(), 8u);
-  }
 
   // A different seed must really change the starting state. This guards
   // against accidentally obtaining reproducibility by ignoring the seed.

@@ -63,7 +63,8 @@ std::string EscapedBytes(absl::string_view bytes) {
 std::string Quote(absl::string_view value) {
   std::string result = "\"";
   for (char c : value) {
-    if (c == '\\' || c == '"') result.push_back('\\');
+    if (c == '\\' || c == '"')
+      result.push_back('\\');
     result.push_back(c);
   }
   result.push_back('"');
@@ -82,7 +83,8 @@ std::string Number(double number) {
 
 std::vector<int> Successors(const Graph& graph) {
   std::vector<int> successors(graph.token_bytes.size(), -1);
-  for (const Edge& edge : graph.edges) successors[edge.source] = edge.target;
+  for (const Edge& edge : graph.edges)
+    successors[edge.source] = edge.target;
   return successors;
 }
 
@@ -131,7 +133,8 @@ uint64_t UniformBelow(std::mt19937_64& random, uint64_t bound) {
 }
 
 absl::Status StreamStatus(const std::ostream& output) {
-  if (!output.good()) return absl::DataLossError("Failed writing JSON output");
+  if (!output.good())
+    return absl::DataLossError("Failed writing JSON output");
   return absl::OkStatus();
 }
 
@@ -162,9 +165,8 @@ absl::Status ValidateGraph(const Graph& graph) {
         "Vocabulary size must be in [1, INT_MAX]");
   }
   const int size = static_cast<int>(graph.token_bytes.size());
-  if (graph.eos_token_id < -1 || graph.eos_token_id >= size) {
+  if (graph.eos_token_id < -1 || graph.eos_token_id >= size)
     return absl::InvalidArgumentError("EOS token is outside the vocabulary");
-  }
   std::vector<bool> has_edge(size, false);
   for (const Edge& edge : graph.edges) {
     if (edge.source < 0 || edge.source >= size || edge.target < 0 ||
@@ -187,12 +189,10 @@ absl::Status ValidateGraph(const Graph& graph) {
 
 absl::StatusOr<Path> Walk(const Graph& graph, int start, size_t max_tokens) {
   RETURN_IF_ERROR(ValidateGraph(graph));
-  if (start < 0 || static_cast<size_t>(start) >= graph.token_bytes.size()) {
+  if (start < 0 || static_cast<size_t>(start) >= graph.token_bytes.size())
     return absl::InvalidArgumentError("Starting token is outside vocabulary");
-  }
-  if (max_tokens == 0) {
+  if (max_tokens == 0)
     return absl::InvalidArgumentError("max_tokens must be positive");
-  }
   std::vector<size_t> visited(graph.token_bytes.size(), 0);
   return WalkUnchecked(graph, Successors(graph), start, max_tokens, 1, visited);
 }
@@ -201,16 +201,13 @@ absl::StatusOr<std::vector<Path>> SamplePaths(const Graph& graph, size_t count,
                                               size_t max_tokens,
                                               uint64_t seed) {
   RETURN_IF_ERROR(ValidateGraph(graph));
-  if (max_tokens == 0) {
+  if (max_tokens == 0)
     return absl::InvalidArgumentError("max_tokens must be positive");
-  }
   const std::vector<int> successors = Successors(graph);
   std::vector<int> starts;
-  for (size_t i = 0; i < successors.size(); ++i) {
-    if (successors[i] != -1 && static_cast<int>(i) != graph.eos_token_id) {
+  for (size_t i = 0; i < successors.size(); ++i)
+    if (successors[i] != -1 && static_cast<int>(i) != graph.eos_token_id)
       starts.push_back(static_cast<int>(i));
-    }
-  }
   count = std::min(count, starts.size());
   std::mt19937_64 random(seed);
   std::vector<size_t> visited(graph.token_bytes.size(), 0);
@@ -260,11 +257,9 @@ absl::Status WritePathsJson(std::ostream& output, const Graph& graph,
       return absl::InvalidArgumentError(
           "Path must have tokens and termination");
     }
-    for (int token : path.tokens) {
-      if (token < 0 || static_cast<size_t>(token) >= graph.token_bytes.size()) {
+    for (int token : path.tokens)
+      if (token < 0 || static_cast<size_t>(token) >= graph.token_bytes.size())
         return absl::InvalidArgumentError("Path token is outside vocabulary");
-      }
-    }
   }
   output << "{\n  \"format\": \"pluto.mlp_automaton.paths.v1\",\n"
          << "  \"paths\": [\n";
@@ -273,7 +268,8 @@ absl::Status WritePathsJson(std::ostream& output, const Graph& graph,
     std::string bytes;
     output << "    {\"tokens\": [";
     for (size_t j = 0; j < path.tokens.size(); ++j) {
-      if (j != 0) output << ", ";
+      if (j != 0)
+        output << ", ";
       output << std::to_string(path.tokens[j]);
       bytes += graph.token_bytes[path.tokens[j]];
     }

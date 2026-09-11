@@ -83,14 +83,12 @@ absl::StatusOr<WeightBytes> SnapshotWeights(
   RETURN_IF_ERROR(ValidateGpt2Weights(weights));
   WeightBytes result;
   for (const auto& weight : weights) {
-    ASSIGN_OR_RETURN(auto bytes, ReadPrefix(executor, weight,
-                                            weight.size_bytes() / 4, 1, 4));
+    ASSIGN_OR_RETURN(
+        auto bytes, ReadPrefix(executor, weight, weight.size_bytes() / 4, 1, 4));
     const auto* values = reinterpret_cast<const float*>(bytes.data());
-    for (size_t i = 0; i < bytes.size_bytes() / 4; ++i) {
-      if (!std::isfinite(values[i])) {
+    for (size_t i = 0; i < bytes.size_bytes() / 4; ++i)
+      if (!std::isfinite(values[i]))
         return absl::DataLossError("nonfinite checkpoint parameter");
-      }
-    }
     result.push_back(std::move(bytes));
   }
   return result;
@@ -100,9 +98,8 @@ absl::Status VerifyWeightBytes(cuda::Executor& executor,
                                absl::Span<const cuda::Buffer> weights,
                                const WeightBytes& expected,
                                const fs::path& directory, bool check_device) {
-  if (weights.size() != expected.size()) {
+  if (weights.size() != expected.size())
     return absl::InternalError("weight snapshot shape changed");
-  }
   for (size_t i = 0; i < weights.size(); ++i) {
     if (check_device) {
       ASSIGN_OR_RETURN(
@@ -122,23 +119,21 @@ absl::Status VerifyWeightBytes(cuda::Executor& executor,
 
 absl::StatusOr<std::string> SnapshotMetadata(
     const std::vector<CheckpointFileInfo>& files) {
-  if (files.size() == 100) return std::string();
+  if (files.size() == 100)
+    return std::string();
   const auto& file = files.back();
-  if (file.bytes > 16 * 1024 * 1024) {
+  if (file.bytes > 16 * 1024 * 1024)
     return absl::InvalidArgumentError("patch metadata exceeds 16 MiB");
-  }
   std::string bytes(file.bytes, '\0');
   std::ifstream stream(file.path, std::ios::binary);
-  if (!stream.read(bytes.data(), bytes.size()) || stream.peek() != EOF) {
+  if (!stream.read(bytes.data(), bytes.size()) || stream.peek() != EOF)
     return absl::DataLossError("could not read exact patch metadata");
-  }
   return bytes;
 }
 
 absl::Status Run() {
-  if constexpr (std::endian::native != std::endian::little) {
+  if constexpr (std::endian::native != std::endian::little)
     return absl::UnimplementedError("native evidence requires little endian");
-  }
   const int rows_per_case = absl::GetFlag(FLAGS_rows_per_case);
   const int microbatch = absl::GetFlag(FLAGS_batch_sequences);
   if (absl::GetFlag(FLAGS_recipient).empty() ||
@@ -172,7 +167,8 @@ absl::Status Run() {
         return absl::InvalidArgumentError(
             "output must not be inside checkpoint");
       }
-      if (parent == parent.parent_path()) break;
+      if (parent == parent.parent_path())
+        break;
     }
   }
   const auto batch_path = fs::absolute(absl::GetFlag(FLAGS_batch));
@@ -204,8 +200,7 @@ absl::Status Run() {
         llm::ReadFromDirectory(*executor, *models[side], checkpoints[side]));
     ASSIGN_OR_RETURN(weights[side],
                      UniqueWeights(*executor, models[side]->weights()));
-    ASSIGN_OR_RETURN(snapshots[side],
-                     SnapshotWeights(*executor, weights[side]));
+    ASSIGN_OR_RETURN(snapshots[side], SnapshotWeights(*executor, weights[side]));
     RETURN_IF_ERROR(VerifyWeightBytes(*executor, weights[side], snapshots[side],
                                       checkpoints[side], false));
   }
@@ -348,12 +343,14 @@ absl::Status Run() {
          "\"input_bytes_unchanged\":true}"
       << ",\"changed_embedding_rows\":[";
   for (size_t i = 0; i < changed_rows.size(); ++i) {
-    if (i) metadata << ',';
+    if (i)
+      metadata << ',';
     metadata << changed_rows[i];
   }
   metadata << "],\"cells\":{";
   for (int cell = 0; cell < 4; ++cell) {
-    if (cell) metadata << ',';
+    if (cell)
+      metadata << ',';
     const auto filename =
         absl::StrCat(kEmbeddingFactorialCells[cell], ".logits.f32.bin");
     RETURN_IF_ERROR(WriteExclusive(output / filename, all_logits[cell].data(),
@@ -361,11 +358,13 @@ absl::Status Run() {
     metadata << JsonQuote(kEmbeddingFactorialCells[cell])
              << ":{\"logits_file\":" << JsonQuote(filename) << ",\"cases\":[";
     for (int c = 0; c < batch.passage_count; ++c) {
-      if (c) metadata << ',';
+      if (c)
+        metadata << ',';
       metadata << "{\"case_index\":" << c << ",\"tokens\":[";
       double sum_nll = 0;
       for (int i = 0; i < rows_per_case; ++i) {
-        if (i) metadata << ',';
+        if (i)
+          metadata << ',';
         const size_t index = static_cast<size_t>(c) * rows_per_case + i;
         const auto& score = all_scores[cell][index];
         sum_nll += score.nll;
@@ -405,12 +404,9 @@ int main(int argc, char** argv) {
     std::cerr << "Unexpected positional arguments\n";
     return 1;
   }
-  try {
-    const auto status = pluto::weight_analysis::Run();
-    if (status.ok()) return 0;
-    std::cerr << status << '\n';
-  } catch (const std::exception& error) {
-    std::cerr << "Factorial probe failed: " << error.what() << '\n';
-  }
+  const auto status = pluto::weight_analysis::Run();
+  if (status.ok())
+    return 0;
+  std::cerr << status << '\n';
   return 1;
 }

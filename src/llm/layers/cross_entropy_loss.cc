@@ -115,9 +115,8 @@ absl::StatusOr<std::unique_ptr<CrossEntropyLossLayer>>
 CrossEntropyLossLayer::Create(cuda::Executor& executor, int vocabulary_size,
                               DataType data_type) {
   RETURN_IF_ERROR(internal::ValidateComputeType(data_type));
-  if (vocabulary_size <= 0) {
+  if (vocabulary_size <= 0)
     return absl::InvalidArgumentError("vocabulary_size must be positive");
-  }
   return std::unique_ptr<CrossEntropyLossLayer>(new CrossEntropyLossLayer(
       executor, vocabulary_size, internal::RoundUpToTile(vocabulary_size),
       data_type));

@@ -44,12 +44,10 @@ absl::Status ValidateTokenIds(absl::Span<const int32_t> ids, int vocabulary,
 
 absl::StatusOr<cuda::PageLockedHostArray<int32_t>> ReadTokenIds(
     const std::filesystem::path& path, int vocabulary, int context_length) {
-  if constexpr (std::endian::native != std::endian::little) {
+  if constexpr (std::endian::native != std::endian::little)
     return absl::UnimplementedError("token files require little-endian host");
-  }
-  if (vocabulary <= 0 || context_length <= 0) {
+  if (vocabulary <= 0 || context_length <= 0)
     return absl::InvalidArgumentError("invalid model limits");
-  }
   // O_NONBLOCK also prevents accidentally blocking forever on a FIFO before
   // fstat can reject it. O_NOFOLLOW refuses a symlink as the final component.
   const int raw =
@@ -73,8 +71,10 @@ absl::StatusOr<cuda::PageLockedHostArray<int32_t>> ReadTokenIds(
   while (done < ids.size_bytes()) {
     auto* bytes = reinterpret_cast<uint8_t*>(ids.data());
     const ssize_t got = read(fd.get(), bytes + done, ids.size_bytes() - done);
-    if (got < 0 && errno == EINTR) continue;
-    if (got <= 0) return absl::DataLossError("short read of token file");
+    if (got < 0 && errno == EINTR)
+      continue;
+    if (got <= 0)
+      return absl::DataLossError("short read of token file");
     done += got;
   }
   struct stat after {};

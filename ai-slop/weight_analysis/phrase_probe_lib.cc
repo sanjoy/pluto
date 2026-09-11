@@ -40,24 +40,20 @@ absl::Status ValidateGpt2Tape(const llm::Tape& tape) {
   }
   for (int block = 0; block < 8; ++block) {
     const auto& body = tape.children[block + 2];
-    if (!body.intermediates.empty() || body.children.size() != 2) {
+    if (!body.intermediates.empty() || body.children.size() != 2)
       return BadTape();
-    }
     for (int branch = 0; branch < 2; ++branch) {
       const auto& residual = body.children[branch];
-      if (residual.intermediates.size() != 1 || residual.children.size() != 1) {
+      if (residual.intermediates.size() != 1 || residual.children.size() != 1)
         return BadTape();
-      }
       const auto& sequence = residual.children[0];
-      if (!sequence.intermediates.empty() || sequence.children.size() != 4) {
+      if (!sequence.intermediates.empty() || sequence.children.size() != 4)
         return BadTape();
-      }
       for (int leaf = 0; leaf < 4; ++leaf) {
         const auto& saved = sequence.children[leaf];
         const size_t expected = branch == 0 && leaf == 2 ? 2 : 1;
-        if (!saved.children.empty() || saved.intermediates.size() != expected) {
+        if (!saved.children.empty() || saved.intermediates.size() != expected)
           return BadTape();
-        }
       }
     }
   }
@@ -67,9 +63,8 @@ absl::Status ValidateGpt2Tape(const llm::Tape& tape) {
 absl::Status CopyDeviceWeights(cuda::Executor& executor,
                                absl::Span<const cuda::Buffer> source,
                                absl::Span<cuda::Buffer> destination) {
-  if (source.size() != destination.size()) {
+  if (source.size() != destination.size())
     return absl::InvalidArgumentError("weight counts differ in native replay");
-  }
   // Validate every tensor before queuing any writes, including executor and
   // size checks. Only new diagnostic-layer allocations may be destinations.
   for (size_t i = 0; i < source.size(); ++i) {
@@ -96,9 +91,9 @@ absl::StatusOr<cuda::Buffer> ReplayProjection(cuda::Executor& executor,
                                               const cuda::Buffer& bias,
                                               int input_width,
                                               int output_width) {
-  ASSIGN_OR_RETURN(auto layer, llm::FullyConnectedLayer::Create(
-                                   executor, input_width, output_width,
-                                   llm::DataType::BF16));
+  ASSIGN_OR_RETURN(
+      auto layer, llm::FullyConnectedLayer::Create(
+                      executor, input_width, output_width, llm::DataType::BF16));
   const llm::BufferVec original{matrix, bias};
   RETURN_IF_ERROR(CopyDeviceWeights(executor, original, layer->weights()));
   llm::Tape tape;
@@ -226,9 +221,8 @@ absl::StatusOr<std::unique_ptr<NativeLogitLens>> NativeLogitLens::Create(
                                        kWidth, llm::DataType::BF16));
   RETURN_IF_ERROR(
       CopyDeviceWeights(executor, weights.subspan(0, 1), embedding->weights()));
-  ASSIGN_OR_RETURN(auto norm,
-                   llm::LayerNormLayer::Create(executor, kWidth, 1e-5f,
-                                               llm::DataType::BF16));
+  ASSIGN_OR_RETURN(auto norm, llm::LayerNormLayer::Create(
+                                  executor, kWidth, 1e-5f, llm::DataType::BF16));
   RETURN_IF_ERROR(
       CopyDeviceWeights(executor, weights.subspan(98, 2), norm->weights()));
   ASSIGN_OR_RETURN(auto head,
@@ -255,7 +249,8 @@ absl::StatusOr<cuda::Buffer> NativeLogitLens::Apply(
 absl::StatusOr<std::vector<std::pair<int, int>>> ParseNeuronInterventions(
     absl::string_view text) {
   std::vector<std::pair<int, int>> result;
-  if (text.empty()) return result;
+  if (text.empty())
+    return result;
   std::set<std::pair<int, int>> seen;
   for (absl::string_view entry : absl::StrSplit(text, ',')) {
     std::vector<absl::string_view> fields = absl::StrSplit(entry, ':');

@@ -18,7 +18,8 @@ constexpr size_t kByteCount = 4096;
 
 __global__ void FillBytes(uint8_t* bytes, size_t size, uint8_t value) {
   const size_t index = blockIdx.x * blockDim.x + threadIdx.x;
-  if (index < size) bytes[index] = value;
+  if (index < size)
+    bytes[index] = value;
 }
 
 class BufferTest : public testing::Test {
@@ -30,7 +31,8 @@ class BufferTest : public testing::Test {
   }
 
   void TearDown() override {
-    if (executor_ == nullptr) return;
+    if (executor_ == nullptr)
+      return;
     EXPECT_TRUE(executor_->Synchronize().ok());
     executor_.reset();
   }
@@ -79,7 +81,8 @@ TEST_F(BufferTest, CopiesShareStorageUntilTheLastReferenceIsDestroyed) {
   // and copy above, so the host transfer must still complete correctly.
   survivor.reset();
   ASSERT_TRUE(executor_->Synchronize().ok());
-  for (const uint8_t byte : *host_bytes) EXPECT_EQ(byte, 0xa5);
+  for (const uint8_t byte : *host_bytes)
+    EXPECT_EQ(byte, 0xa5);
 }
 
 TEST_F(BufferTest, ZeroByteBufferRetainsItsExecutorWithoutAllocatingStorage) {

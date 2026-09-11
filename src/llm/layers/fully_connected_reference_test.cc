@@ -32,12 +32,10 @@ TEST_F(LayerReferenceTest, ForwardAndBackwardMatchAcrossShapesAndTypes) {
       ASSERT_EQ(device_weights.size(), 2u);
       std::vector<float> matrix(static_cast<size_t>(input_dim) * output_dim);
       std::vector<float> bias(output_dim);
-      for (size_t index = 0; index < matrix.size(); ++index) {
+      for (size_t index = 0; index < matrix.size(); ++index)
         matrix[index] = 0.08f * std::sin(static_cast<float>(index) * 0.31f);
-      }
-      for (int index = 0; index < output_dim; ++index) {
+      for (int index = 0; index < output_dim; ++index)
         bias[index] = 0.03f * std::cos(static_cast<float>(index) * 0.7f);
-      }
       ASSERT_TRUE(SetFloatBufferPair(*executor_, device_weights[0],
                                      &reference_weights[0], matrix)
                       .ok());
@@ -48,9 +46,8 @@ TEST_F(LayerReferenceTest, ForwardAndBackwardMatchAcrossShapesAndTypes) {
       std::vector<float> input(static_cast<size_t>(rows) * input_dim);
       std::vector<float> output_gradient(static_cast<size_t>(rows) *
                                          output_dim);
-      for (size_t index = 0; index < input.size(); ++index) {
+      for (size_t index = 0; index < input.size(); ++index)
         input[index] = 0.6f * std::sin(static_cast<float>(index) * 0.17f);
-      }
       for (size_t index = 0; index < output_gradient.size(); ++index) {
         output_gradient[index] =
             0.2f * std::cos(static_cast<float>(index) * 0.11f);

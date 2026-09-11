@@ -5,10 +5,10 @@
 #include <cstring>
 #include <vector>
 
-#include "gtest/gtest.h"
 #include "ai-slop/weight_analysis/causal_probe.h"
 #include "ai-slop/weight_analysis/phrase_probe.h"
 #include "ai-slop/weight_analysis/source_value_probe.h"
+#include "gtest/gtest.h"
 #include "src/llm/recipes/gpt2.h"
 
 namespace pluto::weight_analysis {
@@ -32,7 +32,7 @@ TEST(SourceValueGpuTest,
   ASSERT_TRUE(weights.ok()) << weights.status();
   ASSERT_TRUE(ValidateGpt2Weights(*weights).ok());
   std::vector<Bytes> weight_snapshots;
-  for (const auto &weight : *weights) {
+  for (const auto& weight : *weights) {
     auto bytes = ReadPrefix(**executor, weight, weight.size_bytes() / 4, 1, 4);
     ASSERT_TRUE(bytes.ok());
     weight_snapshots.push_back(std::move(*bytes));
@@ -41,7 +41,8 @@ TEST(SourceValueGpuTest,
   constexpr int rows = 2 * kContext;
   auto tokens = cuda::PageLockedHostArray<int32_t>::Allocate(rows);
   ASSERT_TRUE(tokens.ok());
-  for (int i = 0; i < rows; ++i) (*tokens)[i] = (17 * i + 3) % 1000;
+  for (int i = 0; i < rows; ++i)
+    (*tokens)[i] = (17 * i + 3) % 1000;
   auto input = cuda::Buffer::Allocate(**executor, tokens->size_bytes());
   ASSERT_TRUE(input.ok());
   ASSERT_EQ(cudaMemcpyAsync(input->data(), tokens->data(), tokens->size_bytes(),
@@ -58,8 +59,8 @@ TEST(SourceValueGpuTest,
   auto probe =
       SourceValueProbe::Create(**executor, clean_tape, *clean, *weights, 1);
   ASSERT_TRUE(probe.ok()) << probe.status();
-  const auto &clean_qkv = (*probe)->original_qkv();
-  const auto &clean_context = (*probe)->original_context();
+  const auto& clean_qkv = (*probe)->original_qkv();
+  const auto& clean_context = (*probe)->original_context();
   auto qkv_before = ReadPrefix(**executor, clean_qkv, rows, 3 * kWidth, 2);
   auto context_before = ReadPrefix(**executor, clean_context, rows, kWidth, 2);
   ASSERT_TRUE(qkv_before.ok());

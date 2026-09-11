@@ -126,8 +126,8 @@ absl::Status Run() {
     return absl::InvalidArgumentError(
         "required: --checkpoint --tokens_file "
         "--output_dir --target_id=0..50256");
-  ASSIGN_OR_RETURN(auto neurons, ParseNeuronInterventions(
-                                     absl::GetFlag(FLAGS_ablate_neuron)));
+  ASSIGN_OR_RETURN(auto neurons,
+                   ParseNeuronInterventions(absl::GetFlag(FLAGS_ablate_neuron)));
   const auto checkpoint = fs::canonical(absl::GetFlag(FLAGS_checkpoint));
   // Validate the original path before canonicalization, so a file symlink is
   // rejected rather than silently resolved. IDs are never passed to a
@@ -144,12 +144,13 @@ absl::Status Run() {
   for (auto parent = resolved_output;; parent = parent.parent_path()) {
     if (parent == checkpoint)
       return absl::InvalidArgumentError("output must not be inside checkpoint");
-    if (parent == parent.parent_path()) break;
+    if (parent == parent.parent_path())
+      break;
   }
   // Validate the supplied path, not its already-canonicalized symlink target.
-  ASSIGN_OR_RETURN(auto checkpoint_files,
-                   InspectGpt2CheckpointFiles(
-                       fs::absolute(absl::GetFlag(FLAGS_checkpoint))));
+  ASSIGN_OR_RETURN(
+      auto checkpoint_files,
+      InspectGpt2CheckpointFiles(fs::absolute(absl::GetFlag(FLAGS_checkpoint))));
   RETURN_IF_ERROR(CreateNewOutputDirectory(output));
   ASSIGN_OR_RETURN(auto executor, cuda::Executor::Create());
   const int rows = static_cast<int>(encoded.size());
@@ -188,7 +189,8 @@ absl::Status Run() {
     if (baseline_values[id] > target_logit ||
         (baseline_values[id] == target_logit && id < target))
       ++target_rank;
-    if (baseline_values[id] > baseline_values[greedy_id]) greedy_id = id;
+    if (baseline_values[id] > baseline_values[greedy_id])
+      greedy_id = id;
   }
   std::cout << "Native token trace: prefix=" << rows << ", target=" << target
             << ", target rank=" << target_rank << ", greedy=" << greedy_id
@@ -200,10 +202,9 @@ absl::Status Run() {
   frames.insert(frames.begin(),
                 {"embedding", std::move(embedding), kWidth, false, true});
   std::map<std::string, const TraceFrame*> by_name;
-  for (const auto& frame : frames) {
+  for (const auto& frame : frames)
     if (!by_name.emplace(frame.name, &frame).second)
       return absl::InternalError("duplicate trace name");
-  }
   for (int block = 0; block < 8; ++block) {
     const auto p = absl::StrCat("blocks.", block, ".");
     const std::string before =
@@ -227,13 +228,15 @@ absl::Status Run() {
         frame.fp32 ? ReadSelectedRow(*executor, frame.buffer, selected_row,
                                      frame.width, 4)
                    : ReadPrefix(*executor, frame.buffer, rows, frame.width, 2);
-    if (!host_result.ok()) return host_result.status();
+    if (!host_result.ok())
+      return host_result.status();
     auto host = std::move(*host_result);
     RETURN_IF_ERROR(CheckFinite(host, frame.fp32));
     const auto filename = frame.name + (frame.fp32 ? ".f32" : ".bf16");
     RETURN_IF_ERROR(
         WriteExclusive(output / filename, host.data(), host.size_bytes()));
-    if (!first_file) files_json << ',';
+    if (!first_file)
+      files_json << ',';
     first_file = false;
     files_json << JsonQuote(frame.name) << ':'
                << TensorJson(filename, frame.fp32 ? "float32" : "bf16",
@@ -266,7 +269,8 @@ absl::Status Run() {
     const auto filename = "lens." + name + ".f32";
     RETURN_IF_ERROR(
         WriteExclusive(output / filename, host.data(), host.size_bytes()));
-    if (i) lens_json << ',';
+    if (i)
+      lens_json << ',';
     lens_json << JsonQuote(name) << ':'
               << TensorJson(filename, "float32", 1, kPaddedVocabulary,
                             "native_diagnostic_final_norm_and_tied_head",
@@ -294,11 +298,13 @@ absl::Status Run() {
     const auto filename = name + ".logits.f32";
     RETURN_IF_ERROR(
         WriteExclusive(output / filename, result.data(), result.size_bytes()));
-    if (arm_count++) interventions_json << ',';
+    if (arm_count++)
+      interventions_json << ',';
     interventions_json << "{\"name\":" << JsonQuote(name)
                        << ",\"kind\":" << JsonQuote(kind)
                        << ",\"block\":" << block;
-    if (element >= 0) interventions_json << ",\"head_or_neuron\":" << element;
+    if (element >= 0)
+      interventions_json << ",\"head_or_neuron\":" << element;
     interventions_json
         << ",\"scale\":0,\"logits_file\":" << JsonQuote(filename)
         << ",\"shape\":[1," << kPaddedVocabulary
@@ -316,7 +322,8 @@ absl::Status Run() {
         RETURN_IF_ERROR(intervention->Apply(0));
         auto result = ForwardRow(*executor, *model, input, selected_row);
         RETURN_IF_ERROR(intervention->RestoreAndVerify());
-        if (!result.ok()) return result.status();
+        if (!result.ok())
+          return result.status();
         const std::string kind = mlp ? "mlp_branch" : "attention_branch";
         RETURN_IF_ERROR(
             save_arm(absl::StrCat("ablation.block", block, ".", kind), kind,
@@ -333,7 +340,8 @@ absl::Status Run() {
         RETURN_IF_ERROR(intervention->Apply(0));
         auto result = ForwardRow(*executor, *model, input, selected_row);
         RETURN_IF_ERROR(intervention->RestoreAndVerify());
-        if (!result.ok()) return result.status();
+        if (!result.ok())
+          return result.status();
         RETURN_IF_ERROR(
             save_arm(absl::StrCat("ablation.block", block, ".head", head),
                      "attention_head", block, head, *result));
@@ -349,7 +357,8 @@ absl::Status Run() {
     RETURN_IF_ERROR(intervention->Apply(0));
     auto result = ForwardRow(*executor, *model, input, selected_row);
     RETURN_IF_ERROR(intervention->RestoreAndVerify());
-    if (!result.ok()) return result.status();
+    if (!result.ok())
+      return result.status();
     RETURN_IF_ERROR(
         save_arm(absl::StrCat("ablation.block", block, ".neuron", neuron),
                  "mlp_neuron", block, neuron, *result));
@@ -371,7 +380,8 @@ absl::Status Run() {
            << "{\"schema_version\":1,\"probe_kind\":\"token_trace\","
               "\"complete\":true,\"token_ids\":[";
   for (int i = 0; i < rows; ++i) {
-    if (i) metadata << ',';
+    if (i)
+      metadata << ',';
     metadata << encoded[i];
   }
   metadata
@@ -427,12 +437,9 @@ int main(int argc, char** argv) {
     std::cerr << "Unexpected positional arguments\n";
     return 1;
   }
-  try {
-    const auto status = pluto::weight_analysis::Run();
-    if (status.ok()) return 0;
-    std::cerr << status << '\n';
-  } catch (const std::exception& error) {
-    std::cerr << "Token trace failed: " << error.what() << '\n';
-  }
+  const auto status = pluto::weight_analysis::Run();
+  if (status.ok())
+    return 0;
+  std::cerr << status << '\n';
   return 1;
 }

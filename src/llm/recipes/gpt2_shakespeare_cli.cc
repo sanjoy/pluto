@@ -65,9 +65,9 @@ uint8_t ModeMask(Gpt2ShakespeareMode mode) {
 }
 
 const FlagRule* FindRule(absl::string_view name) {
-  for (const FlagRule& rule : kFlagRules) {
-    if (rule.name == name) return &rule;
-  }
+  for (const FlagRule& rule : kFlagRules)
+    if (rule.name == name)
+      return &rule;
   return nullptr;
 }
 
@@ -83,14 +83,14 @@ absl::Status ValidateGpt2ShakespeareTrainingSeconds(double training_seconds) {
 
 absl::StatusOr<Gpt2ShakespeareMode> ParseGpt2ShakespeareMode(
     absl::string_view mode) {
-  if (mode == "train_model") return Gpt2ShakespeareMode::kTrainModel;
-  if (mode == "infer_model") return Gpt2ShakespeareMode::kInferModel;
-  if (mode == "train_sae") {
+  if (mode == "train_model")
+    return Gpt2ShakespeareMode::kTrainModel;
+  if (mode == "infer_model")
+    return Gpt2ShakespeareMode::kInferModel;
+  if (mode == "train_sae")
     return Gpt2ShakespeareMode::kTrainSparseAutoEncoder;
-  }
-  if (mode == "infer_SAE" || mode == "infer_sae") {
+  if (mode == "infer_SAE" || mode == "infer_sae")
     return Gpt2ShakespeareMode::kInferSparseAutoEncoder;
-  }
   return absl::InvalidArgumentError(
       "--mode must be one of: train_model, infer_model, train_sae, infer_SAE");
 }

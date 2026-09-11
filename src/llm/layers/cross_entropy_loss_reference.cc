@@ -8,9 +8,9 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "src/util/status_macros.h"
 #include "src/llm/layers/cross_entropy_loss.h"
 #include "src/llm/layers/reference_internal.h"
+#include "src/util/status_macros.h"
 
 namespace pluto::llm {
 namespace ri = reference_internal;
@@ -19,9 +19,8 @@ absl::StatusOr<std::unique_ptr<CrossEntropyLossLayerReference>>
 CrossEntropyLossLayerReference::Create(int vocabulary_size,
                                        DataType data_type) {
   RETURN_IF_ERROR(ri::ValidateComputeType(data_type));
-  if (vocabulary_size <= 0) {
+  if (vocabulary_size <= 0)
     return absl::InvalidArgumentError("vocabulary_size must be positive");
-  }
   return std::unique_ptr<CrossEntropyLossLayerReference>(
       new CrossEntropyLossLayerReference(
           vocabulary_size, ri::RoundUpToTile(vocabulary_size), data_type));
@@ -47,19 +46,16 @@ absl::StatusOr<HostBuffer> CrossEntropyLossLayerReference::fwd(
   // log-sum-exp formula. Padded lanes are included, just as in the CUDA
   // kernel; the LM head guarantees that they contain negative infinity.
   for (int row = 0; row < rows; ++row) {
-    if (targets[row] < 0 || targets[row] >= vocab_size_) {
+    if (targets[row] < 0 || targets[row] >= vocab_size_)
       return absl::InvalidArgumentError("target token is outside vocabulary");
-    }
     const float* row_logits =
         logits + static_cast<size_t>(row) * padded_vocab_size_;
     float maximum = -std::numeric_limits<float>::infinity();
-    for (int token = 0; token < padded_vocab_size_; ++token) {
+    for (int token = 0; token < padded_vocab_size_; ++token)
       maximum = std::max(maximum, row_logits[token]);
-    }
     float denominator = 0.0f;
-    for (int token = 0; token < padded_vocab_size_; ++token) {
+    for (int token = 0; token < padded_vocab_size_; ++token)
       denominator += std::exp(row_logits[token] - maximum);
-    }
     loss[row] = std::log(denominator) + maximum - row_logits[targets[row]];
   }
   tape->intermediates = {inputs[0], inputs[1]};
@@ -88,13 +84,11 @@ absl::StatusOr<HostBufferVec> CrossEntropyLossLayerReference::bwd(
     const float* row_logits =
         logits + static_cast<size_t>(row) * padded_vocab_size_;
     float maximum = -std::numeric_limits<float>::infinity();
-    for (int token = 0; token < padded_vocab_size_; ++token) {
+    for (int token = 0; token < padded_vocab_size_; ++token)
       maximum = std::max(maximum, row_logits[token]);
-    }
     float denominator = 0.0f;
-    for (int token = 0; token < padded_vocab_size_; ++token) {
+    for (int token = 0; token < padded_vocab_size_; ++token)
       denominator += std::exp(row_logits[token] - maximum);
-    }
     for (int token = 0; token < padded_vocab_size_; ++token) {
       const float one_hot = token == targets[row] ? 1.0f : 0.0f;
       d_logits[static_cast<size_t>(row) * padded_vocab_size_ + token] =

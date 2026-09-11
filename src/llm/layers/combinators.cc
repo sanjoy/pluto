@@ -56,10 +56,10 @@ __tile_global__ void AddKernel(const Element* __restrict__ left,
 
 ResidualLayer::ResidualLayer(std::unique_ptr<Layer> layer)
     : layer_(std::move(layer)) {
-  for (const Buffer& weight : layer_->weights()) weights_.push_back(weight);
-  for (const Buffer& gradient : layer_->gradients()) {
+  for (const Buffer& weight : layer_->weights())
+    weights_.push_back(weight);
+  for (const Buffer& gradient : layer_->gradients())
     gradients_.push_back(gradient);
-  }
 }
 
 absl::StatusOr<Buffer> ResidualLayer::fwd(cuda::Executor& executor,
@@ -116,9 +116,8 @@ absl::StatusOr<BufferVec> ResidualLayer::bwd(
     return absl::InvalidArgumentError(
         "ResidualLayer branch returned an incompatible input gradient");
   }
-  ASSIGN_OR_RETURN(
-      auto input_gradient,
-      Buffer::Allocate(executor, output_gradients[0].size_bytes()));
+  ASSIGN_OR_RETURN(auto input_gradient,
+                   Buffer::Allocate(executor, output_gradients[0].size_bytes()));
   ASSIGN_OR_RETURN(int elements,
                    ElementCount(executor, output_gradients[0], sizeof(float),
                                 "residual output gradient"));
@@ -135,10 +134,10 @@ ComposedLayer::ComposedLayer(DataType data_type,
                              std::vector<std::unique_ptr<Layer>> layers)
     : output_type_(data_type), layers_(std::move(layers)) {
   for (const auto& layer : layers_) {
-    for (const Buffer& weight : layer->weights()) weights_.push_back(weight);
-    for (const Buffer& gradient : layer->gradients()) {
+    for (const Buffer& weight : layer->weights())
+      weights_.push_back(weight);
+    for (const Buffer& gradient : layer->gradients())
       gradients_.push_back(gradient);
-    }
   }
 }
 
@@ -176,7 +175,8 @@ absl::StatusOr<BufferVec> ComposedLayer::bwd(
     ASSIGN_OR_RETURN(auto input_gradients,
                      layers_[index]->bwd(executor, child_gradients,
                                          std::move(tape.children[index])));
-    if (index == 0 && input_gradients.empty()) return BufferVec{};
+    if (index == 0 && input_gradients.empty())
+      return BufferVec{};
     if (input_gradients.size() != 1) {
       return absl::InternalError(
           "a composed unary layer returned multiple input gradients");

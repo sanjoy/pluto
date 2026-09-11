@@ -11,7 +11,8 @@
 namespace pluto::cuda {
 
 absl::Status CudaStatus(cudaError_t error, const char* operation) {
-  if (error == cudaSuccess) return absl::OkStatus();
+  if (error == cudaSuccess)
+    return absl::OkStatus();
   return absl::InternalError(absl::StrCat(operation,
                                           " failed: ", cudaGetErrorName(error),
                                           ": ", cudaGetErrorString(error)));
@@ -20,7 +21,8 @@ absl::Status CudaStatus(cudaError_t error, const char* operation) {
 namespace {
 
 void ReportCleanupError(cudaError_t error, const char* operation) {
-  if (error == cudaSuccess) return;
+  if (error == cudaSuccess)
+    return;
   std::fprintf(stderr, "%s failed: %s: %s\n", operation,
                cudaGetErrorName(error), cudaGetErrorString(error));
 }
@@ -31,9 +33,8 @@ absl::StatusOr<std::unique_ptr<Executor>> Executor::Create() {
   cudaStream_t stream = nullptr;
   const cudaError_t error =
       cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
-  if (error != cudaSuccess) {
+  if (error != cudaSuccess)
     return CudaStatus(error, "cudaStreamCreateWithFlags");
-  }
   return std::unique_ptr<Executor>(new Executor(stream));
 }
 

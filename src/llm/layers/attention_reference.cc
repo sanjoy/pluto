@@ -9,9 +9,9 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "src/util/status_macros.h"
 #include "src/llm/layers/attention.h"
 #include "src/llm/layers/reference_internal.h"
+#include "src/util/status_macros.h"
 
 namespace pluto::llm {
 namespace ri = reference_internal;
@@ -175,10 +175,8 @@ absl::StatusOr<HostBufferVec> AttentionLayerReference::bwd(
             std::exp(probabilities[key_position] - maximum);
         denominator += probabilities[key_position];
       }
-      for (int key_position = 0; key_position <= query_position;
-           ++key_position) {
+      for (int key_position = 0; key_position <= query_position; ++key_position)
         probabilities[key_position] /= denominator;
-      }
       float delta = 0.0f;
       for (int dim = 0; dim < head_dim; ++dim) {
         const int column = head_start + dim;

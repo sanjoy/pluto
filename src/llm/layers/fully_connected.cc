@@ -198,9 +198,8 @@ absl::Status FullyConnectedLayer::InitializeIdentity(float scale) {
                    cuda::PageLockedHostArray<float>::Allocate(
                        static_cast<size_t>(input_dim_) * output_dim_));
   std::fill(matrix.begin(), matrix.end(), 0.0f);
-  for (int index = 0; index < std::min(input_dim_, output_dim_); ++index) {
+  for (int index = 0; index < std::min(input_dim_, output_dim_); ++index)
     matrix[static_cast<size_t>(index) * output_dim_ + index] = scale;
-  }
   RETURN_IF_ERROR(cuda::CudaStatus(
       cudaMemcpyAsync(weights_[0].data(), matrix.data(),
                       weights_[0].size_bytes(), cudaMemcpyHostToDevice,
@@ -221,7 +220,8 @@ absl::Status FullyConnectedLayer::InitializeNormal(float standard_deviation,
   ASSIGN_OR_RETURN(auto matrix,
                    cuda::PageLockedHostArray<float>::Allocate(
                        static_cast<size_t>(input_dim_) * output_dim_));
-  for (float& value : matrix) value = distribution(random);
+  for (float& value : matrix)
+    value = distribution(random);
   RETURN_IF_ERROR(cuda::CudaStatus(
       cudaMemcpyAsync(weights_[0].data(), matrix.data(),
                       weights_[0].size_bytes(), cudaMemcpyHostToDevice,

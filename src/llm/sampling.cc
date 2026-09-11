@@ -38,13 +38,15 @@ absl::StatusOr<int> SelectNextToken(absl::Span<const float> logits,
     }
     // Strict comparison deliberately preserves the first (lowest-ID) tie,
     // including +0 versus -0. No random draw participates in greedy decoding.
-    if (logits[token] > logits[best]) best = token;
+    if (logits[token] > logits[best])
+      best = token;
   }
   if (!std::isfinite(logits[best])) {
     return absl::InvalidArgumentError(
         "all logits are masked by negative infinity");
   }
-  if (temperature == 0.0) return best;
+  if (temperature == 0.0)
+    return best;
 
   std::vector<double> probabilities(logits.size());
   for (size_t token = 0; token < logits.size(); ++token) {

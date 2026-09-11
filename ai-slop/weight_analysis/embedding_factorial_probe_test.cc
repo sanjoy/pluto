@@ -119,7 +119,8 @@ class EmbeddingFactorialRowsFileTest : public testing::Test {
   }
   void TearDown() override {
     // Delete only this test's exclusively created fixtures.
-    if (!directory_.empty()) std::filesystem::remove_all(directory_);
+    if (!directory_.empty())
+      std::filesystem::remove_all(directory_);
   }
   std::filesystem::path directory_;
 };

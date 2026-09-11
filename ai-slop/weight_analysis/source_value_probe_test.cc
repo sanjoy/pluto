@@ -91,14 +91,16 @@ TEST(SourceBf16Test, SignedZerosFiniteExtremesAndSubnormalTies) {
 double Magnitude(uint16_t bits) {
   const int exponent = (bits >> 7) & 0xff;
   const int significand = bits & 0x7f;
-  if (exponent == 0) return std::ldexp(static_cast<double>(significand), -133);
+  if (exponent == 0)
+    return std::ldexp(static_cast<double>(significand), -133);
   return std::ldexp(static_cast<double>(128 + significand), exponent - 134);
 }
 
 TEST(SourceBf16Test, ExhaustiveFiniteHalfIsNearestWithEvenTies) {
   for (uint32_t raw = 0; raw <= 0xffff; ++raw) {
     const uint16_t bits = raw;
-    if ((bits & 0x7f80) == 0x7f80) continue;
+    if ((bits & 0x7f80) == 0x7f80)
+      continue;
     ASSERT_EQ(*ScaleSourceBf16(bits, 1), bits);
     ASSERT_EQ(*ScaleSourceBf16(bits, 0), 0);
     const auto half = ScaleSourceBf16(bits, 0.5f);
@@ -109,22 +111,22 @@ TEST(SourceBf16Test, ExhaustiveFiniteHalfIsNearestWithEvenTies) {
     const double distance = std::abs(Magnitude(result) - exact);
     for (int adjacent :
          {static_cast<int>(result) - 1, static_cast<int>(result) + 1}) {
-      if (adjacent < 0 || adjacent >= 0x7f80) continue;
+      if (adjacent < 0 || adjacent >= 0x7f80)
+        continue;
       const double alternative = std::abs(Magnitude(adjacent) - exact);
       ASSERT_LE(distance, alternative) << "BF16 bits=" << bits;
-      if (distance == alternative) {
+      if (distance == alternative)
         ASSERT_EQ(result & 1, 0) << "BF16 tie bits=" << bits;
-      }
     }
   }
 }
 
 TEST(SourceBf16Test, RejectsEveryInfinityAndNanEncodingEvenAtZeroDose) {
   for (uint32_t raw = 0; raw <= 0xffff; ++raw) {
-    if ((raw & 0x7f80) != 0x7f80) continue;
-    for (float scale : {0.0f, 0.5f, 1.0f}) {
+    if ((raw & 0x7f80) != 0x7f80)
+      continue;
+    for (float scale : {0.0f, 0.5f, 1.0f})
       EXPECT_FALSE(ScaleSourceBf16(raw, scale).ok());
-    }
   }
 }
 

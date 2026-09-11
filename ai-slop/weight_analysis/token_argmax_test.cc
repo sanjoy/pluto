@@ -29,9 +29,8 @@ class TokenArgmaxTest : public testing::Test {
   }
 
   void TearDown() override {
-    if (executor_) {
+    if (executor_)
       EXPECT_TRUE(executor_->Synchronize().ok());
-    }
   }
 
   absl::StatusOr<cuda::PageLockedHostArray<int32_t>> Run(
@@ -75,7 +74,8 @@ TEST_F(TokenArgmaxTest, NegativeValuesSignedZeroAndMinimumIdTies) {
   auto result = Run(*host, 5, 5, 7);
   ASSERT_TRUE(result.ok()) << result.status();
   const std::array<int32_t, 5> expected = {1, 0, 0, 4, 1};
-  for (int row = 0; row < 5; ++row) EXPECT_EQ((*result)[row], expected[row]);
+  for (int row = 0; row < 5; ++row)
+    EXPECT_EQ((*result)[row], expected[row]);
 }
 
 TEST_F(TokenArgmaxTest, TileBoundariesOddStridesAndLogicalVocabularyPadding) {
@@ -92,11 +92,9 @@ TEST_F(TokenArgmaxTest, TileBoundariesOddStridesAndLogicalVocabularyPadding) {
     auto host = cuda::PageLockedHostArray<float>::Allocate(4 * padded);
     ASSERT_TRUE(host.ok()) << host.status();
     std::fill(host->begin(), host->end(), -20.0f);
-    for (int row = 0; row < 4; ++row) {
-      for (int token = logical; token < padded; ++token) {
+    for (int row = 0; row < 4; ++row)
+      for (int token = logical; token < padded; ++token)
         (*host)[row * padded + token] = std::numeric_limits<float>::quiet_NaN();
-      }
-    }
     (*host)[logical - 1] = 7;
     (*host)[padded] = 7;
     (*host)[padded + logical - 1] = 7;
@@ -120,7 +118,8 @@ TEST_F(TokenArgmaxTest, EveryNonfiniteLogicalValueInvalidatesItsRow) {
   (*host)[0] = nan;
   (*host)[8 + 4] = infinity;
   (*host)[16 + 4] = -infinity;
-  for (int token = 0; token < 5; ++token) (*host)[24 + token] = nan;
+  for (int token = 0; token < 5; ++token)
+    (*host)[24 + token] = nan;
   (*host)[32 + 3] = 9;
   (*host)[32 + 5] = nan;
   (*host)[32 + 6] = infinity;
@@ -130,9 +129,8 @@ TEST_F(TokenArgmaxTest, EveryNonfiniteLogicalValueInvalidatesItsRow) {
       nan;  // Not merely a check that the winning value is finite.
   auto result = Run(*host, 6, 5, 8);
   ASSERT_TRUE(result.ok()) << result.status();
-  for (int row = 0; row < 6; ++row) {
+  for (int row = 0; row < 6; ++row)
     EXPECT_EQ((*result)[row], row == 4 ? 3 : kInvalidTokenId);
-  }
 }
 
 TEST_F(TokenArgmaxTest, MultipleRowsAgreeWithIndependentScalarOracle) {
@@ -143,16 +141,15 @@ TEST_F(TokenArgmaxTest, MultipleRowsAgreeWithIndependentScalarOracle) {
   ASSERT_TRUE(host.ok()) << host.status();
   std::mt19937 random(17);
   std::uniform_int_distribution<int> draw(-120, 120);
-  for (float& value : *host) value = static_cast<float>(draw(random)) / 8;
+  for (float& value : *host)
+    value = static_cast<float>(draw(random)) / 8;
   auto result = Run(*host, kRows, kLogical, kPadded);
   ASSERT_TRUE(result.ok()) << result.status();
   for (int row = 0; row < kRows; ++row) {
     int expected = 0;
-    for (int token = 1; token < kLogical; ++token) {
-      if ((*host)[row * kPadded + token] > (*host)[row * kPadded + expected]) {
+    for (int token = 1; token < kLogical; ++token)
+      if ((*host)[row * kPadded + token] > (*host)[row * kPadded + expected])
         expected = token;
-      }
-    }
     EXPECT_EQ((*result)[row], expected) << "row " << row;
   }
 }

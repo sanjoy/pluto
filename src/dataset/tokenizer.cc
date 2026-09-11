@@ -41,9 +41,8 @@ const RE2& WhitespacePattern() {
 
 absl::StatusOr<std::vector<absl::string_view>> PreTokenize(
     absl::string_view text) {
-  if (!TokenPattern().ok() || !WhitespacePattern().ok()) {
+  if (!TokenPattern().ok() || !WhitespacePattern().ok())
     return absl::InternalError("GPT-2 pre-tokenizer regex failed to compile");
-  }
 
   std::vector<absl::string_view> pieces;
   absl::string_view remaining = text;
@@ -65,9 +64,8 @@ absl::StatusOr<std::vector<absl::string_view>> PreTokenize(
     size_t consumed = remaining.size() - candidate.size();
     // For a run like "   word", the original pattern emits "  " and leaves
     // the last ASCII space to become the prefix of " word".
-    if (!candidate.empty() && consumed > 1 && remaining[consumed - 1] == ' ') {
+    if (!candidate.empty() && consumed > 1 && remaining[consumed - 1] == ' ')
       --consumed;
-    }
     pieces.push_back(remaining.substr(0, consumed));
     remaining.remove_prefix(consumed);
   }
@@ -88,7 +86,8 @@ absl::StatusOr<std::vector<std::string>> SplitUtf8(absl::string_view text) {
   while (!text.empty()) {
     const char* begin = text.data();
     auto code_point = internal::ConsumeUtf8(&text);
-    if (!code_point.ok()) return code_point.status();
+    if (!code_point.ok())
+      return code_point.status();
     symbols.emplace_back(begin, static_cast<size_t>(text.data() - begin));
   }
   return symbols;
@@ -107,7 +106,8 @@ absl::StatusOr<std::vector<int>> Gpt2Tokenizer::ApplyBpe(
   {
     absl::MutexLock lock(cache_mutex_);
     const auto cached = cache_.find(token);
-    if (cached != cache_.end()) return cached->second;
+    if (cached != cache_.end())
+      return cached->second;
   }
 
   ASSIGN_OR_RETURN(std::vector<std::string> symbols, SplitUtf8(token));
@@ -125,7 +125,8 @@ absl::StatusOr<std::vector<int>> Gpt2Tokenizer::ApplyBpe(
         best_right = symbols[i + 1];
       }
     }
-    if (best_rank == std::numeric_limits<int>::max()) break;
+    if (best_rank == std::numeric_limits<int>::max())
+      break;
 
     std::vector<std::string> merged;
     merged.reserve(symbols.size());
@@ -179,7 +180,8 @@ absl::StatusOr<cuda::PageLockedHostArray<int>> Gpt2Tokenizer::Encode(
     const size_t end =
         special == absl::string_view::npos ? text.size() : special;
     RETURN_IF_ERROR(EncodeOrdinary(text.substr(begin, end - begin), &output));
-    if (special == absl::string_view::npos) break;
+    if (special == absl::string_view::npos)
+      break;
     output.push_back(model_->eos_token_id());
     begin = special + model_->eos_token().size();
   }

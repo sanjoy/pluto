@@ -54,16 +54,16 @@ class CheckpointTest : public testing::Test {
   }
 
   void TearDown() override {
-    if (executor_ == nullptr) return;
+    if (executor_ == nullptr)
+      return;
     EXPECT_TRUE(executor_->Synchronize().ok());
     executor_.reset();
   }
 
   std::vector<unsigned char> Pattern(size_t size, unsigned char seed) {
     std::vector<unsigned char> result(size);
-    for (size_t index = 0; index < size; ++index) {
+    for (size_t index = 0; index < size; ++index)
       result[index] = static_cast<unsigned char>(seed + index * 17);
-    }
     return result;
   }
 
@@ -83,7 +83,8 @@ class CheckpointTest : public testing::Test {
     auto transfer =
         cuda::PageLockedHostArray<unsigned char>::Allocate(buffer.size_bytes());
     EXPECT_TRUE(transfer.ok()) << transfer.status();
-    if (!transfer.ok()) return {};
+    if (!transfer.ok())
+      return {};
     EXPECT_EQ(cudaMemcpyAsync(transfer->data(), buffer.data(), transfer->size(),
                               cudaMemcpyDeviceToHost, executor_->stream()),
               cudaSuccess);
@@ -280,10 +281,10 @@ TEST(CheckpointDirectoryTest, EqualStepsDoNotDependOnDirectoryCreationOrder) {
         std::filesystem::path(testing::TempDir()) /
         (reversed ? "checkpoint-aliases-reverse" : "checkpoint-aliases");
     std::vector<std::string> names{"step_007", "step_07", "step_7", "step_6"};
-    if (reversed) std::reverse(names.begin(), names.end());
-    for (const std::string& name : names) {
+    if (reversed)
+      std::reverse(names.begin(), names.end());
+    for (const std::string& name : names)
       ASSERT_TRUE(std::filesystem::create_directories(parent / name));
-    }
     auto latest = FindLatestCheckpoint(parent);
     ASSERT_TRUE(latest.ok()) << latest.status();
     EXPECT_EQ(latest->directory, parent / "step_7");

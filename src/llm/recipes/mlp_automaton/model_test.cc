@@ -41,9 +41,9 @@ template <class BufferType>
 std::vector<BufferType> DistinctWeights(absl::Span<BufferType> weights) {
   std::unordered_set<const void*> seen;
   std::vector<BufferType> result;
-  for (const auto& weight : weights) {
-    if (seen.insert(weight.data()).second) result.push_back(weight);
-  }
+  for (const auto& weight : weights)
+    if (seen.insert(weight.data()).second)
+      result.push_back(weight);
   return result;
 }
 
@@ -81,7 +81,8 @@ class MlpAutomatonModelTest : public LayerReferenceTest {
  protected:
   void SetUp() override {
     LayerReferenceTest::SetUp();
-    if (HasFatalFailure()) return;
+    if (HasFatalFailure())
+      return;
     std::string pattern =
         (std::filesystem::path(testing::TempDir()) / "mlp-automaton-XXXXXX")
             .string();
@@ -134,7 +135,8 @@ class MlpAutomatonModelTest : public LayerReferenceTest {
     ASSERT_TRUE(std::filesystem::create_directory(directory));
     auto weights = DistinctWeights(reference_->weights());
     for (size_t index = 0; index < weights.size(); ++index) {
-      if (omit_last && index + 1 == weights.size()) continue;
+      if (omit_last && index + 1 == weights.size())
+        continue;
       std::ofstream output(
           directory /
               ("weight_" + std::to_string(kCheckpointIndices[index]) + ".bin"),
@@ -152,7 +154,8 @@ class MlpAutomatonModelTest : public LayerReferenceTest {
     for (const auto& weight : DistinctWeights(model_->weights())) {
       auto values = ReadDeviceFloats(*executor_, weight);
       EXPECT_TRUE(values.ok()) << values.status();
-      if (!values.ok()) return {};
+      if (!values.ok())
+        return {};
       result.emplace_back(values->begin(), values->end());
     }
     return result;
@@ -244,11 +247,10 @@ TEST_F(MlpAutomatonModelTest, NativeReadoutMatchesIndependentCpuFormula) {
   for (size_t row = 0; row < tokens.size(); ++row) {
     for (int token = 0; token < kPaddedVocabulary; ++token) {
       const float value = (*logits)[row * kPaddedVocabulary + token];
-      if (token < kDimensions.vocab_size) {
+      if (token < kDimensions.vocab_size)
         EXPECT_TRUE(std::isfinite(value));
-      } else {
+      else
         EXPECT_EQ(value, -std::numeric_limits<float>::max());
-      }
     }
   }
   // The isolated network has no positions or attention: equal input IDs at
@@ -268,8 +270,10 @@ TEST_F(MlpAutomatonModelTest, InvalidLateFileDoesNotModifyAnyDeviceWeight) {
     ASSERT_FALSE(HasFatalFailure());
     if (mode != "missing") {
       std::vector<float> invalid(16, 0.25f);
-      if (mode == "short") invalid.pop_back();
-      if (mode == "long") invalid.push_back(0.5f);
+      if (mode == "short")
+        invalid.pop_back();
+      if (mode == "long")
+        invalid.push_back(0.5f);
       if (mode == "nan")
         invalid.back() = std::numeric_limits<float>::quiet_NaN();
       if (mode == "inf")
@@ -348,13 +352,12 @@ TEST_F(MlpAutomatonModelTest, ScanCoversEveryTokenAndFinalPartialBatch) {
   for (int source = 0; source < kDimensions.vocab_size; ++source) {
     const float* row = logits->data() + source * kPaddedVocabulary;
     int winner = 0;
-    for (int target = 1; target < kDimensions.vocab_size; ++target) {
-      if (row[target] > row[winner]) winner = target;
-    }
+    for (int target = 1; target < kDimensions.vocab_size; ++target)
+      if (row[target] > row[winner])
+        winner = target;
     double denominator = 0;
-    for (int target = 0; target < kDimensions.vocab_size; ++target) {
+    for (int target = 0; target < kDimensions.vocab_size; ++target)
       denominator += std::exp(static_cast<double>(row[target]) - row[winner]);
-    }
     EXPECT_EQ((*scan)[source].token, winner) << "source " << source;
     EXPECT_NEAR((*scan)[source].probability, 1.0 / denominator, 2e-6)
         << "source " << source;
