@@ -42,7 +42,7 @@ absl::StatusOr<PageLockedHostBuffer> PageLockedHostBuffer::Allocate(
   void* memory = nullptr;
   const cudaError_t allocation_error =
       cudaMallocFromPoolAsync(&memory, size_bytes, executor.host_memory_pool(),
-                              executor.trivial_stream());
+                              executor.immediate_stream());
   if (allocation_error != cudaSuccess) {
     const auto operation =
         absl::StrCat("cudaMallocFromPoolAsync(host, ", size_bytes, ")");
@@ -60,21 +60,21 @@ absl::StatusOr<PageLockedHostBuffer> PageLockedHostBuffer::Allocate(
   //
   // Using the compute stream here would put allocation behind queued training
   // kernels: waiting for the allocation would also wait for all those kernels.
-  // The separate trivial stream lets the CPU prepare the next host buffer
+  // The separate immediate stream lets the CPU prepare the next host buffer
   // while computation continues. The pool only recycles completed frees, so
   // it cannot introduce a dependency on a still-pending compute-stream free.
   // Successful allocations are freed on the compute stream after their copies.
-  const cudaError_t ready = cudaStreamSynchronize(executor.trivial_stream());
+  const cudaError_t ready = cudaStreamSynchronize(executor.immediate_stream());
   if (ready != cudaSuccess) {
     // No consumer has received this address yet. Release it on the allocation
     // stream, preserving allocation-before-free ordering even on this path.
     const absl::Status cleanup =
-        CudaStatus(cudaFreeAsync(memory, executor.trivial_stream()),
+        CudaStatus(cudaFreeAsync(memory, executor.immediate_stream()),
                    "cudaFreeAsync(failed host allocation)");
     if (!cleanup.ok()) std::fprintf(stderr, "%s\n", cleanup.ToString().c_str());
-    // Cleanup also follows the trivial stream's enqueue-and-wait contract.
+    // Cleanup also follows the immediate stream's enqueue-and-wait contract.
     const absl::Status drained =
-        CudaStatus(cudaStreamSynchronize(executor.trivial_stream()),
+        CudaStatus(cudaStreamSynchronize(executor.immediate_stream()),
                    "cudaStreamSynchronize(failed host allocation cleanup)");
     if (!drained.ok()) std::fprintf(stderr, "%s\n", drained.ToString().c_str());
     return CudaStatus(ready, "cudaStreamSynchronize(host allocation)");

@@ -41,10 +41,10 @@ absl::StatusOr<std::unique_ptr<Executor>> Executor::Create() {
   error = cudaStreamCreateWithFlags(&executor->stream_, cudaStreamNonBlocking);
   if (error != cudaSuccess)
     return CudaStatus(error, "cudaStreamCreateWithFlags");
-  error = cudaStreamCreateWithFlags(&executor->trivial_stream_,
+  error = cudaStreamCreateWithFlags(&executor->immediate_stream_,
                                     cudaStreamNonBlocking);
   if (error != cudaSuccess)
-    return CudaStatus(error, "cudaStreamCreateWithFlags(trivial stream)");
+    return CudaStatus(error, "cudaStreamCreateWithFlags(immediate stream)");
 
   cudaMemPoolProps properties{};
   properties.allocType = cudaMemAllocationTypePinned;
@@ -101,16 +101,16 @@ Executor::~Executor() {
   // handles occur only while unwinding a partially successful Create().
   if (stream_ != nullptr)
     ReportCleanupError(cudaStreamSynchronize(stream_), "cudaStreamSynchronize");
-  if (trivial_stream_ != nullptr) {
-    ReportCleanupError(cudaStreamSynchronize(trivial_stream_),
-                       "cudaStreamSynchronize(trivial stream)");
+  if (immediate_stream_ != nullptr) {
+    ReportCleanupError(cudaStreamSynchronize(immediate_stream_),
+                       "cudaStreamSynchronize(immediate stream)");
   }
   if (host_memory_pool_ != nullptr)
     ReportCleanupError(cudaMemPoolDestroy(host_memory_pool_),
                        "cudaMemPoolDestroy");
-  if (trivial_stream_ != nullptr) {
-    ReportCleanupError(cudaStreamDestroy(trivial_stream_),
-                       "cudaStreamDestroy(trivial stream)");
+  if (immediate_stream_ != nullptr) {
+    ReportCleanupError(cudaStreamDestroy(immediate_stream_),
+                       "cudaStreamDestroy(immediate stream)");
   }
   if (stream_ != nullptr)
     ReportCleanupError(cudaStreamDestroy(stream_), "cudaStreamDestroy");

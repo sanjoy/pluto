@@ -206,8 +206,8 @@ TEST_F(PageLockedHostBufferTest, PendingUploadsOutliveTheirLastHostOwner) {
               cudaSuccess);
   }
   EXPECT_FALSE(gate.expired());
-  // Allocate has completed its trivial-stream work while compute is blocked.
-  EXPECT_EQ(cudaStreamQuery(executor_->trivial_stream()), cudaSuccess);
+  // Allocate has completed its immediate-stream work while compute is blocked.
+  EXPECT_EQ(cudaStreamQuery(executor_->immediate_stream()), cudaSuccess);
   EXPECT_EQ(cudaStreamQuery(executor_->stream()), cudaErrorNotReady);
   gate.Open();
   ASSERT_EQ(

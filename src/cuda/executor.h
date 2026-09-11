@@ -16,7 +16,7 @@ absl::Status CudaStatus(cudaError_t error, const char* operation);
 // Owns the CUDA execution context used by stream-ordered computations.
 //
 // Work and frees use one explicitly created, non-default compute stream. An
-// independent trivial stream handles short enqueue-and-immediately-wait
+// independent immediate stream handles short enqueue-and-immediately-wait
 // operations, including allocations from the owned pinned-host pool.
 // Waiting for a CPU-accessible allocation therefore need not wait for pending
 // computation. Only already-completed frees may be recycled by the host pool:
@@ -44,7 +44,7 @@ class Executor final {
   // before returning; never leave deferred work queued here or introduce a
   // dependency on the compute stream. This keeps a readiness wait independent
   // of queued training kernels. The borrowed stream must not be destroyed.
-  cudaStream_t trivial_stream() const { return trivial_stream_; }
+  cudaStream_t immediate_stream() const { return immediate_stream_; }
 
   // Borrowed pool for pinned-host allocations. Callers must not destroy it or
   // change its access/reuse policy.
@@ -54,7 +54,7 @@ class Executor final {
   Executor() = default;
 
   cudaStream_t stream_ = nullptr;
-  cudaStream_t trivial_stream_ = nullptr;
+  cudaStream_t immediate_stream_ = nullptr;
   cudaMemPool_t host_memory_pool_ = nullptr;
 };
 

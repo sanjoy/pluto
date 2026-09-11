@@ -30,10 +30,10 @@ TEST(ExecutorTest, OwnsAnExplicitStreamAndSynchronizesIt) {
   EXPECT_TRUE((*executor)->Synchronize().ok());
 }
 
-TEST(ExecutorTest, TrivialStreamIsIndependentAndUsedForImmediateWaits) {
+TEST(ExecutorTest, ImmediateStreamIsIndependentAndUsedForImmediateWaits) {
   auto executor = Executor::Create();
   ASSERT_TRUE(executor.ok()) << executor.status();
-  const cudaStream_t stream = (*executor)->trivial_stream();
+  const cudaStream_t stream = (*executor)->immediate_stream();
   EXPECT_NE(stream, nullptr);
   EXPECT_NE(stream, cudaStreamLegacy);
   EXPECT_NE(stream, cudaStreamPerThread);
