@@ -169,7 +169,7 @@ absl::Status Run() {
         "tokenizer vocabulary does not match GPT-2");
   }
   const std::string prompt = absl::GetFlag(FLAGS_prompt);
-  ASSIGN_OR_RETURN(auto encoded, tokenizer->Encode(prompt));
+  ASSIGN_OR_RETURN(auto encoded, tokenizer->Encode(*executor, prompt));
   if (encoded.empty() || encoded.size() > kContext)
     return absl::InvalidArgumentError("prompt must encode to 1..1024 tokens");
   ASSIGN_OR_RETURN(auto decoded, detokenizer->Decode(encoded.span()));
@@ -180,8 +180,8 @@ absl::Status Run() {
   // Causal attention makes the unused suffix invisible to all exported rows.
   const int padding = encoded[rows - 1];
   const int alternate_padding = padding == 0 ? tokenizer->eos_token_id() : 0;
-  ASSIGN_OR_RETURN(auto tokens,
-                   cuda::PageLockedHostArray<int>::Allocate(kContext));
+  ASSIGN_OR_RETURN(auto tokens, cuda::PageLockedHostArray<int>::Allocate(
+                                    *executor, kContext));
   std::fill(tokens.begin(), tokens.end(), padding);
   std::copy(encoded.begin(), encoded.end(), tokens.begin());
   ASSIGN_OR_RETURN(auto input,

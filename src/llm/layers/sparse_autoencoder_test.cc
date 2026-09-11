@@ -181,7 +181,7 @@ TEST_F(LayersTest, ParallelLossHandlesGpt2BatchTenShape) {
   BufferVec inputs = {*input, *reconstruction, *latents, *decoder};
   auto output = (*loss)->fwd(*executor_, inputs, &tape);
   ASSERT_TRUE(output.ok()) << output.status();
-  auto host_output = AllocatePageLockedHostArray<float>(1);
+  auto host_output = AllocatePageLockedHostArray<float>(*executor_, 1);
   ASSERT_EQ(cudaMemcpyAsync(host_output.data(), output->data(), sizeof(float),
                             cudaMemcpyDeviceToHost, executor_->stream()),
             cudaSuccess);

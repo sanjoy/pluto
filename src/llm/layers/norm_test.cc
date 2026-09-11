@@ -21,17 +21,17 @@ TEST_F(LayersTest, LayerNormNormalizesRowsAndRejectsConstantGradient) {
                                            DataType::FP16);
   ASSERT_TRUE(layer_norm.ok()) << layer_norm.status();
 
-  std::vector<float> input(kTestBatchSize * kTestModelWidth);
+  std::vector<float> input(kTestTokenCount * kTestModelWidth);
   std::vector<float> output_gradient(input.size(), 1.0f);
-  for (int row = 0; row < kTestBatchSize; ++row) {
+  for (int row = 0; row < kTestTokenCount; ++row) {
     for (int column = 0; column < kTestModelWidth; ++column) {
       input[row * kTestModelWidth + column] =
           static_cast<float>(column) / kTestModelWidth;
     }
   }
-  const auto pinned_input = CopyToPageLockedHostArray(input);
+  const auto pinned_input = CopyToPageLockedHostArray(*executor_, input);
   const auto pinned_output_gradient =
-      CopyToPageLockedHostArray(output_gradient);
+      CopyToPageLockedHostArray(*executor_, output_gradient);
   auto input_buffer =
       Buffer::Allocate(*executor_, input.size() * sizeof(float));
   auto gradient_buffer =
@@ -57,9 +57,10 @@ TEST_F(LayersTest, LayerNormNormalizesRowsAndRejectsConstantGradient) {
       (*layer_norm)->bwd(*executor_, gradients, std::move(tape));
   ASSERT_TRUE(input_gradient.ok()) << input_gradient.status();
 
-  auto host_output = AllocatePageLockedHostArray<float>(kTestModelWidth);
+  auto host_output =
+      AllocatePageLockedHostArray<float>(*executor_, kTestModelWidth);
   auto host_input_gradient =
-      AllocatePageLockedHostArray<float>(kTestModelWidth);
+      AllocatePageLockedHostArray<float>(*executor_, kTestModelWidth);
   ASSERT_EQ(cudaMemcpyAsync(host_output.data(), output->data(),
                             host_output.size() * sizeof(float),
                             cudaMemcpyDeviceToHost, executor_->stream()),

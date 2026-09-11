@@ -63,8 +63,9 @@ TEST_F(TokenTraceGpuTest, FileBytesAreExactLittleEndianIdsWithoutRetokenizing) {
   const std::array<uint8_t, 12> bytes{0, 0, 0, 0, 1, 1, 0, 0, 0x50, 0xc4, 0, 0};
   const auto path = directory_ / "tokens.i32";
   ASSERT_TRUE(WriteExclusive(path, bytes.data(), bytes.size()).ok());
-  auto ids = ReadTokenIds(path, 50257, 1024);
+  auto ids = ReadTokenIds(*executor_, path, 50257, 1024);
   ASSERT_TRUE(ids.ok()) << ids.status();
+  EXPECT_EQ(&ids->executor(), executor_.get());
   ASSERT_EQ(ids->size(), 3U);
   EXPECT_EQ((*ids)[0], 0);
   EXPECT_EQ((*ids)[1], 257);
@@ -79,33 +80,35 @@ TEST_F(TokenTraceGpuTest, TokenFileRejectsMalformedSizeIdsAndNonregularInputs) {
   const std::array<int32_t, 3> valid{0, 1, 2};
   const auto good = directory_ / "good";
   ASSERT_TRUE(WriteExclusive(good, valid.data(), sizeof(valid)).ok());
-  EXPECT_FALSE(ReadTokenIds(good, 50257, 2).ok());
-  EXPECT_FALSE(ReadTokenIds(good, 0, 1024).ok());
-  EXPECT_FALSE(ReadTokenIds(good, 50257, 0).ok());
+  EXPECT_FALSE(ReadTokenIds(*executor_, good, 50257, 2).ok());
+  EXPECT_FALSE(ReadTokenIds(*executor_, good, 0, 1024).ok());
+  EXPECT_FALSE(ReadTokenIds(*executor_, good, 50257, 0).ok());
   const auto empty = directory_ / "empty";
   ASSERT_TRUE(WriteExclusive(empty, valid.data(), 0).ok());
-  EXPECT_FALSE(ReadTokenIds(empty, 50257, 1024).ok());
+  EXPECT_FALSE(ReadTokenIds(*executor_, empty, 50257, 1024).ok());
   const auto partial = directory_ / "partial";
   ASSERT_TRUE(WriteExclusive(partial, valid.data(), 3).ok());
-  EXPECT_FALSE(ReadTokenIds(partial, 50257, 1024).ok());
+  EXPECT_FALSE(ReadTokenIds(*executor_, partial, 50257, 1024).ok());
   for (const int32_t value : {-1, 50257}) {
     const auto invalid = directory_ / std::to_string(value);
     ASSERT_TRUE(WriteExclusive(invalid, &value, sizeof(value)).ok());
-    EXPECT_FALSE(ReadTokenIds(invalid, 50257, 1024).ok());
+    EXPECT_FALSE(ReadTokenIds(*executor_, invalid, 50257, 1024).ok());
   }
   const auto link = directory_ / "symlink";
   std::filesystem::create_symlink(good, link);
-  EXPECT_FALSE(ReadTokenIds(link, 50257, 1024).ok());
-  EXPECT_FALSE(ReadTokenIds(directory_, 50257, 1024).ok());
-  EXPECT_FALSE(ReadTokenIds(directory_ / "missing", 50257, 1024).ok());
+  EXPECT_FALSE(ReadTokenIds(*executor_, link, 50257, 1024).ok());
+  EXPECT_FALSE(ReadTokenIds(*executor_, directory_, 50257, 1024).ok());
+  EXPECT_FALSE(
+      ReadTokenIds(*executor_, directory_ / "missing", 50257, 1024).ok());
   const auto fifo = directory_ / "fifo";
   ASSERT_EQ(mkfifo(fifo.c_str(), 0600), 0);
   // Must reject without waiting for a writer to connect.
-  EXPECT_FALSE(ReadTokenIds(fifo, 50257, 1024).ok());
+  EXPECT_FALSE(ReadTokenIds(*executor_, fifo, 50257, 1024).ok());
 }
 
 TEST_F(TokenTraceGpuTest, ReadsFirstMiddleAndLastRowsWithExactByteOffsets) {
-  auto host = cuda::PageLockedHostArray<uint8_t>::Allocate(4 * 8 * 4);
+  auto host =
+      cuda::PageLockedHostArray<uint8_t>::Allocate(*executor_, 4 * 8 * 4);
   ASSERT_TRUE(host.ok());
   for (size_t i = 0; i < host->size(); ++i)
     (*host)[i] = i;
@@ -117,6 +120,7 @@ TEST_F(TokenTraceGpuTest, ReadsFirstMiddleAndLastRowsWithExactByteOffsets) {
   for (int row = 0; row < 4; ++row) {
     auto actual = ReadSelectedRow(*executor_, *buffer, row, 8, 4);
     ASSERT_TRUE(actual.ok()) << actual.status();
+    EXPECT_EQ(&actual->executor(), executor_.get());
     ASSERT_EQ(actual->size_bytes(), 32U);
     EXPECT_EQ(std::memcmp(actual->data(), host->data() + row * 32, 32), 0);
     cudaPointerAttributes attributes{};

@@ -163,7 +163,7 @@ absl::StatusOr<FactorialMeasurements> EvaluateEmbeddingFactorial(
                        lenses[head]->Apply(executor, residuals[input]));
       ASSIGN_OR_RETURN(result.logits[cell],
                        cuda::PageLockedHostArray<float>::Allocate(
-                           selected_rows.size() * vocabulary));
+                           executor, selected_rows.size() * vocabulary));
       for (size_t i = 0; i < selected_rows.size(); ++i) {
         ASSIGN_OR_RETURN(auto actual,
                          ReadSelectedRow(executor, logits, selected_rows[i],

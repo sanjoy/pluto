@@ -59,9 +59,12 @@ class CuTileTest : public testing::Test {
 };
 
 TEST_F(CuTileTest, AddsOneTilePerLogicalBlock) {
-  auto left_host = PageLockedHostArray<int>::Allocate(kElementCount);
-  auto right_host = PageLockedHostArray<int>::Allocate(kElementCount);
-  auto output_host = PageLockedHostArray<int>::Allocate(kElementCount);
+  auto left_host =
+      PageLockedHostArray<int>::Allocate(*executor_, kElementCount);
+  auto right_host =
+      PageLockedHostArray<int>::Allocate(*executor_, kElementCount);
+  auto output_host =
+      PageLockedHostArray<int>::Allocate(*executor_, kElementCount);
   ASSERT_TRUE(left_host.ok()) << left_host.status();
   ASSERT_TRUE(right_host.ok()) << right_host.status();
   ASSERT_TRUE(output_host.ok()) << output_host.status();

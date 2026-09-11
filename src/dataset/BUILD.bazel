@@ -60,6 +60,7 @@ cc_library(
     hdrs = ["tokenizer.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//src/cuda:executor",
         ":gpt2_tokenizer_vocabulary",
         "//src/util:status_macros",
         "//src/cuda:page_locked_host_array",
@@ -114,8 +115,9 @@ cc_test(
     name = "tokenizer_test",
     size = "small",
     srcs = ["tokenizer_test.cc"],
-    tags = ["requires-tokenizer"],
+    tags = ["requires-gpu", "requires-tokenizer"],
     deps = [
+        "//src/cuda:executor",
         ":detokenizer",
         ":tokenizer",
         "@googletest//:gtest_main",
@@ -152,6 +154,7 @@ cc_library(
     hdrs = ["fineweb_converter.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//src/cuda:executor",
         ":document_file",
         ":tokenizer",
         "//src/util:status_macros",
@@ -166,8 +169,9 @@ cc_test(
     size = "small",
     srcs = ["fineweb_converter_test.cc"],
     data = ["//src/parquet:testdata/fineweb_sample.parquet"],
-    tags = ["requires-tokenizer"],
+    tags = ["requires-gpu", "requires-tokenizer"],
     deps = [
+        "//src/cuda:executor",
         ":detokenizer",
         ":document_file",
         ":fineweb_converter",
@@ -180,6 +184,7 @@ cc_binary(
     name = "tokenize_fineweb",
     srcs = ["tokenize_fineweb.cc"],
     deps = [
+        "//src/cuda:executor",
         ":fineweb_converter",
         ":tokenizer",
         "//src/util:status_macros",

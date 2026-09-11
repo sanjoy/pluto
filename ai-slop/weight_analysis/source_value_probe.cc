@@ -385,8 +385,8 @@ absl::StatusOr<SourceValueResult> SourceValueProbe::Apply(
       2 * (query_row * kWidth + selection.head * kHeadWidth);
 
   ASSIGN_OR_RETURN(auto qkv, Clone(executor, impl_->qkv));
-  ASSIGN_OR_RETURN(auto values,
-                   cuda::PageLockedHostArray<uint16_t>::Allocate(kHeadWidth));
+  ASSIGN_OR_RETURN(auto values, cuda::PageLockedHostArray<uint16_t>::Allocate(
+                                    executor, kHeadWidth));
   for (int i = 0; i < kHeadWidth; ++i) {
     uint16_t original;
     std::memcpy(&original, impl_->qkv_bytes.data() + value_offset + 2 * i, 2);

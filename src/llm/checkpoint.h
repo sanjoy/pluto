@@ -37,6 +37,9 @@ absl::Status WriteToDirectory(cuda::Executor& executor, const Layer& layer,
 // byte size is checked before any device buffer is modified. Additional
 // higher-index weight files are ignored, allowing a prefix layer such as an
 // activation generator to read weights from a complete-model checkpoint.
+// Uploads are queued on executor; subsequent work on that executor observes
+// the restored weights in order. Host staging destruction is also ordered on
+// that stream, so this function need not synchronize computation.
 absl::Status ReadFromDirectory(cuda::Executor& executor, Layer& layer,
                                const std::filesystem::path& directory);
 

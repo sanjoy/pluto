@@ -18,7 +18,9 @@ namespace pluto::cuda {
 // Elements are deliberately restricted to trivially copyable types: CUDA
 // transfer buffers are byte storage and do not run element constructors or
 // destructors. Copying PageLockedHostArray is cheap and keeps the allocation
-// alive; it does not copy its elements.
+// alive; it does not copy its elements. The executor must outlive all copies.
+// Factories return CPU-ready storage and frees are ordered after transfers on
+// that executor. See PageLockedHostBuffer for CPU/transfer ordering rules.
 template <class T>
 class PageLockedHostArray final {
  public:
@@ -27,20 +29,21 @@ class PageLockedHostArray final {
 
   PageLockedHostArray() = default;
 
-  static absl::StatusOr<PageLockedHostArray> Allocate(size_t size) {
+  static absl::StatusOr<PageLockedHostArray> Allocate(Executor& executor,
+                                                      size_t size) {
     if (size > std::numeric_limits<size_t>::max() / sizeof(T)) {
       return absl::InvalidArgumentError(
           "page-locked host array byte size overflows size_t");
     }
-    auto buffer = PageLockedHostBuffer::Allocate(size * sizeof(T));
+    auto buffer = PageLockedHostBuffer::Allocate(executor, size * sizeof(T));
     if (!buffer.ok())
       return buffer.status();
     return PageLockedHostArray(std::move(*buffer), size);
   }
 
   static absl::StatusOr<PageLockedHostArray> CopyFrom(
-      absl::Span<const T> values) {
-    auto result = Allocate(values.size());
+      Executor& executor, absl::Span<const T> values) {
+    auto result = Allocate(executor, values.size());
     if (!result.ok())
       return result.status();
     if (!values.empty())
@@ -67,6 +70,7 @@ class PageLockedHostArray final {
   }
 
   const PageLockedHostBuffer& buffer() const { return buffer_; }
+  Executor& executor() const { return buffer_.executor(); }
 
  private:
   PageLockedHostArray(PageLockedHostBuffer buffer, size_t size)

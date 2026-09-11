@@ -173,8 +173,8 @@ absl::StatusOr<cuda::PageLockedHostArray<float>> PredictSelectedRow(
     return absl::InvalidArgumentError(
         "invalid selected-row prediction shape/executor");
   }
-  ASSIGN_OR_RETURN(auto host_logits,
-                   cuda::PageLockedHostArray<float>::Allocate(kVocabulary));
+  ASSIGN_OR_RETURN(auto host_logits, cuda::PageLockedHostArray<float>::Allocate(
+                                         executor, kVocabulary));
   // On an error path, preserve pinned input/output until all enqueued work has
   // stopped. The fence is declared after host_logits and dies before it.
   struct Fence {
@@ -256,7 +256,7 @@ absl::Status Run() {
   }
   const auto requested_prompt = absl::GetFlag(FLAGS_prompt);
   const std::string prompt = requested_prompt.empty() ? "\n" : requested_prompt;
-  ASSIGN_OR_RETURN(auto encoded, encoder->Encode(prompt));
+  ASSIGN_OR_RETURN(auto encoded, encoder->Encode(*executor, prompt));
   if (encoded.empty())
     return absl::InvalidArgumentError("prompt encoded to no tokens");
   ASSIGN_OR_RETURN(auto round_trip, decoder->Decode(encoded.span()));
@@ -266,8 +266,8 @@ absl::Status Run() {
   std::vector<int> generated;
   generated.reserve(steps);
   std::string generated_bytes;
-  ASSIGN_OR_RETURN(auto padded,
-                   cuda::PageLockedHostArray<int>::Allocate(kContext));
+  ASSIGN_OR_RETURN(auto padded, cuda::PageLockedHostArray<int>::Allocate(
+                                    *executor, kContext));
   ASSIGN_OR_RETURN(auto token_buffer,
                    cuda::Buffer::Allocate(*executor, padded.size_bytes()));
   ASSIGN_OR_RETURN(auto model,

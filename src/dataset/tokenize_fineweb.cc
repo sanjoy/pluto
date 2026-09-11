@@ -15,6 +15,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "src/cuda/executor.h"
 #include "src/dataset/fineweb_converter.h"
 #include "src/dataset/tokenizer.h"
 #include "src/util/status_macros.h"
@@ -130,12 +131,18 @@ absl::Status RunConversion() {
   // Load one encoder per worker. The parsed immutable GPT-2 model is cached and
   // shared, while each encoder keeps an independent BPE cache to avoid lock
   // contention during CPU-heavy shard conversion.
+  // One explicit executor/pinned pool per worker. Keep executors alive until
+  // all worker-owned staging arrays have been destroyed.
+  std::vector<std::unique_ptr<cuda::Executor>> executors;
+  executors.reserve(worker_count);
   std::vector<std::unique_ptr<tokenizer::Gpt2Tokenizer>> encoders;
   encoders.reserve(worker_count);
   for (size_t worker = 0; worker < worker_count; ++worker) {
     ASSIGN_OR_RETURN(auto encoder,
                      tokenizer::Gpt2Tokenizer::Load(tokenizer_dir));
     encoders.push_back(std::move(encoder));
+    ASSIGN_OR_RETURN(auto executor, cuda::Executor::Create());
+    executors.push_back(std::move(executor));
   }
 
   std::cout << "Converting " << work.size() << " shard(s) with " << worker_count
@@ -164,8 +171,9 @@ absl::Status RunConversion() {
 
         FineWebConversionOptions options;
         options.batch_size = static_cast<size_t>(requested_batch_size);
-        const absl::Status status = ConvertFineWebParquetFile(
-            item.input, item.output, *encoders[worker], options);
+        const absl::Status status =
+            ConvertFineWebParquetFile(*executors[worker], item.input,
+                                      item.output, *encoders[worker], options);
         if (!status.ok()) {
           std::lock_guard<std::mutex> lock(mutex);
           if (failure.ok()) {

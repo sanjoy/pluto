@@ -12,25 +12,27 @@ namespace pluto::llm {
 
 // Deliberately differ from the Shakespeare binary's defaults. Exercising a
 // second shape catches accidental compile-time coupling in the cuTile backend.
-inline constexpr int kTestBatchSize = 32;
+inline constexpr int kTestTokenCount = 32;
 inline constexpr int kTestModelWidth = 32;
 inline constexpr int kTestVocabularySize = 32;
 inline constexpr int kTestContextLength = 4;
 inline constexpr int kTestAttentionHeads = 2;
 
 template <class Container>
-auto CopyToPageLockedHostArray(const Container& values)
+auto CopyToPageLockedHostArray(cuda::Executor& executor,
+                               const Container& values)
     -> cuda::PageLockedHostArray<typename Container::value_type> {
   using Element = typename Container::value_type;
   auto result = cuda::PageLockedHostArray<Element>::CopyFrom(
-      absl::MakeConstSpan(values.data(), values.size()));
+      executor, absl::MakeConstSpan(values.data(), values.size()));
   EXPECT_TRUE(result.ok()) << result.status();
   return result.ok() ? *result : cuda::PageLockedHostArray<Element>();
 }
 
 template <class Element>
-cuda::PageLockedHostArray<Element> AllocatePageLockedHostArray(size_t size) {
-  auto result = cuda::PageLockedHostArray<Element>::Allocate(size);
+cuda::PageLockedHostArray<Element> AllocatePageLockedHostArray(
+    cuda::Executor& executor, size_t size) {
+  auto result = cuda::PageLockedHostArray<Element>::Allocate(executor, size);
   EXPECT_TRUE(result.ok()) << result.status();
   return result.ok() ? *result : cuda::PageLockedHostArray<Element>();
 }

@@ -94,9 +94,9 @@ absl::Status Run() {
   RETURN_IF_ERROR(ValidateCheckpointFiles(checkpoint));
   RETURN_IF_ERROR(CreateNewOutputDirectory(output_path));
   ASSIGN_OR_RETURN(auto executor, cuda::Executor::Create());
-  ASSIGN_OR_RETURN(auto batch,
-                   LoadPackedBatch(batch_path, llm::kGpt2ContextLength,
-                                   llm::kGpt2VocabularySize));
+  ASSIGN_OR_RETURN(auto batch, LoadPackedBatch(*executor, batch_path,
+                                               llm::kGpt2ContextLength,
+                                               llm::kGpt2VocabularySize));
   if (batch.passage_count != 32) {
     return absl::InvalidArgumentError(
         "frozen validation protocol requires exactly 32 passages");

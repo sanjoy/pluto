@@ -133,8 +133,10 @@ absl::Status Run() {
   // rejected rather than silently resolved. IDs are never passed to a
   // tokenizer.
   const auto token_path = fs::absolute(absl::GetFlag(FLAGS_tokens_file));
+  // The executor owns the pinned input pool and must outlive token storage.
+  ASSIGN_OR_RETURN(auto executor, cuda::Executor::Create());
   ASSIGN_OR_RETURN(auto encoded,
-                   ReadTokenIds(token_path, kVocabulary, kContext));
+                   ReadTokenIds(*executor, token_path, kVocabulary, kContext));
   const auto token_bytes = fs::file_size(token_path);
   const auto token_modified = fs::last_write_time(token_path);
   const auto output = fs::absolute(absl::GetFlag(FLAGS_output_dir));
@@ -151,28 +153,28 @@ absl::Status Run() {
   ASSIGN_OR_RETURN(
       auto checkpoint_files,
       InspectGpt2CheckpointFiles(fs::absolute(absl::GetFlag(FLAGS_checkpoint))));
-  RETURN_IF_ERROR(CreateNewOutputDirectory(output));
-  ASSIGN_OR_RETURN(auto executor, cuda::Executor::Create());
-  const int rows = static_cast<int>(encoded.size());
-  const int selected_row = rows - 1;
-  const int padding = encoded[selected_row];
-  const int alternate_padding = padding == 0 ? 1 : 0;
-  ASSIGN_OR_RETURN(auto tokens,
-                   cuda::PageLockedHostArray<int32_t>::Allocate(kContext));
-  std::fill(tokens.begin(), tokens.end(), padding);
-  std::copy(encoded.begin(), encoded.end(), tokens.begin());
+      RETURN_IF_ERROR(CreateNewOutputDirectory(output));
+      const int rows = static_cast<int>(encoded.size());
+      const int selected_row = rows - 1;
+      const int padding = encoded[selected_row];
+      const int alternate_padding = padding == 0 ? 1 : 0;
+  ASSIGN_OR_RETURN(auto tokens, cuda::PageLockedHostArray<int32_t>::Allocate(
+                                    *executor, kContext));
+      std::fill(tokens.begin(), tokens.end(), padding);
+      std::copy(encoded.begin(), encoded.end(), tokens.begin());
   ASSIGN_OR_RETURN(auto input,
                    cuda::Buffer::Allocate(*executor, tokens.size_bytes()));
-  RETURN_IF_ERROR(Upload(*executor, tokens, input));
+      RETURN_IF_ERROR(Upload(*executor, tokens, input));
   ASSIGN_OR_RETURN(auto model,
                    llm::CreateGpt2(*executor, llm::DataType::BF16, 0));
   ASSIGN_OR_RETURN(auto weights, UniqueWeights(*executor, model->weights()));
-  RETURN_IF_ERROR(ValidateGpt2Weights(weights));
-  if (model->weights().size() != 101 ||
-      model->weights().front().data() != model->weights().back().data())
-    return absl::FailedPreconditionError("changed tied-embedding traversal");
-  RETURN_IF_ERROR(llm::ReadFromDirectory(*executor, *model, checkpoint));
-  llm::Tape original_tape;
+      RETURN_IF_ERROR(ValidateGpt2Weights(weights));
+      if (model->weights().size() != 101 ||
+          model->weights().front().data() != model->weights().back().data())
+        return absl::FailedPreconditionError(
+            "changed tied-embedding traversal");
+      RETURN_IF_ERROR(llm::ReadFromDirectory(*executor, *model, checkpoint));
+      llm::Tape original_tape;
   ASSIGN_OR_RETURN(
       auto original_logits,
       model->fwd(*executor, absl::MakeConstSpan(&input, 1), &original_tape));

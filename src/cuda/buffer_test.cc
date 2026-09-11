@@ -71,7 +71,8 @@ TEST_F(BufferTest, CopiesShareStorageUntilTheLastReferenceIsDestroyed) {
       static_cast<uint8_t*>(survivor->data()), kByteCount, 0xa5);
   ASSERT_EQ(cudaGetLastError(), cudaSuccess);
 
-  auto host_bytes = PageLockedHostArray<uint8_t>::Allocate(kByteCount);
+  auto host_bytes =
+      PageLockedHostArray<uint8_t>::Allocate(*executor_, kByteCount);
   ASSERT_TRUE(host_bytes.ok()) << host_bytes.status();
   ASSERT_EQ(cudaMemcpyAsync(host_bytes->data(), survivor->data(), kByteCount,
                             cudaMemcpyDeviceToHost, executor_->stream()),

@@ -85,9 +85,9 @@ absl::Status Run() {
   RETURN_IF_ERROR(CreateNewOutputDirectory(output));
   // Executor outlives pinned arrays, model buffers, and queued stream work.
   ASSIGN_OR_RETURN(auto executor, cuda::Executor::Create());
-  ASSIGN_OR_RETURN(auto batch,
-                   LoadPackedBatch(batch_path, llm::kGpt2ContextLength,
-                                   llm::kGpt2VocabularySize));
+  ASSIGN_OR_RETURN(auto batch, LoadPackedBatch(*executor, batch_path,
+                                               llm::kGpt2ContextLength,
+                                               llm::kGpt2VocabularySize));
   ASSIGN_OR_RETURN(auto model,
                    llm::CreateGpt2(*executor, llm::DataType::BF16, 0));
   ASSIGN_OR_RETURN(auto weights, UniqueWeights(*executor, model->weights()));

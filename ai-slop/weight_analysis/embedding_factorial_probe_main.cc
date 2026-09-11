@@ -179,8 +179,8 @@ absl::Status Run() {
   }
   // Executor precedes all CUDA-owned objects and therefore outlives them.
   ASSIGN_OR_RETURN(auto executor, cuda::Executor::Create());
-  ASSIGN_OR_RETURN(auto batch,
-                   LoadPackedBatch(batch_path, kContext, kVocabulary));
+  ASSIGN_OR_RETURN(
+      auto batch, LoadPackedBatch(*executor, batch_path, kContext, kVocabulary));
   ASSIGN_OR_RETURN(auto selected,
                    LoadFactorialRows(rows_path, batch.passage_count,
                                      rows_per_case, kContext));
@@ -241,7 +241,7 @@ absl::Status Run() {
   std::array<std::vector<FactorialTokenScore>, 4> all_scores;
   for (auto& values : all_logits) {
     ASSIGN_OR_RETURN(values, cuda::PageLockedHostArray<float>::Allocate(
-                                 selected.size() * kVocabulary));
+                                 *executor, selected.size() * kVocabulary));
   }
   RETURN_IF_ERROR(CreateNewOutputDirectory(output));
   for (int first = 0; first < batch.passage_count;) {

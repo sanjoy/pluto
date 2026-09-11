@@ -139,6 +139,11 @@ struct InMemoryDataSetOptions {
 // train/test evaluation.
 class InMemoryDataSetIterator final : public DataSetIterator {
  public:
+  // Uploads asynchronously on executor. tokens must use that same executor;
+  // retained aliases must not be mutated until the upload completes. Dropping
+  // all host aliases is safe immediately: freeing their storage is
+  // stream-ordered. executor must outlive this iterator and all its returned
+  // buffers.
   static absl::StatusOr<std::unique_ptr<InMemoryDataSetIterator>> Create(
       cuda::Executor& executor, cuda::PageLockedHostArray<int> tokens,
       InMemoryDataSetOptions options);

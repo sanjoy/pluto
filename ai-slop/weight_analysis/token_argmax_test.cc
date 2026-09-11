@@ -48,8 +48,8 @@ class TokenArgmaxTest : public testing::Test {
                      ArgmaxTokens(*executor_, input, rows, logical, padded));
     EXPECT_EQ(&result.executor(), executor_.get());
     EXPECT_EQ(result.size_bytes(), static_cast<size_t>(rows) * sizeof(int32_t));
-    ASSIGN_OR_RETURN(auto output,
-                     cuda::PageLockedHostArray<int32_t>::Allocate(rows));
+    ASSIGN_OR_RETURN(auto output, cuda::PageLockedHostArray<int32_t>::Allocate(
+                                      *executor_, rows));
     RETURN_IF_ERROR(cuda::CudaStatus(
         cudaMemcpyAsync(output.data(), result.data(), output.size_bytes(),
                         cudaMemcpyDeviceToHost, executor_->stream()),
@@ -62,7 +62,7 @@ class TokenArgmaxTest : public testing::Test {
 };
 
 TEST_F(TokenArgmaxTest, NegativeValuesSignedZeroAndMinimumIdTies) {
-  auto host = cuda::PageLockedHostArray<float>::Allocate(5 * 7);
+  auto host = cuda::PageLockedHostArray<float>::Allocate(*executor_, 5 * 7);
   ASSERT_TRUE(host.ok()) << host.status();
   const float lowest = std::numeric_limits<float>::lowest();
   const std::array<float, 35> values = {
@@ -89,7 +89,8 @@ TEST_F(TokenArgmaxTest, TileBoundariesOddStridesAndLogicalVocabularyPadding) {
                                                       {50257, 50272}}};
   for (auto [logical, padded] : widths) {
     SCOPED_TRACE(logical);
-    auto host = cuda::PageLockedHostArray<float>::Allocate(4 * padded);
+    auto host =
+        cuda::PageLockedHostArray<float>::Allocate(*executor_, 4 * padded);
     ASSERT_TRUE(host.ok()) << host.status();
     std::fill(host->begin(), host->end(), -20.0f);
     for (int row = 0; row < 4; ++row)
@@ -110,7 +111,7 @@ TEST_F(TokenArgmaxTest, TileBoundariesOddStridesAndLogicalVocabularyPadding) {
 }
 
 TEST_F(TokenArgmaxTest, EveryNonfiniteLogicalValueInvalidatesItsRow) {
-  auto host = cuda::PageLockedHostArray<float>::Allocate(6 * 8);
+  auto host = cuda::PageLockedHostArray<float>::Allocate(*executor_, 6 * 8);
   ASSERT_TRUE(host.ok()) << host.status();
   std::fill(host->begin(), host->end(), 0.0f);
   const float nan = std::numeric_limits<float>::quiet_NaN();
@@ -137,7 +138,8 @@ TEST_F(TokenArgmaxTest, MultipleRowsAgreeWithIndependentScalarOracle) {
   constexpr int kRows = 37;
   constexpr int kLogical = 777;
   constexpr int kPadded = 789;
-  auto host = cuda::PageLockedHostArray<float>::Allocate(kRows * kPadded);
+  auto host =
+      cuda::PageLockedHostArray<float>::Allocate(*executor_, kRows * kPadded);
   ASSERT_TRUE(host.ok()) << host.status();
   std::mt19937 random(17);
   std::uniform_int_distribution<int> draw(-120, 120);

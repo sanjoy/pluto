@@ -33,7 +33,7 @@ absl::StatusOr<cuda::PageLockedHostArray<T>> Download(
         "GPU test download shape/executor differs");
   }
   ASSIGN_OR_RETURN(auto host, cuda::PageLockedHostArray<T>::Allocate(
-                                  buffer.size_bytes() / sizeof(T)));
+                                  executor, buffer.size_bytes() / sizeof(T)));
   RETURN_IF_ERROR(cuda::CudaStatus(
       cudaMemcpyAsync(host.data(), buffer.data(), buffer.size_bytes(),
                       cudaMemcpyDeviceToHost, executor.stream()),
@@ -73,7 +73,8 @@ class HeadContextGpuTest : public ::testing::Test {
     auto model = llm::CreateGpt2(*executor_, llm::DataType::BF16, 17);
     ASSERT_TRUE(model.ok()) << model.status();
     model_ = std::move(*model);
-    auto tokens = cuda::PageLockedHostArray<int32_t>::Allocate(rows_);
+    auto tokens =
+        cuda::PageLockedHostArray<int32_t>::Allocate(*executor_, rows_);
     ASSERT_TRUE(tokens.ok()) << tokens.status();
     tokens_ = std::move(*tokens);
     for (int i = 0; i < rows_; ++i)
@@ -105,8 +106,8 @@ class HeadContextGpuTest : public ::testing::Test {
     ASSERT_TRUE(values.ok()) << values.status();
     ASSERT_EQ(actual->size(), static_cast<size_t>(rows_) * kWidth);
     ASSERT_EQ(values->size(), static_cast<size_t>(rows_) * kPadded);
-    auto expected =
-        cuda::PageLockedHostArray<uint16_t>::CopyFrom(original->span());
+    auto expected = cuda::PageLockedHostArray<uint16_t>::CopyFrom(
+        *executor_, original->span());
     ASSERT_TRUE(expected.ok()) << expected.status();
     const int first_row = selection.sequence * kContext;
     for (int row = first_row; row < first_row + kContext; ++row) {
@@ -167,7 +168,8 @@ class HeadContextGpuTest : public ::testing::Test {
     const auto matrix = model_->weights()[6 + 12 * block];
     auto backup = Download<float>(*executor_, matrix);
     ASSERT_TRUE(backup.ok()) << backup.status();
-    auto patched = cuda::PageLockedHostArray<float>::CopyFrom(backup->span());
+    auto patched =
+        cuda::PageLockedHostArray<float>::CopyFrom(*executor_, backup->span());
     ASSERT_TRUE(patched.ok()) << patched.status();
     // W_o is physically [input_width, output_width]. Zero only the selected
     // head's 64 input rows; output bias and all other model tensors stay
@@ -298,7 +300,8 @@ TEST_F(HeadContextGpuTest,
   const auto weight = model_->weights()[1];
   auto backup = Download<float>(*executor_, weight);
   ASSERT_TRUE(backup.ok()) << backup.status();
-  auto altered = cuda::PageLockedHostArray<float>::CopyFrom(backup->span());
+  auto altered =
+      cuda::PageLockedHostArray<float>::CopyFrom(*executor_, backup->span());
   ASSERT_TRUE(altered.ok()) << altered.status();
   (*altered)[0] += 0.25f;
   const auto weight_write = Upload(*executor_, weight, *altered);
@@ -310,7 +313,7 @@ TEST_F(HeadContextGpuTest,
   EXPECT_TRUE((*probe)->VerifyOriginals(*executor_).ok());
 
   auto changed_tokens =
-      cuda::PageLockedHostArray<int32_t>::CopyFrom(tokens_.span());
+      cuda::PageLockedHostArray<int32_t>::CopyFrom(*executor_, tokens_.span());
   ASSERT_TRUE(changed_tokens.ok()) << changed_tokens.status();
   (*changed_tokens)[0] += 1;
   const auto token_write = Upload(*executor_, *input_, *changed_tokens);

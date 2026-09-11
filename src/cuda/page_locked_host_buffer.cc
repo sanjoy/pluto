@@ -2,53 +2,45 @@
 
 #include <cuda_runtime_api.h>
 
+#include <cassert>
 #include <cstdio>
 #include <memory>
 #include <utility>
 
-#include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
 #include "src/cuda/executor.h"
 
 namespace pluto::cuda {
-namespace {
-
-absl::Status AllocationError(cudaError_t error, size_t size_bytes) {
-  const auto operation = absl::StrCat("cudaMallocHost(", size_bytes, ")");
-  const absl::Status status = CudaStatus(error, operation.c_str());
-  // Preserve the allocation-specific code while sharing CUDA diagnostics.
-  if (error == cudaErrorMemoryAllocation)
-    return absl::ResourceExhaustedError(status.message());
-  return status;
-}
-
-}  // namespace
 
 struct PageLockedHostBuffer::Allocation {
-  explicit Allocation(size_t size_bytes) : size_bytes(size_bytes) {}
+  Allocation(Executor& executor, size_t size_bytes)
+      : executor(executor), size_bytes(size_bytes) {}
 
   ~Allocation() {
     if (data == nullptr)
       return;
-    const cudaError_t error = cudaFreeHost(data);
+    // The C++ owner may disappear immediately after cudaMemcpyAsync: physical
+    // storage remains alive until this stream-ordered free follows the copy.
+    const cudaError_t error = cudaFreeAsync(data, executor.stream());
     if (error != cudaSuccess) {
-      std::fprintf(stderr, "cudaFreeHost(%p) failed: %s: %s\n", data,
+      std::fprintf(stderr, "cudaFreeAsync(host %p) failed: %s: %s\n", data,
                    cudaGetErrorName(error), cudaGetErrorString(error));
     }
   }
 
+  Executor& executor;
   void* data = nullptr;
   size_t size_bytes;
 };
 
 absl::StatusOr<PageLockedHostBuffer> PageLockedHostBuffer::Allocate(
-    size_t size_bytes) {
-  auto allocation = std::make_shared<Allocation>(size_bytes);
+    Executor& executor, size_t size_bytes) {
+  auto allocation = std::make_shared<Allocation>(executor, size_bytes);
   if (size_bytes == 0)
     return PageLockedHostBuffer(std::move(allocation));
-  const cudaError_t error = cudaMallocHost(&allocation->data, size_bytes);
-  if (error != cudaSuccess)
-    return AllocationError(error, size_bytes);
+  auto memory = executor.AllocatePageLockedHostMemory(size_bytes);
+  if (!memory.ok())
+    return memory.status();
+  allocation->data = *memory;
   return PageLockedHostBuffer(std::move(allocation));
 }
 
@@ -62,6 +54,11 @@ const void* PageLockedHostBuffer::data() const {
 
 size_t PageLockedHostBuffer::size_bytes() const {
   return allocation_ == nullptr ? 0 : allocation_->size_bytes;
+}
+
+Executor& PageLockedHostBuffer::executor() const {
+  assert(allocation_ != nullptr);
+  return allocation_->executor;
 }
 
 }  // namespace pluto::cuda

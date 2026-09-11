@@ -304,15 +304,17 @@ absl::Status CopyNormalInitialization(cuda::Executor& executor, Buffer& weight,
   }
   std::mt19937_64 random(seed);
   std::normal_distribution<float> distribution(0.0f, standard_deviation);
-  ASSIGN_OR_RETURN(auto values, cuda::PageLockedHostArray<float>::Allocate(
-                                    weight.size_bytes() / sizeof(float)));
+  ASSIGN_OR_RETURN(auto values,
+                   cuda::PageLockedHostArray<float>::Allocate(
+                       executor, weight.size_bytes() / sizeof(float)));
   for (float& value : values)
     value = distribution(random);
   RETURN_IF_ERROR(cuda::CudaStatus(
       cudaMemcpyAsync(weight.data(), values.data(), weight.size_bytes(),
                       cudaMemcpyHostToDevice, executor.stream()),
       operation));
-  return executor.Synchronize();
+  // The pinned staging buffer is freed after this executor's queued upload.
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -353,9 +355,10 @@ EmbeddingLookupLayer::Create(cuda::Executor& executor, int vocab_size,
 }
 
 absl::Status EmbeddingLookupLayer::InitializeIdentity(float scale) {
-  ASSIGN_OR_RETURN(auto values, cuda::PageLockedHostArray<float>::Allocate(
-                                    static_cast<size_t>(padded_vocab_size_) *
-                                    embedding_dim_));
+  ASSIGN_OR_RETURN(
+      auto values,
+      cuda::PageLockedHostArray<float>::Allocate(
+          executor_, static_cast<size_t>(padded_vocab_size_) * embedding_dim_));
   std::fill(values.begin(), values.end(), 0.0f);
   for (int index = 0; index < std::min(vocab_size_, embedding_dim_); ++index)
     values[static_cast<size_t>(index) * embedding_dim_ + index] = scale;
@@ -363,7 +366,7 @@ absl::Status EmbeddingLookupLayer::InitializeIdentity(float scale) {
       cudaMemcpyAsync(weight_.data(), values.data(), weight_.size_bytes(),
                       cudaMemcpyHostToDevice, executor_.stream()),
       "cudaMemcpyAsync(identity embedding)"));
-  return executor_.Synchronize();
+  return absl::OkStatus();
 }
 
 absl::Status EmbeddingLookupLayer::InitializeNormal(float standard_deviation,

@@ -47,7 +47,8 @@ class TopTransitionsTest : public testing::Test {
   void Check(const std::vector<float>& logits, int rows, int vocabulary,
              int padded_vocabulary) {
     ASSERT_EQ(logits.size(), static_cast<size_t>(rows) * padded_vocabulary);
-    auto host_input = cuda::PageLockedHostArray<float>::Allocate(logits.size());
+    auto host_input =
+        cuda::PageLockedHostArray<float>::Allocate(*executor_, logits.size());
     ASSERT_TRUE(host_input.ok()) << host_input.status();
     std::copy(logits.begin(), logits.end(), host_input->begin());
     auto input = cuda::Buffer::Allocate(*executor_, host_input->size_bytes());
@@ -62,7 +63,8 @@ class TopTransitionsTest : public testing::Test {
     EXPECT_EQ(output->size_bytes(),
               static_cast<size_t>(rows) * sizeof(TopTransition));
     EXPECT_EQ(&output->executor(), executor_.get());
-    auto host_output = cuda::PageLockedHostArray<TopTransition>::Allocate(rows);
+    auto host_output =
+        cuda::PageLockedHostArray<TopTransition>::Allocate(*executor_, rows);
     ASSERT_TRUE(host_output.ok()) << host_output.status();
     ASSERT_EQ(cudaMemcpyAsync(host_output->data(), output->data(),
                               output->size_bytes(), cudaMemcpyDeviceToHost,

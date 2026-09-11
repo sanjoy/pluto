@@ -30,8 +30,10 @@ class Gpt2Tokenizer final {
 
   // Returns page-locked storage so callers can upload token IDs with a true
   // asynchronous CUDA transfer and no hidden pageable-memory staging copy.
+  // executor owns the host pool and must outlive the returned array; copies
+  // involving it must be ordered on that executor.
   absl::StatusOr<cuda::PageLockedHostArray<int>> Encode(
-      absl::string_view text) const;
+      cuda::Executor& executor, absl::string_view text) const;
 
   int vocab_size() const { return model_->vocab_size(); }
   int eos_token_id() const { return model_->eos_token_id(); }

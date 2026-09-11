@@ -238,7 +238,7 @@ absl::StatusOr<double> ReadEvaluationLoss(cuda::Executor& executor,
         "evaluation must return one FP32 scalar on its CUDA Executor");
   }
   ASSIGN_OR_RETURN(auto host_loss,
-                   cuda::PageLockedHostArray<float>::Allocate(1));
+                   cuda::PageLockedHostArray<float>::Allocate(executor, 1));
   RETURN_IF_ERROR(cuda::CudaStatus(
       cudaMemcpyAsync(host_loss.data(), loss.data(), loss.size_bytes(),
                       cudaMemcpyDeviceToHost, executor.stream()),
@@ -261,7 +261,7 @@ absl::StatusOr<cuda::PageLockedHostArray<float>> Predict(
   const size_t context_start = context.size() - context_size;
   ASSIGN_OR_RETURN(
       auto repeated_context,
-      cuda::PageLockedHostArray<int>::Allocate(config.token_count()));
+      cuda::PageLockedHostArray<int>::Allocate(executor, config.token_count()));
   for (int sequence = 0; sequence < config.batch_size; ++sequence) {
     for (size_t position = 0; position < context_size; ++position) {
       repeated_context[sequence * kGpt2ContextLength + position] =
@@ -283,7 +283,7 @@ absl::StatusOr<cuda::PageLockedHostArray<float>> Predict(
   BufferVec inputs = {token_buffer};
   ASSIGN_OR_RETURN(auto logits, model.fwd(executor, inputs, &tape));
   ASSIGN_OR_RETURN(auto host_logits, cuda::PageLockedHostArray<float>::Allocate(
-                                         kGpt2VocabularySize));
+                                         executor, kGpt2VocabularySize));
   const size_t output_row = context_size - 1;
   const auto* selected_logits = static_cast<const float*>(logits.data()) +
                                 output_row * config.padded_vocabulary_size();
@@ -304,7 +304,7 @@ absl::StatusOr<std::string> Generate(
   RETURN_IF_ERROR(ValidateGenerationOptions(generation_tokens, temperature));
   if (prompt.empty())
     prompt = "\n";
-  ASSIGN_OR_RETURN(auto encoded_prompt, tokenizer.Encode(prompt));
+  ASSIGN_OR_RETURN(auto encoded_prompt, tokenizer.Encode(executor, prompt));
   std::vector<int> context(encoded_prompt.begin(), encoded_prompt.end());
   std::vector<int> generated;
   generated.reserve(generation_tokens);
@@ -764,7 +764,7 @@ absl::Status PrintSparseAutoEncoderStatistics(
     const Layer& activation_generator,
     const SparseAutoEncoderLayer& autoencoder, absl::string_view prompt,
     const Buffer& token_buffer) {
-  ASSIGN_OR_RETURN(auto tokens, tokenizer.Encode(prompt));
+  ASSIGN_OR_RETURN(auto tokens, tokenizer.Encode(executor, prompt));
   if (tokens.empty()) {
     std::cout << "Prompt contains no tokens; no Z statistics.\n";
     return absl::OkStatus();
@@ -776,8 +776,8 @@ absl::Status PrintSparseAutoEncoderStatistics(
     std::cout << "Prompt has " << tokens.size() << " tokens; using its last "
               << rows << " tokens (the GPT-2 context limit).\n";
   }
-  ASSIGN_OR_RETURN(auto context,
-                   cuda::PageLockedHostArray<int>::Allocate(kGpt2ContextLength));
+  ASSIGN_OR_RETURN(auto context, cuda::PageLockedHostArray<int>::Allocate(
+                                     executor, kGpt2ContextLength));
   std::copy_n(tokens.data() + start, rows, context.data());
   std::fill(context.begin() + rows, context.end(), context[rows - 1]);
   RETURN_IF_ERROR(cuda::CudaStatus(

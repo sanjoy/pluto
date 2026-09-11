@@ -194,9 +194,9 @@ FullyConnectedLayer::Create(cuda::Executor& executor, int input_dim,
 }
 
 absl::Status FullyConnectedLayer::InitializeIdentity(float scale) {
-  ASSIGN_OR_RETURN(auto matrix,
-                   cuda::PageLockedHostArray<float>::Allocate(
-                       static_cast<size_t>(input_dim_) * output_dim_));
+  ASSIGN_OR_RETURN(auto matrix, cuda::PageLockedHostArray<float>::Allocate(
+                                    executor_, static_cast<size_t>(input_dim_) *
+                                                   output_dim_));
   std::fill(matrix.begin(), matrix.end(), 0.0f);
   for (int index = 0; index < std::min(input_dim_, output_dim_); ++index)
     matrix[static_cast<size_t>(index) * output_dim_ + index] = scale;
@@ -205,8 +205,8 @@ absl::Status FullyConnectedLayer::InitializeIdentity(float scale) {
                       weights_[0].size_bytes(), cudaMemcpyHostToDevice,
                       executor_.stream()),
       "cudaMemcpyAsync(identity matrix)"));
-  // The pinned staging allocation must outlive its asynchronous transfer.
-  return executor_.Synchronize();
+  // Pinned staging destruction queues its release after this upload.
+  return absl::OkStatus();
 }
 
 absl::Status FullyConnectedLayer::InitializeNormal(float standard_deviation,
@@ -217,9 +217,9 @@ absl::Status FullyConnectedLayer::InitializeNormal(float standard_deviation,
   }
   std::mt19937_64 random(seed);
   std::normal_distribution<float> distribution(0.0f, standard_deviation);
-  ASSIGN_OR_RETURN(auto matrix,
-                   cuda::PageLockedHostArray<float>::Allocate(
-                       static_cast<size_t>(input_dim_) * output_dim_));
+  ASSIGN_OR_RETURN(auto matrix, cuda::PageLockedHostArray<float>::Allocate(
+                                    executor_, static_cast<size_t>(input_dim_) *
+                                                   output_dim_));
   for (float& value : matrix)
     value = distribution(random);
   RETURN_IF_ERROR(cuda::CudaStatus(
@@ -227,7 +227,7 @@ absl::Status FullyConnectedLayer::InitializeNormal(float standard_deviation,
                       weights_[0].size_bytes(), cudaMemcpyHostToDevice,
                       executor_.stream()),
       "cudaMemcpyAsync(normal matrix)"));
-  return executor_.Synchronize();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<Buffer> FullyConnectedLayer::fwd(cuda::Executor& executor,

@@ -5,8 +5,9 @@ cc_test(
     size = "small",
     srcs = ["tokenized_parquet_test.cc"],
     data = ["//src/parquet:testdata/fineweb_sample.parquet"],
-    tags = ["requires-tokenizer"],
+    tags = ["requires-gpu", "requires-tokenizer"],
     deps = [
+        "//src/cuda:executor",
         "//src/parquet:fineweb_parquet_reader",
         "//src/dataset:detokenizer",
         "//src/dataset:tokenizer",
@@ -20,9 +21,11 @@ cc_test(
     srcs = ["fineweb_integration_test.cc"],
     tags = [
         "integration",
+        "requires-gpu",
         "requires-dataset",
     ],
     deps = [
+        "//src/cuda:executor",
         "//src/parquet:fineweb_parquet_reader",
         "//src/dataset:detokenizer",
         "//src/dataset:tokenizer",

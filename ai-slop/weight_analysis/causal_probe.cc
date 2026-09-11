@@ -197,7 +197,8 @@ absl::Span<const int32_t> PackedBatch::targets(int first, int count) const {
       static_cast<size_t>(count) * context_length);
 }
 
-absl::StatusOr<PackedBatch> LoadPackedBatch(const std::filesystem::path& path,
+absl::StatusOr<PackedBatch> LoadPackedBatch(cuda::Executor& executor,
+                                            const std::filesystem::path& path,
                                             int context_length,
                                             int vocab_size) {
   static_assert(sizeof(float) == 4 && sizeof(int32_t) == 4);
@@ -215,8 +216,8 @@ absl::StatusOr<PackedBatch> LoadPackedBatch(const std::filesystem::path& path,
       bytes / (2 * sizeof(int32_t)) > std::numeric_limits<int>::max()) {
     return absl::InvalidArgumentError("invalid token batch byte size");
   }
-  ASSIGN_OR_RETURN(auto tokens,
-                   cuda::PageLockedHostArray<int32_t>::Allocate(bytes / 4));
+  ASSIGN_OR_RETURN(auto tokens, cuda::PageLockedHostArray<int32_t>::Allocate(
+                                    executor, bytes / 4));
   std::ifstream input(path, std::ios::binary);
   if (!input.read(reinterpret_cast<char*>(tokens.data()), bytes) ||
       input.peek() != std::ifstream::traits_type::eof()) {
@@ -286,10 +287,12 @@ absl::StatusOr<std::unique_ptr<WeightIntervention>> WeightIntervention::Capture(
     const auto& weight = weights[index];
     ASSIGN_OR_RETURN(auto backup,
                      cuda::Buffer::Allocate(executor, weight.size_bytes()));
-    ASSIGN_OR_RETURN(auto original, cuda::PageLockedHostArray<float>::Allocate(
-                                        weight.size_bytes() / sizeof(float)));
-    ASSIGN_OR_RETURN(auto staging, cuda::PageLockedHostArray<float>::Allocate(
-                                       weight.size_bytes() / sizeof(float)));
+    ASSIGN_OR_RETURN(auto original,
+                     cuda::PageLockedHostArray<float>::Allocate(
+                         executor, weight.size_bytes() / sizeof(float)));
+    ASSIGN_OR_RETURN(auto staging,
+                     cuda::PageLockedHostArray<float>::Allocate(
+                         executor, weight.size_bytes() / sizeof(float)));
     // Keep every transfer endpoint owned before issuing asynchronous work.
     result->snapshots_.push_back(
         {weight, std::move(backup), std::move(original), std::move(staging)});
@@ -396,9 +399,9 @@ absl::StatusOr<std::unique_ptr<MlpRowIntervention>> MlpRowIntervention::Capture(
                    cuda::Buffer::Allocate(executor, output_weight.size_bytes()));
   const size_t count = output_weight.size_bytes() / sizeof(float);
   ASSIGN_OR_RETURN(auto original,
-                   cuda::PageLockedHostArray<float>::Allocate(count));
+                   cuda::PageLockedHostArray<float>::Allocate(executor, count));
   ASSIGN_OR_RETURN(auto staging,
-                   cuda::PageLockedHostArray<float>::Allocate(count));
+                   cuda::PageLockedHostArray<float>::Allocate(executor, count));
   // Own every asynchronous endpoint before the first copy. Destruction also
   // synchronizes failed captures, so no pinned allocation can expire early.
   auto result = std::unique_ptr<MlpRowIntervention>(new MlpRowIntervention(
@@ -490,9 +493,9 @@ absl::StatusOr<Measurements> EvaluatePassages(
   }
   const size_t total = size_t(batch.passage_count) * batch.context_length;
   ASSIGN_OR_RETURN(auto losses,
-                   cuda::PageLockedHostArray<float>::Allocate(total));
-  ASSIGN_OR_RETURN(auto argmax,
-                   cuda::PageLockedHostArray<int32_t>::Allocate(total));
+                   cuda::PageLockedHostArray<float>::Allocate(executor, total));
+  ASSIGN_OR_RETURN(auto argmax, cuda::PageLockedHostArray<int32_t>::Allocate(
+                                    executor, total));
   // All host storage outlives outstanding work, even on an error return.
   struct SynchronizeOnExit {
     cuda::Executor& executor;

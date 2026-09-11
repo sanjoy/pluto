@@ -38,8 +38,8 @@ absl::StatusOr<BufferPair> MakeRawBufferPair(cuda::Executor& executor,
   ASSIGN_OR_RETURN(auto host, HostBuffer::Allocate(bytes));
   if (bytes != 0)
     std::memcpy(host.data(), values.data(), bytes);
-  ASSIGN_OR_RETURN(auto transfer,
-                   cuda::PageLockedHostArray<Element>::CopyFrom(values));
+  ASSIGN_OR_RETURN(auto transfer, cuda::PageLockedHostArray<Element>::CopyFrom(
+                                      executor, values));
   ASSIGN_OR_RETURN(auto device, Buffer::Allocate(executor, bytes));
   RETURN_IF_ERROR(cuda::CudaStatus(
       cudaMemcpyAsync(device.data(), transfer.data(), bytes,
@@ -57,8 +57,8 @@ inline absl::StatusOr<BufferPair> MakeActivationBufferPair(
                                   values.size(), data_type));
   for (size_t index = 0; index < values.size(); ++index)
     reference_internal::StoreActivation(&host, index, data_type, values[index]);
-  ASSIGN_OR_RETURN(auto transfer,
-                   cuda::PageLockedHostBuffer::Allocate(host.size_bytes()));
+  ASSIGN_OR_RETURN(auto transfer, cuda::PageLockedHostBuffer::Allocate(
+                                      executor, host.size_bytes()));
   if (host.size_bytes() != 0)
     std::memcpy(transfer.data(), host.data(), host.size_bytes());
   ASSIGN_OR_RETURN(auto device, Buffer::Allocate(executor, host.size_bytes()));
@@ -78,7 +78,7 @@ inline absl::Status SetFloatBufferPair(cuda::Executor& executor,
     return absl::InvalidArgumentError("parameter pair has the wrong size");
   std::memcpy(host->data(), values.data(), bytes);
   ASSIGN_OR_RETURN(auto transfer,
-                   cuda::PageLockedHostArray<float>::CopyFrom(values));
+                   cuda::PageLockedHostArray<float>::CopyFrom(executor, values));
   RETURN_IF_ERROR(cuda::CudaStatus(
       cudaMemcpyAsync(device.data(), transfer.data(), bytes,
                       cudaMemcpyHostToDevice, executor.stream()),
@@ -98,8 +98,9 @@ inline absl::StatusOr<cuda::PageLockedHostArray<float>> ReadDeviceFloats(
     cuda::Executor& executor, const Buffer& buffer) {
   if (buffer.size_bytes() % sizeof(float) != 0)
     return absl::InvalidArgumentError("device buffer is not FP32");
-  ASSIGN_OR_RETURN(auto values, cuda::PageLockedHostArray<float>::Allocate(
-                                    buffer.size_bytes() / sizeof(float)));
+  ASSIGN_OR_RETURN(auto values,
+                   cuda::PageLockedHostArray<float>::Allocate(
+                       executor, buffer.size_bytes() / sizeof(float)));
   RETURN_IF_ERROR(cuda::CudaStatus(
       cudaMemcpyAsync(values.data(), buffer.data(), buffer.size_bytes(),
                       cudaMemcpyDeviceToHost, executor.stream()),
@@ -116,8 +117,8 @@ inline std::vector<float> ReadHostFloats(const HostBuffer& buffer) {
 
 inline absl::StatusOr<cuda::PageLockedHostArray<float>> ReadDeviceActivations(
     cuda::Executor& executor, const Buffer& buffer, DataType data_type) {
-  ASSIGN_OR_RETURN(auto transfer,
-                   cuda::PageLockedHostBuffer::Allocate(buffer.size_bytes()));
+  ASSIGN_OR_RETURN(auto transfer, cuda::PageLockedHostBuffer::Allocate(
+                                      executor, buffer.size_bytes()));
   RETURN_IF_ERROR(cuda::CudaStatus(
       cudaMemcpyAsync(transfer.data(), buffer.data(), buffer.size_bytes(),
                       cudaMemcpyDeviceToHost, executor.stream()),
@@ -128,8 +129,8 @@ inline absl::StatusOr<cuda::PageLockedHostArray<float>> ReadDeviceActivations(
     std::memcpy(host.data(), transfer.data(), buffer.size_bytes());
   const size_t elements = buffer.size_bytes() /
                           reference_internal::ActivationElementBytes(data_type);
-  ASSIGN_OR_RETURN(auto values,
-                   cuda::PageLockedHostArray<float>::Allocate(elements));
+  ASSIGN_OR_RETURN(auto values, cuda::PageLockedHostArray<float>::Allocate(
+                                    executor, elements));
   for (size_t index = 0; index < elements; ++index)
     values[index] = reference_internal::LoadActivation(host, index, data_type);
   return values;

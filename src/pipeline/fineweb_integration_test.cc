@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "src/cuda/executor.h"
 #include "src/dataset/detokenizer.h"
 #include "src/dataset/tokenizer.h"
 #include "src/parquet/fineweb_parquet_reader.h"
@@ -20,6 +21,8 @@ std::filesystem::path RequiredDirectory(const char* variable) {
 }
 
 TEST(FineWebIntegrationTest, SamplesEveryShardAndRoundTripsItsText) {
+  auto executor = cuda::Executor::Create();
+  ASSERT_TRUE(executor.ok()) << executor.status();
   const std::filesystem::path parquet_directory =
       RequiredDirectory("PLUTO_FINEWEB_PARQUET_DIR");
   const std::filesystem::path tokenizer_directory =
@@ -58,7 +61,7 @@ TEST(FineWebIntegrationTest, SamplesEveryShardAndRoundTripsItsText) {
       EXPECT_EQ(row.language, "en");
       EXPECT_GT(row.token_count, 0);
 
-      auto token_ids = (*encoder)->Encode(row.text);
+      auto token_ids = (*encoder)->Encode(**executor, row.text);
       ASSERT_TRUE(token_ids.ok()) << token_ids.status();
       EXPECT_FALSE(token_ids->empty());
       auto decoded = (*decoder)->Decode(*token_ids);

@@ -3,6 +3,8 @@
 #include <cuda_runtime.h>
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -10,6 +12,7 @@
 #include <memory>
 #include <numeric>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -38,8 +41,8 @@ class DataSetTest : public testing::Test {
   }
 
   cuda::PageLockedHostArray<int> CopyToHost(const cuda::Buffer& buffer) {
-    auto result = cuda::PageLockedHostArray<int>::Allocate(buffer.size_bytes() /
-                                                           sizeof(int));
+    auto result = cuda::PageLockedHostArray<int>::Allocate(
+        *executor_, buffer.size_bytes() / sizeof(int));
     EXPECT_TRUE(result.ok()) << result.status();
     if (!result.ok())
       return {};
@@ -76,8 +79,9 @@ class DataSetTest : public testing::Test {
   std::unique_ptr<cuda::Executor> executor_;
 };
 
-cuda::PageLockedHostArray<int> MakePinnedInts(size_t size, int value = 0) {
-  auto result = cuda::PageLockedHostArray<int>::Allocate(size);
+cuda::PageLockedHostArray<int> MakePinnedInts(cuda::Executor& executor,
+                                              size_t size, int value = 0) {
+  auto result = cuda::PageLockedHostArray<int>::Allocate(executor, size);
   EXPECT_TRUE(result.ok()) << result.status();
   if (!result.ok())
     return {};
@@ -93,7 +97,7 @@ std::filesystem::path TokenizerDirectory() {
 }
 
 TEST_F(DataSetTest, SequentialBatchesShiftTargetsAndReset) {
-  auto corpus = MakePinnedInts(21);
+  auto corpus = MakePinnedInts(*executor_, 21);
   std::iota(corpus.begin(), corpus.end(), 0);
   auto iterator = InMemoryDataSetIterator::Create(
       *executor_, corpus,
@@ -127,7 +131,7 @@ TEST_F(DataSetTest, SequentialBatchesShiftTargetsAndReset) {
 }
 
 TEST_F(DataSetTest, CorpusIsUploadedDuringCreation) {
-  auto corpus = MakePinnedInts(21);
+  auto corpus = MakePinnedInts(*executor_, 21);
   std::iota(corpus.begin(), corpus.end(), 0);
   auto iterator = InMemoryDataSetIterator::Create(
       *executor_, corpus,
@@ -138,7 +142,9 @@ TEST_F(DataSetTest, CorpusIsUploadedDuringCreation) {
       });
   ASSERT_TRUE(iterator.ok()) << iterator.status();
 
-  // Mutating the host input must not affect the device-resident corpus.
+  // Create() only enqueues the upload. A retained host alias must wait before
+  // mutation; once uploaded, changing it cannot affect the device corpus.
+  ASSERT_TRUE(executor_->Synchronize().ok());
   std::fill(corpus.begin(), corpus.end(), -1);
   auto batch = (*iterator)->Next();
   ASSERT_TRUE(batch.ok()) << batch.status();
@@ -146,8 +152,80 @@ TEST_F(DataSetTest, CorpusIsUploadedDuringCreation) {
   EXPECT_EQ(Targets(*batch), (std::vector<int>{1, 2, 3, 4}));
 }
 
+// A bounded gate exposes accidental compute-stream waits without hanging a
+// failed test indefinitely. Its callback uses only CPU operations, never CUDA.
+class ComputeGate {
+ public:
+  explicit ComputeGate(cuda::Executor& executor) : executor_(executor) {}
+  ~ComputeGate() {
+    open.store(true);
+    EXPECT_TRUE(executor_.Synchronize().ok());
+  }
+  static void CUDART_CB Wait(void* argument) {
+    auto& gate = *static_cast<ComputeGate*>(argument);
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (!gate.open.load()) {
+      if (std::chrono::steady_clock::now() >= deadline) {
+        gate.timed_out.store(true);
+        break;
+      }
+      std::this_thread::yield();
+    }
+  }
+  std::atomic<bool> open{false};
+  std::atomic<bool> timed_out{false};
+
+ private:
+  cuda::Executor& executor_;
+};
+
+TEST_F(DataSetTest, CreateDoesNotWaitForComputeAndKeepsUploadAlive) {
+  auto corpus = MakePinnedInts(*executor_, 25);
+  std::iota(corpus.begin(), corpus.end(), 0);
+  // Reserve device-pool capacity before the gate so device allocation itself
+  // cannot obscure whether Create waits for its upload to finish.
+  {
+    auto warm = cuda::Buffer::Allocate(*executor_, 4096);
+    ASSERT_TRUE(warm.ok()) << warm.status();
+  }
+  ASSERT_TRUE(executor_->Synchronize().ok());
+  ComputeGate gate(*executor_);
+  ASSERT_EQ(cudaLaunchHostFunc(executor_->stream(), ComputeGate::Wait, &gate),
+            cudaSuccess);
+  auto iterator = InMemoryDataSetIterator::Create(
+      *executor_, std::move(corpus),
+      {.batch_size = 3,
+       .context_length = 4,
+       .order = InMemoryDataSetOrder::kSequential});
+  ASSERT_TRUE(iterator.ok()) << iterator.status();
+  EXPECT_FALSE(gate.timed_out.load());
+  // The last corpus host owner has gone away. A new CPU allocation must not
+  // overwrite those bytes while their queued upload is still behind the gate.
+  auto overwrite = MakePinnedInts(*executor_, 25, -123);
+  EXPECT_FALSE(gate.timed_out.load());
+  auto batch = (*iterator)->Next();
+  ASSERT_TRUE(batch.ok()) << batch.status();
+  gate.open.store(true);
+  EXPECT_EQ(Inputs(*batch),
+            (std::vector<int>{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}));
+  EXPECT_EQ(Targets(*batch),
+            (std::vector<int>{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}));
+  EXPECT_FALSE(gate.timed_out.load());
+}
+
+TEST_F(DataSetTest, RejectsHostCorpusFromAnotherExecutor) {
+  auto other = cuda::Executor::Create();
+  ASSERT_TRUE(other.ok()) << other.status();
+  auto corpus = MakePinnedInts(**other, 25);
+  auto iterator = InMemoryDataSetIterator::Create(
+      *executor_, std::move(corpus), {.batch_size = 3, .context_length = 4});
+  ASSERT_FALSE(iterator.ok());
+  EXPECT_EQ(iterator.status().code(), absl::StatusCode::kInvalidArgument);
+}
+
 TEST_F(DataSetTest, RandomOrderIsDeterministicAcrossReset) {
-  auto corpus = MakePinnedInts(100);
+  auto corpus = MakePinnedInts(*executor_, 100);
   std::iota(corpus.begin(), corpus.end(), 0);
   auto iterator = InMemoryDataSetIterator::Create(
       *executor_, corpus,
@@ -170,7 +248,7 @@ TEST_F(DataSetTest, RandomOrderIsDeterministicAcrossReset) {
 }
 
 TEST_F(DataSetTest, SeededIteratorsAreIndependentAndReplayWholeBatches) {
-  auto corpus = MakePinnedInts(193);
+  auto corpus = MakePinnedInts(*executor_, 193);
   std::iota(corpus.begin(), corpus.end(), 0);
   const InMemoryDataSetOptions options{.batch_size = 4,
                                        .context_length = 8,
@@ -197,7 +275,7 @@ TEST_F(DataSetTest, SeededIteratorsAreIndependentAndReplayWholeBatches) {
 }
 
 TEST_F(DataSetTest, BatchSizeCountsIndependentSequencesNotTokens) {
-  auto corpus = MakePinnedInts(25);
+  auto corpus = MakePinnedInts(*executor_, 25);
   std::iota(corpus.begin(), corpus.end(), 0);
   // Three samples need not be divisible by their four-token context length.
   auto iterator = InMemoryDataSetIterator::Create(
@@ -250,7 +328,7 @@ TEST_F(DataSetTest, DataBatchChecksDimensionsBeforeMultiplyingThem) {
 }
 
 TEST_F(DataSetTest, RejectsInvalidShapes) {
-  const auto corpus = MakePinnedInts(10, 1);
+  const auto corpus = MakePinnedInts(*executor_, 10, 1);
   for (const auto [samples, length] :
        {std::pair{0, 4}, std::pair{-1, 4}, std::pair{1, 0}, std::pair{1, -1},
         std::pair{std::numeric_limits<int>::max(), 2}}) {
@@ -262,7 +340,7 @@ TEST_F(DataSetTest, RejectsInvalidShapes) {
                      .ok());
   }
   EXPECT_FALSE(InMemoryDataSetIterator::Create(
-                   *executor_, MakePinnedInts(4, 1),
+                   *executor_, MakePinnedInts(*executor_, 4, 1),
                    InMemoryDataSetOptions{.batch_size = 1, .context_length = 4})
                    .ok());
 }
@@ -355,7 +433,7 @@ TEST_F(DataSetTest, TokenizesMappedCorpusIntoSequentialDataset) {
   auto tokenizer = tokenizer::Gpt2Tokenizer::Load(TokenizerDirectory());
   ASSERT_TRUE(corpus.ok()) << corpus.status();
   ASSERT_TRUE(tokenizer.ok()) << tokenizer.status();
-  auto expected = (*tokenizer)->Encode(corpus->text());
+  auto expected = (*tokenizer)->Encode(*executor_, corpus->text());
   ASSERT_TRUE(expected.ok()) << expected.status();
   ASSERT_GT(expected->size(), size_t{4});
 

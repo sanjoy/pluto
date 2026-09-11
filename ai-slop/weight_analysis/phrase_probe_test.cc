@@ -73,7 +73,8 @@ TEST_F(PhraseProbeGpuTest,
   constexpr int kRows = 16;
   constexpr int kInput = 16;
   constexpr int kOutput = 32;
-  auto host = cuda::PageLockedHostArray<uint16_t>::Allocate(kRows * kInput);
+  auto host =
+      cuda::PageLockedHostArray<uint16_t>::Allocate(*executor_, kRows * kInput);
   ASSERT_TRUE(host.ok()) << host.status();
   for (size_t i = 0; i < host->size(); ++i) {
     // Exactly represented BF16 values, alternating sign and varying exponent.
@@ -116,7 +117,8 @@ TEST_F(PhraseProbeGpuTest,
        ReplayedBranchMatchesProductionResidualIncludingRounding) {
   constexpr int kRows = 16;
   constexpr int kWidth = 16;
-  auto host = cuda::PageLockedHostArray<uint16_t>::Allocate(kRows * kWidth);
+  auto host =
+      cuda::PageLockedHostArray<uint16_t>::Allocate(*executor_, kRows * kWidth);
   ASSERT_TRUE(host.ok());
   for (size_t i = 0; i < host->size(); ++i)
     (*host)[i] = static_cast<uint16_t>(0x3e80 + i + ((i % 2) ? 0x8000 : 0));

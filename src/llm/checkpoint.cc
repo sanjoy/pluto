@@ -219,7 +219,8 @@ absl::Status RemoveStaleWeightFiles(
 }
 
 absl::StatusOr<cuda::PageLockedHostArray<char>> ReadWeightFile(
-    const std::filesystem::path& path, size_t expected_size, size_t index) {
+    cuda::Executor& executor, const std::filesystem::path& path,
+    size_t expected_size, size_t index) {
   std::error_code error;
   const bool exists = std::filesystem::exists(path, error);
   if (error)
@@ -249,8 +250,8 @@ absl::StatusOr<cuda::PageLockedHostArray<char>> ReadWeightFile(
     return absl::InternalError(
         absl::StrCat("cannot open checkpoint weight: ", path.string()));
   }
-  ASSIGN_OR_RETURN(auto contents,
-                   cuda::PageLockedHostArray<char>::Allocate(expected_size));
+  ASSIGN_OR_RETURN(auto contents, cuda::PageLockedHostArray<char>::Allocate(
+                                      executor, expected_size));
   if (expected_size != 0) {
     input.read(contents.data(), static_cast<std::streamsize>(expected_size));
     if (!input) {
@@ -347,9 +348,9 @@ absl::Status WriteToDirectory(cuda::Executor& executor, const Layer& layer,
   std::vector<cuda::PageLockedHostArray<char>> host_weights;
   host_weights.reserve(weights.size());
   for (const Buffer* weight : weights) {
-    ASSIGN_OR_RETURN(
-        auto host_weight,
-        cuda::PageLockedHostArray<char>::Allocate(weight->size_bytes()));
+    ASSIGN_OR_RETURN(auto host_weight,
+                     cuda::PageLockedHostArray<char>::Allocate(
+                         executor, weight->size_bytes()));
     host_weights.push_back(std::move(host_weight));
     if (weight->size_bytes() == 0)
       continue;
@@ -399,7 +400,7 @@ absl::Status ReadFromDirectory(cuda::Executor& executor, Layer& layer,
   host_weights.reserve(weights.size());
   for (size_t index = 0; index < weights.size(); ++index) {
     ASSIGN_OR_RETURN(auto contents,
-                     ReadWeightFile(WeightPath(directory, index),
+                     ReadWeightFile(executor, WeightPath(directory, index),
                                     weights[index]->size_bytes(), index));
     host_weights.push_back(std::move(contents));
   }
@@ -413,7 +414,8 @@ absl::Status ReadFromDirectory(cuda::Executor& executor, Layer& layer,
                         executor.stream()),
         "cudaMemcpyAsync(checkpoint read)"));
   }
-  return executor.Synchronize();
+  // The staging arrays enqueue frees behind their uploads on this executor.
+  return absl::OkStatus();
 }
 
 absl::StatusOr<CheckpointInfo> ReadLatestCheckpoint(

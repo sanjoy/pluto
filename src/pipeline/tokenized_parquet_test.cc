@@ -3,6 +3,7 @@
 #include <string>
 
 #include "gtest/gtest.h"
+#include "src/cuda/executor.h"
 #include "src/dataset/detokenizer.h"
 #include "src/dataset/tokenizer.h"
 #include "src/parquet/fineweb_parquet_reader.h"
@@ -28,6 +29,8 @@ std::filesystem::path FixturePath() {
 }
 
 TEST(TokenizedParquetTest, TextProjectionRoundTripsThroughGpt2) {
+  auto executor = cuda::Executor::Create();
+  ASSERT_TRUE(executor.ok()) << executor.status();
   auto reader = parquet::FineWebParquetReader::Open(FixturePath());
   auto encoder = tokenizer::Gpt2Tokenizer::Load(TokenizerDirectory());
   auto decoder = tokenizer::Gpt2Detokenizer::Load(TokenizerDirectory());
@@ -38,7 +41,7 @@ TEST(TokenizedParquetTest, TextProjectionRoundTripsThroughGpt2) {
   auto texts = (*reader)->ReadTextRows(0, 3);
   ASSERT_TRUE(texts.ok()) << texts.status();
   for (const std::string& text : *texts) {
-    auto token_ids = (*encoder)->Encode(text);
+    auto token_ids = (*encoder)->Encode(**executor, text);
     ASSERT_TRUE(token_ids.ok()) << token_ids.status();
     EXPECT_FALSE(token_ids->empty());
     auto decoded = (*decoder)->Decode(*token_ids);

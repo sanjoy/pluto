@@ -17,12 +17,12 @@ namespace pluto::llm {
 namespace {
 
 TEST_F(LayersTest, CrossEntropyForwardAndBackwardMatchUniformSoftmax) {
-  std::vector<float> logits(kTestBatchSize * kTestVocabularySize, 0.0f);
-  std::vector<int> targets(kTestBatchSize);
-  for (int row = 0; row < kTestBatchSize; ++row)
+  std::vector<float> logits(kTestTokenCount * kTestVocabularySize, 0.0f);
+  std::vector<int> targets(kTestTokenCount);
+  for (int row = 0; row < kTestTokenCount; ++row)
     targets[row] = row;
-  const auto pinned_logits = CopyToPageLockedHostArray(logits);
-  const auto pinned_targets = CopyToPageLockedHostArray(targets);
+  const auto pinned_logits = CopyToPageLockedHostArray(*executor_, logits);
+  const auto pinned_targets = CopyToPageLockedHostArray(*executor_, targets);
 
   auto logits_buffer =
       Buffer::Allocate(*executor_, logits.size() * sizeof(float));
@@ -50,8 +50,10 @@ TEST_F(LayersTest, CrossEntropyForwardAndBackwardMatchUniformSoftmax) {
   ASSERT_TRUE(gradients.ok()) << gradients.status();
   ASSERT_EQ(gradients->size(), 1u);
 
-  auto host_losses = AllocatePageLockedHostArray<float>(kTestBatchSize);
-  auto host_gradients = AllocatePageLockedHostArray<float>(logits.size());
+  auto host_losses =
+      AllocatePageLockedHostArray<float>(*executor_, kTestTokenCount);
+  auto host_gradients =
+      AllocatePageLockedHostArray<float>(*executor_, logits.size());
   ASSERT_EQ(
       cudaMemcpyAsync(host_losses.data(), losses->data(), losses->size_bytes(),
                       cudaMemcpyDeviceToHost, executor_->stream()),
@@ -65,24 +67,24 @@ TEST_F(LayersTest, CrossEntropyForwardAndBackwardMatchUniformSoftmax) {
   EXPECT_NEAR(host_losses[0], std::log(static_cast<float>(kTestVocabularySize)),
               1e-5f);
   EXPECT_NEAR(host_gradients[0],
-              (1.0f / kTestVocabularySize - 1.0f) / kTestBatchSize, 1e-6f);
-  EXPECT_NEAR(host_gradients[1], 1.0f / (kTestVocabularySize * kTestBatchSize),
+              (1.0f / kTestVocabularySize - 1.0f) / kTestTokenCount, 1e-6f);
+  EXPECT_NEAR(host_gradients[1], 1.0f / (kTestVocabularySize * kTestTokenCount),
               1e-7f);
 }
 
 TEST_F(LayersTest, IgnoresPaddedVocabularyColumns) {
   constexpr int kLogicalVocabularySize = 17;
   constexpr int kPaddedVocabularySize = 32;
-  std::vector<float> logits(kTestBatchSize * kPaddedVocabularySize, 0.0f);
-  for (int row = 0; row < kTestBatchSize; ++row) {
+  std::vector<float> logits(kTestTokenCount * kPaddedVocabularySize, 0.0f);
+  for (int row = 0; row < kTestTokenCount; ++row) {
     for (int token = kLogicalVocabularySize; token < kPaddedVocabularySize;
          ++token) {
       logits[row * kPaddedVocabularySize + token] = -3.402823466e+38f;
     }
   }
-  std::vector<int> targets(kTestBatchSize, 0);
-  const auto pinned_logits = CopyToPageLockedHostArray(logits);
-  const auto pinned_targets = CopyToPageLockedHostArray(targets);
+  std::vector<int> targets(kTestTokenCount, 0);
+  const auto pinned_logits = CopyToPageLockedHostArray(*executor_, logits);
+  const auto pinned_targets = CopyToPageLockedHostArray(*executor_, targets);
   auto logits_buffer =
       Buffer::Allocate(*executor_, logits.size() * sizeof(float));
   auto target_buffer =
@@ -105,7 +107,8 @@ TEST_F(LayersTest, IgnoresPaddedVocabularyColumns) {
   BufferVec inputs = {*logits_buffer, *target_buffer};
   auto losses = (*loss_layer)->fwd(*executor_, inputs, &tape);
   ASSERT_TRUE(losses.ok()) << losses.status();
-  auto host_losses = AllocatePageLockedHostArray<float>(kTestBatchSize);
+  auto host_losses =
+      AllocatePageLockedHostArray<float>(*executor_, kTestTokenCount);
   ASSERT_EQ(
       cudaMemcpyAsync(host_losses.data(), losses->data(), losses->size_bytes(),
                       cudaMemcpyDeviceToHost, executor_->stream()),

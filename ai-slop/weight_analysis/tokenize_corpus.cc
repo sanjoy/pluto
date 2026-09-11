@@ -35,6 +35,7 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "src/cuda/executor.h"
 #include "src/cuda/page_locked_host_array.h"
 #include "src/dataset/detokenizer.h"
 #include "src/dataset/tokenizer.h"
@@ -49,9 +50,9 @@ struct EncodedCorpus {
 };
 
 absl::StatusOr<EncodedCorpus> EncodeAndValidate(
-    const tokenizer::Gpt2Tokenizer& encoder,
+    cuda::Executor& executor, const tokenizer::Gpt2Tokenizer& encoder,
     const tokenizer::Gpt2Detokenizer& decoder, const std::string& corpus) {
-  ASSIGN_OR_RETURN(auto tokens, encoder.Encode(corpus));
+  ASSIGN_OR_RETURN(auto tokens, encoder.Encode(executor, corpus));
   ASSIGN_OR_RETURN(auto decoded, decoder.Decode(tokens.span()));
   if (decoded != corpus) {
     return absl::DataLossError(
@@ -171,6 +172,8 @@ absl::Status WriteLittleEndian(NewOutput& output, const Range& values,
 absl::Status Export(const std::filesystem::path& tokenizer_directory,
                     const std::filesystem::path& corpus_path,
                     const std::filesystem::path& output_path) {
+  // Own the host-memory pool before creating any token arrays.
+  ASSIGN_OR_RETURN(auto executor, cuda::Executor::Create());
   ASSIGN_OR_RETURN(auto encoder,
                    tokenizer::Gpt2Tokenizer::Load(tokenizer_directory));
   ASSIGN_OR_RETURN(auto decoder,
@@ -184,7 +187,8 @@ absl::Status Export(const std::filesystem::path& tokenizer_directory,
                            std::istreambuf_iterator<char>());
   if (input.bad())
     return absl::DataLossError("error reading corpus bytes");
-  ASSIGN_OR_RETURN(auto encoded, EncodeAndValidate(*encoder, *decoder, corpus));
+  ASSIGN_OR_RETURN(auto encoded,
+                   EncodeAndValidate(*executor, *encoder, *decoder, corpus));
 
   NewOutput ids(output_path);
   NewOutput offsets(absl::StrCat(output_path.string(), ".offsets.bin"));
@@ -205,6 +209,7 @@ absl::Status Export(const std::filesystem::path& tokenizer_directory,
 }
 
 absl::Status SelfTest(const std::filesystem::path& tokenizer_directory) {
+  ASSIGN_OR_RETURN(auto executor, cuda::Executor::Create());
   ASSIGN_OR_RETURN(auto encoder,
                    tokenizer::Gpt2Tokenizer::Load(tokenizer_directory));
   ASSIGN_OR_RETURN(auto decoder,
@@ -218,7 +223,7 @@ absl::Status SelfTest(const std::filesystem::path& tokenizer_directory) {
                                              "  leading spaces"};
   for (const auto& example : examples) {
     ASSIGN_OR_RETURN(auto encoded,
-                     EncodeAndValidate(*encoder, *decoder, example));
+                     EncodeAndValidate(*executor, *encoder, *decoder, example));
     if (example == "a\n\nb") {
       // Regression anchor for the native whitespace behavior that motivated
       // this exporter: HF currently emits two 198s here; native emits 628.

@@ -97,6 +97,7 @@ cc_binary(
     name = "tokenize_corpus",
     srcs = ["tokenize_corpus.cc"],
     deps = [
+        "//src/cuda:executor",
         "//src/cuda:page_locked_host_array",
         "//src/dataset:detokenizer",
         "//src/dataset:tokenizer",

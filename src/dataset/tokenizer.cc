@@ -173,7 +173,7 @@ absl::Status Gpt2Tokenizer::EncodeOrdinary(absl::string_view text,
 }
 
 absl::StatusOr<cuda::PageLockedHostArray<int>> Gpt2Tokenizer::Encode(
-    absl::string_view text) const {
+    cuda::Executor& executor, absl::string_view text) const {
   std::vector<int> output;
   size_t begin = 0;
   while (begin < text.size()) {
@@ -186,7 +186,7 @@ absl::StatusOr<cuda::PageLockedHostArray<int>> Gpt2Tokenizer::Encode(
     output.push_back(model_->eos_token_id());
     begin = special + model_->eos_token().size();
   }
-  return cuda::PageLockedHostArray<int>::CopyFrom(output);
+  return cuda::PageLockedHostArray<int>::CopyFrom(executor, output);
 }
 
 }  // namespace pluto::tokenizer

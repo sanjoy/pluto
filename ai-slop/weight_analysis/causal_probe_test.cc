@@ -38,8 +38,8 @@ class ProbeTest : public testing::Test {
       std::filesystem::remove_all(directory_);
   }
   absl::StatusOr<cuda::Buffer> Upload(absl::Span<const float> values) {
-    ASSIGN_OR_RETURN(auto host,
-                     cuda::PageLockedHostArray<float>::CopyFrom(values));
+    ASSIGN_OR_RETURN(auto host, cuda::PageLockedHostArray<float>::CopyFrom(
+                                    *executor_, values));
     ASSIGN_OR_RETURN(auto device,
                      cuda::Buffer::Allocate(*executor_, host.size_bytes()));
     RETURN_IF_ERROR(cuda::CudaStatus(
@@ -51,8 +51,9 @@ class ProbeTest : public testing::Test {
   }
   absl::StatusOr<cuda::PageLockedHostArray<float>> Download(
       const cuda::Buffer& buffer) {
-    ASSIGN_OR_RETURN(auto host, cuda::PageLockedHostArray<float>::Allocate(
-                                    buffer.size_bytes() / sizeof(float)));
+    ASSIGN_OR_RETURN(auto host,
+                     cuda::PageLockedHostArray<float>::Allocate(
+                         *executor_, buffer.size_bytes() / sizeof(float)));
     RETURN_IF_ERROR(cuda::CudaStatus(
         cudaMemcpyAsync(host.data(), buffer.data(), buffer.size_bytes(),
                         cudaMemcpyDeviceToHost, executor_->stream()),
@@ -237,7 +238,8 @@ TEST_F(ProbeTest, MlpRowsRetainTargetAfterOriginalHandleIsReleased) {
   // No layer alias remains: only the helper now owns this allocation.
   weight = absl::CancelledError("release caller's handle");
   ASSERT_TRUE((*intervention)->Apply(0.5f).ok());
-  auto actual = cuda::PageLockedHostArray<float>::Allocate(matrix.size());
+  auto actual =
+      cuda::PageLockedHostArray<float>::Allocate(*executor_, matrix.size());
   ASSERT_TRUE(actual.ok());
   ASSERT_EQ(cudaMemcpyAsync(actual->data(), target, actual->size_bytes(),
                             cudaMemcpyDeviceToHost, executor_->stream()),
@@ -349,7 +351,8 @@ TEST_F(ProbeTest, MlpRowsRestoreDetectsButDoesNotOverwriteUnselectedMutation) {
       MlpRowIntervention::Capture(*executor_, *weight, 3, 2, {0});
   ASSERT_TRUE(intervention.ok());
   ASSERT_TRUE((*intervention)->Apply(0).ok());
-  auto replacement = cuda::PageLockedHostArray<float>::CopyFrom({99});
+  auto replacement =
+      cuda::PageLockedHostArray<float>::CopyFrom(*executor_, {99});
   ASSERT_TRUE(replacement.ok());
   ASSERT_EQ(cudaMemcpyAsync(static_cast<float*>(weight->data()) + 4,
                             replacement->data(), sizeof(float),
@@ -378,24 +381,25 @@ TEST_F(ProbeTest, PackedBatchUsesGlobalTargetHalfAndRejectsBadInputs) {
                                     1, 2, 3, 4, 5, 6, 0, 1, 2, 2, 3, 4};
   const auto file = directory_ / "batch.bin";
   ASSERT_TRUE(WriteExclusive(file, values.data(), values.size() * 4).ok());
-  auto batch = LoadPackedBatch(file, 4, 7);
+  auto batch = LoadPackedBatch(*executor_, file, 4, 7);
   ASSERT_TRUE(batch.ok()) << batch.status();
+  EXPECT_EQ(&batch->tokens.executor(), executor_.get());
   EXPECT_EQ(batch->passage_count, 3);
   EXPECT_EQ(batch->inputs(1, 1)[0], 4);
   EXPECT_EQ(batch->targets(1, 1)[0], 5);
   EXPECT_EQ(batch->targets(2, 1)[3], 4);
-  EXPECT_FALSE(LoadPackedBatch(file, 5, 7).ok());
-  EXPECT_FALSE(LoadPackedBatch(file, 4, 6).ok());
-  EXPECT_FALSE(LoadPackedBatch(file, 0, 7).ok());
+  EXPECT_FALSE(LoadPackedBatch(*executor_, file, 5, 7).ok());
+  EXPECT_FALSE(LoadPackedBatch(*executor_, file, 4, 6).ok());
+  EXPECT_FALSE(LoadPackedBatch(*executor_, file, 0, 7).ok());
   auto malformed = values;
   malformed[13] = 6;
   const auto wrong_shift = directory_ / "wrong.bin";
   ASSERT_TRUE(
       WriteExclusive(wrong_shift, malformed.data(), malformed.size() * 4).ok());
-  EXPECT_FALSE(LoadPackedBatch(wrong_shift, 4, 7).ok());
+  EXPECT_FALSE(LoadPackedBatch(*executor_, wrong_shift, 4, 7).ok());
   const auto empty = directory_ / "empty.bin";
   ASSERT_TRUE(WriteExclusive(empty, nullptr, 0).ok());
-  EXPECT_FALSE(LoadPackedBatch(empty, 4, 7).ok());
+  EXPECT_FALSE(LoadPackedBatch(*executor_, empty, 4, 7).ok());
 }
 
 TEST_F(ProbeTest, ExclusiveArtifactsAndJsonEscapes) {
@@ -424,15 +428,15 @@ class ToyModel final : public llm::Layer {
     if (!tape || inputs.size() != 1)
       return absl::InvalidArgumentError("toy input");
     const size_t rows = inputs[0].size_bytes() / 4;
-    ASSIGN_OR_RETURN(auto tokens,
-                     cuda::PageLockedHostArray<int32_t>::Allocate(rows));
+    ASSIGN_OR_RETURN(auto tokens, cuda::PageLockedHostArray<int32_t>::Allocate(
+                                      executor, rows));
     RETURN_IF_ERROR(cuda::CudaStatus(
         cudaMemcpyAsync(tokens.data(), inputs[0].data(), rows * 4,
                         cudaMemcpyDeviceToHost, executor.stream()),
         "toy tokens"));
     RETURN_IF_ERROR(executor.Synchronize());
-    ASSIGN_OR_RETURN(auto logits,
-                     cuda::PageLockedHostArray<float>::Allocate(rows * padded_));
+    ASSIGN_OR_RETURN(auto logits, cuda::PageLockedHostArray<float>::Allocate(
+                                      executor, rows * padded_));
     for (size_t row = 0; row < rows; ++row) {
       for (int col = 0; col < padded_; ++col) {
         logits[row * padded_ + col] = col >= vocab_        ? -1e30f
@@ -466,7 +470,7 @@ class ToyModel final : public llm::Layer {
 TEST_F(ProbeTest, PerTokenLossAndArgmaxPreserveMicrobatchAndPassageOrdering) {
   const std::vector<int32_t> values{0, 1, 2, 3, 4, 5, 6, 0, 2, 2, 2, 3,
                                     1, 2, 3, 4, 5, 6, 0, 1, 2, 2, 3, 4};
-  auto host = cuda::PageLockedHostArray<int32_t>::CopyFrom(values);
+  auto host = cuda::PageLockedHostArray<int32_t>::CopyFrom(*executor_, values);
   ASSERT_TRUE(host.ok());
   PackedBatch batch{std::move(*host), 4, 3};
   auto loss =
@@ -476,6 +480,8 @@ TEST_F(ProbeTest, PerTokenLossAndArgmaxPreserveMicrobatchAndPassageOrdering) {
   auto measured = EvaluatePassages(*executor_, model, **loss, batch, 2, 7,
                                    (*loss)->padded_vocab_size());
   ASSERT_TRUE(measured.ok()) << measured.status();
+  EXPECT_EQ(&measured->losses.executor(), executor_.get());
+  EXPECT_EQ(&measured->argmax.executor(), executor_.get());
   auto singleton = EvaluatePassages(*executor_, model, **loss, batch, 1, 7,
                                     (*loss)->padded_vocab_size());
   ASSERT_TRUE(singleton.ok()) << singleton.status();

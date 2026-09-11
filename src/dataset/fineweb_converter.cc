@@ -25,7 +25,7 @@ absl::Status WithContext(const absl::Status& status,
 }  // namespace
 
 absl::Status ConvertFineWebParquetFile(
-    const std::filesystem::path& input_path,
+    cuda::Executor& executor, const std::filesystem::path& input_path,
     const std::filesystem::path& output_path,
     const tokenizer::Gpt2Tokenizer& tokenizer,
     FineWebConversionOptions options) {
@@ -63,7 +63,7 @@ absl::Status ConvertFineWebParquetFile(
     }
 
     for (const std::string& text : *texts) {
-      auto encoded = tokenizer.Encode(text);
+      auto encoded = tokenizer.Encode(executor, text);
       if (!encoded.ok()) {
         return WithContext(encoded.status(),
                            absl::StrCat("cannot tokenize document ",

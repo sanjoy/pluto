@@ -183,8 +183,9 @@ absl::StatusOr<std::unique_ptr<LayerNormLayer>> LayerNormLayer::Create(
   ASSIGN_OR_RETURN(auto beta, Buffer::Allocate(executor, bytes));
   ASSIGN_OR_RETURN(auto gamma_gradient, Buffer::Allocate(executor, bytes));
   ASSIGN_OR_RETURN(auto beta_gradient, Buffer::Allocate(executor, bytes));
-  ASSIGN_OR_RETURN(auto gamma_values,
-                   cuda::PageLockedHostArray<float>::Allocate(embedding_dim));
+  ASSIGN_OR_RETURN(
+      auto gamma_values,
+      cuda::PageLockedHostArray<float>::Allocate(executor, embedding_dim));
   std::fill(gamma_values.begin(), gamma_values.end(), 1.0f);
   RETURN_IF_ERROR(cuda::CudaStatus(
       cudaMemcpyAsync(gamma.data(), gamma_values.data(), bytes,
@@ -196,8 +197,7 @@ absl::StatusOr<std::unique_ptr<LayerNormLayer>> LayerNormLayer::Create(
                         executor.stream()),
         "cudaMemsetAsync(layer-norm parameter)"));
   }
-  // gamma_values owns the source of an asynchronous transfer.
-  RETURN_IF_ERROR(executor.Synchronize());
+  // gamma_values is released in stream order after its upload completes.
   return std::unique_ptr<LayerNormLayer>(new LayerNormLayer(
       executor, embedding_dim, epsilon, data_type, std::move(gamma),
       std::move(beta), std::move(gamma_gradient), std::move(beta_gradient)));

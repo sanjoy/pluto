@@ -70,8 +70,8 @@ class CheckpointTest : public testing::Test {
   void CopyToDevice(Buffer& buffer,
                     const std::vector<unsigned char>& contents) {
     ASSERT_EQ(buffer.size_bytes(), contents.size());
-    auto transfer =
-        cuda::PageLockedHostArray<unsigned char>::CopyFrom(contents);
+    auto transfer = cuda::PageLockedHostArray<unsigned char>::CopyFrom(
+        *executor_, contents);
     ASSERT_TRUE(transfer.ok()) << transfer.status();
     ASSERT_EQ(cudaMemcpyAsync(buffer.data(), transfer->data(), contents.size(),
                               cudaMemcpyHostToDevice, executor_->stream()),
@@ -80,8 +80,8 @@ class CheckpointTest : public testing::Test {
   }
 
   std::vector<unsigned char> CopyFromDevice(const Buffer& buffer) {
-    auto transfer =
-        cuda::PageLockedHostArray<unsigned char>::Allocate(buffer.size_bytes());
+    auto transfer = cuda::PageLockedHostArray<unsigned char>::Allocate(
+        *executor_, buffer.size_bytes());
     EXPECT_TRUE(transfer.ok()) << transfer.status();
     if (!transfer.ok())
       return {};

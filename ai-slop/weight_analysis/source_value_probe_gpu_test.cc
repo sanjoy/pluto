@@ -39,7 +39,7 @@ TEST(SourceValueGpuTest,
   }
 
   constexpr int rows = 2 * kContext;
-  auto tokens = cuda::PageLockedHostArray<int32_t>::Allocate(rows);
+  auto tokens = cuda::PageLockedHostArray<int32_t>::Allocate(**executor, rows);
   ASSERT_TRUE(tokens.ok());
   for (int i = 0; i < rows; ++i)
     (*tokens)[i] = (17 * i + 3) % 1000;
@@ -199,7 +199,8 @@ TEST(SourceValueGpuTest,
       cudaMemcpyAsync(wrong_logits->data(), clean->data(), clean->size_bytes(),
                       cudaMemcpyDeviceToDevice, (*executor)->stream()),
       cudaSuccess);
-  auto changed_word = cuda::PageLockedHostArray<uint32_t>::Allocate(1);
+  auto changed_word =
+      cuda::PageLockedHostArray<uint32_t>::Allocate(**executor, 1);
   ASSERT_TRUE(changed_word.ok());
   std::memcpy(changed_word->data(), clean_bytes->data(), 4);
   (*changed_word)[0] ^= 1;

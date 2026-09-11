@@ -29,7 +29,8 @@ TEST(EmbeddingFactorialGpuTest, NativeDiagonalsAndCausalInputExposure) {
   constexpr int vocabulary = llm::kGpt2VocabularySize;
   constexpr int context = llm::kGpt2ContextLength;
   constexpr int patched_token = 5;
-  auto replacement_row = cuda::PageLockedHostArray<float>::Allocate(width);
+  auto replacement_row =
+      cuda::PageLockedHostArray<float>::Allocate(**executor, width);
   ASSERT_TRUE(replacement_row.ok());
   for (int i = 0; i < width; ++i)
     (*replacement_row)[i] = ((i % 13) - 6) * 0.05f;
@@ -43,7 +44,8 @@ TEST(EmbeddingFactorialGpuTest, NativeDiagonalsAndCausalInputExposure) {
   auto lens_j = NativeLogitLens::Create(**executor, *weights_j);
   ASSERT_TRUE(lens_a.ok());
   ASSERT_TRUE(lens_j.ok());
-  auto tokens = cuda::PageLockedHostArray<int32_t>::Allocate(context);
+  auto tokens =
+      cuda::PageLockedHostArray<int32_t>::Allocate(**executor, context);
   ASSERT_TRUE(tokens.ok());
   std::fill(tokens->begin(), tokens->end(), 0);
   // No selected weight appears before position 10. An input-side effect at
@@ -139,7 +141,8 @@ TEST(EmbeddingFactorialGpuTest, NativeDiagonalsAndCausalInputExposure) {
   // must match the single-sequence execution above exactly, even though their
   // flattened positions now start at context. In particular, neither future
   // exposure nor a different sequence may contaminate an earlier prediction.
-  auto two_tokens = cuda::PageLockedHostArray<int32_t>::Allocate(2 * context);
+  auto two_tokens =
+      cuda::PageLockedHostArray<int32_t>::Allocate(**executor, 2 * context);
   ASSERT_TRUE(two_tokens.ok());
   std::fill(two_tokens->begin(), two_tokens->end(), 0);
   (*two_tokens)[context + 10] = patched_token;

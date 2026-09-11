@@ -32,6 +32,8 @@ std::filesystem::path FixturePath() {
 }
 
 TEST(FineWebConverterTest, ConvertsAndRoundTripsEveryFixtureDocument) {
+  auto executor = cuda::Executor::Create();
+  ASSERT_TRUE(executor.ok()) << executor.status();
   auto encoder = tokenizer::Gpt2Tokenizer::Load(TokenizerDirectory());
   auto decoder = tokenizer::Gpt2Detokenizer::Load(TokenizerDirectory());
   ASSERT_TRUE(encoder.ok()) << encoder.status();
@@ -43,9 +45,9 @@ TEST(FineWebConverterTest, ConvertsAndRoundTripsEveryFixtureDocument) {
   // row-group boundary through the same helper used by the production binary.
   FineWebConversionOptions options;
   options.batch_size = 1;
-  ASSERT_TRUE(
-      ConvertFineWebParquetFile(FixturePath(), output, **encoder, options)
-          .ok());
+  ASSERT_TRUE(ConvertFineWebParquetFile(**executor, FixturePath(), output,
+                                        **encoder, options)
+                  .ok());
 
   auto reader = DocumentFileReader::Open(output);
   ASSERT_TRUE(reader.ok()) << reader.status();
@@ -63,15 +65,17 @@ TEST(FineWebConverterTest, ConvertsAndRoundTripsEveryFixtureDocument) {
 }
 
 TEST(FineWebConverterTest, RejectsZeroBatchSizeWithoutPublishingOutput) {
+  auto executor = cuda::Executor::Create();
+  ASSERT_TRUE(executor.ok()) << executor.status();
   auto encoder = tokenizer::Gpt2Tokenizer::Load(TokenizerDirectory());
   ASSERT_TRUE(encoder.ok()) << encoder.status();
   const std::filesystem::path output =
       std::filesystem::path(testing::TempDir()) / "invalid.tokenized";
   FineWebConversionOptions options;
   options.batch_size = 0;
-  EXPECT_FALSE(
-      ConvertFineWebParquetFile(FixturePath(), output, **encoder, options)
-          .ok());
+  EXPECT_FALSE(ConvertFineWebParquetFile(**executor, FixturePath(), output,
+                                         **encoder, options)
+                   .ok());
   EXPECT_FALSE(std::filesystem::exists(output));
 }
 

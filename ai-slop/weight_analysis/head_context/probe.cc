@@ -53,7 +53,7 @@ absl::StatusOr<cuda::PageLockedHostArray<T>> Download(
     return absl::InvalidArgumentError("invalid head-context download");
   }
   ASSIGN_OR_RETURN(auto result, cuda::PageLockedHostArray<T>::Allocate(
-                                    buffer.size_bytes() / sizeof(T)));
+                                    executor, buffer.size_bytes() / sizeof(T)));
   RETURN_IF_ERROR(cuda::CudaStatus(
       cudaMemcpyAsync(result.data(), buffer.data(), buffer.size_bytes(),
                       cudaMemcpyDeviceToHost, executor.stream()),
@@ -465,7 +465,7 @@ absl::StatusOr<Result> Probe::Apply(cuda::Executor& executor,
     return absl::InvalidArgumentError("head-context block/executor differs");
   RETURN_IF_ERROR(impl_->Verify());
   ASSIGN_OR_RETURN(auto expected, cuda::PageLockedHostArray<uint16_t>::Allocate(
-                                      impl_->context_bytes.size()));
+                                      executor, impl_->context_bytes.size()));
   RETURN_IF_ERROR(ScaleContext(impl_->context_bytes.span(), expected.span(),
                                impl_->rows, kGeometry, selection));
   ASSIGN_OR_RETURN(auto context,

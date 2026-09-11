@@ -609,8 +609,9 @@ absl::Status CopyNormal(cuda::Executor& executor, Buffer& destination,
                         float standard_deviation, std::mt19937_64* random,
                         const char* operation) {
   std::normal_distribution<float> distribution(0.0f, standard_deviation);
-  ASSIGN_OR_RETURN(auto values, cuda::PageLockedHostArray<float>::Allocate(
-                                    destination.size_bytes() / sizeof(float)));
+  ASSIGN_OR_RETURN(auto values,
+                   cuda::PageLockedHostArray<float>::Allocate(
+                       executor, destination.size_bytes() / sizeof(float)));
   for (float& value : values)
     value = distribution(*random);
   RETURN_IF_ERROR(cuda::CudaStatus(
@@ -618,7 +619,8 @@ absl::Status CopyNormal(cuda::Executor& executor, Buffer& destination,
                       destination.size_bytes(), cudaMemcpyHostToDevice,
                       executor.stream()),
       operation));
-  return executor.Synchronize();
+  // Stream-ordered staging release keeps the source alive through the upload.
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -795,7 +797,7 @@ SparseAutoEncoderLayer::ReadZStatistics(cuda::Executor& executor,
   if (valid_rows != 0)
     rows = valid_rows;
   ASSIGN_OR_RETURN(auto host, cuda::PageLockedHostArray<float>::Allocate(
-                                  static_cast<size_t>(rows) * 4));
+                                  executor, static_cast<size_t>(rows) * 4));
   RETURN_IF_ERROR(cuda::CudaStatus(
       cudaMemcpyAsync(host.data(), tape.intermediates[2].data(),
                       host.size_bytes(), cudaMemcpyDeviceToHost,

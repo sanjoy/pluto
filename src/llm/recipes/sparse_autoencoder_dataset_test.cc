@@ -81,8 +81,8 @@ class SparseAutoEncoderDataSetTest : public testing::Test {
   }
 
   absl::StatusOr<Buffer> MakeData() {
-    ASSIGN_OR_RETURN(auto data,
-                     cuda::PageLockedHostArray<int>::Allocate(2 * kTokenCount));
+    ASSIGN_OR_RETURN(auto data, cuda::PageLockedHostArray<int>::Allocate(
+                                    *executor_, 2 * kTokenCount));
     std::iota(data.begin(), data.begin() + kTokenCount, 0);
     std::iota(data.begin() + kTokenCount, data.end(), 1);
     auto buffer = Buffer::Allocate(*executor_, data.size() * sizeof(int));
@@ -114,7 +114,8 @@ TEST_F(SparseAutoEncoderDataSetTest,
           static_cast<float>(token * 100 + column);
     }
   }
-  auto pinned_table = cuda::PageLockedHostArray<float>::CopyFrom(table);
+  auto pinned_table =
+      cuda::PageLockedHostArray<float>::CopyFrom(*executor_, table);
   ASSERT_TRUE(pinned_table.ok()) << pinned_table.status();
   ASSERT_EQ(cudaMemcpyAsync((*checkpoint_embedding)->weight().data(),
                             pinned_table->data(), table.size() * sizeof(float),
@@ -152,8 +153,8 @@ TEST_F(SparseAutoEncoderDataSetTest,
   EXPECT_EQ(batch->data.size_bytes(), static_cast<size_t>(kTokenCount) *
                                           kEmbeddingDimension * sizeof(float));
 
-  auto actual = cuda::PageLockedHostArray<float>::Allocate(kTokenCount *
-                                                           kEmbeddingDimension);
+  auto actual = cuda::PageLockedHostArray<float>::Allocate(
+      *executor_, kTokenCount * kEmbeddingDimension);
   ASSERT_TRUE(actual.ok()) << actual.status();
   ASSERT_EQ(cudaMemcpyAsync(actual->data(), batch->data.data(),
                             batch->data.size_bytes(), cudaMemcpyDeviceToHost,

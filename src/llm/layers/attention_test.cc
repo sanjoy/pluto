@@ -26,7 +26,7 @@ TEST_F(LayersTest, FlashAttentionIsCausalAndHasCorrectSingleTokenGradient) {
   ASSERT_TRUE(attention.ok()) << attention.status();
 
   constexpr int kPackedWidth = 3 * kTestModelWidth;
-  std::vector<float> input(kTestBatchSize * kPackedWidth, 0.0f);
+  std::vector<float> input(kTestTokenCount * kPackedWidth, 0.0f);
   // Q, K, and V occupy distinct packed regions in each row. Position zero
   // must ignore future values, while position one attends to values 1 and 2
   // using dot products 2 and 4.
@@ -38,7 +38,7 @@ TEST_F(LayersTest, FlashAttentionIsCausalAndHasCorrectSingleTokenGradient) {
   input[kPackedWidth + 2 * kTestModelWidth] = 2.0f;
   // A future value that position zero is not allowed to observe.
   input[2 * kPackedWidth + 2 * kTestModelWidth] = 4.0f;
-  const auto pinned_input = CopyToPageLockedHostArray(input);
+  const auto pinned_input = CopyToPageLockedHostArray(*executor_, input);
   auto input_buffer =
       Buffer::Allocate(*executor_, input.size() * sizeof(float));
   ASSERT_TRUE(input_buffer.ok()) << input_buffer.status();
@@ -52,10 +52,10 @@ TEST_F(LayersTest, FlashAttentionIsCausalAndHasCorrectSingleTokenGradient) {
   auto output = (*attention)->fwd(*executor_, attention_inputs, &tape);
   ASSERT_TRUE(output.ok()) << output.status();
 
-  std::vector<float> output_gradient(kTestBatchSize * kTestModelWidth, 0.0f);
+  std::vector<float> output_gradient(kTestTokenCount * kTestModelWidth, 0.0f);
   output_gradient[0] = 1.0f;
   const auto pinned_output_gradient =
-      CopyToPageLockedHostArray(output_gradient);
+      CopyToPageLockedHostArray(*executor_, output_gradient);
   auto gradient_buffer =
       Buffer::Allocate(*executor_, output_gradient.size() * sizeof(float));
   ASSERT_TRUE(gradient_buffer.ok()) << gradient_buffer.status();
@@ -70,8 +70,10 @@ TEST_F(LayersTest, FlashAttentionIsCausalAndHasCorrectSingleTokenGradient) {
   ASSERT_TRUE(input_gradient.ok()) << input_gradient.status();
   ASSERT_EQ(input_gradient->size(), 1u);
 
-  auto host_output = AllocatePageLockedHostArray<float>(output_gradient.size());
-  auto host_input_gradient = AllocatePageLockedHostArray<float>(input.size());
+  auto host_output =
+      AllocatePageLockedHostArray<float>(*executor_, output_gradient.size());
+  auto host_input_gradient =
+      AllocatePageLockedHostArray<float>(*executor_, input.size());
   ASSERT_EQ(
       cudaMemcpyAsync(host_output.data(), output->data(), output->size_bytes(),
                       cudaMemcpyDeviceToHost, executor_->stream()),
@@ -167,10 +169,10 @@ TEST_F(LayerReferenceTest, ForwardAndBackwardAreBitwiseRepeatable) {
                                          reference_input_gradient->front(),
                                          3e-3f, 3e-3f));
           }
-          auto output_bytes =
-              AllocatePageLockedHostArray<unsigned char>(output->size_bytes());
+          auto output_bytes = AllocatePageLockedHostArray<unsigned char>(
+              *executor_, output->size_bytes());
           auto gradient_bytes = AllocatePageLockedHostArray<unsigned char>(
-              input_gradient->front().size_bytes());
+              *executor_, input_gradient->front().size_bytes());
           ASSERT_EQ(
               cudaMemcpyAsync(output_bytes.data(), output->data(),
                               output->size_bytes(), cudaMemcpyDeviceToHost,

@@ -97,7 +97,7 @@ absl::StatusOr<double> ReadDeviceLoss(cuda::Executor& executor,
         "evaluation result belongs to a different CUDA Executor");
   }
   ASSIGN_OR_RETURN(auto host_loss,
-                   cuda::PageLockedHostArray<float>::Allocate(1));
+                   cuda::PageLockedHostArray<float>::Allocate(executor, 1));
   RETURN_IF_ERROR(cuda::CudaStatus(
       cudaMemcpyAsync(host_loss.data(), loss.data(), loss.size_bytes(),
                       cudaMemcpyDeviceToHost, executor.stream()),

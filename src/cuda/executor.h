@@ -2,6 +2,7 @@
 
 #include <cuda_runtime_api.h>
 
+#include <cstddef>
 #include <memory>
 
 #include "absl/status/status.h"
@@ -15,10 +16,14 @@ absl::Status CudaStatus(cudaError_t error, const char* operation);
 
 // Owns the CUDA execution context used by stream-ordered computations.
 //
-// Executor is deliberately small today: its only state is one explicitly
-// created, non-default CUDA stream. Passing the Executor through APIs keeps
-// stream selection explicit and leaves room for future execution-wide state
-// without changing every layer interface again.
+// Work and frees use one explicitly created, non-default compute stream. An
+// independent stream prepares allocations from the owned pinned-host pool.
+// Waiting for a CPU-accessible allocation therefore need not wait for pending
+// computation. Only already-completed frees may be recycled by the host pool:
+// it cannot insert dependencies that make allocation wait for compute work.
+//
+// An Executor must outlive every device Buffer and PageLockedHostBuffer
+// allocated through it, including copies hidden in PageLockedHostArray.
 class Executor final {
  public:
   static absl::StatusOr<std::unique_ptr<Executor>> Create();
@@ -27,17 +32,30 @@ class Executor final {
   Executor& operator=(const Executor&) = delete;
   ~Executor();
 
-  // Waits for all work previously submitted to this executor.
+  // Waits for all work previously submitted to this executor's compute stream.
   absl::Status Synchronize() const;
 
   // CUDA launch syntax and runtime calls require the native stream handle.
   // Code must obtain it from the Executor passed to the current operation.
   cudaStream_t stream() const { return stream_; }
 
- private:
-  explicit Executor(cudaStream_t stream) : stream_(stream) {}
+  // Borrowed handle for inspecting the executor-owned pool. Callers must not
+  // destroy it or change its access/reuse policy.
+  cudaMemPool_t host_memory_pool() const { return host_memory_pool_; }
 
-  cudaStream_t stream_;
+ private:
+  friend class PageLockedHostBuffer;
+
+  Executor() = default;
+
+  // Allocates asynchronously, then waits only for allocation readiness so the
+  // returned address can immediately be read/written by the CPU. Its eventual
+  // free must be enqueued on stream(), after all transfers using the address.
+  absl::StatusOr<void*> AllocatePageLockedHostMemory(size_t size_bytes);
+
+  cudaStream_t stream_ = nullptr;
+  cudaStream_t host_allocation_stream_ = nullptr;
+  cudaMemPool_t host_memory_pool_ = nullptr;
 };
 
 }  // namespace pluto::cuda

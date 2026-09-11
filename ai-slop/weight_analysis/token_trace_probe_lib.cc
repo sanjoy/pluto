@@ -43,7 +43,8 @@ absl::Status ValidateTokenIds(absl::Span<const int32_t> ids, int vocabulary,
 }
 
 absl::StatusOr<cuda::PageLockedHostArray<int32_t>> ReadTokenIds(
-    const std::filesystem::path& path, int vocabulary, int context_length) {
+    cuda::Executor& executor, const std::filesystem::path& path, int vocabulary,
+    int context_length) {
   if constexpr (std::endian::native != std::endian::little)
     return absl::UnimplementedError("token files require little-endian host");
   if (vocabulary <= 0 || context_length <= 0)
@@ -66,7 +67,7 @@ absl::StatusOr<cuda::PageLockedHostArray<int32_t>> ReadTokenIds(
         "token file must be regular, nonempty, and contain 1..context int32s");
   }
   ASSIGN_OR_RETURN(auto ids, cuda::PageLockedHostArray<int32_t>::Allocate(
-                                 before.st_size / sizeof(int32_t)));
+                                 executor, before.st_size / sizeof(int32_t)));
   size_t done = 0;
   while (done < ids.size_bytes()) {
     auto* bytes = reinterpret_cast<uint8_t*>(ids.data());
@@ -108,8 +109,8 @@ absl::StatusOr<cuda::PageLockedHostArray<uint8_t>> ReadSelectedRow(
     return absl::InvalidArgumentError("selected row outside device matrix");
   }
   const size_t offset = static_cast<size_t>(row) * row_bytes;
-  ASSIGN_OR_RETURN(auto host,
-                   cuda::PageLockedHostArray<uint8_t>::Allocate(row_bytes));
+  ASSIGN_OR_RETURN(auto host, cuda::PageLockedHostArray<uint8_t>::Allocate(
+                                  executor, row_bytes));
   const auto* source = static_cast<const uint8_t*>(buffer.data()) + offset;
   RETURN_IF_ERROR(cuda::CudaStatus(
       cudaMemcpyAsync(host.data(), source, row_bytes, cudaMemcpyDeviceToHost,

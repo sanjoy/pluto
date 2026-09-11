@@ -37,7 +37,7 @@ TEST_F(LayersTest, UpdatesFp32MasterWeightsAndClearsGradients) {
 
   for (Buffer& gradient : (*dense)->gradients()) {
     std::vector<float> values(gradient.size_bytes() / sizeof(float), 2.0f);
-    const auto pinned_values = CopyToPageLockedHostArray(values);
+    const auto pinned_values = CopyToPageLockedHostArray(*executor_, values);
     ASSERT_EQ(cudaMemcpyAsync(gradient.data(), pinned_values.data(),
                               gradient.size_bytes(), cudaMemcpyHostToDevice,
                               executor_->stream()),
@@ -46,9 +46,10 @@ TEST_F(LayersTest, UpdatesFp32MasterWeightsAndClearsGradients) {
   ASSERT_TRUE(optimizer_interface->Step().ok());
   EXPECT_EQ(optimizer_interface->step(), 1);
 
-  auto matrix = AllocatePageLockedHostArray<float>(16 * 16);
-  auto bias = AllocatePageLockedHostArray<float>(16);
-  auto matrix_gradient = AllocatePageLockedHostArray<float>(16 * 16);
+  auto matrix = AllocatePageLockedHostArray<float>(*executor_, 16 * 16);
+  auto bias = AllocatePageLockedHostArray<float>(*executor_, 16);
+  auto matrix_gradient =
+      AllocatePageLockedHostArray<float>(*executor_, 16 * 16);
   ASSERT_EQ(cudaMemcpyAsync(matrix.data(), (*dense)->weights()[0].data(),
                             matrix.size() * sizeof(float),
                             cudaMemcpyDeviceToHost, executor_->stream()),

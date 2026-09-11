@@ -44,8 +44,8 @@ absl::StatusOr<cuda::PageLockedHostArray<float>> TraceRows(
     const cuda::Buffer& tokens) {
   llm::Tape tape;
   ASSIGN_OR_RETURN(auto logits, model.fwd(executor, {tokens}, &tape));
-  ASSIGN_OR_RETURN(auto result,
-                   cuda::PageLockedHostArray<float>::Allocate(kCases * kPadded));
+  ASSIGN_OR_RETURN(auto result, cuda::PageLockedHostArray<float>::Allocate(
+                                    executor, kCases * kPadded));
   for (int item = 0; item < kCases; ++item) {
     ASSIGN_OR_RETURN(
         auto row, ReadSelectedRow(executor, logits, (item + 1) * kContext - 1,
@@ -97,15 +97,16 @@ absl::Status Run() {
   ASSIGN_OR_RETURN(auto snapshot, InspectGpt2CheckpointFiles(checkpoint));
   RETURN_IF_ERROR(CreateNewOutputDirectory(output));
   ASSIGN_OR_RETURN(auto executor, cuda::Executor::Create());
-  ASSIGN_OR_RETURN(auto batch, LoadPackedBatch(batch_path, kContext, kVocab));
+  ASSIGN_OR_RETURN(auto batch,
+                   LoadPackedBatch(*executor, batch_path, kContext, kVocab));
   if (batch.passage_count != 8)
     return absl::InvalidArgumentError("frozen study requires eight passages");
   ASSIGN_OR_RETURN(auto trace_ids, cuda::PageLockedHostArray<int32_t>::Allocate(
-                                       kCases * kContext));
+                                       *executor, kCases * kContext));
   for (int item = 0; item < kCases; ++item) {
     const auto path =
         trace_root / absl::StrCat("prefix_step_", 1340 + item, ".i32");
-    ASSIGN_OR_RETURN(auto ids, ReadTokenIds(path, kVocab, kContext));
+    ASSIGN_OR_RETURN(auto ids, ReadTokenIds(*executor, path, kVocab, kContext));
     if (ids.size() != kContext)
       return absl::InvalidArgumentError("need full exact contexts");
     std::copy(ids.begin(), ids.end(), trace_ids.begin() + item * kContext);

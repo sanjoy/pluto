@@ -16,11 +16,11 @@ TEST_F(LayersTest, ZeroHasZeroOutputAndHalfGradient) {
   auto gelu = GeluLayer::Create(*executor_, DataType::FP16);
   ASSERT_TRUE(gelu.ok()) << gelu.status();
 
-  std::vector<float> input(kTestBatchSize, 0.0f);
-  std::vector<float> output_gradient(kTestBatchSize, 1.0f);
-  const auto pinned_input = CopyToPageLockedHostArray(input);
+  std::vector<float> input(kTestTokenCount, 0.0f);
+  std::vector<float> output_gradient(kTestTokenCount, 1.0f);
+  const auto pinned_input = CopyToPageLockedHostArray(*executor_, input);
   const auto pinned_output_gradient =
-      CopyToPageLockedHostArray(output_gradient);
+      CopyToPageLockedHostArray(*executor_, output_gradient);
   auto input_buffer =
       Buffer::Allocate(*executor_, input.size() * sizeof(float));
   auto gradient_buffer =
@@ -45,8 +45,10 @@ TEST_F(LayersTest, ZeroHasZeroOutputAndHalfGradient) {
   auto input_gradient = (*gelu)->bwd(*executor_, gradients, std::move(tape));
   ASSERT_TRUE(input_gradient.ok()) << input_gradient.status();
 
-  auto host_output = AllocatePageLockedHostArray<float>(kTestBatchSize);
-  auto host_gradient = AllocatePageLockedHostArray<float>(kTestBatchSize);
+  auto host_output =
+      AllocatePageLockedHostArray<float>(*executor_, kTestTokenCount);
+  auto host_gradient =
+      AllocatePageLockedHostArray<float>(*executor_, kTestTokenCount);
   ASSERT_EQ(
       cudaMemcpyAsync(host_output.data(), output->data(), output->size_bytes(),
                       cudaMemcpyDeviceToHost, executor_->stream()),
@@ -58,7 +60,7 @@ TEST_F(LayersTest, ZeroHasZeroOutputAndHalfGradient) {
       cudaSuccess);
   ASSERT_TRUE(executor_->Synchronize().ok());
 
-  for (int index = 0; index < kTestBatchSize; ++index) {
+  for (int index = 0; index < kTestTokenCount; ++index) {
     EXPECT_FLOAT_EQ(host_output[index], 0.0f);
     EXPECT_FLOAT_EQ(host_gradient[index], 0.5f);
   }
@@ -67,7 +69,7 @@ TEST_F(LayersTest, ZeroHasZeroOutputAndHalfGradient) {
 TEST_F(LayersTest, RejectsExecutionOnADifferentExecutor) {
   auto gelu = GeluLayer::Create(*executor_, DataType::FP16);
   ASSERT_TRUE(gelu.ok()) << gelu.status();
-  auto input = Buffer::Allocate(*executor_, kTestBatchSize * sizeof(float));
+  auto input = Buffer::Allocate(*executor_, kTestTokenCount * sizeof(float));
   ASSERT_TRUE(input.ok()) << input.status();
   auto other_executor = cuda::Executor::Create();
   ASSERT_TRUE(other_executor.ok()) << other_executor.status();

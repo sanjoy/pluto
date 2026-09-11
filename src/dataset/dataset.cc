@@ -191,6 +191,9 @@ InMemoryDataSetIterator::Create(cuda::Executor& executor,
       std::numeric_limits<size_t>::max() / (2 * sizeof(int))) {
     return absl::InvalidArgumentError("batch_size is too large");
   }
+  if (&tokens.buffer().executor() != &executor)
+    return absl::InvalidArgumentError(
+        "dataset corpus must belong to the supplied CUDA Executor");
   const size_t token_bytes = static_cast<size_t>(token_count) * sizeof(int);
   const size_t data_bytes = 2 * token_bytes;
   const size_t corpus_bytes = tokens.size() * sizeof(int);
@@ -202,10 +205,9 @@ InMemoryDataSetIterator::Create(cuda::Executor& executor,
       cudaMemcpyAsync(corpus_buffer.data(), tokens.data(), corpus_bytes,
                       cudaMemcpyHostToDevice, executor.stream()),
       "cudaMemcpyAsync(dataset corpus)"));
-  // The by-value pinned array ceases to exist when Create() returns. Complete
-  // this one-time upload before releasing its storage; subsequent Next() calls
-  // remain fully asynchronous.
-  RETURN_IF_ERROR(executor.Synchronize());
+  // Releasing the by-value host array queues its pool free after this upload
+  // on executor's stream. No compute-stream synchronization is needed here;
+  // Next() is ordered after the upload on the same stream.
   return std::unique_ptr<InMemoryDataSetIterator>(new InMemoryDataSetIterator(
       executor, std::move(corpus_buffer), tokens.size(), options,
       std::move(data_buffer)));
@@ -261,7 +263,7 @@ absl::StatusOr<std::unique_ptr<InMemoryDataSetIterator>>
 MakeInMemoryDataSetIterator(cuda::Executor& executor, const TextCorpus& corpus,
                             const tokenizer::Gpt2Tokenizer& tokenizer,
                             InMemoryDataSetOptions options) {
-  ASSIGN_OR_RETURN(auto tokens, tokenizer.Encode(corpus.text()));
+  ASSIGN_OR_RETURN(auto tokens, tokenizer.Encode(executor, corpus.text()));
   return InMemoryDataSetIterator::Create(executor, std::move(tokens), options);
 }
 

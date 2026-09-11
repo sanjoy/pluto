@@ -249,7 +249,7 @@ absl::StatusOr<cuda::PageLockedHostArray<T>> Download(
   if (&buffer.executor() != &executor || buffer.size_bytes() % sizeof(T))
     return Bad("download shape/executor differs");
   ASSIGN_OR_RETURN(auto values, cuda::PageLockedHostArray<T>::Allocate(
-                                    buffer.size_bytes() / sizeof(T)));
+                                    executor, buffer.size_bytes() / sizeof(T)));
   RETURN_IF_ERROR(cuda::CudaStatus(
       cudaMemcpyAsync(values.data(), buffer.data(), buffer.size_bytes(),
                       cudaMemcpyDeviceToHost, executor.stream()),
@@ -360,8 +360,8 @@ absl::Status Run(const std::vector<std::string>& argv) {
   // only. Existing output fails before creating any CUDA context.
   RETURN_IF_ERROR(CreateDirectory(output));
   ASSIGN_OR_RETURN(auto executor, cuda::Executor::Create());
-  ASSIGN_OR_RETURN(auto padded,
-                   cuda::PageLockedHostArray<int32_t>::Allocate(kContext));
+  ASSIGN_OR_RETURN(auto padded, cuda::PageLockedHostArray<int32_t>::Allocate(
+                                    *executor, kContext));
   std::fill(padded.begin(), padded.end(), tokens.back());
   std::copy(tokens.begin(), tokens.end(), padded.begin());
   ASSIGN_OR_RETURN(auto input,

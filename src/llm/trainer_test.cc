@@ -199,7 +199,7 @@ absl::StatusOr<float> ReadEvaluationLoss(cuda::Executor& executor,
     return absl::InvalidArgumentError(
         "evaluation result must be one FP32 value on the test executor");
   }
-  auto host_loss = cuda::PageLockedHostArray<float>::Allocate(1);
+  auto host_loss = cuda::PageLockedHostArray<float>::Allocate(executor, 1);
   if (!host_loss.ok())
     return host_loss.status();
   const cudaError_t error =
@@ -219,7 +219,7 @@ class TrainerTest : public testing::Test {
     auto executor = cuda::Executor::Create();
     ASSERT_TRUE(executor.ok()) << executor.status();
     executor_ = std::move(*executor);
-    auto corpus = cuda::PageLockedHostArray<int>::Allocate(32);
+    auto corpus = cuda::PageLockedHostArray<int>::Allocate(*executor_, 32);
     ASSERT_TRUE(corpus.ok()) << corpus.status();
     corpus_ = *corpus;
     std::iota(corpus_.begin(), corpus_.end(), 0);
@@ -228,6 +228,7 @@ class TrainerTest : public testing::Test {
   void TearDown() override {
     if (executor_ == nullptr)
       return;
+    corpus_ = {};
     EXPECT_TRUE(executor_->Synchronize().ok());
     executor_.reset();
   }
@@ -243,7 +244,7 @@ class TrainerTest : public testing::Test {
   }
 
   absl::StatusOr<std::unique_ptr<FakeLoss>> MakeLoss() {
-    auto losses = cuda::PageLockedHostArray<float>::Allocate(4);
+    auto losses = cuda::PageLockedHostArray<float>::Allocate(*executor_, 4);
     if (!losses.ok())
       return losses.status();
     std::iota(losses->begin(), losses->end(), 1.0f);
@@ -377,9 +378,9 @@ TEST_F(TrainerTest, SequenceValidationChecksNestedAttentionAndPerTokenLayers) {
 
 TEST_F(TrainerTest, EvaluateWeightsUnequalBatchesByTheirTokenCounts) {
   auto first_host = cuda::PageLockedHostArray<float>::CopyFrom(
-      std::vector<float>{2.0f, 4.0f});
+      *executor_, std::vector<float>{2.0f, 4.0f});
   auto second_host = cuda::PageLockedHostArray<float>::CopyFrom(
-      std::vector<float>{1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f});
+      *executor_, std::vector<float>{1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f});
   ASSERT_TRUE(first_host.ok()) << first_host.status();
   ASSERT_TRUE(second_host.ok()) << second_host.status();
   auto first = Buffer::Allocate(*executor_, first_host->size_bytes());
@@ -450,8 +451,8 @@ TEST_F(TrainerTest, TrainsAndEvaluatesSparseAutoEncoderDataBatches) {
   constexpr int kRows = 16;
   constexpr int kInputDimension = 16;
   constexpr int kFeatureDimension = 32;
-  auto host_activations =
-      cuda::PageLockedHostArray<float>::Allocate(kRows * kInputDimension);
+  auto host_activations = cuda::PageLockedHostArray<float>::Allocate(
+      *executor_, kRows * kInputDimension);
   ASSERT_TRUE(host_activations.ok()) << host_activations.status();
   for (size_t index = 0; index < host_activations->size(); ++index) {
     (*host_activations)[index] =

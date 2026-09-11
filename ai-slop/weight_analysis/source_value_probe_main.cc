@@ -179,7 +179,7 @@ absl::Status Run() {
   RETURN_IF_ERROR(CreateNewOutputDirectory(output));
   ASSIGN_OR_RETURN(auto executor, cuda::Executor::Create());
   ASSIGN_OR_RETURN(auto encoded,
-                   ReadTokenIds(input_path, kVocabulary, kContext));
+                   ReadTokenIds(*executor, input_path, kVocabulary, kContext));
   const int query = absl::GetFlag(FLAGS_query) == -1
                         ? static_cast<int>(encoded.size()) - 1
                         : absl::GetFlag(FLAGS_query);
@@ -195,8 +195,8 @@ absl::Status Run() {
   }
   RETURN_IF_ERROR(
       CompareFile(input_path, encoded.data(), encoded.size_bytes()));
-  ASSIGN_OR_RETURN(auto padded,
-                   cuda::PageLockedHostArray<int32_t>::Allocate(kContext));
+  ASSIGN_OR_RETURN(auto padded, cuda::PageLockedHostArray<int32_t>::Allocate(
+                                    *executor, kContext));
   std::fill(padded.begin(), padded.end(), encoded[encoded.size() - 1]);
   std::copy(encoded.begin(), encoded.end(), padded.begin());
   ASSIGN_OR_RETURN(auto input,

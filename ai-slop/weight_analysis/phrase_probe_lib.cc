@@ -166,8 +166,8 @@ absl::StatusOr<cuda::PageLockedHostArray<uint8_t>> ReadPrefix(
     return absl::InvalidArgumentError(
         "prefix tensor exceeds device allocation");
   }
-  ASSIGN_OR_RETURN(auto output,
-                   cuda::PageLockedHostArray<uint8_t>::Allocate(rows * stride));
+  ASSIGN_OR_RETURN(auto output, cuda::PageLockedHostArray<uint8_t>::Allocate(
+                                    executor, rows * stride));
   RETURN_IF_ERROR(cuda::CudaStatus(
       cudaMemcpyAsync(output.data(), buffer.data(), output.size_bytes(),
                       cudaMemcpyDeviceToHost, executor.stream()),

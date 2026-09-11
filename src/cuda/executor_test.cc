@@ -3,6 +3,7 @@
 #include <cuda_runtime_api.h>
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 
 #include "gtest/gtest.h"
@@ -27,6 +28,43 @@ TEST(ExecutorTest, OwnsAnExplicitStreamAndSynchronizesIt) {
   EXPECT_NE((*executor)->stream(), cudaStreamLegacy);
   EXPECT_NE((*executor)->stream(), cudaStreamPerThread);
   EXPECT_TRUE((*executor)->Synchronize().ok());
+}
+
+TEST(ExecutorTest, HostPoolHasSafeCrossStreamReuseAndGpuAccess) {
+  auto executor = Executor::Create();
+  ASSERT_TRUE(executor.ok()) << executor.status();
+  const cudaMemPool_t pool = (*executor)->host_memory_pool();
+  ASSERT_NE(pool, nullptr);
+
+  int opportunistic = 0, follow_events = 1, internal_dependencies = 1;
+  ASSERT_EQ(cudaMemPoolGetAttribute(pool, cudaMemPoolReuseAllowOpportunistic,
+                                    &opportunistic),
+            cudaSuccess);
+  ASSERT_EQ(cudaMemPoolGetAttribute(
+                pool, cudaMemPoolReuseFollowEventDependencies, &follow_events),
+            cudaSuccess);
+  ASSERT_EQ(
+      cudaMemPoolGetAttribute(pool, cudaMemPoolReuseAllowInternalDependencies,
+                              &internal_dependencies),
+      cudaSuccess);
+  EXPECT_EQ(opportunistic, 1);
+  EXPECT_EQ(follow_events, 0);
+  EXPECT_EQ(internal_dependencies, 0);
+  uint64_t release_threshold = 0;
+  ASSERT_EQ(cudaMemPoolGetAttribute(pool, cudaMemPoolAttrReleaseThreshold,
+                                    &release_threshold),
+            cudaSuccess);
+  EXPECT_GT(release_threshold, 0);
+  EXPECT_LE(release_threshold, 64 * 1024 * 1024);
+
+  int device;
+  ASSERT_EQ(cudaGetDevice(&device), cudaSuccess);
+  cudaMemLocation location{};
+  location.type = cudaMemLocationTypeDevice;
+  location.id = device;
+  cudaMemAccessFlags flags = cudaMemAccessFlagsProtNone;
+  ASSERT_EQ(cudaMemPoolGetAccess(&flags, pool, &location), cudaSuccess);
+  EXPECT_EQ(flags, cudaMemAccessFlagsProtReadWrite);
 }
 
 }  // namespace

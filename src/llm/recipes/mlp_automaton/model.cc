@@ -39,7 +39,8 @@ constexpr std::array<int, 9> kCheckpointIndices = {
     3 + 12 * kGpt2TransformerBlockCount};
 
 absl::StatusOr<cuda::PageLockedHostArray<float>> ReadWeight(
-    const std::filesystem::path& path, size_t expected_bytes) {
+    cuda::Executor& executor, const std::filesystem::path& path,
+    size_t expected_bytes) {
   std::error_code error;
   if (!std::filesystem::is_regular_file(path, error)) {
     return absl::NotFoundError(
@@ -53,7 +54,7 @@ absl::StatusOr<cuda::PageLockedHostArray<float>> ReadWeight(
         "wrong weight size: ", path.string(), "; expected ", expected_bytes));
   }
   ASSIGN_OR_RETURN(auto values, cuda::PageLockedHostArray<float>::Allocate(
-                                    expected_bytes / sizeof(float)));
+                                    executor, expected_bytes / sizeof(float)));
   std::ifstream input(path, std::ios::binary);
   if (!input.read(reinterpret_cast<char*>(values.data()), expected_bytes) ||
       input.peek() != std::ifstream::traits_type::eof()) {
@@ -118,23 +119,21 @@ absl::Status LoadB0Weights(cuda::Executor& executor, Layer& readout,
     const auto path =
         directory / absl::StrCat("weight_", kCheckpointIndices[index], ".bin");
     ASSIGN_OR_RETURN(auto values,
-                     ReadWeight(path, weights[index]->size_bytes()));
+                     ReadWeight(executor, path, weights[index]->size_bytes()));
     staging.push_back(std::move(values));
   }
   // No device bytes change until the last required file has passed validation.
-  // If a copy fails, still drain previous copies before releasing staging.
+  // Staging releases remain ordered after all previously queued uploads.
   for (size_t index = 0; index < weights.size(); ++index) {
     const auto status = cuda::CudaStatus(
         cudaMemcpyAsync(weights[index]->data(), staging[index].data(),
                         staging[index].size_bytes(), cudaMemcpyHostToDevice,
                         executor.stream()),
         "upload isolated MLP weight");
-    if (!status.ok()) {
-      (void)executor.Synchronize();
+    if (!status.ok())
       return status;
-    }
   }
-  return executor.Synchronize();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<cuda::PageLockedHostArray<TopTransition>> ScanVocabulary(
@@ -149,11 +148,11 @@ absl::StatusOr<cuda::PageLockedHostArray<TopTransition>> ScanVocabulary(
   const int padded_vocab = (vocab_size + kTile - 1) / kTile * kTile;
   // Do not allocate a huge unused batch when scanning a tiny test vocabulary.
   batch_size = std::min(batch_size, padded_vocab);
-  ASSIGN_OR_RETURN(auto ids,
-                   cuda::PageLockedHostArray<int32_t>::Allocate(batch_size));
+  ASSIGN_OR_RETURN(auto ids, cuda::PageLockedHostArray<int32_t>::Allocate(
+                                 executor, batch_size));
   ASSIGN_OR_RETURN(
       auto result,
-      cuda::PageLockedHostArray<TopTransition>::Allocate(vocab_size));
+      cuda::PageLockedHostArray<TopTransition>::Allocate(executor, vocab_size));
   for (int start = 0; start < vocab_size;) {
     const int count = std::min(batch_size, vocab_size - start);
     const int rows = (count + kTile - 1) / kTile * kTile;
@@ -165,12 +164,8 @@ absl::StatusOr<cuda::PageLockedHostArray<TopTransition>> ScanVocabulary(
         cudaMemcpyAsync(tokens.data(), ids.data(), tokens.size_bytes(),
                         cudaMemcpyHostToDevice, executor.stream()),
         "upload vocabulary token IDs"));
-    // This guard drains queued DMA even on an early layer/launch failure. In
-    // the ordinary path the explicit synchronize below also permits ids reuse.
-    struct Drain {
-      cuda::Executor& executor;
-      ~Drain() { (void)executor.Synchronize(); }
-    } drain{executor};
+    // Destruction on an error path queues staging frees behind queued DMA.
+    // The explicit synchronization below is still needed for CPU reads/reuse.
     Tape tape;
     ASSIGN_OR_RETURN(auto logits, readout.fwd(executor, {tokens}, &tape));
     ASSIGN_OR_RETURN(auto top, ReadTopTransitions(executor, logits, rows,

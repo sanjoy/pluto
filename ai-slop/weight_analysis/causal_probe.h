@@ -68,9 +68,11 @@ struct PackedBatch {
 
 // Headerless little-endian int32 [all inputs][all targets]. Each half is
 // passage-major. This owns pinned storage for every later asynchronous H2D.
+// The supplied executor owns its host-memory pool and must outlive the batch.
 // Tokens must be logical vocabulary IDs; adjacent input/target IDs must agree
 // with next-token prediction within each independently selected passage.
-absl::StatusOr<PackedBatch> LoadPackedBatch(const std::filesystem::path& path,
+absl::StatusOr<PackedBatch> LoadPackedBatch(cuda::Executor& executor,
+                                            const std::filesystem::path& path,
                                             int context_length, int vocab_size);
 
 // Refuses existing directories, files, and symlinks, including dangling ones.

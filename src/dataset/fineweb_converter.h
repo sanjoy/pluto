@@ -4,6 +4,7 @@
 #include <filesystem>
 
 #include "absl/status/status.h"
+#include "src/cuda/executor.h"
 #include "src/dataset/tokenizer.h"
 
 namespace pluto::tokenized {
@@ -18,7 +19,7 @@ struct FineWebConversionOptions {
 // with the supplied tokenizer, and writes a tokenized-document file. The output
 // is published atomically, so an error cannot leave a file that looks complete.
 absl::Status ConvertFineWebParquetFile(
-    const std::filesystem::path& input_path,
+    cuda::Executor& executor, const std::filesystem::path& input_path,
     const std::filesystem::path& output_path,
     const tokenizer::Gpt2Tokenizer& tokenizer,
     FineWebConversionOptions options = {});

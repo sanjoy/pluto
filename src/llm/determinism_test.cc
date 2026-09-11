@@ -110,8 +110,9 @@ absl::StatusOr<std::string> ReadBytes(cuda::Executor& executor,
   size_t size = 0;
   for (const Buffer& buffer : buffers)
     size += buffer.size_bytes();
-  ASSIGN_OR_RETURN(auto staging,
-                   cuda::PageLockedHostArray<unsigned char>::Allocate(size));
+  ASSIGN_OR_RETURN(
+      auto staging,
+      cuda::PageLockedHostArray<unsigned char>::Allocate(executor, size));
   size_t offset = 0;
   for (const Buffer& buffer : buffers) {
     RETURN_IF_ERROR(cuda::CudaStatus(
@@ -219,7 +220,7 @@ absl::StatusOr<Buffer> PerturbAllocations(cuda::Executor& executor,
 absl::Status RecordCompletions(cuda::Executor& executor, const Layer& model,
                                Trajectory& trajectory) {
   ASSIGN_OR_RETURN(auto input,
-                   cuda::PageLockedHostArray<int>::Allocate(kContext));
+                   cuda::PageLockedHostArray<int>::Allocate(executor, kContext));
   ASSIGN_OR_RETURN(auto device_input,
                    Buffer::Allocate(executor, input.size_bytes()));
   for (double temperature : {0.0, 0.8, 1.5}) {
@@ -265,7 +266,8 @@ absl::StatusOr<Trajectory> RunLanguageModel(DataType type, bool perturb) {
   ASSIGN_OR_RETURN(auto model, MakeLanguageModel(*executor, type, 193));
   ASSIGN_OR_RETURN(auto loss,
                    CrossEntropyLossLayer::Create(*executor, kVocabulary, type));
-  ASSIGN_OR_RETURN(auto corpus, cuda::PageLockedHostArray<int>::Allocate(257));
+  ASSIGN_OR_RETURN(auto corpus,
+                   cuda::PageLockedHostArray<int>::Allocate(*executor, 257));
   for (size_t index = 0; index < corpus.size(); ++index) {
     // Most IDs repeat several times per batch, with nonuniform frequencies.
     corpus[index] = (index * index + 7 * index + index / 9) % 13;
