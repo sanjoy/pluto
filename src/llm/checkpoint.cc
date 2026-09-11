@@ -16,6 +16,7 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "src/cuda/buffer.h"
 #include "src/cuda/executor.h"
 #include "src/cuda/page_locked_host_array.h"
@@ -145,9 +146,8 @@ std::vector<Buffer*> UniqueWeights(Layer& layer) {
   return result;
 }
 
-template <class BufferPointer>
 absl::Status ValidateWeights(cuda::Executor& executor,
-                             const std::vector<BufferPointer>& weights) {
+                             absl::Span<const Buffer* const> weights) {
   for (size_t index = 0; index < weights.size(); ++index) {
     if (&weights[index]->executor() != &executor) {
       return absl::InvalidArgumentError(absl::StrCat(
