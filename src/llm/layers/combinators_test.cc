@@ -24,18 +24,19 @@ class TestLayer final : public Layer {
  public:
   explicit TestLayer(DataType output_type) : output_type_(output_type) {}
 
-  absl::StatusOr<Buffer> fwd(cuda::Executor&, absl::Span<const Buffer>,
-                             Tape*) const override {
-    return absl::UnimplementedError("TestLayer has no data path");
-  }
-  absl::StatusOr<BufferVec> bwd(cuda::Executor&, absl::Span<const Buffer>,
-                                Tape) override {
-    return absl::UnimplementedError("TestLayer has no data path");
-  }
   absl::Span<Buffer> weights() override { return {}; }
   DataType output_type() const override { return output_type_; }
 
  private:
+  absl::StatusOr<Buffer> fwd_impl(cuda::Executor&, absl::Span<const Buffer>,
+                                  Tape*) const override {
+    return absl::UnimplementedError("TestLayer has no data path");
+  }
+  absl::StatusOr<BufferVec> bwd_impl(cuda::Executor&, absl::Span<const Buffer>,
+                                     Tape) override {
+    return absl::UnimplementedError("TestLayer has no data path");
+  }
+
   DataType output_type_;
 };
 

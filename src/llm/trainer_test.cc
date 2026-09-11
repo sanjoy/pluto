@@ -33,25 +33,26 @@ namespace {
 
 class FakeModel final : public Layer {
  public:
-  absl::StatusOr<Buffer> fwd(cuda::Executor& executor,
-                             absl::Span<const Buffer> inputs,
-                             Tape* tape) const override {
-    ++forward_calls;
-    return inputs[0];
-  }
-
-  absl::StatusOr<BufferVec> bwd(cuda::Executor& executor,
-                                absl::Span<const Buffer> output_gradients,
-                                Tape tape) override {
-    ++backward_calls;
-    return BufferVec{};
-  }
-
   absl::Span<Buffer> weights() override { return {}; }
   DataType output_type() const override { return DataType::FP16; }
 
   mutable int forward_calls = 0;
   int backward_calls = 0;
+
+ private:
+  absl::StatusOr<Buffer> fwd_impl(cuda::Executor& executor,
+                                  absl::Span<const Buffer> inputs,
+                                  Tape* tape) const override {
+    ++forward_calls;
+    return inputs[0];
+  }
+
+  absl::StatusOr<BufferVec> bwd_impl(cuda::Executor& executor,
+                                     absl::Span<const Buffer> output_gradients,
+                                     Tape tape) override {
+    ++backward_calls;
+    return BufferVec{};
+  }
 };
 
 class FakeLoss final : public Layer {
@@ -78,20 +79,6 @@ class FakeLoss final : public Layer {
         new FakeLoss(std::move(*device_losses), std::move(*gradient)));
   }
 
-  absl::StatusOr<Buffer> fwd(cuda::Executor& executor,
-                             absl::Span<const Buffer> inputs,
-                             Tape* tape) const override {
-    ++forward_calls;
-    return losses_;
-  }
-
-  absl::StatusOr<BufferVec> bwd(cuda::Executor& executor,
-                                absl::Span<const Buffer> output_gradients,
-                                Tape tape) override {
-    ++backward_calls;
-    return BufferVec{gradient_};
-  }
-
   absl::Span<Buffer> weights() override { return {}; }
   DataType output_type() const override { return DataType::FP16; }
 
@@ -99,6 +86,20 @@ class FakeLoss final : public Layer {
   int backward_calls = 0;
 
  private:
+  absl::StatusOr<Buffer> fwd_impl(cuda::Executor& executor,
+                                  absl::Span<const Buffer> inputs,
+                                  Tape* tape) const override {
+    ++forward_calls;
+    return losses_;
+  }
+
+  absl::StatusOr<BufferVec> bwd_impl(cuda::Executor& executor,
+                                     absl::Span<const Buffer> output_gradients,
+                                     Tape tape) override {
+    ++backward_calls;
+    return BufferVec{gradient_};
+  }
+
   FakeLoss(Buffer losses, Buffer gradient)
       : losses_(std::move(losses)), gradient_(std::move(gradient)) {}
 

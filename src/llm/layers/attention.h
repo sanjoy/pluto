@@ -23,16 +23,17 @@ class AttentionLayer final : public Layer {
   // These kernels reset attention at the configured fixed-width boundaries.
   absl::Status ValidateSequenceLength(int sequence_length) const override;
 
-  absl::StatusOr<Buffer> fwd(cuda::Executor& executor,
-                             absl::Span<const Buffer> inputs,
-                             Tape* tape) const override;
-  absl::StatusOr<BufferVec> bwd(cuda::Executor& executor,
-                                absl::Span<const Buffer> output_gradients,
-                                Tape tape) override;
   absl::Span<Buffer> weights() override { return {}; }
   DataType output_type() const override { return output_type_; }
 
  private:
+  absl::StatusOr<Buffer> fwd_impl(cuda::Executor& executor,
+                                  absl::Span<const Buffer> inputs,
+                                  Tape* tape) const override;
+  absl::StatusOr<BufferVec> bwd_impl(cuda::Executor& executor,
+                                     absl::Span<const Buffer> output_gradients,
+                                     Tape tape) override;
+
   AttentionLayer(cuda::Executor& executor, int context_length, int num_heads,
                  int embedding_dim, DataType data_type)
       : context_length_(context_length),

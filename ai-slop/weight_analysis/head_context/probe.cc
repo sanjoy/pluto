@@ -172,9 +172,14 @@ absl::Status CopyWeights(cuda::Executor& executor,
 class ConstantBranch final : public llm::Layer {
  public:
   explicit ConstantBranch(cuda::Buffer branch) : branch_(std::move(branch)) {}
-  absl::StatusOr<cuda::Buffer> fwd(cuda::Executor& executor,
-                                   absl::Span<const cuda::Buffer> inputs,
-                                   llm::Tape* tape) const override {
+
+  absl::Span<cuda::Buffer> weights() override { return {}; }
+  llm::DataType output_type() const override { return llm::DataType::BF16; }
+
+ private:
+  absl::StatusOr<cuda::Buffer> fwd_impl(cuda::Executor& executor,
+                                        absl::Span<const cuda::Buffer> inputs,
+                                        llm::Tape* tape) const override {
     if (inputs.size() != 1 || tape == nullptr)
       return absl::InvalidArgumentError("invalid constant branch");
     RETURN_IF_ERROR(Shape(executor, branch_, inputs[0].size_bytes()));
@@ -184,15 +189,12 @@ class ConstantBranch final : public llm::Layer {
     tape->children.clear();
     return branch_;
   }
-  absl::StatusOr<llm::BufferVec> bwd(cuda::Executor&,
-                                     absl::Span<const cuda::Buffer>,
-                                     llm::Tape) override {
+  absl::StatusOr<llm::BufferVec> bwd_impl(cuda::Executor&,
+                                          absl::Span<const cuda::Buffer>,
+                                          llm::Tape) override {
     return absl::UnimplementedError("head-context probe is forward only");
   }
-  absl::Span<cuda::Buffer> weights() override { return {}; }
-  llm::DataType output_type() const override { return llm::DataType::BF16; }
 
- private:
   cuda::Buffer branch_;
 };
 

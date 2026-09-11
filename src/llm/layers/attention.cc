@@ -284,9 +284,9 @@ absl::Status AttentionLayer::ValidateSequenceLength(int sequence_length) const {
   return absl::OkStatus();
 }
 
-absl::StatusOr<Buffer> AttentionLayer::fwd(cuda::Executor& executor,
-                                           absl::Span<const Buffer> inputs,
-                                           Tape* tape) const {
+absl::StatusOr<Buffer> AttentionLayer::fwd_impl(cuda::Executor& executor,
+                                                absl::Span<const Buffer> inputs,
+                                                Tape* tape) const {
   RETURN_IF_ERROR(
       internal::ValidateExecutor(executor_, executor, "AttentionLayer"));
   if (inputs.size() != 1 || tape == nullptr) {
@@ -326,7 +326,7 @@ absl::StatusOr<Buffer> AttentionLayer::fwd(cuda::Executor& executor,
   return std::move(output);
 }
 
-absl::StatusOr<BufferVec> AttentionLayer::bwd(
+absl::StatusOr<BufferVec> AttentionLayer::bwd_impl(
     cuda::Executor& executor, absl::Span<const Buffer> output_gradients,
     Tape tape) {
   RETURN_IF_ERROR(

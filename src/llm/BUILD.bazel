@@ -25,6 +25,20 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "layer_test",
+    srcs = ["layer_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":combinators",
+        ":layer",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "@abseil-cpp//absl/status",
+        "@googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "sampling",
     srcs = ["sampling.cc"],

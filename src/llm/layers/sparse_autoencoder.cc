@@ -695,7 +695,7 @@ absl::Status SparseAutoEncoderLayer::InitializeNormal(float standard_deviation,
       "clear sparse decoder bias");
 }
 
-absl::StatusOr<Buffer> SparseAutoEncoderLayer::fwd(
+absl::StatusOr<Buffer> SparseAutoEncoderLayer::fwd_impl(
     cuda::Executor& executor, absl::Span<const Buffer> inputs,
     Tape* tape) const {
   RETURN_IF_ERROR(internal::ValidateExecutor(executor_, executor,
@@ -845,7 +845,7 @@ absl::StatusOr<Buffer> SparseAutoEncoderLayer::latent_activations(
   return tape.intermediates[1];
 }
 
-absl::StatusOr<BufferVec> SparseAutoEncoderLayer::bwd(
+absl::StatusOr<BufferVec> SparseAutoEncoderLayer::bwd_impl(
     cuda::Executor& executor, absl::Span<const Buffer> output_gradients,
     Tape tape) {
   RETURN_IF_ERROR(internal::ValidateExecutor(executor_, executor,
@@ -1003,7 +1003,7 @@ SparseAutoEncoderLossLayer::Create(cuda::Executor& executor, int input_dim,
                                      sparsity_penalty, data_type));
 }
 
-absl::StatusOr<Buffer> SparseAutoEncoderLossLayer::fwd(
+absl::StatusOr<Buffer> SparseAutoEncoderLossLayer::fwd_impl(
     cuda::Executor& executor, absl::Span<const Buffer> inputs,
     Tape* tape) const {
   RETURN_IF_ERROR(internal::ValidateExecutor(executor_, executor,
@@ -1053,7 +1053,7 @@ absl::StatusOr<Buffer> SparseAutoEncoderLossLayer::fwd(
   return std::move(output);
 }
 
-absl::StatusOr<BufferVec> SparseAutoEncoderLossLayer::bwd(
+absl::StatusOr<BufferVec> SparseAutoEncoderLossLayer::bwd_impl(
     cuda::Executor& executor, absl::Span<const Buffer> output_gradients,
     Tape tape) {
   RETURN_IF_ERROR(internal::ValidateExecutor(executor_, executor,

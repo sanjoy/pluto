@@ -51,18 +51,6 @@ class SparseAutoEncoderLayer final : public Layer {
   // Both biases remain zero.
   absl::Status InitializeNormal(float standard_deviation, uint64_t seed);
 
-  absl::StatusOr<Buffer> fwd(cuda::Executor& executor,
-                             absl::Span<const Buffer> inputs,
-                             Tape* tape) const override;
-
-  // The first gradient is dL/dx1. Auxiliary sparse losses may additionally
-  // supply dL/dz and a direct dL/dD as the second and third buffers. The
-  // latter is needed because a decoder-norm regularizer depends directly on D
-  // as well as indirectly through x1.
-  absl::StatusOr<BufferVec> bwd(cuda::Executor& executor,
-                                absl::Span<const Buffer> output_gradients,
-                                Tape tape) override;
-
   // Parameter order follows the table in the class comment:
   // W_enc, b_enc, D, b_dec.
   absl::Span<Buffer> weights() override { return absl::MakeSpan(weights_); }
@@ -89,6 +77,18 @@ class SparseAutoEncoderLayer final : public Layer {
       cuda::Executor& executor, const Tape& tape, int valid_rows = 0) const;
 
  private:
+  absl::StatusOr<Buffer> fwd_impl(cuda::Executor& executor,
+                                  absl::Span<const Buffer> inputs,
+                                  Tape* tape) const override;
+
+  // The first gradient is dL/dx1. Auxiliary sparse losses may additionally
+  // supply dL/dz and a direct dL/dD as the second and third buffers. The
+  // latter is needed because a decoder-norm regularizer depends directly on D
+  // as well as indirectly through x1.
+  absl::StatusOr<BufferVec> bwd_impl(cuda::Executor& executor,
+                                     absl::Span<const Buffer> output_gradients,
+                                     Tape tape) override;
+
   SparseAutoEncoderLayer(cuda::Executor& executor, int input_dim,
                          int feature_dim, DataType data_type, Mode mode,
                          Buffer encoder, Buffer encoder_bias, Buffer decoder,
@@ -135,18 +135,19 @@ class SparseAutoEncoderLossLayer final : public Layer {
       cuda::Executor& executor, int input_dim, int feature_dim,
       float sparsity_penalty, DataType data_type);
 
-  absl::StatusOr<Buffer> fwd(cuda::Executor& executor,
-                             absl::Span<const Buffer> inputs,
-                             Tape* tape) const override;
-  absl::StatusOr<BufferVec> bwd(cuda::Executor& executor,
-                                absl::Span<const Buffer> output_gradients,
-                                Tape tape) override;
   absl::Span<Buffer> weights() override { return {}; }
   DataType output_type() const override { return output_type_; }
 
   float sparsity_penalty() const { return sparsity_penalty_; }
 
  private:
+  absl::StatusOr<Buffer> fwd_impl(cuda::Executor& executor,
+                                  absl::Span<const Buffer> inputs,
+                                  Tape* tape) const override;
+  absl::StatusOr<BufferVec> bwd_impl(cuda::Executor& executor,
+                                     absl::Span<const Buffer> output_gradients,
+                                     Tape tape) override;
+
   SparseAutoEncoderLossLayer(cuda::Executor& executor, int input_dim,
                              int feature_dim, float sparsity_penalty,
                              DataType data_type)

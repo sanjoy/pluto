@@ -68,9 +68,9 @@ absl::StatusOr<std::unique_ptr<GeluLayer>> GeluLayer::Create(
   return std::unique_ptr<GeluLayer>(new GeluLayer(executor, data_type));
 }
 
-absl::StatusOr<Buffer> GeluLayer::fwd(cuda::Executor& executor,
-                                      absl::Span<const Buffer> inputs,
-                                      Tape* tape) const {
+absl::StatusOr<Buffer> GeluLayer::fwd_impl(cuda::Executor& executor,
+                                           absl::Span<const Buffer> inputs,
+                                           Tape* tape) const {
   RETURN_IF_ERROR(internal::ValidateExecutor(executor_, executor, "GeluLayer"));
   if (inputs.size() != 1 || tape == nullptr) {
     return absl::InvalidArgumentError(
@@ -103,7 +103,7 @@ absl::StatusOr<Buffer> GeluLayer::fwd(cuda::Executor& executor,
   return std::move(output);
 }
 
-absl::StatusOr<BufferVec> GeluLayer::bwd(
+absl::StatusOr<BufferVec> GeluLayer::bwd_impl(
     cuda::Executor& executor, absl::Span<const Buffer> output_gradients,
     Tape tape) {
   RETURN_IF_ERROR(internal::ValidateExecutor(executor_, executor, "GeluLayer"));

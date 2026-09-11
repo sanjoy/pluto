@@ -21,12 +21,6 @@ class CrossEntropyLossLayer final : public Layer {
   static absl::StatusOr<std::unique_ptr<CrossEntropyLossLayer>> Create(
       cuda::Executor& executor, int vocabulary_size, DataType data_type);
 
-  absl::StatusOr<Buffer> fwd(cuda::Executor& executor,
-                             absl::Span<const Buffer> inputs,
-                             Tape* tape) const override;
-  absl::StatusOr<BufferVec> bwd(cuda::Executor& executor,
-                                absl::Span<const Buffer> output_gradients,
-                                Tape tape) override;
   absl::Span<Buffer> weights() override { return {}; }
   DataType output_type() const override { return output_type_; }
 
@@ -34,6 +28,13 @@ class CrossEntropyLossLayer final : public Layer {
   int padded_vocab_size() const { return padded_vocab_size_; }
 
  private:
+  absl::StatusOr<Buffer> fwd_impl(cuda::Executor& executor,
+                                  absl::Span<const Buffer> inputs,
+                                  Tape* tape) const override;
+  absl::StatusOr<BufferVec> bwd_impl(cuda::Executor& executor,
+                                     absl::Span<const Buffer> output_gradients,
+                                     Tape tape) override;
+
   CrossEntropyLossLayer(cuda::Executor& executor, int vocab_size,
                         int padded_vocab_size, DataType data_type)
       : vocab_size_(vocab_size),

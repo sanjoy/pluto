@@ -23,12 +23,6 @@ class EmbeddingLookupLayer final : public Layer {
   absl::Status InitializeIdentity(float scale = 1.0f);
   absl::Status InitializeNormal(float standard_deviation, uint64_t seed);
 
-  absl::StatusOr<Buffer> fwd(cuda::Executor& executor,
-                             absl::Span<const Buffer> inputs,
-                             Tape* tape) const override;
-  absl::StatusOr<BufferVec> bwd(cuda::Executor& executor,
-                                absl::Span<const Buffer> output_gradients,
-                                Tape tape) override;
   absl::Span<Buffer> weights() override { return absl::MakeSpan(&weight_, 1); }
   absl::Span<Buffer> gradients() override {
     return absl::MakeSpan(&gradient_, 1);
@@ -41,6 +35,13 @@ class EmbeddingLookupLayer final : public Layer {
   const Buffer& weight() const { return weight_; }
 
  private:
+  absl::StatusOr<Buffer> fwd_impl(cuda::Executor& executor,
+                                  absl::Span<const Buffer> inputs,
+                                  Tape* tape) const override;
+  absl::StatusOr<BufferVec> bwd_impl(cuda::Executor& executor,
+                                     absl::Span<const Buffer> output_gradients,
+                                     Tape tape) override;
+
   EmbeddingLookupLayer(cuda::Executor& executor, int vocab_size,
                        int padded_vocab_size, int embedding_dim,
                        DataType data_type, Buffer weight, Buffer gradient);
@@ -64,17 +65,18 @@ class LanguageModelingHeadLayer final : public Layer {
   static absl::StatusOr<std::unique_ptr<LanguageModelingHeadLayer>> Create(
       EmbeddingLookupLayer* embedding);
 
-  absl::StatusOr<Buffer> fwd(cuda::Executor& executor,
-                             absl::Span<const Buffer> inputs,
-                             Tape* tape) const override;
-  absl::StatusOr<BufferVec> bwd(cuda::Executor& executor,
-                                absl::Span<const Buffer> output_gradients,
-                                Tape tape) override;
   absl::Span<Buffer> weights() override { return embedding_->weights(); }
   absl::Span<Buffer> gradients() override { return embedding_->gradients(); }
   DataType output_type() const override { return embedding_->output_type(); }
 
  private:
+  absl::StatusOr<Buffer> fwd_impl(cuda::Executor& executor,
+                                  absl::Span<const Buffer> inputs,
+                                  Tape* tape) const override;
+  absl::StatusOr<BufferVec> bwd_impl(cuda::Executor& executor,
+                                     absl::Span<const Buffer> output_gradients,
+                                     Tape tape) override;
+
   explicit LanguageModelingHeadLayer(EmbeddingLookupLayer* embedding)
       : embedding_(embedding) {}
 
@@ -94,12 +96,6 @@ class PositionEmbeddingLayer final : public Layer {
 
   absl::Status InitializeNormal(float standard_deviation, uint64_t seed);
 
-  absl::StatusOr<Buffer> fwd(cuda::Executor& executor,
-                             absl::Span<const Buffer> inputs,
-                             Tape* tape) const override;
-  absl::StatusOr<BufferVec> bwd(cuda::Executor& executor,
-                                absl::Span<const Buffer> output_gradients,
-                                Tape tape) override;
   absl::Span<Buffer> weights() override { return absl::MakeSpan(&weight_, 1); }
   absl::Span<Buffer> gradients() override {
     return absl::MakeSpan(&gradient_, 1);
@@ -107,6 +103,13 @@ class PositionEmbeddingLayer final : public Layer {
   DataType output_type() const override { return output_type_; }
 
  private:
+  absl::StatusOr<Buffer> fwd_impl(cuda::Executor& executor,
+                                  absl::Span<const Buffer> inputs,
+                                  Tape* tape) const override;
+  absl::StatusOr<BufferVec> bwd_impl(cuda::Executor& executor,
+                                     absl::Span<const Buffer> output_gradients,
+                                     Tape tape) override;
+
   PositionEmbeddingLayer(cuda::Executor& executor, int context_length,
                          int embedding_dim, DataType data_type, Buffer weight,
                          Buffer gradient);

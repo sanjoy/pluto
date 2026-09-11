@@ -422,9 +422,14 @@ TEST_F(ProbeTest, ExclusiveArtifactsAndJsonEscapes) {
 class ToyModel final : public llm::Layer {
  public:
   ToyModel(int vocab, int padded) : vocab_(vocab), padded_(padded) {}
-  absl::StatusOr<cuda::Buffer> fwd(cuda::Executor& executor,
-                                   absl::Span<const cuda::Buffer> inputs,
-                                   llm::Tape* tape) const override {
+
+  absl::Span<cuda::Buffer> weights() override { return {}; }
+  llm::DataType output_type() const override { return llm::DataType::BF16; }
+
+ private:
+  absl::StatusOr<cuda::Buffer> fwd_impl(cuda::Executor& executor,
+                                        absl::Span<const cuda::Buffer> inputs,
+                                        llm::Tape* tape) const override {
     if (!tape || inputs.size() != 1)
       return absl::InvalidArgumentError("toy input");
     const size_t rows = inputs[0].size_bytes() / 4;
@@ -453,16 +458,13 @@ class ToyModel final : public llm::Layer {
     RETURN_IF_ERROR(executor.Synchronize());
     return result;
   }
-  absl::StatusOr<llm::BufferVec> bwd(cuda::Executor&,
-                                     absl::Span<const cuda::Buffer>,
-                                     llm::Tape) override {
+  absl::StatusOr<llm::BufferVec> bwd_impl(cuda::Executor&,
+                                          absl::Span<const cuda::Buffer>,
+                                          llm::Tape) override {
     ADD_FAILURE() << "validation must never call backward";
     return absl::UnimplementedError("not a training model");
   }
-  absl::Span<cuda::Buffer> weights() override { return {}; }
-  llm::DataType output_type() const override { return llm::DataType::BF16; }
 
- private:
   int vocab_;
   int padded_;
 };

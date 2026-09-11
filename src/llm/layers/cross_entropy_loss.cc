@@ -122,7 +122,7 @@ CrossEntropyLossLayer::Create(cuda::Executor& executor, int vocabulary_size,
       data_type));
 }
 
-absl::StatusOr<Buffer> CrossEntropyLossLayer::fwd(
+absl::StatusOr<Buffer> CrossEntropyLossLayer::fwd_impl(
     cuda::Executor& executor, absl::Span<const Buffer> inputs,
     Tape* tape) const {
   RETURN_IF_ERROR(
@@ -151,7 +151,7 @@ absl::StatusOr<Buffer> CrossEntropyLossLayer::fwd(
   return std::move(losses);
 }
 
-absl::StatusOr<BufferVec> CrossEntropyLossLayer::bwd(
+absl::StatusOr<BufferVec> CrossEntropyLossLayer::bwd_impl(
     cuda::Executor& executor, absl::Span<const Buffer> output_gradients,
     Tape tape) {
   RETURN_IF_ERROR(

@@ -375,7 +375,7 @@ absl::Status EmbeddingLookupLayer::InitializeNormal(float standard_deviation,
                                   "cudaMemcpyAsync(normal embedding)");
 }
 
-absl::StatusOr<Buffer> EmbeddingLookupLayer::fwd(
+absl::StatusOr<Buffer> EmbeddingLookupLayer::fwd_impl(
     cuda::Executor& executor, absl::Span<const Buffer> inputs,
     Tape* tape) const {
   RETURN_IF_ERROR(
@@ -411,7 +411,7 @@ absl::StatusOr<Buffer> EmbeddingLookupLayer::fwd(
   return std::move(output);
 }
 
-absl::StatusOr<BufferVec> EmbeddingLookupLayer::bwd(
+absl::StatusOr<BufferVec> EmbeddingLookupLayer::bwd_impl(
     cuda::Executor& executor, absl::Span<const Buffer> output_gradients,
     Tape tape) {
   RETURN_IF_ERROR(
@@ -473,7 +473,7 @@ LanguageModelingHeadLayer::Create(EmbeddingLookupLayer* embedding) {
       new LanguageModelingHeadLayer(embedding));
 }
 
-absl::StatusOr<Buffer> LanguageModelingHeadLayer::fwd(
+absl::StatusOr<Buffer> LanguageModelingHeadLayer::fwd_impl(
     cuda::Executor& executor, absl::Span<const Buffer> inputs,
     Tape* tape) const {
   RETURN_IF_ERROR(internal::ValidateExecutor(embedding_->executor_, executor,
@@ -520,7 +520,7 @@ absl::StatusOr<Buffer> LanguageModelingHeadLayer::fwd(
   return std::move(output);
 }
 
-absl::StatusOr<BufferVec> LanguageModelingHeadLayer::bwd(
+absl::StatusOr<BufferVec> LanguageModelingHeadLayer::bwd_impl(
     cuda::Executor& executor, absl::Span<const Buffer> output_gradients,
     Tape tape) {
   RETURN_IF_ERROR(internal::ValidateExecutor(embedding_->executor_, executor,
@@ -631,7 +631,7 @@ absl::Status PositionEmbeddingLayer::ValidateSequenceLength(
   return absl::OkStatus();
 }
 
-absl::StatusOr<Buffer> PositionEmbeddingLayer::fwd(
+absl::StatusOr<Buffer> PositionEmbeddingLayer::fwd_impl(
     cuda::Executor& executor, absl::Span<const Buffer> inputs,
     Tape* tape) const {
   RETURN_IF_ERROR(internal::ValidateExecutor(executor_, executor,
@@ -665,7 +665,7 @@ absl::StatusOr<Buffer> PositionEmbeddingLayer::fwd(
   return std::move(output);
 }
 
-absl::StatusOr<BufferVec> PositionEmbeddingLayer::bwd(
+absl::StatusOr<BufferVec> PositionEmbeddingLayer::bwd_impl(
     cuda::Executor& executor, absl::Span<const Buffer> output_gradients,
     Tape tape) {
   RETURN_IF_ERROR(internal::ValidateExecutor(executor_, executor,

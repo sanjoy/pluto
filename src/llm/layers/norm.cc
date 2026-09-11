@@ -203,9 +203,9 @@ absl::StatusOr<std::unique_ptr<LayerNormLayer>> LayerNormLayer::Create(
       std::move(beta), std::move(gamma_gradient), std::move(beta_gradient)));
 }
 
-absl::StatusOr<Buffer> LayerNormLayer::fwd(cuda::Executor& executor,
-                                           absl::Span<const Buffer> inputs,
-                                           Tape* tape) const {
+absl::StatusOr<Buffer> LayerNormLayer::fwd_impl(cuda::Executor& executor,
+                                                absl::Span<const Buffer> inputs,
+                                                Tape* tape) const {
   RETURN_IF_ERROR(
       internal::ValidateExecutor(executor_, executor, "LayerNormLayer"));
   if (inputs.size() != 1 || tape == nullptr) {
@@ -238,7 +238,7 @@ absl::StatusOr<Buffer> LayerNormLayer::fwd(cuda::Executor& executor,
   return std::move(output);
 }
 
-absl::StatusOr<BufferVec> LayerNormLayer::bwd(
+absl::StatusOr<BufferVec> LayerNormLayer::bwd_impl(
     cuda::Executor& executor, absl::Span<const Buffer> output_gradients,
     Tape tape) {
   RETURN_IF_ERROR(

@@ -27,21 +27,21 @@ class CheckpointLayer final : public Layer {
  public:
   explicit CheckpointLayer(BufferVec weights) : weights_(std::move(weights)) {}
 
-  absl::StatusOr<Buffer> fwd(cuda::Executor&, absl::Span<const Buffer>,
-                             Tape*) const override {
-    return absl::UnimplementedError("CheckpointLayer has no data path");
-  }
-
-  absl::StatusOr<BufferVec> bwd(cuda::Executor&, absl::Span<const Buffer>,
-                                Tape) override {
-    return absl::UnimplementedError("CheckpointLayer has no data path");
-  }
-
   absl::Span<Buffer> weights() override { return absl::MakeSpan(weights_); }
 
   DataType output_type() const override { return DataType::FP16; }
 
  private:
+  absl::StatusOr<Buffer> fwd_impl(cuda::Executor&, absl::Span<const Buffer>,
+                                  Tape*) const override {
+    return absl::UnimplementedError("CheckpointLayer has no data path");
+  }
+
+  absl::StatusOr<BufferVec> bwd_impl(cuda::Executor&, absl::Span<const Buffer>,
+                                     Tape) override {
+    return absl::UnimplementedError("CheckpointLayer has no data path");
+  }
+
   BufferVec weights_;
 };
 

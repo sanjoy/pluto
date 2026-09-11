@@ -67,9 +67,9 @@ absl::Status ResidualLayer::ValidateSequenceLength(int sequence_length) const {
   return layer_->ValidateSequenceLength(sequence_length);
 }
 
-absl::StatusOr<Buffer> ResidualLayer::fwd(cuda::Executor& executor,
-                                          absl::Span<const Buffer> inputs,
-                                          Tape* tape) const {
+absl::StatusOr<Buffer> ResidualLayer::fwd_impl(cuda::Executor& executor,
+                                               absl::Span<const Buffer> inputs,
+                                               Tape* tape) const {
   if (inputs.size() != 1 || tape == nullptr) {
     return absl::InvalidArgumentError(
         "ResidualLayer fwd expects one input and a non-null tape");
@@ -105,7 +105,7 @@ absl::StatusOr<Buffer> ResidualLayer::fwd(cuda::Executor& executor,
   return std::move(output);
 }
 
-absl::StatusOr<BufferVec> ResidualLayer::bwd(
+absl::StatusOr<BufferVec> ResidualLayer::bwd_impl(
     cuda::Executor& executor, absl::Span<const Buffer> output_gradients,
     Tape tape) {
   if (output_gradients.size() != 1 || tape.intermediates.size() != 1 ||
@@ -153,9 +153,9 @@ absl::Status ComposedLayer::ValidateSequenceLength(int sequence_length) const {
   return absl::OkStatus();
 }
 
-absl::StatusOr<Buffer> ComposedLayer::fwd(cuda::Executor& executor,
-                                          absl::Span<const Buffer> inputs,
-                                          Tape* tape) const {
+absl::StatusOr<Buffer> ComposedLayer::fwd_impl(cuda::Executor& executor,
+                                               absl::Span<const Buffer> inputs,
+                                               Tape* tape) const {
   if (inputs.size() != 1 || tape == nullptr) {
     return absl::InvalidArgumentError(
         "ComposedLayer fwd expects one input and a non-null tape");
@@ -174,7 +174,7 @@ absl::StatusOr<Buffer> ComposedLayer::fwd(cuda::Executor& executor,
   return activation;
 }
 
-absl::StatusOr<BufferVec> ComposedLayer::bwd(
+absl::StatusOr<BufferVec> ComposedLayer::bwd_impl(
     cuda::Executor& executor, absl::Span<const Buffer> output_gradients,
     Tape tape) {
   if (output_gradients.size() != 1 || tape.children.size() != layers_.size()) {

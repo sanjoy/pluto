@@ -230,9 +230,9 @@ absl::Status FullyConnectedLayer::InitializeNormal(float standard_deviation,
   return absl::OkStatus();
 }
 
-absl::StatusOr<Buffer> FullyConnectedLayer::fwd(cuda::Executor& executor,
-                                                absl::Span<const Buffer> inputs,
-                                                Tape* tape) const {
+absl::StatusOr<Buffer> FullyConnectedLayer::fwd_impl(
+    cuda::Executor& executor, absl::Span<const Buffer> inputs,
+    Tape* tape) const {
   RETURN_IF_ERROR(
       internal::ValidateExecutor(executor_, executor, "FullyConnectedLayer"));
   if (inputs.size() != 1 || tape == nullptr) {
@@ -270,7 +270,7 @@ absl::StatusOr<Buffer> FullyConnectedLayer::fwd(cuda::Executor& executor,
   return std::move(output);
 }
 
-absl::StatusOr<BufferVec> FullyConnectedLayer::bwd(
+absl::StatusOr<BufferVec> FullyConnectedLayer::bwd_impl(
     cuda::Executor& executor, absl::Span<const Buffer> output_gradients,
     Tape tape) {
   RETURN_IF_ERROR(

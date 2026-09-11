@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
@@ -24,10 +25,16 @@ enum class DataType {
   FP8,
 };
 
-// Saved forward state. A tree, rather than one flat vector, lets composed and
-// repeated layers keep each child's private intermediates without imposing a
+class Layer;
+
+// Saved forward state. A tree, rather than one flat vector, lets composed
+// layers keep each child's private intermediates without imposing a
 // layout convention on unrelated layer implementations.
 struct Tape {
+  // Non-owning identity of the layer whose successful fwd() produced this tape.
+  // The layer must outlive its tape. A null pointer marks an unused or failed
+  // forward pass; bwd() rejects it, and tapes from other layer instances.
+  const Layer* layer = nullptr;
   BufferVec intermediates;
   std::vector<Tape> children;
 };
@@ -48,12 +55,29 @@ class Layer {
     return absl::OkStatus();
   }
 
-  virtual absl::StatusOr<Buffer> fwd(cuda::Executor& executor,
-                                     absl::Span<const Buffer> inputs,
-                                     Tape* tape) const = 0;
-  virtual absl::StatusOr<BufferVec> bwd(
-      cuda::Executor& executor, absl::Span<const Buffer> output_gradients,
-      Tape tape) = 0;
+  // Every call starts a fresh tape. Only a successful forward pass associates
+  // it with this layer, so a failed retry cannot leave an old tape usable.
+  absl::StatusOr<Buffer> fwd(cuda::Executor& executor,
+                             absl::Span<const Buffer> inputs,
+                             Tape* tape) const {
+    if (tape == nullptr)
+      return absl::InvalidArgumentError("fwd requires a non-null tape");
+    *tape = Tape{};
+    auto output = fwd_impl(executor, inputs, tape);
+    tape->layer = output.ok() ? this : nullptr;
+    return output;
+  }
+
+  // Check instance identity before dispatching any backward work. Matching
+  // shapes or layer types alone do not make another layer's saved state valid.
+  absl::StatusOr<BufferVec> bwd(cuda::Executor& executor,
+                                absl::Span<const Buffer> output_gradients,
+                                Tape tape) {
+    if (tape.layer != this)
+      return absl::InvalidArgumentError(
+          "bwd requires a tape from this layer's successful fwd");
+    return bwd_impl(executor, output_gradients, std::move(tape));
+  }
   virtual absl::Span<Buffer> weights() = 0;
   // Read-only access for serialization and inspection. Implementations expose
   // the same handles as weights(); callers must not mutate their device bytes.
@@ -67,6 +91,15 @@ class Layer {
   // before backward and update the FP32 master weights after backward.
   virtual absl::Span<Buffer> gradients() { return {}; }
   virtual DataType output_type() const = 0;
+
+ private:
+  // Implementations cannot bypass the public entry points' tape checks.
+  virtual absl::StatusOr<Buffer> fwd_impl(cuda::Executor& executor,
+                                          absl::Span<const Buffer> inputs,
+                                          Tape* tape) const = 0;
+  virtual absl::StatusOr<BufferVec> bwd_impl(
+      cuda::Executor& executor, absl::Span<const Buffer> output_gradients,
+      Tape tape) = 0;
 };
 
 // Saved forward state for the CPU reference graph. It deliberately has the
