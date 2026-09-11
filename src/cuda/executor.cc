@@ -130,19 +130,6 @@ absl::StatusOr<void*> Executor::AllocatePageLockedHostMemory(
     return status;
   }
 
-  // CUDA's allocation contract (also applies to CPU access):
-  // https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__MEMORY__POOLS.html
-  // cudaMallocFromPoolAsync returns an address before its allocation operation
-  // finishes. Even CPU access is forbidden until that operation completes.
-  // This stream contains allocations only: the wait cannot drain computation
-  // or transfers queued on stream_. Frees are always on stream_, so a pending
-  // upload's storage is not reused while the CPU prepares another upload.
-  const cudaError_t ready = cudaStreamSynchronize(host_allocation_stream_);
-  if (ready != cudaSuccess) {
-    ReportCleanupError(cudaFreeAsync(memory, host_allocation_stream_),
-                       "cudaFreeAsync(failed host allocation)");
-    return CudaStatus(ready, "cudaStreamSynchronize(host allocation)");
-  }
   return memory;
 }
 

@@ -48,9 +48,9 @@ class Executor final {
 
   Executor() = default;
 
-  // Allocates asynchronously, then waits only for allocation readiness so the
-  // returned address can immediately be read/written by the CPU. Its eventual
-  // free must be enqueued on stream(), after all transfers using the address.
+  // Enqueues allocation without waiting. PageLockedHostBuffer must wait for
+  // host_allocation_stream_ before exposing the address for CPU access or
+  // transfers. Its eventual free follows those transfers on stream().
   absl::StatusOr<void*> AllocatePageLockedHostMemory(size_t size_bytes);
 
   cudaStream_t stream_ = nullptr;
