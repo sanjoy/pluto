@@ -48,7 +48,7 @@ __tile_global__ void AddLossKernel(const float* __restrict__ losses,
 struct LanguageModelingBatch {
   Buffer tokens;
   Buffer targets;
-  int32_t batch_size;
+  int token_count;
 };
 
 // InMemoryDataSetIterator keeps the generic DataBatch surface small by packing
@@ -56,14 +56,12 @@ struct LanguageModelingBatch {
 // modeling objective unpacks those two contiguous halves here.
 absl::StatusOr<LanguageModelingBatch> PrepareLanguageModelingBatch(
     cuda::Executor& executor, const DataBatch& batch) {
-  if (batch.batch_size <= 0)
-    return absl::InvalidArgumentError("dataset returned an empty batch");
-  const size_t token_bytes =
-      static_cast<size_t>(batch.batch_size) * sizeof(int);
+  ASSIGN_OR_RETURN(const int token_count, batch.token_count());
+  const size_t token_bytes = static_cast<size_t>(token_count) * sizeof(int);
   if (batch.data.size_bytes() != 2 * token_bytes) {
     return absl::InvalidArgumentError(
-        "language-modeling dataset data must contain batch_size input tokens "
-        "followed by batch_size target tokens");
+        "language-modeling data must contain batch_size * sequence_length "
+        "input tokens followed by the same number of targets");
   }
   if (&batch.data.executor() != &executor) {
     return absl::InvalidArgumentError(
@@ -84,7 +82,7 @@ absl::StatusOr<LanguageModelingBatch> PrepareLanguageModelingBatch(
   return LanguageModelingBatch{
       .tokens = std::move(tokens),
       .targets = std::move(targets),
-      .batch_size = batch.batch_size,
+      .token_count = token_count,
   };
 }
 
@@ -143,10 +141,7 @@ absl::Status ValidateTrainingOptions(const TrainingOptions& options) {
 absl::Status ValidateSparseAutoEncoderBatch(cuda::Executor& executor,
                                             const SparseAutoEncoderLayer& model,
                                             const DataBatch& batch) {
-  if (batch.batch_size <= 0) {
-    return absl::InvalidArgumentError(
-        "sparse-autoencoder dataset returned an empty batch");
-  }
+  ASSIGN_OR_RETURN(const int token_count, batch.token_count());
   if (&batch.data.executor() != &executor) {
     return absl::InvalidArgumentError(
         "sparse-autoencoder dataset belongs to a different executor");
@@ -154,11 +149,11 @@ absl::Status ValidateSparseAutoEncoderBatch(cuda::Executor& executor,
   const size_t element_bytes =
       model.output_type() == DataType::BF16 ? sizeof(uint16_t) : sizeof(float);
   const size_t expected_bytes =
-      static_cast<size_t>(batch.batch_size) * model.input_dim() * element_bytes;
+      static_cast<size_t>(token_count) * model.input_dim() * element_bytes;
   if (batch.data.size_bytes() != expected_bytes) {
     return absl::InvalidArgumentError(
-        "sparse-autoencoder dataset data does not match batch_size and "
-        "input_dim");
+        "sparse-autoencoder data does not match batch_size, sequence_length, "
+        "and input_dim");
   }
   return absl::OkStatus();
 }
@@ -167,6 +162,12 @@ absl::Status ValidateSparseAutoEncoderBatch(cuda::Executor& executor,
 
 absl::StatusOr<ObjectiveForwardPass> LanguageModelingObjective::Forward(
     cuda::Executor& executor, const DataBatch& data_batch) const {
+  // A valid flattened byte count alone cannot establish sample boundaries.
+  // For example, two half-context samples must not become one full-context
+  // attention sequence and leak information across samples.
+  RETURN_IF_ERROR(model_.ValidateSequenceLength(data_batch.sequence_length));
+  RETURN_IF_ERROR(
+      loss_layer_.ValidateSequenceLength(data_batch.sequence_length));
   ASSIGN_OR_RETURN(auto batch,
                    PrepareLanguageModelingBatch(executor, data_batch));
   Tape model_tape;
@@ -177,13 +178,13 @@ absl::StatusOr<ObjectiveForwardPass> LanguageModelingObjective::Forward(
   ASSIGN_OR_RETURN(auto losses,
                    loss_layer_.fwd(executor, loss_inputs, &loss_tape));
   if (losses.size_bytes() !=
-      static_cast<size_t>(batch.batch_size) * sizeof(float)) {
+      static_cast<size_t>(batch.token_count) * sizeof(float)) {
     return absl::InvalidArgumentError(
         "language-modeling loss must return one FP32 value per batch token");
   }
   return ObjectiveForwardPass{
       .loss = std::move(losses),
-      .normalization_count = batch.batch_size,
+      .normalization_count = batch.token_count,
       .model_tape = std::move(model_tape),
       .loss_tape = std::move(loss_tape),
   };
@@ -202,6 +203,7 @@ absl::Status LanguageModelingObjective::Backward(cuda::Executor& executor,
 absl::StatusOr<ObjectiveForwardPass> SparseAutoEncoderObjective::Forward(
     cuda::Executor& executor, const DataBatch& batch) const {
   RETURN_IF_ERROR(ValidateSparseAutoEncoderBatch(executor, model_, batch));
+  ASSIGN_OR_RETURN(const int token_count, batch.token_count());
   Tape model_tape;
   BufferVec model_inputs = {batch.data};
   ASSIGN_OR_RETURN(auto reconstruction,
@@ -218,7 +220,7 @@ absl::StatusOr<ObjectiveForwardPass> SparseAutoEncoderObjective::Forward(
   }
   return ObjectiveForwardPass{
       .loss = std::move(loss),
-      .normalization_count = batch.batch_size,
+      .normalization_count = token_count,
       .model_tape = std::move(model_tape),
       .loss_tape = std::move(loss_tape),
   };

@@ -22,6 +22,9 @@
 #include "src/cuda/page_locked_host_array.h"
 #include "src/dataset/dataset.h"
 #include "src/llm/layer.h"
+#include "src/llm/layers/attention.h"
+#include "src/llm/layers/combinators.h"
+#include "src/llm/layers/embedding.h"
 #include "src/llm/layers/sparse_autoencoder.h"
 #include "src/llm/optimizer.h"
 
@@ -125,12 +128,17 @@ class FakeOptimizer final : public Optimizer {
 
 class FixedActivationDataSetIterator final : public DataSetIterator {
  public:
-  FixedActivationDataSetIterator(Buffer data, int32_t batch_size)
-      : data_(std::move(data)), batch_size_(batch_size) {}
+  FixedActivationDataSetIterator(Buffer data, int32_t batch_size,
+                                 int32_t sequence_length = 1)
+      : data_(std::move(data)),
+        batch_size_(batch_size),
+        sequence_length_(sequence_length) {}
 
   absl::StatusOr<DataBatch> Next() override {
     ++next_calls;
-    return DataBatch{.data = data_, .batch_size = batch_size_};
+    return DataBatch{.data = data_,
+                     .batch_size = batch_size_,
+                     .sequence_length = sequence_length_};
   }
 
   absl::Status Reset() override {
@@ -144,6 +152,45 @@ class FixedActivationDataSetIterator final : public DataSetIterator {
  private:
   Buffer data_;
   int32_t batch_size_;
+  int32_t sequence_length_;
+};
+
+// These batches already contain their loss values, so this objective isolates
+// Evaluate's accumulation and normalization from model/loss kernel behavior.
+class LossValuesObjective final : public TrainingObjective {
+ public:
+  absl::StatusOr<ObjectiveForwardPass> Forward(
+      cuda::Executor& executor, const DataBatch& batch) const override {
+    auto count = batch.token_count();
+    if (!count.ok())
+      return count.status();
+    return ObjectiveForwardPass{.loss = batch.data,
+                                .normalization_count = *count};
+  }
+
+  absl::Status Backward(cuda::Executor& executor,
+                        ObjectiveForwardPass pass) override {
+    return absl::OkStatus();
+  }
+};
+
+class VaryingBatchDataSetIterator final : public DataSetIterator {
+ public:
+  explicit VaryingBatchDataSetIterator(std::vector<DataBatch> batches)
+      : batches_(std::move(batches)) {}
+
+  absl::StatusOr<DataBatch> Next() override {
+    return batches_[next_++ % batches_.size()];
+  }
+
+  absl::Status Reset() override {
+    next_ = 0;
+    return absl::OkStatus();
+  }
+
+ private:
+  std::vector<DataBatch> batches_;
+  size_t next_ = 0;
 };
 
 absl::StatusOr<float> ReadEvaluationLoss(cuda::Executor& executor,
@@ -189,7 +236,7 @@ class TrainerTest : public testing::Test {
     return InMemoryDataSetIterator::Create(
         *executor_, corpus_,
         InMemoryDataSetOptions{
-            .batch_size = 4,
+            .batch_size = 1,
             .context_length = 4,
             .order = InMemoryDataSetOrder::kSequential,
         });
@@ -232,6 +279,132 @@ TEST_F(TrainerTest, EvaluateReturnsDeviceMeanAndResetsDataset) {
   auto repeated_host_mean = ReadEvaluationLoss(*executor_, *repeated);
   ASSERT_TRUE(repeated_host_mean.ok()) << repeated_host_mean.status();
   EXPECT_FLOAT_EQ(*repeated_host_mean, *host_mean);
+}
+
+TEST_F(TrainerTest, LanguageModelingNormalizesByTokensNotSequences) {
+  FakeModel model;
+  auto loss = MakeLoss();
+  auto data = MakeData();
+  ASSERT_TRUE(loss.ok()) << loss.status();
+  ASSERT_TRUE(data.ok()) << data.status();
+  auto batch = (*data)->Next();
+  ASSERT_TRUE(batch.ok()) << batch.status();
+  EXPECT_EQ(batch->batch_size, 1);
+  EXPECT_EQ(batch->sequence_length, 4);
+  LanguageModelingObjective objective(model, **loss);
+  auto pass = objective.Forward(*executor_, *batch);
+  ASSERT_TRUE(pass.ok()) << pass.status();
+  EXPECT_EQ(pass->normalization_count, 4);
+  EXPECT_EQ(pass->loss.size_bytes(), 4 * sizeof(float));
+
+  // The buffer bytes alone are not sufficient: reject inconsistent or
+  // overflowing sample metadata before calling the model.
+  batch->sequence_length = 3;
+  EXPECT_FALSE(objective.Forward(*executor_, *batch).ok());
+  batch->sequence_length = std::numeric_limits<int>::max();
+  batch->batch_size = 2;
+  EXPECT_FALSE(objective.Forward(*executor_, *batch).ok());
+  batch->batch_size = 0;
+  EXPECT_FALSE(objective.Forward(*executor_, *batch).ok());
+  EXPECT_EQ(model.forward_calls, 1);
+}
+
+TEST_F(TrainerTest,
+       ChecksSequenceBoundariesBeforeFlatteningLanguageModelBatches) {
+  auto embedding =
+      EmbeddingLookupLayer::Create(*executor_, 32, 16, DataType::FP16);
+  auto positions =
+      PositionEmbeddingLayer::Create(*executor_, 4, 16, DataType::FP16);
+  ASSERT_TRUE(embedding.ok()) << embedding.status();
+  ASSERT_TRUE(positions.ok()) << positions.status();
+  ComposedLayerBuilder builder;
+  ASSERT_TRUE(builder.add(std::move(*embedding)).ok());
+  ASSERT_TRUE(
+      builder.add(std::make_unique<ResidualLayer>(std::move(*positions))).ok());
+  auto model = builder.create();
+  auto data = MakeData();
+  auto loss = MakeLoss();
+  ASSERT_TRUE(model.ok()) << model.status();
+  ASSERT_TRUE(data.ok()) << data.status();
+  ASSERT_TRUE(loss.ok()) << loss.status();
+  auto batch = (*data)->Next();
+  ASSERT_TRUE(batch.ok()) << batch.status();
+  LanguageModelingObjective objective(**model, **loss);
+
+  // Both shapes have four token rows. The model nevertheless must not treat
+  // two independent two-token samples as one four-token position sequence.
+  batch->batch_size = 2;
+  batch->sequence_length = 2;
+  auto invalid = objective.Forward(*executor_, *batch);
+  EXPECT_EQ(invalid.status().code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_EQ((*loss)->forward_calls, 0);
+
+  batch->batch_size = 1;
+  batch->sequence_length = 4;
+  auto valid = objective.Forward(*executor_, *batch);
+  ASSERT_TRUE(valid.ok()) << valid.status();
+  EXPECT_EQ(valid->normalization_count, 4);
+  EXPECT_EQ((*loss)->forward_calls, 1);
+}
+
+TEST_F(TrainerTest, SequenceValidationChecksNestedAttentionAndPerTokenLayers) {
+  FakeModel per_token;
+  EXPECT_TRUE(per_token.ValidateSequenceLength(1).ok());
+  EXPECT_TRUE(per_token.ValidateSequenceLength(1024).ok());
+  EXPECT_FALSE(per_token.ValidateSequenceLength(0).ok());
+  EXPECT_FALSE(per_token.ValidateSequenceLength(-1).ok());
+
+  auto attention = AttentionLayer::Create(*executor_, 4, 1, 16, DataType::FP16);
+  ASSERT_TRUE(attention.ok()) << attention.status();
+  EXPECT_TRUE((*attention)->ValidateSequenceLength(4).ok());
+  EXPECT_FALSE((*attention)->ValidateSequenceLength(2).ok());
+  EXPECT_FALSE((*attention)->ValidateSequenceLength(8).ok());
+  EXPECT_FALSE((*attention)->ValidateSequenceLength(0).ok());
+
+  // Validation must reach a stateful descendant even through both sequential
+  // and residual wrappers; checking only a composition's outer type misses it.
+  ComposedLayerBuilder builder;
+  ASSERT_TRUE(builder.add(std::make_unique<FakeModel>()).ok());
+  ASSERT_TRUE(
+      builder.add(std::make_unique<ResidualLayer>(std::move(*attention))).ok());
+  auto model = builder.create();
+  ASSERT_TRUE(model.ok()) << model.status();
+  EXPECT_TRUE((*model)->ValidateSequenceLength(4).ok());
+  EXPECT_FALSE((*model)->ValidateSequenceLength(2).ok());
+  EXPECT_FALSE((*model)->ValidateSequenceLength(8).ok());
+  EXPECT_FALSE((*model)->ValidateSequenceLength(-1).ok());
+}
+
+TEST_F(TrainerTest, EvaluateWeightsUnequalBatchesByTheirTokenCounts) {
+  auto first_host = cuda::PageLockedHostArray<float>::CopyFrom(
+      std::vector<float>{2.0f, 4.0f});
+  auto second_host = cuda::PageLockedHostArray<float>::CopyFrom(
+      std::vector<float>{1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f});
+  ASSERT_TRUE(first_host.ok()) << first_host.status();
+  ASSERT_TRUE(second_host.ok()) << second_host.status();
+  auto first = Buffer::Allocate(*executor_, first_host->size_bytes());
+  auto second = Buffer::Allocate(*executor_, second_host->size_bytes());
+  ASSERT_TRUE(first.ok()) << first.status();
+  ASSERT_TRUE(second.ok()) << second.status();
+  ASSERT_EQ(cudaMemcpyAsync(first->data(), first_host->data(),
+                            first_host->size_bytes(), cudaMemcpyHostToDevice,
+                            executor_->stream()),
+            cudaSuccess);
+  ASSERT_EQ(cudaMemcpyAsync(second->data(), second_host->data(),
+                            second_host->size_bytes(), cudaMemcpyHostToDevice,
+                            executor_->stream()),
+            cudaSuccess);
+  VaryingBatchDataSetIterator data(
+      {{.data = *first, .batch_size = 1, .sequence_length = 2},
+       {.data = *second, .batch_size = 2, .sequence_length = 3}});
+  LossValuesObjective objective;
+  auto mean =
+      Evaluate(*executor_, objective, data, EvaluationOptions{.batches = 2});
+  ASSERT_TRUE(mean.ok()) << mean.status();
+  auto host_mean = ReadEvaluationLoss(*executor_, *mean);
+  ASSERT_TRUE(host_mean.ok()) << host_mean.status();
+  // Sum the eight token losses, not the two batch means or three samples.
+  EXPECT_FLOAT_EQ(*host_mean, 1.5f);
 }
 
 TEST_F(TrainerTest, EvaluateRejectsADatasetFromAnotherExecutor) {
@@ -299,7 +472,7 @@ TEST_F(TrainerTest, TrainsAndEvaluatesSparseAutoEncoderDataBatches) {
   ASSERT_TRUE(model.ok()) << model.status();
   ASSERT_TRUE(loss.ok()) << loss.status();
   ASSERT_TRUE((*model)->InitializeNormal(0.05f, 19).ok());
-  FixedActivationDataSetIterator data(*activations, kRows);
+  FixedActivationDataSetIterator data(*activations, 2, kRows / 2);
   SparseAutoEncoderObjective objective(**model, **loss);
 
   auto initial =
@@ -309,6 +482,25 @@ TEST_F(TrainerTest, TrainsAndEvaluatesSparseAutoEncoderDataBatches) {
   ASSERT_TRUE(host_initial.ok()) << host_initial.status();
   EXPECT_TRUE(std::isfinite(*host_initial));
   EXPECT_GE(*host_initial, 0.0);
+
+  auto batch = data.Next();
+  ASSERT_TRUE(batch.ok()) << batch.status();
+  auto pass = objective.Forward(*executor_, *batch);
+  ASSERT_TRUE(pass.ok()) << pass.status();
+  EXPECT_EQ(pass->normalization_count, kRows);
+  // Grouping the same activation rows into samples cannot change per-token
+  // SAE loss. Both single-token samples and longer sequences are supported.
+  FixedActivationDataSetIterator single_token_samples(*activations, kRows);
+  auto ungrouped = Evaluate(*executor_, objective, single_token_samples,
+                            EvaluationOptions{.batches = 1});
+  ASSERT_TRUE(ungrouped.ok()) << ungrouped.status();
+  auto host_ungrouped = ReadEvaluationLoss(*executor_, *ungrouped);
+  ASSERT_TRUE(host_ungrouped.ok()) << host_ungrouped.status();
+  EXPECT_FLOAT_EQ(*host_ungrouped, *host_initial);
+  batch->sequence_length = kRows;
+  EXPECT_FALSE(objective.Forward(*executor_, *batch).ok());
+  batch->sequence_length = -1;
+  EXPECT_FALSE(objective.Forward(*executor_, *batch).ok());
 
   FakeOptimizer optimizer;
   std::vector<int> evaluation_steps;

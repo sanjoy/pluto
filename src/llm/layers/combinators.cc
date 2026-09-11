@@ -62,6 +62,11 @@ ResidualLayer::ResidualLayer(std::unique_ptr<Layer> layer)
     gradients_.push_back(gradient);
 }
 
+absl::Status ResidualLayer::ValidateSequenceLength(int sequence_length) const {
+  RETURN_IF_ERROR(Layer::ValidateSequenceLength(sequence_length));
+  return layer_->ValidateSequenceLength(sequence_length);
+}
+
 absl::StatusOr<Buffer> ResidualLayer::fwd(cuda::Executor& executor,
                                           absl::Span<const Buffer> inputs,
                                           Tape* tape) const {
@@ -139,6 +144,13 @@ ComposedLayer::ComposedLayer(DataType data_type,
     for (const Buffer& gradient : layer->gradients())
       gradients_.push_back(gradient);
   }
+}
+
+absl::Status ComposedLayer::ValidateSequenceLength(int sequence_length) const {
+  RETURN_IF_ERROR(Layer::ValidateSequenceLength(sequence_length));
+  for (const auto& layer : layers_)
+    RETURN_IF_ERROR(layer->ValidateSequenceLength(sequence_length));
+  return absl::OkStatus();
 }
 
 absl::StatusOr<Buffer> ComposedLayer::fwd(cuda::Executor& executor,

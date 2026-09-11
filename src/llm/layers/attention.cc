@@ -276,6 +276,14 @@ absl::StatusOr<std::unique_ptr<AttentionLayer>> AttentionLayer::Create(
       executor, context_length, num_heads, embedding_dim, data_type));
 }
 
+absl::Status AttentionLayer::ValidateSequenceLength(int sequence_length) const {
+  if (sequence_length != context_length_) {
+    return absl::InvalidArgumentError(
+        "attention sequence_length must equal its configured context_length");
+  }
+  return absl::OkStatus();
+}
+
 absl::StatusOr<Buffer> AttentionLayer::fwd(cuda::Executor& executor,
                                            absl::Span<const Buffer> inputs,
                                            Tape* tape) const {

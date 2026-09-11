@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "src/cuda/buffer.h"
@@ -35,6 +36,17 @@ struct Tape {
 class Layer {
  public:
   virtual ~Layer() = default;
+
+  // Validates sample boundaries before dataset batches are flattened for fwd().
+  // Per-token layers accept every positive length. Layers whose kernels use a
+  // fixed sequence width override this; combinators check all descendants.
+  // Callers supplying raw Buffers directly must preserve those same boundaries:
+  // fwd() cannot recover sample lengths from an untyped flat allocation.
+  virtual absl::Status ValidateSequenceLength(int sequence_length) const {
+    if (sequence_length <= 0)
+      return absl::InvalidArgumentError("sequence_length must be positive");
+    return absl::OkStatus();
+  }
 
   virtual absl::StatusOr<Buffer> fwd(cuda::Executor& executor,
                                      absl::Span<const Buffer> inputs,

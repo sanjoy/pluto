@@ -24,8 +24,12 @@ namespace pluto::llm {
 // The iterator borrows executor, activation_generator, and source. All three
 // must outlive it. The generator is used only for forward inference; its tape
 // is discarded after each batch and no gradients are computed. Returned
-// DataBatch::data buffers contain batch_size hidden-state rows; their row width
-// and element type are defined by activation_generator.
+// DataBatch::data buffers contain batch_size * sequence_length hidden-state
+// rows. Both sample dimensions are preserved from the source; row width and
+// element type are defined by activation_generator. Its sequence-width contract
+// is checked before running it; fixed-context attention/position generators
+// reject shorter samples even when their total row count is divisible by the
+// configured context width.
 class SparseAutoEncoderDataSetIterator final : public DataSetIterator {
  public:
   static absl::StatusOr<std::unique_ptr<SparseAutoEncoderDataSetIterator>>

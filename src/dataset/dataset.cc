@@ -175,23 +175,23 @@ absl::StatusOr<std::unique_ptr<InMemoryDataSetIterator>>
 InMemoryDataSetIterator::Create(cuda::Executor& executor,
                                 cuda::PageLockedHostArray<int> tokens,
                                 InMemoryDataSetOptions options) {
-  if (options.batch_size <= 0 || options.context_length <= 0 ||
-      options.batch_size % options.context_length != 0) {
-    return absl::InvalidArgumentError(
-        "batch_size must be positive and divisible by context_length");
-  }
+  if (options.batch_size <= 0 || options.context_length <= 0)
+    return absl::InvalidArgumentError("batch dimensions must be positive");
+  const int64_t token_count =
+      int64_t{options.batch_size} * options.context_length;
+  if (token_count > std::numeric_limits<int>::max())
+    return absl::InvalidArgumentError("batch token count exceeds int range");
   if (tokens.size() <= static_cast<size_t>(options.context_length)) {
     return absl::InvalidArgumentError(
         "the corpus must contain more than context_length tokens");
   }
   if (tokens.size() > std::numeric_limits<size_t>::max() / sizeof(int))
     return absl::InvalidArgumentError("the corpus is too large");
-  if (static_cast<size_t>(options.batch_size) >
+  if (static_cast<size_t>(token_count) >
       std::numeric_limits<size_t>::max() / (2 * sizeof(int))) {
     return absl::InvalidArgumentError("batch_size is too large");
   }
-  const size_t token_bytes =
-      static_cast<size_t>(options.batch_size) * sizeof(int);
+  const size_t token_bytes = static_cast<size_t>(token_count) * sizeof(int);
   const size_t data_bytes = 2 * token_bytes;
   const size_t corpus_bytes = tokens.size() * sizeof(int);
   ASSIGN_OR_RETURN(auto corpus_buffer,
@@ -214,13 +214,14 @@ InMemoryDataSetIterator::Create(cuda::Executor& executor,
 absl::StatusOr<DataBatch> InMemoryDataSetIterator::Next() {
   const size_t sequence_start_count =
       corpus_token_count_ - static_cast<size_t>(options_.context_length);
-  const int sequences_per_batch = options_.batch_size / options_.context_length;
+  const int sequences_per_batch = options_.batch_size;
   const size_t sequence_bytes =
       static_cast<size_t>(options_.context_length) * sizeof(int);
   const auto* corpus = static_cast<const char*>(corpus_.data());
   auto* batch_tokens = static_cast<char*>(data_buffer_.data());
   auto* batch_targets =
-      batch_tokens + static_cast<size_t>(options_.batch_size) * sizeof(int);
+      batch_tokens + static_cast<size_t>(options_.batch_size) *
+                         options_.context_length * sizeof(int);
   for (int sequence = 0; sequence < sequences_per_batch; ++sequence) {
     size_t start;
     if (options_.order == InMemoryDataSetOrder::kRandom) {
@@ -244,7 +245,9 @@ absl::StatusOr<DataBatch> InMemoryDataSetIterator::Next() {
                         cudaMemcpyDeviceToDevice, executor_.stream()),
         "cudaMemcpyAsync(dataset target slice)"));
   }
-  return DataBatch{.data = data_buffer_, .batch_size = options_.batch_size};
+  return DataBatch{.data = data_buffer_,
+                   .batch_size = options_.batch_size,
+                   .sequence_length = options_.context_length};
 }
 
 absl::Status InMemoryDataSetIterator::Reset() {

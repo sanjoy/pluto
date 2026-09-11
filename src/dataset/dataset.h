@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <random>
 #include <vector>
@@ -64,12 +65,26 @@ struct CorpusSplit {
 absl::StatusOr<CorpusSplit> SplitCorpus(const TextCorpus& corpus,
                                         double test_fraction);
 
-// One opaque, device-resident batch. The concrete iterator defines the element
-// type, row shape, and any internal layout of data. batch_size is the number of
-// logical examples rather than a byte or element count.
+// One opaque, device-resident batch of equally sized samples. batch_size counts
+// samples (sequences), never flattened tokens. Each sample has sequence_length
+// tokens/activation rows; the concrete iterator defines their element type and
+// layout. Sequence-sensitive models require their configured sequence width;
+// this metadata does not add ragged-batch or variable-length attention support.
 struct DataBatch {
   cuda::Buffer data;
   int32_t batch_size;
+  int32_t sequence_length = 1;
+
+  // The kernels index flattened token/activation rows using int. Check before
+  // allocating or launching so invalid dimensions cannot overflow that index.
+  absl::StatusOr<int> token_count() const {
+    if (batch_size <= 0 || sequence_length <= 0)
+      return absl::InvalidArgumentError("batch dimensions must be positive");
+    const int64_t count = int64_t{batch_size} * sequence_length;
+    if (count > std::numeric_limits<int>::max())
+      return absl::InvalidArgumentError("batch token count exceeds int range");
+    return static_cast<int>(count);
+  }
 };
 
 // Source of device-resident batches.
@@ -101,7 +116,10 @@ enum class InMemoryDataSetOrder {
 };
 
 struct InMemoryDataSetOptions {
+  // Number of independently sampled sequences in each batch.
   int batch_size;
+  // Number of tokens in each sequence. This must match the consuming model's
+  // configured width when it has sequence-sensitive layers.
   int context_length;
   InMemoryDataSetOrder order = InMemoryDataSetOrder::kRandom;
   uint64_t seed = 0;
@@ -110,10 +128,10 @@ struct InMemoryDataSetOptions {
 // Produces next-token batches from a device-resident copy of a page-locked
 // token array.
 //
-// A batch may pack multiple independent sequences, so batch_size must be a
-// multiple of context_length. Create() uploads the corpus through executor;
-// Next() then assembles each batch entirely with stream-ordered device copies.
-// Its DataBatch::data contains 2 * batch_size int32 values: model input tokens
+// A batch packs batch_size independent sequences of context_length tokens.
+// Create() uploads the corpus through executor; Next() then assembles each
+// batch entirely with stream-ordered device copies. Its DataBatch::data
+// contains 2 * batch_size * context_length int32 values: model input tokens
 // first, followed by the corresponding one-token-shifted targets. Keeping this
 // concrete schema out of DataBatch lets other iterators expose activation
 // matrices through the same base interface. Random order is appropriate for

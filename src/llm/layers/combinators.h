@@ -17,6 +17,8 @@ class ResidualLayer final : public Layer {
  public:
   explicit ResidualLayer(std::unique_ptr<Layer> layer);
 
+  absl::Status ValidateSequenceLength(int sequence_length) const override;
+
   absl::StatusOr<Buffer> fwd(cuda::Executor& executor,
                              absl::Span<const Buffer> inputs,
                              Tape* tape) const override;
@@ -38,6 +40,8 @@ class ResidualLayer final : public Layer {
 class ComposedLayer final : public Layer {
  public:
   ComposedLayer(DataType data_type, std::vector<std::unique_ptr<Layer>> layers);
+
+  absl::Status ValidateSequenceLength(int sequence_length) const override;
 
   absl::StatusOr<Buffer> fwd(cuda::Executor& executor,
                              absl::Span<const Buffer> inputs,

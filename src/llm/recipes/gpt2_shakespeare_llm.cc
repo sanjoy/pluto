@@ -179,7 +179,7 @@ std::string CurrentTimestamp() {
 struct ModelConfig {
   int batch_size;
 
-  int token_batch_size() const { return batch_size * kGpt2ContextLength; }
+  int token_count() const { return batch_size * kGpt2ContextLength; }
   int padded_vocabulary_size() const { return kGpt2PaddedVocabularySize; }
 
   absl::Status Validate() const {
@@ -261,7 +261,7 @@ absl::StatusOr<cuda::PageLockedHostArray<float>> Predict(
   const size_t context_start = context.size() - context_size;
   ASSIGN_OR_RETURN(
       auto repeated_context,
-      cuda::PageLockedHostArray<int>::Allocate(config.token_batch_size()));
+      cuda::PageLockedHostArray<int>::Allocate(config.token_count()));
   for (int sequence = 0; sequence < config.batch_size; ++sequence) {
     for (size_t position = 0; position < context_size; ++position) {
       repeated_context[sequence * kGpt2ContextLength + position] =
@@ -387,13 +387,13 @@ absl::Status RunTraining(cuda::Executor& executor,
       auto optimizer,
       Optimizer::Create(executor, *model, OptimizerConfigFromFlags()));
   const InMemoryDataSetOptions training_data_options{
-      .batch_size = config.token_batch_size(),
+      .batch_size = config.batch_size,
       .context_length = kGpt2ContextLength,
       .order = InMemoryDataSetOrder::kRandom,
       .seed = static_cast<uint64_t>(absl::GetFlag(FLAGS_seed)),
   };
   const InMemoryDataSetOptions evaluation_data_options{
-      .batch_size = config.token_batch_size(),
+      .batch_size = config.batch_size,
       .context_length = kGpt2ContextLength,
       .order = InMemoryDataSetOrder::kSequential,
       .seed = static_cast<uint64_t>(absl::GetFlag(FLAGS_seed)),
@@ -429,7 +429,7 @@ absl::Status RunTraining(cuda::Executor& executor,
          << ", head_dim=" << kGpt2AttentionHeadDimension
          << ", MLP=" << kGpt2FeedForwardWidth << ", BF16 compute\n"
          << "batch: " << config.batch_size << " sequences ("
-         << config.token_batch_size() << " tokens)\n"
+         << config.token_count() << " tokens)\n"
          << "corpus tokens: "
          << training_data->token_count() + test_evaluation_data->token_count()
          << " (training: " << training_data->token_count()
@@ -548,13 +548,13 @@ absl::Status RunSparseAutoEncoderTraining(
   const ModelConfig config{.batch_size = absl::GetFlag(FLAGS_batch_size)};
   RETURN_IF_ERROR(config.Validate());
   const InMemoryDataSetOptions training_source_options{
-      .batch_size = config.token_batch_size(),
+      .batch_size = config.batch_size,
       .context_length = kGpt2ContextLength,
       .order = InMemoryDataSetOrder::kRandom,
       .seed = static_cast<uint64_t>(absl::GetFlag(FLAGS_seed)),
   };
   const InMemoryDataSetOptions evaluation_source_options{
-      .batch_size = config.token_batch_size(),
+      .batch_size = config.batch_size,
       .context_length = kGpt2ContextLength,
       .order = InMemoryDataSetOrder::kSequential,
       .seed = static_cast<uint64_t>(absl::GetFlag(FLAGS_seed)),
@@ -630,7 +630,7 @@ absl::Status RunSparseAutoEncoderTraining(
          << ", m=" << kSparseAutoEncoderFeatureDimension
          << ", sparsity penalty=" << kSparseAutoEncoderPenalty << '\n'
          << "batch: " << config.batch_size << " sequences ("
-         << config.token_batch_size() << " activations)\n"
+         << config.token_count() << " activations)\n"
          << "corpus tokens: " << training_source->token_count() << '\n'
          << "starting SAE step: " << initial_step << '\n'
          << "initial loss per activation: " << initial_loss << '\n';
@@ -722,7 +722,7 @@ absl::Status RunInference(cuda::Executor& executor,
   RETURN_IF_ERROR(ReadFromDirectory(executor, *model, checkpoint.directory));
   ASSIGN_OR_RETURN(
       auto token_buffer,
-      Buffer::Allocate(executor, config.token_batch_size() * sizeof(int)));
+      Buffer::Allocate(executor, config.token_count() * sizeof(int)));
   std::cout << "loaded checkpoint: " << checkpoint.directory.string()
             << " (step " << checkpoint.step << ")\n";
 

@@ -84,6 +84,10 @@ class LanguageModelingHeadLayer final : public Layer {
 // Learned absolute position embeddings repeated for each packed sequence.
 class PositionEmbeddingLayer final : public Layer {
  public:
+  // Positions restart at the configured fixed width, not at a length inferred
+  // from the total number of rows in a flattened batch.
+  absl::Status ValidateSequenceLength(int sequence_length) const override;
+
   static absl::StatusOr<std::unique_ptr<PositionEmbeddingLayer>> Create(
       cuda::Executor& executor, int context_length, int embedding_dim,
       DataType data_type);

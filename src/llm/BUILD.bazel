@@ -226,6 +226,9 @@ cc_test(
     srcs = ["trainer_test.cc"],
     tags = ["requires-gpu"],
     deps = [
+        ":attention",
+        ":combinators",
+        ":embedding",
         ":layer",
         ":optimizer",
         ":sparse_autoencoder",

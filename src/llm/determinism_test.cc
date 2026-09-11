@@ -274,7 +274,7 @@ absl::StatusOr<Trajectory> RunLanguageModel(DataType type, bool perturb) {
       auto training,
       InMemoryDataSetIterator::Create(
           *executor, corpus,
-          InMemoryDataSetOptions{.batch_size = kTrainingRows,
+          InMemoryDataSetOptions{.batch_size = kTrainingRows / kContext,
                                  .context_length = kContext,
                                  .order = InMemoryDataSetOrder::kRandom,
                                  .seed = 817263}));
@@ -282,7 +282,7 @@ absl::StatusOr<Trajectory> RunLanguageModel(DataType type, bool perturb) {
       auto evaluation,
       InMemoryDataSetIterator::Create(
           *executor, corpus,
-          InMemoryDataSetOptions{.batch_size = kTrainingRows,
+          InMemoryDataSetOptions{.batch_size = kTrainingRows / kContext,
                                  .context_length = kContext,
                                  .order = InMemoryDataSetOrder::kSequential}));
   LanguageModelingObjective objective(*model, *loss);
@@ -322,8 +322,9 @@ absl::StatusOr<Trajectory> RunSparseAutoEncoder(
     values[index] = (static_cast<int>(index % 29) - 14) * 0.0625f;
   ASSIGN_OR_RETURN(auto activation,
                    MakeActivationBufferPair(*executor, values, type));
-  FixedActivationDataSet training({activation.device, kRows});
-  FixedActivationDataSet evaluation({activation.device, kRows});
+  // Keep the token count unchanged while exercising multi-token samples.
+  FixedActivationDataSet training({activation.device, 3, kRows / 3});
+  FixedActivationDataSet evaluation({activation.device, 3, kRows / 3});
   SparseAutoEncoderObjective objective(*model, *loss);
   Trajectory trajectory;
   RETURN_IF_ERROR(RecordTraining(*executor, *model, objective, training,

@@ -21,12 +21,8 @@ namespace {
 
 absl::Status ValidateSourceBatch(cuda::Executor& executor,
                                  const DataBatch& batch) {
-  if (batch.batch_size <= 0) {
-    return absl::InvalidArgumentError(
-        "activation dataset source returned an empty batch");
-  }
-  const size_t token_bytes =
-      static_cast<size_t>(batch.batch_size) * sizeof(int);
+  ASSIGN_OR_RETURN(const int token_count, batch.token_count());
+  const size_t token_bytes = static_cast<size_t>(token_count) * sizeof(int);
   if (batch.data.size_bytes() != 2 * token_bytes) {
     return absl::InvalidArgumentError(
         "activation dataset source must contain packed input and target "
@@ -56,9 +52,14 @@ SparseAutoEncoderDataSetIterator::Create(
 absl::StatusOr<DataBatch> SparseAutoEncoderDataSetIterator::Next() {
   ASSIGN_OR_RETURN(DataBatch batch, source_.Next());
   RETURN_IF_ERROR(ValidateSourceBatch(executor_, batch));
+  // Preserve sequence boundaries, not merely the flattened activation count.
+  // Fixed-context generators must reject shorter samples instead of allowing
+  // attention and position kernels to silently join neighboring samples.
+  RETURN_IF_ERROR(
+      activation_generator_.ValidateSequenceLength(batch.sequence_length));
+  ASSIGN_OR_RETURN(const int token_count, batch.token_count());
 
-  const size_t token_bytes =
-      static_cast<size_t>(batch.batch_size) * sizeof(int);
+  const size_t token_bytes = static_cast<size_t>(token_count) * sizeof(int);
   ASSIGN_OR_RETURN(auto tokens, Buffer::Allocate(executor_, token_bytes));
   RETURN_IF_ERROR(cuda::CudaStatus(
       cudaMemcpyAsync(tokens.data(), batch.data.data(), token_bytes,
@@ -75,6 +76,7 @@ absl::StatusOr<DataBatch> SparseAutoEncoderDataSetIterator::Next() {
   return DataBatch{
       .data = std::move(activations),
       .batch_size = batch.batch_size,
+      .sequence_length = batch.sequence_length,
   };
 }
 

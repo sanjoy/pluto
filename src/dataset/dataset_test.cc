@@ -10,6 +10,7 @@
 #include <memory>
 #include <numeric>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "gtest/gtest.h"
@@ -52,16 +53,24 @@ class DataSetTest : public testing::Test {
 
   std::vector<int> Inputs(const DataBatch& batch) {
     const cuda::PageLockedHostArray<int> packed = CopyToHost(batch.data);
-    EXPECT_EQ(packed.size(), 2 * static_cast<size_t>(batch.batch_size));
-    return std::vector<int>(packed.begin(), packed.begin() + batch.batch_size);
+    const auto count = batch.token_count();
+    EXPECT_TRUE(count.ok()) << count.status();
+    if (!count.ok())
+      return {};
+    EXPECT_EQ(packed.size(), 2 * static_cast<size_t>(*count));
+    return std::vector<int>(packed.begin(), packed.begin() + *count);
   }
 
   std::vector<int> Targets(const DataBatch& batch) {
     const cuda::PageLockedHostArray<int> packed = CopyToHost(batch.data);
-    EXPECT_EQ(packed.size(), 2 * static_cast<size_t>(batch.batch_size));
-    if (packed.size() < static_cast<size_t>(batch.batch_size))
+    const auto count = batch.token_count();
+    EXPECT_TRUE(count.ok()) << count.status();
+    if (!count.ok())
       return {};
-    return std::vector<int>(packed.begin() + batch.batch_size, packed.end());
+    EXPECT_EQ(packed.size(), 2 * static_cast<size_t>(*count));
+    if (packed.size() < static_cast<size_t>(*count))
+      return {};
+    return std::vector<int>(packed.begin() + *count, packed.end());
   }
 
   std::unique_ptr<cuda::Executor> executor_;
@@ -89,7 +98,7 @@ TEST_F(DataSetTest, SequentialBatchesShiftTargetsAndReset) {
   auto iterator = InMemoryDataSetIterator::Create(
       *executor_, corpus,
       InMemoryDataSetOptions{
-          .batch_size = 8,
+          .batch_size = 2,
           .context_length = 4,
           .order = InMemoryDataSetOrder::kSequential,
       });
@@ -97,7 +106,8 @@ TEST_F(DataSetTest, SequentialBatchesShiftTargetsAndReset) {
 
   auto first = (*iterator)->Next();
   ASSERT_TRUE(first.ok()) << first.status();
-  EXPECT_EQ(first->batch_size, 8);
+  EXPECT_EQ(first->batch_size, 2);
+  EXPECT_EQ(first->sequence_length, 4);
   const std::vector<int> first_tokens = Inputs(*first);
   EXPECT_EQ(first_tokens, (std::vector<int>{0, 1, 2, 3, 4, 5, 6, 7}));
   EXPECT_EQ(Targets(*first), (std::vector<int>{1, 2, 3, 4, 5, 6, 7, 8}));
@@ -122,7 +132,7 @@ TEST_F(DataSetTest, CorpusIsUploadedDuringCreation) {
   auto iterator = InMemoryDataSetIterator::Create(
       *executor_, corpus,
       InMemoryDataSetOptions{
-          .batch_size = 4,
+          .batch_size = 1,
           .context_length = 4,
           .order = InMemoryDataSetOrder::kSequential,
       });
@@ -142,7 +152,7 @@ TEST_F(DataSetTest, RandomOrderIsDeterministicAcrossReset) {
   auto iterator = InMemoryDataSetIterator::Create(
       *executor_, corpus,
       InMemoryDataSetOptions{
-          .batch_size = 8,
+          .batch_size = 2,
           .context_length = 4,
           .order = InMemoryDataSetOrder::kRandom,
           .seed = 123,
@@ -162,7 +172,7 @@ TEST_F(DataSetTest, RandomOrderIsDeterministicAcrossReset) {
 TEST_F(DataSetTest, SeededIteratorsAreIndependentAndReplayWholeBatches) {
   auto corpus = MakePinnedInts(193);
   std::iota(corpus.begin(), corpus.end(), 0);
-  const InMemoryDataSetOptions options{.batch_size = 32,
+  const InMemoryDataSetOptions options{.batch_size = 4,
                                        .context_length = 8,
                                        .order = InMemoryDataSetOrder::kRandom,
                                        .seed = 987654321};
@@ -186,15 +196,74 @@ TEST_F(DataSetTest, SeededIteratorsAreIndependentAndReplayWholeBatches) {
   }
 }
 
+TEST_F(DataSetTest, BatchSizeCountsIndependentSequencesNotTokens) {
+  auto corpus = MakePinnedInts(25);
+  std::iota(corpus.begin(), corpus.end(), 0);
+  // Three samples need not be divisible by their four-token context length.
+  auto iterator = InMemoryDataSetIterator::Create(
+      *executor_, corpus,
+      InMemoryDataSetOptions{.batch_size = 3,
+                             .context_length = 4,
+                             .order = InMemoryDataSetOrder::kSequential});
+  ASSERT_TRUE(iterator.ok()) << iterator.status();
+  auto batch = (*iterator)->Next();
+  ASSERT_TRUE(batch.ok()) << batch.status();
+  EXPECT_EQ(batch->batch_size, 3);
+  EXPECT_EQ(batch->sequence_length, 4);
+  auto count = batch->token_count();
+  ASSERT_TRUE(count.ok()) << count.status();
+  EXPECT_EQ(*count, 12);
+  EXPECT_EQ(batch->data.size_bytes(), 24 * sizeof(int));
+  EXPECT_EQ(Inputs(*batch),
+            (std::vector<int>{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}));
+  EXPECT_EQ(Targets(*batch),
+            (std::vector<int>{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}));
+}
+
+TEST_F(DataSetTest, DataBatchChecksDimensionsBeforeMultiplyingThem) {
+  auto storage = cuda::Buffer::Allocate(*executor_, 0);
+  ASSERT_TRUE(storage.ok()) << storage.status();
+  const DataBatch valid{
+      .data = *storage, .batch_size = 3, .sequence_length = 4};
+  auto count = valid.token_count();
+  ASSERT_TRUE(count.ok()) << count.status();
+  EXPECT_EQ(*count, 12);
+  // One-token samples are the default for non-sequence datasets.
+  const DataBatch one_token_samples{.data = *storage, .batch_size = 3};
+  ASSERT_TRUE(one_token_samples.token_count().ok());
+  EXPECT_EQ(*one_token_samples.token_count(), 3);
+
+  for (const auto [samples, length] :
+       {std::pair{0, 4}, std::pair{-1, 4}, std::pair{3, 0}, std::pair{3, -1},
+        std::pair{std::numeric_limits<int>::max(), 2},
+        std::pair{2, std::numeric_limits<int>::max()}}) {
+    SCOPED_TRACE(testing::Message() << samples << " x " << length);
+    const DataBatch invalid{
+        .data = *storage, .batch_size = samples, .sequence_length = length};
+    EXPECT_FALSE(invalid.token_count().ok());
+  }
+  const DataBatch largest{.data = *storage,
+                          .batch_size = std::numeric_limits<int>::max(),
+                          .sequence_length = 1};
+  ASSERT_TRUE(largest.token_count().ok());
+  EXPECT_EQ(*largest.token_count(), std::numeric_limits<int>::max());
+}
+
 TEST_F(DataSetTest, RejectsInvalidShapes) {
   const auto corpus = MakePinnedInts(10, 1);
-  EXPECT_FALSE(InMemoryDataSetIterator::Create(
-                   *executor_, corpus,
-                   InMemoryDataSetOptions{.batch_size = 7, .context_length = 4})
-                   .ok());
+  for (const auto [samples, length] :
+       {std::pair{0, 4}, std::pair{-1, 4}, std::pair{1, 0}, std::pair{1, -1},
+        std::pair{std::numeric_limits<int>::max(), 2}}) {
+    SCOPED_TRACE(testing::Message() << samples << " x " << length);
+    EXPECT_FALSE(InMemoryDataSetIterator::Create(
+                     *executor_, corpus,
+                     InMemoryDataSetOptions{.batch_size = samples,
+                                            .context_length = length})
+                     .ok());
+  }
   EXPECT_FALSE(InMemoryDataSetIterator::Create(
                    *executor_, MakePinnedInts(4, 1),
-                   InMemoryDataSetOptions{.batch_size = 4, .context_length = 4})
+                   InMemoryDataSetOptions{.batch_size = 1, .context_length = 4})
                    .ok());
 }
 
@@ -292,7 +361,7 @@ TEST_F(DataSetTest, TokenizesMappedCorpusIntoSequentialDataset) {
 
   auto iterator = MakeInMemoryDataSetIterator(
       *executor_, *corpus, **tokenizer,
-      InMemoryDataSetOptions{.batch_size = 4,
+      InMemoryDataSetOptions{.batch_size = 1,
                              .context_length = 4,
                              .order = InMemoryDataSetOrder::kSequential});
   ASSERT_TRUE(iterator.ok()) << iterator.status();

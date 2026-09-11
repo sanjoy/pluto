@@ -90,9 +90,9 @@ struct TrainingResult {
 
 // Everything retained from an objective's forward pass until evaluation
 // consumes its loss or training runs its backward pass. normalization_count
-// states how many examples the loss represents; it may differ from the number
-// of FP32 values in loss. For example, the SAE loss is one sum for an entire
-// activation batch.
+// states how many token/activation rows the loss represents; it may differ from
+// the number of FP32 values in loss. For example, the SAE loss is one sum for
+// an entire activation batch.
 struct ObjectiveForwardPass {
   Buffer loss;
   int64_t normalization_count;
@@ -117,8 +117,11 @@ class TrainingObjective {
 };
 
 // Language-modeling wiring for a conventional model and terminal loss layer.
-// DataBatch::data contains batch_size int32 input tokens followed by batch_size
-// int32 next-token targets. The loss must return one FP32 value per token.
+// DataBatch::data contains batch_size * sequence_length int32 input tokens,
+// followed by that many int32 next-token targets. The loss returns one FP32
+// value per token, and evaluation averages per token, not per sequence. Model
+// and loss sequence-width requirements are checked before flattening samples;
+// fixed-context attention/position layers require matching sequence_length.
 class LanguageModelingObjective final : public TrainingObjective {
  public:
   LanguageModelingObjective(Layer& model, Layer& loss_layer)
