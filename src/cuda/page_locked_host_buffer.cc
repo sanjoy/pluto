@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "src/cuda/executor.h"
 
 namespace pluto::cuda {
@@ -38,9 +39,19 @@ absl::StatusOr<PageLockedHostBuffer> PageLockedHostBuffer::Allocate(
   auto allocation = std::make_shared<Allocation>(executor, size_bytes);
   if (size_bytes == 0)
     return PageLockedHostBuffer(std::move(allocation));
-  auto memory = executor.AllocatePageLockedHostMemory(size_bytes);
-  if (!memory.ok())
-    return memory.status();
+  void* memory = nullptr;
+  const cudaError_t allocation_error =
+      cudaMallocFromPoolAsync(&memory, size_bytes, executor.host_memory_pool(),
+                              executor.trivial_stream());
+  if (allocation_error != cudaSuccess) {
+    const auto operation =
+        absl::StrCat("cudaMallocFromPoolAsync(host, ", size_bytes, ")");
+    const absl::Status status = CudaStatus(allocation_error, operation.c_str());
+    if (allocation_error == cudaErrorMemoryAllocation)
+      return absl::ResourceExhaustedError(status.message());
+    return status;
+  }
+
   // Allocate() promises immediately CPU-accessible storage. CUDA returns an
   // address before the stream-ordered allocation completes, so the CPU must
   // wait before touching it (unlike device buffers, whose GPU consumers can
@@ -49,22 +60,26 @@ absl::StatusOr<PageLockedHostBuffer> PageLockedHostBuffer::Allocate(
   //
   // Using the compute stream here would put allocation behind queued training
   // kernels: waiting for the allocation would also wait for all those kernels.
-  // The separate allocation stream lets the CPU prepare the next host buffer
+  // The separate trivial stream lets the CPU prepare the next host buffer
   // while computation continues. The pool only recycles completed frees, so
   // it cannot introduce a dependency on a still-pending compute-stream free.
   // Successful allocations are freed on the compute stream after their copies.
-  const cudaError_t ready =
-      cudaStreamSynchronize(executor.host_allocation_stream_);
+  const cudaError_t ready = cudaStreamSynchronize(executor.trivial_stream());
   if (ready != cudaSuccess) {
     // No consumer has received this address yet. Release it on the allocation
     // stream, preserving allocation-before-free ordering even on this path.
     const absl::Status cleanup =
-        CudaStatus(cudaFreeAsync(*memory, executor.host_allocation_stream_),
+        CudaStatus(cudaFreeAsync(memory, executor.trivial_stream()),
                    "cudaFreeAsync(failed host allocation)");
     if (!cleanup.ok()) std::fprintf(stderr, "%s\n", cleanup.ToString().c_str());
+    // Cleanup also follows the trivial stream's enqueue-and-wait contract.
+    const absl::Status drained =
+        CudaStatus(cudaStreamSynchronize(executor.trivial_stream()),
+                   "cudaStreamSynchronize(failed host allocation cleanup)");
+    if (!drained.ok()) std::fprintf(stderr, "%s\n", drained.ToString().c_str());
     return CudaStatus(ready, "cudaStreamSynchronize(host allocation)");
   }
-  allocation->data = *memory;
+  allocation->data = memory;
   return PageLockedHostBuffer(std::move(allocation));
 }
 

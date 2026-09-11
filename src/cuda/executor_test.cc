@@ -30,6 +30,31 @@ TEST(ExecutorTest, OwnsAnExplicitStreamAndSynchronizesIt) {
   EXPECT_TRUE((*executor)->Synchronize().ok());
 }
 
+TEST(ExecutorTest, TrivialStreamIsIndependentAndUsedForImmediateWaits) {
+  auto executor = Executor::Create();
+  ASSERT_TRUE(executor.ok()) << executor.status();
+  const cudaStream_t stream = (*executor)->trivial_stream();
+  EXPECT_NE(stream, nullptr);
+  EXPECT_NE(stream, cudaStreamLegacy);
+  EXPECT_NE(stream, cudaStreamPerThread);
+  EXPECT_NE(stream, (*executor)->stream());
+  unsigned int flags = 0;
+  ASSERT_EQ(cudaStreamGetFlags(stream, &flags), cudaSuccess);
+  EXPECT_EQ(flags, cudaStreamNonBlocking);
+  ASSERT_EQ(cudaStreamQuery(stream), cudaSuccess);
+
+  // The stream is not reserved for allocation: any short operation follows
+  // the same immediate-wait contract, leaving no deferred work behind.
+  int completed = 0;
+  const cudaError_t queued = cudaLaunchHostFunc(
+      stream, [](void* state) { *static_cast<int*>(state) = 1; }, &completed);
+  // Wait even if submission failed, before the callback's stack state expires.
+  EXPECT_EQ(cudaStreamSynchronize(stream), cudaSuccess);
+  ASSERT_EQ(queued, cudaSuccess);
+  EXPECT_EQ(completed, 1);
+  EXPECT_EQ(cudaStreamQuery(stream), cudaSuccess);
+}
+
 TEST(ExecutorTest, HostPoolHasSafeCrossStreamReuseAndGpuAccess) {
   auto executor = Executor::Create();
   ASSERT_TRUE(executor.ok()) << executor.status();

@@ -2,7 +2,6 @@
 
 #include <cuda_runtime_api.h>
 
-#include <cstddef>
 #include <memory>
 
 #include "absl/status/status.h"
@@ -17,7 +16,8 @@ absl::Status CudaStatus(cudaError_t error, const char* operation);
 // Owns the CUDA execution context used by stream-ordered computations.
 //
 // Work and frees use one explicitly created, non-default compute stream. An
-// independent stream prepares allocations from the owned pinned-host pool.
+// independent trivial stream handles short enqueue-and-immediately-wait
+// operations, including allocations from the owned pinned-host pool.
 // Waiting for a CPU-accessible allocation therefore need not wait for pending
 // computation. Only already-completed frees may be recycled by the host pool:
 // it cannot insert dependencies that make allocation wait for compute work.
@@ -39,22 +39,22 @@ class Executor final {
   // Code must obtain it from the Executor passed to the current operation.
   cudaStream_t stream() const { return stream_; }
 
-  // Borrowed handle for inspecting the executor-owned pool. Callers must not
-  // destroy it or change its access/reuse policy.
+  // Normally idle, non-default stream for short enqueue-and-wait operations.
+  // Callers must immediately synchronize this stream after submitting work,
+  // before returning; never leave deferred work queued here or introduce a
+  // dependency on the compute stream. This keeps a readiness wait independent
+  // of queued training kernels. The borrowed stream must not be destroyed.
+  cudaStream_t trivial_stream() const { return trivial_stream_; }
+
+  // Borrowed pool for pinned-host allocations. Callers must not destroy it or
+  // change its access/reuse policy.
   cudaMemPool_t host_memory_pool() const { return host_memory_pool_; }
 
  private:
-  friend class PageLockedHostBuffer;
-
   Executor() = default;
 
-  // Enqueues allocation without waiting. PageLockedHostBuffer must wait for
-  // host_allocation_stream_ before exposing the address for CPU access or
-  // transfers. Its eventual free follows those transfers on stream().
-  absl::StatusOr<void*> AllocatePageLockedHostMemory(size_t size_bytes);
-
   cudaStream_t stream_ = nullptr;
-  cudaStream_t host_allocation_stream_ = nullptr;
+  cudaStream_t trivial_stream_ = nullptr;
   cudaMemPool_t host_memory_pool_ = nullptr;
 };
 

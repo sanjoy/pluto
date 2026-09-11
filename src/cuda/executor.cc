@@ -41,10 +41,10 @@ absl::StatusOr<std::unique_ptr<Executor>> Executor::Create() {
   error = cudaStreamCreateWithFlags(&executor->stream_, cudaStreamNonBlocking);
   if (error != cudaSuccess)
     return CudaStatus(error, "cudaStreamCreateWithFlags");
-  error = cudaStreamCreateWithFlags(&executor->host_allocation_stream_,
+  error = cudaStreamCreateWithFlags(&executor->trivial_stream_,
                                     cudaStreamNonBlocking);
   if (error != cudaSuccess)
-    return CudaStatus(error, "cudaStreamCreateWithFlags(host allocation)");
+    return CudaStatus(error, "cudaStreamCreateWithFlags(trivial stream)");
 
   cudaMemPoolProps properties{};
   properties.allocType = cudaMemAllocationTypePinned;
@@ -101,36 +101,19 @@ Executor::~Executor() {
   // handles occur only while unwinding a partially successful Create().
   if (stream_ != nullptr)
     ReportCleanupError(cudaStreamSynchronize(stream_), "cudaStreamSynchronize");
-  if (host_allocation_stream_ != nullptr) {
-    ReportCleanupError(cudaStreamSynchronize(host_allocation_stream_),
-                       "cudaStreamSynchronize(host allocation)");
+  if (trivial_stream_ != nullptr) {
+    ReportCleanupError(cudaStreamSynchronize(trivial_stream_),
+                       "cudaStreamSynchronize(trivial stream)");
   }
   if (host_memory_pool_ != nullptr)
     ReportCleanupError(cudaMemPoolDestroy(host_memory_pool_),
                        "cudaMemPoolDestroy");
-  if (host_allocation_stream_ != nullptr) {
-    ReportCleanupError(cudaStreamDestroy(host_allocation_stream_),
-                       "cudaStreamDestroy(host allocation)");
+  if (trivial_stream_ != nullptr) {
+    ReportCleanupError(cudaStreamDestroy(trivial_stream_),
+                       "cudaStreamDestroy(trivial stream)");
   }
   if (stream_ != nullptr)
     ReportCleanupError(cudaStreamDestroy(stream_), "cudaStreamDestroy");
-}
-
-absl::StatusOr<void*> Executor::AllocatePageLockedHostMemory(
-    size_t size_bytes) {
-  void* memory = nullptr;
-  const cudaError_t allocation_error = cudaMallocFromPoolAsync(
-      &memory, size_bytes, host_memory_pool_, host_allocation_stream_);
-  if (allocation_error != cudaSuccess) {
-    const auto operation =
-        absl::StrCat("cudaMallocFromPoolAsync(host, ", size_bytes, ")");
-    const absl::Status status = CudaStatus(allocation_error, operation.c_str());
-    if (allocation_error == cudaErrorMemoryAllocation)
-      return absl::ResourceExhaustedError(status.message());
-    return status;
-  }
-
-  return memory;
 }
 
 absl::Status Executor::Synchronize() const {
