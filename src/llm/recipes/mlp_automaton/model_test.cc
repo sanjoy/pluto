@@ -232,17 +232,19 @@ TEST_F(MlpAutomatonModelTest, NativeReadoutMatchesIndependentCpuFormula) {
   ASSERT_TRUE(input.ok()) << input.status();
   const BufferVec device_inputs{input->device};
   const HostBufferVec host_inputs{input->host};
-  BackwardState device_state;
-  ReferenceBackwardState host_state;
-  auto actual = model_->fwd(*executor_, device_inputs, device_state);
-  auto expected = reference_->fwd(host_inputs, host_state);
+
+  auto actual = model_->fwd(*executor_, device_inputs);
+
+  auto expected = reference_->fwd(host_inputs);
+
   ASSERT_TRUE(actual.ok()) << actual.status();
   ASSERT_TRUE(expected.ok()) << expected.status();
-  ASSERT_EQ(actual->size_bytes(), tokens.size() * kPaddedVocabulary * 4);
+  ASSERT_EQ(actual->output.size_bytes(), tokens.size() * kPaddedVocabulary * 4);
   // Scalar reference reductions and native MMA can cross different BF16
   // rounding boundaries. Compare the complete logits, not merely top-1 IDs.
-  EXPECT_TRUE(FloatBuffersNear(*actual, *expected, 0.02f, 0.008f));
-  auto logits = ReadDeviceFloats(*executor_, *actual);
+  EXPECT_TRUE(
+      FloatBuffersNear(actual->output, expected->output, 0.02f, 0.008f));
+  auto logits = ReadDeviceFloats(*executor_, actual->output);
   ASSERT_TRUE(logits.ok()) << logits.status();
   for (size_t row = 0; row < tokens.size(); ++row) {
     for (int token = 0; token < kPaddedVocabulary; ++token) {
@@ -344,10 +346,11 @@ TEST_F(MlpAutomatonModelTest, ScanCoversEveryTokenAndFinalPartialBatch) {
     ids[token] = token;
   auto input = MakeRawBufferPair<int>(*executor_, ids);
   ASSERT_TRUE(input.ok()) << input.status();
-  BackwardState state;
-  auto output = model_->fwd(*executor_, {input->device}, state);
+
+  auto output = model_->fwd(*executor_, {input->device});
+
   ASSERT_TRUE(output.ok()) << output.status();
-  auto logits = ReadDeviceFloats(*executor_, *output);
+  auto logits = ReadDeviceFloats(*executor_, output->output);
   ASSERT_TRUE(logits.ok()) << logits.status();
   for (int source = 0; source < kDimensions.vocab_size; ++source) {
     const float* row = logits->data() + source * kPaddedVocabulary;

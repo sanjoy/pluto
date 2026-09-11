@@ -69,13 +69,12 @@ absl::StatusOr<std::unique_ptr<GeluLayer>> GeluLayer::Create(
   return absl::WrapUnique(new GeluLayer(executor, data_type));
 }
 
-absl::StatusOr<Buffer> GeluLayer::fwd_impl(cuda::Executor& executor,
-                                           absl::Span<const Buffer> inputs,
-                                           BackwardState& state) const {
+absl::StatusOr<FwdResult> GeluLayer::fwd_impl(
+    cuda::Executor& executor, absl::Span<const Buffer> inputs) const {
+  BackwardState state;
   RETURN_IF_ERROR(internal::ValidateExecutor(executor_, executor, "GeluLayer"));
   if (inputs.size() != 1) {
-    return absl::InvalidArgumentError(
-        "GeluLayer fwd expects one input and saved state");
+    return absl::InvalidArgumentError("GeluLayer fwd expects one input");
   }
   ASSIGN_OR_RETURN(
       int elements,
@@ -101,7 +100,7 @@ absl::StatusOr<Buffer> GeluLayer::fwd_impl(cuda::Executor& executor,
   }
   RETURN_IF_ERROR(
       cuda::CudaStatus(cudaGetLastError(), "GeluForwardKernel launch"));
-  return std::move(output);
+  return FwdResult{std::move(output), std::move(state)};
 }
 
 absl::StatusOr<BufferVec> GeluLayer::bwd_impl(

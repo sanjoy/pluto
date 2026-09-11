@@ -22,14 +22,17 @@ ResidualLayerReference::ResidualLayerReference(
     gradients_.push_back(gradient);
 }
 
-absl::StatusOr<HostBuffer> ResidualLayerReference::fwd_impl(
-    absl::Span<const HostBuffer> inputs, ReferenceBackwardState& state) const {
+absl::StatusOr<ReferenceFwdResult> ResidualLayerReference::fwd_impl(
+    absl::Span<const HostBuffer> inputs) const {
+  ReferenceBackwardState state;
   if (inputs.size() != 1) {
     return absl::InvalidArgumentError(
-        "ResidualLayerReference fwd expects one input and saved state");
+        "ResidualLayerReference fwd expects one input");
   }
-  ReferenceBackwardState child_state;
-  ASSIGN_OR_RETURN(auto branch, layer_->fwd(inputs, child_state));
+
+  ASSIGN_OR_RETURN(auto branch_fwd, layer_->fwd(inputs));
+  auto branch = std::move(branch_fwd.output);
+
   if (branch.size_bytes() != inputs[0].size_bytes()) {
     return absl::InvalidArgumentError(
         "reference residual branch changed activation shape");
@@ -48,8 +51,8 @@ absl::StatusOr<HostBuffer> ResidualLayerReference::fwd_impl(
                             ri::LoadActivation(branch, index, output_type()));
   }
   state.intermediates = {inputs[0]};
-  state.children = {std::move(child_state)};
-  return output;
+  state.children = {std::move(branch_fwd.state)};
+  return ReferenceFwdResult{std::move(output), std::move(state)};
 }
 
 absl::StatusOr<HostBufferVec> ResidualLayerReference::bwd_impl(
@@ -90,11 +93,12 @@ ComposedLayerReference::ComposedLayerReference(
   }
 }
 
-absl::StatusOr<HostBuffer> ComposedLayerReference::fwd_impl(
-    absl::Span<const HostBuffer> inputs, ReferenceBackwardState& state) const {
+absl::StatusOr<ReferenceFwdResult> ComposedLayerReference::fwd_impl(
+    absl::Span<const HostBuffer> inputs) const {
+  ReferenceBackwardState state;
   if (inputs.size() != 1) {
     return absl::InvalidArgumentError(
-        "ComposedLayerReference fwd expects one input and saved state");
+        "ComposedLayerReference fwd expects one input");
   }
   state.intermediates.clear();
   state.children.clear();
@@ -102,13 +106,14 @@ absl::StatusOr<HostBuffer> ComposedLayerReference::fwd_impl(
   // Execute one child at a time and retain its independent state. This is
   // intentionally the simplest possible interpretation of composition.
   for (const auto& layer : layers_) {
-    ReferenceBackwardState child_state;
     HostBufferVec child_inputs = {activation};
-    ASSIGN_OR_RETURN(auto output, layer->fwd(child_inputs, child_state));
+    ASSIGN_OR_RETURN(auto output_fwd, layer->fwd(child_inputs));
+    auto output = std::move(output_fwd.output);
+
     activation = std::move(output);
-    state.children.push_back(std::move(child_state));
+    state.children.push_back(std::move(output_fwd.state));
   }
-  return activation;
+  return ReferenceFwdResult{std::move(activation), std::move(state)};
 }
 
 absl::StatusOr<HostBufferVec> ComposedLayerReference::bwd_impl(

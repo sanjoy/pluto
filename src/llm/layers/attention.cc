@@ -285,14 +285,14 @@ absl::Status AttentionLayer::ValidateSequenceLength(int sequence_length) const {
   return absl::OkStatus();
 }
 
-absl::StatusOr<Buffer> AttentionLayer::fwd_impl(cuda::Executor& executor,
-                                                absl::Span<const Buffer> inputs,
-                                                BackwardState& state) const {
+absl::StatusOr<FwdResult> AttentionLayer::fwd_impl(
+    cuda::Executor& executor, absl::Span<const Buffer> inputs) const {
+  BackwardState state;
   RETURN_IF_ERROR(
       internal::ValidateExecutor(executor_, executor, "AttentionLayer"));
   if (inputs.size() != 1) {
     return absl::InvalidArgumentError(
-        "AttentionLayer fwd expects packed Q/K/V and saved state");
+        "AttentionLayer fwd expects packed Q/K/V");
   }
   ASSIGN_OR_RETURN(int rows, internal::ActivationRows(
                                  executor, inputs[0], 3 * embedding_dim_,
@@ -324,7 +324,7 @@ absl::StatusOr<Buffer> AttentionLayer::fwd_impl(cuda::Executor& executor,
                                    "FlashAttentionForwardKernel launch"));
   state.intermediates = {inputs[0], output};
   state.children.clear();
-  return std::move(output);
+  return FwdResult{std::move(output), std::move(state)};
 }
 
 absl::StatusOr<BufferVec> AttentionLayer::bwd_impl(

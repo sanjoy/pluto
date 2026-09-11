@@ -93,15 +93,16 @@ TEST_F(PhraseProbeGpuTest,
   const auto weights = (*layer)->weights();
   auto before = ReadPrefix(*executor_, weights[0], kInput, kOutput, 4);
   ASSERT_TRUE(before.ok()) << before.status();
-  llm::BackwardState state;
-  auto expected =
-      (*layer)->fwd(*executor_, absl::MakeConstSpan(&*input, 1), state);
+
+  auto expected = (*layer)->fwd(*executor_, absl::MakeConstSpan(&*input, 1));
+
   ASSERT_TRUE(expected.ok()) << expected.status();
   auto replay = ReplayProjection(*executor_, *input, weights[0], weights[1],
                                  kInput, kOutput);
   ASSERT_TRUE(replay.ok()) << replay.status();
   auto actual_bytes = ReadPrefix(*executor_, *replay, kRows, kOutput, 2);
-  auto expected_bytes = ReadPrefix(*executor_, *expected, kRows, kOutput, 2);
+  auto expected_bytes =
+      ReadPrefix(*executor_, expected->output, kRows, kOutput, 2);
   ASSERT_TRUE(actual_bytes.ok()) << actual_bytes.status();
   ASSERT_TRUE(expected_bytes.ok()) << expected_bytes.status();
   EXPECT_EQ(std::memcmp(actual_bytes->data(), expected_bytes->data(),
@@ -132,20 +133,21 @@ TEST_F(PhraseProbeGpuTest,
   auto* branch = gelu->get();
   llm::ResidualLayer residual(std::move(*gelu));
   llm::BackwardState state, branch_state;
-  auto after = residual.fwd(*executor_, absl::MakeConstSpan(&*input, 1), state);
-  auto contribution =
-      branch->fwd(*executor_, absl::MakeConstSpan(&*input, 1), branch_state);
+  auto after = residual.fwd(*executor_, absl::MakeConstSpan(&*input, 1));
+  if (after.ok()) state = std::move(after->state);
+  auto contribution = branch->fwd(*executor_, absl::MakeConstSpan(&*input, 1));
+  if (contribution.ok()) branch_state = std::move(contribution->state);
   ASSERT_TRUE(after.ok()) << after.status();
   ASSERT_TRUE(contribution.ok()) << contribution.status();
-  EXPECT_TRUE(VerifyResidualReplay(*executor_, *input, *contribution, *after,
-                                   kRows, kWidth)
+  EXPECT_TRUE(VerifyResidualReplay(*executor_, *input, contribution->output,
+                                   after->output, kRows, kWidth)
                   .ok());
   // Zeroing the entire result must be detected, not hidden by a loose epsilon.
-  ASSERT_EQ(cudaMemsetAsync(after->data(), 0, after->size_bytes(),
+  ASSERT_EQ(cudaMemsetAsync(after->output.data(), 0, after->output.size_bytes(),
                             executor_->stream()),
             cudaSuccess);
-  EXPECT_EQ(VerifyResidualReplay(*executor_, *input, *contribution, *after,
-                                 kRows, kWidth)
+  EXPECT_EQ(VerifyResidualReplay(*executor_, *input, contribution->output,
+                                 after->output, kRows, kWidth)
                 .code(),
             absl::StatusCode::kDataLoss);
 }

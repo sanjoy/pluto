@@ -427,9 +427,10 @@ class ToyModel final : public llm::Layer {
   llm::DataType output_type() const override { return llm::DataType::BF16; }
 
  private:
-  absl::StatusOr<cuda::Buffer> fwd_impl(
-      cuda::Executor& executor, absl::Span<const cuda::Buffer> inputs,
-      llm::BackwardState& state) const override {
+  absl::StatusOr<llm::FwdResult> fwd_impl(
+      cuda::Executor& executor,
+      absl::Span<const cuda::Buffer> inputs) const override {
+    llm::BackwardState state;
     if (inputs.size() != 1) return absl::InvalidArgumentError("toy input");
     const size_t rows = inputs[0].size_bytes() / 4;
     ASSIGN_OR_RETURN(auto tokens, cuda::PageLockedHostArray<int32_t>::Allocate(
@@ -455,7 +456,7 @@ class ToyModel final : public llm::Layer {
                         cudaMemcpyHostToDevice, executor.stream()),
         "toy logits"));
     RETURN_IF_ERROR(executor.Synchronize());
-    return result;
+    return llm::FwdResult{std::move(result), std::move(state)};
   }
   absl::StatusOr<llm::BufferVec> bwd_impl(cuda::Executor&,
                                           absl::Span<const cuda::Buffer>,

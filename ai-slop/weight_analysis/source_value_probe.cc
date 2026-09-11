@@ -117,9 +117,10 @@ class ConstantBranch final : public llm::Layer {
   llm::DataType output_type() const override { return llm::DataType::BF16; }
 
  private:
-  absl::StatusOr<cuda::Buffer> fwd_impl(
-      cuda::Executor& executor, absl::Span<const cuda::Buffer> inputs,
-      llm::BackwardState& state) const override {
+  absl::StatusOr<llm::FwdResult> fwd_impl(
+      cuda::Executor& executor,
+      absl::Span<const cuda::Buffer> inputs) const override {
+    llm::BackwardState state;
     if (inputs.size() != 1 || &branch_.executor() != &executor ||
         &inputs[0].executor() != &executor ||
         inputs[0].size_bytes() != branch_.size_bytes()) {
@@ -127,7 +128,7 @@ class ConstantBranch final : public llm::Layer {
     }
     state.intermediates.clear();
     state.children.clear();
-    return branch_;
+    return llm::FwdResult{std::move(branch_), std::move(state)};
   }
   absl::StatusOr<llm::BufferVec> bwd_impl(cuda::Executor&,
                                           absl::Span<const cuda::Buffer>,
@@ -235,21 +236,23 @@ struct SourceValueProbe::Impl {
 
   absl::StatusOr<cuda::Buffer> Replay(
       const cuda::Buffer& changed_context) const {
-    llm::BackwardState projection_state;
     ASSIGN_OR_RETURN(
-        auto projected,
-        projection->fwd(executor, absl::MakeConstSpan(&changed_context, 1),
-                        projection_state));
+        auto projected_fwd,
+        projection->fwd(executor, absl::MakeConstSpan(&changed_context, 1)));
+    auto projected = std::move(projected_fwd.output);
+
     llm::ResidualLayer residual(
         std::make_unique<ConstantBranch>(std::move(projected)));
     llm::BackwardState add_state, tail_state;
+    ASSIGN_OR_RETURN(auto after_attention_fwd,
+                     residual.fwd(executor, absl::MakeConstSpan(&before, 1)));
+    auto after_attention = std::move(after_attention_fwd.output);
+    add_state = std::move(after_attention_fwd.state);
     ASSIGN_OR_RETURN(
-        auto after_attention,
-        residual.fwd(executor, absl::MakeConstSpan(&before, 1), add_state));
-    ASSIGN_OR_RETURN(
-        auto final_residual,
-        tail->fwd(executor, absl::MakeConstSpan(&after_attention, 1),
-                  tail_state));
+        auto final_residual_fwd,
+        tail->fwd(executor, absl::MakeConstSpan(&after_attention, 1)));
+    auto final_residual = std::move(final_residual_fwd.output);
+    tail_state = std::move(final_residual_fwd.state);
     return lens->Apply(executor, final_residual);
   }
 
@@ -350,10 +353,12 @@ absl::StatusOr<std::unique_ptr<SourceValueProbe>> SourceValueProbe::Create(
   // Do not certify a replay from a diagram or a few selected logits. Running
   // the real kernels on the captured tensor must recover the entire native
   // context, then every padded logit at every original batch position.
-  llm::BackwardState replay_state;
-  ASSIGN_OR_RETURN(auto replayed_context,
-                   impl->attention->fwd(executor, absl::MakeConstSpan(&qkv, 1),
-                                        replay_state));
+
+  ASSIGN_OR_RETURN(
+      auto replayed_context_fwd,
+      impl->attention->fwd(executor, absl::MakeConstSpan(&qkv, 1)));
+  auto replayed_context = std::move(replayed_context_fwd.output);
+
   ASSIGN_OR_RETURN(auto replayed_bytes,
                    ReadPrefix(executor, replayed_context, rows, kWidth, 2));
   RETURN_IF_ERROR(EqualBytes(replayed_bytes, impl->context_bytes,
@@ -406,10 +411,11 @@ absl::StatusOr<SourceValueResult> SourceValueProbe::Apply(
   if (std::memcmp(qkv_bytes.data() + value_offset, values.data(), kHeadBytes))
     return absl::DataLossError("modified V differs from requested BF16 dose");
 
-  llm::BackwardState attention_state;
-  ASSIGN_OR_RETURN(auto attention,
-                   impl_->attention->fwd(executor, absl::MakeConstSpan(&qkv, 1),
-                                         attention_state));
+  ASSIGN_OR_RETURN(
+      auto attention_fwd,
+      impl_->attention->fwd(executor, absl::MakeConstSpan(&qkv, 1)));
+  auto attention = std::move(attention_fwd.output);
+
   ASSIGN_OR_RETURN(auto context, Clone(executor, impl_->context));
   RETURN_IF_ERROR(cuda::CudaStatus(
       cudaMemcpyAsync(

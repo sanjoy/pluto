@@ -78,9 +78,8 @@ class SparseAutoEncoderLayer final : public Layer {
       int valid_rows = 0) const;
 
  private:
-  absl::StatusOr<Buffer> fwd_impl(cuda::Executor& executor,
-                                  absl::Span<const Buffer> inputs,
-                                  BackwardState& state) const override;
+  absl::StatusOr<FwdResult> fwd_impl(
+      cuda::Executor& executor, absl::Span<const Buffer> inputs) const override;
 
   // The first gradient is dL/dx1. Auxiliary sparse losses may additionally
   // supply dL/dz and a direct dL/dD as the second and third buffers. The
@@ -142,9 +141,8 @@ class SparseAutoEncoderLossLayer final : public Layer {
   float sparsity_penalty() const { return sparsity_penalty_; }
 
  private:
-  absl::StatusOr<Buffer> fwd_impl(cuda::Executor& executor,
-                                  absl::Span<const Buffer> inputs,
-                                  BackwardState& state) const override;
+  absl::StatusOr<FwdResult> fwd_impl(
+      cuda::Executor& executor, absl::Span<const Buffer> inputs) const override;
   absl::StatusOr<BufferVec> bwd_impl(cuda::Executor& executor,
                                      absl::Span<const Buffer> output_gradients,
                                      BackwardState state) override;
@@ -186,9 +184,8 @@ class SparseAutoEncoderLayerReference final : public LayerReference {
       const ReferenceBackwardState& state) const;
 
  private:
-  absl::StatusOr<HostBuffer> fwd_impl(
-      absl::Span<const HostBuffer> inputs,
-      ReferenceBackwardState& state) const override;
+  absl::StatusOr<ReferenceFwdResult> fwd_impl(
+      absl::Span<const HostBuffer> inputs) const override;
   absl::StatusOr<HostBufferVec> bwd_impl(
       absl::Span<const HostBuffer> output_gradients,
       ReferenceBackwardState state) override;
@@ -225,9 +222,8 @@ class SparseAutoEncoderLossLayerReference final : public LayerReference {
   DataType output_type() const override { return output_type_; }
 
  private:
-  absl::StatusOr<HostBuffer> fwd_impl(
-      absl::Span<const HostBuffer> inputs,
-      ReferenceBackwardState& state) const override;
+  absl::StatusOr<ReferenceFwdResult> fwd_impl(
+      absl::Span<const HostBuffer> inputs) const override;
   absl::StatusOr<HostBufferVec> bwd_impl(
       absl::Span<const HostBuffer> output_gradients,
       ReferenceBackwardState state) override;

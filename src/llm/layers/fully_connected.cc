@@ -231,14 +231,14 @@ absl::Status FullyConnectedLayer::InitializeNormal(float standard_deviation,
   return absl::OkStatus();
 }
 
-absl::StatusOr<Buffer> FullyConnectedLayer::fwd_impl(
-    cuda::Executor& executor, absl::Span<const Buffer> inputs,
-    BackwardState& state) const {
+absl::StatusOr<FwdResult> FullyConnectedLayer::fwd_impl(
+    cuda::Executor& executor, absl::Span<const Buffer> inputs) const {
+  BackwardState state;
   RETURN_IF_ERROR(
       internal::ValidateExecutor(executor_, executor, "FullyConnectedLayer"));
   if (inputs.size() != 1) {
     return absl::InvalidArgumentError(
-        "FullyConnectedLayer fwd expects one input and saved state");
+        "FullyConnectedLayer fwd expects one input");
   }
   ASSIGN_OR_RETURN(int rows,
                    internal::ActivationRows(executor, inputs[0], input_dim_,
@@ -268,7 +268,7 @@ absl::StatusOr<Buffer> FullyConnectedLayer::fwd_impl(
   }
   RETURN_IF_ERROR(
       cuda::CudaStatus(cudaGetLastError(), "DenseForwardKernel launch"));
-  return std::move(output);
+  return FwdResult{std::move(output), std::move(state)};
 }
 
 absl::StatusOr<BufferVec> FullyConnectedLayer::bwd_impl(

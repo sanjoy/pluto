@@ -54,27 +54,26 @@ TEST_F(LayerReferenceTest, ForwardAndBackwardMatchAcrossShapesAndTypes) {
       auto gradient_pair = MakeRawBufferPair<float>(*executor_, gradient);
       ASSERT_TRUE(input_pair.ok()) << input_pair.status();
       ASSERT_TRUE(gradient_pair.ok()) << gradient_pair.status();
-      BackwardState device_state;
-      ReferenceBackwardState reference_state;
+
       BufferVec device_inputs = {input_pair->device};
       HostBufferVec reference_inputs = {input_pair->host};
-      auto device_output =
-          (*device_layer)->fwd(*executor_, device_inputs, device_state);
-      auto reference_output =
-          (*reference_layer)->fwd(reference_inputs, reference_state);
+      auto device_output = (*device_layer)->fwd(*executor_, device_inputs);
+
+      auto reference_output = (*reference_layer)->fwd(reference_inputs);
+
       ASSERT_TRUE(device_output.ok()) << device_output.status();
       ASSERT_TRUE(reference_output.ok()) << reference_output.status();
-      EXPECT_TRUE(ActivationBuffersNear(*device_output, *reference_output, type,
-                                        3e-3f, 3e-3f));
+      EXPECT_TRUE(ActivationBuffersNear(
+          device_output->output, reference_output->output, type, 3e-3f, 3e-3f));
 
       BufferVec device_gradients = {gradient_pair->device};
       HostBufferVec reference_gradients = {gradient_pair->host};
-      auto device_input =
-          (*device_layer)
-              ->bwd(*executor_, device_gradients, std::move(device_state));
+      auto device_input = (*device_layer)
+                              ->bwd(*executor_, device_gradients,
+                                    std::move(device_output->state));
       auto reference_input =
           (*reference_layer)
-              ->bwd(reference_gradients, std::move(reference_state));
+              ->bwd(reference_gradients, std::move(reference_output->state));
       ASSERT_TRUE(device_input.ok()) << device_input.status();
       ASSERT_TRUE(reference_input.ok()) << reference_input.status();
       EXPECT_TRUE(FloatBuffersNear(device_input->front(),

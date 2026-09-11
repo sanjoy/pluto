@@ -234,10 +234,11 @@ absl::Status Run() {
     if (!stream.read(patch.data(), patch.size()) || stream.peek() != EOF)
       return absl::DataLossError("could not snapshot patch metadata");
   }
-  llm::BackwardState state;
-  ASSIGN_OR_RETURN(
-      auto original,
-      model->fwd(*executor, absl::MakeConstSpan(&input, 1), state));
+
+  ASSIGN_OR_RETURN(auto original_fwd,
+                   model->fwd(*executor, absl::MakeConstSpan(&input, 1)));
+  auto original = std::move(original_fwd.output);
+
   ASSIGN_OR_RETURN(auto baseline,
                    ReadSelectedRow(*executor, original, query, kPadded, 4));
   const auto expected = absl::GetFlag(FLAGS_expected_logits);
@@ -247,8 +248,9 @@ absl::Status Run() {
   }
   // Create refuses to return unless its unmodified native attention AND
   // complete native downstream replay agree at every row, including padding.
-  ASSIGN_OR_RETURN(auto probe, SourceValueProbe::Create(
-                                   *executor, state, original, weights, block));
+  ASSIGN_OR_RETURN(auto probe,
+                   SourceValueProbe::Create(*executor, original_fwd.state,
+                                            original, weights, block));
   ASSIGN_OR_RETURN(
       auto baseline_score,
       SaveLogits(*executor, output / "baseline.f32", original, query, target));
@@ -314,10 +316,11 @@ absl::Status Run() {
                 << std::endl;
     }
   }
-  llm::BackwardState after_state;
-  ASSIGN_OR_RETURN(
-      auto after,
-      model->fwd(*executor, absl::MakeConstSpan(&input, 1), after_state));
+
+  ASSIGN_OR_RETURN(auto after_fwd,
+                   model->fwd(*executor, absl::MakeConstSpan(&input, 1)));
+  auto after = std::move(after_fwd.output);
+
   ASSIGN_OR_RETURN(auto original_all,
                    ReadPrefix(*executor, original, kContext, kPadded, 4));
   ASSIGN_OR_RETURN(auto after_all,

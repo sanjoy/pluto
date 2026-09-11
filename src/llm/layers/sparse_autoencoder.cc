@@ -696,14 +696,14 @@ absl::Status SparseAutoEncoderLayer::InitializeNormal(float standard_deviation,
       "clear sparse decoder bias");
 }
 
-absl::StatusOr<Buffer> SparseAutoEncoderLayer::fwd_impl(
-    cuda::Executor& executor, absl::Span<const Buffer> inputs,
-    BackwardState& state) const {
+absl::StatusOr<FwdResult> SparseAutoEncoderLayer::fwd_impl(
+    cuda::Executor& executor, absl::Span<const Buffer> inputs) const {
+  BackwardState state;
   RETURN_IF_ERROR(internal::ValidateExecutor(executor_, executor,
                                              "SparseAutoEncoderLayer"));
   if (inputs.size() != 1) {
     return absl::InvalidArgumentError(
-        "SparseAutoEncoderLayer fwd expects one input and saved state");
+        "SparseAutoEncoderLayer fwd expects one input");
   }
   ASSIGN_OR_RETURN(int rows, internal::ActivationRows(
                                  executor, inputs[0], input_dim_, output_type_,
@@ -773,7 +773,7 @@ absl::StatusOr<Buffer> SparseAutoEncoderLayer::fwd_impl(
         cuda::CudaStatus(cudaGetLastError(), "SAE Z statistics launch"));
     state.intermediates.push_back(std::move(statistics));
   }
-  return std::move(reconstruction);
+  return FwdResult{std::move(reconstruction), std::move(state)};
 }
 
 absl::StatusOr<SparseAutoEncoderZStatistics>
@@ -1003,9 +1003,9 @@ SparseAutoEncoderLossLayer::Create(cuda::Executor& executor, int input_dim,
       executor, input_dim, feature_dim, sparsity_penalty, data_type));
 }
 
-absl::StatusOr<Buffer> SparseAutoEncoderLossLayer::fwd_impl(
-    cuda::Executor& executor, absl::Span<const Buffer> inputs,
-    BackwardState& state) const {
+absl::StatusOr<FwdResult> SparseAutoEncoderLossLayer::fwd_impl(
+    cuda::Executor& executor, absl::Span<const Buffer> inputs) const {
+  BackwardState state;
   RETURN_IF_ERROR(internal::ValidateExecutor(executor_, executor,
                                              "SparseAutoEncoderLossLayer"));
   ASSIGN_OR_RETURN(int rows, ValidateLossInputs(executor, inputs, input_dim_,
@@ -1046,7 +1046,7 @@ absl::StatusOr<Buffer> SparseAutoEncoderLossLayer::fwd_impl(
       cuda::CudaStatus(cudaGetLastError(), "sparse loss forward launch"));
   state.intermediates.assign(inputs.begin(), inputs.end());
   state.children.clear();
-  return std::move(output);
+  return FwdResult{std::move(output), std::move(state)};
 }
 
 absl::StatusOr<BufferVec> SparseAutoEncoderLossLayer::bwd_impl(

@@ -204,14 +204,13 @@ absl::StatusOr<std::unique_ptr<LayerNormLayer>> LayerNormLayer::Create(
       std::move(beta), std::move(gamma_gradient), std::move(beta_gradient)));
 }
 
-absl::StatusOr<Buffer> LayerNormLayer::fwd_impl(cuda::Executor& executor,
-                                                absl::Span<const Buffer> inputs,
-                                                BackwardState& state) const {
+absl::StatusOr<FwdResult> LayerNormLayer::fwd_impl(
+    cuda::Executor& executor, absl::Span<const Buffer> inputs) const {
+  BackwardState state;
   RETURN_IF_ERROR(
       internal::ValidateExecutor(executor_, executor, "LayerNormLayer"));
   if (inputs.size() != 1) {
-    return absl::InvalidArgumentError(
-        "LayerNormLayer fwd expects one input and saved state");
+    return absl::InvalidArgumentError("LayerNormLayer fwd expects one input");
   }
   ASSIGN_OR_RETURN(int rows,
                    internal::ActivationRows(executor, inputs[0], embedding_dim_,
@@ -236,7 +235,7 @@ absl::StatusOr<Buffer> LayerNormLayer::fwd_impl(cuda::Executor& executor,
       cuda::CudaStatus(cudaGetLastError(), "LayerNormForwardKernel launch"));
   state.intermediates = {inputs[0]};
   state.children.clear();
-  return std::move(output);
+  return FwdResult{std::move(output), std::move(state)};
 }
 
 absl::StatusOr<BufferVec> LayerNormLayer::bwd_impl(

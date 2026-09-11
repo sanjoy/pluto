@@ -27,9 +27,8 @@ class AttentionLayer final : public Layer {
   DataType output_type() const override { return output_type_; }
 
  private:
-  absl::StatusOr<Buffer> fwd_impl(cuda::Executor& executor,
-                                  absl::Span<const Buffer> inputs,
-                                  BackwardState& state) const override;
+  absl::StatusOr<FwdResult> fwd_impl(
+      cuda::Executor& executor, absl::Span<const Buffer> inputs) const override;
   absl::StatusOr<BufferVec> bwd_impl(cuda::Executor& executor,
                                      absl::Span<const Buffer> output_gradients,
                                      BackwardState state) override;
@@ -61,9 +60,8 @@ class AttentionLayerReference final : public LayerReference {
   DataType output_type() const override { return output_type_; }
 
  private:
-  absl::StatusOr<HostBuffer> fwd_impl(
-      absl::Span<const HostBuffer> inputs,
-      ReferenceBackwardState& state) const override;
+  absl::StatusOr<ReferenceFwdResult> fwd_impl(
+      absl::Span<const HostBuffer> inputs) const override;
   absl::StatusOr<HostBufferVec> bwd_impl(
       absl::Span<const HostBuffer> output_gradients,
       ReferenceBackwardState state) override;

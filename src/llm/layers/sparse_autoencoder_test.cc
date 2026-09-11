@@ -69,8 +69,9 @@ TEST_F(LayersTest, ForwardRequiresACompleteActivationMatrix) {
   ASSERT_TRUE(layer.ok()) << layer.status();
   ASSERT_TRUE(short_input.ok()) << short_input.status();
   BufferVec inputs = {*short_input};
-  BackwardState state;
-  auto output = (*layer)->fwd(*executor_, inputs, state);
+
+  auto output = (*layer)->fwd(*executor_, inputs);
+
   ASSERT_FALSE(output.ok());
   EXPECT_EQ(output.status().code(), absl::StatusCode::kInvalidArgument);
 }
@@ -93,12 +94,13 @@ TEST_F(LayersTest, BackwardAcceptsReconstructionGradientAlone) {
                             executor_->stream()),
             cudaSuccess);
 
-  BackwardState state;
   BufferVec inputs = {*input};
-  auto output = (*layer)->fwd(*executor_, inputs, state);
+  auto output = (*layer)->fwd(*executor_, inputs);
+
   ASSERT_TRUE(output.ok()) << output.status();
   BufferVec gradients = {*gradient};
-  auto input_gradient = (*layer)->bwd(*executor_, gradients, std::move(state));
+  auto input_gradient =
+      (*layer)->bwd(*executor_, gradients, std::move(output->state));
   ASSERT_TRUE(input_gradient.ok()) << input_gradient.status();
   ASSERT_EQ(input_gradient->size(), 1u);
   EXPECT_EQ(input_gradient->front().size_bytes(), input->size_bytes());
@@ -117,16 +119,17 @@ TEST_F(LayersTest, StatisticsAreOptInAndValidateTheirStateAndRowLimit) {
   ASSERT_EQ(cudaMemsetAsync(input->data(), 0, input->size_bytes(),
                             executor_->stream()),
             cudaSuccess);
-  BackwardState default_state;
-  BackwardState stats_state;
-  ASSERT_TRUE(
-      (*default_layer)->fwd(*executor_, BufferVec{*input}, default_state).ok());
-  ASSERT_TRUE(
-      (*stats_layer)->fwd(*executor_, BufferVec{*input}, stats_state).ok());
-  EXPECT_EQ(default_state.intermediates.size(), 2u);
-  EXPECT_EQ(stats_state.intermediates.size(), 3u);
+
+  auto default_state_fwd = (*default_layer)->fwd(*executor_, BufferVec{*input});
+  ASSERT_TRUE(default_state_fwd.ok());
+
+  auto stats_state_fwd = (*stats_layer)->fwd(*executor_, BufferVec{*input});
+  ASSERT_TRUE(stats_state_fwd.ok());
+
+  EXPECT_EQ(default_state_fwd->state.intermediates.size(), 2u);
+  EXPECT_EQ(stats_state_fwd->state.intermediates.size(), 3u);
   EXPECT_EQ((*default_layer)
-                ->ReadZStatistics(*executor_, default_state)
+                ->ReadZStatistics(*executor_, default_state_fwd->state)
                 .status()
                 .code(),
             absl::StatusCode::kFailedPrecondition);
@@ -136,23 +139,26 @@ TEST_F(LayersTest, StatisticsAreOptInAndValidateTheirStateAndRowLimit) {
                 .code(),
             absl::StatusCode::kFailedPrecondition);
   for (int invalid_rows : {-1, 17}) {
-    EXPECT_EQ((*stats_layer)
-                  ->ReadZStatistics(*executor_, stats_state, invalid_rows)
-                  .status()
-                  .code(),
-              absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ(
+        (*stats_layer)
+            ->ReadZStatistics(*executor_, stats_state_fwd->state, invalid_rows)
+            .status()
+            .code(),
+        absl::StatusCode::kInvalidArgument);
   }
   auto other_executor = cuda::Executor::Create();
   ASSERT_TRUE(other_executor.ok()) << other_executor.status();
   EXPECT_EQ((*stats_layer)
-                ->ReadZStatistics(**other_executor, stats_state)
+                ->ReadZStatistics(**other_executor, stats_state_fwd->state)
                 .status()
                 .code(),
             absl::StatusCode::kInvalidArgument);
-  stats_state.intermediates[2] = *input;
-  EXPECT_EQ(
-      (*stats_layer)->ReadZStatistics(*executor_, stats_state).status().code(),
-      absl::StatusCode::kInvalidArgument);
+  stats_state_fwd->state.intermediates[2] = *input;
+  EXPECT_EQ((*stats_layer)
+                ->ReadZStatistics(*executor_, stats_state_fwd->state)
+                .status()
+                .code(),
+            absl::StatusCode::kInvalidArgument);
 }
 
 TEST_F(LayersTest, ParallelLossHandlesGpt2BatchTenShape) {
@@ -180,14 +186,15 @@ TEST_F(LayersTest, ParallelLossHandlesGpt2BatchTenShape) {
               cudaSuccess);
   }
 
-  BackwardState state;
   BufferVec inputs = {*input, *reconstruction, *latents, *decoder};
-  auto output = (*loss)->fwd(*executor_, inputs, state);
+  auto output = (*loss)->fwd(*executor_, inputs);
+
   ASSERT_TRUE(output.ok()) << output.status();
   auto host_output = AllocatePageLockedHostArray<float>(*executor_, 1);
-  ASSERT_EQ(cudaMemcpyAsync(host_output.data(), output->data(), sizeof(float),
-                            cudaMemcpyDeviceToHost, executor_->stream()),
-            cudaSuccess);
+  ASSERT_EQ(
+      cudaMemcpyAsync(host_output.data(), output->output.data(), sizeof(float),
+                      cudaMemcpyDeviceToHost, executor_->stream()),
+      cudaSuccess);
   ASSERT_TRUE(executor_->Synchronize().ok());
   EXPECT_FLOAT_EQ(host_output[0], 0.0f);
 }

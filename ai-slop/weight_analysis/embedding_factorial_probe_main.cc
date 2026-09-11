@@ -259,9 +259,10 @@ absl::Status Run() {
     std::vector<cuda::Buffer> residuals;
     for (int side = 0; side < 2; ++side) {
       ASSIGN_OR_RETURN(
-          auto logits,
-          models[side]->fwd(*executor, absl::MakeConstSpan(&input, 1),
-                            states[side]));
+          auto logits_fwd,
+          models[side]->fwd(*executor, absl::MakeConstSpan(&input, 1)));
+      auto logits = std::move(logits_fwd.output);
+      states[side] = std::move(logits_fwd.state);
       native_logits.push_back(std::move(logits));
       RETURN_IF_ERROR(ValidateGpt2State(states[side]));
       // ValidateGpt2State guards this exact production path: final LayerNorm

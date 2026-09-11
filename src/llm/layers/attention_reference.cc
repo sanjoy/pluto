@@ -35,11 +35,12 @@ AttentionLayerReference::Create(int context_length, int num_heads,
       context_length, num_heads, embedding_dim, data_type));
 }
 
-absl::StatusOr<HostBuffer> AttentionLayerReference::fwd_impl(
-    absl::Span<const HostBuffer> inputs, ReferenceBackwardState& state) const {
+absl::StatusOr<ReferenceFwdResult> AttentionLayerReference::fwd_impl(
+    absl::Span<const HostBuffer> inputs) const {
+  ReferenceBackwardState state;
   if (inputs.size() != 1) {
     return absl::InvalidArgumentError(
-        "AttentionLayerReference fwd expects packed Q/K/V and saved state");
+        "AttentionLayerReference fwd expects packed Q/K/V");
   }
   ASSIGN_OR_RETURN(
       int rows, ri::ActivationRows(inputs[0], 3 * embedding_dim_, output_type_,
@@ -111,7 +112,7 @@ absl::StatusOr<HostBuffer> AttentionLayerReference::fwd_impl(
   }
   state.intermediates = {inputs[0], output};
   state.children.clear();
-  return output;
+  return ReferenceFwdResult{std::move(output), std::move(state)};
 }
 
 absl::StatusOr<HostBufferVec> AttentionLayerReference::bwd_impl(

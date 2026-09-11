@@ -376,14 +376,14 @@ absl::Status EmbeddingLookupLayer::InitializeNormal(float standard_deviation,
                                   "cudaMemcpyAsync(normal embedding)");
 }
 
-absl::StatusOr<Buffer> EmbeddingLookupLayer::fwd_impl(
-    cuda::Executor& executor, absl::Span<const Buffer> inputs,
-    BackwardState& state) const {
+absl::StatusOr<FwdResult> EmbeddingLookupLayer::fwd_impl(
+    cuda::Executor& executor, absl::Span<const Buffer> inputs) const {
+  BackwardState state;
   RETURN_IF_ERROR(
       internal::ValidateExecutor(executor_, executor, "EmbeddingLookupLayer"));
   if (inputs.size() != 1) {
     return absl::InvalidArgumentError(
-        "EmbeddingLookupLayer fwd expects token IDs and saved state");
+        "EmbeddingLookupLayer fwd expects token IDs");
   }
   ASSIGN_OR_RETURN(int rows,
                    internal::ElementCount(executor, inputs[0], sizeof(int),
@@ -409,7 +409,7 @@ absl::StatusOr<Buffer> EmbeddingLookupLayer::fwd_impl(
       cuda::CudaStatus(cudaGetLastError(), "EmbeddingForwardKernel launch"));
   state.intermediates = {inputs[0]};
   state.children.clear();
-  return std::move(output);
+  return FwdResult{std::move(output), std::move(state)};
 }
 
 absl::StatusOr<BufferVec> EmbeddingLookupLayer::bwd_impl(
@@ -473,14 +473,14 @@ LanguageModelingHeadLayer::Create(EmbeddingLookupLayer* embedding) {
   return absl::WrapUnique(new LanguageModelingHeadLayer(embedding));
 }
 
-absl::StatusOr<Buffer> LanguageModelingHeadLayer::fwd_impl(
-    cuda::Executor& executor, absl::Span<const Buffer> inputs,
-    BackwardState& state) const {
+absl::StatusOr<FwdResult> LanguageModelingHeadLayer::fwd_impl(
+    cuda::Executor& executor, absl::Span<const Buffer> inputs) const {
+  BackwardState state;
   RETURN_IF_ERROR(internal::ValidateExecutor(embedding_->executor_, executor,
                                              "LanguageModelingHeadLayer"));
   if (inputs.size() != 1) {
     return absl::InvalidArgumentError(
-        "LanguageModelingHeadLayer fwd expects one input and saved state");
+        "LanguageModelingHeadLayer fwd expects one input");
   }
   ASSIGN_OR_RETURN(
       int rows, internal::ActivationRows(
@@ -517,7 +517,7 @@ absl::StatusOr<Buffer> LanguageModelingHeadLayer::fwd_impl(
                                    "language-modeling-head forward launch"));
   state.intermediates = {inputs[0]};
   state.children.clear();
-  return std::move(output);
+  return FwdResult{std::move(output), std::move(state)};
 }
 
 absl::StatusOr<BufferVec> LanguageModelingHeadLayer::bwd_impl(
@@ -631,14 +631,14 @@ absl::Status PositionEmbeddingLayer::ValidateSequenceLength(
   return absl::OkStatus();
 }
 
-absl::StatusOr<Buffer> PositionEmbeddingLayer::fwd_impl(
-    cuda::Executor& executor, absl::Span<const Buffer> inputs,
-    BackwardState& state) const {
+absl::StatusOr<FwdResult> PositionEmbeddingLayer::fwd_impl(
+    cuda::Executor& executor, absl::Span<const Buffer> inputs) const {
+  BackwardState state;
   RETURN_IF_ERROR(internal::ValidateExecutor(executor_, executor,
                                              "PositionEmbeddingLayer"));
   if (inputs.size() != 1) {
     return absl::InvalidArgumentError(
-        "PositionEmbeddingLayer fwd expects one input and saved state");
+        "PositionEmbeddingLayer fwd expects one input");
   }
   ASSIGN_OR_RETURN(int rows, internal::ActivationRows(
                                  executor, inputs[0], embedding_dim_,
@@ -662,7 +662,7 @@ absl::StatusOr<Buffer> PositionEmbeddingLayer::fwd_impl(
                                    "PositionEmbeddingForwardKernel launch"));
   state.intermediates.clear();
   state.children.clear();
-  return std::move(output);
+  return FwdResult{std::move(output), std::move(state)};
 }
 
 absl::StatusOr<BufferVec> PositionEmbeddingLayer::bwd_impl(

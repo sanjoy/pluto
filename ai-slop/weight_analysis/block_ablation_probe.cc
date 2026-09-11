@@ -42,8 +42,9 @@ static_assert(kContext == 1024 && kVocab == 50257 && kPadded == 50272);
 absl::StatusOr<cuda::PageLockedHostArray<float>> TraceRows(
     cuda::Executor& executor, const llm::Layer& model,
     const cuda::Buffer& tokens) {
-  llm::BackwardState state;
-  ASSIGN_OR_RETURN(auto logits, model.fwd(executor, {tokens}, state));
+  ASSIGN_OR_RETURN(auto logits_fwd, model.fwd(executor, {tokens}));
+  auto logits = std::move(logits_fwd.output);
+
   ASSIGN_OR_RETURN(auto result, cuda::PageLockedHostArray<float>::Allocate(
                                     executor, kCases * kPadded));
   for (int item = 0; item < kCases; ++item) {

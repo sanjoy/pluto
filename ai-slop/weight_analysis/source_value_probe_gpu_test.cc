@@ -48,16 +48,17 @@ TEST(SourceValueGpuTest,
   ASSERT_EQ(cudaMemcpyAsync(input->data(), tokens->data(), tokens->size_bytes(),
                             cudaMemcpyHostToDevice, (*executor)->stream()),
             cudaSuccess);
-  llm::BackwardState clean_state;
-  auto clean =
-      (*model)->fwd(**executor, absl::MakeConstSpan(&*input, 1), clean_state);
+
+  auto clean = (*model)->fwd(**executor, absl::MakeConstSpan(&*input, 1));
+
   ASSERT_TRUE(clean.ok()) << clean.status();
-  ASSERT_TRUE(ValidateGpt2State(clean_state).ok());
-  auto clean_bytes = ReadPrefix(**executor, *clean, rows, kVocabulary, 4);
+  ASSERT_TRUE(ValidateGpt2State(clean->state).ok());
+  auto clean_bytes =
+      ReadPrefix(**executor, clean->output, rows, kVocabulary, 4);
   ASSERT_TRUE(clean_bytes.ok());
 
-  auto probe =
-      SourceValueProbe::Create(**executor, clean_state, *clean, *weights, 1);
+  auto probe = SourceValueProbe::Create(**executor, clean->state, clean->output,
+                                        *weights, 1);
   ASSERT_TRUE(probe.ok()) << probe.status();
   const auto& clean_qkv = (*probe)->original_qkv();
   const auto& clean_context = (*probe)->original_context();
@@ -81,7 +82,7 @@ TEST(SourceValueGpuTest,
     ASSERT_TRUE(changed.ok()) << changed.status();
     EXPECT_NE(changed->modified_qkv.data(), clean_qkv.data());
     EXPECT_NE(changed->spliced_context.data(), clean_context.data());
-    EXPECT_NE(changed->logits.data(), clean->data());
+    EXPECT_NE(changed->logits.data(), clean->output.data());
     auto qkv_bytes =
         ReadPrefix(**executor, changed->modified_qkv, rows, 3 * kWidth, 2);
     auto context_bytes =
@@ -155,8 +156,8 @@ TEST(SourceValueGpuTest,
   // Exercise both ends of the suffix construction. Block 0 replays every
   // later block; block 7 has only its own MLP before final normalization/head.
   for (int block : {0, 7}) {
-    auto boundary = SourceValueProbe::Create(**executor, clean_state, *clean,
-                                             *weights, block);
+    auto boundary = SourceValueProbe::Create(**executor, clean->state,
+                                             clean->output, *weights, block);
     ASSERT_TRUE(boundary.ok()) << "block=" << block << " " << boundary.status();
     auto identity =
         (*boundary)->Apply(**executor, {block, 7, 1, 1023, 1022, 1});
@@ -169,36 +170,38 @@ TEST(SourceValueGpuTest,
   auto other_executor = cuda::Executor::Create();
   ASSERT_TRUE(other_executor.ok());
   EXPECT_FALSE((*probe)->Apply(**other_executor, selection).ok());
-  EXPECT_FALSE(SourceValueProbe::Create(**other_executor, clean_state, *clean,
-                                        *weights, 1)
+  EXPECT_FALSE(SourceValueProbe::Create(**other_executor, clean->state,
+                                        clean->output, *weights, 1)
                    .ok());
 
   // Invalid state/shape evidence must be rejected before creating a tail.
   llm::BackwardState empty;
   EXPECT_FALSE(
-      SourceValueProbe::Create(**executor, empty, *clean, *weights, 1).ok());
-  auto malformed_state = clean_state;
+      SourceValueProbe::Create(**executor, empty, clean->output, *weights, 1)
+          .ok());
+  auto malformed_state = clean->state;
   malformed_state.children[3]
       .children[0]
       .children[0]
       .children[2]
       .intermediates[0] = *input;
+  EXPECT_FALSE(SourceValueProbe::Create(**executor, malformed_state,
+                                        clean->output, *weights, 1)
+                   .ok());
   EXPECT_FALSE(
-      SourceValueProbe::Create(**executor, malformed_state, *clean, *weights, 1)
-          .ok());
-  EXPECT_FALSE(
-      SourceValueProbe::Create(**executor, clean_state, *input, *weights, 1)
+      SourceValueProbe::Create(**executor, clean->state, *input, *weights, 1)
           .ok());
 
   // Corrupt one clean-logit evidence byte in an independent allocation. The
   // required full-output identity gate must not overlook it just because it
   // lies outside the intervention's selected query.
-  auto wrong_logits = cuda::Buffer::Allocate(**executor, clean->size_bytes());
+  auto wrong_logits =
+      cuda::Buffer::Allocate(**executor, clean->output.size_bytes());
   ASSERT_TRUE(wrong_logits.ok());
-  ASSERT_EQ(
-      cudaMemcpyAsync(wrong_logits->data(), clean->data(), clean->size_bytes(),
-                      cudaMemcpyDeviceToDevice, (*executor)->stream()),
-      cudaSuccess);
+  ASSERT_EQ(cudaMemcpyAsync(wrong_logits->data(), clean->output.data(),
+                            clean->output.size_bytes(),
+                            cudaMemcpyDeviceToDevice, (*executor)->stream()),
+            cudaSuccess);
   auto changed_word =
       cuda::PageLockedHostArray<uint32_t>::Allocate(**executor, 1);
   ASSERT_TRUE(changed_word.ok());
@@ -207,7 +210,7 @@ TEST(SourceValueGpuTest,
   ASSERT_EQ(cudaMemcpyAsync(wrong_logits->data(), changed_word->data(), 4,
                             cudaMemcpyHostToDevice, (*executor)->stream()),
             cudaSuccess);
-  EXPECT_FALSE(SourceValueProbe::Create(**executor, clean_state, *wrong_logits,
+  EXPECT_FALSE(SourceValueProbe::Create(**executor, clean->state, *wrong_logits,
                                         *weights, 7)
                    .ok());
 

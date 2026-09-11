@@ -38,11 +38,12 @@ absl::StatusOr<std::unique_ptr<GeluLayerReference>> GeluLayerReference::Create(
   return absl::WrapUnique(new GeluLayerReference(data_type));
 }
 
-absl::StatusOr<HostBuffer> GeluLayerReference::fwd_impl(
-    absl::Span<const HostBuffer> inputs, ReferenceBackwardState& state) const {
+absl::StatusOr<ReferenceFwdResult> GeluLayerReference::fwd_impl(
+    absl::Span<const HostBuffer> inputs) const {
+  ReferenceBackwardState state;
   if (inputs.size() != 1) {
     return absl::InvalidArgumentError(
-        "GeluLayerReference fwd expects one input and saved state");
+        "GeluLayerReference fwd expects one input");
   }
   ASSIGN_OR_RETURN(
       int elements,
@@ -59,7 +60,7 @@ absl::StatusOr<HostBuffer> GeluLayerReference::fwd_impl(
   }
   state.intermediates = {inputs[0]};
   state.children.clear();
-  return output;
+  return ReferenceFwdResult{std::move(output), std::move(state)};
 }
 
 absl::StatusOr<HostBufferVec> GeluLayerReference::bwd_impl(

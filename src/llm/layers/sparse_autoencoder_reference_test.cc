@@ -77,50 +77,50 @@ TEST_F(LayerReferenceTest,
       auto input_pair = MakeActivationBufferPair(*executor_, input, type);
       ASSERT_TRUE(input_pair.ok()) << input_pair.status();
 
-      BackwardState device_state;
-      ReferenceBackwardState reference_state;
       BufferVec device_inputs = {input_pair->device};
       HostBufferVec reference_inputs = {input_pair->host};
       auto device_reconstruction =
-          (*device_layer)->fwd(*executor_, device_inputs, device_state);
-      auto reference_reconstruction =
-          (*reference_layer)->fwd(reference_inputs, reference_state);
+          (*device_layer)->fwd(*executor_, device_inputs);
+
+      auto reference_reconstruction = (*reference_layer)->fwd(reference_inputs);
+
       ASSERT_TRUE(device_reconstruction.ok()) << device_reconstruction.status();
       ASSERT_TRUE(reference_reconstruction.ok())
           << reference_reconstruction.status();
-      auto device_latents = (*device_layer)->latent_activations(device_state);
+      auto device_latents =
+          (*device_layer)->latent_activations(device_reconstruction->state);
       auto reference_latents =
-          (*reference_layer)->latent_activations(reference_state);
+          (*reference_layer)
+              ->latent_activations(reference_reconstruction->state);
       ASSERT_TRUE(device_latents.ok()) << device_latents.status();
       ASSERT_TRUE(reference_latents.ok()) << reference_latents.status();
-      EXPECT_TRUE(ActivationBuffersNear(*device_reconstruction,
-                                        *reference_reconstruction, type, 2e-2f,
-                                        2e-2f));
+      EXPECT_TRUE(ActivationBuffersNear(device_reconstruction->output,
+                                        reference_reconstruction->output, type,
+                                        2e-2f, 2e-2f));
       EXPECT_TRUE(ActivationBuffersNear(*device_latents, *reference_latents,
                                         type, 1e-2f, 2e-2f));
 
-      BackwardState device_loss_state;
-      ReferenceBackwardState reference_loss_state;
-      BufferVec device_loss_inputs = {input_pair->device,
-                                      *device_reconstruction, *device_latents,
-                                      (*device_layer)->decoder()};
+      BufferVec device_loss_inputs = {
+          input_pair->device, device_reconstruction->output, *device_latents,
+          (*device_layer)->decoder()};
       HostBufferVec reference_loss_inputs = {
-          input_pair->host, *reference_reconstruction, *reference_latents,
-          (*reference_layer)->decoder()};
+          input_pair->host, reference_reconstruction->output,
+          *reference_latents, (*reference_layer)->decoder()};
       auto device_loss_value =
-          (*device_loss)
-              ->fwd(*executor_, device_loss_inputs, device_loss_state);
-      auto reference_loss_value =
-          (*reference_loss)->fwd(reference_loss_inputs, reference_loss_state);
+          (*device_loss)->fwd(*executor_, device_loss_inputs);
+
+      auto reference_loss_value = (*reference_loss)->fwd(reference_loss_inputs);
+
       ASSERT_TRUE(device_loss_value.ok()) << device_loss_value.status();
       ASSERT_TRUE(reference_loss_value.ok()) << reference_loss_value.status();
-      EXPECT_TRUE(FloatBuffersNear(*device_loss_value, *reference_loss_value,
-                                   5e-2f, 2e-2f));
+      EXPECT_TRUE(FloatBuffersNear(device_loss_value->output,
+                                   reference_loss_value->output, 5e-2f, 2e-2f));
 
       auto device_loss_gradients =
-          (*device_loss)->bwd(*executor_, {}, std::move(device_loss_state));
+          (*device_loss)
+              ->bwd(*executor_, {}, std::move(device_loss_value->state));
       auto reference_loss_gradients =
-          (*reference_loss)->bwd({}, std::move(reference_loss_state));
+          (*reference_loss)->bwd({}, std::move(reference_loss_value->state));
       ASSERT_TRUE(device_loss_gradients.ok()) << device_loss_gradients.status();
       ASSERT_TRUE(reference_loss_gradients.ok())
           << reference_loss_gradients.status();
@@ -141,10 +141,11 @@ TEST_F(LayerReferenceTest,
       auto device_input_gradient =
           (*device_layer)
               ->bwd(*executor_, device_autoencoder_gradients,
-                    std::move(device_state));
-      auto reference_input_gradient = (*reference_layer)
-                                          ->bwd(reference_autoencoder_gradients,
-                                                std::move(reference_state));
+                    std::move(device_reconstruction->state));
+      auto reference_input_gradient =
+          (*reference_layer)
+              ->bwd(reference_autoencoder_gradients,
+                    std::move(reference_reconstruction->state));
       ASSERT_TRUE(device_input_gradient.ok()) << device_input_gradient.status();
       ASSERT_TRUE(reference_input_gradient.ok())
           << reference_input_gradient.status();
@@ -205,10 +206,11 @@ TEST_F(LayerReferenceTest,
         }
         auto input = MakeActivationBufferPair(*executor_, values, type);
         ASSERT_TRUE(input.ok()) << input.status();
-        BackwardState state;
-        ASSERT_TRUE(
-            (*layer)->fwd(*executor_, BufferVec{input->device}, state).ok());
-        auto latents = (*layer)->latent_activations(state);
+
+        auto state_fwd = (*layer)->fwd(*executor_, BufferVec{input->device});
+        ASSERT_TRUE(state_fwd.ok());
+
+        auto latents = (*layer)->latent_activations(state_fwd->state);
         ASSERT_TRUE(latents.ok()) << latents.status();
         auto z = ReadDeviceActivations(*executor_, *latents, type);
         ASSERT_TRUE(z.ok()) << z.status();
@@ -216,14 +218,15 @@ TEST_F(LayerReferenceTest,
         auto zero_input = MakeActivationBufferPair(
             *executor_, std::vector<float>(kRows * kInputDim, 0), type);
         ASSERT_TRUE(zero_input.ok()) << zero_input.status();
-        BackwardState later_state;
-        ASSERT_TRUE(
-            (*layer)
-                ->fwd(*executor_, BufferVec{zero_input->device}, later_state)
-                .ok());
+
+        auto later_state_fwd =
+            (*layer)->fwd(*executor_, BufferVec{zero_input->device});
+        ASSERT_TRUE(later_state_fwd.ok());
+
         for (int valid_rows : {1, 19, kRows, 0}) {
           const int rows = valid_rows == 0 ? kRows : valid_rows;
-          auto stats = (*layer)->ReadZStatistics(*executor_, state, valid_rows);
+          auto stats = (*layer)->ReadZStatistics(*executor_, state_fwd->state,
+                                                 valid_rows);
           ASSERT_TRUE(stats.ok()) << stats.status();
           int64_t active = 0;
           double sum = 0, squared_sum = 0, maximum = 0;
@@ -283,19 +286,20 @@ TEST_F(LayerReferenceTest, LossAndGradientsMatchTheStatedSumExactly) {
   ASSERT_TRUE(reconstruction_pair.ok());
   ASSERT_TRUE(latent_pair.ok());
   ASSERT_TRUE(decoder_pair.ok());
-  ReferenceBackwardState state;
+
   HostBufferVec inputs = {input_pair->host, reconstruction_pair->host,
                           latent_pair->host, decoder_pair->host};
-  auto value = (*loss)->fwd(inputs, state);
+  auto value = (*loss)->fwd(inputs);
+
   ASSERT_TRUE(value.ok()) << value.status();
   const float reconstruction_loss =
       kRows * kInputDim * (1.0f - 0.5f) * (1.0f - 0.5f);
   const float sparse_loss = kRows * kFeatureDim * kPenalty * 0.25f;
-  ASSERT_EQ(value->size_bytes(), sizeof(float));
-  EXPECT_FLOAT_EQ(*static_cast<const float*>(value->data()),
+  ASSERT_EQ(value->output.size_bytes(), sizeof(float));
+  EXPECT_FLOAT_EQ(*static_cast<const float*>(value->output.data()),
                   reconstruction_loss + sparse_loss);
 
-  auto gradients = (*loss)->bwd({}, std::move(state));
+  auto gradients = (*loss)->bwd({}, std::move(value->state));
   ASSERT_TRUE(gradients.ok()) << gradients.status();
   ASSERT_EQ(gradients->size(), 4u);
   EXPECT_TRUE(VectorsNear(ReadHostFloats((*gradients)[0]),
@@ -378,29 +382,28 @@ TEST_F(LayerReferenceTest,
         auto decoder_pair = MakeRawBufferPair<float>(*executor_, decoder);
         ASSERT_TRUE(latent_pair.ok()) << latent_pair.status();
         ASSERT_TRUE(decoder_pair.ok()) << decoder_pair.status();
-        BackwardState device_state;
-        ReferenceBackwardState reference_state;
+
         auto actual =
             (*device_loss)
                 ->fwd(*executor_,
                       BufferVec{input->device, reconstruction->device,
-                                latent_pair->device, decoder_pair->device},
-                      device_state);
+                                latent_pair->device, decoder_pair->device});
+
         auto reference =
             (*reference_loss)
                 ->fwd(HostBufferVec{input->host, reconstruction->host,
-                                    latent_pair->host, decoder_pair->host},
-                      reference_state);
+                                    latent_pair->host, decoder_pair->host});
+
         ASSERT_TRUE(actual.ok()) << actual.status();
         ASSERT_TRUE(reference.ok()) << reference.status();
-        auto host_value = ReadDeviceFloats(*executor_, *actual);
+        auto host_value = ReadDeviceFloats(*executor_, actual->output);
         ASSERT_TRUE(host_value.ok()) << host_value.status();
         EXPECT_NEAR((*host_value)[0], expected_loss, 1e-3);
-        EXPECT_NEAR(ReadHostFloats(*reference)[0], expected_loss, 1e-3);
+        EXPECT_NEAR(ReadHostFloats(reference->output)[0], expected_loss, 1e-3);
         auto gradients =
-            (*device_loss)->bwd(*executor_, {}, std::move(device_state));
+            (*device_loss)->bwd(*executor_, {}, std::move(actual->state));
         auto reference_gradients =
-            (*reference_loss)->bwd({}, std::move(reference_state));
+            (*reference_loss)->bwd({}, std::move(reference->state));
         ASSERT_TRUE(gradients.ok()) << gradients.status();
         ASSERT_TRUE(reference_gradients.ok()) << reference_gradients.status();
         const std::vector<std::vector<float>> expected = {

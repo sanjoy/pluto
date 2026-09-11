@@ -72,12 +72,13 @@ TEST_F(Gpt2Test, OneBlockProducesResidualStreamActivations) {
                             executor_->stream()),
             cudaSuccess);
 
-  BackwardState state;
   BufferVec inputs = {*tokens};
-  auto activations = (*generator)->fwd(*executor_, inputs, state);
+  auto activations = (*generator)->fwd(*executor_, inputs);
+
   ASSERT_TRUE(activations.ok()) << activations.status();
-  EXPECT_EQ(activations->size_bytes(), static_cast<size_t>(kGpt2ContextLength) *
-                                           kGpt2ModelWidth * sizeof(uint16_t));
+  EXPECT_EQ(activations->output.size_bytes(),
+            static_cast<size_t>(kGpt2ContextLength) * kGpt2ModelWidth *
+                sizeof(uint16_t));
   EXPECT_TRUE(executor_->Synchronize().ok());
 }
 

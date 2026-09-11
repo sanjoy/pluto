@@ -238,8 +238,10 @@ absl::Status RecordCompletions(cuda::Executor& executor, const Layer& model,
           cudaMemcpyAsync(device_input.data(), input.data(), input.size_bytes(),
                           cudaMemcpyHostToDevice, executor.stream()),
           "upload deterministic inference context"));
-      BackwardState state;
-      ASSIGN_OR_RETURN(auto logits, model.fwd(executor, {device_input}, state));
+
+      ASSIGN_OR_RETURN(auto logits_fwd, model.fwd(executor, {device_input}));
+      auto logits = std::move(logits_fwd.output);
+
       ASSIGN_OR_RETURN(auto host_logits, ReadDeviceFloats(executor, logits));
       const int padded_vocabulary = host_logits.size() / kContext;
       const int prediction_row = 3 + step;
@@ -331,15 +333,19 @@ absl::StatusOr<Trajectory> RunSparseAutoEncoder(
   Trajectory trajectory;
   RETURN_IF_ERROR(RecordTraining(*executor, *model, objective, training,
                                  evaluation, trajectory));
-  BackwardState state;
-  ASSIGN_OR_RETURN(auto reconstruction,
-                   model->fwd(*executor, {activation.device}, state));
-  ASSIGN_OR_RETURN(auto latents, model->latent_activations(state));
+
+  ASSIGN_OR_RETURN(auto reconstruction_fwd,
+                   model->fwd(*executor, {activation.device}));
+  auto reconstruction = std::move(reconstruction_fwd.output);
+
+  ASSIGN_OR_RETURN(auto latents,
+                   model->latent_activations(reconstruction_fwd.state));
   ASSIGN_OR_RETURN(auto outputs,
                    ReadBytes(*executor, {reconstruction, latents}));
   trajectory.outputs.push_back(std::move(outputs));
   if (mode == SparseAutoEncoderLayer::Mode::kCollectStatistics) {
-    ASSIGN_OR_RETURN(auto stats, model->ReadZStatistics(*executor, state));
+    ASSIGN_OR_RETURN(auto stats, model->ReadZStatistics(
+                                     *executor, reconstruction_fwd.state));
     trajectory.statistics = {static_cast<uint64_t>(stats.rows),
                              static_cast<uint64_t>(stats.feature_dim),
                              static_cast<uint64_t>(stats.active_count),

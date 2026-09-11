@@ -153,14 +153,14 @@ TEST_F(LayersTest, LanguageModelingHeadUsesEmbeddingWeightTranspose) {
                             executor_->stream()),
             cudaSuccess);
 
-  BackwardState embedding_state;
   BufferVec embedding_inputs = {*token_buffer};
-  auto hidden =
-      (*embedding)->fwd(*executor_, embedding_inputs, embedding_state);
+  auto hidden = (*embedding)->fwd(*executor_, embedding_inputs);
+
   ASSERT_TRUE(hidden.ok()) << hidden.status();
-  BackwardState head_state;
-  BufferVec head_inputs = {*hidden};
-  auto logits = (*head)->fwd(*executor_, head_inputs, head_state);
+
+  BufferVec head_inputs = {hidden->output};
+  auto logits = (*head)->fwd(*executor_, head_inputs);
+
   ASSERT_TRUE(logits.ok()) << logits.status();
 
   std::vector<float> output_gradient(kTestTokenCount * kTestVocabularySize,
@@ -178,7 +178,7 @@ TEST_F(LayersTest, LanguageModelingHeadUsesEmbeddingWeightTranspose) {
       cudaSuccess);
   BufferVec head_gradients = {*gradient_buffer};
   auto hidden_gradient =
-      (*head)->bwd(*executor_, head_gradients, std::move(head_state));
+      (*head)->bwd(*executor_, head_gradients, std::move(logits->state));
   ASSERT_TRUE(hidden_gradient.ok()) << hidden_gradient.status();
   ASSERT_EQ(hidden_gradient->size(), 1u);
 
@@ -190,7 +190,7 @@ TEST_F(LayersTest, LanguageModelingHeadUsesEmbeddingWeightTranspose) {
       AllocatePageLockedHostArray<float>(*executor_, table.size());
   auto table_gradient =
       AllocatePageLockedHostArray<float>(*executor_, table.size());
-  ASSERT_EQ(cudaMemcpyAsync(host_logits.data(), logits->data(),
+  ASSERT_EQ(cudaMemcpyAsync(host_logits.data(), logits->output.data(),
                             host_logits.size() * sizeof(float),
                             cudaMemcpyDeviceToHost, executor_->stream()),
             cudaSuccess);
@@ -252,23 +252,23 @@ TEST_F(LayersTest, Bf16HeadMasksPhysicalVocabularyPadding) {
                             executor_->stream()),
             cudaSuccess);
 
-  BackwardState embedding_state;
   BufferVec embedding_inputs = {*token_buffer};
-  auto hidden =
-      (*embedding)->fwd(*executor_, embedding_inputs, embedding_state);
+  auto hidden = (*embedding)->fwd(*executor_, embedding_inputs);
+
   ASSERT_TRUE(hidden.ok()) << hidden.status();
-  EXPECT_EQ(hidden->size_bytes(),
+  EXPECT_EQ(hidden->output.size_bytes(),
             kTestTokenCount * kTestModelWidth * sizeof(uint16_t));
-  BackwardState head_state;
-  BufferVec head_inputs = {*hidden};
-  auto logits = (*head)->fwd(*executor_, head_inputs, head_state);
+
+  BufferVec head_inputs = {hidden->output};
+  auto logits = (*head)->fwd(*executor_, head_inputs);
+
   ASSERT_TRUE(logits.ok()) << logits.status();
-  EXPECT_EQ(logits->size_bytes(),
+  EXPECT_EQ(logits->output.size_bytes(),
             kTestTokenCount * kPaddedVocabularySize * sizeof(float));
 
   auto host_logits =
       AllocatePageLockedHostArray<float>(*executor_, kPaddedVocabularySize);
-  ASSERT_EQ(cudaMemcpyAsync(host_logits.data(), logits->data(),
+  ASSERT_EQ(cudaMemcpyAsync(host_logits.data(), logits->output.data(),
                             host_logits.size() * sizeof(float),
                             cudaMemcpyDeviceToHost, executor_->stream()),
             cudaSuccess);
@@ -303,16 +303,16 @@ TEST_F(LayersTest, PositionEmbeddingRepeatsAtRuntimeContextLength) {
                             executor_->stream()),
             cudaSuccess);
 
-  BackwardState state;
   BufferVec inputs = {*input_buffer};
-  auto output = (*positions)->fwd(*executor_, inputs, state);
+  auto output = (*positions)->fwd(*executor_, inputs);
+
   ASSERT_TRUE(output.ok()) << output.status();
   auto host_output =
       AllocatePageLockedHostArray<float>(*executor_, input.size());
-  ASSERT_EQ(
-      cudaMemcpyAsync(host_output.data(), output->data(), output->size_bytes(),
-                      cudaMemcpyDeviceToHost, executor_->stream()),
-      cudaSuccess);
+  ASSERT_EQ(cudaMemcpyAsync(host_output.data(), output->output.data(),
+                            output->output.size_bytes(), cudaMemcpyDeviceToHost,
+                            executor_->stream()),
+            cudaSuccess);
   ASSERT_TRUE(executor_->Synchronize().ok());
 
   for (int row = 0; row < kTestTokenCount; ++row) {
@@ -373,13 +373,15 @@ TEST_F(LayersTest, LookupBackwardIsBitwiseRepeatableInOriginalRowOrder) {
               MakeTestBuffer(*executor_, output_gradients[pass]);
           ASSERT_TRUE(token_buffer.ok()) << token_buffer.status();
           ASSERT_TRUE(gradient_buffer.ok()) << gradient_buffer.status();
-          BackwardState state;
+
           BufferVec inputs = {*token_buffer};
-          auto output = (*embedding)->fwd(*executor_, inputs, state);
+          auto output = (*embedding)->fwd(*executor_, inputs);
+
           ASSERT_TRUE(output.ok()) << output.status();
           BufferVec gradients = {*gradient_buffer};
           auto input_gradients =
-              (*embedding)->bwd(*executor_, gradients, std::move(state));
+              (*embedding)
+                  ->bwd(*executor_, gradients, std::move(output->state));
           ASSERT_TRUE(input_gradients.ok()) << input_gradients.status();
           EXPECT_TRUE(input_gradients->empty());
           AccumulateTestRows(tokens[pass], output_gradients[pass], width,
@@ -443,13 +445,15 @@ TEST_F(LayersTest, PositionBackwardIsBitwiseRepeatableWithPartialContexts) {
           auto gradient_buffer =
               MakeTestBuffer(*executor_, output_gradients[pass]);
           ASSERT_TRUE(gradient_buffer.ok()) << gradient_buffer.status();
-          BackwardState state;
+
           BufferVec inputs = {*input};
-          auto output = (*positions)->fwd(*executor_, inputs, state);
+          auto output = (*positions)->fwd(*executor_, inputs);
+
           ASSERT_TRUE(output.ok()) << output.status();
           BufferVec gradients = {*gradient_buffer};
           auto input_gradients =
-              (*positions)->bwd(*executor_, gradients, std::move(state));
+              (*positions)
+                  ->bwd(*executor_, gradients, std::move(output->state));
           ASSERT_TRUE(input_gradients.ok()) << input_gradients.status();
           ASSERT_EQ(input_gradients->size(), 1u);
           EXPECT_EQ(input_gradients->front().data(), gradient_buffer->data());
@@ -510,17 +514,19 @@ TEST_F(LayersTest, LookupBackwardPreservesRealTiedHeadGradientAcrossPasses) {
       auto expected = initial;
       for (int pass = 0; pass < 2; ++pass) {
         SCOPED_TRACE(testing::Message() << "pass=" << pass);
-        BackwardState lookup_state;
+
         BufferVec inputs = {*token_buffer};
-        auto hidden = (*embedding)->fwd(*executor_, inputs, lookup_state);
+        auto hidden = (*embedding)->fwd(*executor_, inputs);
+
         ASSERT_TRUE(hidden.ok()) << hidden.status();
-        BackwardState head_state;
-        BufferVec head_inputs = {*hidden};
-        auto logits = (*head)->fwd(*executor_, head_inputs, head_state);
+
+        BufferVec head_inputs = {hidden->output};
+        auto logits = (*head)->fwd(*executor_, head_inputs);
+
         ASSERT_TRUE(logits.ok()) << logits.status();
         BufferVec gradients = {*gradient_buffer};
         auto hidden_gradient =
-            (*head)->bwd(*executor_, gradients, std::move(head_state));
+            (*head)->bwd(*executor_, gradients, std::move(logits->state));
         ASSERT_TRUE(hidden_gradient.ok()) << hidden_gradient.status();
         ASSERT_EQ(hidden_gradient->size(), 1u);
         // All products are exactly representable, avoiding an MMA-order
@@ -533,7 +539,7 @@ TEST_F(LayersTest, LookupBackwardPreservesRealTiedHeadGradientAcrossPasses) {
         EXPECT_EQ(*after_head, TestFloatBits(expected));
         auto result =
             (*embedding)
-                ->bwd(*executor_, *hidden_gradient, std::move(lookup_state));
+                ->bwd(*executor_, *hidden_gradient, std::move(hidden->state));
         ASSERT_TRUE(result.ok()) << result.status();
         EXPECT_TRUE(result->empty());
         expected[3 * kWidth + 5] += 3.0f;

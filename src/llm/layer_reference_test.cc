@@ -24,9 +24,9 @@ class IdentityLayerReference final : public LayerReference {
   bool fail_backward = false;
 
  private:
-  absl::StatusOr<HostBuffer> fwd_impl(
-      absl::Span<const HostBuffer> inputs,
-      ReferenceBackwardState& state) const override {
+  absl::StatusOr<ReferenceFwdResult> fwd_impl(
+      absl::Span<const HostBuffer> inputs) const override {
+    ReferenceBackwardState state;
     ++forward_calls;
     EXPECT_EQ(state.layer, nullptr);
     EXPECT_TRUE(state.intermediates.empty());
@@ -34,7 +34,7 @@ class IdentityLayerReference final : public LayerReference {
     // Populate state even on failure to exercise partially written states.
     state.intermediates = {inputs[0]};
     if (fail_forward) return absl::ResourceExhaustedError("forward failed");
-    return inputs[0];
+    return ReferenceFwdResult{std::move(inputs[0]), std::move(state)};
   }
 
   absl::StatusOr<HostBufferVec> bwd_impl(
@@ -57,37 +57,39 @@ class LayerReferenceStateTest : public ::testing::Test {
   HostBufferVec inputs_;
 };
 
-TEST_F(LayerReferenceStateTest,
-       SuccessfulForwardAndCopiedOrMovedStateDispatchThroughBase) {
+TEST_F(LayerReferenceStateTest, ResultContainsOutputAndStateWithMatchingOwner) {
   IdentityLayerReference layer;
   const LayerReference& forward_layer = layer;
-  ReferenceBackwardState state;
-  auto output = forward_layer.fwd(inputs_, state);
-  ASSERT_TRUE(output.ok()) << output.status();
-  EXPECT_EQ(output->data(), inputs_[0].data());
-  EXPECT_EQ(state.layer, &layer);
+  auto result = forward_layer.fwd(inputs_);
+  ASSERT_TRUE(result.ok()) << result.status();
+  EXPECT_EQ(result->output.data(), inputs_[0].data());
+  EXPECT_EQ(result->state.layer, &layer);
   EXPECT_EQ(layer.forward_calls, 1);
 
+  // Moving the complete result and copying its state preserve layer identity.
+  ReferenceFwdResult moved = std::move(*result);
+  ReferenceBackwardState copy = moved.state;
   LayerReference& backward_layer = layer;
-  // Copying saved state is supported; identity follows copies and moves.
-  ReferenceBackwardState copy = state;
   auto gradient = backward_layer.bwd(inputs_, std::move(copy));
   ASSERT_TRUE(gradient.ok()) << gradient.status();
   ASSERT_EQ(gradient->size(), 1);
   EXPECT_EQ((*gradient)[0].data(), inputs_[0].data());
-  EXPECT_TRUE(layer.bwd(inputs_, std::move(state)).ok());
+  EXPECT_TRUE(layer.bwd(inputs_, std::move(moved.state)).ok());
   EXPECT_EQ(layer.backward_calls, 2);
+  // Consuming backward state does not consume the returned output handle.
+  EXPECT_EQ(moved.output.data(), inputs_[0].data());
 }
 
-TEST(LayerReferenceApiTest, ForwardRequiresStateReference) {
+TEST(LayerReferenceApiTest, ForwardReturnsResultWithoutStateArgument) {
   static_assert(
-      std::is_invocable_v<decltype(&LayerReference::fwd), const LayerReference&,
-                          absl::Span<const HostBuffer>,
-                          ReferenceBackwardState&>);
+      std::is_same_v<std::invoke_result_t<decltype(&LayerReference::fwd),
+                                          const LayerReference&,
+                                          absl::Span<const HostBuffer>>,
+                     absl::StatusOr<ReferenceFwdResult>>);
   static_assert(
       !std::is_invocable_v<decltype(&LayerReference::fwd),
                            const LayerReference&, absl::Span<const HostBuffer>,
-                           ReferenceBackwardState*>);
+                           ReferenceBackwardState&>);
 }
 
 TEST_F(LayerReferenceStateTest, UnusedStateDoesNotDispatchBackward) {
@@ -97,52 +99,55 @@ TEST_F(LayerReferenceStateTest, UnusedStateDoesNotDispatchBackward) {
   EXPECT_EQ(layer.backward_calls, 0);
 }
 
-TEST_F(LayerReferenceStateTest,
-       SameTypeAndShapeDoNotMakeAnotherLayersStateValid) {
+TEST_F(LayerReferenceStateTest, AnotherLayersResultDoesNotDispatchBackward) {
   IdentityLayerReference first;
   IdentityLayerReference second;
-  ReferenceBackwardState state;
-  ASSERT_TRUE(first.fwd(inputs_, state).ok());
-  auto gradient = second.bwd(inputs_, state);
+  auto result = first.fwd(inputs_);
+  ASSERT_TRUE(result.ok()) << result.status();
+  auto gradient = second.bwd(inputs_, result->state);
   EXPECT_EQ(gradient.status().code(), absl::StatusCode::kInvalidArgument);
   EXPECT_EQ(second.backward_calls, 0);
-  EXPECT_TRUE(first.bwd(inputs_, std::move(state)).ok());
-}
-
-TEST_F(LayerReferenceStateTest, FailedForwardInvalidatesReusedState) {
-  IdentityLayerReference layer;
-  ReferenceBackwardState state;
-  ASSERT_TRUE(layer.fwd(inputs_, state).ok());
-  state.children.emplace_back();
-  layer.fail_forward = true;
-  auto output = layer.fwd(inputs_, state);
-  EXPECT_EQ(output.status(), absl::ResourceExhaustedError("forward failed"));
-  EXPECT_EQ(state.layer, nullptr);
-  EXPECT_EQ(layer.forward_calls, 2);
-  auto gradient = layer.bwd(inputs_, std::move(state));
-  EXPECT_EQ(gradient.status().code(), absl::StatusCode::kInvalidArgument);
-  EXPECT_EQ(layer.backward_calls, 0);
+  EXPECT_TRUE(first.bwd(inputs_, std::move(result->state)).ok());
 }
 
 TEST_F(LayerReferenceStateTest,
-       ReusingStateAssociatesItWithLatestSuccessfulLayer) {
-  IdentityLayerReference first;
-  IdentityLayerReference second;
-  ReferenceBackwardState state;
-  ASSERT_TRUE(first.fwd(inputs_, state).ok());
-  ASSERT_TRUE(second.fwd(inputs_, state).ok());
-  EXPECT_EQ(state.layer, &second);
-  EXPECT_EQ(first.bwd(inputs_, state).status().code(),
-            absl::StatusCode::kInvalidArgument);
-  EXPECT_TRUE(second.bwd(inputs_, std::move(state)).ok());
+       FailedForwardPublishesNoStateAndPreservesEarlierResult) {
+  IdentityLayerReference layer;
+  auto earlier = layer.fwd(inputs_);
+  ASSERT_TRUE(earlier.ok()) << earlier.status();
+  layer.fail_forward = true;
+  auto failed = layer.fwd(inputs_);
+  EXPECT_EQ(failed.status(), absl::ResourceExhaustedError("forward failed"));
+  EXPECT_EQ(layer.forward_calls, 2);
+  EXPECT_EQ(earlier->state.layer, &layer);
+  EXPECT_EQ(earlier->output.data(), inputs_[0].data());
+  EXPECT_TRUE(layer.bwd(inputs_, std::move(earlier->state)).ok());
+  EXPECT_EQ(layer.backward_calls, 1);
+}
+
+TEST_F(LayerReferenceStateTest, ConsecutiveResultsKeepIndependentSavedInputs) {
+  IdentityLayerReference layer;
+  auto first = layer.fwd(inputs_);
+  ASSERT_TRUE(first.ok()) << first.status();
+  auto other_input = HostBuffer::Allocate(sizeof(float));
+  ASSERT_TRUE(other_input.ok()) << other_input.status();
+  HostBufferVec other_inputs{std::move(*other_input)};
+  auto second = layer.fwd(other_inputs);
+  ASSERT_TRUE(second.ok()) << second.status();
+  ASSERT_EQ(first->state.intermediates.size(), 1);
+  ASSERT_EQ(second->state.intermediates.size(), 1);
+  EXPECT_EQ(first->state.intermediates[0].data(), inputs_[0].data());
+  EXPECT_EQ(second->state.intermediates[0].data(), other_inputs[0].data());
+  EXPECT_EQ(first->state.layer, &layer);
+  EXPECT_EQ(second->state.layer, &layer);
 }
 
 TEST_F(LayerReferenceStateTest, BackwardImplementationErrorIsPreserved) {
   IdentityLayerReference layer;
-  ReferenceBackwardState state;
-  ASSERT_TRUE(layer.fwd(inputs_, state).ok());
+  auto result = layer.fwd(inputs_);
+  ASSERT_TRUE(result.ok()) << result.status();
   layer.fail_backward = true;
-  auto gradient = layer.bwd(inputs_, std::move(state));
+  auto gradient = layer.bwd(inputs_, std::move(result->state));
   EXPECT_EQ(gradient.status(), absl::InternalError("backward failed"));
   EXPECT_EQ(layer.backward_calls, 1);
 }
@@ -163,22 +168,22 @@ TEST_F(LayerReferenceStateTest,
   outer_children.push_back(std::move(inner));
   ComposedLayerReference outer(DataType::FP16, std::move(outer_children));
 
-  ReferenceBackwardState state;
-  ASSERT_TRUE(outer.fwd(inputs_, state).ok());
-  EXPECT_EQ(state.layer, &outer);
-  ASSERT_EQ(state.children.size(), 1);
-  EXPECT_EQ(state.children[0].layer, inner_ptr);
-  auto& child_states = state.children[0].children;
+  auto result = outer.fwd(inputs_);
+  ASSERT_TRUE(result.ok()) << result.status();
+  EXPECT_EQ(result->state.layer, &outer);
+  ASSERT_EQ(result->state.children.size(), 1);
+  EXPECT_EQ(result->state.children[0].layer, inner_ptr);
+  auto& child_states = result->state.children[0].children;
   ASSERT_EQ(child_states.size(), 2);
   EXPECT_EQ(child_states[0].layer, first_ptr);
   EXPECT_EQ(child_states[1].layer, second_ptr);
-  ASSERT_TRUE(outer.bwd(inputs_, state).ok());
+  ASSERT_TRUE(outer.bwd(inputs_, result->state).ok());
   EXPECT_EQ(first_ptr->backward_calls, 1);
   EXPECT_EQ(second_ptr->backward_calls, 1);
 
   // The parent state is valid, but the children are attached to wrong slots.
   std::swap(child_states[0], child_states[1]);
-  auto gradient = outer.bwd(inputs_, std::move(state));
+  auto gradient = outer.bwd(inputs_, std::move(result->state));
   EXPECT_EQ(gradient.status().code(), absl::StatusCode::kInvalidArgument);
   EXPECT_EQ(first_ptr->backward_calls, 1);
   EXPECT_EQ(second_ptr->backward_calls, 1);

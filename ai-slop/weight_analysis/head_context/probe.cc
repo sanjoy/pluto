@@ -180,9 +180,10 @@ class ConstantBranch final : public llm::Layer {
   llm::DataType output_type() const override { return llm::DataType::BF16; }
 
  private:
-  absl::StatusOr<cuda::Buffer> fwd_impl(
-      cuda::Executor& executor, absl::Span<const cuda::Buffer> inputs,
-      llm::BackwardState& state) const override {
+  absl::StatusOr<llm::FwdResult> fwd_impl(
+      cuda::Executor& executor,
+      absl::Span<const cuda::Buffer> inputs) const override {
+    llm::BackwardState state;
     if (inputs.size() != 1)
       return absl::InvalidArgumentError("invalid constant branch");
     RETURN_IF_ERROR(Shape(executor, branch_, inputs[0].size_bytes()));
@@ -190,7 +191,7 @@ class ConstantBranch final : public llm::Layer {
       return absl::InvalidArgumentError("constant branch executor differs");
     state.intermediates.clear();
     state.children.clear();
-    return branch_;
+    return llm::FwdResult{std::move(branch_), std::move(state)};
   }
   absl::StatusOr<llm::BufferVec> bwd_impl(cuda::Executor&,
                                           absl::Span<const cuda::Buffer>,
@@ -260,21 +261,28 @@ struct Probe::Impl {
   absl::StatusOr<cuda::Buffer> Replay(const cuda::Buffer& changed) const {
     llm::BackwardState projection_state, residual_state, tail_state, norm_state,
         head_state;
-    ASSIGN_OR_RETURN(auto projected,
-                     projection->fwd(executor, absl::MakeConstSpan(&changed, 1),
-                                     projection_state));
+    ASSIGN_OR_RETURN(
+        auto projected_fwd,
+        projection->fwd(executor, absl::MakeConstSpan(&changed, 1)));
+    auto projected = std::move(projected_fwd.output);
+    projection_state = std::move(projected_fwd.state);
     llm::ResidualLayer residual(
         std::make_unique<ConstantBranch>(std::move(projected)));
-    ASSIGN_OR_RETURN(auto after,
-                     residual.fwd(executor, absl::MakeConstSpan(&before, 1),
-                                  residual_state));
-    ASSIGN_OR_RETURN(
-        auto final,
-        tail->fwd(executor, absl::MakeConstSpan(&after, 1), tail_state));
-    ASSIGN_OR_RETURN(
-        auto normalized,
-        norm->fwd(executor, absl::MakeConstSpan(&final, 1), norm_state));
-    return head->fwd(executor, absl::MakeConstSpan(&normalized, 1), head_state);
+    ASSIGN_OR_RETURN(auto after_fwd,
+                     residual.fwd(executor, absl::MakeConstSpan(&before, 1)));
+    auto after = std::move(after_fwd.output);
+    residual_state = std::move(after_fwd.state);
+    ASSIGN_OR_RETURN(auto final_fwd,
+                     tail->fwd(executor, absl::MakeConstSpan(&after, 1)));
+    auto final = std::move(final_fwd.output);
+    tail_state = std::move(final_fwd.state);
+    ASSIGN_OR_RETURN(auto normalized_fwd,
+                     norm->fwd(executor, absl::MakeConstSpan(&final, 1)));
+    auto normalized = std::move(normalized_fwd.output);
+    norm_state = std::move(normalized_fwd.state);
+    ASSIGN_OR_RETURN(auto fwd_return_result,
+                     head->fwd(executor, absl::MakeConstSpan(&normalized, 1)));
+    return std::move(fwd_return_result.output);
   }
 
   cuda::Executor& executor;
@@ -380,18 +388,19 @@ absl::StatusOr<std::unique_ptr<Probe>> Probe::Create(
   // not merely to a mathematically compatible captured downstream state.
   // This full production replay is separate from the tail identity below.
   {
-    llm::BackwardState repeat_state;
     ASSIGN_OR_RETURN(
-        auto repeat_logits,
-        production_model.fwd(executor, absl::MakeConstSpan(&tokens, 1),
-                             repeat_state));
-    RETURN_IF_ERROR(ValidateState(repeat_state));
+        auto repeat_logits_fwd,
+        production_model.fwd(executor, absl::MakeConstSpan(&tokens, 1)));
+    auto repeat_logits = std::move(repeat_logits_fwd.output);
+
+    RETURN_IF_ERROR(ValidateState(repeat_logits_fwd.state));
     RETURN_IF_ERROR(Shape(executor, repeat_logits, logits.size_bytes()));
     ASSIGN_OR_RETURN(auto repeated, Download<float>(executor, repeat_logits));
     RETURN_IF_ERROR(Same(repeated.data(), impl->logit_values.data(),
                          repeated.size_bytes(),
                          "actual production full-logit replay"));
-    const auto& repeated_branch = repeat_state.children[block + 2].children[0];
+    const auto& repeated_branch =
+        repeat_logits_fwd.state.children[block + 2].children[0];
     const cuda::Buffer* repeated_buffers[] = {
         &repeated_branch.intermediates[0],
         &repeated_branch.children[0].children[2].intermediates[0],
@@ -444,10 +453,11 @@ absl::StatusOr<std::unique_ptr<Probe>> Probe::Create(
   ASSIGN_OR_RETURN(auto attention, llm::AttentionLayer::Create(
                                        executor, kContext, kGeometry.heads,
                                        kWidth, llm::DataType::BF16));
-  llm::BackwardState replay_state;
-  ASSIGN_OR_RETURN(
-      auto native_context,
-      attention->fwd(executor, absl::MakeConstSpan(&qkv, 1), replay_state));
+
+  ASSIGN_OR_RETURN(auto native_context_fwd,
+                   attention->fwd(executor, absl::MakeConstSpan(&qkv, 1)));
+  auto native_context = std::move(native_context_fwd.output);
+
   RETURN_IF_ERROR(Shape(executor, native_context, context.size_bytes()));
   ASSIGN_OR_RETURN(auto native_bytes,
                    Download<uint16_t>(executor, native_context));

@@ -94,8 +94,9 @@ absl::Status SparseAutoEncoderLayerReference::InitializeNormal(
   return absl::OkStatus();
 }
 
-absl::StatusOr<HostBuffer> SparseAutoEncoderLayerReference::fwd_impl(
-    absl::Span<const HostBuffer> inputs, ReferenceBackwardState& state) const {
+absl::StatusOr<ReferenceFwdResult> SparseAutoEncoderLayerReference::fwd_impl(
+    absl::Span<const HostBuffer> inputs) const {
+  ReferenceBackwardState state;
   if (inputs.size() != 1) {
     return absl::InvalidArgumentError(
         "SparseAutoEncoderLayerReference fwd expects one input and saved "
@@ -157,7 +158,7 @@ absl::StatusOr<HostBuffer> SparseAutoEncoderLayerReference::fwd_impl(
   }
   state.intermediates = {inputs[0], latents};
   state.children.clear();
-  return reconstruction;
+  return ReferenceFwdResult{std::move(reconstruction), std::move(state)};
 }
 
 absl::StatusOr<HostBuffer> SparseAutoEncoderLayerReference::latent_activations(
@@ -344,8 +345,10 @@ SparseAutoEncoderLossLayerReference::Create(int input_dim, int feature_dim,
       input_dim, feature_dim, sparsity_penalty, data_type));
 }
 
-absl::StatusOr<HostBuffer> SparseAutoEncoderLossLayerReference::fwd_impl(
-    absl::Span<const HostBuffer> inputs, ReferenceBackwardState& state) const {
+absl::StatusOr<ReferenceFwdResult>
+SparseAutoEncoderLossLayerReference::fwd_impl(
+    absl::Span<const HostBuffer> inputs) const {
+  ReferenceBackwardState state;
   int rows;
   RETURN_IF_ERROR(ValidateReferenceLossInputs(inputs, input_dim_, feature_dim_,
                                               output_type_, &rows));
@@ -381,7 +384,7 @@ absl::StatusOr<HostBuffer> SparseAutoEncoderLossLayerReference::fwd_impl(
   *static_cast<float*>(output.data()) = loss;
   state.intermediates.assign(inputs.begin(), inputs.end());
   state.children.clear();
-  return output;
+  return ReferenceFwdResult{std::move(output), std::move(state)};
 }
 
 absl::StatusOr<HostBufferVec> SparseAutoEncoderLossLayerReference::bwd_impl(

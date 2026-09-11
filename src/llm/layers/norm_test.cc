@@ -48,20 +48,20 @@ TEST_F(LayersTest, LayerNormNormalizesRowsAndRejectsConstantGradient) {
                       executor_->stream()),
       cudaSuccess);
 
-  BackwardState state;
   BufferVec inputs = {*input_buffer};
-  auto output = (*layer_norm)->fwd(*executor_, inputs, state);
+  auto output = (*layer_norm)->fwd(*executor_, inputs);
+
   ASSERT_TRUE(output.ok()) << output.status();
   BufferVec gradients = {*gradient_buffer};
   auto input_gradient =
-      (*layer_norm)->bwd(*executor_, gradients, std::move(state));
+      (*layer_norm)->bwd(*executor_, gradients, std::move(output->state));
   ASSERT_TRUE(input_gradient.ok()) << input_gradient.status();
 
   auto host_output =
       AllocatePageLockedHostArray<float>(*executor_, kTestModelWidth);
   auto host_input_gradient =
       AllocatePageLockedHostArray<float>(*executor_, kTestModelWidth);
-  ASSERT_EQ(cudaMemcpyAsync(host_output.data(), output->data(),
+  ASSERT_EQ(cudaMemcpyAsync(host_output.data(), output->output.data(),
                             host_output.size() * sizeof(float),
                             cudaMemcpyDeviceToHost, executor_->stream()),
             cudaSuccess);

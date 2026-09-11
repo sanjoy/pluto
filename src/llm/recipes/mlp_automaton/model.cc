@@ -166,8 +166,10 @@ absl::StatusOr<cuda::PageLockedHostArray<TopTransition>> ScanVocabulary(
         "upload vocabulary token IDs"));
     // Destruction on an error path queues staging frees behind queued DMA.
     // The explicit synchronization below is still needed for CPU reads/reuse.
-    BackwardState state;
-    ASSIGN_OR_RETURN(auto logits, readout.fwd(executor, {tokens}, state));
+
+    ASSIGN_OR_RETURN(auto logits_fwd, readout.fwd(executor, {tokens}));
+    auto logits = std::move(logits_fwd.output);
+
     ASSIGN_OR_RETURN(auto top, ReadTopTransitions(executor, logits, rows,
                                                   vocab_size, padded_vocab));
     RETURN_IF_ERROR(cuda::CudaStatus(

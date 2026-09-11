@@ -33,11 +33,12 @@ LayerNormLayerReference::Create(int embedding_dim, float epsilon,
       std::move(d_gamma), std::move(d_beta)));
 }
 
-absl::StatusOr<HostBuffer> LayerNormLayerReference::fwd_impl(
-    absl::Span<const HostBuffer> inputs, ReferenceBackwardState& state) const {
+absl::StatusOr<ReferenceFwdResult> LayerNormLayerReference::fwd_impl(
+    absl::Span<const HostBuffer> inputs) const {
+  ReferenceBackwardState state;
   if (inputs.size() != 1) {
     return absl::InvalidArgumentError(
-        "LayerNormLayerReference fwd expects one input and saved state");
+        "LayerNormLayerReference fwd expects one input");
   }
   ASSIGN_OR_RETURN(int rows,
                    ri::ActivationRows(inputs[0], embedding_dim_, output_type_,
@@ -80,7 +81,7 @@ absl::StatusOr<HostBuffer> LayerNormLayerReference::fwd_impl(
   }
   state.intermediates = {inputs[0]};
   state.children.clear();
-  return output;
+  return ReferenceFwdResult{std::move(output), std::move(state)};
 }
 
 absl::StatusOr<HostBufferVec> LayerNormLayerReference::bwd_impl(

@@ -47,9 +47,9 @@ TEST_F(LayersTest, FlashAttentionIsCausalAndHasCorrectSingleTokenGradient) {
                             executor_->stream()),
             cudaSuccess);
 
-  BackwardState state;
   BufferVec attention_inputs = {*input_buffer};
-  auto output = (*attention)->fwd(*executor_, attention_inputs, state);
+  auto output = (*attention)->fwd(*executor_, attention_inputs);
+
   ASSERT_TRUE(output.ok()) << output.status();
 
   std::vector<float> output_gradient(kTestTokenCount * kTestModelWidth, 0.0f);
@@ -66,7 +66,8 @@ TEST_F(LayersTest, FlashAttentionIsCausalAndHasCorrectSingleTokenGradient) {
       cudaSuccess);
   BufferVec attention_gradients = {*gradient_buffer};
   auto input_gradient =
-      (*attention)->bwd(*executor_, attention_gradients, std::move(state));
+      (*attention)
+          ->bwd(*executor_, attention_gradients, std::move(output->state));
   ASSERT_TRUE(input_gradient.ok()) << input_gradient.status();
   ASSERT_EQ(input_gradient->size(), 1u);
 
@@ -74,10 +75,10 @@ TEST_F(LayersTest, FlashAttentionIsCausalAndHasCorrectSingleTokenGradient) {
       AllocatePageLockedHostArray<float>(*executor_, output_gradient.size());
   auto host_input_gradient =
       AllocatePageLockedHostArray<float>(*executor_, input.size());
-  ASSERT_EQ(
-      cudaMemcpyAsync(host_output.data(), output->data(), output->size_bytes(),
-                      cudaMemcpyDeviceToHost, executor_->stream()),
-      cudaSuccess);
+  ASSERT_EQ(cudaMemcpyAsync(host_output.data(), output->output.data(),
+                            output->output.size_bytes(), cudaMemcpyDeviceToHost,
+                            executor_->stream()),
+            cudaSuccess);
   ASSERT_EQ(cudaMemcpyAsync(host_input_gradient.data(),
                             input_gradient->front().data(),
                             input_gradient->front().size_bytes(),
@@ -133,14 +134,15 @@ TEST_F(LayerReferenceTest, ForwardAndBackwardAreBitwiseRepeatable) {
         ASSERT_TRUE(inputs.ok()) << inputs.status();
         ASSERT_TRUE(gradients.ok()) << gradients.status();
         ASSERT_TRUE(reference.ok()) << reference.status();
-        ReferenceBackwardState reference_state;
+
         HostBufferVec reference_inputs = {inputs->host};
         HostBufferVec reference_gradients = {gradients->host};
-        auto reference_output =
-            (*reference)->fwd(reference_inputs, reference_state);
+        auto reference_output = (*reference)->fwd(reference_inputs);
+
         ASSERT_TRUE(reference_output.ok()) << reference_output.status();
         auto reference_input_gradient =
-            (*reference)->bwd(reference_gradients, std::move(reference_state));
+            (*reference)
+                ->bwd(reference_gradients, std::move(reference_output->state));
         ASSERT_TRUE(reference_input_gradient.ok())
             << reference_input_gradient.status();
 
@@ -153,30 +155,32 @@ TEST_F(LayerReferenceTest, ForwardAndBackwardAreBitwiseRepeatable) {
           auto attention =
               AttentionLayer::Create(*executor_, context, heads, width, type);
           ASSERT_TRUE(attention.ok()) << attention.status();
-          BackwardState state;
+
           BufferVec device_inputs = {inputs->device};
           BufferVec device_gradients = {gradients->device};
-          auto output = (*attention)->fwd(*executor_, device_inputs, state);
+          auto output = (*attention)->fwd(*executor_, device_inputs);
+
           ASSERT_TRUE(output.ok()) << output.status();
           auto input_gradient =
-              (*attention)->bwd(*executor_, device_gradients, std::move(state));
+              (*attention)
+                  ->bwd(*executor_, device_gradients, std::move(output->state));
           ASSERT_TRUE(input_gradient.ok()) << input_gradient.status();
           ASSERT_EQ(input_gradient->size(), 1u);
           if (repeat == 0) {
-            EXPECT_TRUE(ActivationBuffersNear(*output, *reference_output, type,
-                                              2e-3f, 2e-3f));
+            EXPECT_TRUE(ActivationBuffersNear(
+                output->output, reference_output->output, type, 2e-3f, 2e-3f));
             EXPECT_TRUE(FloatBuffersNear(input_gradient->front(),
                                          reference_input_gradient->front(),
                                          3e-3f, 3e-3f));
           }
           auto output_bytes = AllocatePageLockedHostArray<unsigned char>(
-              *executor_, output->size_bytes());
+              *executor_, output->output.size_bytes());
           auto gradient_bytes = AllocatePageLockedHostArray<unsigned char>(
               *executor_, input_gradient->front().size_bytes());
           ASSERT_EQ(
-              cudaMemcpyAsync(output_bytes.data(), output->data(),
-                              output->size_bytes(), cudaMemcpyDeviceToHost,
-                              executor_->stream()),
+              cudaMemcpyAsync(output_bytes.data(), output->output.data(),
+                              output->output.size_bytes(),
+                              cudaMemcpyDeviceToHost, executor_->stream()),
               cudaSuccess);
           ASSERT_EQ(cudaMemcpyAsync(
                         gradient_bytes.data(), input_gradient->front().data(),

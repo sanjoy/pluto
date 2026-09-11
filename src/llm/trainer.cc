@@ -170,14 +170,15 @@ absl::StatusOr<ObjectiveForwardPass> LanguageModelingObjective::Forward(
       loss_layer_.ValidateSequenceLength(data_batch.sequence_length));
   ASSIGN_OR_RETURN(auto batch,
                    PrepareLanguageModelingBatch(executor, data_batch));
-  BackwardState model_state;
+
   BufferVec model_inputs = {batch.tokens};
-  ASSIGN_OR_RETURN(auto output,
-                   model_.fwd(executor, model_inputs, model_state));
-  BackwardState loss_state;
+  ASSIGN_OR_RETURN(auto output_fwd, model_.fwd(executor, model_inputs));
+  auto output = std::move(output_fwd.output);
+
   BufferVec loss_inputs = {output, batch.targets};
-  ASSIGN_OR_RETURN(auto losses,
-                   loss_layer_.fwd(executor, loss_inputs, loss_state));
+  ASSIGN_OR_RETURN(auto losses_fwd, loss_layer_.fwd(executor, loss_inputs));
+  auto losses = std::move(losses_fwd.output);
+
   if (losses.size_bytes() !=
       static_cast<size_t>(batch.token_count) * sizeof(float)) {
     return absl::InvalidArgumentError(
@@ -186,8 +187,8 @@ absl::StatusOr<ObjectiveForwardPass> LanguageModelingObjective::Forward(
   return ObjectiveForwardPass{
       .loss = std::move(losses),
       .normalization_count = batch.token_count,
-      .model_state = std::move(model_state),
-      .loss_state = std::move(loss_state),
+      .model_state = std::move(output_fwd.state),
+      .loss_state = std::move(losses_fwd.state),
   };
 }
 
@@ -206,16 +207,19 @@ absl::StatusOr<ObjectiveForwardPass> SparseAutoEncoderObjective::Forward(
     cuda::Executor& executor, const DataBatch& batch) const {
   RETURN_IF_ERROR(ValidateSparseAutoEncoderBatch(executor, model_, batch));
   ASSIGN_OR_RETURN(const int token_count, batch.token_count());
-  BackwardState model_state;
+
   BufferVec model_inputs = {batch.data};
-  ASSIGN_OR_RETURN(auto reconstruction,
-                   model_.fwd(executor, model_inputs, model_state));
-  ASSIGN_OR_RETURN(auto latents, model_.latent_activations(model_state));
-  BackwardState loss_state;
+  ASSIGN_OR_RETURN(auto reconstruction_fwd, model_.fwd(executor, model_inputs));
+  auto reconstruction = std::move(reconstruction_fwd.output);
+
+  ASSIGN_OR_RETURN(auto latents,
+                   model_.latent_activations(reconstruction_fwd.state));
+
   BufferVec loss_inputs = {batch.data, reconstruction, latents,
                            model_.decoder()};
-  ASSIGN_OR_RETURN(auto loss,
-                   loss_layer_.fwd(executor, loss_inputs, loss_state));
+  ASSIGN_OR_RETURN(auto loss_fwd, loss_layer_.fwd(executor, loss_inputs));
+  auto loss = std::move(loss_fwd.output);
+
   if (loss.size_bytes() != sizeof(float)) {
     return absl::InvalidArgumentError(
         "sparse-autoencoder loss must return one FP32 scalar");
@@ -223,8 +227,8 @@ absl::StatusOr<ObjectiveForwardPass> SparseAutoEncoderObjective::Forward(
   return ObjectiveForwardPass{
       .loss = std::move(loss),
       .normalization_count = token_count,
-      .model_state = std::move(model_state),
-      .loss_state = std::move(loss_state),
+      .model_state = std::move(reconstruction_fwd.state),
+      .loss_state = std::move(loss_fwd.state),
   };
 }
 

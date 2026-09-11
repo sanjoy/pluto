@@ -45,27 +45,26 @@ TEST_F(LayerReferenceTest, StableForwardAndBackwardMatchForPaddedVocabularies) {
       auto targets_pair = MakeRawBufferPair<int>(*executor_, targets);
       ASSERT_TRUE(logits_pair.ok()) << logits_pair.status();
       ASSERT_TRUE(targets_pair.ok()) << targets_pair.status();
-      BackwardState device_state;
-      ReferenceBackwardState reference_state;
+
       BufferVec device_inputs = {logits_pair->device, targets_pair->device};
       HostBufferVec reference_inputs = {logits_pair->host, targets_pair->host};
-      auto device_losses =
-          (*device_layer)->fwd(*executor_, device_inputs, device_state);
-      auto reference_losses =
-          (*reference_layer)->fwd(reference_inputs, reference_state);
+      auto device_losses = (*device_layer)->fwd(*executor_, device_inputs);
+
+      auto reference_losses = (*reference_layer)->fwd(reference_inputs);
+
       ASSERT_TRUE(device_losses.ok()) << device_losses.status();
       ASSERT_TRUE(reference_losses.ok()) << reference_losses.status();
-      EXPECT_TRUE(
-          FloatBuffersNear(*device_losses, *reference_losses, 2e-5f, 2e-5f));
+      EXPECT_TRUE(FloatBuffersNear(device_losses->output,
+                                   reference_losses->output, 2e-5f, 2e-5f));
 
       BufferVec no_device_gradient;
       HostBufferVec no_reference_gradient;
-      auto device_logits_gradient =
-          (*device_layer)
-              ->bwd(*executor_, no_device_gradient, std::move(device_state));
+      auto device_logits_gradient = (*device_layer)
+                                        ->bwd(*executor_, no_device_gradient,
+                                              std::move(device_losses->state));
       auto reference_logits_gradient =
           (*reference_layer)
-              ->bwd(no_reference_gradient, std::move(reference_state));
+              ->bwd(no_reference_gradient, std::move(reference_losses->state));
       ASSERT_TRUE(device_logits_gradient.ok())
           << device_logits_gradient.status();
       ASSERT_TRUE(reference_logits_gradient.ok())

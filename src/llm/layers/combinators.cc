@@ -67,15 +67,16 @@ absl::Status ResidualLayer::ValidateSequenceLength(int sequence_length) const {
   return layer_->ValidateSequenceLength(sequence_length);
 }
 
-absl::StatusOr<Buffer> ResidualLayer::fwd_impl(cuda::Executor& executor,
-                                               absl::Span<const Buffer> inputs,
-                                               BackwardState& state) const {
+absl::StatusOr<FwdResult> ResidualLayer::fwd_impl(
+    cuda::Executor& executor, absl::Span<const Buffer> inputs) const {
+  BackwardState state;
   if (inputs.size() != 1) {
-    return absl::InvalidArgumentError(
-        "ResidualLayer fwd expects one input and saved state");
+    return absl::InvalidArgumentError("ResidualLayer fwd expects one input");
   }
-  BackwardState child_state;
-  ASSIGN_OR_RETURN(auto branch, layer_->fwd(executor, inputs, child_state));
+
+  ASSIGN_OR_RETURN(auto branch_fwd, layer_->fwd(executor, inputs));
+  auto branch = std::move(branch_fwd.output);
+
   if (branch.size_bytes() != inputs[0].size_bytes() ||
       &branch.executor() != &executor || &inputs[0].executor() != &executor) {
     return absl::InvalidArgumentError(
@@ -89,7 +90,7 @@ absl::StatusOr<Buffer> ResidualLayer::fwd_impl(cuda::Executor& executor,
                                 "residual input"));
   RETURN_IF_ERROR(ValidateTiledExtent(elements, "residual element count"));
   state.intermediates = {inputs[0]};
-  state.children = {std::move(child_state)};
+  state.children = {std::move(branch_fwd.state)};
   if (output_type() == DataType::BF16) {
     AddKernel<__nv_bfloat16><<<TileCount(elements), 1, 0, executor.stream()>>>(
         static_cast<const __nv_bfloat16*>(inputs[0].data()),
@@ -102,7 +103,7 @@ absl::StatusOr<Buffer> ResidualLayer::fwd_impl(cuda::Executor& executor,
         static_cast<float*>(output.data()));
   }
   RETURN_IF_ERROR(CudaStatus(cudaGetLastError(), "AddKernel(residual) launch"));
-  return std::move(output);
+  return FwdResult{std::move(output), std::move(state)};
 }
 
 absl::StatusOr<BufferVec> ResidualLayer::bwd_impl(
@@ -153,25 +154,24 @@ absl::Status ComposedLayer::ValidateSequenceLength(int sequence_length) const {
   return absl::OkStatus();
 }
 
-absl::StatusOr<Buffer> ComposedLayer::fwd_impl(cuda::Executor& executor,
-                                               absl::Span<const Buffer> inputs,
-                                               BackwardState& state) const {
+absl::StatusOr<FwdResult> ComposedLayer::fwd_impl(
+    cuda::Executor& executor, absl::Span<const Buffer> inputs) const {
+  BackwardState state;
   if (inputs.size() != 1) {
-    return absl::InvalidArgumentError(
-        "ComposedLayer fwd expects one input and saved state");
+    return absl::InvalidArgumentError("ComposedLayer fwd expects one input");
   }
   state.intermediates.clear();
   state.children.clear();
   Buffer activation = inputs.front();
   for (const auto& layer : layers_) {
-    BackwardState child_state;
     BufferVec child_inputs = {activation};
-    ASSIGN_OR_RETURN(auto output,
-                     layer->fwd(executor, child_inputs, child_state));
+    ASSIGN_OR_RETURN(auto output_fwd, layer->fwd(executor, child_inputs));
+    auto output = std::move(output_fwd.output);
+
     activation = std::move(output);
-    state.children.push_back(std::move(child_state));
+    state.children.push_back(std::move(output_fwd.state));
   }
-  return activation;
+  return FwdResult{std::move(activation), std::move(state)};
 }
 
 absl::StatusOr<BufferVec> ComposedLayer::bwd_impl(

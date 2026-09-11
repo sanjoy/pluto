@@ -83,10 +83,10 @@ class HeadContextGpuTest : public ::testing::Test {
     ASSERT_TRUE(input.ok()) << input.status();
     input_ = std::move(*input);
     ASSERT_TRUE(Upload(*executor_, *input_, tokens_).ok());
-    auto clean =
-        model_->fwd(*executor_, absl::MakeConstSpan(&*input_, 1), state_);
+    auto clean = model_->fwd(*executor_, absl::MakeConstSpan(&*input_, 1));
+    if (clean.ok()) state_ = std::move(clean->state);
     ASSERT_TRUE(clean.ok()) << clean.status();
-    clean_ = std::move(*clean);
+    clean_ = std::move(clean->output);
     auto clean_values = Download<float>(*executor_, *clean_);
     ASSERT_TRUE(clean_values.ok()) << clean_values.status();
     clean_values_ = std::move(*clean_values);
@@ -178,14 +178,14 @@ class HeadContextGpuTest : public ::testing::Test {
     std::fill(patched->begin() + first,
               patched->begin() + first + kHeadWidth * kWidth, 0.0f);
     const auto written = Upload(*executor_, matrix, *patched);
-    llm::BackwardState edited_state;
-    auto edited =
-        model_->fwd(*executor_, absl::MakeConstSpan(&*input_, 1), edited_state);
+
+    auto edited = model_->fwd(*executor_, absl::MakeConstSpan(&*input_, 1));
+
     const auto restored = Upload(*executor_, matrix, *backup);
     ASSERT_TRUE(written.ok()) << written;
     ASSERT_TRUE(restored.ok()) << restored;
     ASSERT_TRUE(edited.ok()) << edited.status();
-    auto actual = Download<float>(*executor_, *edited);
+    auto actual = Download<float>(*executor_, edited->output);
     ASSERT_TRUE(actual.ok()) << actual.status();
     ASSERT_EQ(actual->size_bytes(), expected->size_bytes());
     EXPECT_EQ(

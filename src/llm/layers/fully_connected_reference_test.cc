@@ -58,28 +58,27 @@ TEST_F(LayerReferenceTest, ForwardAndBackwardMatchAcrossShapesAndTypes) {
       ASSERT_TRUE(input_pair.ok()) << input_pair.status();
       ASSERT_TRUE(gradient_pair.ok()) << gradient_pair.status();
 
-      BackwardState device_state;
-      ReferenceBackwardState reference_state;
       BufferVec device_inputs = {input_pair->device};
       HostBufferVec reference_inputs = {input_pair->host};
-      auto device_output =
-          (*device_layer)->fwd(*executor_, device_inputs, device_state);
-      auto reference_output =
-          (*reference_layer)->fwd(reference_inputs, reference_state);
+      auto device_output = (*device_layer)->fwd(*executor_, device_inputs);
+
+      auto reference_output = (*reference_layer)->fwd(reference_inputs);
+
       ASSERT_TRUE(device_output.ok()) << device_output.status();
       ASSERT_TRUE(reference_output.ok()) << reference_output.status();
-      EXPECT_TRUE(ActivationBuffersNear(*device_output, *reference_output, type,
-                                        3e-3f, 3e-3f));
+      EXPECT_TRUE(ActivationBuffersNear(
+          device_output->output, reference_output->output, type, 3e-3f, 3e-3f));
 
       BufferVec device_output_gradients = {gradient_pair->device};
       HostBufferVec reference_output_gradients = {gradient_pair->host};
       auto device_input_gradients =
           (*device_layer)
               ->bwd(*executor_, device_output_gradients,
-                    std::move(device_state));
+                    std::move(device_output->state));
       auto reference_input_gradients =
           (*reference_layer)
-              ->bwd(reference_output_gradients, std::move(reference_state));
+              ->bwd(reference_output_gradients,
+                    std::move(reference_output->state));
       ASSERT_TRUE(device_input_gradients.ok())
           << device_input_gradients.status();
       ASSERT_TRUE(reference_input_gradients.ok())

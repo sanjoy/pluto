@@ -106,9 +106,10 @@ absl::Status Upload(cuda::Executor& executor,
 absl::StatusOr<cuda::PageLockedHostArray<uint8_t>> ForwardPrefix(
     cuda::Executor& executor, const llm::Layer& model,
     const cuda::Buffer& input, int rows) {
-  llm::BackwardState state;
-  ASSIGN_OR_RETURN(auto logits,
-                   model.fwd(executor, absl::MakeConstSpan(&input, 1), state));
+  ASSIGN_OR_RETURN(auto logits_fwd,
+                   model.fwd(executor, absl::MakeConstSpan(&input, 1)));
+  auto logits = std::move(logits_fwd.output);
+
   ASSIGN_OR_RETURN(auto host,
                    ReadPrefix(executor, logits, rows, kPaddedVocabulary, 4));
   RETURN_IF_ERROR(CheckFinite(host, true));
@@ -196,18 +197,20 @@ absl::Status Run() {
     return absl::FailedPreconditionError("changed tied-embedding traversal");
   }
   RETURN_IF_ERROR(llm::ReadFromDirectory(*executor, *model, checkpoint));
-  llm::BackwardState original_state;
-  ASSIGN_OR_RETURN(
-      auto original_logits,
-      model->fwd(*executor, absl::MakeConstSpan(&input, 1), original_state));
+
+  ASSIGN_OR_RETURN(auto original_logits_fwd,
+                   model->fwd(*executor, absl::MakeConstSpan(&input, 1)));
+  auto original_logits = std::move(original_logits_fwd.output);
+
   ASSIGN_OR_RETURN(auto baseline, ReadPrefix(*executor, original_logits, rows,
                                              kPaddedVocabulary, 4));
   RETURN_IF_ERROR(CheckFinite(baseline, true));
   std::cout << "Original native forward complete: " << rows << " prompt tokens"
             << std::endl;
 
-  ASSIGN_OR_RETURN(auto frames, CollectGpt2Trace(*executor, original_state,
-                                                 original_logits, weights));
+  ASSIGN_OR_RETURN(auto frames,
+                   CollectGpt2Trace(*executor, original_logits_fwd.state,
+                                    original_logits, weights));
   ASSIGN_OR_RETURN(auto lens, NativeLogitLens::Create(*executor, weights));
   ASSIGN_OR_RETURN(auto embedding, lens->Embed(*executor, input));
   frames.insert(frames.begin(),

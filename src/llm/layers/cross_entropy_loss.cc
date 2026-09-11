@@ -123,9 +123,9 @@ CrossEntropyLossLayer::Create(cuda::Executor& executor, int vocabulary_size,
       data_type));
 }
 
-absl::StatusOr<Buffer> CrossEntropyLossLayer::fwd_impl(
-    cuda::Executor& executor, absl::Span<const Buffer> inputs,
-    BackwardState& state) const {
+absl::StatusOr<FwdResult> CrossEntropyLossLayer::fwd_impl(
+    cuda::Executor& executor, absl::Span<const Buffer> inputs) const {
+  BackwardState state;
   RETURN_IF_ERROR(
       internal::ValidateExecutor(executor_, executor, "CrossEntropyLossLayer"));
   if (inputs.size() != 2) {
@@ -149,7 +149,7 @@ absl::StatusOr<Buffer> CrossEntropyLossLayer::fwd_impl(
       static_cast<float*>(losses.data()));
   RETURN_IF_ERROR(
       CudaStatus(cudaGetLastError(), "CrossEntropyForwardKernel launch"));
-  return std::move(losses);
+  return FwdResult{std::move(losses), std::move(state)};
 }
 
 absl::StatusOr<BufferVec> CrossEntropyLossLayer::bwd_impl(

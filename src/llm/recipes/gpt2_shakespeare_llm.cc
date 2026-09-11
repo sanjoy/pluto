@@ -281,9 +281,11 @@ absl::StatusOr<cuda::PageLockedHostArray<float>> Predict(
                       token_buffer.size_bytes(), cudaMemcpyHostToDevice,
                       executor.stream()),
       "cudaMemcpyAsync(prompt context)"));
-  BackwardState state;
+
   BufferVec inputs = {token_buffer};
-  ASSIGN_OR_RETURN(auto logits, model.fwd(executor, inputs, state));
+  ASSIGN_OR_RETURN(auto logits_fwd, model.fwd(executor, inputs));
+  auto logits = std::move(logits_fwd.output);
+
   ASSIGN_OR_RETURN(auto host_logits, cuda::PageLockedHostArray<float>::Allocate(
                                          executor, kGpt2VocabularySize));
   const size_t output_row = context_size - 1;
@@ -789,18 +791,20 @@ absl::Status PrintSparseAutoEncoderStatistics(
       cudaMemcpyAsync(token_buffer.data(), context.data(), context.size_bytes(),
                       cudaMemcpyHostToDevice, executor.stream()),
       "copy SAE prompt context"));
-  BackwardState generator_state;
-  ASSIGN_OR_RETURN(auto activations,
-                   activation_generator.fwd(executor, BufferVec{token_buffer},
-                                            generator_state));
+
+  ASSIGN_OR_RETURN(auto activations_fwd,
+                   activation_generator.fwd(executor, BufferVec{token_buffer}));
+  auto activations = std::move(activations_fwd.output);
+
   // Inference never runs backward through the frozen GPT-2 prefix.
-  generator_state = {};
-  BackwardState sae_state;
-  ASSIGN_OR_RETURN(
-      auto reconstruction,
-      autoencoder.fwd(executor, BufferVec{activations}, sae_state));
-  ASSIGN_OR_RETURN(auto stats,
-                   autoencoder.ReadZStatistics(executor, sae_state, rows));
+  activations_fwd.state = {};
+
+  ASSIGN_OR_RETURN(auto reconstruction_fwd,
+                   autoencoder.fwd(executor, BufferVec{activations}));
+  auto reconstruction = std::move(reconstruction_fwd.output);
+
+  ASSIGN_OR_RETURN(auto stats, autoencoder.ReadZStatistics(
+                                   executor, reconstruction_fwd.state, rows));
   std::cout << "Z statistics (prompt tokens only):\n"
             << "  tokens: " << stats.rows << ", features: " << stats.feature_dim
             << '\n'

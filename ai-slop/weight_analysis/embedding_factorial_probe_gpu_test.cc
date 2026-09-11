@@ -57,10 +57,10 @@ TEST(EmbeddingFactorialGpuTest, NativeDiagonalsAndCausalInputExposure) {
                             cudaMemcpyHostToDevice, (*executor)->stream()),
             cudaSuccess);
   llm::BackwardState state_a, state_j;
-  auto native_a =
-      (*a)->fwd(**executor, absl::MakeConstSpan(&*input, 1), state_a);
-  auto native_j =
-      (*j)->fwd(**executor, absl::MakeConstSpan(&*input, 1), state_j);
+  auto native_a = (*a)->fwd(**executor, absl::MakeConstSpan(&*input, 1));
+  if (native_a.ok()) state_a = std::move(native_a->state);
+  auto native_j = (*j)->fwd(**executor, absl::MakeConstSpan(&*input, 1));
+  if (native_j.ok()) state_j = std::move(native_j->state);
   ASSERT_TRUE(native_a.ok());
   ASSERT_TRUE(native_j.ok());
   ASSERT_TRUE(ValidateGpt2State(state_a).ok());
@@ -68,7 +68,7 @@ TEST(EmbeddingFactorialGpuTest, NativeDiagonalsAndCausalInputExposure) {
   const std::array<cuda::Buffer, 2> residuals{
       state_a.children[10].intermediates[0],
       state_j.children[10].intermediates[0]};
-  const std::array<cuda::Buffer, 2> native{*native_a, *native_j};
+  const std::array<cuda::Buffer, 2> native{native_a->output, native_j->output};
   const std::array<const NativeLogitLens*, 2> lenses{lens_a->get(),
                                                      lens_j->get()};
   const std::array<int32_t, 4> rows{0, 5, 10, 11};
@@ -113,7 +113,7 @@ TEST(EmbeddingFactorialGpuTest, NativeDiagonalsAndCausalInputExposure) {
   // Identity control: every cell must reduce to the same native model.
   auto identity = EvaluateEmbeddingFactorial(
       **executor, {lens_a->get(), lens_a->get()}, {residuals[0], residuals[0]},
-      {*native_a, *native_a}, {0, 10, 11}, {5, 6, 9});
+      {native_a->output, native_a->output}, {0, 10, 11}, {5, 6, 9});
   ASSERT_TRUE(identity.ok()) << identity.status();
   for (int cell = 1; cell < 4; ++cell) {
     EXPECT_EQ(
@@ -124,7 +124,8 @@ TEST(EmbeddingFactorialGpuTest, NativeDiagonalsAndCausalInputExposure) {
   // Wrong diagonal evidence must fail closed, not silently certify a mixed
   // cell as the recipient. At row 10 the changed input is already visible.
   EXPECT_FALSE(EvaluateEmbeddingFactorial(**executor, lenses, residuals,
-                                          {*native_a, *native_a}, {10}, {5})
+                                          {native_a->output, native_a->output},
+                                          {10}, {5})
                    .ok());
   EXPECT_FALSE(EvaluateEmbeddingFactorial(**executor, {nullptr, lens_j->get()},
                                           residuals, native, rows, targets)
@@ -154,9 +155,11 @@ TEST(EmbeddingFactorialGpuTest, NativeDiagonalsAndCausalInputExposure) {
             cudaSuccess);
   llm::BackwardState two_state_a, two_state_j;
   auto two_native_a =
-      (*a)->fwd(**executor, absl::MakeConstSpan(&*two_input, 1), two_state_a);
+      (*a)->fwd(**executor, absl::MakeConstSpan(&*two_input, 1));
+  if (two_native_a.ok()) two_state_a = std::move(two_native_a->state);
   auto two_native_j =
-      (*j)->fwd(**executor, absl::MakeConstSpan(&*two_input, 1), two_state_j);
+      (*j)->fwd(**executor, absl::MakeConstSpan(&*two_input, 1));
+  if (two_native_j.ok()) two_state_j = std::move(two_native_j->state);
   ASSERT_TRUE(two_native_a.ok()) << two_native_a.status();
   ASSERT_TRUE(two_native_j.ok()) << two_native_j.status();
   ASSERT_TRUE(ValidateGpt2State(two_state_a).ok());
@@ -173,7 +176,7 @@ TEST(EmbeddingFactorialGpuTest, NativeDiagonalsAndCausalInputExposure) {
       **executor, lenses,
       {two_state_a.children[10].intermediates[0],
        two_state_j.children[10].intermediates[0]},
-      {*two_native_a, *two_native_j}, two_rows, two_targets);
+      {two_native_a->output, two_native_j->output}, two_rows, two_targets);
   ASSERT_TRUE(two_result.ok()) << two_result.status();
   for (int cell = 0; cell < 4; ++cell) {
     ASSERT_EQ(two_result->logits[cell].size(), two_rows.size() * vocabulary);

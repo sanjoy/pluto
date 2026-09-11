@@ -26,8 +26,9 @@ CrossEntropyLossLayerReference::Create(int vocabulary_size,
       vocabulary_size, ri::RoundUpToTile(vocabulary_size), data_type));
 }
 
-absl::StatusOr<HostBuffer> CrossEntropyLossLayerReference::fwd_impl(
-    absl::Span<const HostBuffer> inputs, ReferenceBackwardState& state) const {
+absl::StatusOr<ReferenceFwdResult> CrossEntropyLossLayerReference::fwd_impl(
+    absl::Span<const HostBuffer> inputs) const {
+  ReferenceBackwardState state;
   if (inputs.size() != 2) {
     return absl::InvalidArgumentError(
         "CrossEntropyLossLayerReference expects logits, targets, and saved "
@@ -61,7 +62,7 @@ absl::StatusOr<HostBuffer> CrossEntropyLossLayerReference::fwd_impl(
   }
   state.intermediates = {inputs[0], inputs[1]};
   state.children.clear();
-  return losses;
+  return ReferenceFwdResult{std::move(losses), std::move(state)};
 }
 
 absl::StatusOr<HostBufferVec> CrossEntropyLossLayerReference::bwd_impl(

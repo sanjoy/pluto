@@ -37,22 +37,23 @@ TEST_F(LayersTest, ZeroHasZeroOutputAndHalfGradient) {
                       executor_->stream()),
       cudaSuccess);
 
-  BackwardState state;
   BufferVec inputs = {*input_buffer};
-  auto output = (*gelu)->fwd(*executor_, inputs, state);
+  auto output = (*gelu)->fwd(*executor_, inputs);
+
   ASSERT_TRUE(output.ok()) << output.status();
   BufferVec gradients = {*gradient_buffer};
-  auto input_gradient = (*gelu)->bwd(*executor_, gradients, std::move(state));
+  auto input_gradient =
+      (*gelu)->bwd(*executor_, gradients, std::move(output->state));
   ASSERT_TRUE(input_gradient.ok()) << input_gradient.status();
 
   auto host_output =
       AllocatePageLockedHostArray<float>(*executor_, kTestTokenCount);
   auto host_gradient =
       AllocatePageLockedHostArray<float>(*executor_, kTestTokenCount);
-  ASSERT_EQ(
-      cudaMemcpyAsync(host_output.data(), output->data(), output->size_bytes(),
-                      cudaMemcpyDeviceToHost, executor_->stream()),
-      cudaSuccess);
+  ASSERT_EQ(cudaMemcpyAsync(host_output.data(), output->output.data(),
+                            output->output.size_bytes(), cudaMemcpyDeviceToHost,
+                            executor_->stream()),
+            cudaSuccess);
   ASSERT_EQ(
       cudaMemcpyAsync(host_gradient.data(), input_gradient->front().data(),
                       input_gradient->front().size_bytes(),
@@ -74,9 +75,9 @@ TEST_F(LayersTest, RejectsExecutionOnADifferentExecutor) {
   auto other_executor = cuda::Executor::Create();
   ASSERT_TRUE(other_executor.ok()) << other_executor.status();
 
-  BackwardState state;
   BufferVec inputs = {*input};
-  const auto output = (*gelu)->fwd(**other_executor, inputs, state);
+  const auto output = (*gelu)->fwd(**other_executor, inputs);
+
   EXPECT_FALSE(output.ok());
   EXPECT_EQ(output.status().code(), absl::StatusCode::kInvalidArgument);
 }

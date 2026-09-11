@@ -48,28 +48,26 @@ TEST_F(LayerReferenceTest, LookupAndTiedHeadMatchAcrossShapesAndTypes) {
           MakeRawBufferPair<float>(*executor_, lookup_gradient);
       ASSERT_TRUE(tokens_pair.ok()) << tokens_pair.status();
       ASSERT_TRUE(lookup_gradient_pair.ok()) << lookup_gradient_pair.status();
-      BackwardState device_lookup_state;
-      ReferenceBackwardState reference_lookup_state;
+
       BufferVec device_tokens = {tokens_pair->device};
       HostBufferVec reference_tokens = {tokens_pair->host};
-      auto device_lookup =
-          (*device_embedding)
-              ->fwd(*executor_, device_tokens, device_lookup_state);
-      auto reference_lookup =
-          (*reference_embedding)->fwd(reference_tokens, reference_lookup_state);
+      auto device_lookup = (*device_embedding)->fwd(*executor_, device_tokens);
+
+      auto reference_lookup = (*reference_embedding)->fwd(reference_tokens);
+
       ASSERT_TRUE(device_lookup.ok()) << device_lookup.status();
       ASSERT_TRUE(reference_lookup.ok()) << reference_lookup.status();
-      EXPECT_TRUE(
-          ActivationBuffersNear(*device_lookup, *reference_lookup, type, 0.0f));
+      EXPECT_TRUE(ActivationBuffersNear(device_lookup->output,
+                                        reference_lookup->output, type, 0.0f));
       BufferVec device_lookup_gradients = {lookup_gradient_pair->device};
       HostBufferVec reference_lookup_gradients = {lookup_gradient_pair->host};
       auto device_lookup_input = (*device_embedding)
                                      ->bwd(*executor_, device_lookup_gradients,
-                                           std::move(device_lookup_state));
+                                           std::move(device_lookup->state));
       auto reference_lookup_input =
           (*reference_embedding)
               ->bwd(reference_lookup_gradients,
-                    std::move(reference_lookup_state));
+                    std::move(reference_lookup->state));
       ASSERT_TRUE(device_lookup_input.ok()) << device_lookup_input.status();
       ASSERT_TRUE(reference_lookup_input.ok())
           << reference_lookup_input.status();
@@ -104,28 +102,27 @@ TEST_F(LayerReferenceTest, LookupAndTiedHeadMatchAcrossShapesAndTypes) {
           MakeRawBufferPair<float>(*executor_, logits_gradient);
       ASSERT_TRUE(hidden_pair.ok()) << hidden_pair.status();
       ASSERT_TRUE(logits_gradient_pair.ok()) << logits_gradient_pair.status();
-      BackwardState device_head_state;
-      ReferenceBackwardState reference_head_state;
+
       BufferVec device_hidden = {hidden_pair->device};
       HostBufferVec reference_hidden = {hidden_pair->host};
-      auto device_logits =
-          (*device_head)->fwd(*executor_, device_hidden, device_head_state);
-      auto reference_logits =
-          (*reference_head)->fwd(reference_hidden, reference_head_state);
+      auto device_logits = (*device_head)->fwd(*executor_, device_hidden);
+
+      auto reference_logits = (*reference_head)->fwd(reference_hidden);
+
       ASSERT_TRUE(device_logits.ok()) << device_logits.status();
       ASSERT_TRUE(reference_logits.ok()) << reference_logits.status();
-      EXPECT_TRUE(
-          FloatBuffersNear(*device_logits, *reference_logits, 4e-3f, 3e-3f));
+      EXPECT_TRUE(FloatBuffersNear(device_logits->output,
+                                   reference_logits->output, 4e-3f, 3e-3f));
       BufferVec device_logits_gradients = {logits_gradient_pair->device};
       HostBufferVec reference_logits_gradients = {logits_gradient_pair->host};
       auto device_hidden_gradient =
           (*device_head)
               ->bwd(*executor_, device_logits_gradients,
-                    std::move(device_head_state));
+                    std::move(device_logits->state));
       auto reference_hidden_gradient =
           (*reference_head)
               ->bwd(reference_logits_gradients,
-                    std::move(reference_head_state));
+                    std::move(reference_logits->state));
       ASSERT_TRUE(device_hidden_gradient.ok())
           << device_hidden_gradient.status();
       ASSERT_TRUE(reference_hidden_gradient.ok())
@@ -167,24 +164,24 @@ TEST_F(LayerReferenceTest, PositionEmbeddingForwardAndBackwardMatch) {
       auto gradient_pair = MakeRawBufferPair<float>(*executor_, gradient);
       ASSERT_TRUE(input_pair.ok()) << input_pair.status();
       ASSERT_TRUE(gradient_pair.ok()) << gradient_pair.status();
-      BackwardState device_state;
-      ReferenceBackwardState reference_state;
+
       BufferVec device_inputs = {input_pair->device};
       HostBufferVec reference_inputs = {input_pair->host};
-      auto device_output =
-          (*device)->fwd(*executor_, device_inputs, device_state);
-      auto reference_output =
-          (*reference)->fwd(reference_inputs, reference_state);
+      auto device_output = (*device)->fwd(*executor_, device_inputs);
+
+      auto reference_output = (*reference)->fwd(reference_inputs);
+
       ASSERT_TRUE(device_output.ok()) << device_output.status();
       ASSERT_TRUE(reference_output.ok()) << reference_output.status();
-      EXPECT_TRUE(
-          ActivationBuffersNear(*device_output, *reference_output, type, 0.0f));
+      EXPECT_TRUE(ActivationBuffersNear(device_output->output,
+                                        reference_output->output, type, 0.0f));
       BufferVec device_gradients = {gradient_pair->device};
       HostBufferVec reference_gradients = {gradient_pair->host};
-      auto device_input =
-          (*device)->bwd(*executor_, device_gradients, std::move(device_state));
+      auto device_input = (*device)->bwd(*executor_, device_gradients,
+                                         std::move(device_output->state));
       auto reference_input =
-          (*reference)->bwd(reference_gradients, std::move(reference_state));
+          (*reference)
+              ->bwd(reference_gradients, std::move(reference_output->state));
       ASSERT_TRUE(device_input.ok()) << device_input.status();
       ASSERT_TRUE(reference_input.ok()) << reference_input.status();
       EXPECT_TRUE(FloatBuffersNear(device_input->front(),

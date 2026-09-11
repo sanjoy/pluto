@@ -68,11 +68,12 @@ absl::Status EmbeddingLookupLayerReference::InitializeNormal(
   return InitializeBufferNormal(&weight_, standard_deviation, seed);
 }
 
-absl::StatusOr<HostBuffer> EmbeddingLookupLayerReference::fwd_impl(
-    absl::Span<const HostBuffer> inputs, ReferenceBackwardState& state) const {
+absl::StatusOr<ReferenceFwdResult> EmbeddingLookupLayerReference::fwd_impl(
+    absl::Span<const HostBuffer> inputs) const {
+  ReferenceBackwardState state;
   if (inputs.size() != 1) {
     return absl::InvalidArgumentError(
-        "EmbeddingLookupLayerReference fwd expects token IDs and saved state");
+        "EmbeddingLookupLayerReference fwd expects token IDs");
   }
   ASSIGN_OR_RETURN(int rows,
                    ri::ElementCount(inputs[0], sizeof(int), "embedding tokens"));
@@ -95,7 +96,7 @@ absl::StatusOr<HostBuffer> EmbeddingLookupLayerReference::fwd_impl(
   }
   state.intermediates = {inputs[0]};
   state.children.clear();
-  return output;
+  return ReferenceFwdResult{std::move(output), std::move(state)};
 }
 
 absl::StatusOr<HostBufferVec> EmbeddingLookupLayerReference::bwd_impl(
@@ -136,8 +137,9 @@ LanguageModelingHeadLayerReference::Create(
   return absl::WrapUnique(new LanguageModelingHeadLayerReference(embedding));
 }
 
-absl::StatusOr<HostBuffer> LanguageModelingHeadLayerReference::fwd_impl(
-    absl::Span<const HostBuffer> inputs, ReferenceBackwardState& state) const {
+absl::StatusOr<ReferenceFwdResult> LanguageModelingHeadLayerReference::fwd_impl(
+    absl::Span<const HostBuffer> inputs) const {
+  ReferenceBackwardState state;
   if (inputs.size() != 1) {
     return absl::InvalidArgumentError(
         "LanguageModelingHeadLayerReference fwd expects one input and saved "
@@ -180,7 +182,7 @@ absl::StatusOr<HostBuffer> LanguageModelingHeadLayerReference::fwd_impl(
   }
   state.intermediates = {inputs[0]};
   state.children.clear();
-  return logits;
+  return ReferenceFwdResult{std::move(logits), std::move(state)};
 }
 
 absl::StatusOr<HostBufferVec> LanguageModelingHeadLayerReference::bwd_impl(
@@ -270,8 +272,9 @@ absl::Status PositionEmbeddingLayerReference::InitializeNormal(
   return InitializeBufferNormal(&weight_, standard_deviation, seed);
 }
 
-absl::StatusOr<HostBuffer> PositionEmbeddingLayerReference::fwd_impl(
-    absl::Span<const HostBuffer> inputs, ReferenceBackwardState& state) const {
+absl::StatusOr<ReferenceFwdResult> PositionEmbeddingLayerReference::fwd_impl(
+    absl::Span<const HostBuffer> inputs) const {
+  ReferenceBackwardState state;
   if (inputs.size() != 1) {
     return absl::InvalidArgumentError(
         "PositionEmbeddingLayerReference fwd expects one input and saved "
@@ -298,7 +301,7 @@ absl::StatusOr<HostBuffer> PositionEmbeddingLayerReference::fwd_impl(
   }
   state.intermediates.clear();
   state.children.clear();
-  return output;
+  return ReferenceFwdResult{std::move(output), std::move(state)};
 }
 
 absl::StatusOr<HostBufferVec> PositionEmbeddingLayerReference::bwd_impl(

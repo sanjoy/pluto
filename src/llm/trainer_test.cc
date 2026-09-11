@@ -41,11 +41,12 @@ class FakeModel final : public Layer {
   int backward_calls = 0;
 
  private:
-  absl::StatusOr<Buffer> fwd_impl(cuda::Executor& executor,
-                                  absl::Span<const Buffer> inputs,
-                                  BackwardState& state) const override {
+  absl::StatusOr<FwdResult> fwd_impl(
+      cuda::Executor& executor,
+      absl::Span<const Buffer> inputs) const override {
+    BackwardState state;
     ++forward_calls;
-    return inputs[0];
+    return FwdResult{std::move(inputs[0]), std::move(state)};
   }
 
   absl::StatusOr<BufferVec> bwd_impl(cuda::Executor& executor,
@@ -87,11 +88,12 @@ class FakeLoss final : public Layer {
   int backward_calls = 0;
 
  private:
-  absl::StatusOr<Buffer> fwd_impl(cuda::Executor& executor,
-                                  absl::Span<const Buffer> inputs,
-                                  BackwardState& state) const override {
+  absl::StatusOr<FwdResult> fwd_impl(
+      cuda::Executor& executor,
+      absl::Span<const Buffer> inputs) const override {
+    BackwardState state;
     ++forward_calls;
-    return losses_;
+    return FwdResult{std::move(losses_), std::move(state)};
   }
 
   absl::StatusOr<BufferVec> bwd_impl(cuda::Executor& executor,

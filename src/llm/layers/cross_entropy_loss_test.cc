@@ -42,11 +42,12 @@ TEST_F(LayersTest, CrossEntropyForwardAndBackwardMatchUniformSoftmax) {
   auto loss_layer = CrossEntropyLossLayer::Create(
       *executor_, kTestVocabularySize, DataType::FP16);
   ASSERT_TRUE(loss_layer.ok()) << loss_layer.status();
-  BackwardState state;
+
   BufferVec loss_inputs = {*logits_buffer, *target_buffer};
-  auto losses = (*loss_layer)->fwd(*executor_, loss_inputs, state);
+  auto losses = (*loss_layer)->fwd(*executor_, loss_inputs);
+
   ASSERT_TRUE(losses.ok()) << losses.status();
-  auto gradients = (*loss_layer)->bwd(*executor_, {}, std::move(state));
+  auto gradients = (*loss_layer)->bwd(*executor_, {}, std::move(losses->state));
   ASSERT_TRUE(gradients.ok()) << gradients.status();
   ASSERT_EQ(gradients->size(), 1u);
 
@@ -54,10 +55,10 @@ TEST_F(LayersTest, CrossEntropyForwardAndBackwardMatchUniformSoftmax) {
       AllocatePageLockedHostArray<float>(*executor_, kTestTokenCount);
   auto host_gradients =
       AllocatePageLockedHostArray<float>(*executor_, logits.size());
-  ASSERT_EQ(
-      cudaMemcpyAsync(host_losses.data(), losses->data(), losses->size_bytes(),
-                      cudaMemcpyDeviceToHost, executor_->stream()),
-      cudaSuccess);
+  ASSERT_EQ(cudaMemcpyAsync(host_losses.data(), losses->output.data(),
+                            losses->output.size_bytes(), cudaMemcpyDeviceToHost,
+                            executor_->stream()),
+            cudaSuccess);
   ASSERT_EQ(cudaMemcpyAsync(host_gradients.data(), gradients->front().data(),
                             gradients->front().size_bytes(),
                             cudaMemcpyDeviceToHost, executor_->stream()),
@@ -103,16 +104,17 @@ TEST_F(LayersTest, IgnoresPaddedVocabularyColumns) {
       *executor_, kLogicalVocabularySize, DataType::BF16);
   ASSERT_TRUE(loss_layer.ok()) << loss_layer.status();
   EXPECT_EQ((*loss_layer)->padded_vocab_size(), kPaddedVocabularySize);
-  BackwardState state;
+
   BufferVec inputs = {*logits_buffer, *target_buffer};
-  auto losses = (*loss_layer)->fwd(*executor_, inputs, state);
+  auto losses = (*loss_layer)->fwd(*executor_, inputs);
+
   ASSERT_TRUE(losses.ok()) << losses.status();
   auto host_losses =
       AllocatePageLockedHostArray<float>(*executor_, kTestTokenCount);
-  ASSERT_EQ(
-      cudaMemcpyAsync(host_losses.data(), losses->data(), losses->size_bytes(),
-                      cudaMemcpyDeviceToHost, executor_->stream()),
-      cudaSuccess);
+  ASSERT_EQ(cudaMemcpyAsync(host_losses.data(), losses->output.data(),
+                            losses->output.size_bytes(), cudaMemcpyDeviceToHost,
+                            executor_->stream()),
+            cudaSuccess);
   ASSERT_TRUE(executor_->Synchronize().ok());
   EXPECT_NEAR(host_losses[0], std::log(17.0f), 1e-5f);
 }

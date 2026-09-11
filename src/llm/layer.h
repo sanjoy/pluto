@@ -40,6 +40,14 @@ struct BackwardState {
   std::vector<BackwardState> children;
 };
 
+// A forward pass returns its output together with the saved state needed for
+// backward. Buffers are shared handles; moving this result transfers the state
+// without copying device memory. The producing layer must outlive the state.
+struct FwdResult {
+  Buffer output;
+  BackwardState state;
+};
+
 // A differentiable GPU layer.
 class Layer {
  public:
@@ -56,15 +64,13 @@ class Layer {
     return absl::OkStatus();
   }
 
-  // Every call starts a fresh state. Only a successful forward pass associates
-  // it with this layer, so a failed retry cannot leave an old state usable.
-  absl::StatusOr<Buffer> fwd(cuda::Executor& executor,
-                             absl::Span<const Buffer> inputs,
-                             BackwardState& state) const {
-    state = BackwardState{};
-    auto output = fwd_impl(executor, inputs, state);
-    state.layer = output.ok() ? this : nullptr;
-    return output;
+  // State is published only with a successful output. Failed calls cannot
+  // overwrite state retained from an earlier forward pass.
+  absl::StatusOr<FwdResult> fwd(cuda::Executor& executor,
+                                absl::Span<const Buffer> inputs) const {
+    auto result = fwd_impl(executor, inputs);
+    if (result.ok()) result->state.layer = this;
+    return result;
   }
 
   // Check instance identity before dispatching any backward work. Matching
@@ -93,9 +99,8 @@ class Layer {
 
  private:
   // Implementations cannot bypass the public entry points' state checks.
-  virtual absl::StatusOr<Buffer> fwd_impl(cuda::Executor& executor,
-                                          absl::Span<const Buffer> inputs,
-                                          BackwardState& state) const = 0;
+  virtual absl::StatusOr<FwdResult> fwd_impl(
+      cuda::Executor& executor, absl::Span<const Buffer> inputs) const = 0;
   virtual absl::StatusOr<BufferVec> bwd_impl(
       cuda::Executor& executor, absl::Span<const Buffer> output_gradients,
       BackwardState state) = 0;
@@ -113,6 +118,12 @@ struct ReferenceBackwardState {
   std::vector<ReferenceBackwardState> children;
 };
 
+// Host counterpart to FwdResult, with the same output/state ownership contract.
+struct ReferenceFwdResult {
+  HostBuffer output;
+  ReferenceBackwardState state;
+};
+
 // CPU counterpart to Layer. Reference layers favor direct scalar loops over
 // performance; their job is to state the math plainly enough to serve as an
 // executable specification for the cuTile kernels.
@@ -120,14 +131,12 @@ class LayerReference {
  public:
   virtual ~LayerReference() = default;
 
-  // Match the GPU contract: only a successful forward call makes saved state
-  // usable for backward, and a retry replaces any previously saved state.
-  absl::StatusOr<HostBuffer> fwd(absl::Span<const HostBuffer> inputs,
-                                 ReferenceBackwardState& state) const {
-    state = ReferenceBackwardState{};
-    auto output = fwd_impl(inputs, state);
-    state.layer = output.ok() ? this : nullptr;
-    return output;
+  // Match the GPU contract: failed forward calls return no partial state.
+  absl::StatusOr<ReferenceFwdResult> fwd(
+      absl::Span<const HostBuffer> inputs) const {
+    auto result = fwd_impl(inputs);
+    if (result.ok()) result->state.layer = this;
+    return result;
   }
   absl::StatusOr<HostBufferVec> bwd(
       absl::Span<const HostBuffer> output_gradients,
@@ -142,9 +151,8 @@ class LayerReference {
   virtual DataType output_type() const = 0;
 
  private:
-  virtual absl::StatusOr<HostBuffer> fwd_impl(
-      absl::Span<const HostBuffer> inputs,
-      ReferenceBackwardState& state) const = 0;
+  virtual absl::StatusOr<ReferenceFwdResult> fwd_impl(
+      absl::Span<const HostBuffer> inputs) const = 0;
   virtual absl::StatusOr<HostBufferVec> bwd_impl(
       absl::Span<const HostBuffer> output_gradients,
       ReferenceBackwardState state) = 0;

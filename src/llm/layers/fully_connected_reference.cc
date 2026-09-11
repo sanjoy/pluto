@@ -63,11 +63,12 @@ absl::Status FullyConnectedLayerReference::InitializeNormal(
   return absl::OkStatus();
 }
 
-absl::StatusOr<HostBuffer> FullyConnectedLayerReference::fwd_impl(
-    absl::Span<const HostBuffer> inputs, ReferenceBackwardState& state) const {
+absl::StatusOr<ReferenceFwdResult> FullyConnectedLayerReference::fwd_impl(
+    absl::Span<const HostBuffer> inputs) const {
+  ReferenceBackwardState state;
   if (inputs.size() != 1) {
     return absl::InvalidArgumentError(
-        "FullyConnectedLayerReference fwd expects one input and saved state");
+        "FullyConnectedLayerReference fwd expects one input");
   }
   ASSIGN_OR_RETURN(int rows, ri::ActivationRows(inputs[0], input_dim_,
                                                 output_type_, "dense input"));
@@ -103,7 +104,7 @@ absl::StatusOr<HostBuffer> FullyConnectedLayerReference::fwd_impl(
   }
   state.intermediates = {inputs[0]};
   state.children.clear();
-  return output;
+  return ReferenceFwdResult{std::move(output), std::move(state)};
 }
 
 absl::StatusOr<HostBufferVec> FullyConnectedLayerReference::bwd_impl(
