@@ -12,6 +12,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -117,7 +118,7 @@ CrossEntropyLossLayer::Create(cuda::Executor& executor, int vocabulary_size,
   RETURN_IF_ERROR(internal::ValidateComputeType(data_type));
   if (vocabulary_size <= 0)
     return absl::InvalidArgumentError("vocabulary_size must be positive");
-  return std::unique_ptr<CrossEntropyLossLayer>(new CrossEntropyLossLayer(
+  return absl::WrapUnique(new CrossEntropyLossLayer(
       executor, vocabulary_size, internal::RoundUpToTile(vocabulary_size),
       data_type));
 }

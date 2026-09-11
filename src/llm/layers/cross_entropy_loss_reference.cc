@@ -5,6 +5,7 @@
 #include <memory>
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -21,9 +22,8 @@ CrossEntropyLossLayerReference::Create(int vocabulary_size,
   RETURN_IF_ERROR(ri::ValidateComputeType(data_type));
   if (vocabulary_size <= 0)
     return absl::InvalidArgumentError("vocabulary_size must be positive");
-  return std::unique_ptr<CrossEntropyLossLayerReference>(
-      new CrossEntropyLossLayerReference(
-          vocabulary_size, ri::RoundUpToTile(vocabulary_size), data_type));
+  return absl::WrapUnique(new CrossEntropyLossLayerReference(
+      vocabulary_size, ri::RoundUpToTile(vocabulary_size), data_type));
 }
 
 absl::StatusOr<HostBuffer> CrossEntropyLossLayerReference::fwd(

@@ -18,6 +18,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -835,7 +836,7 @@ FineWebParquetReader::~FineWebParquetReader() = default;
 
 absl::StatusOr<std::unique_ptr<FineWebParquetReader>>
 FineWebParquetReader::Open(const std::filesystem::path& path) {
-  std::unique_ptr<Impl> impl(new Impl);
+  auto impl = absl::WrapUnique(new Impl);
   impl->file_descriptor = open(path.c_str(), O_RDONLY | O_CLOEXEC);
   if (impl->file_descriptor < 0) {
     return absl::ErrnoToStatus(errno,
@@ -869,8 +870,7 @@ FineWebParquetReader::Open(const std::filesystem::path& path) {
                                        footer_bytes, footer.size())));
   RETURN_IF_ERROR(ValidateMetadata(&impl->metadata, impl->file_size));
 
-  return std::unique_ptr<FineWebParquetReader>(
-      new FineWebParquetReader(std::move(impl)));
+  return absl::WrapUnique(new FineWebParquetReader(std::move(impl)));
 }
 
 int64_t FineWebParquetReader::num_rows() const {

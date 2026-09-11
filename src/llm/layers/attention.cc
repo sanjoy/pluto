@@ -11,6 +11,7 @@
 #include <type_traits>
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -272,7 +273,7 @@ absl::StatusOr<std::unique_ptr<AttentionLayer>> AttentionLayer::Create(
   }
   RETURN_IF_ERROR(internal::ValidateTiledExtent(embedding_dim / num_heads,
                                                 "attention head dimension"));
-  return std::unique_ptr<AttentionLayer>(new AttentionLayer(
+  return absl::WrapUnique(new AttentionLayer(
       executor, context_length, num_heads, embedding_dim, data_type));
 }
 

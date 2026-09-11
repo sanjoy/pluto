@@ -15,6 +15,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -121,7 +122,7 @@ DocumentFileReader::~DocumentFileReader() = default;
 
 absl::StatusOr<std::unique_ptr<DocumentFileReader>> DocumentFileReader::Open(
     const std::filesystem::path& path) {
-  std::unique_ptr<Impl> impl(new Impl);
+  auto impl = absl::WrapUnique(new Impl);
   impl->file_descriptor = open(path.c_str(), O_RDONLY | O_CLOEXEC);
   if (impl->file_descriptor < 0) {
     return absl::ErrnoToStatus(errno,
@@ -167,8 +168,7 @@ absl::StatusOr<std::unique_ptr<DocumentFileReader>> DocumentFileReader::Open(
   if (impl->offsets.back() != impl->file_size)
     return absl::DataLossError("tokenized-document file has trailing bytes");
 
-  return std::unique_ptr<DocumentFileReader>(
-      new DocumentFileReader(std::move(impl)));
+  return absl::WrapUnique(new DocumentFileReader(std::move(impl)));
 }
 
 uint32_t DocumentFileReader::num_documents() const {
@@ -229,7 +229,7 @@ DocumentFileWriter::~DocumentFileWriter() = default;
 
 absl::StatusOr<std::unique_ptr<DocumentFileWriter>> DocumentFileWriter::Create(
     const std::filesystem::path& path, uint32_t num_documents) {
-  std::unique_ptr<Impl> impl(new Impl);
+  auto impl = absl::WrapUnique(new Impl);
   impl->final_path = path;
   impl->expected_documents = num_documents;
   impl->lengths.reserve(num_documents);
@@ -259,8 +259,7 @@ absl::StatusOr<std::unique_ptr<DocumentFileWriter>> DocumentFileWriter::Create(
     return absl::ErrnoToStatus(errno, "cannot reserve document-length table");
   }
 
-  return std::unique_ptr<DocumentFileWriter>(
-      new DocumentFileWriter(std::move(impl)));
+  return absl::WrapUnique(new DocumentFileWriter(std::move(impl)));
 }
 
 absl::Status DocumentFileWriter::AddDocument(

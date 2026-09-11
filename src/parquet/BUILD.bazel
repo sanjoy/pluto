@@ -16,6 +16,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//src/util:status_macros",
+        "@abseil-cpp//absl/memory",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings",

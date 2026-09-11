@@ -22,6 +22,7 @@
 
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
+#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "ai-slop/weight_analysis/causal_probe.h"
 #include "src/cuda/page_locked_host_array.h"
@@ -70,7 +71,7 @@ class ExclusiveStream {
           absl::StrCat("exclusive open failed: ", path.string(), ": ",
                        std::strerror(errno)));
     }
-    return std::unique_ptr<ExclusiveStream>(new ExclusiveStream(fd));
+    return absl::WrapUnique(new ExclusiveStream(fd));
   }
   ~ExclusiveStream() {
     if (fd_ >= 0)

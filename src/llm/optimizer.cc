@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "src/llm/layers/internal.h"
@@ -103,7 +104,7 @@ absl::StatusOr<std::unique_ptr<AdamWOptimizer>> AdamWOptimizer::Create(
   }
   if (weights.empty())
     return absl::InvalidArgumentError("AdamW model has no parameters");
-  auto optimizer = std::unique_ptr<AdamWOptimizer>(new AdamWOptimizer(
+  auto optimizer = absl::WrapUnique(new AdamWOptimizer(
       executor, config, std::move(weights), std::move(gradients),
       std::move(first_moments), std::move(second_moments)));
   RETURN_IF_ERROR(optimizer->ZeroGrad());

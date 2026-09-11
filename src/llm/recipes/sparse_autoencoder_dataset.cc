@@ -7,6 +7,7 @@
 #include <memory>
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "src/cuda/buffer.h"
@@ -44,9 +45,8 @@ SparseAutoEncoderDataSetIterator::Create(
     const std::filesystem::path& checkpoint_directory) {
   RETURN_IF_ERROR(
       ReadFromDirectory(executor, activation_generator, checkpoint_directory));
-  return std::unique_ptr<SparseAutoEncoderDataSetIterator>(
-      new SparseAutoEncoderDataSetIterator(executor, activation_generator,
-                                           source));
+  return absl::WrapUnique(new SparseAutoEncoderDataSetIterator(
+      executor, activation_generator, source));
 }
 
 absl::StatusOr<DataBatch> SparseAutoEncoderDataSetIterator::Next() {

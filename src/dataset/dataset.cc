@@ -16,6 +16,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -208,7 +209,7 @@ InMemoryDataSetIterator::Create(cuda::Executor& executor,
   // Releasing the by-value host array queues its pool free after this upload
   // on executor's stream. No compute-stream synchronization is needed here;
   // Next() is ordered after the upload on the same stream.
-  return std::unique_ptr<InMemoryDataSetIterator>(new InMemoryDataSetIterator(
+  return absl::WrapUnique(new InMemoryDataSetIterator(
       executor, std::move(corpus_buffer), tokens.size(), options,
       std::move(data_buffer)));
 }

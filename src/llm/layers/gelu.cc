@@ -8,6 +8,7 @@
 #include <memory>
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -65,7 +66,7 @@ __tile_global__ void GeluBackwardKernel(
 absl::StatusOr<std::unique_ptr<GeluLayer>> GeluLayer::Create(
     cuda::Executor& executor, DataType data_type) {
   RETURN_IF_ERROR(internal::ValidateComputeType(data_type));
-  return std::unique_ptr<GeluLayer>(new GeluLayer(executor, data_type));
+  return absl::WrapUnique(new GeluLayer(executor, data_type));
 }
 
 absl::StatusOr<Buffer> GeluLayer::fwd_impl(cuda::Executor& executor,

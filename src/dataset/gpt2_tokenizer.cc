@@ -7,6 +7,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -102,7 +103,7 @@ absl::StatusOr<std::unique_ptr<Gpt2Tokenizer>> Gpt2Tokenizer::Load(
     const std::filesystem::path& directory) {
   ASSIGN_OR_RETURN(auto model,
                    internal::Gpt2TokenizerVocabulary::Load(directory));
-  return std::unique_ptr<Gpt2Tokenizer>(new Gpt2Tokenizer(std::move(model)));
+  return absl::WrapUnique(new Gpt2Tokenizer(std::move(model)));
 }
 
 absl::StatusOr<std::vector<int>> Gpt2Tokenizer::ApplyBpe(

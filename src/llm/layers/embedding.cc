@@ -20,6 +20,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -349,7 +350,7 @@ EmbeddingLookupLayer::Create(cuda::Executor& executor, int vocab_size,
                         executor.stream()),
         "cudaMemsetAsync(embedding parameter)"));
   }
-  return std::unique_ptr<EmbeddingLookupLayer>(new EmbeddingLookupLayer(
+  return absl::WrapUnique(new EmbeddingLookupLayer(
       executor, vocab_size, padded_vocab_size, embedding_dim, data_type,
       std::move(weight), std::move(gradient)));
 }
@@ -469,8 +470,7 @@ LanguageModelingHeadLayer::Create(EmbeddingLookupLayer* embedding) {
     return absl::InvalidArgumentError(
         "LanguageModelingHeadLayer requires a non-null embedding");
   }
-  return std::unique_ptr<LanguageModelingHeadLayer>(
-      new LanguageModelingHeadLayer(embedding));
+  return absl::WrapUnique(new LanguageModelingHeadLayer(embedding));
 }
 
 absl::StatusOr<Buffer> LanguageModelingHeadLayer::fwd_impl(
@@ -610,7 +610,7 @@ PositionEmbeddingLayer::Create(cuda::Executor& executor, int context_length,
                         executor.stream()),
         "cudaMemsetAsync(position parameter)"));
   }
-  return std::unique_ptr<PositionEmbeddingLayer>(new PositionEmbeddingLayer(
+  return absl::WrapUnique(new PositionEmbeddingLayer(
       executor, context_length, embedding_dim, data_type, std::move(weight),
       std::move(gradient)));
 }

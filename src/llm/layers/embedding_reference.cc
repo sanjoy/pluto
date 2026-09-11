@@ -7,6 +7,7 @@
 #include <random>
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -47,10 +48,9 @@ EmbeddingLookupLayerReference::Create(int vocab_size, int embedding_dim,
       static_cast<size_t>(padded_vocab_size) * embedding_dim;
   ASSIGN_OR_RETURN(auto weight, ri::AllocateFloats(elements, true));
   ASSIGN_OR_RETURN(auto gradient, ri::AllocateFloats(elements, true));
-  return std::unique_ptr<EmbeddingLookupLayerReference>(
-      new EmbeddingLookupLayerReference(
-          vocab_size, padded_vocab_size, embedding_dim, data_type,
-          std::move(weight), std::move(gradient)));
+  return absl::WrapUnique(new EmbeddingLookupLayerReference(
+      vocab_size, padded_vocab_size, embedding_dim, data_type,
+      std::move(weight), std::move(gradient)));
 }
 
 absl::Status EmbeddingLookupLayerReference::InitializeIdentity(float scale) {
@@ -132,8 +132,7 @@ LanguageModelingHeadLayerReference::Create(
     return absl::InvalidArgumentError(
         "LanguageModelingHeadLayerReference requires an embedding");
   }
-  return std::unique_ptr<LanguageModelingHeadLayerReference>(
-      new LanguageModelingHeadLayerReference(embedding));
+  return absl::WrapUnique(new LanguageModelingHeadLayerReference(embedding));
 }
 
 absl::StatusOr<HostBuffer> LanguageModelingHeadLayerReference::fwd(
@@ -258,10 +257,9 @@ PositionEmbeddingLayerReference::Create(int context_length, int embedding_dim,
   const size_t elements = static_cast<size_t>(context_length) * embedding_dim;
   ASSIGN_OR_RETURN(auto weight, ri::AllocateFloats(elements, true));
   ASSIGN_OR_RETURN(auto gradient, ri::AllocateFloats(elements, true));
-  return std::unique_ptr<PositionEmbeddingLayerReference>(
-      new PositionEmbeddingLayerReference(context_length, embedding_dim,
-                                          data_type, std::move(weight),
-                                          std::move(gradient)));
+  return absl::WrapUnique(new PositionEmbeddingLayerReference(
+      context_length, embedding_dim, data_type, std::move(weight),
+      std::move(gradient)));
 }
 
 absl::Status PositionEmbeddingLayerReference::InitializeNormal(

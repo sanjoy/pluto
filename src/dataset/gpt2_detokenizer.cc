@@ -5,6 +5,7 @@
 #include <string>
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -17,8 +18,7 @@ absl::StatusOr<std::unique_ptr<Gpt2Detokenizer>> Gpt2Detokenizer::Load(
     const std::filesystem::path& directory) {
   ASSIGN_OR_RETURN(auto model,
                    internal::Gpt2TokenizerVocabulary::Load(directory));
-  return std::unique_ptr<Gpt2Detokenizer>(
-      new Gpt2Detokenizer(std::move(model)));
+  return absl::WrapUnique(new Gpt2Detokenizer(std::move(model)));
 }
 
 absl::StatusOr<std::string> Gpt2Detokenizer::Decode(

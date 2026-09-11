@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -32,10 +33,9 @@ FullyConnectedLayerReference::Create(int input_dim, int output_dim,
       auto matrix_gradient,
       ri::AllocateFloats(static_cast<size_t>(input_dim) * output_dim, true));
   ASSIGN_OR_RETURN(auto bias_gradient, ri::AllocateFloats(output_dim, true));
-  return std::unique_ptr<FullyConnectedLayerReference>(
-      new FullyConnectedLayerReference(
-          input_dim, output_dim, data_type, std::move(matrix), std::move(bias),
-          std::move(matrix_gradient), std::move(bias_gradient)));
+  return absl::WrapUnique(new FullyConnectedLayerReference(
+      input_dim, output_dim, data_type, std::move(matrix), std::move(bias),
+      std::move(matrix_gradient), std::move(bias_gradient)));
 }
 
 absl::Status FullyConnectedLayerReference::InitializeIdentity(float scale) {

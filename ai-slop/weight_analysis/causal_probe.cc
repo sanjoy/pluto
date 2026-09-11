@@ -16,6 +16,7 @@
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "ai-slop/weight_analysis/token_argmax.h"
 #include "src/util/status_macros.h"
@@ -272,8 +273,7 @@ absl::StatusOr<std::unique_ptr<WeightIntervention>> WeightIntervention::Capture(
     absl::Span<const int> indices) {
   if (indices.empty())
     return absl::InvalidArgumentError("empty intervention");
-  auto result =
-      std::unique_ptr<WeightIntervention>(new WeightIntervention(executor));
+  auto result = absl::WrapUnique(new WeightIntervention(executor));
   absl::flat_hash_set<const void*> seen;
   for (int index : indices) {
     if (index < 0 || static_cast<size_t>(index) >= weights.size() ||
@@ -404,7 +404,7 @@ absl::StatusOr<std::unique_ptr<MlpRowIntervention>> MlpRowIntervention::Capture(
                    cuda::PageLockedHostArray<float>::Allocate(executor, count));
   // Own every asynchronous endpoint before the first copy. Destruction also
   // synchronizes failed captures, so no pinned allocation can expire early.
-  auto result = std::unique_ptr<MlpRowIntervention>(new MlpRowIntervention(
+  auto result = absl::WrapUnique(new MlpRowIntervention(
       executor, output_weight, std::move(backup), std::move(original),
       std::move(staging), {feature_ids.begin(), feature_ids.end()},
       size_t(output_width)));

@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <memory>
 
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 
@@ -33,7 +34,7 @@ void ReportCleanupError(cudaError_t error, const char* operation) {
 absl::StatusOr<std::unique_ptr<Executor>> Executor::Create() {
   // Build directly into an owned object so every failure path releases all
   // streams/pools already created, without an exception-dependent scope guard.
-  auto executor = std::unique_ptr<Executor>(new Executor());
+  auto executor = absl::WrapUnique(new Executor());
   int device;
   cudaError_t error = cudaGetDevice(&device);
   if (error != cudaSuccess)

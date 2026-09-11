@@ -10,6 +10,7 @@
 #include <memory>
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "ai-slop/weight_analysis/causal_probe.h"
 #include "ai-slop/weight_analysis/phrase_probe.h"
@@ -365,8 +366,7 @@ absl::StatusOr<std::unique_ptr<SourceValueProbe>> SourceValueProbe::Create(
   RETURN_IF_ERROR(EqualBytes(logit_bytes, impl->logits_bytes,
                              "native full-logit identity replay"));
   RETURN_IF_ERROR(impl->CheckOriginals());
-  return std::unique_ptr<SourceValueProbe>(
-      new SourceValueProbe(std::move(impl)));
+  return absl::WrapUnique(new SourceValueProbe(std::move(impl)));
 }
 
 absl::StatusOr<SourceValueResult> SourceValueProbe::Apply(

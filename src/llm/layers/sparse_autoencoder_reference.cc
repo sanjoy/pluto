@@ -7,6 +7,7 @@
 #include <random>
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -66,12 +67,11 @@ SparseAutoEncoderLayerReference::Create(int input_dim, int feature_dim,
       ri::AllocateFloats(static_cast<size_t>(input_dim) * feature_dim, true));
   ASSIGN_OR_RETURN(auto decoder_bias_gradient,
                    ri::AllocateFloats(input_dim, true));
-  return std::unique_ptr<SparseAutoEncoderLayerReference>(
-      new SparseAutoEncoderLayerReference(
-          input_dim, feature_dim, data_type, std::move(encoder),
-          std::move(encoder_bias), std::move(decoder), std::move(decoder_bias),
-          std::move(encoder_gradient), std::move(encoder_bias_gradient),
-          std::move(decoder_gradient), std::move(decoder_bias_gradient)));
+  return absl::WrapUnique(new SparseAutoEncoderLayerReference(
+      input_dim, feature_dim, data_type, std::move(encoder),
+      std::move(encoder_bias), std::move(decoder), std::move(decoder_bias),
+      std::move(encoder_gradient), std::move(encoder_bias_gradient),
+      std::move(decoder_gradient), std::move(decoder_bias_gradient)));
 }
 
 absl::Status SparseAutoEncoderLayerReference::InitializeNormal(
@@ -338,9 +338,8 @@ SparseAutoEncoderLossLayerReference::Create(int input_dim, int feature_dim,
     return absl::InvalidArgumentError(
         "sparsity_penalty must be finite and non-negative");
   }
-  return std::unique_ptr<SparseAutoEncoderLossLayerReference>(
-      new SparseAutoEncoderLossLayerReference(input_dim, feature_dim,
-                                              sparsity_penalty, data_type));
+  return absl::WrapUnique(new SparseAutoEncoderLossLayerReference(
+      input_dim, feature_dim, sparsity_penalty, data_type));
 }
 
 absl::StatusOr<HostBuffer> SparseAutoEncoderLossLayerReference::fwd(

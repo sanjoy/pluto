@@ -3,6 +3,7 @@
 #include <memory>
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -34,7 +35,7 @@ float GeluDerivative(float x) {
 absl::StatusOr<std::unique_ptr<GeluLayerReference>> GeluLayerReference::Create(
     DataType data_type) {
   RETURN_IF_ERROR(ri::ValidateComputeType(data_type));
-  return std::unique_ptr<GeluLayerReference>(new GeluLayerReference(data_type));
+  return absl::WrapUnique(new GeluLayerReference(data_type));
 }
 
 absl::StatusOr<HostBuffer> GeluLayerReference::fwd(

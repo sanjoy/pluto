@@ -12,6 +12,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "src/cuda/page_locked_host_array.h"
 #include "src/llm/layers/attention.h"
@@ -457,7 +458,7 @@ absl::StatusOr<std::unique_ptr<Probe>> Probe::Create(
                        native_values.size_bytes(),
                        "clean all-row padded-logit tail replay"));
   RETURN_IF_ERROR(impl->Verify());
-  return std::unique_ptr<Probe>(new Probe(std::move(impl)));
+  return absl::WrapUnique(new Probe(std::move(impl)));
 }
 
 absl::StatusOr<Result> Probe::Apply(cuda::Executor& executor,

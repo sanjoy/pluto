@@ -13,6 +13,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -75,7 +76,7 @@ class FakeLoss final : public Layer {
     const absl::Status synchronized = executor.Synchronize();
     if (!synchronized.ok())
       return synchronized;
-    return std::unique_ptr<FakeLoss>(
+    return absl::WrapUnique(
         new FakeLoss(std::move(*device_losses), std::move(*gradient)));
   }
 

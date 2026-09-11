@@ -3,6 +3,7 @@
 #include <memory>
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -27,7 +28,7 @@ LayerNormLayerReference::Create(int embedding_dim, float epsilon,
   auto* gamma_values = static_cast<float*>(gamma.data());
   for (int column = 0; column < embedding_dim; ++column)
     gamma_values[column] = 1.0f;
-  return std::unique_ptr<LayerNormLayerReference>(new LayerNormLayerReference(
+  return absl::WrapUnique(new LayerNormLayerReference(
       embedding_dim, epsilon, data_type, std::move(gamma), std::move(beta),
       std::move(d_gamma), std::move(d_beta)));
 }

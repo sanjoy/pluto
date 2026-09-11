@@ -10,6 +10,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -198,7 +199,7 @@ absl::StatusOr<std::unique_ptr<LayerNormLayer>> LayerNormLayer::Create(
         "cudaMemsetAsync(layer-norm parameter)"));
   }
   // gamma_values is released in stream order after its upload completes.
-  return std::unique_ptr<LayerNormLayer>(new LayerNormLayer(
+  return absl::WrapUnique(new LayerNormLayer(
       executor, embedding_dim, epsilon, data_type, std::move(gamma),
       std::move(beta), std::move(gamma_gradient), std::move(beta_gradient)));
 }

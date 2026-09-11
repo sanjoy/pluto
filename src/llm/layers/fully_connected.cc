@@ -15,6 +15,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -188,7 +189,7 @@ FullyConnectedLayer::Create(cuda::Executor& executor, int input_dim,
                         executor.stream()),
         "cudaMemsetAsync(dense parameter)"));
   }
-  return std::unique_ptr<FullyConnectedLayer>(new FullyConnectedLayer(
+  return absl::WrapUnique(new FullyConnectedLayer(
       executor, input_dim, output_dim, data_type, std::move(matrix),
       std::move(bias), std::move(matrix_gradient), std::move(bias_gradient)));
 }

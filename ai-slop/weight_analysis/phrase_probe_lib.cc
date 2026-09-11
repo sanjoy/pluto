@@ -7,6 +7,7 @@
 #include <set>
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
@@ -227,7 +228,7 @@ absl::StatusOr<std::unique_ptr<NativeLogitLens>> NativeLogitLens::Create(
       CopyDeviceWeights(executor, weights.subspan(98, 2), norm->weights()));
   ASSIGN_OR_RETURN(auto head,
                    llm::LanguageModelingHeadLayer::Create(embedding.get()));
-  return std::unique_ptr<NativeLogitLens>(new NativeLogitLens(
+  return absl::WrapUnique(new NativeLogitLens(
       std::move(embedding), std::move(norm), std::move(head)));
 }
 

@@ -16,6 +16,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -666,7 +667,7 @@ SparseAutoEncoderLayer::Create(cuda::Executor& executor, int input_dim,
                         executor.stream()),
         "cudaMemsetAsync(sparse autoencoder parameter)"));
   }
-  return std::unique_ptr<SparseAutoEncoderLayer>(new SparseAutoEncoderLayer(
+  return absl::WrapUnique(new SparseAutoEncoderLayer(
       executor, input_dim, feature_dim, data_type, mode, std::move(encoder),
       std::move(encoder_bias), std::move(decoder), std::move(decoder_bias),
       std::move(encoder_gradient), std::move(encoder_bias_gradient),
@@ -998,9 +999,8 @@ SparseAutoEncoderLossLayer::Create(cuda::Executor& executor, int input_dim,
     return absl::InvalidArgumentError(
         "sparsity_penalty must be finite and non-negative");
   }
-  return std::unique_ptr<SparseAutoEncoderLossLayer>(
-      new SparseAutoEncoderLossLayer(executor, input_dim, feature_dim,
-                                     sparsity_penalty, data_type));
+  return absl::WrapUnique(new SparseAutoEncoderLossLayer(
+      executor, input_dim, feature_dim, sparsity_penalty, data_type));
 }
 
 absl::StatusOr<Buffer> SparseAutoEncoderLossLayer::fwd_impl(
