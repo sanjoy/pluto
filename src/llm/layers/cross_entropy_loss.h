@@ -30,10 +30,10 @@ class CrossEntropyLossLayer final : public Layer {
  private:
   absl::StatusOr<Buffer> fwd_impl(cuda::Executor& executor,
                                   absl::Span<const Buffer> inputs,
-                                  Tape* tape) const override;
+                                  BackwardState& state) const override;
   absl::StatusOr<BufferVec> bwd_impl(cuda::Executor& executor,
                                      absl::Span<const Buffer> output_gradients,
-                                     Tape tape) override;
+                                     BackwardState state) override;
 
   CrossEntropyLossLayer(cuda::Executor& executor, int vocab_size,
                         int padded_vocab_size, DataType data_type)
@@ -54,11 +54,6 @@ class CrossEntropyLossLayerReference final : public LayerReference {
   static absl::StatusOr<std::unique_ptr<CrossEntropyLossLayerReference>> Create(
       int vocabulary_size, DataType data_type);
 
-  absl::StatusOr<HostBuffer> fwd(absl::Span<const HostBuffer> inputs,
-                                 ReferenceTape* tape) override;
-  absl::StatusOr<HostBufferVec> bwd(
-      absl::Span<const HostBuffer> output_gradients,
-      ReferenceTape tape) override;
   absl::Span<HostBuffer> weights() override { return {}; }
   DataType output_type() const override { return output_type_; }
 
@@ -66,6 +61,13 @@ class CrossEntropyLossLayerReference final : public LayerReference {
   int padded_vocab_size() const { return padded_vocab_size_; }
 
  private:
+  absl::StatusOr<HostBuffer> fwd_impl(
+      absl::Span<const HostBuffer> inputs,
+      ReferenceBackwardState& state) const override;
+  absl::StatusOr<HostBufferVec> bwd_impl(
+      absl::Span<const HostBuffer> output_gradients,
+      ReferenceBackwardState state) override;
+
   CrossEntropyLossLayerReference(int vocab_size, int padded_vocab_size,
                                  DataType data_type)
       : vocab_size_(vocab_size),

@@ -378,12 +378,12 @@ absl::Status EmbeddingLookupLayer::InitializeNormal(float standard_deviation,
 
 absl::StatusOr<Buffer> EmbeddingLookupLayer::fwd_impl(
     cuda::Executor& executor, absl::Span<const Buffer> inputs,
-    Tape* tape) const {
+    BackwardState& state) const {
   RETURN_IF_ERROR(
       internal::ValidateExecutor(executor_, executor, "EmbeddingLookupLayer"));
-  if (inputs.size() != 1 || tape == nullptr) {
+  if (inputs.size() != 1) {
     return absl::InvalidArgumentError(
-        "EmbeddingLookupLayer fwd expects token IDs and a non-null tape");
+        "EmbeddingLookupLayer fwd expects token IDs and saved state");
   }
   ASSIGN_OR_RETURN(int rows,
                    internal::ElementCount(executor, inputs[0], sizeof(int),
@@ -407,23 +407,23 @@ absl::StatusOr<Buffer> EmbeddingLookupLayer::fwd_impl(
   }
   RETURN_IF_ERROR(
       cuda::CudaStatus(cudaGetLastError(), "EmbeddingForwardKernel launch"));
-  tape->intermediates = {inputs[0]};
-  tape->children.clear();
+  state.intermediates = {inputs[0]};
+  state.children.clear();
   return std::move(output);
 }
 
 absl::StatusOr<BufferVec> EmbeddingLookupLayer::bwd_impl(
     cuda::Executor& executor, absl::Span<const Buffer> output_gradients,
-    Tape tape) {
+    BackwardState state) {
   RETURN_IF_ERROR(
       internal::ValidateExecutor(executor_, executor, "EmbeddingLookupLayer"));
-  if (output_gradients.size() != 1 || tape.intermediates.size() != 1) {
+  if (output_gradients.size() != 1 || state.intermediates.size() != 1) {
     return absl::InvalidArgumentError(
-        "EmbeddingLookupLayer bwd received an incompatible gradient or tape");
+        "EmbeddingLookupLayer bwd received an incompatible gradient or state");
   }
-  ASSIGN_OR_RETURN(int rows,
-                   internal::ElementCount(executor, tape.intermediates[0],
-                                          sizeof(int), "embedding token input"));
+  ASSIGN_OR_RETURN(
+      int rows, internal::ElementCount(executor, state.intermediates[0],
+                                       sizeof(int), "embedding token input"));
   RETURN_IF_ERROR(internal::ValidateBuffer(
       executor, output_gradients[0],
       static_cast<size_t>(rows) * embedding_dim_ * sizeof(float),
@@ -446,7 +446,7 @@ absl::StatusOr<BufferVec> EmbeddingLookupLayer::bwd_impl(
       "query embedding sort scratch"));
   ASSIGN_OR_RETURN(auto scratch, Buffer::Allocate(executor, sort_bytes));
   EmbeddingRowKeysKernel<<<rows, 1, 0, executor.stream()>>>(
-      static_cast<const int*>(tape.intermediates[0].data()), rows, keys_ptr);
+      static_cast<const int*>(state.intermediates[0].data()), rows, keys_ptr);
   RETURN_IF_ERROR(
       cuda::CudaStatus(cudaGetLastError(), "EmbeddingRowKeysKernel launch"));
   RETURN_IF_ERROR(cuda::CudaStatus(
@@ -475,12 +475,12 @@ LanguageModelingHeadLayer::Create(EmbeddingLookupLayer* embedding) {
 
 absl::StatusOr<Buffer> LanguageModelingHeadLayer::fwd_impl(
     cuda::Executor& executor, absl::Span<const Buffer> inputs,
-    Tape* tape) const {
+    BackwardState& state) const {
   RETURN_IF_ERROR(internal::ValidateExecutor(embedding_->executor_, executor,
                                              "LanguageModelingHeadLayer"));
-  if (inputs.size() != 1 || tape == nullptr) {
+  if (inputs.size() != 1) {
     return absl::InvalidArgumentError(
-        "LanguageModelingHeadLayer fwd expects one input and a non-null tape");
+        "LanguageModelingHeadLayer fwd expects one input and saved state");
   }
   ASSIGN_OR_RETURN(
       int rows, internal::ActivationRows(
@@ -515,27 +515,27 @@ absl::StatusOr<Buffer> LanguageModelingHeadLayer::fwd_impl(
       embedding_->padded_vocab_size_);
   RETURN_IF_ERROR(cuda::CudaStatus(cudaGetLastError(),
                                    "language-modeling-head forward launch"));
-  tape->intermediates = {inputs[0]};
-  tape->children.clear();
+  state.intermediates = {inputs[0]};
+  state.children.clear();
   return std::move(output);
 }
 
 absl::StatusOr<BufferVec> LanguageModelingHeadLayer::bwd_impl(
     cuda::Executor& executor, absl::Span<const Buffer> output_gradients,
-    Tape tape) {
+    BackwardState state) {
   RETURN_IF_ERROR(internal::ValidateExecutor(embedding_->executor_, executor,
                                              "LanguageModelingHeadLayer"));
-  if (output_gradients.size() != 1 || tape.intermediates.size() != 1) {
+  if (output_gradients.size() != 1 || state.intermediates.size() != 1) {
     return absl::InvalidArgumentError(
         "LanguageModelingHeadLayer bwd received an incompatible gradient or "
-        "tape");
+        "state");
   }
   ASSIGN_OR_RETURN(
       int rows, internal::MatrixRows(executor, output_gradients[0],
                                      embedding_->padded_vocab_size_,
                                      "language-modeling-head output gradient"));
   RETURN_IF_ERROR(internal::ValidateBuffer(
-      executor, tape.intermediates[0],
+      executor, state.intermediates[0],
       static_cast<size_t>(rows) * embedding_->embedding_dim_ *
           internal::ActivationElementBytes(embedding_->output_type_),
       "language-modeling-head saved input"));
@@ -557,7 +557,7 @@ absl::StatusOr<BufferVec> LanguageModelingHeadLayer::bwd_impl(
             static_cast<float*>(input_gradient.data()));
     LanguageModelingHeadWeightGradientKernel<__nv_bfloat16>
         <<<weight_blocks, 1, 0, executor.stream()>>>(
-            static_cast<const __nv_bfloat16*>(tape.intermediates[0].data()),
+            static_cast<const __nv_bfloat16*>(state.intermediates[0].data()),
             static_cast<const float*>(output_gradients[0].data()), rows,
             embedding_->padded_vocab_size_, embedding_->embedding_dim_,
             static_cast<float*>(embedding_->gradient_.data()));
@@ -570,7 +570,7 @@ absl::StatusOr<BufferVec> LanguageModelingHeadLayer::bwd_impl(
             static_cast<float*>(input_gradient.data()));
     LanguageModelingHeadWeightGradientKernel<float>
         <<<weight_blocks, 1, 0, executor.stream()>>>(
-            static_cast<const float*>(tape.intermediates[0].data()),
+            static_cast<const float*>(state.intermediates[0].data()),
             static_cast<const float*>(output_gradients[0].data()), rows,
             embedding_->padded_vocab_size_, embedding_->embedding_dim_,
             static_cast<float*>(embedding_->gradient_.data()));
@@ -633,12 +633,12 @@ absl::Status PositionEmbeddingLayer::ValidateSequenceLength(
 
 absl::StatusOr<Buffer> PositionEmbeddingLayer::fwd_impl(
     cuda::Executor& executor, absl::Span<const Buffer> inputs,
-    Tape* tape) const {
+    BackwardState& state) const {
   RETURN_IF_ERROR(internal::ValidateExecutor(executor_, executor,
                                              "PositionEmbeddingLayer"));
-  if (inputs.size() != 1 || tape == nullptr) {
+  if (inputs.size() != 1) {
     return absl::InvalidArgumentError(
-        "PositionEmbeddingLayer fwd expects one input and a non-null tape");
+        "PositionEmbeddingLayer fwd expects one input and saved state");
   }
   ASSIGN_OR_RETURN(int rows, internal::ActivationRows(
                                  executor, inputs[0], embedding_dim_,
@@ -660,20 +660,20 @@ absl::StatusOr<Buffer> PositionEmbeddingLayer::fwd_impl(
   }
   RETURN_IF_ERROR(cuda::CudaStatus(cudaGetLastError(),
                                    "PositionEmbeddingForwardKernel launch"));
-  tape->intermediates.clear();
-  tape->children.clear();
+  state.intermediates.clear();
+  state.children.clear();
   return std::move(output);
 }
 
 absl::StatusOr<BufferVec> PositionEmbeddingLayer::bwd_impl(
     cuda::Executor& executor, absl::Span<const Buffer> output_gradients,
-    Tape tape) {
+    BackwardState state) {
   RETURN_IF_ERROR(internal::ValidateExecutor(executor_, executor,
                                              "PositionEmbeddingLayer"));
-  if (output_gradients.size() != 1 || !tape.intermediates.empty()) {
+  if (output_gradients.size() != 1 || !state.intermediates.empty()) {
     return absl::InvalidArgumentError(
         "PositionEmbeddingLayer bwd received an incompatible gradient or "
-        "tape");
+        "state");
   }
   ASSIGN_OR_RETURN(int rows, internal::MatrixRows(
                                  executor, output_gradients[0], embedding_dim_,

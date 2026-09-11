@@ -33,11 +33,11 @@ LayerNormLayerReference::Create(int embedding_dim, float epsilon,
       std::move(d_gamma), std::move(d_beta)));
 }
 
-absl::StatusOr<HostBuffer> LayerNormLayerReference::fwd(
-    absl::Span<const HostBuffer> inputs, ReferenceTape* tape) {
-  if (inputs.size() != 1 || tape == nullptr) {
+absl::StatusOr<HostBuffer> LayerNormLayerReference::fwd_impl(
+    absl::Span<const HostBuffer> inputs, ReferenceBackwardState& state) const {
+  if (inputs.size() != 1) {
     return absl::InvalidArgumentError(
-        "LayerNormLayerReference fwd expects one input and a tape");
+        "LayerNormLayerReference fwd expects one input and saved state");
   }
   ASSIGN_OR_RETURN(int rows,
                    ri::ActivationRows(inputs[0], embedding_dim_, output_type_,
@@ -78,21 +78,22 @@ absl::StatusOr<HostBuffer> LayerNormLayerReference::fwd(
                           normalized * gamma[column] + beta[column]);
     }
   }
-  tape->intermediates = {inputs[0]};
-  tape->children.clear();
+  state.intermediates = {inputs[0]};
+  state.children.clear();
   return output;
 }
 
-absl::StatusOr<HostBufferVec> LayerNormLayerReference::bwd(
-    absl::Span<const HostBuffer> output_gradients, ReferenceTape tape) {
-  if (output_gradients.size() != 1 || tape.intermediates.size() != 1) {
+absl::StatusOr<HostBufferVec> LayerNormLayerReference::bwd_impl(
+    absl::Span<const HostBuffer> output_gradients,
+    ReferenceBackwardState state) {
+  if (output_gradients.size() != 1 || state.intermediates.size() != 1) {
     return absl::InvalidArgumentError(
         "LayerNormLayerReference bwd received incompatible state");
   }
   ASSIGN_OR_RETURN(int rows, ri::MatrixRows(output_gradients[0], embedding_dim_,
                                             "layer-norm output gradient"));
   RETURN_IF_ERROR(
-      ri::ValidateBuffer(tape.intermediates[0],
+      ri::ValidateBuffer(state.intermediates[0],
                          static_cast<size_t>(rows) * embedding_dim_ *
                              ri::ActivationElementBytes(output_type_),
                          "layer-norm saved input"));
@@ -117,14 +118,14 @@ absl::StatusOr<HostBufferVec> LayerNormLayerReference::bwd(
     float mean = 0.0f;
     for (int column = 0; column < embedding_dim_; ++column) {
       mean += ri::LoadActivation(
-          tape.intermediates[0],
+          state.intermediates[0],
           static_cast<size_t>(row) * embedding_dim_ + column, output_type_);
     }
     mean /= static_cast<float>(embedding_dim_);
     float variance = 0.0f;
     for (int column = 0; column < embedding_dim_; ++column) {
       const float centered =
-          ri::LoadActivation(tape.intermediates[0],
+          ri::LoadActivation(state.intermediates[0],
                              static_cast<size_t>(row) * embedding_dim_ + column,
                              output_type_) -
           mean;
@@ -137,7 +138,7 @@ absl::StatusOr<HostBufferVec> LayerNormLayerReference::bwd(
     for (int column = 0; column < embedding_dim_; ++column) {
       const size_t index = static_cast<size_t>(row) * embedding_dim_ + column;
       const float normalized =
-          (ri::LoadActivation(tape.intermediates[0], index, output_type_) -
+          (ri::LoadActivation(state.intermediates[0], index, output_type_) -
            mean) *
           inverse_stddev;
       const float d_normalized = input_gradient_source[index] * gamma[column];
@@ -149,7 +150,7 @@ absl::StatusOr<HostBufferVec> LayerNormLayerReference::bwd(
     for (int column = 0; column < embedding_dim_; ++column) {
       const size_t index = static_cast<size_t>(row) * embedding_dim_ + column;
       const float normalized =
-          (ri::LoadActivation(tape.intermediates[0], index, output_type_) -
+          (ri::LoadActivation(state.intermediates[0], index, output_type_) -
            mean) *
           inverse_stddev;
       const float d_normalized = input_gradient_source[index] * gamma[column];

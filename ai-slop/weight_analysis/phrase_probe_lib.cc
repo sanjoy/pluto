@@ -21,9 +21,9 @@ namespace pluto::weight_analysis {
 namespace {
 constexpr int kWidth = llm::kGpt2ModelWidth;
 
-absl::Status BadTape() {
+absl::Status BadState() {
   return absl::FailedPreconditionError(
-      "production GPT-2 tape topology changed; refusing guessed layer paths");
+      "production GPT-2 state topology changed; refusing guessed layer paths");
 }
 
 float Bf16Float(uint16_t bits) {
@@ -31,30 +31,30 @@ float Bf16Float(uint16_t bits) {
 }
 }  // namespace
 
-absl::Status ValidateGpt2Tape(const llm::Tape& tape) {
-  if (!tape.intermediates.empty() || tape.children.size() != 12 ||
-      tape.children[0].intermediates.size() != 1 ||
-      !tape.children[1].intermediates.empty() ||
-      tape.children[10].intermediates.size() != 1 ||
-      tape.children[11].intermediates.size() != 1) {
-    return BadTape();
+absl::Status ValidateGpt2State(const llm::BackwardState& state) {
+  if (!state.intermediates.empty() || state.children.size() != 12 ||
+      state.children[0].intermediates.size() != 1 ||
+      !state.children[1].intermediates.empty() ||
+      state.children[10].intermediates.size() != 1 ||
+      state.children[11].intermediates.size() != 1) {
+    return BadState();
   }
   for (int block = 0; block < 8; ++block) {
-    const auto& body = tape.children[block + 2];
+    const auto& body = state.children[block + 2];
     if (!body.intermediates.empty() || body.children.size() != 2)
-      return BadTape();
+      return BadState();
     for (int branch = 0; branch < 2; ++branch) {
       const auto& residual = body.children[branch];
       if (residual.intermediates.size() != 1 || residual.children.size() != 1)
-        return BadTape();
+        return BadState();
       const auto& sequence = residual.children[0];
       if (!sequence.intermediates.empty() || sequence.children.size() != 4)
-        return BadTape();
+        return BadState();
       for (int leaf = 0; leaf < 4; ++leaf) {
         const auto& saved = sequence.children[leaf];
         const size_t expected = branch == 0 && leaf == 2 ? 2 : 1;
         if (!saved.children.empty() || saved.intermediates.size() != expected)
-          return BadTape();
+          return BadState();
       }
     }
   }
@@ -97,20 +97,20 @@ absl::StatusOr<cuda::Buffer> ReplayProjection(cuda::Executor& executor,
                       executor, input_width, output_width, llm::DataType::BF16));
   const llm::BufferVec original{matrix, bias};
   RETURN_IF_ERROR(CopyDeviceWeights(executor, original, layer->weights()));
-  llm::Tape tape;
-  return layer->fwd(executor, absl::MakeConstSpan(&input, 1), &tape);
+  llm::BackwardState state;
+  return layer->fwd(executor, absl::MakeConstSpan(&input, 1), state);
 }
 
 absl::StatusOr<std::vector<TraceFrame>> CollectGpt2Trace(
-    cuda::Executor& executor, const llm::Tape& tape, const cuda::Buffer& logits,
-    absl::Span<const cuda::Buffer> weights) {
-  RETURN_IF_ERROR(ValidateGpt2Tape(tape));
+    cuda::Executor& executor, const llm::BackwardState& state,
+    const cuda::Buffer& logits, absl::Span<const cuda::Buffer> weights) {
+  RETURN_IF_ERROR(ValidateGpt2State(state));
   RETURN_IF_ERROR(ValidateGpt2Weights(weights));
   std::vector<TraceFrame> frames;
-  const auto& positioned = tape.children[2].children[0].intermediates[0];
+  const auto& positioned = state.children[2].children[0].intermediates[0];
   frames.push_back({"positioned", positioned, kWidth});
   for (int block = 0; block < 8; ++block) {
-    const auto& branches = tape.children[block + 2].children;
+    const auto& branches = state.children[block + 2].children;
     const auto& attention = branches[0].children[0].children;
     const auto& mlp = branches[1].children[0].children;
     const std::string prefix = absl::StrCat("blocks.", block, ".");
@@ -143,11 +143,11 @@ absl::StatusOr<std::vector<TraceFrame>> CollectGpt2Trace(
     frames.push_back({prefix + "mlp_projected", std::move(mlp_projected),
                       kWidth, false, true});
     const auto& after =
-        block == 7 ? tape.children[10].intermediates[0]
-                   : tape.children[block + 3].children[0].intermediates[0];
+        block == 7 ? state.children[10].intermediates[0]
+                   : state.children[block + 3].children[0].intermediates[0];
     frames.push_back({prefix + "after_mlp", after, kWidth});
   }
-  frames.push_back({"final_norm", tape.children[11].intermediates[0], kWidth});
+  frames.push_back({"final_norm", state.children[11].intermediates[0], kWidth});
   frames.push_back({"logits", logits, llm::kGpt2PaddedVocabularySize, true});
   return frames;
 }
@@ -234,17 +234,17 @@ absl::StatusOr<std::unique_ptr<NativeLogitLens>> NativeLogitLens::Create(
 
 absl::StatusOr<cuda::Buffer> NativeLogitLens::Embed(
     cuda::Executor& executor, const cuda::Buffer& tokens) const {
-  llm::Tape tape;
-  return embedding_->fwd(executor, absl::MakeConstSpan(&tokens, 1), &tape);
+  llm::BackwardState state;
+  return embedding_->fwd(executor, absl::MakeConstSpan(&tokens, 1), state);
 }
 
 absl::StatusOr<cuda::Buffer> NativeLogitLens::Apply(
     cuda::Executor& executor, const cuda::Buffer& residual) const {
-  llm::Tape norm_tape, head_tape;
+  llm::BackwardState norm_state, head_state;
   ASSIGN_OR_RETURN(
       auto normalized,
-      norm_->fwd(executor, absl::MakeConstSpan(&residual, 1), &norm_tape));
-  return head_->fwd(executor, absl::MakeConstSpan(&normalized, 1), &head_tape);
+      norm_->fwd(executor, absl::MakeConstSpan(&residual, 1), norm_state));
+  return head_->fwd(executor, absl::MakeConstSpan(&normalized, 1), head_state);
 }
 
 absl::StatusOr<std::vector<std::pair<int, int>>> ParseNeuronInterventions(

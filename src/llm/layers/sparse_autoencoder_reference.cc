@@ -94,11 +94,12 @@ absl::Status SparseAutoEncoderLayerReference::InitializeNormal(
   return absl::OkStatus();
 }
 
-absl::StatusOr<HostBuffer> SparseAutoEncoderLayerReference::fwd(
-    absl::Span<const HostBuffer> inputs, ReferenceTape* tape) {
-  if (inputs.size() != 1 || tape == nullptr) {
+absl::StatusOr<HostBuffer> SparseAutoEncoderLayerReference::fwd_impl(
+    absl::Span<const HostBuffer> inputs, ReferenceBackwardState& state) const {
+  if (inputs.size() != 1) {
     return absl::InvalidArgumentError(
-        "SparseAutoEncoderLayerReference fwd expects one input and a tape");
+        "SparseAutoEncoderLayerReference fwd expects one input and saved "
+        "state");
   }
   ASSIGN_OR_RETURN(int rows, ri::ActivationRows(inputs[0], input_dim_,
                                                 output_type_, "SAE input"));
@@ -154,44 +155,45 @@ absl::StatusOr<HostBuffer> SparseAutoEncoderLayerReference::fwd(
                           output_type_, sum);
     }
   }
-  tape->intermediates = {inputs[0], latents};
-  tape->children.clear();
+  state.intermediates = {inputs[0], latents};
+  state.children.clear();
   return reconstruction;
 }
 
 absl::StatusOr<HostBuffer> SparseAutoEncoderLayerReference::latent_activations(
-    const ReferenceTape& tape) const {
-  if (tape.intermediates.size() != 2) {
+    const ReferenceBackwardState& state) const {
+  if (state.intermediates.size() != 2) {
     return absl::InvalidArgumentError(
-        "latent_activations requires a tape produced by SAE fwd");
+        "latent_activations requires a state produced by SAE fwd");
   }
   ASSIGN_OR_RETURN(int rows,
-                   ri::ActivationRows(tape.intermediates[0], input_dim_,
+                   ri::ActivationRows(state.intermediates[0], input_dim_,
                                       output_type_, "SAE saved input"));
   RETURN_IF_ERROR(
-      ri::ValidateBuffer(tape.intermediates[1],
+      ri::ValidateBuffer(state.intermediates[1],
                          static_cast<size_t>(rows) * feature_dim_ *
                              ri::ActivationElementBytes(output_type_),
                          "SAE saved latent activations"));
-  return tape.intermediates[1];
+  return state.intermediates[1];
 }
 
-absl::StatusOr<HostBufferVec> SparseAutoEncoderLayerReference::bwd(
-    absl::Span<const HostBuffer> output_gradients, ReferenceTape tape) {
+absl::StatusOr<HostBufferVec> SparseAutoEncoderLayerReference::bwd_impl(
+    absl::Span<const HostBuffer> output_gradients,
+    ReferenceBackwardState state) {
   if ((output_gradients.size() != 1 && output_gradients.size() != 3) ||
-      tape.intermediates.size() != 2) {
+      state.intermediates.size() != 2) {
     return absl::InvalidArgumentError(
-        "SAE bwd expects d_x1, optionally d_z and d_D, and a matching tape");
+        "SAE bwd expects d_x1, optionally d_z and d_D, and a matching state");
   }
   ASSIGN_OR_RETURN(int rows, ri::MatrixRows(output_gradients[0], input_dim_,
                                             "SAE reconstruction gradient"));
   RETURN_IF_ERROR(
-      ri::ValidateBuffer(tape.intermediates[0],
+      ri::ValidateBuffer(state.intermediates[0],
                          static_cast<size_t>(rows) * input_dim_ *
                              ri::ActivationElementBytes(output_type_),
                          "SAE saved input"));
   RETURN_IF_ERROR(
-      ri::ValidateBuffer(tape.intermediates[1],
+      ri::ValidateBuffer(state.intermediates[1],
                          static_cast<size_t>(rows) * feature_dim_ *
                              ri::ActivationElementBytes(output_type_),
                          "SAE saved latent activations"));
@@ -250,7 +252,7 @@ absl::StatusOr<HostBufferVec> SparseAutoEncoderLayerReference::bwd(
                 output_type_);
       }
       const float latent = ri::LoadActivation(
-          tape.intermediates[1],
+          state.intermediates[1],
           static_cast<size_t>(row) * feature_dim_ + feature, output_type_);
       d_preactivation[static_cast<size_t>(row) * feature_dim_ + feature] =
           latent > 0.0f ? sum : 0.0f;
@@ -277,7 +279,7 @@ absl::StatusOr<HostBufferVec> SparseAutoEncoderLayerReference::bwd(
       float sum = 0.0f;
       for (int row = 0; row < rows; ++row) {
         const float centered =
-            ri::LoadActivation(tape.intermediates[0],
+            ri::LoadActivation(state.intermediates[0],
                                static_cast<size_t>(row) * input_dim_ + column,
                                output_type_) -
             decoder_bias[column];
@@ -310,7 +312,7 @@ absl::StatusOr<HostBufferVec> SparseAutoEncoderLayerReference::bwd(
                    output_type_) *
                ri::QuantizeMmaOperand(
                    ri::LoadActivation(
-                       tape.intermediates[1],
+                       state.intermediates[1],
                        static_cast<size_t>(row) * feature_dim_ + feature,
                        output_type_),
                    output_type_);
@@ -342,12 +344,8 @@ SparseAutoEncoderLossLayerReference::Create(int input_dim, int feature_dim,
       input_dim, feature_dim, sparsity_penalty, data_type));
 }
 
-absl::StatusOr<HostBuffer> SparseAutoEncoderLossLayerReference::fwd(
-    absl::Span<const HostBuffer> inputs, ReferenceTape* tape) {
-  if (tape == nullptr) {
-    return absl::InvalidArgumentError(
-        "SparseAutoEncoderLossLayerReference fwd requires a tape");
-  }
+absl::StatusOr<HostBuffer> SparseAutoEncoderLossLayerReference::fwd_impl(
+    absl::Span<const HostBuffer> inputs, ReferenceBackwardState& state) const {
   int rows;
   RETURN_IF_ERROR(ValidateReferenceLossInputs(inputs, input_dim_, feature_dim_,
                                               output_type_, &rows));
@@ -381,20 +379,21 @@ absl::StatusOr<HostBuffer> SparseAutoEncoderLossLayerReference::fwd(
     }
   }
   *static_cast<float*>(output.data()) = loss;
-  tape->intermediates.assign(inputs.begin(), inputs.end());
-  tape->children.clear();
+  state.intermediates.assign(inputs.begin(), inputs.end());
+  state.children.clear();
   return output;
 }
 
-absl::StatusOr<HostBufferVec> SparseAutoEncoderLossLayerReference::bwd(
-    absl::Span<const HostBuffer> output_gradients, ReferenceTape tape) {
+absl::StatusOr<HostBufferVec> SparseAutoEncoderLossLayerReference::bwd_impl(
+    absl::Span<const HostBuffer> output_gradients,
+    ReferenceBackwardState state) {
   if (!output_gradients.empty()) {
     return absl::InvalidArgumentError(
         "terminal sparse autoencoder loss expects no upstream gradient");
   }
   int rows;
   RETURN_IF_ERROR(ValidateReferenceLossInputs(
-      tape.intermediates, input_dim_, feature_dim_, output_type_, &rows));
+      state.intermediates, input_dim_, feature_dim_, output_type_, &rows));
   ASSIGN_OR_RETURN(auto input_gradient,
                    ri::AllocateFloats(static_cast<size_t>(rows) * input_dim_));
   ASSIGN_OR_RETURN(auto reconstruction_gradient,
@@ -408,15 +407,16 @@ absl::StatusOr<HostBufferVec> SparseAutoEncoderLossLayerReference::bwd(
   auto* d_reconstruction = static_cast<float*>(reconstruction_gradient.data());
   auto* d_latent = static_cast<float*>(latent_gradient.data());
   auto* d_decoder = static_cast<float*>(decoder_gradient.data());
-  const auto* decoder = static_cast<const float*>(tape.intermediates[3].data());
+  const auto* decoder =
+      static_cast<const float*>(state.intermediates[3].data());
 
   for (int row = 0; row < rows; ++row) {
     for (int column = 0; column < input_dim_; ++column) {
       const size_t index = static_cast<size_t>(row) * input_dim_ + column;
       d_input[index] =
           2.0f *
-          (ri::LoadActivation(tape.intermediates[0], index, output_type_) -
-           ri::LoadActivation(tape.intermediates[1], index, output_type_));
+          (ri::LoadActivation(state.intermediates[0], index, output_type_) -
+           ri::LoadActivation(state.intermediates[1], index, output_type_));
       d_reconstruction[index] = -d_input[index];
     }
     for (int feature = 0; feature < feature_dim_; ++feature) {
@@ -441,7 +441,7 @@ absl::StatusOr<HostBufferVec> SparseAutoEncoderLossLayerReference::bwd(
     float latent_sum = 0.0f;
     for (int row = 0; row < rows; ++row) {
       latent_sum += ri::LoadActivation(
-          tape.intermediates[2],
+          state.intermediates[2],
           static_cast<size_t>(row) * feature_dim_ + feature, output_type_);
     }
     for (int column = 0; column < input_dim_; ++column) {

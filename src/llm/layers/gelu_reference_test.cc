@@ -30,14 +30,14 @@ TEST_F(LayerReferenceTest, ForwardAndBackwardMatchAcrossDomainAndTypes) {
       auto gradient_pair = MakeRawBufferPair<float>(*executor_, gradient);
       ASSERT_TRUE(input_pair.ok()) << input_pair.status();
       ASSERT_TRUE(gradient_pair.ok()) << gradient_pair.status();
-      Tape device_tape;
-      ReferenceTape reference_tape;
+      BackwardState device_state;
+      ReferenceBackwardState reference_state;
       BufferVec device_inputs = {input_pair->device};
       HostBufferVec reference_inputs = {input_pair->host};
       auto device_output =
-          (*device_layer)->fwd(*executor_, device_inputs, &device_tape);
+          (*device_layer)->fwd(*executor_, device_inputs, device_state);
       auto reference_output =
-          (*reference_layer)->fwd(reference_inputs, &reference_tape);
+          (*reference_layer)->fwd(reference_inputs, reference_state);
       ASSERT_TRUE(device_output.ok()) << device_output.status();
       ASSERT_TRUE(reference_output.ok()) << reference_output.status();
       EXPECT_TRUE(ActivationBuffersNear(*device_output, *reference_output, type,
@@ -47,10 +47,10 @@ TEST_F(LayerReferenceTest, ForwardAndBackwardMatchAcrossDomainAndTypes) {
       HostBufferVec reference_gradients = {gradient_pair->host};
       auto device_input =
           (*device_layer)
-              ->bwd(*executor_, device_gradients, std::move(device_tape));
+              ->bwd(*executor_, device_gradients, std::move(device_state));
       auto reference_input =
           (*reference_layer)
-              ->bwd(reference_gradients, std::move(reference_tape));
+              ->bwd(reference_gradients, std::move(reference_state));
       ASSERT_TRUE(device_input.ok()) << device_input.status();
       ASSERT_TRUE(reference_input.ok()) << reference_input.status();
       EXPECT_TRUE(FloatBuffersNear(device_input->front(),

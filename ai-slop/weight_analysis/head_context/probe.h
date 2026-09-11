@@ -21,10 +21,11 @@ struct Result {
 // residual addition, MLPs/attention blocks, final norm and tied output head.
 // No approximation of residual arithmetic, LayerNorm or softmax is used.
 //
-// Create checks the complete production Tape layout and 101-handle/100-unique
-// tied-weight traversal. It independently allocates every replay weight and
-// refuses to return unless native attention reconstruction and tail replay
-// reproduce clean full context and ALL padded logits at ALL original rows.
+// Create checks the complete production BackwardState layout and
+// 101-handle/100-unique tied-weight traversal. It independently allocates every
+// replay weight and refuses to return unless native attention reconstruction
+// and tail replay reproduce clean full context and ALL padded logits at ALL
+// original rows.
 //
 // The probe retains the original Buffer handles and byte snapshots for tokens,
 // selected pre-attention residual/QKV/context, clean logits and all 100
@@ -37,7 +38,7 @@ class Probe final {
  public:
   static absl::StatusOr<std::unique_ptr<Probe>> Create(
       cuda::Executor& executor, const llm::Layer& production_model,
-      const cuda::Buffer& tokens, const llm::Tape& production_tape,
+      const cuda::Buffer& tokens, const llm::BackwardState& production_state,
       const cuda::Buffer& clean_logits, int block);
   ~Probe();
 

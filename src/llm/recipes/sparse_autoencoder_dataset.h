@@ -22,7 +22,7 @@ namespace pluto::llm {
 // ignored because the resulting activations themselves are the SAE examples.
 //
 // The iterator borrows executor, activation_generator, and source. All three
-// must outlive it. The generator is used only for forward inference; its tape
+// must outlive it. The generator is used only for forward inference; its state
 // is discarded after each batch and no gradients are computed. Returned
 // DataBatch::data buffers contain batch_size * sequence_length hidden-state
 // rows. Both sample dimensions are preserved from the source; row width and

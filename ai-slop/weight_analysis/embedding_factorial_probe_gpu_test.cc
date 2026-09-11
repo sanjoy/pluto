@@ -56,18 +56,18 @@ TEST(EmbeddingFactorialGpuTest, NativeDiagonalsAndCausalInputExposure) {
   ASSERT_EQ(cudaMemcpyAsync(input->data(), tokens->data(), tokens->size_bytes(),
                             cudaMemcpyHostToDevice, (*executor)->stream()),
             cudaSuccess);
-  llm::Tape tape_a, tape_j;
+  llm::BackwardState state_a, state_j;
   auto native_a =
-      (*a)->fwd(**executor, absl::MakeConstSpan(&*input, 1), &tape_a);
+      (*a)->fwd(**executor, absl::MakeConstSpan(&*input, 1), state_a);
   auto native_j =
-      (*j)->fwd(**executor, absl::MakeConstSpan(&*input, 1), &tape_j);
+      (*j)->fwd(**executor, absl::MakeConstSpan(&*input, 1), state_j);
   ASSERT_TRUE(native_a.ok());
   ASSERT_TRUE(native_j.ok());
-  ASSERT_TRUE(ValidateGpt2Tape(tape_a).ok());
-  ASSERT_TRUE(ValidateGpt2Tape(tape_j).ok());
+  ASSERT_TRUE(ValidateGpt2State(state_a).ok());
+  ASSERT_TRUE(ValidateGpt2State(state_j).ok());
   const std::array<cuda::Buffer, 2> residuals{
-      tape_a.children[10].intermediates[0],
-      tape_j.children[10].intermediates[0]};
+      state_a.children[10].intermediates[0],
+      state_j.children[10].intermediates[0]};
   const std::array<cuda::Buffer, 2> native{*native_a, *native_j};
   const std::array<const NativeLogitLens*, 2> lenses{lens_a->get(),
                                                      lens_j->get()};
@@ -152,15 +152,15 @@ TEST(EmbeddingFactorialGpuTest, NativeDiagonalsAndCausalInputExposure) {
                             two_tokens->size_bytes(), cudaMemcpyHostToDevice,
                             (*executor)->stream()),
             cudaSuccess);
-  llm::Tape two_tape_a, two_tape_j;
+  llm::BackwardState two_state_a, two_state_j;
   auto two_native_a =
-      (*a)->fwd(**executor, absl::MakeConstSpan(&*two_input, 1), &two_tape_a);
+      (*a)->fwd(**executor, absl::MakeConstSpan(&*two_input, 1), two_state_a);
   auto two_native_j =
-      (*j)->fwd(**executor, absl::MakeConstSpan(&*two_input, 1), &two_tape_j);
+      (*j)->fwd(**executor, absl::MakeConstSpan(&*two_input, 1), two_state_j);
   ASSERT_TRUE(two_native_a.ok()) << two_native_a.status();
   ASSERT_TRUE(two_native_j.ok()) << two_native_j.status();
-  ASSERT_TRUE(ValidateGpt2Tape(two_tape_a).ok());
-  ASSERT_TRUE(ValidateGpt2Tape(two_tape_j).ok());
+  ASSERT_TRUE(ValidateGpt2State(two_state_a).ok());
+  ASSERT_TRUE(ValidateGpt2State(two_state_j).ok());
   const std::array<int32_t, 7> two_rows{0,
                                         context - 1,
                                         context,
@@ -171,8 +171,8 @@ TEST(EmbeddingFactorialGpuTest, NativeDiagonalsAndCausalInputExposure) {
   const std::array<int32_t, 7> two_targets{5, 7, 5, 5, 6, 9, 11};
   auto two_result = EvaluateEmbeddingFactorial(
       **executor, lenses,
-      {two_tape_a.children[10].intermediates[0],
-       two_tape_j.children[10].intermediates[0]},
+      {two_state_a.children[10].intermediates[0],
+       two_state_j.children[10].intermediates[0]},
       {*two_native_a, *two_native_j}, two_rows, two_targets);
   ASSERT_TRUE(two_result.ok()) << two_result.status();
   for (int cell = 0; cell < 4; ++cell) {

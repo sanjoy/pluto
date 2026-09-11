@@ -46,11 +46,11 @@ TEST(PhraseProbeRoundingTest, Bf16AdditionIncludesRoundToEvenAndSignedZeros) {
 }
 
 TEST(PhraseProbeTopologyTest, RejectsEmptyTreeBeforeReadingAnyBuffers) {
-  llm::Tape empty;
-  EXPECT_EQ(ValidateGpt2Tape(empty).code(),
+  llm::BackwardState empty;
+  EXPECT_EQ(ValidateGpt2State(empty).code(),
             absl::StatusCode::kFailedPrecondition);
   empty.children.resize(12);
-  EXPECT_EQ(ValidateGpt2Tape(empty).code(),
+  EXPECT_EQ(ValidateGpt2State(empty).code(),
             absl::StatusCode::kFailedPrecondition);
 }
 
@@ -93,9 +93,9 @@ TEST_F(PhraseProbeGpuTest,
   const auto weights = (*layer)->weights();
   auto before = ReadPrefix(*executor_, weights[0], kInput, kOutput, 4);
   ASSERT_TRUE(before.ok()) << before.status();
-  llm::Tape tape;
+  llm::BackwardState state;
   auto expected =
-      (*layer)->fwd(*executor_, absl::MakeConstSpan(&*input, 1), &tape);
+      (*layer)->fwd(*executor_, absl::MakeConstSpan(&*input, 1), state);
   ASSERT_TRUE(expected.ok()) << expected.status();
   auto replay = ReplayProjection(*executor_, *input, weights[0], weights[1],
                                  kInput, kOutput);
@@ -131,10 +131,10 @@ TEST_F(PhraseProbeGpuTest,
   ASSERT_TRUE(gelu.ok());
   auto* branch = gelu->get();
   llm::ResidualLayer residual(std::move(*gelu));
-  llm::Tape tape, branch_tape;
-  auto after = residual.fwd(*executor_, absl::MakeConstSpan(&*input, 1), &tape);
+  llm::BackwardState state, branch_state;
+  auto after = residual.fwd(*executor_, absl::MakeConstSpan(&*input, 1), state);
   auto contribution =
-      branch->fwd(*executor_, absl::MakeConstSpan(&*input, 1), &branch_tape);
+      branch->fwd(*executor_, absl::MakeConstSpan(&*input, 1), branch_state);
   ASSERT_TRUE(after.ok()) << after.status();
   ASSERT_TRUE(contribution.ok()) << contribution.status();
   EXPECT_TRUE(VerifyResidualReplay(*executor_, *input, *contribution, *after,
@@ -211,15 +211,15 @@ TEST_F(PhraseProbeGpuTest,
 }
 
 TEST_F(PhraseProbeGpuTest,
-       TapeTopologyChecksAllBranchesAndAttentionSavedOutput) {
+       StateTopologyChecksAllBranchesAndAttentionSavedOutput) {
   auto buffer = cuda::Buffer::Allocate(*executor_, 16);
   ASSERT_TRUE(buffer.ok());
-  llm::Tape tape;
-  tape.children.resize(12);
+  llm::BackwardState state;
+  state.children.resize(12);
   for (int index : {0, 10, 11})
-    tape.children[index].intermediates.push_back(*buffer);
+    state.children[index].intermediates.push_back(*buffer);
   for (int block = 0; block < 8; ++block) {
-    auto& body = tape.children[block + 2];
+    auto& body = state.children[block + 2];
     body.children.resize(2);
     for (int branch = 0; branch < 2; ++branch) {
       auto& residual = body.children[branch];
@@ -233,18 +233,18 @@ TEST_F(PhraseProbeGpuTest,
         leaves[2].intermediates.push_back(*buffer);
     }
   }
-  EXPECT_TRUE(ValidateGpt2Tape(tape).ok());
-  auto changed = tape;
+  EXPECT_TRUE(ValidateGpt2State(state).ok());
+  auto changed = state;
   changed.children[7]
       .children[0]
       .children[0]
       .children[2]
       .intermediates.pop_back();
-  EXPECT_EQ(ValidateGpt2Tape(changed).code(),
+  EXPECT_EQ(ValidateGpt2State(changed).code(),
             absl::StatusCode::kFailedPrecondition);
-  changed = tape;
+  changed = state;
   changed.children[9].children[1].children[0].children.pop_back();
-  EXPECT_EQ(ValidateGpt2Tape(changed).code(),
+  EXPECT_EQ(ValidateGpt2State(changed).code(),
             absl::StatusCode::kFailedPrecondition);
   auto lens = NativeLogitLens::Create(*executor_, {});
   EXPECT_EQ(lens.status().code(), absl::StatusCode::kInvalidArgument);

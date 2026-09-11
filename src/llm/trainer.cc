@@ -170,13 +170,14 @@ absl::StatusOr<ObjectiveForwardPass> LanguageModelingObjective::Forward(
       loss_layer_.ValidateSequenceLength(data_batch.sequence_length));
   ASSIGN_OR_RETURN(auto batch,
                    PrepareLanguageModelingBatch(executor, data_batch));
-  Tape model_tape;
+  BackwardState model_state;
   BufferVec model_inputs = {batch.tokens};
-  ASSIGN_OR_RETURN(auto output, model_.fwd(executor, model_inputs, &model_tape));
-  Tape loss_tape;
+  ASSIGN_OR_RETURN(auto output,
+                   model_.fwd(executor, model_inputs, model_state));
+  BackwardState loss_state;
   BufferVec loss_inputs = {output, batch.targets};
   ASSIGN_OR_RETURN(auto losses,
-                   loss_layer_.fwd(executor, loss_inputs, &loss_tape));
+                   loss_layer_.fwd(executor, loss_inputs, loss_state));
   if (losses.size_bytes() !=
       static_cast<size_t>(batch.token_count) * sizeof(float)) {
     return absl::InvalidArgumentError(
@@ -185,17 +186,18 @@ absl::StatusOr<ObjectiveForwardPass> LanguageModelingObjective::Forward(
   return ObjectiveForwardPass{
       .loss = std::move(losses),
       .normalization_count = batch.token_count,
-      .model_tape = std::move(model_tape),
-      .loss_tape = std::move(loss_tape),
+      .model_state = std::move(model_state),
+      .loss_state = std::move(loss_state),
   };
 }
 
 absl::Status LanguageModelingObjective::Backward(cuda::Executor& executor,
                                                  ObjectiveForwardPass pass) {
   ASSIGN_OR_RETURN(auto output_gradient,
-                   loss_layer_.bwd(executor, {}, std::move(pass.loss_tape)));
-  ASSIGN_OR_RETURN(auto input_gradient, model_.bwd(executor, output_gradient,
-                                                   std::move(pass.model_tape)));
+                   loss_layer_.bwd(executor, {}, std::move(pass.loss_state)));
+  ASSIGN_OR_RETURN(
+      auto input_gradient,
+      model_.bwd(executor, output_gradient, std::move(pass.model_state)));
   (void)input_gradient;
   return absl::OkStatus();
 }
@@ -204,16 +206,16 @@ absl::StatusOr<ObjectiveForwardPass> SparseAutoEncoderObjective::Forward(
     cuda::Executor& executor, const DataBatch& batch) const {
   RETURN_IF_ERROR(ValidateSparseAutoEncoderBatch(executor, model_, batch));
   ASSIGN_OR_RETURN(const int token_count, batch.token_count());
-  Tape model_tape;
+  BackwardState model_state;
   BufferVec model_inputs = {batch.data};
   ASSIGN_OR_RETURN(auto reconstruction,
-                   model_.fwd(executor, model_inputs, &model_tape));
-  ASSIGN_OR_RETURN(auto latents, model_.latent_activations(model_tape));
-  Tape loss_tape;
+                   model_.fwd(executor, model_inputs, model_state));
+  ASSIGN_OR_RETURN(auto latents, model_.latent_activations(model_state));
+  BackwardState loss_state;
   BufferVec loss_inputs = {batch.data, reconstruction, latents,
                            model_.decoder()};
   ASSIGN_OR_RETURN(auto loss,
-                   loss_layer_.fwd(executor, loss_inputs, &loss_tape));
+                   loss_layer_.fwd(executor, loss_inputs, loss_state));
   if (loss.size_bytes() != sizeof(float)) {
     return absl::InvalidArgumentError(
         "sparse-autoencoder loss must return one FP32 scalar");
@@ -221,15 +223,15 @@ absl::StatusOr<ObjectiveForwardPass> SparseAutoEncoderObjective::Forward(
   return ObjectiveForwardPass{
       .loss = std::move(loss),
       .normalization_count = token_count,
-      .model_tape = std::move(model_tape),
-      .loss_tape = std::move(loss_tape),
+      .model_state = std::move(model_state),
+      .loss_state = std::move(loss_state),
   };
 }
 
 absl::Status SparseAutoEncoderObjective::Backward(cuda::Executor& executor,
                                                   ObjectiveForwardPass pass) {
   ASSIGN_OR_RETURN(auto loss_gradients,
-                   loss_layer_.bwd(executor, {}, std::move(pass.loss_tape)));
+                   loss_layer_.bwd(executor, {}, std::move(pass.loss_state)));
   if (loss_gradients.size() != 4) {
     return absl::InternalError(
         "sparse-autoencoder loss must return gradients for x, x1, z, and D");
@@ -239,8 +241,9 @@ absl::Status SparseAutoEncoderObjective::Backward(cuda::Executor& executor,
   // auxiliary backward inputs.
   BufferVec model_gradients = {loss_gradients[1], loss_gradients[2],
                                loss_gradients[3]};
-  ASSIGN_OR_RETURN(auto input_gradient, model_.bwd(executor, model_gradients,
-                                                   std::move(pass.model_tape)));
+  ASSIGN_OR_RETURN(
+      auto input_gradient,
+      model_.bwd(executor, model_gradients, std::move(pass.model_state)));
   (void)input_gradient;
   return absl::OkStatus();
 }

@@ -12,7 +12,7 @@
 
 namespace pluto::llm {
 
-// Wraps a unary layer as x + layer(x), retaining the child's tape and weights.
+// Wraps a unary layer as x + layer(x), retaining the child's state and weights.
 class ResidualLayer final : public Layer {
  public:
   explicit ResidualLayer(std::unique_ptr<Layer> layer);
@@ -26,10 +26,10 @@ class ResidualLayer final : public Layer {
  private:
   absl::StatusOr<Buffer> fwd_impl(cuda::Executor& executor,
                                   absl::Span<const Buffer> inputs,
-                                  Tape* tape) const override;
+                                  BackwardState& state) const override;
   absl::StatusOr<BufferVec> bwd_impl(cuda::Executor& executor,
                                      absl::Span<const Buffer> output_gradients,
-                                     Tape tape) override;
+                                     BackwardState state) override;
 
   std::unique_ptr<Layer> layer_;
   std::vector<Buffer> weights_;
@@ -51,10 +51,10 @@ class ComposedLayer final : public Layer {
  private:
   absl::StatusOr<Buffer> fwd_impl(cuda::Executor& executor,
                                   absl::Span<const Buffer> inputs,
-                                  Tape* tape) const override;
+                                  BackwardState& state) const override;
   absl::StatusOr<BufferVec> bwd_impl(cuda::Executor& executor,
                                      absl::Span<const Buffer> output_gradients,
-                                     Tape tape) override;
+                                     BackwardState state) override;
 
   DataType output_type_;
   std::vector<std::unique_ptr<Layer>> layers_;
@@ -101,11 +101,7 @@ class ComposedLayerBuilder final {
 class ResidualLayerReference final : public LayerReference {
  public:
   explicit ResidualLayerReference(std::unique_ptr<LayerReference> layer);
-  absl::StatusOr<HostBuffer> fwd(absl::Span<const HostBuffer> inputs,
-                                 ReferenceTape* tape) override;
-  absl::StatusOr<HostBufferVec> bwd(
-      absl::Span<const HostBuffer> output_gradients,
-      ReferenceTape tape) override;
+
   absl::Span<HostBuffer> weights() override { return absl::MakeSpan(weights_); }
   absl::Span<HostBuffer> gradients() override {
     return absl::MakeSpan(gradients_);
@@ -113,22 +109,26 @@ class ResidualLayerReference final : public LayerReference {
   DataType output_type() const override { return layer_->output_type(); }
 
  private:
+  absl::StatusOr<HostBuffer> fwd_impl(
+      absl::Span<const HostBuffer> inputs,
+      ReferenceBackwardState& state) const override;
+  absl::StatusOr<HostBufferVec> bwd_impl(
+      absl::Span<const HostBuffer> output_gradients,
+      ReferenceBackwardState state) override;
+
   std::unique_ptr<LayerReference> layer_;
   std::vector<HostBuffer> weights_;
   std::vector<HostBuffer> gradients_;
 };
 
-// CPU counterpart of ComposedLayer. Each child retains its own ReferenceTape,
-// making reverse traversal match the production graph exactly.
+// CPU counterpart of ComposedLayer. Each child retains its own
+// ReferenceBackwardState, making reverse traversal match the production graph
+// exactly.
 class ComposedLayerReference final : public LayerReference {
  public:
   ComposedLayerReference(DataType data_type,
                          std::vector<std::unique_ptr<LayerReference>> layers);
-  absl::StatusOr<HostBuffer> fwd(absl::Span<const HostBuffer> inputs,
-                                 ReferenceTape* tape) override;
-  absl::StatusOr<HostBufferVec> bwd(
-      absl::Span<const HostBuffer> output_gradients,
-      ReferenceTape tape) override;
+
   absl::Span<HostBuffer> weights() override { return absl::MakeSpan(weights_); }
   absl::Span<HostBuffer> gradients() override {
     return absl::MakeSpan(gradients_);
@@ -136,6 +136,13 @@ class ComposedLayerReference final : public LayerReference {
   DataType output_type() const override { return output_type_; }
 
  private:
+  absl::StatusOr<HostBuffer> fwd_impl(
+      absl::Span<const HostBuffer> inputs,
+      ReferenceBackwardState& state) const override;
+  absl::StatusOr<HostBufferVec> bwd_impl(
+      absl::Span<const HostBuffer> output_gradients,
+      ReferenceBackwardState state) override;
+
   DataType output_type_;
   std::vector<std::unique_ptr<LayerReference>> layers_;
   std::vector<HostBuffer> weights_;

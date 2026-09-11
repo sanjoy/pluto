@@ -54,13 +54,13 @@ struct SourceValueResult {
 // renormalization. Later computations are rerun normally.
 //
 // Keep the executor alive and do not concurrently mutate any supplied model
-// weights or tape buffers. The caller must independently snapshot/verify the
+// weights or state buffers. The caller must independently snapshot/verify the
 // model weights and checkpoint files; this helper checks all saved activation
 // inputs against its own original byte snapshots on every successful Apply.
 class SourceValueProbe final {
  public:
   static absl::StatusOr<std::unique_ptr<SourceValueProbe>> Create(
-      cuda::Executor& executor, const llm::Tape& production_tape,
+      cuda::Executor& executor, const llm::BackwardState& production_state,
       const cuda::Buffer& clean_logits,
       absl::Span<const cuda::Buffer> original_weights, int block);
   ~SourceValueProbe();

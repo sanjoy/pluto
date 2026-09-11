@@ -39,10 +39,10 @@ class FullyConnectedLayer final : public Layer {
  private:
   absl::StatusOr<Buffer> fwd_impl(cuda::Executor& executor,
                                   absl::Span<const Buffer> inputs,
-                                  Tape* tape) const override;
+                                  BackwardState& state) const override;
   absl::StatusOr<BufferVec> bwd_impl(cuda::Executor& executor,
                                      absl::Span<const Buffer> output_gradients,
-                                     Tape tape) override;
+                                     BackwardState state) override;
 
   FullyConnectedLayer(cuda::Executor& executor, int input_dim, int output_dim,
                       DataType data_type, Buffer matrix, Buffer bias,
@@ -70,11 +70,6 @@ class FullyConnectedLayerReference final : public LayerReference {
   absl::Status InitializeIdentity(float scale = 1.0f);
   absl::Status InitializeNormal(float standard_deviation, uint64_t seed);
 
-  absl::StatusOr<HostBuffer> fwd(absl::Span<const HostBuffer> inputs,
-                                 ReferenceTape* tape) override;
-  absl::StatusOr<HostBufferVec> bwd(
-      absl::Span<const HostBuffer> output_gradients,
-      ReferenceTape tape) override;
   absl::Span<HostBuffer> weights() override { return absl::MakeSpan(weights_); }
   absl::Span<HostBuffer> gradients() override {
     return absl::MakeSpan(gradients_);
@@ -85,6 +80,13 @@ class FullyConnectedLayerReference final : public LayerReference {
   int output_dim() const { return output_dim_; }
 
  private:
+  absl::StatusOr<HostBuffer> fwd_impl(
+      absl::Span<const HostBuffer> inputs,
+      ReferenceBackwardState& state) const override;
+  absl::StatusOr<HostBufferVec> bwd_impl(
+      absl::Span<const HostBuffer> output_gradients,
+      ReferenceBackwardState state) override;
+
   FullyConnectedLayerReference(int input_dim, int output_dim,
                                DataType data_type, HostBuffer matrix,
                                HostBuffer bias, HostBuffer matrix_gradient,

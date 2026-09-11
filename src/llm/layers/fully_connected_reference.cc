@@ -63,11 +63,11 @@ absl::Status FullyConnectedLayerReference::InitializeNormal(
   return absl::OkStatus();
 }
 
-absl::StatusOr<HostBuffer> FullyConnectedLayerReference::fwd(
-    absl::Span<const HostBuffer> inputs, ReferenceTape* tape) {
-  if (inputs.size() != 1 || tape == nullptr) {
+absl::StatusOr<HostBuffer> FullyConnectedLayerReference::fwd_impl(
+    absl::Span<const HostBuffer> inputs, ReferenceBackwardState& state) const {
+  if (inputs.size() != 1) {
     return absl::InvalidArgumentError(
-        "FullyConnectedLayerReference fwd expects one input and a tape");
+        "FullyConnectedLayerReference fwd expects one input and saved state");
   }
   ASSIGN_OR_RETURN(int rows, ri::ActivationRows(inputs[0], input_dim_,
                                                 output_type_, "dense input"));
@@ -101,21 +101,22 @@ absl::StatusOr<HostBuffer> FullyConnectedLayerReference::fwd(
           output_type_, sum);
     }
   }
-  tape->intermediates = {inputs[0]};
-  tape->children.clear();
+  state.intermediates = {inputs[0]};
+  state.children.clear();
   return output;
 }
 
-absl::StatusOr<HostBufferVec> FullyConnectedLayerReference::bwd(
-    absl::Span<const HostBuffer> output_gradients, ReferenceTape tape) {
-  if (output_gradients.size() != 1 || tape.intermediates.size() != 1) {
+absl::StatusOr<HostBufferVec> FullyConnectedLayerReference::bwd_impl(
+    absl::Span<const HostBuffer> output_gradients,
+    ReferenceBackwardState state) {
+  if (output_gradients.size() != 1 || state.intermediates.size() != 1) {
     return absl::InvalidArgumentError(
         "FullyConnectedLayerReference bwd received incompatible state");
   }
   ASSIGN_OR_RETURN(int rows, ri::MatrixRows(output_gradients[0], output_dim_,
                                             "dense output gradient"));
   RETURN_IF_ERROR(
-      ri::ValidateBuffer(tape.intermediates[0],
+      ri::ValidateBuffer(state.intermediates[0],
                          static_cast<size_t>(rows) * input_dim_ *
                              ri::ActivationElementBytes(output_type_),
                          "dense saved input"));
@@ -154,7 +155,7 @@ absl::StatusOr<HostBufferVec> FullyConnectedLayerReference::bwd(
       for (int row = 0; row < rows; ++row) {
         sum += ri::QuantizeMmaOperand(
                    ri::LoadActivation(
-                       tape.intermediates[0],
+                       state.intermediates[0],
                        static_cast<size_t>(row) * input_dim_ + input_column,
                        output_type_),
                    output_type_) *

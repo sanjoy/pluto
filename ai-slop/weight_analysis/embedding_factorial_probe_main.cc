@@ -254,19 +254,19 @@ absl::Status Run() {
         cudaMemcpyAsync(input.data(), inputs.data(), input.size_bytes(),
                         cudaMemcpyHostToDevice, executor->stream()),
         "factorial frozen input upload"));
-    std::array<llm::Tape, 2> tapes;
+    std::array<llm::BackwardState, 2> states;
     std::vector<cuda::Buffer> native_logits;
     std::vector<cuda::Buffer> residuals;
     for (int side = 0; side < 2; ++side) {
       ASSIGN_OR_RETURN(
           auto logits,
           models[side]->fwd(*executor, absl::MakeConstSpan(&input, 1),
-                            &tapes[side]));
+                            states[side]));
       native_logits.push_back(std::move(logits));
-      RETURN_IF_ERROR(ValidateGpt2Tape(tapes[side]));
-      // ValidateGpt2Tape guards this exact production path: final LayerNorm
+      RETURN_IF_ERROR(ValidateGpt2State(states[side]));
+      // ValidateGpt2State guards this exact production path: final LayerNorm
       // saves its input, i.e. the post-block-7 residual before final readout.
-      residuals.push_back(tapes[side].children[10].intermediates[0]);
+      residuals.push_back(states[side].children[10].intermediates[0]);
     }
     std::vector<int32_t> rows, targets;
     const auto batch_targets = batch.targets(first, count);

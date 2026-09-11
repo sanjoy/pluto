@@ -24,10 +24,10 @@ class GeluLayer final : public Layer {
  private:
   absl::StatusOr<Buffer> fwd_impl(cuda::Executor& executor,
                                   absl::Span<const Buffer> inputs,
-                                  Tape* tape) const override;
+                                  BackwardState& state) const override;
   absl::StatusOr<BufferVec> bwd_impl(cuda::Executor& executor,
                                      absl::Span<const Buffer> output_gradients,
-                                     Tape tape) override;
+                                     BackwardState state) override;
 
   GeluLayer(cuda::Executor& executor, DataType data_type)
       : output_type_(data_type), executor_(executor) {}
@@ -41,15 +41,17 @@ class GeluLayerReference final : public LayerReference {
   static absl::StatusOr<std::unique_ptr<GeluLayerReference>> Create(
       DataType data_type);
 
-  absl::StatusOr<HostBuffer> fwd(absl::Span<const HostBuffer> inputs,
-                                 ReferenceTape* tape) override;
-  absl::StatusOr<HostBufferVec> bwd(
-      absl::Span<const HostBuffer> output_gradients,
-      ReferenceTape tape) override;
   absl::Span<HostBuffer> weights() override { return {}; }
   DataType output_type() const override { return output_type_; }
 
  private:
+  absl::StatusOr<HostBuffer> fwd_impl(
+      absl::Span<const HostBuffer> inputs,
+      ReferenceBackwardState& state) const override;
+  absl::StatusOr<HostBufferVec> bwd_impl(
+      absl::Span<const HostBuffer> output_gradients,
+      ReferenceBackwardState state) override;
+
   explicit GeluLayerReference(DataType data_type) : output_type_(data_type) {}
 
   DataType output_type_;

@@ -84,7 +84,7 @@ class HeadContextGpuTest : public ::testing::Test {
     input_ = std::move(*input);
     ASSERT_TRUE(Upload(*executor_, *input_, tokens_).ok());
     auto clean =
-        model_->fwd(*executor_, absl::MakeConstSpan(&*input_, 1), &tape_);
+        model_->fwd(*executor_, absl::MakeConstSpan(&*input_, 1), state_);
     ASSERT_TRUE(clean.ok()) << clean.status();
     clean_ = std::move(*clean);
     auto clean_values = Download<float>(*executor_, *clean_);
@@ -178,9 +178,9 @@ class HeadContextGpuTest : public ::testing::Test {
     std::fill(patched->begin() + first,
               patched->begin() + first + kHeadWidth * kWidth, 0.0f);
     const auto written = Upload(*executor_, matrix, *patched);
-    llm::Tape edited_tape;
+    llm::BackwardState edited_state;
     auto edited =
-        model_->fwd(*executor_, absl::MakeConstSpan(&*input_, 1), &edited_tape);
+        model_->fwd(*executor_, absl::MakeConstSpan(&*input_, 1), edited_state);
     const auto restored = Upload(*executor_, matrix, *backup);
     ASSERT_TRUE(written.ok()) << written;
     ASSERT_TRUE(restored.ok()) << restored;
@@ -195,12 +195,12 @@ class HeadContextGpuTest : public ::testing::Test {
     // context by one-half need not equal rounding scaled FP32 master weights.
   }
 
-  // Destruction order keeps model/tapes/device buffers ahead of the executor.
+  // Destruction order keeps model/states/device buffers ahead of the executor.
   std::unique_ptr<cuda::Executor> executor_;
   std::unique_ptr<llm::ComposedLayer> model_;
   cuda::PageLockedHostArray<int32_t> tokens_;
   std::optional<cuda::Buffer> input_, clean_;
-  llm::Tape tape_;
+  llm::BackwardState state_;
   cuda::PageLockedHostArray<float> clean_values_;
   int rows_ = 0;
 };
@@ -211,7 +211,7 @@ TEST_F(HeadContextGpuTest, NativeScopesDosesAndIndependentProjectionZeroAgree) {
   for (const auto& [block, head] :
        {std::pair{0, 5}, std::pair{3, 6}, std::pair{7, 0}}) {
     auto probe =
-        Probe::Create(*executor_, *model_, *input_, tape_, *clean_, block);
+        Probe::Create(*executor_, *model_, *input_, state_, *clean_, block);
     ASSERT_TRUE(probe.ok()) << probe.status();
     for (int query : {0, 511, kContext - 1}) {
       for (auto scope : {QueryScope::kSelectedQuery, QueryScope::kOtherQueries,
@@ -240,7 +240,7 @@ TEST_F(HeadContextGpuTest, NativeScopesDosesAndIndependentProjectionZeroAgree) {
 TEST_F(HeadContextGpuTest,
        OtherSequenceAndFutureOnlyQueriesCannotChangeLogits) {
   ASSERT_NO_FATAL_FAILURE(Initialize(2));
-  auto probe = Probe::Create(*executor_, *model_, *input_, tape_, *clean_, 3);
+  auto probe = Probe::Create(*executor_, *model_, *input_, state_, *clean_, 3);
   ASSERT_TRUE(probe.ok()) << probe.status();
   for (int query : {0, 511}) {
     for (auto scope : {QueryScope::kSelectedQuery, QueryScope::kOtherQueries,
@@ -258,7 +258,7 @@ TEST_F(HeadContextGpuTest,
 TEST_F(HeadContextGpuTest,
        RejectsWrongIdentityMalformedInputsAndOriginalMutation) {
   ASSERT_NO_FATAL_FAILURE(Initialize(1));
-  auto probe = Probe::Create(*executor_, *model_, *input_, tape_, *clean_, 3);
+  auto probe = Probe::Create(*executor_, *model_, *input_, state_, *clean_, 3);
   ASSERT_TRUE(probe.ok()) << probe.status();
   const Selection selection{3, 6, 0, 511, QueryScope::kSelectedQuery, 0};
   auto other_executor = cuda::Executor::Create();
@@ -266,25 +266,28 @@ TEST_F(HeadContextGpuTest,
   EXPECT_FALSE((*probe)->Apply(**other_executor, selection).ok());
   EXPECT_FALSE((*probe)->VerifyOriginals(**other_executor).ok());
   EXPECT_FALSE(
-      Probe::Create(**other_executor, *model_, *input_, tape_, *clean_, 3)
+      Probe::Create(**other_executor, *model_, *input_, state_, *clean_, 3)
           .ok());
-  EXPECT_FALSE(
-      Probe::Create(*executor_, *model_, *input_, llm::Tape{}, *clean_, 3)
-          .ok());
+  EXPECT_FALSE(Probe::Create(*executor_, *model_, *input_, llm::BackwardState{},
+                             *clean_, 3)
+                   .ok());
   auto wrong_shape = cuda::Buffer::Allocate(*executor_, sizeof(int32_t));
   ASSERT_TRUE(wrong_shape.ok()) << wrong_shape.status();
   EXPECT_FALSE(
-      Probe::Create(*executor_, *model_, *wrong_shape, tape_, *clean_, 3).ok());
+      Probe::Create(*executor_, *model_, *wrong_shape, state_, *clean_, 3)
+          .ok());
   auto other_input = cuda::Buffer::Allocate(*executor_, tokens_.size_bytes());
   ASSERT_TRUE(other_input.ok()) << other_input.status();
   ASSERT_TRUE(Upload(*executor_, *other_input, tokens_).ok());
-  // Same bytes are insufficient: this tape must retain this exact token buffer.
+  // Same bytes are insufficient: this state must retain this exact token
+  // buffer.
   EXPECT_FALSE(
-      Probe::Create(*executor_, *model_, *other_input, tape_, *clean_, 3).ok());
+      Probe::Create(*executor_, *model_, *other_input, state_, *clean_, 3)
+          .ok());
   auto other_model = llm::CreateGpt2(*executor_, llm::DataType::BF16, 18);
   ASSERT_TRUE(other_model.ok()) << other_model.status();
   EXPECT_FALSE(
-      Probe::Create(*executor_, **other_model, *input_, tape_, *clean_, 3)
+      Probe::Create(*executor_, **other_model, *input_, state_, *clean_, 3)
           .ok());
   for (const Selection invalid :
        {Selection{2, 6, 0, 511, QueryScope::kSelectedQuery, 0},

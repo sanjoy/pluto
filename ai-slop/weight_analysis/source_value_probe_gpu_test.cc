@@ -48,16 +48,16 @@ TEST(SourceValueGpuTest,
   ASSERT_EQ(cudaMemcpyAsync(input->data(), tokens->data(), tokens->size_bytes(),
                             cudaMemcpyHostToDevice, (*executor)->stream()),
             cudaSuccess);
-  llm::Tape clean_tape;
+  llm::BackwardState clean_state;
   auto clean =
-      (*model)->fwd(**executor, absl::MakeConstSpan(&*input, 1), &clean_tape);
+      (*model)->fwd(**executor, absl::MakeConstSpan(&*input, 1), clean_state);
   ASSERT_TRUE(clean.ok()) << clean.status();
-  ASSERT_TRUE(ValidateGpt2Tape(clean_tape).ok());
+  ASSERT_TRUE(ValidateGpt2State(clean_state).ok());
   auto clean_bytes = ReadPrefix(**executor, *clean, rows, kVocabulary, 4);
   ASSERT_TRUE(clean_bytes.ok());
 
   auto probe =
-      SourceValueProbe::Create(**executor, clean_tape, *clean, *weights, 1);
+      SourceValueProbe::Create(**executor, clean_state, *clean, *weights, 1);
   ASSERT_TRUE(probe.ok()) << probe.status();
   const auto& clean_qkv = (*probe)->original_qkv();
   const auto& clean_context = (*probe)->original_context();
@@ -155,7 +155,7 @@ TEST(SourceValueGpuTest,
   // Exercise both ends of the suffix construction. Block 0 replays every
   // later block; block 7 has only its own MLP before final normalization/head.
   for (int block : {0, 7}) {
-    auto boundary = SourceValueProbe::Create(**executor, clean_tape, *clean,
+    auto boundary = SourceValueProbe::Create(**executor, clean_state, *clean,
                                              *weights, block);
     ASSERT_TRUE(boundary.ok()) << "block=" << block << " " << boundary.status();
     auto identity =
@@ -169,25 +169,25 @@ TEST(SourceValueGpuTest,
   auto other_executor = cuda::Executor::Create();
   ASSERT_TRUE(other_executor.ok());
   EXPECT_FALSE((*probe)->Apply(**other_executor, selection).ok());
-  EXPECT_FALSE(SourceValueProbe::Create(**other_executor, clean_tape, *clean,
+  EXPECT_FALSE(SourceValueProbe::Create(**other_executor, clean_state, *clean,
                                         *weights, 1)
                    .ok());
 
-  // Invalid tape/shape evidence must be rejected before creating a tail.
-  llm::Tape empty;
+  // Invalid state/shape evidence must be rejected before creating a tail.
+  llm::BackwardState empty;
   EXPECT_FALSE(
       SourceValueProbe::Create(**executor, empty, *clean, *weights, 1).ok());
-  auto malformed_tape = clean_tape;
-  malformed_tape.children[3]
+  auto malformed_state = clean_state;
+  malformed_state.children[3]
       .children[0]
       .children[0]
       .children[2]
       .intermediates[0] = *input;
   EXPECT_FALSE(
-      SourceValueProbe::Create(**executor, malformed_tape, *clean, *weights, 1)
+      SourceValueProbe::Create(**executor, malformed_state, *clean, *weights, 1)
           .ok());
   EXPECT_FALSE(
-      SourceValueProbe::Create(**executor, clean_tape, *input, *weights, 1)
+      SourceValueProbe::Create(**executor, clean_state, *input, *weights, 1)
           .ok());
 
   // Corrupt one clean-logit evidence byte in an independent allocation. The
@@ -207,7 +207,7 @@ TEST(SourceValueGpuTest,
   ASSERT_EQ(cudaMemcpyAsync(wrong_logits->data(), changed_word->data(), 4,
                             cudaMemcpyHostToDevice, (*executor)->stream()),
             cudaSuccess);
-  EXPECT_FALSE(SourceValueProbe::Create(**executor, clean_tape, *wrong_logits,
+  EXPECT_FALSE(SourceValueProbe::Create(**executor, clean_state, *wrong_logits,
                                         *weights, 7)
                    .ok());
 

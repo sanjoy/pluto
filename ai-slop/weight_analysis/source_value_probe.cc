@@ -117,22 +117,21 @@ class ConstantBranch final : public llm::Layer {
   llm::DataType output_type() const override { return llm::DataType::BF16; }
 
  private:
-  absl::StatusOr<cuda::Buffer> fwd_impl(cuda::Executor& executor,
-                                        absl::Span<const cuda::Buffer> inputs,
-                                        llm::Tape* tape) const override {
-    if (inputs.size() != 1 || tape == nullptr ||
-        &branch_.executor() != &executor ||
+  absl::StatusOr<cuda::Buffer> fwd_impl(
+      cuda::Executor& executor, absl::Span<const cuda::Buffer> inputs,
+      llm::BackwardState& state) const override {
+    if (inputs.size() != 1 || &branch_.executor() != &executor ||
         &inputs[0].executor() != &executor ||
         inputs[0].size_bytes() != branch_.size_bytes()) {
       return absl::InvalidArgumentError("invalid constant residual branch");
     }
-    tape->intermediates.clear();
-    tape->children.clear();
+    state.intermediates.clear();
+    state.children.clear();
     return branch_;
   }
   absl::StatusOr<llm::BufferVec> bwd_impl(cuda::Executor&,
                                           absl::Span<const cuda::Buffer>,
-                                          llm::Tape) override {
+                                          llm::BackwardState) override {
     return absl::UnimplementedError("source-value replay is forward only");
   }
 
@@ -236,21 +235,21 @@ struct SourceValueProbe::Impl {
 
   absl::StatusOr<cuda::Buffer> Replay(
       const cuda::Buffer& changed_context) const {
-    llm::Tape projection_tape;
+    llm::BackwardState projection_state;
     ASSIGN_OR_RETURN(
         auto projected,
         projection->fwd(executor, absl::MakeConstSpan(&changed_context, 1),
-                        &projection_tape));
+                        projection_state));
     llm::ResidualLayer residual(
         std::make_unique<ConstantBranch>(std::move(projected)));
-    llm::Tape add_tape, tail_tape;
+    llm::BackwardState add_state, tail_state;
     ASSIGN_OR_RETURN(
         auto after_attention,
-        residual.fwd(executor, absl::MakeConstSpan(&before, 1), &add_tape));
+        residual.fwd(executor, absl::MakeConstSpan(&before, 1), add_state));
     ASSIGN_OR_RETURN(
         auto final_residual,
         tail->fwd(executor, absl::MakeConstSpan(&after_attention, 1),
-                  &tail_tape));
+                  tail_state));
     return lens->Apply(executor, final_residual);
   }
 
@@ -270,21 +269,21 @@ SourceValueProbe::SourceValueProbe(std::unique_ptr<Impl> impl)
 SourceValueProbe::~SourceValueProbe() = default;
 
 absl::StatusOr<std::unique_ptr<SourceValueProbe>> SourceValueProbe::Create(
-    cuda::Executor& executor, const llm::Tape& production_tape,
+    cuda::Executor& executor, const llm::BackwardState& production_state,
     const cuda::Buffer& clean_logits,
     absl::Span<const cuda::Buffer> original_weights, int block) {
   RETURN_IF_ERROR(
       ValidateSourceValueSelection({block, 0, 0, 0, 0, 1}, kContext));
-  RETURN_IF_ERROR(ValidateGpt2Tape(production_tape));
+  RETURN_IF_ERROR(ValidateGpt2State(production_state));
   RETURN_IF_ERROR(ValidateGpt2Weights(original_weights));
   for (const auto& weight : original_weights)
     if (&weight.executor() != &executor)
       return absl::InvalidArgumentError("source weight has wrong executor");
-  const auto& branch = production_tape.children[block + 2].children[0];
+  const auto& branch = production_state.children[block + 2].children[0];
   const auto& before = branch.intermediates[0];
-  const auto& attention_tape = branch.children[0].children[2];
-  const auto& qkv = attention_tape.intermediates[0];
-  const auto& context = attention_tape.intermediates[1];
+  const auto& attention_state = branch.children[0].children[2];
+  const auto& qkv = attention_state.intermediates[0];
+  const auto& context = attention_state.intermediates[1];
   const size_t row_bytes = kWidth * sizeof(uint16_t);
   const size_t rows_wide = context.size_bytes() / row_bytes;
   if (context.size_bytes() % row_bytes != 0 || rows_wide == 0 ||
@@ -351,10 +350,10 @@ absl::StatusOr<std::unique_ptr<SourceValueProbe>> SourceValueProbe::Create(
   // Do not certify a replay from a diagram or a few selected logits. Running
   // the real kernels on the captured tensor must recover the entire native
   // context, then every padded logit at every original batch position.
-  llm::Tape replay_tape;
+  llm::BackwardState replay_state;
   ASSIGN_OR_RETURN(auto replayed_context,
                    impl->attention->fwd(executor, absl::MakeConstSpan(&qkv, 1),
-                                        &replay_tape));
+                                        replay_state));
   ASSIGN_OR_RETURN(auto replayed_bytes,
                    ReadPrefix(executor, replayed_context, rows, kWidth, 2));
   RETURN_IF_ERROR(EqualBytes(replayed_bytes, impl->context_bytes,
@@ -407,10 +406,10 @@ absl::StatusOr<SourceValueResult> SourceValueProbe::Apply(
   if (std::memcmp(qkv_bytes.data() + value_offset, values.data(), kHeadBytes))
     return absl::DataLossError("modified V differs from requested BF16 dose");
 
-  llm::Tape attention_tape;
+  llm::BackwardState attention_state;
   ASSIGN_OR_RETURN(auto attention,
                    impl_->attention->fwd(executor, absl::MakeConstSpan(&qkv, 1),
-                                         &attention_tape));
+                                         attention_state));
   ASSIGN_OR_RETURN(auto context, Clone(executor, impl_->context));
   RETURN_IF_ERROR(cuda::CudaStatus(
       cudaMemcpyAsync(

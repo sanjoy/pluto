@@ -233,12 +233,12 @@ absl::Status FullyConnectedLayer::InitializeNormal(float standard_deviation,
 
 absl::StatusOr<Buffer> FullyConnectedLayer::fwd_impl(
     cuda::Executor& executor, absl::Span<const Buffer> inputs,
-    Tape* tape) const {
+    BackwardState& state) const {
   RETURN_IF_ERROR(
       internal::ValidateExecutor(executor_, executor, "FullyConnectedLayer"));
-  if (inputs.size() != 1 || tape == nullptr) {
+  if (inputs.size() != 1) {
     return absl::InvalidArgumentError(
-        "FullyConnectedLayer fwd expects one input and a non-null tape");
+        "FullyConnectedLayer fwd expects one input and saved state");
   }
   ASSIGN_OR_RETURN(int rows,
                    internal::ActivationRows(executor, inputs[0], input_dim_,
@@ -249,8 +249,8 @@ absl::StatusOr<Buffer> FullyConnectedLayer::fwd_impl(
       Buffer::Allocate(executor,
                        static_cast<size_t>(rows) * output_dim_ *
                            internal::ActivationElementBytes(output_type_)));
-  tape->intermediates = {inputs[0]};
-  tape->children.clear();
+  state.intermediates = {inputs[0]};
+  state.children.clear();
   const int blocks =
       internal::TileCount(rows) * internal::TileCount(output_dim_);
   if (output_type_ == DataType::BF16) {
@@ -273,18 +273,18 @@ absl::StatusOr<Buffer> FullyConnectedLayer::fwd_impl(
 
 absl::StatusOr<BufferVec> FullyConnectedLayer::bwd_impl(
     cuda::Executor& executor, absl::Span<const Buffer> output_gradients,
-    Tape tape) {
+    BackwardState state) {
   RETURN_IF_ERROR(
       internal::ValidateExecutor(executor_, executor, "FullyConnectedLayer"));
-  if (output_gradients.size() != 1 || tape.intermediates.size() != 1) {
+  if (output_gradients.size() != 1 || state.intermediates.size() != 1) {
     return absl::InvalidArgumentError(
-        "FullyConnectedLayer bwd received an incompatible gradient or tape");
+        "FullyConnectedLayer bwd received an incompatible gradient or state");
   }
   ASSIGN_OR_RETURN(
       int rows, internal::MatrixRows(executor, output_gradients[0], output_dim_,
                                      "dense output gradient"));
   RETURN_IF_ERROR(internal::ValidateBuffer(
-      executor, tape.intermediates[0],
+      executor, state.intermediates[0],
       static_cast<size_t>(rows) * input_dim_ *
           internal::ActivationElementBytes(output_type_),
       "dense saved input"));
@@ -303,7 +303,7 @@ absl::StatusOr<BufferVec> FullyConnectedLayer::bwd_impl(
             output_dim_, static_cast<float*>(input_gradient.data()));
     DenseWeightGradientKernel<__nv_bfloat16>
         <<<weight_blocks, 1, 0, executor.stream()>>>(
-            static_cast<const __nv_bfloat16*>(tape.intermediates[0].data()),
+            static_cast<const __nv_bfloat16*>(state.intermediates[0].data()),
             static_cast<const float*>(output_gradients[0].data()), rows,
             input_dim_, output_dim_, static_cast<float*>(gradients_[0].data()));
   } else {
@@ -313,7 +313,7 @@ absl::StatusOr<BufferVec> FullyConnectedLayer::bwd_impl(
         output_dim_, static_cast<float*>(input_gradient.data()));
     DenseWeightGradientKernel<float>
         <<<weight_blocks, 1, 0, executor.stream()>>>(
-            static_cast<const float*>(tape.intermediates[0].data()),
+            static_cast<const float*>(state.intermediates[0].data()),
             static_cast<const float*>(output_gradients[0].data()), rows,
             input_dim_, output_dim_, static_cast<float*>(gradients_[0].data()));
   }

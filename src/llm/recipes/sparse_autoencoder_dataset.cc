@@ -65,10 +65,10 @@ absl::StatusOr<DataBatch> SparseAutoEncoderDataSetIterator::Next() {
       cudaMemcpyAsync(tokens.data(), batch.data.data(), token_bytes,
                       cudaMemcpyDeviceToDevice, executor_.stream()),
       "cudaMemcpyAsync(activation dataset inputs)"));
-  Tape tape;
+  BackwardState state;
   BufferVec inputs = {std::move(tokens)};
   ASSIGN_OR_RETURN(auto activations,
-                   activation_generator_.fwd(executor_, inputs, &tape));
+                   activation_generator_.fwd(executor_, inputs, state));
   if (&activations.executor() != &executor_) {
     return absl::InvalidArgumentError(
         "activation generator returned a buffer on a different executor");

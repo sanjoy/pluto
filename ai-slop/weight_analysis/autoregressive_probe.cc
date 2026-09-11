@@ -187,10 +187,10 @@ absl::StatusOr<cuda::PageLockedHostArray<float>> PredictSelectedRow(
                       padded_input.size_bytes(), cudaMemcpyHostToDevice,
                       executor.stream()),
       "autoregressive prompt upload"));
-  llm::Tape tape;
+  llm::BackwardState state;
   ASSIGN_OR_RETURN(
       auto logits,
-      model.fwd(executor, absl::MakeConstSpan(&token_buffer, 1), &tape));
+      model.fwd(executor, absl::MakeConstSpan(&token_buffer, 1), state));
   if (&logits.executor() != &executor ||
       logits.size_bytes() !=
           static_cast<size_t>(kContext) * kPaddedVocabulary * sizeof(float)) {

@@ -62,24 +62,25 @@ class SparseAutoEncoderLayer final : public Layer {
   const Buffer& decoder() const { return weights_[2]; }
 
   // Returns the z produced by fwd(). The returned Buffer shares its allocation
-  // with the tape, so it remains valid independently of this handle.
-  absl::StatusOr<Buffer> latent_activations(const Tape& tape) const;
+  // with the state, so it remains valid independently of this handle.
+  absl::StatusOr<Buffer> latent_activations(const BackwardState& state) const;
 
   // In kCollectStatistics mode fwd() additionally reduces each row of Z on
-  // the GPU and saves its summary in the tape. It does not synchronize or
+  // the GPU and saves its summary in the state. It does not synchronize or
   // change fwd/bwd results. The default mode has no statistics overhead.
   //
   // This explicit readback copies only the small row summaries into pinned
   // host memory and synchronizes executor. Set valid_rows to the number of
   // leading real tokens to exclude trailing padding, or zero to include all
-  // rows. Results belong to the supplied tape even after another fwd().
+  // rows. Results belong to the supplied state even after another fwd().
   absl::StatusOr<SparseAutoEncoderZStatistics> ReadZStatistics(
-      cuda::Executor& executor, const Tape& tape, int valid_rows = 0) const;
+      cuda::Executor& executor, const BackwardState& state,
+      int valid_rows = 0) const;
 
  private:
   absl::StatusOr<Buffer> fwd_impl(cuda::Executor& executor,
                                   absl::Span<const Buffer> inputs,
-                                  Tape* tape) const override;
+                                  BackwardState& state) const override;
 
   // The first gradient is dL/dx1. Auxiliary sparse losses may additionally
   // supply dL/dz and a direct dL/dD as the second and third buffers. The
@@ -87,7 +88,7 @@ class SparseAutoEncoderLayer final : public Layer {
   // as well as indirectly through x1.
   absl::StatusOr<BufferVec> bwd_impl(cuda::Executor& executor,
                                      absl::Span<const Buffer> output_gradients,
-                                     Tape tape) override;
+                                     BackwardState state) override;
 
   SparseAutoEncoderLayer(cuda::Executor& executor, int input_dim,
                          int feature_dim, DataType data_type, Mode mode,
@@ -143,10 +144,10 @@ class SparseAutoEncoderLossLayer final : public Layer {
  private:
   absl::StatusOr<Buffer> fwd_impl(cuda::Executor& executor,
                                   absl::Span<const Buffer> inputs,
-                                  Tape* tape) const override;
+                                  BackwardState& state) const override;
   absl::StatusOr<BufferVec> bwd_impl(cuda::Executor& executor,
                                      absl::Span<const Buffer> output_gradients,
-                                     Tape tape) override;
+                                     BackwardState state) override;
 
   SparseAutoEncoderLossLayer(cuda::Executor& executor, int input_dim,
                              int feature_dim, float sparsity_penalty,
@@ -171,11 +172,7 @@ class SparseAutoEncoderLayerReference final : public LayerReference {
   Create(int input_dim, int feature_dim, DataType data_type);
 
   absl::Status InitializeNormal(float standard_deviation, uint64_t seed);
-  absl::StatusOr<HostBuffer> fwd(absl::Span<const HostBuffer> inputs,
-                                 ReferenceTape* tape) override;
-  absl::StatusOr<HostBufferVec> bwd(
-      absl::Span<const HostBuffer> output_gradients,
-      ReferenceTape tape) override;
+
   absl::Span<HostBuffer> weights() override { return absl::MakeSpan(weights_); }
   absl::Span<HostBuffer> gradients() override {
     return absl::MakeSpan(gradients_);
@@ -186,9 +183,16 @@ class SparseAutoEncoderLayerReference final : public LayerReference {
   int feature_dim() const { return feature_dim_; }
   const HostBuffer& decoder() const { return weights_[2]; }
   absl::StatusOr<HostBuffer> latent_activations(
-      const ReferenceTape& tape) const;
+      const ReferenceBackwardState& state) const;
 
  private:
+  absl::StatusOr<HostBuffer> fwd_impl(
+      absl::Span<const HostBuffer> inputs,
+      ReferenceBackwardState& state) const override;
+  absl::StatusOr<HostBufferVec> bwd_impl(
+      absl::Span<const HostBuffer> output_gradients,
+      ReferenceBackwardState state) override;
+
   SparseAutoEncoderLayerReference(
       int input_dim, int feature_dim, DataType data_type, HostBuffer encoder,
       HostBuffer encoder_bias, HostBuffer decoder, HostBuffer decoder_bias,
@@ -217,15 +221,17 @@ class SparseAutoEncoderLossLayerReference final : public LayerReference {
   Create(int input_dim, int feature_dim, float sparsity_penalty,
          DataType data_type);
 
-  absl::StatusOr<HostBuffer> fwd(absl::Span<const HostBuffer> inputs,
-                                 ReferenceTape* tape) override;
-  absl::StatusOr<HostBufferVec> bwd(
-      absl::Span<const HostBuffer> output_gradients,
-      ReferenceTape tape) override;
   absl::Span<HostBuffer> weights() override { return {}; }
   DataType output_type() const override { return output_type_; }
 
  private:
+  absl::StatusOr<HostBuffer> fwd_impl(
+      absl::Span<const HostBuffer> inputs,
+      ReferenceBackwardState& state) const override;
+  absl::StatusOr<HostBufferVec> bwd_impl(
+      absl::Span<const HostBuffer> output_gradients,
+      ReferenceBackwardState state) override;
+
   SparseAutoEncoderLossLayerReference(int input_dim, int feature_dim,
                                       float sparsity_penalty,
                                       DataType data_type)

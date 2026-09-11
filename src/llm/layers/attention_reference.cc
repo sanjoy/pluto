@@ -35,11 +35,11 @@ AttentionLayerReference::Create(int context_length, int num_heads,
       context_length, num_heads, embedding_dim, data_type));
 }
 
-absl::StatusOr<HostBuffer> AttentionLayerReference::fwd(
-    absl::Span<const HostBuffer> inputs, ReferenceTape* tape) {
-  if (inputs.size() != 1 || tape == nullptr) {
+absl::StatusOr<HostBuffer> AttentionLayerReference::fwd_impl(
+    absl::Span<const HostBuffer> inputs, ReferenceBackwardState& state) const {
+  if (inputs.size() != 1) {
     return absl::InvalidArgumentError(
-        "AttentionLayerReference fwd expects packed Q/K/V and a tape");
+        "AttentionLayerReference fwd expects packed Q/K/V and saved state");
   }
   ASSIGN_OR_RETURN(
       int rows, ri::ActivationRows(inputs[0], 3 * embedding_dim_, output_type_,
@@ -109,26 +109,27 @@ absl::StatusOr<HostBuffer> AttentionLayerReference::fwd(
       }
     }
   }
-  tape->intermediates = {inputs[0], output};
-  tape->children.clear();
+  state.intermediates = {inputs[0], output};
+  state.children.clear();
   return output;
 }
 
-absl::StatusOr<HostBufferVec> AttentionLayerReference::bwd(
-    absl::Span<const HostBuffer> output_gradients, ReferenceTape tape) {
-  if (output_gradients.size() != 1 || tape.intermediates.size() != 2) {
+absl::StatusOr<HostBufferVec> AttentionLayerReference::bwd_impl(
+    absl::Span<const HostBuffer> output_gradients,
+    ReferenceBackwardState state) {
+  if (output_gradients.size() != 1 || state.intermediates.size() != 2) {
     return absl::InvalidArgumentError(
         "AttentionLayerReference bwd received incompatible state");
   }
   ASSIGN_OR_RETURN(int rows, ri::MatrixRows(output_gradients[0], embedding_dim_,
                                             "attention output gradient"));
   RETURN_IF_ERROR(
-      ri::ValidateBuffer(tape.intermediates[0],
+      ri::ValidateBuffer(state.intermediates[0],
                          static_cast<size_t>(rows) * 3 * embedding_dim_ *
                              ri::ActivationElementBytes(output_type_),
                          "attention saved Q/K/V"));
   RETURN_IF_ERROR(
-      ri::ValidateBuffer(tape.intermediates[1],
+      ri::ValidateBuffer(state.intermediates[1],
                          static_cast<size_t>(rows) * embedding_dim_ *
                              ri::ActivationElementBytes(output_type_),
                          "attention saved output"));
@@ -157,11 +158,11 @@ absl::StatusOr<HostBufferVec> AttentionLayerReference::bwd(
         for (int dim = 0; dim < head_dim; ++dim) {
           const int column = head_start + dim;
           score += ri::LoadActivation(
-                       tape.intermediates[0],
+                       state.intermediates[0],
                        static_cast<size_t>(row) * (3 * embedding_dim_) + column,
                        output_type_) *
                    ri::LoadActivation(
-                       tape.intermediates[0],
+                       state.intermediates[0],
                        static_cast<size_t>(key_row) * (3 * embedding_dim_) +
                            embedding_dim_ + column,
                        output_type_);
@@ -183,7 +184,7 @@ absl::StatusOr<HostBufferVec> AttentionLayerReference::bwd(
         const int column = head_start + dim;
         delta += d_output[static_cast<size_t>(row) * embedding_dim_ + column] *
                  ri::LoadActivation(
-                     tape.intermediates[1],
+                     state.intermediates[1],
                      static_cast<size_t>(row) * embedding_dim_ + column,
                      output_type_);
       }
@@ -196,7 +197,7 @@ absl::StatusOr<HostBufferVec> AttentionLayerReference::bwd(
           d_probability +=
               d_output[static_cast<size_t>(row) * embedding_dim_ + column] *
               ri::LoadActivation(
-                  tape.intermediates[0],
+                  state.intermediates[0],
                   static_cast<size_t>(key_row) * (3 * embedding_dim_) +
                       2 * embedding_dim_ + column,
                   output_type_);
@@ -213,11 +214,11 @@ absl::StatusOr<HostBufferVec> AttentionLayerReference::bwd(
                            2 * embedding_dim_ + column;
           d_qkv[q] +=
               d_score *
-              ri::LoadActivation(tape.intermediates[0], k, output_type_) *
+              ri::LoadActivation(state.intermediates[0], k, output_type_) *
               scale;
           d_qkv[k] +=
               d_score *
-              ri::LoadActivation(tape.intermediates[0], q, output_type_) *
+              ri::LoadActivation(state.intermediates[0], q, output_type_) *
               scale;
           d_qkv[v] +=
               probabilities[key_position] *

@@ -30,13 +30,14 @@ class Layer;
 // Saved forward state. A tree, rather than one flat vector, lets composed
 // layers keep each child's private intermediates without imposing a
 // layout convention on unrelated layer implementations.
-struct Tape {
-  // Non-owning identity of the layer whose successful fwd() produced this tape.
-  // The layer must outlive its tape. A null pointer marks an unused or failed
-  // forward pass; bwd() rejects it, and tapes from other layer instances.
+struct BackwardState {
+  // Non-owning identity of the layer whose successful fwd() produced this
+  // state. The layer must outlive its state. A null pointer marks an unused or
+  // failed forward pass; bwd() rejects it, and states from other layer
+  // instances.
   const Layer* layer = nullptr;
   BufferVec intermediates;
-  std::vector<Tape> children;
+  std::vector<BackwardState> children;
 };
 
 // A differentiable GPU layer.
@@ -55,16 +56,14 @@ class Layer {
     return absl::OkStatus();
   }
 
-  // Every call starts a fresh tape. Only a successful forward pass associates
-  // it with this layer, so a failed retry cannot leave an old tape usable.
+  // Every call starts a fresh state. Only a successful forward pass associates
+  // it with this layer, so a failed retry cannot leave an old state usable.
   absl::StatusOr<Buffer> fwd(cuda::Executor& executor,
                              absl::Span<const Buffer> inputs,
-                             Tape* tape) const {
-    if (tape == nullptr)
-      return absl::InvalidArgumentError("fwd requires a non-null tape");
-    *tape = Tape{};
-    auto output = fwd_impl(executor, inputs, tape);
-    tape->layer = output.ok() ? this : nullptr;
+                             BackwardState& state) const {
+    state = BackwardState{};
+    auto output = fwd_impl(executor, inputs, state);
+    state.layer = output.ok() ? this : nullptr;
     return output;
   }
 
@@ -72,11 +71,11 @@ class Layer {
   // shapes or layer types alone do not make another layer's saved state valid.
   absl::StatusOr<BufferVec> bwd(cuda::Executor& executor,
                                 absl::Span<const Buffer> output_gradients,
-                                Tape tape) {
-    if (tape.layer != this)
+                                BackwardState state) {
+    if (state.layer != this)
       return absl::InvalidArgumentError(
-          "bwd requires a tape from this layer's successful fwd");
-    return bwd_impl(executor, output_gradients, std::move(tape));
+          "bwd requires a state from this layer's successful fwd");
+    return bwd_impl(executor, output_gradients, std::move(state));
   }
   virtual absl::Span<Buffer> weights() = 0;
   // Read-only access for serialization and inspection. Implementations expose
@@ -93,21 +92,25 @@ class Layer {
   virtual DataType output_type() const = 0;
 
  private:
-  // Implementations cannot bypass the public entry points' tape checks.
+  // Implementations cannot bypass the public entry points' state checks.
   virtual absl::StatusOr<Buffer> fwd_impl(cuda::Executor& executor,
                                           absl::Span<const Buffer> inputs,
-                                          Tape* tape) const = 0;
+                                          BackwardState& state) const = 0;
   virtual absl::StatusOr<BufferVec> bwd_impl(
       cuda::Executor& executor, absl::Span<const Buffer> output_gradients,
-      Tape tape) = 0;
+      BackwardState state) = 0;
 };
 
+class LayerReference;
+
 // Saved forward state for the CPU reference graph. It deliberately has the
-// same tree structure as Tape, but owns host buffers so reference execution is
-// independent of CUDA allocation and stream semantics.
-struct ReferenceTape {
+// same tree structure as BackwardState, but owns host buffers so reference
+// execution is independent of CUDA allocation and stream semantics.
+struct ReferenceBackwardState {
+  // Same non-owning identity and lifetime contract as BackwardState.
+  const LayerReference* layer = nullptr;
   HostBufferVec intermediates;
-  std::vector<ReferenceTape> children;
+  std::vector<ReferenceBackwardState> children;
 };
 
 // CPU counterpart to Layer. Reference layers favor direct scalar loops over
@@ -117,13 +120,34 @@ class LayerReference {
  public:
   virtual ~LayerReference() = default;
 
-  virtual absl::StatusOr<HostBuffer> fwd(absl::Span<const HostBuffer> inputs,
-                                         ReferenceTape* tape) = 0;
-  virtual absl::StatusOr<HostBufferVec> bwd(
-      absl::Span<const HostBuffer> output_gradients, ReferenceTape tape) = 0;
+  // Match the GPU contract: only a successful forward call makes saved state
+  // usable for backward, and a retry replaces any previously saved state.
+  absl::StatusOr<HostBuffer> fwd(absl::Span<const HostBuffer> inputs,
+                                 ReferenceBackwardState& state) const {
+    state = ReferenceBackwardState{};
+    auto output = fwd_impl(inputs, state);
+    state.layer = output.ok() ? this : nullptr;
+    return output;
+  }
+  absl::StatusOr<HostBufferVec> bwd(
+      absl::Span<const HostBuffer> output_gradients,
+      ReferenceBackwardState state) {
+    if (state.layer != this)
+      return absl::InvalidArgumentError(
+          "bwd requires a state from this reference layer's successful fwd");
+    return bwd_impl(output_gradients, std::move(state));
+  }
   virtual absl::Span<HostBuffer> weights() = 0;
   virtual absl::Span<HostBuffer> gradients() { return {}; }
   virtual DataType output_type() const = 0;
+
+ private:
+  virtual absl::StatusOr<HostBuffer> fwd_impl(
+      absl::Span<const HostBuffer> inputs,
+      ReferenceBackwardState& state) const = 0;
+  virtual absl::StatusOr<HostBufferVec> bwd_impl(
+      absl::Span<const HostBuffer> output_gradients,
+      ReferenceBackwardState state) = 0;
 };
 
 }  // namespace pluto::llm

@@ -96,8 +96,8 @@ struct TrainingResult {
 struct ObjectiveForwardPass {
   Buffer loss;
   int64_t normalization_count;
-  Tape model_tape;
-  Tape loss_tape;
+  BackwardState model_state;
+  BackwardState loss_state;
 };
 
 // Adapts a model, loss, and DataBatch schema to the common training loop.

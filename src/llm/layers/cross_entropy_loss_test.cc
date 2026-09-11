@@ -42,11 +42,11 @@ TEST_F(LayersTest, CrossEntropyForwardAndBackwardMatchUniformSoftmax) {
   auto loss_layer = CrossEntropyLossLayer::Create(
       *executor_, kTestVocabularySize, DataType::FP16);
   ASSERT_TRUE(loss_layer.ok()) << loss_layer.status();
-  Tape tape;
+  BackwardState state;
   BufferVec loss_inputs = {*logits_buffer, *target_buffer};
-  auto losses = (*loss_layer)->fwd(*executor_, loss_inputs, &tape);
+  auto losses = (*loss_layer)->fwd(*executor_, loss_inputs, state);
   ASSERT_TRUE(losses.ok()) << losses.status();
-  auto gradients = (*loss_layer)->bwd(*executor_, {}, std::move(tape));
+  auto gradients = (*loss_layer)->bwd(*executor_, {}, std::move(state));
   ASSERT_TRUE(gradients.ok()) << gradients.status();
   ASSERT_EQ(gradients->size(), 1u);
 
@@ -103,9 +103,9 @@ TEST_F(LayersTest, IgnoresPaddedVocabularyColumns) {
       *executor_, kLogicalVocabularySize, DataType::BF16);
   ASSERT_TRUE(loss_layer.ok()) << loss_layer.status();
   EXPECT_EQ((*loss_layer)->padded_vocab_size(), kPaddedVocabularySize);
-  Tape tape;
+  BackwardState state;
   BufferVec inputs = {*logits_buffer, *target_buffer};
-  auto losses = (*loss_layer)->fwd(*executor_, inputs, &tape);
+  auto losses = (*loss_layer)->fwd(*executor_, inputs, state);
   ASSERT_TRUE(losses.ok()) << losses.status();
   auto host_losses =
       AllocatePageLockedHostArray<float>(*executor_, kTestTokenCount);

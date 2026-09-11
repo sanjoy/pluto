@@ -384,11 +384,11 @@ absl::Status Run(const std::vector<std::string>& argv) {
     RETURN_IF_ERROR(CompareDisk(files[i], bytes.data(), bytes.size_bytes()));
     snapshots.push_back(std::move(bytes));
   }
-  llm::Tape tape;
-  ASSIGN_OR_RETURN(auto clean,
-                   model->fwd(*executor, absl::MakeConstSpan(&input, 1), &tape));
-  ASSIGN_OR_RETURN(auto probe,
-                   Probe::Create(*executor, *model, input, tape, clean, block));
+  llm::BackwardState state;
+  ASSIGN_OR_RETURN(
+      auto clean, model->fwd(*executor, absl::MakeConstSpan(&input, 1), state));
+  ASSIGN_OR_RETURN(
+      auto probe, Probe::Create(*executor, *model, input, state, clean, block));
   ASSIGN_OR_RETURN(auto clean_values,
                    SaveLogits(*executor, output / "clean_logits.f32", clean));
   RETURN_IF_ERROR(MatchSelected(clean_values, query, expected_clean, "clean"));
@@ -396,7 +396,7 @@ absl::Status Run(const std::vector<std::string>& argv) {
                                  tokens.size() * sizeof(int32_t)));
   RETURN_IF_ERROR(WriteExclusive(output / "padded_tokens.i32", padded.data(),
                                  padded.size_bytes()));
-  const auto& branch = tape.children[block + 2].children[0];
+  const auto& branch = state.children[block + 2].children[0];
   RETURN_IF_ERROR(SaveContext(*executor, output / "original_before.bf16",
                               branch.intermediates[0], kWidth));
   RETURN_IF_ERROR(SaveContext(*executor, output / "original_qkv.bf16",
@@ -468,10 +468,10 @@ absl::Status Run(const std::vector<std::string>& argv) {
   // Final clean full-model replay followed by byte checks of all original
   // device inputs/weights and their actual checkpoint files. No optimizer or
   // backward call exists anywhere in this executable.
-  llm::Tape after_tape;
+  llm::BackwardState after_state;
   ASSIGN_OR_RETURN(
       auto after,
-      model->fwd(*executor, absl::MakeConstSpan(&input, 1), &after_tape));
+      model->fwd(*executor, absl::MakeConstSpan(&input, 1), after_state));
   ASSIGN_OR_RETURN(auto after_values, Download<float>(*executor, after));
   if (after_values.size_bytes() != clean_values.size_bytes() ||
       std::memcmp(after_values.data(), clean_values.data(),

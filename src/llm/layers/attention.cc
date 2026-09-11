@@ -287,12 +287,12 @@ absl::Status AttentionLayer::ValidateSequenceLength(int sequence_length) const {
 
 absl::StatusOr<Buffer> AttentionLayer::fwd_impl(cuda::Executor& executor,
                                                 absl::Span<const Buffer> inputs,
-                                                Tape* tape) const {
+                                                BackwardState& state) const {
   RETURN_IF_ERROR(
       internal::ValidateExecutor(executor_, executor, "AttentionLayer"));
-  if (inputs.size() != 1 || tape == nullptr) {
+  if (inputs.size() != 1) {
     return absl::InvalidArgumentError(
-        "AttentionLayer fwd expects packed Q/K/V and a non-null tape");
+        "AttentionLayer fwd expects packed Q/K/V and saved state");
   }
   ASSIGN_OR_RETURN(int rows, internal::ActivationRows(
                                  executor, inputs[0], 3 * embedding_dim_,
@@ -322,19 +322,19 @@ absl::StatusOr<Buffer> AttentionLayer::fwd_impl(cuda::Executor& executor,
   }
   RETURN_IF_ERROR(cuda::CudaStatus(cudaGetLastError(),
                                    "FlashAttentionForwardKernel launch"));
-  tape->intermediates = {inputs[0], output};
-  tape->children.clear();
+  state.intermediates = {inputs[0], output};
+  state.children.clear();
   return std::move(output);
 }
 
 absl::StatusOr<BufferVec> AttentionLayer::bwd_impl(
     cuda::Executor& executor, absl::Span<const Buffer> output_gradients,
-    Tape tape) {
+    BackwardState state) {
   RETURN_IF_ERROR(
       internal::ValidateExecutor(executor_, executor, "AttentionLayer"));
-  if (output_gradients.size() != 1 || tape.intermediates.size() != 2) {
+  if (output_gradients.size() != 1 || state.intermediates.size() != 2) {
     return absl::InvalidArgumentError(
-        "AttentionLayer bwd received an incompatible gradient or tape");
+        "AttentionLayer bwd received an incompatible gradient or state");
   }
   ASSIGN_OR_RETURN(int rows, internal::MatrixRows(executor, output_gradients[0],
                                                   embedding_dim_,
@@ -344,12 +344,12 @@ absl::StatusOr<BufferVec> AttentionLayer::bwd_impl(
         "attention gradient rows must be divisible by context_length");
   }
   RETURN_IF_ERROR(internal::ValidateBuffer(
-      executor, tape.intermediates[0],
+      executor, state.intermediates[0],
       static_cast<size_t>(rows) * 3 * embedding_dim_ *
           internal::ActivationElementBytes(output_type_),
       "attention saved Q/K/V"));
   RETURN_IF_ERROR(internal::ValidateBuffer(
-      executor, tape.intermediates[1],
+      executor, state.intermediates[1],
       static_cast<size_t>(rows) * embedding_dim_ *
           internal::ActivationElementBytes(output_type_),
       "attention saved output"));
@@ -369,8 +369,8 @@ absl::StatusOr<BufferVec> AttentionLayer::bwd_impl(
   if (output_type_ == DataType::BF16) {
     FlashAttentionQueryBackwardKernel<__nv_bfloat16>
         <<<blocks, 1, 0, executor.stream()>>>(
-            static_cast<const __nv_bfloat16*>(tape.intermediates[0].data()),
-            static_cast<const __nv_bfloat16*>(tape.intermediates[1].data()),
+            static_cast<const __nv_bfloat16*>(state.intermediates[0].data()),
+            static_cast<const __nv_bfloat16*>(state.intermediates[1].data()),
             static_cast<const float*>(output_gradients[0].data()), rows,
             context_length_, num_heads_, embedding_dim_, scale,
             static_cast<float*>(qkv_gradient.data()),
@@ -378,8 +378,8 @@ absl::StatusOr<BufferVec> AttentionLayer::bwd_impl(
   } else {
     FlashAttentionQueryBackwardKernel<float>
         <<<blocks, 1, 0, executor.stream()>>>(
-            static_cast<const float*>(tape.intermediates[0].data()),
-            static_cast<const float*>(tape.intermediates[1].data()),
+            static_cast<const float*>(state.intermediates[0].data()),
+            static_cast<const float*>(state.intermediates[1].data()),
             static_cast<const float*>(output_gradients[0].data()), rows,
             context_length_, num_heads_, embedding_dim_, scale,
             static_cast<float*>(qkv_gradient.data()),
@@ -390,7 +390,7 @@ absl::StatusOr<BufferVec> AttentionLayer::bwd_impl(
   if (output_type_ == DataType::BF16) {
     FlashAttentionKeyValueBackwardKernel<__nv_bfloat16>
         <<<blocks, 1, 0, executor.stream()>>>(
-            static_cast<const __nv_bfloat16*>(tape.intermediates[0].data()),
+            static_cast<const __nv_bfloat16*>(state.intermediates[0].data()),
             static_cast<const float*>(output_gradients[0].data()),
             static_cast<const float*>(row_statistics.data()), rows,
             context_length_, num_heads_, embedding_dim_, scale,
@@ -398,7 +398,7 @@ absl::StatusOr<BufferVec> AttentionLayer::bwd_impl(
   } else {
     FlashAttentionKeyValueBackwardKernel<float>
         <<<blocks, 1, 0, executor.stream()>>>(
-            static_cast<const float*>(tape.intermediates[0].data()),
+            static_cast<const float*>(state.intermediates[0].data()),
             static_cast<const float*>(output_gradients[0].data()),
             static_cast<const float*>(row_statistics.data()), rows,
             context_length_, num_heads_, embedding_dim_, scale,

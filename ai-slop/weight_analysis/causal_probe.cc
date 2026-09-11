@@ -513,13 +513,13 @@ absl::StatusOr<Measurements> EvaluatePassages(
     RETURN_IF_ERROR(Transfer(executor, targets.data(),
                              batch.targets(first, count).data(), bytes,
                              cudaMemcpyHostToDevice));
-    llm::Tape model_tape;
-    llm::Tape loss_tape;
-    ASSIGN_OR_RETURN(auto logits, model.fwd(executor, {inputs}, &model_tape));
+    llm::BackwardState model_state;
+    llm::BackwardState loss_state;
+    ASSIGN_OR_RETURN(auto logits, model.fwd(executor, {inputs}, model_state));
     if (logits.size_bytes() != size_t(rows) * padded_vocab_size * sizeof(float))
       return absl::DataLossError("model did not return expected FP32 logits");
     ASSIGN_OR_RETURN(auto loss,
-                     loss_layer.fwd(executor, {logits, targets}, &loss_tape));
+                     loss_layer.fwd(executor, {logits, targets}, loss_state));
     if (loss.size_bytes() != bytes)
       return absl::DataLossError("unexpected loss shape");
     ASSIGN_OR_RETURN(auto ids, ArgmaxTokens(executor, logits, rows, vocab_size,

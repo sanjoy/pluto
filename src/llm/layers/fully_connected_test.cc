@@ -47,13 +47,13 @@ TEST_F(LayersTest, IdentityDenseLayerHasIdentityForwardAndBackward) {
       FullyConnectedLayer::Create(*executor_, kTestModelWidth, DataType::FP16);
   ASSERT_TRUE(dense.ok()) << dense.status();
   ASSERT_TRUE((*dense)->InitializeIdentity().ok());
-  Tape tape;
+  BackwardState state;
   BufferVec dense_inputs = {*input_buffer};
-  auto output = (*dense)->fwd(*executor_, dense_inputs, &tape);
+  auto output = (*dense)->fwd(*executor_, dense_inputs, state);
   ASSERT_TRUE(output.ok()) << output.status();
   BufferVec dense_gradients = {*gradient_buffer};
   auto input_gradients =
-      (*dense)->bwd(*executor_, dense_gradients, std::move(tape));
+      (*dense)->bwd(*executor_, dense_gradients, std::move(state));
   ASSERT_TRUE(input_gradients.ok()) << input_gradients.status();
   ASSERT_EQ(input_gradients->size(), 1u);
 
@@ -99,9 +99,9 @@ TEST_F(LayersTest, RectangularProjectionUsesDistinctInputAndOutputWidths) {
                             input_buffer->size_bytes(), cudaMemcpyHostToDevice,
                             executor_->stream()),
             cudaSuccess);
-  Tape tape;
+  BackwardState state;
   BufferVec inputs = {*input_buffer};
-  auto output = (*dense)->fwd(*executor_, inputs, &tape);
+  auto output = (*dense)->fwd(*executor_, inputs, state);
   ASSERT_TRUE(output.ok()) << output.status();
   auto host_output = AllocatePageLockedHostArray<float>(
       *executor_, kTestTokenCount * kOutputWidth);

@@ -232,10 +232,10 @@ TEST_F(MlpAutomatonModelTest, NativeReadoutMatchesIndependentCpuFormula) {
   ASSERT_TRUE(input.ok()) << input.status();
   const BufferVec device_inputs{input->device};
   const HostBufferVec host_inputs{input->host};
-  Tape device_tape;
-  ReferenceTape host_tape;
-  auto actual = model_->fwd(*executor_, device_inputs, &device_tape);
-  auto expected = reference_->fwd(host_inputs, &host_tape);
+  BackwardState device_state;
+  ReferenceBackwardState host_state;
+  auto actual = model_->fwd(*executor_, device_inputs, device_state);
+  auto expected = reference_->fwd(host_inputs, host_state);
   ASSERT_TRUE(actual.ok()) << actual.status();
   ASSERT_TRUE(expected.ok()) << expected.status();
   ASSERT_EQ(actual->size_bytes(), tokens.size() * kPaddedVocabulary * 4);
@@ -344,8 +344,8 @@ TEST_F(MlpAutomatonModelTest, ScanCoversEveryTokenAndFinalPartialBatch) {
     ids[token] = token;
   auto input = MakeRawBufferPair<int>(*executor_, ids);
   ASSERT_TRUE(input.ok()) << input.status();
-  Tape tape;
-  auto output = model_->fwd(*executor_, {input->device}, &tape);
+  BackwardState state;
+  auto output = model_->fwd(*executor_, {input->device}, state);
   ASSERT_TRUE(output.ok()) << output.status();
   auto logits = ReadDeviceFloats(*executor_, *output);
   ASSERT_TRUE(logits.ok()) << logits.status();

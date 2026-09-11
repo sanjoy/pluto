@@ -91,23 +91,25 @@ absl::Status Shape(cuda::Executor& executor, const cuda::Buffer& buffer,
 
 // New-package-local validation is necessary: the older diagnostic helper
 // targets are private, and their BUILD files are frozen by live observers.
-// Validate the entire tree before indexing any private recipe Tape fields.
-absl::Status ValidateTape(const llm::Tape& tape) {
+// Validate the entire tree before indexing any private recipe BackwardState
+// fields.
+absl::Status ValidateState(const llm::BackwardState& state) {
   const auto bad = [] {
-    return absl::InvalidArgumentError("unexpected full GPT-2 Tape layout");
+    return absl::InvalidArgumentError(
+        "unexpected full GPT-2 BackwardState layout");
   };
-  if (!tape.intermediates.empty() || tape.children.size() != 12 ||
-      tape.children[0].intermediates.size() != 1 ||
-      !tape.children[0].children.empty() ||
-      !tape.children[1].intermediates.empty() ||
-      !tape.children[1].children.empty() ||
-      tape.children[10].intermediates.size() != 1 ||
-      !tape.children[10].children.empty() ||
-      tape.children[11].intermediates.size() != 1 ||
-      !tape.children[11].children.empty())
+  if (!state.intermediates.empty() || state.children.size() != 12 ||
+      state.children[0].intermediates.size() != 1 ||
+      !state.children[0].children.empty() ||
+      !state.children[1].intermediates.empty() ||
+      !state.children[1].children.empty() ||
+      state.children[10].intermediates.size() != 1 ||
+      !state.children[10].children.empty() ||
+      state.children[11].intermediates.size() != 1 ||
+      !state.children[11].children.empty())
     return bad();
   for (int block = 0; block < 8; ++block) {
-    const auto& body = tape.children[block + 2];
+    const auto& body = state.children[block + 2];
     if (!body.intermediates.empty() || body.children.size() != 2)
       return bad();
     for (int branch = 0; branch < 2; ++branch) {
@@ -178,21 +180,21 @@ class ConstantBranch final : public llm::Layer {
   llm::DataType output_type() const override { return llm::DataType::BF16; }
 
  private:
-  absl::StatusOr<cuda::Buffer> fwd_impl(cuda::Executor& executor,
-                                        absl::Span<const cuda::Buffer> inputs,
-                                        llm::Tape* tape) const override {
-    if (inputs.size() != 1 || tape == nullptr)
+  absl::StatusOr<cuda::Buffer> fwd_impl(
+      cuda::Executor& executor, absl::Span<const cuda::Buffer> inputs,
+      llm::BackwardState& state) const override {
+    if (inputs.size() != 1)
       return absl::InvalidArgumentError("invalid constant branch");
     RETURN_IF_ERROR(Shape(executor, branch_, inputs[0].size_bytes()));
     if (&inputs[0].executor() != &executor)
       return absl::InvalidArgumentError("constant branch executor differs");
-    tape->intermediates.clear();
-    tape->children.clear();
+    state.intermediates.clear();
+    state.children.clear();
     return branch_;
   }
   absl::StatusOr<llm::BufferVec> bwd_impl(cuda::Executor&,
                                           absl::Span<const cuda::Buffer>,
-                                          llm::Tape) override {
+                                          llm::BackwardState) override {
     return absl::UnimplementedError("head-context probe is forward only");
   }
 
@@ -256,22 +258,23 @@ struct Probe::Impl {
   }
 
   absl::StatusOr<cuda::Buffer> Replay(const cuda::Buffer& changed) const {
-    llm::Tape projection_tape, residual_tape, tail_tape, norm_tape, head_tape;
+    llm::BackwardState projection_state, residual_state, tail_state, norm_state,
+        head_state;
     ASSIGN_OR_RETURN(auto projected,
                      projection->fwd(executor, absl::MakeConstSpan(&changed, 1),
-                                     &projection_tape));
+                                     projection_state));
     llm::ResidualLayer residual(
         std::make_unique<ConstantBranch>(std::move(projected)));
-    ASSIGN_OR_RETURN(
-        auto after,
-        residual.fwd(executor, absl::MakeConstSpan(&before, 1), &residual_tape));
+    ASSIGN_OR_RETURN(auto after,
+                     residual.fwd(executor, absl::MakeConstSpan(&before, 1),
+                                  residual_state));
     ASSIGN_OR_RETURN(
         auto final,
-        tail->fwd(executor, absl::MakeConstSpan(&after, 1), &tail_tape));
+        tail->fwd(executor, absl::MakeConstSpan(&after, 1), tail_state));
     ASSIGN_OR_RETURN(
         auto normalized,
-        norm->fwd(executor, absl::MakeConstSpan(&final, 1), &norm_tape));
-    return head->fwd(executor, absl::MakeConstSpan(&normalized, 1), &head_tape);
+        norm->fwd(executor, absl::MakeConstSpan(&final, 1), norm_state));
+    return head->fwd(executor, absl::MakeConstSpan(&normalized, 1), head_state);
   }
 
   cuda::Executor& executor;
@@ -293,11 +296,11 @@ Probe::~Probe() = default;
 
 absl::StatusOr<std::unique_ptr<Probe>> Probe::Create(
     cuda::Executor& executor, const llm::Layer& production_model,
-    const cuda::Buffer& tokens, const llm::Tape& tape,
+    const cuda::Buffer& tokens, const llm::BackwardState& state,
     const cuda::Buffer& logits, int block) {
   RETURN_IF_ERROR(ValidateSelection(
       kGeometry, {block, 0, 0, 0, QueryScope::kAllQueries, 1}, kContext));
-  RETURN_IF_ERROR(ValidateTape(tape));
+  RETURN_IF_ERROR(ValidateState(state));
   if (production_model.output_type() != llm::DataType::BF16)
     return absl::InvalidArgumentError("requires native BF16 GPT-2");
   const auto traversal = production_model.weights();
@@ -315,7 +318,7 @@ absl::StatusOr<std::unique_ptr<Probe>> Probe::Create(
     if (!addresses.insert(weights[i].data()).second)
       return absl::InvalidArgumentError("unexpected GPT-2 weight alias");
   }
-  const auto& branch = tape.children[block + 2].children[0];
+  const auto& branch = state.children[block + 2].children[0];
   const auto& before = branch.intermediates[0];
   const auto& qkv = branch.children[0].children[2].intermediates[0];
   const auto& context = branch.children[0].children[2].intermediates[1];
@@ -332,9 +335,9 @@ absl::StatusOr<std::unique_ptr<Probe>> Probe::Create(
   RETURN_IF_ERROR(Shape(executor, qkv, rows_wide * kWidth * 3 * 2));
   RETURN_IF_ERROR(Shape(executor, context, rows_wide * kWidth * 2));
   RETURN_IF_ERROR(Shape(executor, logits, rows_wide * kPadded * 4));
-  if (tape.children[0].intermediates[0].data() != tokens.data()) {
+  if (state.children[0].intermediates[0].data() != tokens.data()) {
     return absl::InvalidArgumentError(
-        "Tape does not retain the supplied input tokens");
+        "BackwardState does not retain the supplied input tokens");
   }
   auto impl =
       std::make_unique<Impl>(executor, block, rows, before, context, logits);
@@ -373,22 +376,22 @@ absl::StatusOr<std::unique_ptr<Probe>> Probe::Create(
     RETURN_IF_ERROR(
         impl->Save(weights[i], absl::StrCat("original weight ", i)));
   }
-  // Also bind the supplied tape/clean outputs to this exact model and input,
+  // Also bind the supplied state/clean outputs to this exact model and input,
   // not merely to a mathematically compatible captured downstream state.
   // This full production replay is separate from the tail identity below.
   {
-    llm::Tape repeat_tape;
+    llm::BackwardState repeat_state;
     ASSIGN_OR_RETURN(
         auto repeat_logits,
         production_model.fwd(executor, absl::MakeConstSpan(&tokens, 1),
-                             &repeat_tape));
-    RETURN_IF_ERROR(ValidateTape(repeat_tape));
+                             repeat_state));
+    RETURN_IF_ERROR(ValidateState(repeat_state));
     RETURN_IF_ERROR(Shape(executor, repeat_logits, logits.size_bytes()));
     ASSIGN_OR_RETURN(auto repeated, Download<float>(executor, repeat_logits));
     RETURN_IF_ERROR(Same(repeated.data(), impl->logit_values.data(),
                          repeated.size_bytes(),
                          "actual production full-logit replay"));
-    const auto& repeated_branch = repeat_tape.children[block + 2].children[0];
+    const auto& repeated_branch = repeat_state.children[block + 2].children[0];
     const cuda::Buffer* repeated_buffers[] = {
         &repeated_branch.intermediates[0],
         &repeated_branch.children[0].children[2].intermediates[0],
@@ -441,10 +444,10 @@ absl::StatusOr<std::unique_ptr<Probe>> Probe::Create(
   ASSIGN_OR_RETURN(auto attention, llm::AttentionLayer::Create(
                                        executor, kContext, kGeometry.heads,
                                        kWidth, llm::DataType::BF16));
-  llm::Tape replay_tape;
+  llm::BackwardState replay_state;
   ASSIGN_OR_RETURN(
       auto native_context,
-      attention->fwd(executor, absl::MakeConstSpan(&qkv, 1), &replay_tape));
+      attention->fwd(executor, absl::MakeConstSpan(&qkv, 1), replay_state));
   RETURN_IF_ERROR(Shape(executor, native_context, context.size_bytes()));
   ASSIGN_OR_RETURN(auto native_bytes,
                    Download<uint16_t>(executor, native_context));

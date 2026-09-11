@@ -38,11 +38,11 @@ absl::StatusOr<std::unique_ptr<GeluLayerReference>> GeluLayerReference::Create(
   return absl::WrapUnique(new GeluLayerReference(data_type));
 }
 
-absl::StatusOr<HostBuffer> GeluLayerReference::fwd(
-    absl::Span<const HostBuffer> inputs, ReferenceTape* tape) {
-  if (inputs.size() != 1 || tape == nullptr) {
+absl::StatusOr<HostBuffer> GeluLayerReference::fwd_impl(
+    absl::Span<const HostBuffer> inputs, ReferenceBackwardState& state) const {
+  if (inputs.size() != 1) {
     return absl::InvalidArgumentError(
-        "GeluLayerReference fwd expects one input and a tape");
+        "GeluLayerReference fwd expects one input and saved state");
   }
   ASSIGN_OR_RETURN(
       int elements,
@@ -57,14 +57,15 @@ absl::StatusOr<HostBuffer> GeluLayerReference::fwd(
         &output, index, output_type_,
         Gelu(ri::LoadActivation(inputs[0], index, output_type_)));
   }
-  tape->intermediates = {inputs[0]};
-  tape->children.clear();
+  state.intermediates = {inputs[0]};
+  state.children.clear();
   return output;
 }
 
-absl::StatusOr<HostBufferVec> GeluLayerReference::bwd(
-    absl::Span<const HostBuffer> output_gradients, ReferenceTape tape) {
-  if (output_gradients.size() != 1 || tape.intermediates.size() != 1) {
+absl::StatusOr<HostBufferVec> GeluLayerReference::bwd_impl(
+    absl::Span<const HostBuffer> output_gradients,
+    ReferenceBackwardState state) {
+  if (output_gradients.size() != 1 || state.intermediates.size() != 1) {
     return absl::InvalidArgumentError(
         "GeluLayerReference bwd received incompatible state");
   }
@@ -72,7 +73,7 @@ absl::StatusOr<HostBufferVec> GeluLayerReference::bwd(
                    ri::ElementCount(output_gradients[0], sizeof(float),
                                     "GELU output gradient"));
   RETURN_IF_ERROR(ri::ValidateBuffer(
-      tape.intermediates[0],
+      state.intermediates[0],
       static_cast<size_t>(elements) * ri::ActivationElementBytes(output_type_),
       "GELU saved input"));
   ASSIGN_OR_RETURN(auto input_gradient, ri::AllocateFloats(elements));
@@ -81,7 +82,7 @@ absl::StatusOr<HostBufferVec> GeluLayerReference::bwd(
   for (int index = 0; index < elements; ++index) {
     d_input[index] =
         d_output[index] * GeluDerivative(ri::LoadActivation(
-                              tape.intermediates[0], index, output_type_));
+                              state.intermediates[0], index, output_type_));
   }
   return HostBufferVec{std::move(input_gradient)};
 }

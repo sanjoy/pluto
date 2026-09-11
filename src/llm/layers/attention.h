@@ -29,10 +29,10 @@ class AttentionLayer final : public Layer {
  private:
   absl::StatusOr<Buffer> fwd_impl(cuda::Executor& executor,
                                   absl::Span<const Buffer> inputs,
-                                  Tape* tape) const override;
+                                  BackwardState& state) const override;
   absl::StatusOr<BufferVec> bwd_impl(cuda::Executor& executor,
                                      absl::Span<const Buffer> output_gradients,
-                                     Tape tape) override;
+                                     BackwardState state) override;
 
   AttentionLayer(cuda::Executor& executor, int context_length, int num_heads,
                  int embedding_dim, DataType data_type)
@@ -57,15 +57,17 @@ class AttentionLayerReference final : public LayerReference {
   static absl::StatusOr<std::unique_ptr<AttentionLayerReference>> Create(
       int context_length, int num_heads, int embedding_dim, DataType data_type);
 
-  absl::StatusOr<HostBuffer> fwd(absl::Span<const HostBuffer> inputs,
-                                 ReferenceTape* tape) override;
-  absl::StatusOr<HostBufferVec> bwd(
-      absl::Span<const HostBuffer> output_gradients,
-      ReferenceTape tape) override;
   absl::Span<HostBuffer> weights() override { return {}; }
   DataType output_type() const override { return output_type_; }
 
  private:
+  absl::StatusOr<HostBuffer> fwd_impl(
+      absl::Span<const HostBuffer> inputs,
+      ReferenceBackwardState& state) const override;
+  absl::StatusOr<HostBufferVec> bwd_impl(
+      absl::Span<const HostBuffer> output_gradients,
+      ReferenceBackwardState state) override;
+
   AttentionLayerReference(int context_length, int num_heads, int embedding_dim,
                           DataType data_type)
       : context_length_(context_length),

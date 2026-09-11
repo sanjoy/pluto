@@ -48,13 +48,13 @@ TEST_F(LayersTest, LayerNormNormalizesRowsAndRejectsConstantGradient) {
                       executor_->stream()),
       cudaSuccess);
 
-  Tape tape;
+  BackwardState state;
   BufferVec inputs = {*input_buffer};
-  auto output = (*layer_norm)->fwd(*executor_, inputs, &tape);
+  auto output = (*layer_norm)->fwd(*executor_, inputs, state);
   ASSERT_TRUE(output.ok()) << output.status();
   BufferVec gradients = {*gradient_buffer};
   auto input_gradient =
-      (*layer_norm)->bwd(*executor_, gradients, std::move(tape));
+      (*layer_norm)->bwd(*executor_, gradients, std::move(state));
   ASSERT_TRUE(input_gradient.ok()) << input_gradient.status();
 
   auto host_output =

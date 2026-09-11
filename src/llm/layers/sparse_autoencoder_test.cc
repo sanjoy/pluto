@@ -69,8 +69,8 @@ TEST_F(LayersTest, ForwardRequiresACompleteActivationMatrix) {
   ASSERT_TRUE(layer.ok()) << layer.status();
   ASSERT_TRUE(short_input.ok()) << short_input.status();
   BufferVec inputs = {*short_input};
-  Tape tape;
-  auto output = (*layer)->fwd(*executor_, inputs, &tape);
+  BackwardState state;
+  auto output = (*layer)->fwd(*executor_, inputs, state);
   ASSERT_FALSE(output.ok());
   EXPECT_EQ(output.status().code(), absl::StatusCode::kInvalidArgument);
 }
@@ -93,18 +93,18 @@ TEST_F(LayersTest, BackwardAcceptsReconstructionGradientAlone) {
                             executor_->stream()),
             cudaSuccess);
 
-  Tape tape;
+  BackwardState state;
   BufferVec inputs = {*input};
-  auto output = (*layer)->fwd(*executor_, inputs, &tape);
+  auto output = (*layer)->fwd(*executor_, inputs, state);
   ASSERT_TRUE(output.ok()) << output.status();
   BufferVec gradients = {*gradient};
-  auto input_gradient = (*layer)->bwd(*executor_, gradients, std::move(tape));
+  auto input_gradient = (*layer)->bwd(*executor_, gradients, std::move(state));
   ASSERT_TRUE(input_gradient.ok()) << input_gradient.status();
   ASSERT_EQ(input_gradient->size(), 1u);
   EXPECT_EQ(input_gradient->front().size_bytes(), input->size_bytes());
 }
 
-TEST_F(LayersTest, StatisticsAreOptInAndValidateTheirTapeAndRowLimit) {
+TEST_F(LayersTest, StatisticsAreOptInAndValidateTheirStateAndRowLimit) {
   auto input = Buffer::Allocate(*executor_, 16 * 16 * sizeof(float));
   auto default_layer =
       SparseAutoEncoderLayer::Create(*executor_, 16, 16, DataType::FP16);
@@ -117,24 +117,27 @@ TEST_F(LayersTest, StatisticsAreOptInAndValidateTheirTapeAndRowLimit) {
   ASSERT_EQ(cudaMemsetAsync(input->data(), 0, input->size_bytes(),
                             executor_->stream()),
             cudaSuccess);
-  Tape default_tape;
-  Tape stats_tape;
+  BackwardState default_state;
+  BackwardState stats_state;
   ASSERT_TRUE(
-      (*default_layer)->fwd(*executor_, BufferVec{*input}, &default_tape).ok());
+      (*default_layer)->fwd(*executor_, BufferVec{*input}, default_state).ok());
   ASSERT_TRUE(
-      (*stats_layer)->fwd(*executor_, BufferVec{*input}, &stats_tape).ok());
-  EXPECT_EQ(default_tape.intermediates.size(), 2u);
-  EXPECT_EQ(stats_tape.intermediates.size(), 3u);
+      (*stats_layer)->fwd(*executor_, BufferVec{*input}, stats_state).ok());
+  EXPECT_EQ(default_state.intermediates.size(), 2u);
+  EXPECT_EQ(stats_state.intermediates.size(), 3u);
   EXPECT_EQ((*default_layer)
-                ->ReadZStatistics(*executor_, default_tape)
+                ->ReadZStatistics(*executor_, default_state)
                 .status()
                 .code(),
             absl::StatusCode::kFailedPrecondition);
-  EXPECT_EQ((*stats_layer)->ReadZStatistics(*executor_, Tape{}).status().code(),
+  EXPECT_EQ((*stats_layer)
+                ->ReadZStatistics(*executor_, BackwardState{})
+                .status()
+                .code(),
             absl::StatusCode::kFailedPrecondition);
   for (int invalid_rows : {-1, 17}) {
     EXPECT_EQ((*stats_layer)
-                  ->ReadZStatistics(*executor_, stats_tape, invalid_rows)
+                  ->ReadZStatistics(*executor_, stats_state, invalid_rows)
                   .status()
                   .code(),
               absl::StatusCode::kInvalidArgument);
@@ -142,13 +145,13 @@ TEST_F(LayersTest, StatisticsAreOptInAndValidateTheirTapeAndRowLimit) {
   auto other_executor = cuda::Executor::Create();
   ASSERT_TRUE(other_executor.ok()) << other_executor.status();
   EXPECT_EQ((*stats_layer)
-                ->ReadZStatistics(**other_executor, stats_tape)
+                ->ReadZStatistics(**other_executor, stats_state)
                 .status()
                 .code(),
             absl::StatusCode::kInvalidArgument);
-  stats_tape.intermediates[2] = *input;
+  stats_state.intermediates[2] = *input;
   EXPECT_EQ(
-      (*stats_layer)->ReadZStatistics(*executor_, stats_tape).status().code(),
+      (*stats_layer)->ReadZStatistics(*executor_, stats_state).status().code(),
       absl::StatusCode::kInvalidArgument);
 }
 
@@ -177,9 +180,9 @@ TEST_F(LayersTest, ParallelLossHandlesGpt2BatchTenShape) {
               cudaSuccess);
   }
 
-  Tape tape;
+  BackwardState state;
   BufferVec inputs = {*input, *reconstruction, *latents, *decoder};
-  auto output = (*loss)->fwd(*executor_, inputs, &tape);
+  auto output = (*loss)->fwd(*executor_, inputs, state);
   ASSERT_TRUE(output.ok()) << output.status();
   auto host_output = AllocatePageLockedHostArray<float>(*executor_, 1);
   ASSERT_EQ(cudaMemcpyAsync(host_output.data(), output->data(), sizeof(float),

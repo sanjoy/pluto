@@ -153,14 +153,14 @@ TEST_F(LayersTest, LanguageModelingHeadUsesEmbeddingWeightTranspose) {
                             executor_->stream()),
             cudaSuccess);
 
-  Tape embedding_tape;
+  BackwardState embedding_state;
   BufferVec embedding_inputs = {*token_buffer};
   auto hidden =
-      (*embedding)->fwd(*executor_, embedding_inputs, &embedding_tape);
+      (*embedding)->fwd(*executor_, embedding_inputs, embedding_state);
   ASSERT_TRUE(hidden.ok()) << hidden.status();
-  Tape head_tape;
+  BackwardState head_state;
   BufferVec head_inputs = {*hidden};
-  auto logits = (*head)->fwd(*executor_, head_inputs, &head_tape);
+  auto logits = (*head)->fwd(*executor_, head_inputs, head_state);
   ASSERT_TRUE(logits.ok()) << logits.status();
 
   std::vector<float> output_gradient(kTestTokenCount * kTestVocabularySize,
@@ -178,7 +178,7 @@ TEST_F(LayersTest, LanguageModelingHeadUsesEmbeddingWeightTranspose) {
       cudaSuccess);
   BufferVec head_gradients = {*gradient_buffer};
   auto hidden_gradient =
-      (*head)->bwd(*executor_, head_gradients, std::move(head_tape));
+      (*head)->bwd(*executor_, head_gradients, std::move(head_state));
   ASSERT_TRUE(hidden_gradient.ok()) << hidden_gradient.status();
   ASSERT_EQ(hidden_gradient->size(), 1u);
 
@@ -252,16 +252,16 @@ TEST_F(LayersTest, Bf16HeadMasksPhysicalVocabularyPadding) {
                             executor_->stream()),
             cudaSuccess);
 
-  Tape embedding_tape;
+  BackwardState embedding_state;
   BufferVec embedding_inputs = {*token_buffer};
   auto hidden =
-      (*embedding)->fwd(*executor_, embedding_inputs, &embedding_tape);
+      (*embedding)->fwd(*executor_, embedding_inputs, embedding_state);
   ASSERT_TRUE(hidden.ok()) << hidden.status();
   EXPECT_EQ(hidden->size_bytes(),
             kTestTokenCount * kTestModelWidth * sizeof(uint16_t));
-  Tape head_tape;
+  BackwardState head_state;
   BufferVec head_inputs = {*hidden};
-  auto logits = (*head)->fwd(*executor_, head_inputs, &head_tape);
+  auto logits = (*head)->fwd(*executor_, head_inputs, head_state);
   ASSERT_TRUE(logits.ok()) << logits.status();
   EXPECT_EQ(logits->size_bytes(),
             kTestTokenCount * kPaddedVocabularySize * sizeof(float));
@@ -303,9 +303,9 @@ TEST_F(LayersTest, PositionEmbeddingRepeatsAtRuntimeContextLength) {
                             executor_->stream()),
             cudaSuccess);
 
-  Tape tape;
+  BackwardState state;
   BufferVec inputs = {*input_buffer};
-  auto output = (*positions)->fwd(*executor_, inputs, &tape);
+  auto output = (*positions)->fwd(*executor_, inputs, state);
   ASSERT_TRUE(output.ok()) << output.status();
   auto host_output =
       AllocatePageLockedHostArray<float>(*executor_, input.size());
@@ -373,13 +373,13 @@ TEST_F(LayersTest, LookupBackwardIsBitwiseRepeatableInOriginalRowOrder) {
               MakeTestBuffer(*executor_, output_gradients[pass]);
           ASSERT_TRUE(token_buffer.ok()) << token_buffer.status();
           ASSERT_TRUE(gradient_buffer.ok()) << gradient_buffer.status();
-          Tape tape;
+          BackwardState state;
           BufferVec inputs = {*token_buffer};
-          auto output = (*embedding)->fwd(*executor_, inputs, &tape);
+          auto output = (*embedding)->fwd(*executor_, inputs, state);
           ASSERT_TRUE(output.ok()) << output.status();
           BufferVec gradients = {*gradient_buffer};
           auto input_gradients =
-              (*embedding)->bwd(*executor_, gradients, std::move(tape));
+              (*embedding)->bwd(*executor_, gradients, std::move(state));
           ASSERT_TRUE(input_gradients.ok()) << input_gradients.status();
           EXPECT_TRUE(input_gradients->empty());
           AccumulateTestRows(tokens[pass], output_gradients[pass], width,
@@ -443,13 +443,13 @@ TEST_F(LayersTest, PositionBackwardIsBitwiseRepeatableWithPartialContexts) {
           auto gradient_buffer =
               MakeTestBuffer(*executor_, output_gradients[pass]);
           ASSERT_TRUE(gradient_buffer.ok()) << gradient_buffer.status();
-          Tape tape;
+          BackwardState state;
           BufferVec inputs = {*input};
-          auto output = (*positions)->fwd(*executor_, inputs, &tape);
+          auto output = (*positions)->fwd(*executor_, inputs, state);
           ASSERT_TRUE(output.ok()) << output.status();
           BufferVec gradients = {*gradient_buffer};
           auto input_gradients =
-              (*positions)->bwd(*executor_, gradients, std::move(tape));
+              (*positions)->bwd(*executor_, gradients, std::move(state));
           ASSERT_TRUE(input_gradients.ok()) << input_gradients.status();
           ASSERT_EQ(input_gradients->size(), 1u);
           EXPECT_EQ(input_gradients->front().data(), gradient_buffer->data());
@@ -510,17 +510,17 @@ TEST_F(LayersTest, LookupBackwardPreservesRealTiedHeadGradientAcrossPasses) {
       auto expected = initial;
       for (int pass = 0; pass < 2; ++pass) {
         SCOPED_TRACE(testing::Message() << "pass=" << pass);
-        Tape lookup_tape;
+        BackwardState lookup_state;
         BufferVec inputs = {*token_buffer};
-        auto hidden = (*embedding)->fwd(*executor_, inputs, &lookup_tape);
+        auto hidden = (*embedding)->fwd(*executor_, inputs, lookup_state);
         ASSERT_TRUE(hidden.ok()) << hidden.status();
-        Tape head_tape;
+        BackwardState head_state;
         BufferVec head_inputs = {*hidden};
-        auto logits = (*head)->fwd(*executor_, head_inputs, &head_tape);
+        auto logits = (*head)->fwd(*executor_, head_inputs, head_state);
         ASSERT_TRUE(logits.ok()) << logits.status();
         BufferVec gradients = {*gradient_buffer};
         auto hidden_gradient =
-            (*head)->bwd(*executor_, gradients, std::move(head_tape));
+            (*head)->bwd(*executor_, gradients, std::move(head_state));
         ASSERT_TRUE(hidden_gradient.ok()) << hidden_gradient.status();
         ASSERT_EQ(hidden_gradient->size(), 1u);
         // All products are exactly representable, avoiding an MMA-order
@@ -533,7 +533,7 @@ TEST_F(LayersTest, LookupBackwardPreservesRealTiedHeadGradientAcrossPasses) {
         EXPECT_EQ(*after_head, TestFloatBits(expected));
         auto result =
             (*embedding)
-                ->bwd(*executor_, *hidden_gradient, std::move(lookup_tape));
+                ->bwd(*executor_, *hidden_gradient, std::move(lookup_state));
         ASSERT_TRUE(result.ok()) << result.status();
         EXPECT_TRUE(result->empty());
         expected[3 * kWidth + 5] += 3.0f;

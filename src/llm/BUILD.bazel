@@ -39,6 +39,18 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "layer_reference_test",
+    srcs = ["layer_reference_test.cc"],
+    deps = [
+        ":combinators_reference",
+        ":layer",
+        "//src/host:buffer",
+        "@abseil-cpp//absl/status",
+        "@googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "sampling",
     srcs = ["sampling.cc"],

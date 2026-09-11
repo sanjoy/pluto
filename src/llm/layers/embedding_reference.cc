@@ -68,11 +68,11 @@ absl::Status EmbeddingLookupLayerReference::InitializeNormal(
   return InitializeBufferNormal(&weight_, standard_deviation, seed);
 }
 
-absl::StatusOr<HostBuffer> EmbeddingLookupLayerReference::fwd(
-    absl::Span<const HostBuffer> inputs, ReferenceTape* tape) {
-  if (inputs.size() != 1 || tape == nullptr) {
+absl::StatusOr<HostBuffer> EmbeddingLookupLayerReference::fwd_impl(
+    absl::Span<const HostBuffer> inputs, ReferenceBackwardState& state) const {
+  if (inputs.size() != 1) {
     return absl::InvalidArgumentError(
-        "EmbeddingLookupLayerReference fwd expects token IDs and a tape");
+        "EmbeddingLookupLayerReference fwd expects token IDs and saved state");
   }
   ASSIGN_OR_RETURN(int rows,
                    ri::ElementCount(inputs[0], sizeof(int), "embedding tokens"));
@@ -93,25 +93,26 @@ absl::StatusOr<HostBuffer> EmbeddingLookupLayerReference::fwd(
           table[static_cast<size_t>(tokens[row]) * embedding_dim_ + column]);
     }
   }
-  tape->intermediates = {inputs[0]};
-  tape->children.clear();
+  state.intermediates = {inputs[0]};
+  state.children.clear();
   return output;
 }
 
-absl::StatusOr<HostBufferVec> EmbeddingLookupLayerReference::bwd(
-    absl::Span<const HostBuffer> output_gradients, ReferenceTape tape) {
-  if (output_gradients.size() != 1 || tape.intermediates.size() != 1) {
+absl::StatusOr<HostBufferVec> EmbeddingLookupLayerReference::bwd_impl(
+    absl::Span<const HostBuffer> output_gradients,
+    ReferenceBackwardState state) {
+  if (output_gradients.size() != 1 || state.intermediates.size() != 1) {
     return absl::InvalidArgumentError(
         "EmbeddingLookupLayerReference bwd received incompatible state");
   }
   ASSIGN_OR_RETURN(int rows,
-                   ri::ElementCount(tape.intermediates[0], sizeof(int),
+                   ri::ElementCount(state.intermediates[0], sizeof(int),
                                     "embedding saved tokens"));
   RETURN_IF_ERROR(ri::ValidateBuffer(
       output_gradients[0],
       static_cast<size_t>(rows) * embedding_dim_ * sizeof(float),
       "embedding output gradient"));
-  const auto* tokens = static_cast<const int*>(tape.intermediates[0].data());
+  const auto* tokens = static_cast<const int*>(state.intermediates[0].data());
   const auto* d_output = static_cast<const float*>(output_gradients[0].data());
   auto* d_table = static_cast<float*>(gradient_.data());
   // Repeated tokens add in input-row order, matching the device's sorted
@@ -135,11 +136,12 @@ LanguageModelingHeadLayerReference::Create(
   return absl::WrapUnique(new LanguageModelingHeadLayerReference(embedding));
 }
 
-absl::StatusOr<HostBuffer> LanguageModelingHeadLayerReference::fwd(
-    absl::Span<const HostBuffer> inputs, ReferenceTape* tape) {
-  if (inputs.size() != 1 || tape == nullptr) {
+absl::StatusOr<HostBuffer> LanguageModelingHeadLayerReference::fwd_impl(
+    absl::Span<const HostBuffer> inputs, ReferenceBackwardState& state) const {
+  if (inputs.size() != 1) {
     return absl::InvalidArgumentError(
-        "LanguageModelingHeadLayerReference fwd expects one input and a tape");
+        "LanguageModelingHeadLayerReference fwd expects one input and saved "
+        "state");
   }
   ASSIGN_OR_RETURN(
       int rows, ri::ActivationRows(inputs[0], embedding_->embedding_dim_,
@@ -176,14 +178,15 @@ absl::StatusOr<HostBuffer> LanguageModelingHeadLayerReference::fwd(
                           : -std::numeric_limits<float>::max();
     }
   }
-  tape->intermediates = {inputs[0]};
-  tape->children.clear();
+  state.intermediates = {inputs[0]};
+  state.children.clear();
   return logits;
 }
 
-absl::StatusOr<HostBufferVec> LanguageModelingHeadLayerReference::bwd(
-    absl::Span<const HostBuffer> output_gradients, ReferenceTape tape) {
-  if (output_gradients.size() != 1 || tape.intermediates.size() != 1) {
+absl::StatusOr<HostBufferVec> LanguageModelingHeadLayerReference::bwd_impl(
+    absl::Span<const HostBuffer> output_gradients,
+    ReferenceBackwardState state) {
+  if (output_gradients.size() != 1 || state.intermediates.size() != 1) {
     return absl::InvalidArgumentError(
         "LanguageModelingHeadLayerReference bwd received incompatible state");
   }
@@ -191,7 +194,7 @@ absl::StatusOr<HostBufferVec> LanguageModelingHeadLayerReference::bwd(
                                             embedding_->padded_vocab_size_,
                                             "LM-head output gradient"));
   RETURN_IF_ERROR(ri::ValidateBuffer(
-      tape.intermediates[0],
+      state.intermediates[0],
       static_cast<size_t>(rows) * embedding_->embedding_dim_ *
           ri::ActivationElementBytes(embedding_->output_type_),
       "LM-head saved input"));
@@ -234,7 +237,7 @@ absl::StatusOr<HostBufferVec> LanguageModelingHeadLayerReference::bwd(
                                    embedding_->output_type_) *
             ri::QuantizeMmaOperand(
                 ri::LoadActivation(
-                    tape.intermediates[0],
+                    state.intermediates[0],
                     static_cast<size_t>(row) * embedding_->embedding_dim_ +
                         column,
                     embedding_->output_type_),
@@ -267,11 +270,12 @@ absl::Status PositionEmbeddingLayerReference::InitializeNormal(
   return InitializeBufferNormal(&weight_, standard_deviation, seed);
 }
 
-absl::StatusOr<HostBuffer> PositionEmbeddingLayerReference::fwd(
-    absl::Span<const HostBuffer> inputs, ReferenceTape* tape) {
-  if (inputs.size() != 1 || tape == nullptr) {
+absl::StatusOr<HostBuffer> PositionEmbeddingLayerReference::fwd_impl(
+    absl::Span<const HostBuffer> inputs, ReferenceBackwardState& state) const {
+  if (inputs.size() != 1) {
     return absl::InvalidArgumentError(
-        "PositionEmbeddingLayerReference fwd expects one input and a tape");
+        "PositionEmbeddingLayerReference fwd expects one input and saved "
+        "state");
   }
   ASSIGN_OR_RETURN(int rows,
                    ri::ActivationRows(inputs[0], embedding_dim_, output_type_,
@@ -292,14 +296,15 @@ absl::StatusOr<HostBuffer> PositionEmbeddingLayerReference::fwd(
                         column]);
     }
   }
-  tape->intermediates.clear();
-  tape->children.clear();
+  state.intermediates.clear();
+  state.children.clear();
   return output;
 }
 
-absl::StatusOr<HostBufferVec> PositionEmbeddingLayerReference::bwd(
-    absl::Span<const HostBuffer> output_gradients, ReferenceTape tape) {
-  if (output_gradients.size() != 1 || !tape.intermediates.empty()) {
+absl::StatusOr<HostBufferVec> PositionEmbeddingLayerReference::bwd_impl(
+    absl::Span<const HostBuffer> output_gradients,
+    ReferenceBackwardState state) {
+  if (output_gradients.size() != 1 || !state.intermediates.empty()) {
     return absl::InvalidArgumentError(
         "PositionEmbeddingLayerReference bwd received incompatible state");
   }

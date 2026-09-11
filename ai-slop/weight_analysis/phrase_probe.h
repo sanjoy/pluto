@@ -27,9 +27,9 @@ struct TraceFrame {
   bool native_replay = false;
 };
 
-// Rejects stale assumptions about the production recipe's private tape tree.
+// Rejects stale assumptions about the production recipe's private state tree.
 // The diagnostic never changes the recipe or installs forward hooks in it.
-absl::Status ValidateGpt2Tape(const llm::Tape& tape);
+absl::Status ValidateGpt2State(const llm::BackwardState& state);
 
 // Copies matching tensors D2D on the explicit executor. Used only for separate
 // replay/readout layers, never to replace model handles or checkpoint files.
@@ -38,7 +38,7 @@ absl::Status CopyDeviceWeights(cuda::Executor& executor,
                                absl::Span<cuda::Buffer> destination);
 
 // Replays a production dense kernel on an EXACT saved input. This recovers the
-// two branch outputs the residual tape does not retain. It is not subtraction
+// two branch outputs the residual state does not retain. It is not subtraction
 // of BF16 residual snapshots (which would include rounding error).
 absl::StatusOr<cuda::Buffer> ReplayProjection(cuda::Executor& executor,
                                               const cuda::Buffer& input,
@@ -48,8 +48,8 @@ absl::StatusOr<cuda::Buffer> ReplayProjection(cuda::Executor& executor,
                                               int output_width);
 
 absl::StatusOr<std::vector<TraceFrame>> CollectGpt2Trace(
-    cuda::Executor& executor, const llm::Tape& tape, const cuda::Buffer& logits,
-    absl::Span<const cuda::Buffer> weights);
+    cuda::Executor& executor, const llm::BackwardState& state,
+    const cuda::Buffer& logits, absl::Span<const cuda::Buffer> weights);
 
 // Read only a contiguous prefix into page-locked memory; every successful
 // return has synchronized, so the returned bytes are immediately usable.

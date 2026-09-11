@@ -37,10 +37,10 @@ class EmbeddingLookupLayer final : public Layer {
  private:
   absl::StatusOr<Buffer> fwd_impl(cuda::Executor& executor,
                                   absl::Span<const Buffer> inputs,
-                                  Tape* tape) const override;
+                                  BackwardState& state) const override;
   absl::StatusOr<BufferVec> bwd_impl(cuda::Executor& executor,
                                      absl::Span<const Buffer> output_gradients,
-                                     Tape tape) override;
+                                     BackwardState state) override;
 
   EmbeddingLookupLayer(cuda::Executor& executor, int vocab_size,
                        int padded_vocab_size, int embedding_dim,
@@ -72,10 +72,10 @@ class LanguageModelingHeadLayer final : public Layer {
  private:
   absl::StatusOr<Buffer> fwd_impl(cuda::Executor& executor,
                                   absl::Span<const Buffer> inputs,
-                                  Tape* tape) const override;
+                                  BackwardState& state) const override;
   absl::StatusOr<BufferVec> bwd_impl(cuda::Executor& executor,
                                      absl::Span<const Buffer> output_gradients,
-                                     Tape tape) override;
+                                     BackwardState state) override;
 
   explicit LanguageModelingHeadLayer(EmbeddingLookupLayer* embedding)
       : embedding_(embedding) {}
@@ -105,10 +105,10 @@ class PositionEmbeddingLayer final : public Layer {
  private:
   absl::StatusOr<Buffer> fwd_impl(cuda::Executor& executor,
                                   absl::Span<const Buffer> inputs,
-                                  Tape* tape) const override;
+                                  BackwardState& state) const override;
   absl::StatusOr<BufferVec> bwd_impl(cuda::Executor& executor,
                                      absl::Span<const Buffer> output_gradients,
-                                     Tape tape) override;
+                                     BackwardState state) override;
 
   PositionEmbeddingLayer(cuda::Executor& executor, int context_length,
                          int embedding_dim, DataType data_type, Buffer weight,
@@ -133,11 +133,7 @@ class EmbeddingLookupLayerReference final : public LayerReference {
 
   absl::Status InitializeIdentity(float scale = 1.0f);
   absl::Status InitializeNormal(float standard_deviation, uint64_t seed);
-  absl::StatusOr<HostBuffer> fwd(absl::Span<const HostBuffer> inputs,
-                                 ReferenceTape* tape) override;
-  absl::StatusOr<HostBufferVec> bwd(
-      absl::Span<const HostBuffer> output_gradients,
-      ReferenceTape tape) override;
+
   absl::Span<HostBuffer> weights() override {
     return absl::MakeSpan(&weight_, 1);
   }
@@ -151,6 +147,13 @@ class EmbeddingLookupLayerReference final : public LayerReference {
   const HostBuffer& weight() const { return weight_; }
 
  private:
+  absl::StatusOr<HostBuffer> fwd_impl(
+      absl::Span<const HostBuffer> inputs,
+      ReferenceBackwardState& state) const override;
+  absl::StatusOr<HostBufferVec> bwd_impl(
+      absl::Span<const HostBuffer> output_gradients,
+      ReferenceBackwardState state) override;
+
   EmbeddingLookupLayerReference(int vocab_size, int padded_vocab_size,
                                 int embedding_dim, DataType data_type,
                                 HostBuffer weight, HostBuffer gradient)
@@ -175,11 +178,7 @@ class LanguageModelingHeadLayerReference final : public LayerReference {
  public:
   static absl::StatusOr<std::unique_ptr<LanguageModelingHeadLayerReference>>
   Create(EmbeddingLookupLayerReference* embedding);
-  absl::StatusOr<HostBuffer> fwd(absl::Span<const HostBuffer> inputs,
-                                 ReferenceTape* tape) override;
-  absl::StatusOr<HostBufferVec> bwd(
-      absl::Span<const HostBuffer> output_gradients,
-      ReferenceTape tape) override;
+
   absl::Span<HostBuffer> weights() override { return embedding_->weights(); }
   absl::Span<HostBuffer> gradients() override {
     return embedding_->gradients();
@@ -187,6 +186,13 @@ class LanguageModelingHeadLayerReference final : public LayerReference {
   DataType output_type() const override { return embedding_->output_type(); }
 
  private:
+  absl::StatusOr<HostBuffer> fwd_impl(
+      absl::Span<const HostBuffer> inputs,
+      ReferenceBackwardState& state) const override;
+  absl::StatusOr<HostBufferVec> bwd_impl(
+      absl::Span<const HostBuffer> output_gradients,
+      ReferenceBackwardState state) override;
+
   explicit LanguageModelingHeadLayerReference(
       EmbeddingLookupLayerReference* embedding)
       : embedding_(embedding) {}
@@ -199,11 +205,7 @@ class PositionEmbeddingLayerReference final : public LayerReference {
   static absl::StatusOr<std::unique_ptr<PositionEmbeddingLayerReference>>
   Create(int context_length, int embedding_dim, DataType data_type);
   absl::Status InitializeNormal(float standard_deviation, uint64_t seed);
-  absl::StatusOr<HostBuffer> fwd(absl::Span<const HostBuffer> inputs,
-                                 ReferenceTape* tape) override;
-  absl::StatusOr<HostBufferVec> bwd(
-      absl::Span<const HostBuffer> output_gradients,
-      ReferenceTape tape) override;
+
   absl::Span<HostBuffer> weights() override {
     return absl::MakeSpan(&weight_, 1);
   }
@@ -213,6 +215,13 @@ class PositionEmbeddingLayerReference final : public LayerReference {
   DataType output_type() const override { return output_type_; }
 
  private:
+  absl::StatusOr<HostBuffer> fwd_impl(
+      absl::Span<const HostBuffer> inputs,
+      ReferenceBackwardState& state) const override;
+  absl::StatusOr<HostBufferVec> bwd_impl(
+      absl::Span<const HostBuffer> output_gradients,
+      ReferenceBackwardState state) override;
+
   PositionEmbeddingLayerReference(int context_length, int embedding_dim,
                                   DataType data_type, HostBuffer weight,
                                   HostBuffer gradient)

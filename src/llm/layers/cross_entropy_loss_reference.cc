@@ -26,11 +26,12 @@ CrossEntropyLossLayerReference::Create(int vocabulary_size,
       vocabulary_size, ri::RoundUpToTile(vocabulary_size), data_type));
 }
 
-absl::StatusOr<HostBuffer> CrossEntropyLossLayerReference::fwd(
-    absl::Span<const HostBuffer> inputs, ReferenceTape* tape) {
-  if (inputs.size() != 2 || tape == nullptr) {
+absl::StatusOr<HostBuffer> CrossEntropyLossLayerReference::fwd_impl(
+    absl::Span<const HostBuffer> inputs, ReferenceBackwardState& state) const {
+  if (inputs.size() != 2) {
     return absl::InvalidArgumentError(
-        "CrossEntropyLossLayerReference expects logits, targets, and a tape");
+        "CrossEntropyLossLayerReference expects logits, targets, and saved "
+        "state");
   }
   ASSIGN_OR_RETURN(int rows, ri::MatrixRows(inputs[0], padded_vocab_size_,
                                             "cross-entropy logits"));
@@ -58,27 +59,28 @@ absl::StatusOr<HostBuffer> CrossEntropyLossLayerReference::fwd(
       denominator += std::exp(row_logits[token] - maximum);
     loss[row] = std::log(denominator) + maximum - row_logits[targets[row]];
   }
-  tape->intermediates = {inputs[0], inputs[1]};
-  tape->children.clear();
+  state.intermediates = {inputs[0], inputs[1]};
+  state.children.clear();
   return losses;
 }
 
-absl::StatusOr<HostBufferVec> CrossEntropyLossLayerReference::bwd(
-    absl::Span<const HostBuffer> output_gradients, ReferenceTape tape) {
-  if (!output_gradients.empty() || tape.intermediates.size() != 2) {
+absl::StatusOr<HostBufferVec> CrossEntropyLossLayerReference::bwd_impl(
+    absl::Span<const HostBuffer> output_gradients,
+    ReferenceBackwardState state) {
+  if (!output_gradients.empty() || state.intermediates.size() != 2) {
     return absl::InvalidArgumentError(
         "terminal cross-entropy reference expects no upstream gradient");
   }
   ASSIGN_OR_RETURN(int rows,
-                   ri::MatrixRows(tape.intermediates[0], padded_vocab_size_,
+                   ri::MatrixRows(state.intermediates[0], padded_vocab_size_,
                                   "cross-entropy saved logits"));
-  RETURN_IF_ERROR(ri::ValidateBuffer(tape.intermediates[1],
+  RETURN_IF_ERROR(ri::ValidateBuffer(state.intermediates[1],
                                      static_cast<size_t>(rows) * sizeof(int),
                                      "cross-entropy saved targets"));
   ASSIGN_OR_RETURN(auto gradient, ri::AllocateFloats(static_cast<size_t>(rows) *
                                                      padded_vocab_size_));
-  const auto* logits = static_cast<const float*>(tape.intermediates[0].data());
-  const auto* targets = static_cast<const int*>(tape.intermediates[1].data());
+  const auto* logits = static_cast<const float*>(state.intermediates[0].data());
+  const auto* targets = static_cast<const int*>(state.intermediates[1].data());
   auto* d_logits = static_cast<float*>(gradient.data());
   for (int row = 0; row < rows; ++row) {
     const float* row_logits =

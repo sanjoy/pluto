@@ -22,14 +22,14 @@ ResidualLayerReference::ResidualLayerReference(
     gradients_.push_back(gradient);
 }
 
-absl::StatusOr<HostBuffer> ResidualLayerReference::fwd(
-    absl::Span<const HostBuffer> inputs, ReferenceTape* tape) {
-  if (inputs.size() != 1 || tape == nullptr) {
+absl::StatusOr<HostBuffer> ResidualLayerReference::fwd_impl(
+    absl::Span<const HostBuffer> inputs, ReferenceBackwardState& state) const {
+  if (inputs.size() != 1) {
     return absl::InvalidArgumentError(
-        "ResidualLayerReference fwd expects one input and a tape");
+        "ResidualLayerReference fwd expects one input and saved state");
   }
-  ReferenceTape child_tape;
-  ASSIGN_OR_RETURN(auto branch, layer_->fwd(inputs, &child_tape));
+  ReferenceBackwardState child_state;
+  ASSIGN_OR_RETURN(auto branch, layer_->fwd(inputs, child_state));
   if (branch.size_bytes() != inputs[0].size_bytes()) {
     return absl::InvalidArgumentError(
         "reference residual branch changed activation shape");
@@ -47,20 +47,21 @@ absl::StatusOr<HostBuffer> ResidualLayerReference::fwd(
                         ri::LoadActivation(inputs[0], index, output_type()) +
                             ri::LoadActivation(branch, index, output_type()));
   }
-  tape->intermediates = {inputs[0]};
-  tape->children = {std::move(child_tape)};
+  state.intermediates = {inputs[0]};
+  state.children = {std::move(child_state)};
   return output;
 }
 
-absl::StatusOr<HostBufferVec> ResidualLayerReference::bwd(
-    absl::Span<const HostBuffer> output_gradients, ReferenceTape tape) {
-  if (output_gradients.size() != 1 || tape.intermediates.size() != 1 ||
-      tape.children.size() != 1) {
+absl::StatusOr<HostBufferVec> ResidualLayerReference::bwd_impl(
+    absl::Span<const HostBuffer> output_gradients,
+    ReferenceBackwardState state) {
+  if (output_gradients.size() != 1 || state.intermediates.size() != 1 ||
+      state.children.size() != 1) {
     return absl::InvalidArgumentError(
         "ResidualLayerReference bwd received incompatible state");
   }
   ASSIGN_OR_RETURN(auto branch_gradients,
-                   layer_->bwd(output_gradients, std::move(tape.children[0])));
+                   layer_->bwd(output_gradients, std::move(state.children[0])));
   if (branch_gradients.size() != 1 ||
       branch_gradients[0].size_bytes() != output_gradients[0].size_bytes()) {
     return absl::InvalidArgumentError(
@@ -89,30 +90,31 @@ ComposedLayerReference::ComposedLayerReference(
   }
 }
 
-absl::StatusOr<HostBuffer> ComposedLayerReference::fwd(
-    absl::Span<const HostBuffer> inputs, ReferenceTape* tape) {
-  if (inputs.size() != 1 || tape == nullptr) {
+absl::StatusOr<HostBuffer> ComposedLayerReference::fwd_impl(
+    absl::Span<const HostBuffer> inputs, ReferenceBackwardState& state) const {
+  if (inputs.size() != 1) {
     return absl::InvalidArgumentError(
-        "ComposedLayerReference fwd expects one input and a tape");
+        "ComposedLayerReference fwd expects one input and saved state");
   }
-  tape->intermediates.clear();
-  tape->children.clear();
+  state.intermediates.clear();
+  state.children.clear();
   HostBuffer activation = inputs[0];
-  // Execute one child at a time and retain its independent tape. This is
+  // Execute one child at a time and retain its independent state. This is
   // intentionally the simplest possible interpretation of composition.
   for (const auto& layer : layers_) {
-    ReferenceTape child_tape;
+    ReferenceBackwardState child_state;
     HostBufferVec child_inputs = {activation};
-    ASSIGN_OR_RETURN(auto output, layer->fwd(child_inputs, &child_tape));
+    ASSIGN_OR_RETURN(auto output, layer->fwd(child_inputs, child_state));
     activation = std::move(output);
-    tape->children.push_back(std::move(child_tape));
+    state.children.push_back(std::move(child_state));
   }
   return activation;
 }
 
-absl::StatusOr<HostBufferVec> ComposedLayerReference::bwd(
-    absl::Span<const HostBuffer> output_gradients, ReferenceTape tape) {
-  if (output_gradients.size() != 1 || tape.children.size() != layers_.size()) {
+absl::StatusOr<HostBufferVec> ComposedLayerReference::bwd_impl(
+    absl::Span<const HostBuffer> output_gradients,
+    ReferenceBackwardState state) {
+  if (output_gradients.size() != 1 || state.children.size() != layers_.size()) {
     return absl::InvalidArgumentError(
         "ComposedLayerReference bwd received incompatible state");
   }
@@ -121,7 +123,7 @@ absl::StatusOr<HostBufferVec> ComposedLayerReference::bwd(
     HostBufferVec child_gradients = {gradient};
     ASSIGN_OR_RETURN(
         auto input_gradients,
-        layers_[index]->bwd(child_gradients, std::move(tape.children[index])));
+        layers_[index]->bwd(child_gradients, std::move(state.children[index])));
     if (index == 0 && input_gradients.empty())
       return HostBufferVec{};
     if (input_gradients.size() != 1) {

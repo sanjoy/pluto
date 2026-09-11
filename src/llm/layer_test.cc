@@ -1,6 +1,7 @@
 #include "src/llm/layer.h"
 
 #include <memory>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -11,7 +12,7 @@
 namespace pluto::llm {
 namespace {
 
-// No kernels are needed to test dispatch and tape ownership. Keeping the
+// No kernels are needed to test dispatch and state ownership. Keeping the
 // implementations private also checks that callers use the inherited API.
 class IdentityLayer final : public Layer {
  public:
@@ -26,23 +27,23 @@ class IdentityLayer final : public Layer {
  private:
   absl::StatusOr<Buffer> fwd_impl(cuda::Executor&,
                                   absl::Span<const Buffer> inputs,
-                                  Tape* tape) const override {
+                                  BackwardState& state) const override {
     ++forward_calls;
-    EXPECT_EQ(tape->layer, nullptr);
-    EXPECT_TRUE(tape->intermediates.empty());
-    EXPECT_TRUE(tape->children.empty());
-    // Populate state even on failure to exercise partially written tapes.
-    tape->intermediates = {inputs[0]};
+    EXPECT_EQ(state.layer, nullptr);
+    EXPECT_TRUE(state.intermediates.empty());
+    EXPECT_TRUE(state.children.empty());
+    // Populate state even on failure to exercise partially written states.
+    state.intermediates = {inputs[0]};
     if (fail_forward) return absl::ResourceExhaustedError("forward failed");
     return inputs[0];
   }
 
   absl::StatusOr<BufferVec> bwd_impl(cuda::Executor&, absl::Span<const Buffer>,
-                                     Tape tape) override {
+                                     BackwardState state) override {
     ++backward_calls;
-    EXPECT_EQ(tape.layer, this);
+    EXPECT_EQ(state.layer, this);
     if (fail_backward) return absl::InternalError("backward failed");
-    return std::move(tape.intermediates);
+    return std::move(state.intermediates);
   }
 };
 
@@ -62,85 +63,87 @@ class LayerTest : public ::testing::Test {
   BufferVec inputs_;
 };
 
-TEST_F(LayerTest, SuccessfulForwardAndCopiedOrMovedTapeDispatchThroughBase) {
+TEST_F(LayerTest, SuccessfulForwardAndCopiedOrMovedStateDispatchThroughBase) {
   IdentityLayer layer;
   const Layer& forward_layer = layer;
-  Tape tape;
-  auto output = forward_layer.fwd(*executor_, inputs_, &tape);
+  BackwardState state;
+  auto output = forward_layer.fwd(*executor_, inputs_, state);
   ASSERT_TRUE(output.ok()) << output.status();
   EXPECT_EQ(output->data(), inputs_[0].data());
-  EXPECT_EQ(tape.layer, &layer);
+  EXPECT_EQ(state.layer, &layer);
   EXPECT_EQ(layer.forward_calls, 1);
 
   Layer& backward_layer = layer;
   // Copying saved state is supported; identity follows copies and moves.
-  Tape copy = tape;
+  BackwardState copy = state;
   auto gradient = backward_layer.bwd(*executor_, inputs_, std::move(copy));
   ASSERT_TRUE(gradient.ok()) << gradient.status();
   ASSERT_EQ(gradient->size(), 1);
   EXPECT_EQ((*gradient)[0].data(), inputs_[0].data());
-  EXPECT_TRUE(layer.bwd(*executor_, inputs_, std::move(tape)).ok());
+  EXPECT_TRUE(layer.bwd(*executor_, inputs_, std::move(state)).ok());
   EXPECT_EQ(layer.backward_calls, 2);
 }
 
-TEST_F(LayerTest, NullForwardTapeDoesNotDispatch) {
-  IdentityLayer layer;
-  auto output = layer.fwd(*executor_, inputs_, nullptr);
-  EXPECT_EQ(output.status().code(), absl::StatusCode::kInvalidArgument);
-  EXPECT_EQ(layer.forward_calls, 0);
+TEST(LayerApiTest, ForwardRequiresStateReference) {
+  static_assert(
+      std::is_invocable_v<decltype(&Layer::fwd), const Layer&, cuda::Executor&,
+                          absl::Span<const Buffer>, BackwardState&>);
+  static_assert(
+      !std::is_invocable_v<decltype(&Layer::fwd), const Layer&, cuda::Executor&,
+                           absl::Span<const Buffer>, BackwardState*>);
 }
 
-TEST_F(LayerTest, UnusedTapeDoesNotDispatchBackward) {
+TEST_F(LayerTest, UnusedStateDoesNotDispatchBackward) {
   IdentityLayer layer;
-  auto gradient = layer.bwd(*executor_, inputs_, Tape{});
+  auto gradient = layer.bwd(*executor_, inputs_, BackwardState{});
   EXPECT_EQ(gradient.status().code(), absl::StatusCode::kInvalidArgument);
   EXPECT_EQ(layer.backward_calls, 0);
 }
 
-TEST_F(LayerTest, SameTypeAndShapeDoNotMakeAnotherLayersTapeValid) {
+TEST_F(LayerTest, SameTypeAndShapeDoNotMakeAnotherLayersStateValid) {
   IdentityLayer first;
   IdentityLayer second;
-  Tape tape;
-  ASSERT_TRUE(first.fwd(*executor_, inputs_, &tape).ok());
-  auto gradient = second.bwd(*executor_, inputs_, tape);
+  BackwardState state;
+  ASSERT_TRUE(first.fwd(*executor_, inputs_, state).ok());
+  auto gradient = second.bwd(*executor_, inputs_, state);
   EXPECT_EQ(gradient.status().code(), absl::StatusCode::kInvalidArgument);
   EXPECT_EQ(second.backward_calls, 0);
-  EXPECT_TRUE(first.bwd(*executor_, inputs_, std::move(tape)).ok());
+  EXPECT_TRUE(first.bwd(*executor_, inputs_, std::move(state)).ok());
 }
 
-TEST_F(LayerTest, FailedForwardInvalidatesReusedTape) {
+TEST_F(LayerTest, FailedForwardInvalidatesReusedState) {
   IdentityLayer layer;
-  Tape tape;
-  ASSERT_TRUE(layer.fwd(*executor_, inputs_, &tape).ok());
-  tape.children.emplace_back();
+  BackwardState state;
+  ASSERT_TRUE(layer.fwd(*executor_, inputs_, state).ok());
+  state.children.emplace_back();
   layer.fail_forward = true;
-  auto output = layer.fwd(*executor_, inputs_, &tape);
+  auto output = layer.fwd(*executor_, inputs_, state);
   EXPECT_EQ(output.status(), absl::ResourceExhaustedError("forward failed"));
-  EXPECT_EQ(tape.layer, nullptr);
+  EXPECT_EQ(state.layer, nullptr);
   EXPECT_EQ(layer.forward_calls, 2);
-  auto gradient = layer.bwd(*executor_, inputs_, std::move(tape));
+  auto gradient = layer.bwd(*executor_, inputs_, std::move(state));
   EXPECT_EQ(gradient.status().code(), absl::StatusCode::kInvalidArgument);
   EXPECT_EQ(layer.backward_calls, 0);
 }
 
-TEST_F(LayerTest, ReusingTapeAssociatesItWithLatestSuccessfulLayer) {
+TEST_F(LayerTest, ReusingStateAssociatesItWithLatestSuccessfulLayer) {
   IdentityLayer first;
   IdentityLayer second;
-  Tape tape;
-  ASSERT_TRUE(first.fwd(*executor_, inputs_, &tape).ok());
-  ASSERT_TRUE(second.fwd(*executor_, inputs_, &tape).ok());
-  EXPECT_EQ(tape.layer, &second);
-  EXPECT_EQ(first.bwd(*executor_, inputs_, tape).status().code(),
+  BackwardState state;
+  ASSERT_TRUE(first.fwd(*executor_, inputs_, state).ok());
+  ASSERT_TRUE(second.fwd(*executor_, inputs_, state).ok());
+  EXPECT_EQ(state.layer, &second);
+  EXPECT_EQ(first.bwd(*executor_, inputs_, state).status().code(),
             absl::StatusCode::kInvalidArgument);
-  EXPECT_TRUE(second.bwd(*executor_, inputs_, std::move(tape)).ok());
+  EXPECT_TRUE(second.bwd(*executor_, inputs_, std::move(state)).ok());
 }
 
 TEST_F(LayerTest, BackwardImplementationErrorIsPreserved) {
   IdentityLayer layer;
-  Tape tape;
-  ASSERT_TRUE(layer.fwd(*executor_, inputs_, &tape).ok());
+  BackwardState state;
+  ASSERT_TRUE(layer.fwd(*executor_, inputs_, state).ok());
   layer.fail_backward = true;
-  auto gradient = layer.bwd(*executor_, inputs_, std::move(tape));
+  auto gradient = layer.bwd(*executor_, inputs_, std::move(state));
   EXPECT_EQ(gradient.status(), absl::InternalError("backward failed"));
   EXPECT_EQ(layer.backward_calls, 1);
 }
@@ -160,22 +163,22 @@ TEST_F(LayerTest, NestedCompositionChecksIndividualChildIdentity) {
   outer_children.push_back(std::move(inner));
   ComposedLayer outer(DataType::FP16, std::move(outer_children));
 
-  Tape tape;
-  ASSERT_TRUE(outer.fwd(*executor_, inputs_, &tape).ok());
-  EXPECT_EQ(tape.layer, &outer);
-  ASSERT_EQ(tape.children.size(), 1);
-  EXPECT_EQ(tape.children[0].layer, inner_ptr);
-  auto& child_tapes = tape.children[0].children;
-  ASSERT_EQ(child_tapes.size(), 2);
-  EXPECT_EQ(child_tapes[0].layer, first_ptr);
-  EXPECT_EQ(child_tapes[1].layer, second_ptr);
-  ASSERT_TRUE(outer.bwd(*executor_, inputs_, tape).ok());
+  BackwardState state;
+  ASSERT_TRUE(outer.fwd(*executor_, inputs_, state).ok());
+  EXPECT_EQ(state.layer, &outer);
+  ASSERT_EQ(state.children.size(), 1);
+  EXPECT_EQ(state.children[0].layer, inner_ptr);
+  auto& child_states = state.children[0].children;
+  ASSERT_EQ(child_states.size(), 2);
+  EXPECT_EQ(child_states[0].layer, first_ptr);
+  EXPECT_EQ(child_states[1].layer, second_ptr);
+  ASSERT_TRUE(outer.bwd(*executor_, inputs_, state).ok());
   EXPECT_EQ(first_ptr->backward_calls, 1);
   EXPECT_EQ(second_ptr->backward_calls, 1);
 
-  // The parent tape is valid, but the children are attached to wrong slots.
-  std::swap(child_tapes[0], child_tapes[1]);
-  auto gradient = outer.bwd(*executor_, inputs_, std::move(tape));
+  // The parent state is valid, but the children are attached to wrong slots.
+  std::swap(child_states[0], child_states[1]);
+  auto gradient = outer.bwd(*executor_, inputs_, std::move(state));
   EXPECT_EQ(gradient.status().code(), absl::StatusCode::kInvalidArgument);
   EXPECT_EQ(first_ptr->backward_calls, 1);
   EXPECT_EQ(second_ptr->backward_calls, 1);

@@ -206,12 +206,12 @@ absl::StatusOr<std::unique_ptr<LayerNormLayer>> LayerNormLayer::Create(
 
 absl::StatusOr<Buffer> LayerNormLayer::fwd_impl(cuda::Executor& executor,
                                                 absl::Span<const Buffer> inputs,
-                                                Tape* tape) const {
+                                                BackwardState& state) const {
   RETURN_IF_ERROR(
       internal::ValidateExecutor(executor_, executor, "LayerNormLayer"));
-  if (inputs.size() != 1 || tape == nullptr) {
+  if (inputs.size() != 1) {
     return absl::InvalidArgumentError(
-        "LayerNormLayer fwd expects one input and a non-null tape");
+        "LayerNormLayer fwd expects one input and saved state");
   }
   ASSIGN_OR_RETURN(int rows,
                    internal::ActivationRows(executor, inputs[0], embedding_dim_,
@@ -234,25 +234,25 @@ absl::StatusOr<Buffer> LayerNormLayer::fwd_impl(cuda::Executor& executor,
   }
   RETURN_IF_ERROR(
       cuda::CudaStatus(cudaGetLastError(), "LayerNormForwardKernel launch"));
-  tape->intermediates = {inputs[0]};
-  tape->children.clear();
+  state.intermediates = {inputs[0]};
+  state.children.clear();
   return std::move(output);
 }
 
 absl::StatusOr<BufferVec> LayerNormLayer::bwd_impl(
     cuda::Executor& executor, absl::Span<const Buffer> output_gradients,
-    Tape tape) {
+    BackwardState state) {
   RETURN_IF_ERROR(
       internal::ValidateExecutor(executor_, executor, "LayerNormLayer"));
-  if (output_gradients.size() != 1 || tape.intermediates.size() != 1) {
+  if (output_gradients.size() != 1 || state.intermediates.size() != 1) {
     return absl::InvalidArgumentError(
-        "LayerNormLayer bwd received an incompatible gradient or tape");
+        "LayerNormLayer bwd received an incompatible gradient or state");
   }
   ASSIGN_OR_RETURN(int rows, internal::MatrixRows(executor, output_gradients[0],
                                                   embedding_dim_,
                                                   "layer-norm output gradient"));
   RETURN_IF_ERROR(internal::ValidateBuffer(
-      executor, tape.intermediates[0],
+      executor, state.intermediates[0],
       static_cast<size_t>(rows) * embedding_dim_ *
           internal::ActivationElementBytes(output_type_),
       "layer-norm saved input"));
@@ -264,26 +264,26 @@ absl::StatusOr<BufferVec> LayerNormLayer::bwd_impl(
   if (output_type_ == DataType::BF16) {
     LayerNormInputGradientKernel<__nv_bfloat16>
         <<<blocks, 1, 0, executor.stream()>>>(
-            static_cast<const __nv_bfloat16*>(tape.intermediates[0].data()),
+            static_cast<const __nv_bfloat16*>(state.intermediates[0].data()),
             static_cast<const float*>(weights_[0].data()),
             static_cast<const float*>(output_gradients[0].data()), rows,
             embedding_dim_, epsilon_,
             static_cast<float*>(input_gradient.data()));
     LayerNormParameterGradientKernel<__nv_bfloat16>
         <<<internal::TileCount(embedding_dim_), 1, 0, executor.stream()>>>(
-            static_cast<const __nv_bfloat16*>(tape.intermediates[0].data()),
+            static_cast<const __nv_bfloat16*>(state.intermediates[0].data()),
             static_cast<const float*>(output_gradients[0].data()), rows,
             embedding_dim_, epsilon_, static_cast<float*>(gradients_[0].data()),
             static_cast<float*>(gradients_[1].data()));
   } else {
     LayerNormInputGradientKernel<float><<<blocks, 1, 0, executor.stream()>>>(
-        static_cast<const float*>(tape.intermediates[0].data()),
+        static_cast<const float*>(state.intermediates[0].data()),
         static_cast<const float*>(weights_[0].data()),
         static_cast<const float*>(output_gradients[0].data()), rows,
         embedding_dim_, epsilon_, static_cast<float*>(input_gradient.data()));
     LayerNormParameterGradientKernel<float>
         <<<internal::TileCount(embedding_dim_), 1, 0, executor.stream()>>>(
-            static_cast<const float*>(tape.intermediates[0].data()),
+            static_cast<const float*>(state.intermediates[0].data()),
             static_cast<const float*>(output_gradients[0].data()), rows,
             embedding_dim_, epsilon_, static_cast<float*>(gradients_[0].data()),
             static_cast<float*>(gradients_[1].data()));
