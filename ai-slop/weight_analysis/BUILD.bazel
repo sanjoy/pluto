@@ -488,3 +488,35 @@ cc_test(
         "@googletest//:gtest_main",
     ],
 )
+
+cc_binary(
+    name = "block_ablation_probe",
+    srcs = ["block_ablation_probe.cc", "block_ablation_arms.h"],
+    deps = [
+        ":causal_probe_lib",
+        ":token_trace_probe_lib",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/llm:checkpoint",
+        "//src/llm:cross_entropy_loss",
+        "//src/llm:layer",
+        "//src/llm/recipes:gpt2",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_test(
+    name = "block_ablation_arms_test",
+    srcs = ["block_ablation_arms_test.cc", "block_ablation_arms.h"],
+    deps = [
+        ":causal_probe_lib",
+        "@googletest//:gtest_main",
+    ],
+)
