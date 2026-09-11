@@ -8,10 +8,10 @@
 #include <limits>
 #include <string>
 #include <system_error>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
@@ -125,7 +125,7 @@ absl::Status ValidateReadDirectory(const std::filesystem::path& directory) {
 }
 
 std::vector<const Buffer*> UniqueWeights(const Layer& layer) {
-  std::unordered_set<const void*> seen;
+  absl::flat_hash_set<const void*> seen;
   std::vector<const Buffer*> result;
   for (const Buffer& weight : layer.weights()) {
     const void* identity = weight.data();
@@ -136,7 +136,7 @@ std::vector<const Buffer*> UniqueWeights(const Layer& layer) {
 }
 
 std::vector<Buffer*> UniqueWeights(Layer& layer) {
-  std::unordered_set<void*> seen;
+  absl::flat_hash_set<void*> seen;
   std::vector<Buffer*> result;
   for (Buffer& weight : layer.weights()) {
     void* identity = weight.data();
@@ -189,7 +189,7 @@ absl::StatusOr<size_t> CountWeightFiles(
 
 absl::Status RemoveStaleWeightFiles(
     const std::filesystem::path& directory,
-    const std::unordered_set<std::string>& retained_names) {
+    const absl::flat_hash_set<std::string>& retained_names) {
   std::error_code error;
   std::filesystem::directory_iterator iterator(directory, error);
   if (error)
@@ -362,7 +362,7 @@ absl::Status WriteToDirectory(cuda::Executor& executor, const Layer& layer,
   }
   RETURN_IF_ERROR(executor.Synchronize());
 
-  std::unordered_set<std::string> retained_names;
+  absl::flat_hash_set<std::string> retained_names;
   for (size_t index = 0; index < weights.size(); ++index) {
     const std::filesystem::path path = WeightPath(directory, index);
     retained_names.insert(path.filename().string());

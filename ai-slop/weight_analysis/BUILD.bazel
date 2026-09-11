@@ -154,6 +154,7 @@ cc_library(
         "//src/cuda:page_locked_host_array",
         "//src/llm:layer",
         "//src/util:status_macros",
+        "@abseil-cpp//absl/container:flat_hash_set",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings",

@@ -6,10 +6,10 @@
 #include <cmath>
 #include <cstddef>
 #include <memory>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "src/llm/layers/internal.h"
@@ -66,7 +66,7 @@ absl::StatusOr<std::unique_ptr<AdamWOptimizer>> AdamWOptimizer::Create(
         "model weights and gradients must have matching cardinality");
   }
 
-  std::unordered_set<void*> seen;
+  absl::flat_hash_set<void*> seen;
   std::vector<Buffer> weights;
   std::vector<Buffer> gradients;
   std::vector<Buffer> first_moments;

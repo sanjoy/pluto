@@ -10,10 +10,10 @@
 #include <limits>
 #include <memory>
 #include <string>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -39,7 +39,7 @@ constexpr std::array<size_t, 9> kWeightElements{32 * 16, 16, 16, 16 * 32, 32,
 
 template <class BufferType>
 std::vector<BufferType> DistinctWeights(absl::Span<BufferType> weights) {
-  std::unordered_set<const void*> seen;
+  absl::flat_hash_set<const void*> seen;
   std::vector<BufferType> result;
   for (const auto& weight : weights)
     if (seen.insert(weight.data()).second)

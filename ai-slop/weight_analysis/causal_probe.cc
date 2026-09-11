@@ -13,9 +13,9 @@
 #include <iostream>
 #include <limits>
 #include <system_error>
-#include <unordered_set>
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "ai-slop/weight_analysis/token_argmax.h"
 #include "src/util/status_macros.h"
@@ -81,7 +81,7 @@ absl::StatusOr<std::vector<CheckpointFileInfo>> InspectGpt2CheckpointFiles(
         "checkpoint must be a directory, not a symlink");
   }
   const auto sizes = Gpt2WeightByteSizes();
-  std::unordered_set<std::string> expected_names;
+  absl::flat_hash_set<std::string> expected_names;
   for (size_t i = 0; i < sizes.size(); ++i)
     expected_names.insert(absl::StrCat("weight_", i, ".bin"));
   bool has_metadata = false;
@@ -164,7 +164,7 @@ absl::Status VerifyCheckpointFilesUnchanged(
 absl::StatusOr<std::vector<cuda::Buffer>> UniqueWeights(
     cuda::Executor& executor, absl::Span<const cuda::Buffer> weights) {
   std::vector<cuda::Buffer> unique;
-  std::unordered_set<const void*> seen;
+  absl::flat_hash_set<const void*> seen;
   for (const auto& weight : weights) {
     if (&weight.executor() != &executor || weight.size_bytes() == 0)
       return absl::InvalidArgumentError("wrong executor or empty weight");
@@ -274,7 +274,7 @@ absl::StatusOr<std::unique_ptr<WeightIntervention>> WeightIntervention::Capture(
     return absl::InvalidArgumentError("empty intervention");
   auto result =
       std::unique_ptr<WeightIntervention>(new WeightIntervention(executor));
-  std::unordered_set<const void*> seen;
+  absl::flat_hash_set<const void*> seen;
   for (int index : indices) {
     if (index < 0 || static_cast<size_t>(index) >= weights.size() ||
         &weights[index].executor() != &executor ||
@@ -387,7 +387,7 @@ absl::StatusOr<std::unique_ptr<MlpRowIntervention>> MlpRowIntervention::Capture(
     return absl::InvalidArgumentError(
         "invalid FP32 MLP output matrix shape, executor, or empty row group");
   }
-  std::unordered_set<int> seen;
+  absl::flat_hash_set<int> seen;
   for (int feature : feature_ids) {
     if (feature < 0 || feature >= input_features ||
         !seen.insert(feature).second) {

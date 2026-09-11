@@ -9,10 +9,10 @@
 #include <fstream>
 #include <limits>
 #include <string>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "src/llm/layers/combinators.h"
 #include "src/llm/layers/embedding.h"
@@ -103,7 +103,7 @@ absl::Status LoadB0Weights(cuda::Executor& executor, Layer& readout,
   if (directory.empty())
     return absl::InvalidArgumentError("checkpoint directory must not be empty");
   std::vector<Buffer*> weights;
-  std::unordered_set<const void*> seen;
+  absl::flat_hash_set<const void*> seen;
   for (Buffer& weight : readout.weights()) {
     if (&weight.executor() != &executor)
       return absl::InvalidArgumentError("weight belongs to another executor");
