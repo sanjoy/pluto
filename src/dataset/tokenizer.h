@@ -12,7 +12,7 @@
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "src/cuda/page_locked_host_array.h"
-#include "src/dataset/gpt2_model.h"
+#include "src/dataset/gpt2_tokenizer_vocabulary.h"
 
 namespace pluto::tokenizer {
 
@@ -38,14 +38,15 @@ class Gpt2Tokenizer final {
   absl::string_view eos_token() const { return model_->eos_token(); }
 
  private:
-  explicit Gpt2Tokenizer(std::shared_ptr<const internal::Gpt2Model> model)
+  explicit Gpt2Tokenizer(
+      std::shared_ptr<const internal::Gpt2TokenizerVocabulary> model)
       : model_(std::move(model)) {}
 
   absl::Status EncodeOrdinary(absl::string_view text,
                               std::vector<int>* output) const;
   absl::StatusOr<std::vector<int>> ApplyBpe(std::string token) const;
 
-  std::shared_ptr<const internal::Gpt2Model> model_;
+  std::shared_ptr<const internal::Gpt2TokenizerVocabulary> model_;
   mutable absl::Mutex cache_mutex_;
   mutable absl::flat_hash_map<std::string, std::vector<int>> cache_
       ABSL_GUARDED_BY(cache_mutex_);

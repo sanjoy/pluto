@@ -15,7 +15,7 @@
 #include "re2/re2.h"
 #include "re2/stringpiece.h"
 #include "src/cuda/page_locked_host_array.h"
-#include "src/dataset/gpt2_model.h"
+#include "src/dataset/gpt2_tokenizer_vocabulary.h"
 #include "src/util/status_macros.h"
 
 namespace pluto::tokenizer {
@@ -73,7 +73,7 @@ absl::StatusOr<std::vector<absl::string_view>> PreTokenize(
 }
 
 std::string ByteEncode(absl::string_view text,
-                       const internal::Gpt2Model& model) {
+                       const internal::Gpt2TokenizerVocabulary& model) {
   std::string encoded;
   encoded.reserve(text.size() * 2);
   for (const unsigned char byte : text)
@@ -97,7 +97,8 @@ absl::StatusOr<std::vector<std::string>> SplitUtf8(absl::string_view text) {
 
 absl::StatusOr<std::unique_ptr<Gpt2Tokenizer>> Gpt2Tokenizer::Load(
     const std::filesystem::path& directory) {
-  ASSIGN_OR_RETURN(auto model, internal::Gpt2Model::Load(directory));
+  ASSIGN_OR_RETURN(auto model,
+                   internal::Gpt2TokenizerVocabulary::Load(directory));
   return std::unique_ptr<Gpt2Tokenizer>(new Gpt2Tokenizer(std::move(model)));
 }
 

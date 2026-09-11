@@ -40,9 +40,9 @@ cc_test(
 )
 
 cc_library(
-    name = "gpt2_model",
-    srcs = ["gpt2_model.cc"],
-    hdrs = ["gpt2_model.h"],
+    name = "gpt2_tokenizer_vocabulary",
+    srcs = ["gpt2_tokenizer_vocabulary.cc"],
+    hdrs = ["gpt2_tokenizer_vocabulary.h"],
     visibility = ["//src/dataset:__pkg__"],
     deps = [
         "//src/util:status_macros",
@@ -60,7 +60,7 @@ cc_library(
     hdrs = ["tokenizer.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":gpt2_model",
+        ":gpt2_tokenizer_vocabulary",
         "//src/util:status_macros",
         "//src/cuda:page_locked_host_array",
         "@abseil-cpp//absl/base:core_headers",
@@ -102,7 +102,7 @@ cc_library(
     hdrs = ["detokenizer.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":gpt2_model",
+        ":gpt2_tokenizer_vocabulary",
         "//src/util:status_macros",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",

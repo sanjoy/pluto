@@ -1,4 +1,4 @@
-#include "src/dataset/gpt2_model.h"
+#include "src/dataset/gpt2_tokenizer_vocabulary.h"
 
 #include <algorithm>
 #include <cctype>
@@ -364,7 +364,8 @@ std::array<std::string, 256> MakeByteEncoder() {
 
 struct ModelCache {
   absl::Mutex mutex;
-  absl::flat_hash_map<std::string, std::weak_ptr<const Gpt2Model>> models;
+  absl::flat_hash_map<std::string, std::weak_ptr<const Gpt2TokenizerVocabulary>>
+      models;
 };
 
 ModelCache& SharedModelCache() {
@@ -423,8 +424,8 @@ absl::StatusOr<uint32_t> ConsumeUtf8(absl::string_view* input) {
   return value;
 }
 
-absl::StatusOr<std::shared_ptr<const Gpt2Model>> Gpt2Model::Load(
-    const std::filesystem::path& directory) {
+absl::StatusOr<std::shared_ptr<const Gpt2TokenizerVocabulary>>
+Gpt2TokenizerVocabulary::Load(const std::filesystem::path& directory) {
   const std::string cache_key =
       std::filesystem::absolute(directory).lexically_normal().string();
   ModelCache& cache = SharedModelCache();
@@ -432,14 +433,15 @@ absl::StatusOr<std::shared_ptr<const Gpt2Model>> Gpt2Model::Load(
     absl::MutexLock lock(cache.mutex);
     const auto found = cache.models.find(cache_key);
     if (found != cache.models.end()) {
-      if (std::shared_ptr<const Gpt2Model> model = found->second.lock())
+      if (std::shared_ptr<const Gpt2TokenizerVocabulary> model =
+              found->second.lock())
         return model;
     }
   }
 
   ASSIGN_OR_RETURN(auto json, ReadFile(directory / "tokenizer.json"));
 
-  std::shared_ptr<Gpt2Model> model(new Gpt2Model);
+  std::shared_ptr<Gpt2TokenizerVocabulary> model(new Gpt2TokenizerVocabulary);
   RETURN_IF_ERROR(
       ParseTokenizerJson(json, &model->encoder_, &model->merge_ranks_));
 
@@ -477,7 +479,8 @@ absl::StatusOr<std::shared_ptr<const Gpt2Model>> Gpt2Model::Load(
     model->byte_decoder_[*code_point] = byte;
   }
 
-  std::shared_ptr<const Gpt2Model> immutable_model = std::move(model);
+  std::shared_ptr<const Gpt2TokenizerVocabulary> immutable_model =
+      std::move(model);
   {
     absl::MutexLock lock(cache.mutex);
     cache.models[cache_key] = immutable_model;

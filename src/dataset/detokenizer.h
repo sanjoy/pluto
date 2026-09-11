@@ -7,7 +7,7 @@
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "src/dataset/gpt2_model.h"
+#include "src/dataset/gpt2_tokenizer_vocabulary.h"
 
 namespace pluto::tokenizer {
 
@@ -24,10 +24,11 @@ class Gpt2Detokenizer final {
   int eos_token_id() const { return model_->eos_token_id(); }
 
  private:
-  explicit Gpt2Detokenizer(std::shared_ptr<const internal::Gpt2Model> model)
+  explicit Gpt2Detokenizer(
+      std::shared_ptr<const internal::Gpt2TokenizerVocabulary> model)
       : model_(std::move(model)) {}
 
-  std::shared_ptr<const internal::Gpt2Model> model_;
+  std::shared_ptr<const internal::Gpt2TokenizerVocabulary> model_;
 };
 
 }  // namespace pluto::tokenizer

@@ -8,14 +8,15 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "src/dataset/gpt2_model.h"
+#include "src/dataset/gpt2_tokenizer_vocabulary.h"
 #include "src/util/status_macros.h"
 
 namespace pluto::tokenizer {
 
 absl::StatusOr<std::unique_ptr<Gpt2Detokenizer>> Gpt2Detokenizer::Load(
     const std::filesystem::path& directory) {
-  ASSIGN_OR_RETURN(auto model, internal::Gpt2Model::Load(directory));
+  ASSIGN_OR_RETURN(auto model,
+                   internal::Gpt2TokenizerVocabulary::Load(directory));
   return std::unique_ptr<Gpt2Detokenizer>(
       new Gpt2Detokenizer(std::move(model)));
 }

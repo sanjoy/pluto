@@ -19,9 +19,9 @@ namespace pluto::tokenizer::internal {
 // The loader intentionally understands only the Hugging Face tokenizer.json
 // representation used by openai-community/gpt2: a byte-level BPE model whose
 // `vocab` is a string-to-id object and whose `merges` are ordered string pairs.
-class Gpt2Model final {
+class Gpt2TokenizerVocabulary final {
  public:
-  static absl::StatusOr<std::shared_ptr<const Gpt2Model>> Load(
+  static absl::StatusOr<std::shared_ptr<const Gpt2TokenizerVocabulary>> Load(
       const std::filesystem::path& directory);
 
   const absl::flat_hash_map<std::string, int>& encoder() const {
@@ -41,7 +41,7 @@ class Gpt2Model final {
   absl::string_view eos_token() const { return eos_token_; }
 
  private:
-  Gpt2Model() = default;
+  Gpt2TokenizerVocabulary() = default;
 
   absl::flat_hash_map<std::string, int> encoder_;
   std::vector<std::string> decoder_;
