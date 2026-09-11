@@ -14,7 +14,7 @@ namespace pluto::llm {
 
 using Buffer = cuda::Buffer;
 using BufferVec = absl::InlinedVector<Buffer, 2>;
-using HostBuffer = host::Buffer;
+using host::HostBuffer;
 using HostBufferVec = absl::InlinedVector<HostBuffer, 2>;
 
 enum class DataType {

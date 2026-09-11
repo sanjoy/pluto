@@ -6,7 +6,7 @@
 
 namespace pluto::host {
 
-struct Buffer::Allocation {
+struct HostBuffer::Allocation {
   explicit Allocation(size_t size)
       : bytes(size == 0 ? nullptr : std::make_unique<std::byte[]>(size)),
         size_bytes(size) {}
@@ -18,19 +18,19 @@ struct Buffer::Allocation {
   size_t size_bytes;
 };
 
-absl::StatusOr<Buffer> Buffer::Allocate(size_t size_bytes) {
-  return Buffer(std::make_shared<Allocation>(size_bytes));
+absl::StatusOr<HostBuffer> HostBuffer::Allocate(size_t size_bytes) {
+  return HostBuffer(std::make_shared<Allocation>(size_bytes));
 }
 
-void* Buffer::data() {
+void* HostBuffer::data() {
   return allocation_ == nullptr ? nullptr : allocation_->bytes.get();
 }
 
-const void* Buffer::data() const {
+const void* HostBuffer::data() const {
   return allocation_ == nullptr ? nullptr : allocation_->bytes.get();
 }
 
-size_t Buffer::size_bytes() const {
+size_t HostBuffer::size_bytes() const {
   return allocation_ == nullptr ? 0 : allocation_->size_bytes;
 }
 

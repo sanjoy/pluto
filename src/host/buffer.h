@@ -13,11 +13,11 @@ namespace pluto::host {
 // This intentionally mirrors only the ownership and byte-oriented interface of
 // cuda::Buffer. CPU work is synchronous, so there is no stream association and
 // no asynchronous allocation/free policy to model.
-class Buffer final {
+class HostBuffer final {
  public:
-  Buffer() = default;
+  HostBuffer() = default;
 
-  static absl::StatusOr<Buffer> Allocate(size_t size_bytes);
+  static absl::StatusOr<HostBuffer> Allocate(size_t size_bytes);
 
   void* data();
   const void* data() const;
@@ -26,7 +26,7 @@ class Buffer final {
  private:
   struct Allocation;
 
-  explicit Buffer(std::shared_ptr<Allocation> allocation)
+  explicit HostBuffer(std::shared_ptr<Allocation> allocation)
       : allocation_(std::move(allocation)) {}
 
   std::shared_ptr<Allocation> allocation_;
