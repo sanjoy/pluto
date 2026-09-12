@@ -26,4 +26,5 @@ exec ./bazel-bin/src/llm/recipes/gpt2_shakespeare_llm \
   --checkpoint_dir=/home/ubuntu/checkpoints/shakespeare_0 \
   --checkpoint_every=100 \
   --checkpoint_initial=true \
+  --steps=15000 \
   --log_file=/tmp/shakespeare_0.log
