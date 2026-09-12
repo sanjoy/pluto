@@ -214,7 +214,7 @@ TEST_F(PhraseProbeGpuTest,
 }
 
 TEST_F(PhraseProbeGpuTest,
-       StateTopologyChecksAllBranchesAndAttentionSavedOutput) {
+       StateTopologyChecksAllBranchesAndAttentionSavedBuffers) {
   auto buffer = cuda::Buffer::Allocate(*executor_, 16);
   ASSERT_TRUE(buffer.ok());
   llm::BackwardState state;
@@ -233,19 +233,25 @@ TEST_F(PhraseProbeGpuTest,
       for (auto& leaf : leaves)
         leaf.intermediates.push_back(*buffer);
       if (branch == 0)
-        leaves[2].intermediates.push_back(*buffer);
+        leaves[2].intermediates.assign(4, *buffer);
     }
   }
   EXPECT_TRUE(ValidateGpt2State(state).ok());
+  for (int block = 0; block < 8; ++block) {
+    for (int saved_buffers : {0, 1, 2, 3, 5}) {
+      SCOPED_TRACE(testing::Message() << "block=" << block
+                                      << " saved_buffers=" << saved_buffers);
+      auto changed = state;
+      changed.children[block + 2]
+          .children[0]
+          .children[0]
+          .children[2]
+          .intermediates.assign(saved_buffers, *buffer);
+      EXPECT_EQ(ValidateGpt2State(changed).code(),
+                absl::StatusCode::kFailedPrecondition);
+    }
+  }
   auto changed = state;
-  changed.children[7]
-      .children[0]
-      .children[0]
-      .children[2]
-      .intermediates.pop_back();
-  EXPECT_EQ(ValidateGpt2State(changed).code(),
-            absl::StatusCode::kFailedPrecondition);
-  changed = state;
   changed.children[9].children[1].children[0].children.pop_back();
   EXPECT_EQ(ValidateGpt2State(changed).code(),
             absl::StatusCode::kFailedPrecondition);

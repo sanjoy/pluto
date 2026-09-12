@@ -271,6 +271,26 @@ TEST_F(HeadContextGpuTest,
   EXPECT_FALSE(Probe::Create(*executor_, *model_, *input_, llm::BackwardState{},
                              *clean_, 3)
                    .ok());
+  // The complete production tree is required, including both saved softmax
+  // statistics in every attention block, even outside the selected block.
+  for (int block = 0; block < 8; ++block) {
+    for (int saved_buffers : {0, 1, 2, 3, 5}) {
+      SCOPED_TRACE(testing::Message() << "block=" << block
+                                      << " saved_buffers=" << saved_buffers);
+      auto malformed = state_;
+      auto& saved = malformed.children[block + 2]
+                        .children[0]
+                        .children[0]
+                        .children[2]
+                        .intermediates;
+      ASSERT_EQ(saved.size(), 4u);
+      const auto buffer = saved[0];
+      saved.assign(saved_buffers, buffer);
+      auto rejected =
+          Probe::Create(*executor_, *model_, *input_, malformed, *clean_, 3);
+      EXPECT_EQ(rejected.status().code(), absl::StatusCode::kInvalidArgument);
+    }
+  }
   auto wrong_shape = cuda::Buffer::Allocate(*executor_, sizeof(int32_t));
   ASSERT_TRUE(wrong_shape.ok()) << wrong_shape.status();
   EXPECT_FALSE(

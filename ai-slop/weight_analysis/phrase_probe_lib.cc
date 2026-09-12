@@ -52,7 +52,9 @@ absl::Status ValidateGpt2State(const llm::BackwardState& state) {
         return BadState();
       for (int leaf = 0; leaf < 4; ++leaf) {
         const auto& saved = sequence.children[leaf];
-        const size_t expected = branch == 0 && leaf == 2 ? 2 : 1;
+        // Attention retains packed Q/K/V, output, maximum, and normalizer.
+        // The trace/replay inputs remain at indices zero and one.
+        const size_t expected = branch == 0 && leaf == 2 ? 4 : 1;
         if (!saved.children.empty() || saved.intermediates.size() != expected)
           return BadState();
       }

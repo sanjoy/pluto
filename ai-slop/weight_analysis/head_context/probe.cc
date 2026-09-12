@@ -121,8 +121,10 @@ absl::Status ValidateState(const llm::BackwardState& state) {
         return bad();
       for (int leaf = 0; leaf < 4; ++leaf) {
         const auto& saved = composed.children[leaf];
+        // Attention saves Q/K/V and context followed by two FP32 softmax
+        // statistics; replay still reads the first two buffers.
         if (!saved.children.empty() ||
-            saved.intermediates.size() != (branch == 0 && leaf == 2 ? 2 : 1))
+            saved.intermediates.size() != (branch == 0 && leaf == 2 ? 4 : 1))
           return bad();
       }
     }

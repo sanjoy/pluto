@@ -9,11 +9,15 @@
 namespace pluto::llm {
 
 // Causal multi-head FlashAttention over a packed [Q, K, V] activation produced
-// by a d_model -> 3*d_model projection. It streams visible keys/values and
-// maintains FP32 online-softmax statistics without materializing the quadratic
-// attention matrix. Backward recomputes probabilities and emits packed FP32
-// dQ/dK/dV gradients with fixed-order, single-writer reductions. Backward uses
-// three FP32 statistics per row/head and no floating-point atomic additions.
+// by a d_model -> 3*d_model projection. Query/key tiles use cuTile matrix
+// products and FP32 online softmax without materializing the quadratic
+// attention matrix. Forward retains its FP32 maximum and normalizer per
+// row/head; backward adds one FP32 delta statistic and recomputes probability
+// tiles. Query-owned dQ and key-owned dK/dV tiles use fixed-order,
+// single-writer reductions, with no floating-point atomics. Runs are bitwise
+// repeatable on the same GPU/software stack, but changing tiling/reduction
+// order can change rounding from older implementations. Partial tiles are
+// masked at both sequence and head bounds.
 class AttentionLayer final : public Layer {
  public:
   static absl::StatusOr<std::unique_ptr<AttentionLayer>> Create(
