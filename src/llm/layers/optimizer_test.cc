@@ -1,5 +1,3 @@
-#include "src/llm/optimizer.h"
-
 #include <cuda_runtime.h>
 
 #include <memory>
@@ -8,6 +6,7 @@
 
 #include "gtest/gtest.h"
 #include "src/cuda/buffer.h"
+#include "src/llm/adamw_optimizer.h"
 #include "src/llm/layer.h"
 #include "src/llm/layers/combinators.h"
 #include "src/llm/layers/embedding.h"

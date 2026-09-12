@@ -22,6 +22,7 @@
 #include "src/cuda/executor.h"
 #include "src/cuda/page_locked_host_array.h"
 #include "src/dataset/dataset.h"
+#include "src/llm/adamw_optimizer.h"
 #include "src/llm/layer.h"
 #include "src/llm/layers/attention.h"
 #include "src/llm/layers/combinators.h"

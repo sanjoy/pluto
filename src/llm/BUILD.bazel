@@ -202,8 +202,14 @@ cc_library(
 
 cuda_library(
     name = "optimizer",
-    srcs = ["optimizer.cc"],
-    hdrs = ["optimizer.h"],
+    srcs = [
+        "adamw_optimizer.cc",
+        "optimizer.cc",
+    ],
+    hdrs = [
+        "adamw_optimizer.h",
+        "optimizer.h",
+    ],
     copts = [
         "--enable-tile",
         "-std=c++20",
