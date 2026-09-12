@@ -21,6 +21,13 @@ struct EvaluationOptions {
 };
 
 struct TrainingOptions {
+  // Required, non-owning dependencies. These must outlive Train(); copying
+  // options keeps references to the same objects. A const options object still
+  // permits training to mutate the referenced layers, optimizer, and iterator.
+  Layer& loss_layer;
+  Optimizer& optimizer;
+  DataSetIterator& training_data;
+
   // Hard cap on optimizer updates. kUnlimitedTrainingSteps runs until an
   // explicit loss/time limit or callback error; zero is evaluation-only.
   int max_steps = 0;
@@ -114,8 +121,6 @@ absl::StatusOr<Buffer> Evaluate(cuda::Executor& executor, const Layer& model,
 // and clears gradients afterwards. Referenced layers, optimizer, and iterators
 // must remain alive for the call.
 absl::StatusOr<TrainingResult> Train(cuda::Executor& executor, Layer& model,
-                                     Layer& loss_layer, Optimizer& optimizer,
-                                     DataSetIterator& training_data,
                                      const TrainingOptions& options);
 
 }  // namespace pluto::llm

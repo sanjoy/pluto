@@ -460,6 +460,9 @@ absl::Status RunTraining(cuda::Executor& executor,
   if (absl::GetFlag(FLAGS_checkpoint_initial))
     RETURN_IF_ERROR(save_checkpoint(initial_step));
   TrainingOptions training_options{
+      .loss_layer = *loss_layer,
+      .optimizer = *optimizer,
+      .training_data = *training_data,
       .max_steps = absl::GetFlag(FLAGS_steps),
       .initial_step = initial_step,
       .training_seconds = TrainingSecondsFromFlags(),
@@ -489,8 +492,7 @@ absl::Status RunTraining(cuda::Executor& executor,
   logger << '[' << CurrentTimestamp()
          << "] training started at step: " << initial_step << '\n';
   ASSIGN_OR_RETURN(auto training_result,
-                   Train(executor, *model, *loss_layer, *optimizer,
-                         *training_data, training_options));
+                   Train(executor, *model, training_options));
   logger << '[' << CurrentTimestamp()
          << "] training stopped at step: " << training_result.steps_completed
          << '\n'
@@ -656,6 +658,9 @@ absl::Status RunSparseAutoEncoderTraining(
   if (absl::GetFlag(FLAGS_checkpoint_initial))
     RETURN_IF_ERROR(save_checkpoint(initial_step));
   TrainingOptions training_options{
+      .loss_layer = *loss_layer,
+      .optimizer = *optimizer,
+      .training_data = *training_activations,
       .max_steps = absl::GetFlag(FLAGS_steps),
       .initial_step = initial_step,
       .training_seconds = TrainingSecondsFromFlags(),
@@ -685,8 +690,7 @@ absl::Status RunSparseAutoEncoderTraining(
   logger << '[' << CurrentTimestamp()
          << "] SAE training started at step: " << initial_step << '\n';
   ASSIGN_OR_RETURN(auto training_result,
-                   Train(executor, *autoencoder, *loss_layer, *optimizer,
-                         *training_activations, training_options));
+                   Train(executor, *autoencoder, training_options));
   logger << '[' << CurrentTimestamp() << "] SAE training stopped at step: "
          << training_result.steps_completed << '\n'
          << "training stop reason: " << TrainingStopReason(training_result)

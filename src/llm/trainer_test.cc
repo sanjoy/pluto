@@ -10,6 +10,7 @@
 #include <memory>
 #include <numeric>
 #include <thread>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -32,6 +33,8 @@
 
 namespace pluto::llm {
 namespace {
+
+static_assert(!std::is_default_constructible_v<TrainingOptions>);
 
 class FakeModel final : public Layer {
  public:
@@ -462,8 +465,11 @@ TEST_F(TrainerTest, TrainRunsForwardBackwardAndOptimizerSteps) {
   ASSERT_TRUE(loss.ok()) << loss.status();
   ASSERT_TRUE(data.ok()) << data.status();
 
-  auto result = Train(*executor_, model, **loss, optimizer, **data,
-                      TrainingOptions{.max_steps = 3});
+  auto result = Train(*executor_, model,
+                      TrainingOptions{.loss_layer = **loss,
+                                      .optimizer = optimizer,
+                                      .training_data = **data,
+                                      .max_steps = 3});
   ASSERT_TRUE(result.ok()) << result.status();
   EXPECT_EQ(result->steps_completed, 3);
   EXPECT_FALSE(result->reached_stop_loss);
@@ -474,6 +480,38 @@ TEST_F(TrainerTest, TrainRunsForwardBackwardAndOptimizerSteps) {
   EXPECT_EQ((*loss)->backward_calls, 3);
   EXPECT_EQ(optimizer.zero_grad_calls, 1);
   EXPECT_EQ(optimizer.steps, 3);
+}
+
+TEST_F(TrainerTest, CopiedConstOptionsPreserveAndUseDependencyReferences) {
+  FakeModel model;
+  FakeOptimizer optimizer;
+  auto loss = MakeLoss();
+  auto data = MakeData();
+  ASSERT_TRUE(loss.ok()) << loss.status();
+  ASSERT_TRUE(data.ok()) << data.status();
+  auto batch = (*data)->Next();
+  ASSERT_TRUE(batch.ok()) << batch.status();
+  FixedActivationDataSetIterator training_data(batch->inputs, batch->batch_size,
+                                               batch->sequence_length);
+
+  const TrainingOptions options{.loss_layer = **loss,
+                                .optimizer = optimizer,
+                                .training_data = training_data,
+                                .max_steps = 2};
+  const TrainingOptions copied_options = options;
+  EXPECT_EQ(&copied_options.loss_layer, loss->get());
+  EXPECT_EQ(&copied_options.optimizer, &optimizer);
+  EXPECT_EQ(&copied_options.training_data, &training_data);
+
+  auto result = Train(*executor_, model, copied_options);
+  ASSERT_TRUE(result.ok()) << result.status();
+  EXPECT_EQ(result->steps_completed, 2);
+  EXPECT_EQ((*loss)->forward_calls, 2);
+  EXPECT_EQ((*loss)->backward_calls, 2);
+  EXPECT_EQ(optimizer.zero_grad_calls, 1);
+  EXPECT_EQ(optimizer.steps, 2);
+  EXPECT_EQ(training_data.reset_calls, 1);
+  EXPECT_EQ(training_data.next_calls, 2);
 }
 
 TEST_F(TrainerTest, RoutesExactlyOneGradientPerModelOutput) {
@@ -493,8 +531,11 @@ TEST_F(TrainerTest, RoutesExactlyOneGradientPerModelOutput) {
   // Targets remain a forward input, but have no corresponding gradient.
   RoutingLayer loss({gradients[0]}, gradients);
   FakeOptimizer optimizer;
-  auto result = Train(*executor_, model, loss, optimizer, **data,
-                      TrainingOptions{.max_steps = 1});
+  auto result = Train(*executor_, model,
+                      TrainingOptions{.loss_layer = loss,
+                                      .optimizer = optimizer,
+                                      .training_data = **data,
+                                      .max_steps = 1});
   ASSERT_TRUE(result.ok()) << result.status();
   ASSERT_EQ(model.observed_inputs.size(), 1);
   EXPECT_EQ(model.observed_inputs[0].data(), batch->inputs.data());
@@ -518,8 +559,11 @@ TEST_F(TrainerTest, RejectsLossGradientsThatDoNotMatchModelOutputs) {
     RoutingLayer model({*buffer, *buffer, *buffer}, {});
     RoutingLayer loss({*buffer}, BufferVec(count, *buffer));
     FakeOptimizer optimizer;
-    auto result = Train(*executor_, model, loss, optimizer, **data,
-                        TrainingOptions{.max_steps = 1});
+    auto result = Train(*executor_, model,
+                        TrainingOptions{.loss_layer = loss,
+                                        .optimizer = optimizer,
+                                        .training_data = **data,
+                                        .max_steps = 1});
     EXPECT_EQ(result.status().code(), absl::StatusCode::kInvalidArgument);
     EXPECT_EQ(model.backward_calls, 0);
     EXPECT_EQ(optimizer.steps, 0);
@@ -617,8 +661,11 @@ TEST_F(TrainerTest, GenericTrainingMatchesExplicitSparseAutoEncoderUpdate) {
   ASSERT_TRUE((*manual_optimizer)->ApplyStep().ok());
 
   FixedActivationDataSetIterator data(*input, 2, kRows / 2);
-  auto result = Train(*executor_, **trained, **loss, **optimizer, data,
-                      TrainingOptions{.max_steps = 1});
+  auto result = Train(*executor_, **trained,
+                      TrainingOptions{.loss_layer = **loss,
+                                      .optimizer = **optimizer,
+                                      .training_data = data,
+                                      .max_steps = 1});
   ASSERT_TRUE(result.ok()) << result.status();
   for (size_t i = 0; i < (*manual)->weights().size(); ++i) {
     const Buffer& expected = (*manual)->weights()[i];
@@ -701,8 +748,11 @@ TEST_F(TrainerTest, TrainsAndEvaluatesSparseAutoEncoderDataBatches) {
 
   FakeOptimizer optimizer;
   std::vector<int> evaluation_steps;
-  auto result = Train(*executor_, **model, **loss, optimizer, data,
+  auto result = Train(*executor_, **model,
                       TrainingOptions{
+                          .loss_layer = **loss,
+                          .optimizer = optimizer,
+                          .training_data = data,
                           .max_steps = 2,
                           .evaluation_interval = 1,
                           .evaluation_batches = 1,
@@ -733,8 +783,11 @@ TEST_F(TrainerTest, StopsBeforeFirstUpdateWhenInitialEvaluationQualifies) {
   ASSERT_TRUE(evaluation_data.ok()) << evaluation_data.status();
 
   auto result =
-      Train(*executor_, model, **loss, optimizer, **training_data,
+      Train(*executor_, model,
             TrainingOptions{
+                .loss_layer = **loss,
+                .optimizer = optimizer,
+                .training_data = **training_data,
                 .max_steps = 3,
                 .initial_step = 570,
                 .evaluation_interval = 1,
@@ -766,8 +819,11 @@ TEST_F(TrainerTest, StopsAfterUpdateWhenPeriodicEvaluationQualifies) {
   ASSERT_TRUE(evaluation_data.ok()) << evaluation_data.status();
 
   auto result =
-      Train(*executor_, model, **loss, optimizer, **training_data,
+      Train(*executor_, model,
             TrainingOptions{
+                .loss_layer = **loss,
+                .optimizer = optimizer,
+                .training_data = **training_data,
                 .max_steps = 3,
                 .evaluation_interval = 1,
                 .evaluation_batches = 1,
@@ -800,8 +856,11 @@ TEST_F(TrainerTest, CallbackEnablesPeriodicEvaluationWithoutEarlyStopping) {
   ASSERT_TRUE(evaluation_data.ok()) << evaluation_data.status();
 
   auto result =
-      Train(*executor_, model, **loss, optimizer, **training_data,
+      Train(*executor_, model,
             TrainingOptions{
+                .loss_layer = **loss,
+                .optimizer = optimizer,
+                .training_data = **training_data,
                 .max_steps = 3,
                 .evaluation_interval = 2,
                 .evaluation_batches = 1,
@@ -832,8 +891,11 @@ TEST_F(TrainerTest, ResumedRunUsesAbsoluteStepNumbers) {
   ASSERT_TRUE(evaluation_data.ok()) << evaluation_data.status();
 
   auto result =
-      Train(*executor_, model, **loss, optimizer, **training_data,
-            TrainingOptions{.max_steps = 3,
+      Train(*executor_, model,
+            TrainingOptions{.loss_layer = **loss,
+                            .optimizer = optimizer,
+                            .training_data = **training_data,
+                            .max_steps = 3,
                             .initial_step = 570,
                             .evaluation_interval = 2,
                             .evaluation_batches = 1,
@@ -865,8 +927,11 @@ TEST_F(TrainerTest, StepCallbackRunsAfterUpdatesAndPropagatesErrors) {
   ASSERT_TRUE(data.ok()) << data.status();
 
   auto result =
-      Train(*executor_, model, **loss, optimizer, **data,
+      Train(*executor_, model,
             TrainingOptions{
+                .loss_layer = **loss,
+                .optimizer = optimizer,
+                .training_data = **data,
                 .max_steps = 3,
                 .initial_step = 570,
                 .step_callback = [&](int steps_completed) -> absl::Status {
@@ -893,8 +958,11 @@ TEST_F(TrainerTest, UnlimitedTrainingRunsUntilCallbackStopsIt) {
   ASSERT_TRUE(data.ok()) << data.status();
 
   auto result = Train(
-      *executor_, model, **loss, optimizer, **data,
-      TrainingOptions{.max_steps = kUnlimitedTrainingSteps,
+      *executor_, model,
+      TrainingOptions{.loss_layer = **loss,
+                      .optimizer = optimizer,
+                      .training_data = **data,
+                      .max_steps = kUnlimitedTrainingSteps,
                       .step_callback = [](int steps_completed) -> absl::Status {
                         if (steps_completed == 3)
                           return absl::CancelledError("test requested stop");
@@ -933,8 +1001,11 @@ TEST_F(TrainerTest, TimeLimitWaitsForStreamWorkAndEvaluatesTheFinalStep) {
   };
   std::vector<int> evaluation_steps;
   auto result =
-      Train(*executor_, model, **loss, optimizer, **training_data,
-            TrainingOptions{.max_steps = kUnlimitedTrainingSteps,
+      Train(*executor_, model,
+            TrainingOptions{.loss_layer = **loss,
+                            .optimizer = optimizer,
+                            .training_data = **training_data,
+                            .max_steps = kUnlimitedTrainingSteps,
                             .initial_step = 570,
                             .training_seconds = 0.01,
                             .evaluation_interval = 100,
@@ -986,8 +1057,11 @@ TEST_F(TrainerTest, TinyBudgetCompletesOneRealOptimizerUpdate) {
   std::vector<int> evaluation_steps;
 
   auto result =
-      Train(*executor_, **model, **loss, **optimizer, data,
-            TrainingOptions{.max_steps = kUnlimitedTrainingSteps,
+      Train(*executor_, **model,
+            TrainingOptions{.loss_layer = **loss,
+                            .optimizer = **optimizer,
+                            .training_data = data,
+                            .max_steps = kUnlimitedTrainingSteps,
                             .training_seconds = 1e-9,
                             .evaluation_interval = 100,
                             .evaluation_callback = [&](int step, double value) {
@@ -1011,9 +1085,12 @@ TEST_F(TrainerTest, StepCapCanStopBeforeTimeBudget) {
   auto data = MakeData();
   ASSERT_TRUE(loss.ok()) << loss.status();
   ASSERT_TRUE(data.ok()) << data.status();
-  auto result =
-      Train(*executor_, model, **loss, optimizer, **data,
-            TrainingOptions{.max_steps = 1, .training_seconds = 3600.0});
+  auto result = Train(*executor_, model,
+                      TrainingOptions{.loss_layer = **loss,
+                                      .optimizer = optimizer,
+                                      .training_data = **data,
+                                      .max_steps = 1,
+                                      .training_seconds = 3600.0});
   ASSERT_TRUE(result.ok()) << result.status();
   EXPECT_EQ(result->steps_completed, 1);
   EXPECT_FALSE(result->reached_time_limit);
@@ -1031,25 +1108,37 @@ TEST_F(TrainerTest, RejectsInvalidOptions) {
   for (double invalid : {0.0, -1.0, std::numeric_limits<double>::infinity(),
                          -std::numeric_limits<double>::infinity(),
                          std::numeric_limits<double>::quiet_NaN()}) {
-    EXPECT_EQ(
-        Train(*executor_, model, **loss, optimizer, **data,
-              TrainingOptions{.max_steps = 1, .training_seconds = invalid})
-            .status()
-            .code(),
-        absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ(Train(*executor_, model,
+                    TrainingOptions{.loss_layer = **loss,
+                                    .optimizer = optimizer,
+                                    .training_data = **data,
+                                    .max_steps = 1,
+                                    .training_seconds = invalid})
+                  .status()
+                  .code(),
+              absl::StatusCode::kInvalidArgument);
   }
   EXPECT_FALSE(Evaluate(*executor_, model, **loss, **data,
                         EvaluationOptions{.batches = 0})
                    .ok());
-  EXPECT_FALSE(Train(*executor_, model, **loss, optimizer, **data,
-                     TrainingOptions{.max_steps = -2})
+  EXPECT_FALSE(Train(*executor_, model,
+                     TrainingOptions{.loss_layer = **loss,
+                                     .optimizer = optimizer,
+                                     .training_data = **data,
+                                     .max_steps = -2})
                    .ok());
-  EXPECT_FALSE(Train(*executor_, model, **loss, optimizer, **data,
-                     TrainingOptions{.initial_step = -1})
+  EXPECT_FALSE(Train(*executor_, model,
+                     TrainingOptions{.loss_layer = **loss,
+                                     .optimizer = optimizer,
+                                     .training_data = **data,
+                                     .initial_step = -1})
                    .ok());
   EXPECT_FALSE(
-      Train(*executor_, model, **loss, optimizer, **data,
-            TrainingOptions{.max_steps = 1,
+      Train(*executor_, model,
+            TrainingOptions{.loss_layer = **loss,
+                            .optimizer = optimizer,
+                            .training_data = **data,
+                            .max_steps = 1,
                             .initial_step = std::numeric_limits<int>::max()})
           .ok());
 }

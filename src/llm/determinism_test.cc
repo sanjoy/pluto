@@ -198,7 +198,9 @@ absl::Status RecordTraining(cuda::Executor& executor, Layer& model,
     ASSIGN_OR_RETURN(auto gradients, ReadBytes(executor, model.gradients()));
     trajectory.gradients.push_back(std::move(gradients));
   }
-  TrainingOptions options;
+  TrainingOptions options{.loss_layer = loss_layer,
+                          .optimizer = *optimizer,
+                          .training_data = training};
   options.max_steps = kUpdates;
   options.evaluation_interval = 1;
   options.evaluation_batches = 2;
@@ -207,8 +209,7 @@ absl::Status RecordTraining(cuda::Executor& executor, Layer& model,
   options.evaluation_callback = [&](int step, double loss) {
     trajectory.callback_losses.emplace_back(step, DoubleBits(loss));
   };
-  ASSIGN_OR_RETURN(auto result, Train(executor, model, loss_layer, *optimizer,
-                                      training, options));
+  ASSIGN_OR_RETURN(auto result, Train(executor, model, options));
   if (result.steps_completed != kUpdates || optimizer->step() != kUpdates)
     return absl::InternalError("replay did not perform all requested updates");
   return absl::OkStatus();

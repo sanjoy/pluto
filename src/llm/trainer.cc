@@ -197,10 +197,11 @@ absl::StatusOr<Buffer> Evaluate(cuda::Executor& executor, const Layer& model,
 }
 
 absl::StatusOr<TrainingResult> Train(cuda::Executor& executor, Layer& model,
-                                     Layer& loss_layer, Optimizer& optimizer,
-                                     DataSetIterator& training_data,
                                      const TrainingOptions& options) {
   RETURN_IF_ERROR(ValidateTrainingOptions(options));
+  Layer& loss_layer = options.loss_layer;
+  Optimizer& optimizer = options.optimizer;
+  DataSetIterator& training_data = options.training_data;
   DataSetIterator& evaluation_data = options.evaluation_data == nullptr
                                          ? training_data
                                          : *options.evaluation_data;
