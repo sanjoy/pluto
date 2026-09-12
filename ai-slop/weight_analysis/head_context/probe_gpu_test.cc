@@ -86,7 +86,7 @@ class HeadContextGpuTest : public ::testing::Test {
     auto clean = model_->fwd(*executor_, absl::MakeConstSpan(&*input_, 1));
     if (clean.ok()) state_ = std::move(clean->state);
     ASSERT_TRUE(clean.ok()) << clean.status();
-    clean_ = std::move(clean->output);
+    clean_ = std::move(clean->outputs[0]);
     auto clean_values = Download<float>(*executor_, *clean_);
     ASSERT_TRUE(clean_values.ok()) << clean_values.status();
     clean_values_ = std::move(*clean_values);
@@ -185,7 +185,7 @@ class HeadContextGpuTest : public ::testing::Test {
     ASSERT_TRUE(written.ok()) << written;
     ASSERT_TRUE(restored.ok()) << restored;
     ASSERT_TRUE(edited.ok()) << edited.status();
-    auto actual = Download<float>(*executor_, edited->output);
+    auto actual = Download<float>(*executor_, edited->outputs[0]);
     ASSERT_TRUE(actual.ok()) << actual.status();
     ASSERT_EQ(actual->size_bytes(), expected->size_bytes());
     EXPECT_EQ(

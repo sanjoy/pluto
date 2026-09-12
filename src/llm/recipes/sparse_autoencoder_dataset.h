@@ -16,17 +16,21 @@ namespace pluto::llm {
 // Create() first restores activation_generator from checkpoint_directory.
 // ReadFromDirectory() accepts a complete-model checkpoint when the generator's
 // weights form its prefix, which is the normal use with
-// CreateActivationGenerator(). The source must use
-// InMemoryDataSetIterator's packed next-token schema. Each Next() passes its
-// input-token half through the generator; the target-token half is deliberately
-// ignored because the resulting activations themselves are the SAE examples.
+// CreateActivationGenerator(). The source must provide separate int32 input
+// and target token buffers with batch_size * sequence_length elements each,
+// as InMemoryDataSetIterator does. Each Next() forwards the input buffer to the
+// generator without copying it. Targets are validated but otherwise unused
+// because the resulting activations themselves are the SAE examples.
 //
 // The iterator borrows executor, activation_generator, and source. All three
 // must outlive it. The generator is used only for forward inference; its state
 // is discarded after each batch and no gradients are computed. Returned
-// DataBatch::data buffers contain batch_size * sequence_length hidden-state
-// rows. Both sample dimensions are preserved from the source; row width and
-// element type are defined by activation_generator. Its sequence-width contract
+// DataBatch inputs and targets share the generator's single output allocation
+// without copying it. Each contains batch_size * sequence_length hidden-state
+// rows. The handles keep that allocation alive, but a generator that reuses
+// storage may overwrite its contents on the next call. Both sample dimensions
+// are preserved from the source; row width and element type are defined by
+// activation_generator. Its sequence-width contract
 // is checked before running it; fixed-context attention/position generators
 // reject shorter samples even when their total row count is divisible by the
 // configured context width.

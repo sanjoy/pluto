@@ -34,7 +34,7 @@ class IdentityLayerReference final : public LayerReference {
     // Populate state even on failure to exercise partially written states.
     state.intermediates = {inputs[0]};
     if (fail_forward) return absl::ResourceExhaustedError("forward failed");
-    return ReferenceFwdResult{std::move(inputs[0]), std::move(state)};
+    return ReferenceFwdResult{{std::move(inputs[0])}, std::move(state)};
   }
 
   absl::StatusOr<HostBufferVec> bwd_impl(
@@ -43,6 +43,60 @@ class IdentityLayerReference final : public LayerReference {
     EXPECT_EQ(state.layer, this);
     if (fail_backward) return absl::InternalError("backward failed");
     return std::move(state.intermediates);
+  }
+};
+
+// Expose a parameter as a second output, like SAE's decoder output. Recording
+// both derivatives makes the composition's reverse routing observable.
+class ParameterOutputLayer final : public LayerReference {
+ public:
+  explicit ParameterOutputLayer(HostBuffer parameter)
+      : parameters_{std::move(parameter)} {}
+  absl::Span<HostBuffer> weights() override {
+    return absl::MakeSpan(parameters_);
+  }
+  DataType output_type() const override { return DataType::FP16; }
+  HostBufferVec received_gradients;
+  HostBufferVec saved_inputs;
+
+ private:
+  absl::StatusOr<ReferenceFwdResult> fwd_impl(
+      absl::Span<const HostBuffer> inputs) const override {
+    if (inputs.size() != 1)
+      return absl::InvalidArgumentError("expected one input");
+    ReferenceBackwardState state;
+    state.intermediates = {inputs[0]};
+    return ReferenceFwdResult{{inputs[0], parameters_[0]}, std::move(state)};
+  }
+  absl::StatusOr<HostBufferVec> bwd_impl(
+      absl::Span<const HostBuffer> gradients,
+      ReferenceBackwardState state) override {
+    if (gradients.size() != 2)
+      return absl::InvalidArgumentError("expected two gradients");
+    received_gradients.assign(gradients.begin(), gradients.end());
+    saved_inputs = std::move(state.intermediates);
+    return HostBufferVec{gradients[0]};
+  }
+  HostBufferVec parameters_;
+};
+
+class SwapOutputsLayer final : public LayerReference {
+ public:
+  absl::Span<HostBuffer> weights() override { return {}; }
+  DataType output_type() const override { return DataType::FP16; }
+
+ private:
+  absl::StatusOr<ReferenceFwdResult> fwd_impl(
+      absl::Span<const HostBuffer> inputs) const override {
+    if (inputs.size() != 2)
+      return absl::InvalidArgumentError("expected two inputs");
+    return ReferenceFwdResult{{inputs[1], inputs[0]}, {}};
+  }
+  absl::StatusOr<HostBufferVec> bwd_impl(absl::Span<const HostBuffer> gradients,
+                                         ReferenceBackwardState) override {
+    if (gradients.size() != 2)
+      return absl::InvalidArgumentError("expected two gradients");
+    return HostBufferVec{gradients[1], gradients[0]};
   }
 };
 
@@ -62,7 +116,7 @@ TEST_F(LayerReferenceStateTest, ResultContainsOutputAndStateWithMatchingOwner) {
   const LayerReference& forward_layer = layer;
   auto result = forward_layer.fwd(inputs_);
   ASSERT_TRUE(result.ok()) << result.status();
-  EXPECT_EQ(result->output.data(), inputs_[0].data());
+  EXPECT_EQ(result->outputs[0].data(), inputs_[0].data());
   EXPECT_EQ(result->state.layer, &layer);
   EXPECT_EQ(layer.forward_calls, 1);
 
@@ -77,7 +131,7 @@ TEST_F(LayerReferenceStateTest, ResultContainsOutputAndStateWithMatchingOwner) {
   EXPECT_TRUE(layer.bwd(inputs_, std::move(moved.state)).ok());
   EXPECT_EQ(layer.backward_calls, 2);
   // Consuming backward state does not consume the returned output handle.
-  EXPECT_EQ(moved.output.data(), inputs_[0].data());
+  EXPECT_EQ(moved.outputs[0].data(), inputs_[0].data());
 }
 
 TEST(LayerReferenceApiTest, ForwardReturnsResultWithoutStateArgument) {
@@ -120,7 +174,7 @@ TEST_F(LayerReferenceStateTest,
   EXPECT_EQ(failed.status(), absl::ResourceExhaustedError("forward failed"));
   EXPECT_EQ(layer.forward_calls, 2);
   EXPECT_EQ(earlier->state.layer, &layer);
-  EXPECT_EQ(earlier->output.data(), inputs_[0].data());
+  EXPECT_EQ(earlier->outputs[0].data(), inputs_[0].data());
   EXPECT_TRUE(layer.bwd(inputs_, std::move(earlier->state)).ok());
   EXPECT_EQ(layer.backward_calls, 1);
 }
@@ -187,6 +241,72 @@ TEST_F(LayerReferenceStateTest,
   EXPECT_EQ(gradient.status().code(), absl::StatusCode::kInvalidArgument);
   EXPECT_EQ(first_ptr->backward_calls, 1);
   EXPECT_EQ(second_ptr->backward_calls, 1);
+}
+
+TEST_F(LayerReferenceStateTest,
+       CompositionRoutesMultipleOutputsAndInterleavedStates) {
+  auto parameter = HostBuffer::Allocate(sizeof(float));
+  auto other_input = HostBuffer::Allocate(sizeof(float));
+  ASSERT_TRUE(parameter.ok()) << parameter.status();
+  ASSERT_TRUE(other_input.ok()) << other_input.status();
+  auto source = std::make_unique<ParameterOutputLayer>(*parameter);
+  auto* source_ptr = source.get();
+  std::vector<std::unique_ptr<LayerReference>> children;
+  children.push_back(std::move(source));
+  children.push_back(std::make_unique<SwapOutputsLayer>());
+  ComposedLayerReference model(DataType::FP16, std::move(children));
+
+  auto first = model.fwd(inputs_);
+  auto second = model.fwd(HostBufferVec{*other_input});
+  ASSERT_TRUE(first.ok()) << first.status();
+  ASSERT_TRUE(second.ok()) << second.status();
+  ASSERT_EQ(first->outputs.size(), 2u);
+  ASSERT_EQ(second->outputs.size(), 2u);
+  EXPECT_EQ(first->outputs[0].data(), parameter->data());
+  EXPECT_EQ(first->outputs[1].data(), inputs_[0].data());
+  EXPECT_EQ(second->outputs[1].data(), other_input->data());
+
+  HostBufferVec gradients{*parameter, *other_input};
+  auto first_gradient = model.bwd(gradients, std::move(first->state));
+  ASSERT_TRUE(first_gradient.ok()) << first_gradient.status();
+  ASSERT_EQ(first_gradient->size(), 1u);
+  EXPECT_EQ((*first_gradient)[0].data(), other_input->data());
+  ASSERT_EQ(source_ptr->received_gradients.size(), 2u);
+  EXPECT_EQ(source_ptr->received_gradients[0].data(), other_input->data());
+  EXPECT_EQ(source_ptr->received_gradients[1].data(), parameter->data());
+  EXPECT_EQ(source_ptr->saved_inputs[0].data(), inputs_[0].data());
+
+  auto second_gradient = model.bwd(gradients, std::move(second->state));
+  ASSERT_TRUE(second_gradient.ok()) << second_gradient.status();
+  EXPECT_EQ(source_ptr->saved_inputs[0].data(), other_input->data());
+  EXPECT_EQ(first->outputs[1].data(), inputs_[0].data());
+}
+
+TEST_F(LayerReferenceStateTest,
+       CompositionAcceptsAndReturnsMultipleInputsAndGradients) {
+  auto second = HostBuffer::Allocate(sizeof(float));
+  ASSERT_TRUE(second.ok()) << second.status();
+  std::vector<std::unique_ptr<LayerReference>> children;
+  children.push_back(std::make_unique<SwapOutputsLayer>());
+  ComposedLayerReference model(DataType::FP16, std::move(children));
+  HostBufferVec inputs{inputs_[0], *second};
+  auto result = model.fwd(inputs);
+  ASSERT_TRUE(result.ok()) << result.status();
+  ASSERT_EQ(result->outputs.size(), 2u);
+  EXPECT_EQ(result->outputs[0].data(), second->data());
+  EXPECT_EQ(result->outputs[1].data(), inputs_[0].data());
+  auto gradients = model.bwd(inputs, std::move(result->state));
+  ASSERT_TRUE(gradients.ok()) << gradients.status();
+  ASSERT_EQ(gradients->size(), 2u);
+  EXPECT_EQ((*gradients)[0].data(), second->data());
+  EXPECT_EQ((*gradients)[1].data(), inputs_[0].data());
+}
+
+TEST_F(LayerReferenceStateTest, ResidualRejectsMultipleBranchOutputs) {
+  ResidualLayerReference residual(
+      std::make_unique<ParameterOutputLayer>(inputs_[0]));
+  auto result = residual.fwd(inputs_);
+  EXPECT_EQ(result.status().code(), absl::StatusCode::kInvalidArgument);
 }
 
 }  // namespace

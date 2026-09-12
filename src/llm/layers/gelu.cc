@@ -100,7 +100,7 @@ absl::StatusOr<FwdResult> GeluLayer::fwd_impl(
   }
   RETURN_IF_ERROR(
       cuda::CudaStatus(cudaGetLastError(), "GeluForwardKernel launch"));
-  return FwdResult{std::move(output), std::move(state)};
+  return FwdResult{{std::move(output)}, std::move(state)};
 }
 
 absl::StatusOr<BufferVec> GeluLayer::bwd_impl(

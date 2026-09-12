@@ -284,7 +284,9 @@ absl::StatusOr<cuda::PageLockedHostArray<float>> Predict(
 
   BufferVec inputs = {token_buffer};
   ASSIGN_OR_RETURN(auto logits_fwd, model.fwd(executor, inputs));
-  auto logits = std::move(logits_fwd.output);
+  if (logits_fwd.outputs.size() != 1)
+    return absl::FailedPreconditionError("model must return one logits tensor");
+  auto logits = std::move(logits_fwd.outputs[0]);
 
   ASSIGN_OR_RETURN(auto host_logits, cuda::PageLockedHostArray<float>::Allocate(
                                          executor, kGpt2VocabularySize));
@@ -389,7 +391,6 @@ absl::Status RunTraining(cuda::Executor& executor,
   ASSIGN_OR_RETURN(auto loss_layer,
                    CrossEntropyLossLayer::Create(executor, kGpt2VocabularySize,
                                                  DataType::BF16));
-  LanguageModelingObjective objective(*model, *loss_layer);
   ASSIGN_OR_RETURN(
       auto optimizer,
       Optimizer::Create(executor, *model, OptimizerConfigFromFlags()));
@@ -420,13 +421,13 @@ absl::Status RunTraining(cuda::Executor& executor,
   const int eval_batches = absl::GetFlag(FLAGS_eval_batches);
   const EvaluationOptions evaluation_options{.batches = eval_batches};
   ASSIGN_OR_RETURN(auto initial_training_loss_buffer,
-                   Evaluate(executor, objective, *training_evaluation_data,
-                            evaluation_options));
+                   Evaluate(executor, *model, *loss_layer,
+                            *training_evaluation_data, evaluation_options));
   ASSIGN_OR_RETURN(double initial_training_loss,
                    ReadEvaluationLoss(executor, initial_training_loss_buffer));
-  ASSIGN_OR_RETURN(
-      auto initial_test_loss_buffer,
-      Evaluate(executor, objective, *test_evaluation_data, evaluation_options));
+  ASSIGN_OR_RETURN(auto initial_test_loss_buffer,
+                   Evaluate(executor, *model, *loss_layer,
+                            *test_evaluation_data, evaluation_options));
   ASSIGN_OR_RETURN(double initial_test_loss,
                    ReadEvaluationLoss(executor, initial_test_loss_buffer));
   logger << "model: GPT-2 vocabulary=" << kGpt2VocabularySize
@@ -487,9 +488,9 @@ absl::Status RunTraining(cuda::Executor& executor,
   }
   logger << '[' << CurrentTimestamp()
          << "] training started at step: " << initial_step << '\n';
-  ASSIGN_OR_RETURN(
-      auto training_result,
-      Train(executor, objective, *optimizer, *training_data, training_options));
+  ASSIGN_OR_RETURN(auto training_result,
+                   Train(executor, *model, *loss_layer, *optimizer,
+                         *training_data, training_options));
   logger << '[' << CurrentTimestamp()
          << "] training stopped at step: " << training_result.steps_completed
          << '\n'
@@ -499,13 +500,13 @@ absl::Status RunTraining(cuda::Executor& executor,
          << training_result.elapsed_training_seconds << '\n';
   RETURN_IF_ERROR(save_checkpoint(training_result.steps_completed));
   ASSIGN_OR_RETURN(auto final_training_loss_buffer,
-                   Evaluate(executor, objective, *training_evaluation_data,
-                            evaluation_options));
+                   Evaluate(executor, *model, *loss_layer,
+                            *training_evaluation_data, evaluation_options));
   ASSIGN_OR_RETURN(double final_training_loss,
                    ReadEvaluationLoss(executor, final_training_loss_buffer));
-  ASSIGN_OR_RETURN(
-      auto final_test_loss_buffer,
-      Evaluate(executor, objective, *test_evaluation_data, evaluation_options));
+  ASSIGN_OR_RETURN(auto final_test_loss_buffer,
+                   Evaluate(executor, *model, *loss_layer,
+                            *test_evaluation_data, evaluation_options));
   ASSIGN_OR_RETURN(double final_test_loss,
                    ReadEvaluationLoss(executor, final_test_loss_buffer));
   logger << "final training loss: " << final_training_loss << '\n'
@@ -616,7 +617,6 @@ absl::Status RunSparseAutoEncoderTraining(
       SparseAutoEncoderLossLayer::Create(
           executor, kGpt2ModelWidth, kSparseAutoEncoderFeatureDimension,
           kSparseAutoEncoderPenalty, DataType::BF16));
-  SparseAutoEncoderObjective objective(*autoencoder, *loss_layer);
   ASSIGN_OR_RETURN(
       auto optimizer,
       Optimizer::Create(executor, *autoencoder, OptimizerConfigFromFlags()));
@@ -624,8 +624,8 @@ absl::Status RunSparseAutoEncoderTraining(
   const int eval_batches = absl::GetFlag(FLAGS_eval_batches);
   const EvaluationOptions evaluation_options{.batches = eval_batches};
   ASSIGN_OR_RETURN(auto initial_loss_buffer,
-                   Evaluate(executor, objective, *evaluation_activations,
-                            evaluation_options));
+                   Evaluate(executor, *autoencoder, *loss_layer,
+                            *evaluation_activations, evaluation_options));
   ASSIGN_OR_RETURN(double initial_loss,
                    ReadEvaluationLoss(executor, initial_loss_buffer));
   logger << "mode: sparse autoencoder training\n"
@@ -685,8 +685,8 @@ absl::Status RunSparseAutoEncoderTraining(
   logger << '[' << CurrentTimestamp()
          << "] SAE training started at step: " << initial_step << '\n';
   ASSIGN_OR_RETURN(auto training_result,
-                   Train(executor, objective, *optimizer, *training_activations,
-                         training_options));
+                   Train(executor, *autoencoder, *loss_layer, *optimizer,
+                         *training_activations, training_options));
   logger << '[' << CurrentTimestamp() << "] SAE training stopped at step: "
          << training_result.steps_completed << '\n'
          << "training stop reason: " << TrainingStopReason(training_result)
@@ -695,8 +695,8 @@ absl::Status RunSparseAutoEncoderTraining(
          << training_result.elapsed_training_seconds << '\n';
   RETURN_IF_ERROR(save_checkpoint(training_result.steps_completed));
   ASSIGN_OR_RETURN(auto final_loss_buffer,
-                   Evaluate(executor, objective, *evaluation_activations,
-                            evaluation_options));
+                   Evaluate(executor, *autoencoder, *loss_layer,
+                            *evaluation_activations, evaluation_options));
   ASSIGN_OR_RETURN(double final_loss,
                    ReadEvaluationLoss(executor, final_loss_buffer));
   logger << "final loss per activation: " << final_loss << '\n';
@@ -794,14 +794,17 @@ absl::Status PrintSparseAutoEncoderStatistics(
 
   ASSIGN_OR_RETURN(auto activations_fwd,
                    activation_generator.fwd(executor, BufferVec{token_buffer}));
-  auto activations = std::move(activations_fwd.output);
+  if (activations_fwd.outputs.size() != 1) {
+    return absl::FailedPreconditionError(
+        "activation generator must return one activation tensor");
+  }
+  auto activations = std::move(activations_fwd.outputs[0]);
 
   // Inference never runs backward through the frozen GPT-2 prefix.
   activations_fwd.state = {};
 
   ASSIGN_OR_RETURN(auto reconstruction_fwd,
                    autoencoder.fwd(executor, BufferVec{activations}));
-  auto reconstruction = std::move(reconstruction_fwd.output);
 
   ASSIGN_OR_RETURN(auto stats, autoencoder.ReadZStatistics(
                                    executor, reconstruction_fwd.state, rows));

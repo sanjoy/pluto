@@ -158,7 +158,7 @@ TEST_F(LayersTest, LanguageModelingHeadUsesEmbeddingWeightTranspose) {
 
   ASSERT_TRUE(hidden.ok()) << hidden.status();
 
-  BufferVec head_inputs = {hidden->output};
+  BufferVec head_inputs = {hidden->outputs[0]};
   auto logits = (*head)->fwd(*executor_, head_inputs);
 
   ASSERT_TRUE(logits.ok()) << logits.status();
@@ -190,7 +190,7 @@ TEST_F(LayersTest, LanguageModelingHeadUsesEmbeddingWeightTranspose) {
       AllocatePageLockedHostArray<float>(*executor_, table.size());
   auto table_gradient =
       AllocatePageLockedHostArray<float>(*executor_, table.size());
-  ASSERT_EQ(cudaMemcpyAsync(host_logits.data(), logits->output.data(),
+  ASSERT_EQ(cudaMemcpyAsync(host_logits.data(), logits->outputs[0].data(),
                             host_logits.size() * sizeof(float),
                             cudaMemcpyDeviceToHost, executor_->stream()),
             cudaSuccess);
@@ -256,19 +256,19 @@ TEST_F(LayersTest, Bf16HeadMasksPhysicalVocabularyPadding) {
   auto hidden = (*embedding)->fwd(*executor_, embedding_inputs);
 
   ASSERT_TRUE(hidden.ok()) << hidden.status();
-  EXPECT_EQ(hidden->output.size_bytes(),
+  EXPECT_EQ(hidden->outputs[0].size_bytes(),
             kTestTokenCount * kTestModelWidth * sizeof(uint16_t));
 
-  BufferVec head_inputs = {hidden->output};
+  BufferVec head_inputs = {hidden->outputs[0]};
   auto logits = (*head)->fwd(*executor_, head_inputs);
 
   ASSERT_TRUE(logits.ok()) << logits.status();
-  EXPECT_EQ(logits->output.size_bytes(),
+  EXPECT_EQ(logits->outputs[0].size_bytes(),
             kTestTokenCount * kPaddedVocabularySize * sizeof(float));
 
   auto host_logits =
       AllocatePageLockedHostArray<float>(*executor_, kPaddedVocabularySize);
-  ASSERT_EQ(cudaMemcpyAsync(host_logits.data(), logits->output.data(),
+  ASSERT_EQ(cudaMemcpyAsync(host_logits.data(), logits->outputs[0].data(),
                             host_logits.size() * sizeof(float),
                             cudaMemcpyDeviceToHost, executor_->stream()),
             cudaSuccess);
@@ -309,9 +309,9 @@ TEST_F(LayersTest, PositionEmbeddingRepeatsAtRuntimeContextLength) {
   ASSERT_TRUE(output.ok()) << output.status();
   auto host_output =
       AllocatePageLockedHostArray<float>(*executor_, input.size());
-  ASSERT_EQ(cudaMemcpyAsync(host_output.data(), output->output.data(),
-                            output->output.size_bytes(), cudaMemcpyDeviceToHost,
-                            executor_->stream()),
+  ASSERT_EQ(cudaMemcpyAsync(host_output.data(), output->outputs[0].data(),
+                            output->outputs[0].size_bytes(),
+                            cudaMemcpyDeviceToHost, executor_->stream()),
             cudaSuccess);
   ASSERT_TRUE(executor_->Synchronize().ok());
 
@@ -520,7 +520,7 @@ TEST_F(LayersTest, LookupBackwardPreservesRealTiedHeadGradientAcrossPasses) {
 
         ASSERT_TRUE(hidden.ok()) << hidden.status();
 
-        BufferVec head_inputs = {hidden->output};
+        BufferVec head_inputs = {hidden->outputs[0]};
         auto logits = (*head)->fwd(*executor_, head_inputs);
 
         ASSERT_TRUE(logits.ok()) << logits.status();

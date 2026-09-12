@@ -237,7 +237,7 @@ absl::Status Run() {
 
   ASSIGN_OR_RETURN(auto original_fwd,
                    model->fwd(*executor, absl::MakeConstSpan(&input, 1)));
-  auto original = std::move(original_fwd.output);
+  auto original = std::move(original_fwd.outputs[0]);
 
   ASSIGN_OR_RETURN(auto baseline,
                    ReadSelectedRow(*executor, original, query, kPadded, 4));
@@ -319,7 +319,7 @@ absl::Status Run() {
 
   ASSIGN_OR_RETURN(auto after_fwd,
                    model->fwd(*executor, absl::MakeConstSpan(&input, 1)));
-  auto after = std::move(after_fwd.output);
+  auto after = std::move(after_fwd.outputs[0]);
 
   ASSIGN_OR_RETURN(auto original_all,
                    ReadPrefix(*executor, original, kContext, kPadded, 4));

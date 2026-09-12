@@ -96,7 +96,7 @@ absl::StatusOr<ReferenceFwdResult> EmbeddingLookupLayerReference::fwd_impl(
   }
   state.intermediates = {inputs[0]};
   state.children.clear();
-  return ReferenceFwdResult{std::move(output), std::move(state)};
+  return ReferenceFwdResult{{std::move(output)}, std::move(state)};
 }
 
 absl::StatusOr<HostBufferVec> EmbeddingLookupLayerReference::bwd_impl(
@@ -182,7 +182,7 @@ absl::StatusOr<ReferenceFwdResult> LanguageModelingHeadLayerReference::fwd_impl(
   }
   state.intermediates = {inputs[0]};
   state.children.clear();
-  return ReferenceFwdResult{std::move(logits), std::move(state)};
+  return ReferenceFwdResult{{std::move(logits)}, std::move(state)};
 }
 
 absl::StatusOr<HostBufferVec> LanguageModelingHeadLayerReference::bwd_impl(
@@ -301,7 +301,7 @@ absl::StatusOr<ReferenceFwdResult> PositionEmbeddingLayerReference::fwd_impl(
   }
   state.intermediates.clear();
   state.children.clear();
-  return ReferenceFwdResult{std::move(output), std::move(state)};
+  return ReferenceFwdResult{{std::move(output)}, std::move(state)};
 }
 
 absl::StatusOr<HostBufferVec> PositionEmbeddingLayerReference::bwd_impl(

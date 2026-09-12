@@ -75,7 +75,11 @@ absl::StatusOr<FwdResult> ResidualLayer::fwd_impl(
   }
 
   ASSIGN_OR_RETURN(auto branch_fwd, layer_->fwd(executor, inputs));
-  auto branch = std::move(branch_fwd.output);
+  if (branch_fwd.outputs.size() != 1) {
+    return absl::InvalidArgumentError(
+        "residual branch must return exactly one output");
+  }
+  auto branch = std::move(branch_fwd.outputs[0]);
 
   if (branch.size_bytes() != inputs[0].size_bytes() ||
       &branch.executor() != &executor || &inputs[0].executor() != &executor) {
@@ -103,7 +107,7 @@ absl::StatusOr<FwdResult> ResidualLayer::fwd_impl(
         static_cast<float*>(output.data()));
   }
   RETURN_IF_ERROR(CudaStatus(cudaGetLastError(), "AddKernel(residual) launch"));
-  return FwdResult{std::move(output), std::move(state)};
+  return FwdResult{{std::move(output)}, std::move(state)};
 }
 
 absl::StatusOr<BufferVec> ResidualLayer::bwd_impl(
@@ -157,45 +161,29 @@ absl::Status ComposedLayer::ValidateSequenceLength(int sequence_length) const {
 absl::StatusOr<FwdResult> ComposedLayer::fwd_impl(
     cuda::Executor& executor, absl::Span<const Buffer> inputs) const {
   BackwardState state;
-  if (inputs.size() != 1) {
-    return absl::InvalidArgumentError("ComposedLayer fwd expects one input");
-  }
-  state.intermediates.clear();
-  state.children.clear();
-  Buffer activation = inputs.front();
+  BufferVec activations(inputs.begin(), inputs.end());
   for (const auto& layer : layers_) {
-    BufferVec child_inputs = {activation};
-    ASSIGN_OR_RETURN(auto output_fwd, layer->fwd(executor, child_inputs));
-    auto output = std::move(output_fwd.output);
-
-    activation = std::move(output);
+    ASSIGN_OR_RETURN(auto output_fwd, layer->fwd(executor, activations));
+    activations = std::move(output_fwd.outputs);
     state.children.push_back(std::move(output_fwd.state));
   }
-  return FwdResult{std::move(activation), std::move(state)};
+  return FwdResult{std::move(activations), std::move(state)};
 }
 
 absl::StatusOr<BufferVec> ComposedLayer::bwd_impl(
     cuda::Executor& executor, absl::Span<const Buffer> output_gradients,
     BackwardState state) {
-  if (output_gradients.size() != 1 || state.children.size() != layers_.size()) {
+  if (state.children.size() != layers_.size()) {
     return absl::InvalidArgumentError(
-        "ComposedLayer bwd received an incompatible gradient or state");
+        "composed layer bwd received an incompatible state");
   }
-  Buffer gradient = output_gradients.front();
+  BufferVec gradients(output_gradients.begin(), output_gradients.end());
   for (size_t index = layers_.size(); index-- > 0;) {
-    BufferVec child_gradients = {gradient};
-    ASSIGN_OR_RETURN(auto input_gradients,
-                     layers_[index]->bwd(executor, child_gradients,
+    ASSIGN_OR_RETURN(gradients,
+                     layers_[index]->bwd(executor, gradients,
                                          std::move(state.children[index])));
-    if (index == 0 && input_gradients.empty())
-      return BufferVec{};
-    if (input_gradients.size() != 1) {
-      return absl::InternalError(
-          "a composed unary layer returned multiple input gradients");
-    }
-    gradient = input_gradients.front();
   }
-  return BufferVec{gradient};
+  return gradients;
 }
 
 absl::Status ComposedLayerBuilder::add(std::unique_ptr<Layer> layer) {

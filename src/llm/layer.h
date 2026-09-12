@@ -40,11 +40,13 @@ struct BackwardState {
   std::vector<BackwardState> children;
 };
 
-// A forward pass returns its output together with the saved state needed for
+// A forward pass returns its outputs together with the saved state needed for
 // backward. Buffers are shared handles; moving this result transfers the state
 // without copying device memory. The producing layer must outlive the state.
+// Outputs are ordered: ordinary layers return one buffer, while layers such as
+// SAE return multiple buffers in their documented order.
 struct FwdResult {
-  Buffer output;
+  BufferVec outputs;
   BackwardState state;
 };
 
@@ -73,6 +75,10 @@ class Layer {
     return result;
   }
 
+  // Output gradients follow the forward outputs' order; returned gradients
+  // follow the forward inputs' order. Layer-specific exceptions are documented
+  // by each layer: terminal losses accept no upstream gradients, and layers
+  // consuming nondifferentiable integer inputs may return no input gradients.
   // Check instance identity before dispatching any backward work. Matching
   // shapes or layer types alone do not make another layer's saved state valid.
   absl::StatusOr<BufferVec> bwd(cuda::Executor& executor,
@@ -120,7 +126,7 @@ struct ReferenceBackwardState {
 
 // Host counterpart to FwdResult, with the same output/state ownership contract.
 struct ReferenceFwdResult {
-  HostBuffer output;
+  HostBufferVec outputs;
   ReferenceBackwardState state;
 };
 
@@ -138,6 +144,8 @@ class LayerReference {
     if (result.ok()) result->state.layer = this;
     return result;
   }
+  // Uses Layer::bwd's ordered output/input gradient convention, including
+  // documented exceptions for terminal losses and nondifferentiable inputs.
   absl::StatusOr<HostBufferVec> bwd(
       absl::Span<const HostBuffer> output_gradients,
       ReferenceBackwardState state) {

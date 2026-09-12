@@ -81,7 +81,7 @@ absl::StatusOr<ReferenceFwdResult> LayerNormLayerReference::fwd_impl(
   }
   state.intermediates = {inputs[0]};
   state.children.clear();
-  return ReferenceFwdResult{std::move(output), std::move(state)};
+  return ReferenceFwdResult{{std::move(output)}, std::move(state)};
 }
 
 absl::StatusOr<HostBufferVec> LayerNormLayerReference::bwd_impl(

@@ -52,8 +52,9 @@ TEST_F(LayerReferenceTest, CausalForwardAndBackwardMatchAcrossConfigurations) {
 
       ASSERT_TRUE(device_output.ok()) << device_output.status();
       ASSERT_TRUE(reference_output.ok()) << reference_output.status();
-      EXPECT_TRUE(ActivationBuffersNear(
-          device_output->output, reference_output->output, type, 2e-3f, 2e-3f));
+      EXPECT_TRUE(ActivationBuffersNear(device_output->outputs[0],
+                                        reference_output->outputs[0], type,
+                                        2e-3f, 2e-3f));
 
       BufferVec device_gradients = {gradient_pair->device};
       HostBufferVec reference_gradients = {gradient_pair->host};

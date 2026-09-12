@@ -515,13 +515,17 @@ absl::StatusOr<Measurements> EvaluatePassages(
                              cudaMemcpyHostToDevice));
 
     ASSIGN_OR_RETURN(auto logits_fwd, model.fwd(executor, {inputs}));
-    auto logits = std::move(logits_fwd.output);
+    if (logits_fwd.outputs.size() != 1)
+      return absl::DataLossError("model must return one logits tensor");
+    auto logits = std::move(logits_fwd.outputs[0]);
 
     if (logits.size_bytes() != size_t(rows) * padded_vocab_size * sizeof(float))
       return absl::DataLossError("model did not return expected FP32 logits");
     ASSIGN_OR_RETURN(auto loss_fwd,
                      loss_layer.fwd(executor, {logits, targets}));
-    auto loss = std::move(loss_fwd.output);
+    if (loss_fwd.outputs.size() != 1)
+      return absl::DataLossError("loss layer must return one loss tensor");
+    auto loss = std::move(loss_fwd.outputs[0]);
 
     if (loss.size_bytes() != bytes)
       return absl::DataLossError("unexpected loss shape");

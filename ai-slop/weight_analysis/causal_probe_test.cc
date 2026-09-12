@@ -421,7 +421,8 @@ TEST_F(ProbeTest, ExclusiveArtifactsAndJsonEscapes) {
 // partial microbatch and guarantees that batch grouping cannot change values.
 class ToyModel final : public llm::Layer {
  public:
-  ToyModel(int vocab, int padded) : vocab_(vocab), padded_(padded) {}
+  ToyModel(int vocab, int padded, int output_count = 1)
+      : vocab_(vocab), padded_(padded), output_count_(output_count) {}
 
   absl::Span<cuda::Buffer> weights() override { return {}; }
   llm::DataType output_type() const override { return llm::DataType::BF16; }
@@ -456,7 +457,8 @@ class ToyModel final : public llm::Layer {
                         cudaMemcpyHostToDevice, executor.stream()),
         "toy logits"));
     RETURN_IF_ERROR(executor.Synchronize());
-    return llm::FwdResult{std::move(result), std::move(state)};
+    return llm::FwdResult{llm::BufferVec(output_count_, result),
+                          std::move(state)};
   }
   absl::StatusOr<llm::BufferVec> bwd_impl(cuda::Executor&,
                                           absl::Span<const cuda::Buffer>,
@@ -467,7 +469,25 @@ class ToyModel final : public llm::Layer {
 
   int vocab_;
   int padded_;
+  int output_count_;
 };
+
+TEST_F(ProbeTest, PerTokenEvaluationRejectsNonSingletonModelOutputs) {
+  const std::vector<int32_t> values{0, 1};
+  auto host = cuda::PageLockedHostArray<int32_t>::CopyFrom(*executor_, values);
+  ASSERT_TRUE(host.ok()) << host.status();
+  PackedBatch batch{std::move(*host), 1, 1};
+  auto loss =
+      llm::CrossEntropyLossLayer::Create(*executor_, 7, llm::DataType::BF16);
+  ASSERT_TRUE(loss.ok()) << loss.status();
+  for (int output_count : {0, 2}) {
+    SCOPED_TRACE(output_count);
+    ToyModel model(7, (*loss)->padded_vocab_size(), output_count);
+    auto measured = EvaluatePassages(*executor_, model, **loss, batch, 1, 7,
+                                     (*loss)->padded_vocab_size());
+    EXPECT_EQ(measured.status().code(), absl::StatusCode::kDataLoss);
+  }
+}
 
 TEST_F(ProbeTest, PerTokenLossAndArgmaxPreserveMicrobatchAndPassageOrdering) {
   const std::vector<int32_t> values{0, 1, 2, 3, 4, 5, 6, 0, 2, 2, 2, 3,

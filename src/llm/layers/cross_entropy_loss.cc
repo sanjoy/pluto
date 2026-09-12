@@ -149,7 +149,7 @@ absl::StatusOr<FwdResult> CrossEntropyLossLayer::fwd_impl(
       static_cast<float*>(losses.data()));
   RETURN_IF_ERROR(
       CudaStatus(cudaGetLastError(), "CrossEntropyForwardKernel launch"));
-  return FwdResult{std::move(losses), std::move(state)};
+  return FwdResult{{std::move(losses)}, std::move(state)};
 }
 
 absl::StatusOr<BufferVec> CrossEntropyLossLayer::bwd_impl(

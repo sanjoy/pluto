@@ -75,9 +75,9 @@ TEST_F(LayersTest, FlashAttentionIsCausalAndHasCorrectSingleTokenGradient) {
       AllocatePageLockedHostArray<float>(*executor_, output_gradient.size());
   auto host_input_gradient =
       AllocatePageLockedHostArray<float>(*executor_, input.size());
-  ASSERT_EQ(cudaMemcpyAsync(host_output.data(), output->output.data(),
-                            output->output.size_bytes(), cudaMemcpyDeviceToHost,
-                            executor_->stream()),
+  ASSERT_EQ(cudaMemcpyAsync(host_output.data(), output->outputs[0].data(),
+                            output->outputs[0].size_bytes(),
+                            cudaMemcpyDeviceToHost, executor_->stream()),
             cudaSuccess);
   ASSERT_EQ(cudaMemcpyAsync(host_input_gradient.data(),
                             input_gradient->front().data(),
@@ -167,19 +167,20 @@ TEST_F(LayerReferenceTest, ForwardAndBackwardAreBitwiseRepeatable) {
           ASSERT_TRUE(input_gradient.ok()) << input_gradient.status();
           ASSERT_EQ(input_gradient->size(), 1u);
           if (repeat == 0) {
-            EXPECT_TRUE(ActivationBuffersNear(
-                output->output, reference_output->output, type, 2e-3f, 2e-3f));
+            EXPECT_TRUE(ActivationBuffersNear(output->outputs[0],
+                                              reference_output->outputs[0],
+                                              type, 2e-3f, 2e-3f));
             EXPECT_TRUE(FloatBuffersNear(input_gradient->front(),
                                          reference_input_gradient->front(),
                                          3e-3f, 3e-3f));
           }
           auto output_bytes = AllocatePageLockedHostArray<unsigned char>(
-              *executor_, output->output.size_bytes());
+              *executor_, output->outputs[0].size_bytes());
           auto gradient_bytes = AllocatePageLockedHostArray<unsigned char>(
               *executor_, input_gradient->front().size_bytes());
           ASSERT_EQ(
-              cudaMemcpyAsync(output_bytes.data(), output->output.data(),
-                              output->output.size_bytes(),
+              cudaMemcpyAsync(output_bytes.data(), output->outputs[0].data(),
+                              output->outputs[0].size_bytes(),
                               cudaMemcpyDeviceToHost, executor_->stream()),
               cudaSuccess);
           ASSERT_EQ(cudaMemcpyAsync(

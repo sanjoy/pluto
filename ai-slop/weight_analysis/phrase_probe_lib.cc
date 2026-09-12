@@ -100,7 +100,7 @@ absl::StatusOr<cuda::Buffer> ReplayProjection(cuda::Executor& executor,
 
   ASSIGN_OR_RETURN(auto fwd_return_result,
                    layer->fwd(executor, absl::MakeConstSpan(&input, 1)));
-  return std::move(fwd_return_result.output);
+  return std::move(fwd_return_result.outputs[0]);
 }
 
 absl::StatusOr<std::vector<TraceFrame>> CollectGpt2Trace(
@@ -238,7 +238,7 @@ absl::StatusOr<cuda::Buffer> NativeLogitLens::Embed(
     cuda::Executor& executor, const cuda::Buffer& tokens) const {
   ASSIGN_OR_RETURN(auto fwd_return_result,
                    embedding_->fwd(executor, absl::MakeConstSpan(&tokens, 1)));
-  return std::move(fwd_return_result.output);
+  return std::move(fwd_return_result.outputs[0]);
 }
 
 absl::StatusOr<cuda::Buffer> NativeLogitLens::Apply(
@@ -246,11 +246,11 @@ absl::StatusOr<cuda::Buffer> NativeLogitLens::Apply(
   llm::BackwardState norm_state, head_state;
   ASSIGN_OR_RETURN(auto normalized_fwd,
                    norm_->fwd(executor, absl::MakeConstSpan(&residual, 1)));
-  auto normalized = std::move(normalized_fwd.output);
+  auto normalized = std::move(normalized_fwd.outputs[0]);
   norm_state = std::move(normalized_fwd.state);
   ASSIGN_OR_RETURN(auto fwd_return_result,
                    head_->fwd(executor, absl::MakeConstSpan(&normalized, 1)));
-  return std::move(fwd_return_result.output);
+  return std::move(fwd_return_result.outputs[0]);
 }
 
 absl::StatusOr<std::vector<std::pair<int, int>>> ParseNeuronInterventions(

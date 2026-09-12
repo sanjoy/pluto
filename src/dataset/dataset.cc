@@ -28,8 +28,8 @@
 namespace pluto {
 namespace {
 
-// Tokenizer output uses native int, while the packed device batch schema
-// specifies int32 token IDs. Uploads, slice offsets, and copies below use
+// Tokenizer output uses native int, while the device token buffers
+// specify int32 token IDs. Uploads, slice offsets, and copies below use
 // sizeof(int) without conversion, so a different width would violate that
 // layout.
 static_assert(sizeof(int) == sizeof(int32_t));
@@ -163,12 +163,14 @@ InMemoryDataSetIterator::InMemoryDataSetIterator(cuda::Executor& executor,
                                                  cuda::Buffer corpus,
                                                  size_t corpus_token_count,
                                                  InMemoryDataSetOptions options,
-                                                 cuda::Buffer data_buffer)
+                                                 cuda::Buffer inputs_buffer,
+                                                 cuda::Buffer targets_buffer)
     : corpus_(std::move(corpus)),
       corpus_token_count_(corpus_token_count),
       options_(options),
       executor_(executor),
-      data_buffer_(std::move(data_buffer)),
+      inputs_buffer_(std::move(inputs_buffer)),
+      targets_buffer_(std::move(targets_buffer)),
       random_(options.seed),
       random_start_(0, corpus_token_count_ - options.context_length - 1) {}
 
@@ -189,19 +191,20 @@ InMemoryDataSetIterator::Create(cuda::Executor& executor,
   if (tokens.size() > std::numeric_limits<size_t>::max() / sizeof(int))
     return absl::InvalidArgumentError("the corpus is too large");
   if (static_cast<size_t>(token_count) >
-      std::numeric_limits<size_t>::max() / (2 * sizeof(int))) {
+      std::numeric_limits<size_t>::max() / sizeof(int)) {
     return absl::InvalidArgumentError("batch_size is too large");
   }
   if (&tokens.buffer().executor() != &executor)
     return absl::InvalidArgumentError(
         "dataset corpus must belong to the supplied CUDA Executor");
   const size_t token_bytes = static_cast<size_t>(token_count) * sizeof(int);
-  const size_t data_bytes = 2 * token_bytes;
   const size_t corpus_bytes = tokens.size() * sizeof(int);
   ASSIGN_OR_RETURN(auto corpus_buffer,
                    cuda::Buffer::Allocate(executor, corpus_bytes));
-  ASSIGN_OR_RETURN(auto data_buffer,
-                   cuda::Buffer::Allocate(executor, data_bytes));
+  ASSIGN_OR_RETURN(auto inputs_buffer,
+                   cuda::Buffer::Allocate(executor, token_bytes));
+  ASSIGN_OR_RETURN(auto targets_buffer,
+                   cuda::Buffer::Allocate(executor, token_bytes));
   RETURN_IF_ERROR(cuda::CudaStatus(
       cudaMemcpyAsync(corpus_buffer.data(), tokens.data(), corpus_bytes,
                       cudaMemcpyHostToDevice, executor.stream()),
@@ -211,7 +214,7 @@ InMemoryDataSetIterator::Create(cuda::Executor& executor,
   // Next() is ordered after the upload on the same stream.
   return absl::WrapUnique(new InMemoryDataSetIterator(
       executor, std::move(corpus_buffer), tokens.size(), options,
-      std::move(data_buffer)));
+      std::move(inputs_buffer), std::move(targets_buffer)));
 }
 
 absl::StatusOr<DataBatch> InMemoryDataSetIterator::Next() {
@@ -221,10 +224,8 @@ absl::StatusOr<DataBatch> InMemoryDataSetIterator::Next() {
   const size_t sequence_bytes =
       static_cast<size_t>(options_.context_length) * sizeof(int);
   const auto* corpus = static_cast<const char*>(corpus_.data());
-  auto* batch_tokens = static_cast<char*>(data_buffer_.data());
-  auto* batch_targets =
-      batch_tokens + static_cast<size_t>(options_.batch_size) *
-                         options_.context_length * sizeof(int);
+  auto* batch_tokens = static_cast<char*>(inputs_buffer_.data());
+  auto* batch_targets = static_cast<char*>(targets_buffer_.data());
   for (int sequence = 0; sequence < sequences_per_batch; ++sequence) {
     size_t start;
     if (options_.order == InMemoryDataSetOrder::kRandom) {
@@ -248,7 +249,8 @@ absl::StatusOr<DataBatch> InMemoryDataSetIterator::Next() {
                         cudaMemcpyDeviceToDevice, executor_.stream()),
         "cudaMemcpyAsync(dataset target slice)"));
   }
-  return DataBatch{.data = data_buffer_,
+  return DataBatch{.inputs = inputs_buffer_,
+                   .targets = targets_buffer_,
                    .batch_size = options_.batch_size,
                    .sequence_length = options_.context_length};
 }

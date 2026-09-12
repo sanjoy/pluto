@@ -243,7 +243,6 @@ cuda_library(
     deps = [
         ":layer",
         ":optimizer",
-        ":sparse_autoencoder",
         "//src/dataset",
         "//src/util:status_macros",
         "//src/cuda:buffer",

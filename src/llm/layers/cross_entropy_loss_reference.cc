@@ -62,7 +62,7 @@ absl::StatusOr<ReferenceFwdResult> CrossEntropyLossLayerReference::fwd_impl(
   }
   state.intermediates = {inputs[0], inputs[1]};
   state.children.clear();
-  return ReferenceFwdResult{std::move(losses), std::move(state)};
+  return ReferenceFwdResult{{std::move(losses)}, std::move(state)};
 }
 
 absl::StatusOr<HostBufferVec> CrossEntropyLossLayerReference::bwd_impl(

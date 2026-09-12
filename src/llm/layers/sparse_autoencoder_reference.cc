@@ -24,20 +24,20 @@ absl::Status ValidateReferenceLossInputs(absl::Span<const HostBuffer> inputs,
                                          DataType data_type, int* rows) {
   if (inputs.size() != 4) {
     return absl::InvalidArgumentError(
-        "sparse autoencoder loss expects x, x1, z, and D");
+        "sparse autoencoder loss expects x1, z, D, and target_x");
   }
-  ASSIGN_OR_RETURN(*rows, ri::ActivationRows(inputs[0], input_dim, data_type,
+  ASSIGN_OR_RETURN(*rows, ri::ActivationRows(inputs[3], input_dim, data_type,
                                              "sparse loss input"));
-  RETURN_IF_ERROR(ri::ValidateBuffer(inputs[1],
+  RETURN_IF_ERROR(ri::ValidateBuffer(inputs[0],
                                      static_cast<size_t>(*rows) * input_dim *
                                          ri::ActivationElementBytes(data_type),
                                      "sparse loss reconstruction"));
-  RETURN_IF_ERROR(ri::ValidateBuffer(inputs[2],
+  RETURN_IF_ERROR(ri::ValidateBuffer(inputs[1],
                                      static_cast<size_t>(*rows) * feature_dim *
                                          ri::ActivationElementBytes(data_type),
                                      "sparse loss latent activations"));
   return ri::ValidateBuffer(
-      inputs[3], static_cast<size_t>(input_dim) * feature_dim * sizeof(float),
+      inputs[2], static_cast<size_t>(input_dim) * feature_dim * sizeof(float),
       "sparse loss decoder");
 }
 
@@ -158,25 +158,11 @@ absl::StatusOr<ReferenceFwdResult> SparseAutoEncoderLayerReference::fwd_impl(
   }
   state.intermediates = {inputs[0], latents};
   state.children.clear();
-  return ReferenceFwdResult{std::move(reconstruction), std::move(state)};
+  return ReferenceFwdResult{
+      {std::move(reconstruction), std::move(latents), weights_[2]},
+      std::move(state)};
 }
 
-absl::StatusOr<HostBuffer> SparseAutoEncoderLayerReference::latent_activations(
-    const ReferenceBackwardState& state) const {
-  if (state.intermediates.size() != 2) {
-    return absl::InvalidArgumentError(
-        "latent_activations requires a state produced by SAE fwd");
-  }
-  ASSIGN_OR_RETURN(int rows,
-                   ri::ActivationRows(state.intermediates[0], input_dim_,
-                                      output_type_, "SAE saved input"));
-  RETURN_IF_ERROR(
-      ri::ValidateBuffer(state.intermediates[1],
-                         static_cast<size_t>(rows) * feature_dim_ *
-                             ri::ActivationElementBytes(output_type_),
-                         "SAE saved latent activations"));
-  return state.intermediates[1];
-}
 
 absl::StatusOr<HostBufferVec> SparseAutoEncoderLayerReference::bwd_impl(
     absl::Span<const HostBuffer> output_gradients,
@@ -352,19 +338,20 @@ SparseAutoEncoderLossLayerReference::fwd_impl(
   int rows;
   RETURN_IF_ERROR(ValidateReferenceLossInputs(inputs, input_dim_, feature_dim_,
                                               output_type_, &rows));
-  ASSIGN_OR_RETURN(auto output, ri::AllocateFloats(1));
-  const auto* decoder = static_cast<const float*>(inputs[3].data());
-  float loss = 0.0f;
+  ASSIGN_OR_RETURN(auto output, ri::AllocateFloats(rows));
+  const auto* decoder = static_cast<const float*>(inputs[2].data());
+  auto* row_losses = static_cast<float*>(output.data());
 
   // This is a literal transcription of the requested objective. Decoder
   // column norms are intentionally recomputed for every row: clarity matters
   // more than speed in the executable specification.
   for (int row = 0; row < rows; ++row) {
+    float loss = 0.0f;
     for (int column = 0; column < input_dim_; ++column) {
       const size_t index = static_cast<size_t>(row) * input_dim_ + column;
       const float residual =
-          ri::LoadActivation(inputs[0], index, output_type_) -
-          ri::LoadActivation(inputs[1], index, output_type_);
+          ri::LoadActivation(inputs[3], index, output_type_) -
+          ri::LoadActivation(inputs[0], index, output_type_);
       loss += residual * residual;
     }
     for (int feature = 0; feature < feature_dim_; ++feature) {
@@ -376,15 +363,15 @@ SparseAutoEncoderLossLayerReference::fwd_impl(
       }
       loss += sparsity_penalty_ *
               ri::LoadActivation(
-                  inputs[2], static_cast<size_t>(row) * feature_dim_ + feature,
+                  inputs[1], static_cast<size_t>(row) * feature_dim_ + feature,
                   output_type_) *
               std::sqrt(norm_squared);
     }
+    row_losses[row] = loss;
   }
-  *static_cast<float*>(output.data()) = loss;
   state.intermediates.assign(inputs.begin(), inputs.end());
   state.children.clear();
-  return ReferenceFwdResult{std::move(output), std::move(state)};
+  return ReferenceFwdResult{{std::move(output)}, std::move(state)};
 }
 
 absl::StatusOr<HostBufferVec> SparseAutoEncoderLossLayerReference::bwd_impl(
@@ -411,15 +398,15 @@ absl::StatusOr<HostBufferVec> SparseAutoEncoderLossLayerReference::bwd_impl(
   auto* d_latent = static_cast<float*>(latent_gradient.data());
   auto* d_decoder = static_cast<float*>(decoder_gradient.data());
   const auto* decoder =
-      static_cast<const float*>(state.intermediates[3].data());
+      static_cast<const float*>(state.intermediates[2].data());
 
   for (int row = 0; row < rows; ++row) {
     for (int column = 0; column < input_dim_; ++column) {
       const size_t index = static_cast<size_t>(row) * input_dim_ + column;
       d_input[index] =
           2.0f *
-          (ri::LoadActivation(state.intermediates[0], index, output_type_) -
-           ri::LoadActivation(state.intermediates[1], index, output_type_));
+          (ri::LoadActivation(state.intermediates[3], index, output_type_) -
+           ri::LoadActivation(state.intermediates[0], index, output_type_));
       d_reconstruction[index] = -d_input[index];
     }
     for (int feature = 0; feature < feature_dim_; ++feature) {
@@ -444,7 +431,7 @@ absl::StatusOr<HostBufferVec> SparseAutoEncoderLossLayerReference::bwd_impl(
     float latent_sum = 0.0f;
     for (int row = 0; row < rows; ++row) {
       latent_sum += ri::LoadActivation(
-          state.intermediates[2],
+          state.intermediates[1],
           static_cast<size_t>(row) * feature_dim_ + feature, output_type_);
     }
     for (int column = 0; column < input_dim_; ++column) {
@@ -457,9 +444,9 @@ absl::StatusOr<HostBufferVec> SparseAutoEncoderLossLayerReference::bwd_impl(
                        : sparsity_penalty_ * latent_sum * decoder[index] / norm;
     }
   }
-  return HostBufferVec{std::move(input_gradient),
-                       std::move(reconstruction_gradient),
-                       std::move(latent_gradient), std::move(decoder_gradient)};
+  return HostBufferVec{std::move(reconstruction_gradient),
+                       std::move(latent_gradient), std::move(decoder_gradient),
+                       std::move(input_gradient)};
 }
 
 }  // namespace pluto::llm

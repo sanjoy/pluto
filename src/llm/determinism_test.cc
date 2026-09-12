@@ -127,9 +127,10 @@ absl::StatusOr<std::string> ReadBytes(cuda::Executor& executor,
 }
 
 absl::StatusOr<std::string> ReadMeanLoss(cuda::Executor& executor,
-                                         const TrainingObjective& objective,
+                                         const Layer& model,
+                                         const Layer& loss_layer,
                                          DataSetIterator& data) {
-  ASSIGN_OR_RETURN(auto loss, Evaluate(executor, objective, data,
+  ASSIGN_OR_RETURN(auto loss, Evaluate(executor, model, loss_layer, data,
                                        EvaluationOptions{.batches = 2}));
   ASSIGN_OR_RETURN(auto bytes, ReadBytes(executor, {loss}));
   if (bytes.size() != sizeof(float))
@@ -160,8 +161,7 @@ uint64_t DoubleBits(double value) {
 }
 
 absl::Status RecordTraining(cuda::Executor& executor, Layer& model,
-                            TrainingObjective& objective,
-                            DataSetIterator& training,
+                            Layer& loss_layer, DataSetIterator& training,
                             DataSetIterator& evaluation,
                             Trajectory& trajectory) {
   ASSIGN_OR_RETURN(auto optimizer,
@@ -169,7 +169,8 @@ absl::Status RecordTraining(cuda::Executor& executor, Layer& model,
                                           AdamWConfig{.learning_rate = 1e-3f}));
   auto record = [&]() -> absl::Status {
     ASSIGN_OR_RETURN(auto weights, ReadBytes(executor, model.weights()));
-    ASSIGN_OR_RETURN(auto loss, ReadMeanLoss(executor, objective, evaluation));
+    ASSIGN_OR_RETURN(auto loss,
+                     ReadMeanLoss(executor, model, loss_layer, evaluation));
     trajectory.weights.push_back(std::move(weights));
     trajectory.losses.push_back(std::move(loss));
     return absl::OkStatus();
@@ -182,8 +183,19 @@ absl::Status RecordTraining(cuda::Executor& executor, Layer& model,
     RETURN_IF_ERROR(training.Reset());
     RETURN_IF_ERROR(optimizer->ZeroGrad());
     ASSIGN_OR_RETURN(auto batch, training.Next());
-    ASSIGN_OR_RETURN(auto pass, objective.Forward(executor, batch));
-    RETURN_IF_ERROR(objective.Backward(executor, std::move(pass)));
+    ASSIGN_OR_RETURN(auto model_fwd, model.fwd(executor, {batch.inputs}));
+    BufferVec loss_inputs = model_fwd.outputs;
+    loss_inputs.push_back(batch.targets);
+    ASSIGN_OR_RETURN(auto loss_fwd, loss_layer.fwd(executor, loss_inputs));
+    ASSIGN_OR_RETURN(auto output_gradients,
+                     loss_layer.bwd(executor, {}, std::move(loss_fwd.state)));
+    ASSIGN_OR_RETURN(
+        auto input_gradients,
+        model.bwd(executor,
+                  absl::Span<const Buffer>(output_gradients.data(),
+                                           model_fwd.outputs.size()),
+                  std::move(model_fwd.state)));
+    (void)input_gradients;
     ASSIGN_OR_RETURN(auto gradients, ReadBytes(executor, model.gradients()));
     trajectory.gradients.push_back(std::move(gradients));
   }
@@ -196,8 +208,8 @@ absl::Status RecordTraining(cuda::Executor& executor, Layer& model,
   options.evaluation_callback = [&](int step, double loss) {
     trajectory.callback_losses.emplace_back(step, DoubleBits(loss));
   };
-  ASSIGN_OR_RETURN(auto result,
-                   Train(executor, objective, *optimizer, training, options));
+  ASSIGN_OR_RETURN(auto result, Train(executor, model, loss_layer, *optimizer,
+                                      training, options));
   if (result.steps_completed != kUpdates || optimizer->step() != kUpdates)
     return absl::InternalError("replay did not perform all requested updates");
   return absl::OkStatus();
@@ -240,7 +252,7 @@ absl::Status RecordCompletions(cuda::Executor& executor, const Layer& model,
           "upload deterministic inference context"));
 
       ASSIGN_OR_RETURN(auto logits_fwd, model.fwd(executor, {device_input}));
-      auto logits = std::move(logits_fwd.output);
+      auto logits = std::move(logits_fwd.outputs[0]);
 
       ASSIGN_OR_RETURN(auto host_logits, ReadDeviceFloats(executor, logits));
       const int padded_vocabulary = host_logits.size() / kContext;
@@ -289,9 +301,8 @@ absl::StatusOr<Trajectory> RunLanguageModel(DataType type, bool perturb) {
           InMemoryDataSetOptions{.batch_size = kTrainingRows / kContext,
                                  .context_length = kContext,
                                  .order = InMemoryDataSetOrder::kSequential}));
-  LanguageModelingObjective objective(*model, *loss);
   Trajectory trajectory;
-  RETURN_IF_ERROR(RecordTraining(*executor, *model, objective, *training,
+  RETURN_IF_ERROR(RecordTraining(*executor, *model, *loss, *training,
                                  *evaluation, trajectory));
   RETURN_IF_ERROR(RecordCompletions(*executor, *model, trajectory));
   RETURN_IF_ERROR(executor->Synchronize());
@@ -327,19 +338,19 @@ absl::StatusOr<Trajectory> RunSparseAutoEncoder(
   ASSIGN_OR_RETURN(auto activation,
                    MakeActivationBufferPair(*executor, values, type));
   // Keep the token count unchanged while exercising multi-token samples.
-  FixedActivationDataSet training({activation.device, 3, kRows / 3});
-  FixedActivationDataSet evaluation({activation.device, 3, kRows / 3});
-  SparseAutoEncoderObjective objective(*model, *loss);
+  FixedActivationDataSet training(
+      {activation.device, activation.device, 3, kRows / 3});
+  FixedActivationDataSet evaluation(
+      {activation.device, activation.device, 3, kRows / 3});
   Trajectory trajectory;
-  RETURN_IF_ERROR(RecordTraining(*executor, *model, objective, training,
-                                 evaluation, trajectory));
+  RETURN_IF_ERROR(RecordTraining(*executor, *model, *loss, training, evaluation,
+                                 trajectory));
 
   ASSIGN_OR_RETURN(auto reconstruction_fwd,
                    model->fwd(*executor, {activation.device}));
-  auto reconstruction = std::move(reconstruction_fwd.output);
+  auto reconstruction = std::move(reconstruction_fwd.outputs[0]);
 
-  ASSIGN_OR_RETURN(auto latents,
-                   model->latent_activations(reconstruction_fwd.state));
+  auto latents = reconstruction_fwd.outputs[1];
   ASSIGN_OR_RETURN(auto outputs,
                    ReadBytes(*executor, {reconstruction, latents}));
   trajectory.outputs.push_back(std::move(outputs));

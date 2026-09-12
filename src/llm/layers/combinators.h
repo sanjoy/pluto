@@ -35,8 +35,8 @@ class ResidualLayer final : public Layer {
   std::vector<Buffer> gradients_;
 };
 
-// Sequentially composes unary layers. Multi-input terminal operations, such as
-// cross entropy with labels, intentionally remain outside the predictor.
+// Sequentially composes layers, passing complete output and gradient vectors.
+// Each child validates the arity it supports.
 class ComposedLayer final : public Layer {
  public:
   ComposedLayer(DataType data_type, std::vector<std::unique_ptr<Layer>> layers);

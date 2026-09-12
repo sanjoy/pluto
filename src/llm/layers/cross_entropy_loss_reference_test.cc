@@ -54,8 +54,8 @@ TEST_F(LayerReferenceTest, StableForwardAndBackwardMatchForPaddedVocabularies) {
 
       ASSERT_TRUE(device_losses.ok()) << device_losses.status();
       ASSERT_TRUE(reference_losses.ok()) << reference_losses.status();
-      EXPECT_TRUE(FloatBuffersNear(device_losses->output,
-                                   reference_losses->output, 2e-5f, 2e-5f));
+      EXPECT_TRUE(FloatBuffersNear(device_losses->outputs[0],
+                                   reference_losses->outputs[0], 2e-5f, 2e-5f));
 
       BufferVec no_device_gradient;
       HostBufferVec no_reference_gradient;

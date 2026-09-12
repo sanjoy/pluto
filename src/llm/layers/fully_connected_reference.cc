@@ -104,7 +104,7 @@ absl::StatusOr<ReferenceFwdResult> FullyConnectedLayerReference::fwd_impl(
   }
   state.intermediates = {inputs[0]};
   state.children.clear();
-  return ReferenceFwdResult{std::move(output), std::move(state)};
+  return ReferenceFwdResult{{std::move(output)}, std::move(state)};
 }
 
 absl::StatusOr<HostBufferVec> FullyConnectedLayerReference::bwd_impl(

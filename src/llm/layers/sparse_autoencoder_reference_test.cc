@@ -87,25 +87,27 @@ TEST_F(LayerReferenceTest,
       ASSERT_TRUE(device_reconstruction.ok()) << device_reconstruction.status();
       ASSERT_TRUE(reference_reconstruction.ok())
           << reference_reconstruction.status();
-      auto device_latents =
-          (*device_layer)->latent_activations(device_reconstruction->state);
-      auto reference_latents =
-          (*reference_layer)
-              ->latent_activations(reference_reconstruction->state);
-      ASSERT_TRUE(device_latents.ok()) << device_latents.status();
-      ASSERT_TRUE(reference_latents.ok()) << reference_latents.status();
-      EXPECT_TRUE(ActivationBuffersNear(device_reconstruction->output,
-                                        reference_reconstruction->output, type,
-                                        2e-2f, 2e-2f));
-      EXPECT_TRUE(ActivationBuffersNear(*device_latents, *reference_latents,
+      ASSERT_EQ(device_reconstruction->outputs.size(), 3u);
+      ASSERT_EQ(reference_reconstruction->outputs.size(), 3u);
+      EXPECT_EQ(device_reconstruction->outputs[1].data(),
+                device_reconstruction->state.intermediates[1].data());
+      EXPECT_EQ(reference_reconstruction->outputs[1].data(),
+                reference_reconstruction->state.intermediates[1].data());
+      EXPECT_EQ(device_reconstruction->outputs[2].data(),
+                (*device_layer)->decoder().data());
+      EXPECT_EQ(reference_reconstruction->outputs[2].data(),
+                (*reference_layer)->decoder().data());
+      EXPECT_TRUE(ActivationBuffersNear(device_reconstruction->outputs[0],
+                                        reference_reconstruction->outputs[0],
+                                        type, 2e-2f, 2e-2f));
+      EXPECT_TRUE(ActivationBuffersNear(device_reconstruction->outputs[1],
+                                        reference_reconstruction->outputs[1],
                                         type, 1e-2f, 2e-2f));
 
-      BufferVec device_loss_inputs = {
-          input_pair->device, device_reconstruction->output, *device_latents,
-          (*device_layer)->decoder()};
-      HostBufferVec reference_loss_inputs = {
-          input_pair->host, reference_reconstruction->output,
-          *reference_latents, (*reference_layer)->decoder()};
+      BufferVec device_loss_inputs = device_reconstruction->outputs;
+      device_loss_inputs.push_back(input_pair->device);
+      HostBufferVec reference_loss_inputs = reference_reconstruction->outputs;
+      reference_loss_inputs.push_back(input_pair->host);
       auto device_loss_value =
           (*device_loss)->fwd(*executor_, device_loss_inputs);
 
@@ -113,8 +115,9 @@ TEST_F(LayerReferenceTest,
 
       ASSERT_TRUE(device_loss_value.ok()) << device_loss_value.status();
       ASSERT_TRUE(reference_loss_value.ok()) << reference_loss_value.status();
-      EXPECT_TRUE(FloatBuffersNear(device_loss_value->output,
-                                   reference_loss_value->output, 5e-2f, 2e-2f));
+      EXPECT_TRUE(FloatBuffersNear(device_loss_value->outputs[0],
+                                   reference_loss_value->outputs[0], 5e-2f,
+                                   2e-2f));
 
       auto device_loss_gradients =
           (*device_loss)
@@ -132,12 +135,12 @@ TEST_F(LayerReferenceTest,
                                      2e-3f));
       }
 
-      BufferVec device_autoencoder_gradients = {(*device_loss_gradients)[1],
-                                                (*device_loss_gradients)[2],
-                                                (*device_loss_gradients)[3]};
+      BufferVec device_autoencoder_gradients = {(*device_loss_gradients)[0],
+                                                (*device_loss_gradients)[1],
+                                                (*device_loss_gradients)[2]};
       HostBufferVec reference_autoencoder_gradients = {
-          (*reference_loss_gradients)[1], (*reference_loss_gradients)[2],
-          (*reference_loss_gradients)[3]};
+          (*reference_loss_gradients)[0], (*reference_loss_gradients)[1],
+          (*reference_loss_gradients)[2]};
       auto device_input_gradient =
           (*device_layer)
               ->bwd(*executor_, device_autoencoder_gradients,
@@ -210,9 +213,8 @@ TEST_F(LayerReferenceTest,
         auto state_fwd = (*layer)->fwd(*executor_, BufferVec{input->device});
         ASSERT_TRUE(state_fwd.ok());
 
-        auto latents = (*layer)->latent_activations(state_fwd->state);
-        ASSERT_TRUE(latents.ok()) << latents.status();
-        auto z = ReadDeviceActivations(*executor_, *latents, type);
+        ASSERT_EQ(state_fwd->outputs.size(), 3u);
+        auto z = ReadDeviceActivations(*executor_, state_fwd->outputs[1], type);
         ASSERT_TRUE(z.ok()) << z.status();
         // A later forward cannot overwrite a previous state's statistics.
         auto zero_input = MakeActivationBufferPair(
@@ -261,7 +263,7 @@ TEST_F(LayerReferenceTest,
   }
 }
 
-TEST_F(LayerReferenceTest, LossAndGradientsMatchTheStatedSumExactly) {
+TEST_F(LayerReferenceTest, RowLossesAndSummedGradientsMatchExactly) {
   constexpr int kRows = 16;
   constexpr int kInputDim = 16;
   constexpr int kFeatureDim = 16;
@@ -287,26 +289,27 @@ TEST_F(LayerReferenceTest, LossAndGradientsMatchTheStatedSumExactly) {
   ASSERT_TRUE(latent_pair.ok());
   ASSERT_TRUE(decoder_pair.ok());
 
-  HostBufferVec inputs = {input_pair->host, reconstruction_pair->host,
-                          latent_pair->host, decoder_pair->host};
+  HostBufferVec inputs = {reconstruction_pair->host, latent_pair->host,
+                          decoder_pair->host, input_pair->host};
   auto value = (*loss)->fwd(inputs);
 
   ASSERT_TRUE(value.ok()) << value.status();
-  const float reconstruction_loss =
-      kRows * kInputDim * (1.0f - 0.5f) * (1.0f - 0.5f);
-  const float sparse_loss = kRows * kFeatureDim * kPenalty * 0.25f;
-  ASSERT_EQ(value->output.size_bytes(), sizeof(float));
-  EXPECT_FLOAT_EQ(*static_cast<const float*>(value->output.data()),
-                  reconstruction_loss + sparse_loss);
+  const float reconstruction_loss = kInputDim * (1.0f - 0.5f) * (1.0f - 0.5f);
+  const float sparse_loss = kFeatureDim * kPenalty * 0.25f;
+  ASSERT_EQ(value->outputs.size(), 1u);
+  ASSERT_EQ(value->outputs[0].size_bytes(), kRows * sizeof(float));
+  EXPECT_TRUE(VectorsNear(
+      ReadHostFloats(value->outputs[0]),
+      std::vector<float>(kRows, reconstruction_loss + sparse_loss), 0.0f));
 
   auto gradients = (*loss)->bwd({}, std::move(value->state));
   ASSERT_TRUE(gradients.ok()) << gradients.status();
   ASSERT_EQ(gradients->size(), 4u);
-  EXPECT_TRUE(VectorsNear(ReadHostFloats((*gradients)[0]),
+  EXPECT_TRUE(VectorsNear(ReadHostFloats((*gradients)[3]),
                           std::vector<float>(kRows * kInputDim, 1.0f), 0.0f));
-  EXPECT_TRUE(VectorsNear(ReadHostFloats((*gradients)[1]),
+  EXPECT_TRUE(VectorsNear(ReadHostFloats((*gradients)[0]),
                           std::vector<float>(kRows * kInputDim, -1.0f), 0.0f));
-  EXPECT_TRUE(VectorsNear(ReadHostFloats((*gradients)[2]),
+  EXPECT_TRUE(VectorsNear(ReadHostFloats((*gradients)[1]),
                           std::vector<float>(kRows * kFeatureDim, kPenalty),
                           0.0f));
   std::vector<float> expected_decoder_gradient(kInputDim * kFeatureDim, 0.0f);
@@ -314,7 +317,7 @@ TEST_F(LayerReferenceTest, LossAndGradientsMatchTheStatedSumExactly) {
     expected_decoder_gradient[index * kFeatureDim + index] =
         kPenalty * kRows * 0.25f;
   }
-  EXPECT_TRUE(VectorsNear(ReadHostFloats((*gradients)[3]),
+  EXPECT_TRUE(VectorsNear(ReadHostFloats((*gradients)[2]),
                           expected_decoder_gradient, 0.0f));
 }
 
@@ -348,7 +351,7 @@ TEST_F(LayerReferenceTest,
         std::vector<float> latents(kRows * kFeatureDim);
         std::vector<float> expected_d_decoder(decoder.size(), 0);
         std::vector<float> expected_d_latents(latents.size());
-        double expected_loss = kRows * kInputDim * 0.25;
+        std::vector<float> expected_losses(kRows, kInputDim * 0.25f);
         for (int feature = 0; feature < kFeatureDim; ++feature) {
           // Include exactly zero and very small but nonzero norms. An
           // epsilon floor would change the small column's derivative.
@@ -369,10 +372,10 @@ TEST_F(LayerReferenceTest,
             latents[index] = base_z * c;
             expected_d_latents[index] = penalty * 5.0f * a / c;
             base_latent_sum += base_z;
+            expected_losses[row] += penalty * 5.0f * a * base_z;
           }
           // The expected loss deliberately contains no c: D_i/c and c*z_i
           // have the same penalty as the original feature, even per feature.
-          expected_loss += penalty * 5.0 * a * base_latent_sum;
           if (a != 0) {
             expected_d_decoder[first] = penalty * base_latent_sum * c * 0.6;
             expected_d_decoder[second] = -penalty * base_latent_sum * c * 0.8;
@@ -386,20 +389,21 @@ TEST_F(LayerReferenceTest,
         auto actual =
             (*device_loss)
                 ->fwd(*executor_,
-                      BufferVec{input->device, reconstruction->device,
-                                latent_pair->device, decoder_pair->device});
+                      BufferVec{reconstruction->device, latent_pair->device,
+                                decoder_pair->device, input->device});
 
         auto reference =
             (*reference_loss)
-                ->fwd(HostBufferVec{input->host, reconstruction->host,
-                                    latent_pair->host, decoder_pair->host});
+                ->fwd(HostBufferVec{reconstruction->host, latent_pair->host,
+                                    decoder_pair->host, input->host});
 
         ASSERT_TRUE(actual.ok()) << actual.status();
         ASSERT_TRUE(reference.ok()) << reference.status();
-        auto host_value = ReadDeviceFloats(*executor_, actual->output);
+        auto host_value = ReadDeviceFloats(*executor_, actual->outputs[0]);
         ASSERT_TRUE(host_value.ok()) << host_value.status();
-        EXPECT_NEAR((*host_value)[0], expected_loss, 1e-3);
-        EXPECT_NEAR(ReadHostFloats(reference->output)[0], expected_loss, 1e-3);
+        EXPECT_TRUE(VectorsNear(host_value->span(), expected_losses, 1e-3));
+        EXPECT_TRUE(VectorsNear(ReadHostFloats(reference->outputs[0]),
+                                expected_losses, 1e-3));
         auto gradients =
             (*device_loss)->bwd(*executor_, {}, std::move(actual->state));
         auto reference_gradients =
@@ -407,9 +411,8 @@ TEST_F(LayerReferenceTest,
         ASSERT_TRUE(gradients.ok()) << gradients.status();
         ASSERT_TRUE(reference_gradients.ok()) << reference_gradients.status();
         const std::vector<std::vector<float>> expected = {
-            std::vector<float>(kRows * kInputDim, 1.0f),
             std::vector<float>(kRows * kInputDim, -1.0f), expected_d_latents,
-            expected_d_decoder};
+            expected_d_decoder, std::vector<float>(kRows * kInputDim, 1.0f)};
         for (int index = 0; index < 4; ++index) {
           auto host_gradient =
               ReadDeviceFloats(*executor_, (*gradients)[index]);
@@ -424,6 +427,103 @@ TEST_F(LayerReferenceTest,
       }
     }
   }
+}
+
+TEST_F(LayerReferenceTest, AutoEncoderOutputsSurviveInterleavedBackward) {
+  constexpr int kRows = 16;
+  constexpr int kWidth = 16;
+  constexpr float kPenalty = 0.25f;
+  auto device = SparseAutoEncoderLayer::Create(*executor_, kWidth, kWidth,
+                                               DataType::FP16);
+  auto reference =
+      SparseAutoEncoderLayerReference::Create(kWidth, kWidth, DataType::FP16);
+  auto device_loss = SparseAutoEncoderLossLayer::Create(
+      *executor_, kWidth, kWidth, kPenalty, DataType::FP16);
+  auto reference_loss = SparseAutoEncoderLossLayerReference::Create(
+      kWidth, kWidth, kPenalty, DataType::FP16);
+  ASSERT_TRUE(device.ok()) << device.status();
+  ASSERT_TRUE(reference.ok()) << reference.status();
+  ASSERT_TRUE(device_loss.ok()) << device_loss.status();
+  ASSERT_TRUE(reference_loss.ok()) << reference_loss.status();
+
+  std::vector<float> identity(kWidth * kWidth, 0.0f);
+  for (int index = 0; index < kWidth; ++index)
+    identity[index * kWidth + index] = 1.0f;
+  for (int index : {0, 2}) {
+    ASSERT_TRUE(SetFloatBufferPair(*executor_, (*device)->weights()[index],
+                                   &(*reference)->weights()[index], identity)
+                    .ok());
+  }
+  auto first_input = MakeActivationBufferPair(
+      *executor_, std::vector<float>(kRows * kWidth, 1.0f), DataType::FP16);
+  auto second_input = MakeActivationBufferPair(
+      *executor_, std::vector<float>(kRows * kWidth, 2.0f), DataType::FP16);
+  ASSERT_TRUE(first_input.ok()) << first_input.status();
+  ASSERT_TRUE(second_input.ok()) << second_input.status();
+  auto first = (*device)->fwd(*executor_, BufferVec{first_input->device});
+  auto first_reference = (*reference)->fwd(HostBufferVec{first_input->host});
+  auto second = (*device)->fwd(*executor_, BufferVec{second_input->device});
+  auto second_reference = (*reference)->fwd(HostBufferVec{second_input->host});
+  ASSERT_TRUE(first.ok()) << first.status();
+  ASSERT_TRUE(first_reference.ok()) << first_reference.status();
+  ASSERT_TRUE(second.ok()) << second.status();
+  ASSERT_TRUE(second_reference.ok()) << second_reference.status();
+  ASSERT_EQ(first->outputs.size(), 3u);
+  ASSERT_EQ(first_reference->outputs.size(), 3u);
+  EXPECT_NE(first->outputs[1].data(), second->outputs[1].data());
+  EXPECT_NE(first_reference->outputs[1].data(),
+            second_reference->outputs[1].data());
+  EXPECT_EQ(first->outputs[2].data(), second->outputs[2].data());
+  EXPECT_EQ(first_reference->outputs[2].data(),
+            second_reference->outputs[2].data());
+
+  BufferVec loss_inputs = first->outputs;
+  loss_inputs.push_back(first_input->device);
+  HostBufferVec reference_loss_inputs = first_reference->outputs;
+  reference_loss_inputs.push_back(first_input->host);
+  auto losses = (*device_loss)->fwd(*executor_, loss_inputs);
+  auto reference_losses = (*reference_loss)->fwd(reference_loss_inputs);
+  ASSERT_TRUE(losses.ok()) << losses.status();
+  ASSERT_TRUE(reference_losses.ok()) << reference_losses.status();
+  auto loss_gradients =
+      (*device_loss)->bwd(*executor_, {}, std::move(losses->state));
+  auto reference_loss_gradients =
+      (*reference_loss)->bwd({}, std::move(reference_losses->state));
+  ASSERT_TRUE(loss_gradients.ok()) << loss_gradients.status();
+  ASSERT_TRUE(reference_loss_gradients.ok())
+      << reference_loss_gradients.status();
+  loss_gradients->pop_back();
+  reference_loss_gradients->pop_back();
+  auto input_gradient =
+      (*device)->bwd(*executor_, *loss_gradients, std::move(first->state));
+  auto reference_input_gradient =
+      (*reference)
+          ->bwd(*reference_loss_gradients, std::move(first_reference->state));
+  ASSERT_TRUE(input_gradient.ok()) << input_gradient.status();
+  ASSERT_TRUE(reference_input_gradient.ok())
+      << reference_input_gradient.status();
+  auto actual_input_gradient =
+      ReadDeviceFloats(*executor_, (*input_gradient)[0]);
+  ASSERT_TRUE(actual_input_gradient.ok()) << actual_input_gradient.status();
+  EXPECT_TRUE(VectorsNear(actual_input_gradient->span(),
+                          std::vector<float>(kRows * kWidth, kPenalty), 0.0f));
+  EXPECT_TRUE(FloatBuffersNear((*input_gradient)[0],
+                               (*reference_input_gradient)[0], 0.0f));
+
+  // Reconstruction is exact, so dD contains only the direct decoder-norm
+  // derivative. It must use the first pass's unit latents, not the later twos.
+  for (float& value : identity)
+    value *= kPenalty * kRows;
+  auto decoder_gradient =
+      ReadDeviceFloats(*executor_, (*device)->gradients()[2]);
+  ASSERT_TRUE(decoder_gradient.ok()) << decoder_gradient.status();
+  EXPECT_TRUE(VectorsNear(decoder_gradient->span(), identity, 0.0f));
+  EXPECT_TRUE(VectorsNear(ReadHostFloats((*reference)->gradients()[2]),
+                          identity, 0.0f));
+  EXPECT_TRUE(ActivationBuffersNear(first->outputs[1], first_input->host,
+                                    DataType::FP16, 0.0f));
+  EXPECT_TRUE(VectorsNear(ReadHostFloats(first_reference->outputs[1]),
+                          std::vector<float>(kRows * kWidth, 1.0f), 0.0f));
 }
 
 TEST_F(LayerReferenceTest, FP8IsRejectedConsistently) {

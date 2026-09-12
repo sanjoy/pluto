@@ -50,9 +50,9 @@ TEST_F(LayersTest, ZeroHasZeroOutputAndHalfGradient) {
       AllocatePageLockedHostArray<float>(*executor_, kTestTokenCount);
   auto host_gradient =
       AllocatePageLockedHostArray<float>(*executor_, kTestTokenCount);
-  ASSERT_EQ(cudaMemcpyAsync(host_output.data(), output->output.data(),
-                            output->output.size_bytes(), cudaMemcpyDeviceToHost,
-                            executor_->stream()),
+  ASSERT_EQ(cudaMemcpyAsync(host_output.data(), output->outputs[0].data(),
+                            output->outputs[0].size_bytes(),
+                            cudaMemcpyDeviceToHost, executor_->stream()),
             cudaSuccess);
   ASSERT_EQ(
       cudaMemcpyAsync(host_gradient.data(), input_gradient->front().data(),

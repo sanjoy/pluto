@@ -235,7 +235,7 @@ absl::StatusOr<FwdResult> LayerNormLayer::fwd_impl(
       cuda::CudaStatus(cudaGetLastError(), "LayerNormForwardKernel launch"));
   state.intermediates = {inputs[0]};
   state.children.clear();
-  return FwdResult{std::move(output), std::move(state)};
+  return FwdResult{{std::move(output)}, std::move(state)};
 }
 
 absl::StatusOr<BufferVec> LayerNormLayer::bwd_impl(

@@ -437,24 +437,6 @@ __tile_global__ void SparseLossPerRowKernel(
   row_loss_view.store(ct::reshape(loss, ct::shape{1_ic}), row);
 }
 
-// The expensive work above is parallel. This deliberately simple final
-// reduction reads only one FP32 scalar per row and keeps the public loss-layer
-// result as a single scalar.
-__tile_global__ void SparseLossReduceKernel(
-    const float* __restrict__ row_losses, int rows,
-    float* __restrict__ output) {
-  namespace ct = ::cuda::tiles;
-  using namespace ct::literals;
-  auto row_loss_view = ct::partition_view{
-      ct::tensor_span{row_losses, ct::extents{rows}}, ct::shape{1_ic}};
-  auto output_view = ct::partition_view{ct::tensor_span{output, ct::extents{1}},
-                                        ct::shape{1_ic}};
-  auto loss = ct::zeros<ct::tile<float, ct::shape<1>>>();
-  for (int row = 0; row < rows; ++row)
-    loss = loss + row_loss_view.load(row);
-  output_view.store(loss, 0);
-}
-
 template <class Activation>
 __tile_global__ void SparseLossReconstructionGradientKernel(
     const Activation* __restrict__ input,
@@ -584,23 +566,23 @@ absl::StatusOr<int> ValidateLossInputs(cuda::Executor& executor,
                                        DataType data_type) {
   if (inputs.size() != 4) {
     return absl::InvalidArgumentError(
-        "SparseAutoEncoderLossLayer expects x, x1, z, and D");
+        "SparseAutoEncoderLossLayer expects x1, z, D, and target_x");
   }
   ASSIGN_OR_RETURN(int rows,
-                   internal::ActivationRows(executor, inputs[0], input_dim,
+                   internal::ActivationRows(executor, inputs[3], input_dim,
                                             data_type, "sparse loss input"));
   RETURN_IF_ERROR(
-      internal::ValidateBuffer(executor, inputs[1],
+      internal::ValidateBuffer(executor, inputs[0],
                                static_cast<size_t>(rows) * input_dim *
                                    internal::ActivationElementBytes(data_type),
                                "sparse loss reconstruction"));
   RETURN_IF_ERROR(
-      internal::ValidateBuffer(executor, inputs[2],
+      internal::ValidateBuffer(executor, inputs[1],
                                static_cast<size_t>(rows) * feature_dim *
                                    internal::ActivationElementBytes(data_type),
                                "sparse loss latent activations"));
   RETURN_IF_ERROR(internal::ValidateBuffer(
-      executor, inputs[3],
+      executor, inputs[2],
       static_cast<size_t>(input_dim) * feature_dim * sizeof(float),
       "sparse loss decoder"));
   return rows;
@@ -773,7 +755,8 @@ absl::StatusOr<FwdResult> SparseAutoEncoderLayer::fwd_impl(
         cuda::CudaStatus(cudaGetLastError(), "SAE Z statistics launch"));
     state.intermediates.push_back(std::move(statistics));
   }
-  return FwdResult{std::move(reconstruction), std::move(state)};
+  return FwdResult{{std::move(reconstruction), std::move(latents), weights_[2]},
+                   std::move(state)};
 }
 
 absl::StatusOr<SparseAutoEncoderZStatistics>
@@ -786,10 +769,18 @@ SparseAutoEncoderLayer::ReadZStatistics(cuda::Executor& executor,
     return absl::FailedPreconditionError(
         "ReadZStatistics requires a state from kCollectStatistics mode");
   }
-  RETURN_IF_ERROR(latent_activations(state).status());
+  if (state.layer != this) {
+    return absl::InvalidArgumentError(
+        "ReadZStatistics requires a state from this layer's successful fwd");
+  }
   ASSIGN_OR_RETURN(int rows, internal::ActivationRows(
                                  executor, state.intermediates[0], input_dim_,
                                  output_type_, "SAE saved input"));
+  RETURN_IF_ERROR(internal::ValidateBuffer(
+      executor, state.intermediates[1],
+      static_cast<size_t>(rows) * feature_dim_ *
+          internal::ActivationElementBytes(output_type_),
+      "SAE saved latent activations"));
   RETURN_IF_ERROR(internal::ValidateBuffer(
       executor, state.intermediates[2],
       static_cast<size_t>(rows) * 4 * sizeof(float), "SAE saved statistics"));
@@ -827,23 +818,6 @@ SparseAutoEncoderLayer::ReadZStatistics(cuda::Executor& executor,
   result.standard_deviation = std::sqrt(
       std::max(0.0, squared_sum / elements - result.mean * result.mean));
   return result;
-}
-
-absl::StatusOr<Buffer> SparseAutoEncoderLayer::latent_activations(
-    const BackwardState& state) const {
-  if (state.intermediates.size() != 2 && state.intermediates.size() != 3) {
-    return absl::InvalidArgumentError(
-        "latent_activations requires a state produced by SAE fwd");
-  }
-  ASSIGN_OR_RETURN(int rows, internal::ActivationRows(
-                                 executor_, state.intermediates[0], input_dim_,
-                                 output_type_, "SAE saved input"));
-  RETURN_IF_ERROR(internal::ValidateBuffer(
-      executor_, state.intermediates[1],
-      static_cast<size_t>(rows) * feature_dim_ *
-          internal::ActivationElementBytes(output_type_),
-      "SAE saved latent activations"));
-  return state.intermediates[1];
 }
 
 absl::StatusOr<BufferVec> SparseAutoEncoderLayer::bwd_impl(
@@ -1010,7 +984,6 @@ absl::StatusOr<FwdResult> SparseAutoEncoderLossLayer::fwd_impl(
                                              "SparseAutoEncoderLossLayer"));
   ASSIGN_OR_RETURN(int rows, ValidateLossInputs(executor, inputs, input_dim_,
                                                 feature_dim_, output_type_));
-  ASSIGN_OR_RETURN(auto output, Buffer::Allocate(executor, sizeof(float)));
   ASSIGN_OR_RETURN(
       auto decoder_norm,
       Buffer::Allocate(executor,
@@ -1018,35 +991,33 @@ absl::StatusOr<FwdResult> SparseAutoEncoderLossLayer::fwd_impl(
   ASSIGN_OR_RETURN(
       auto row_losses,
       Buffer::Allocate(executor, static_cast<size_t>(rows) * sizeof(float)));
-  SparseLossDecoderNormKernel<<<internal::TileCount(feature_dim_), 1, 0,
-                                executor.stream()>>>(
-      static_cast<const float*>(inputs[3].data()), input_dim_, feature_dim_,
-      static_cast<float*>(decoder_norm.data()));
-  if (output_type_ == DataType::BF16) {
-    SparseLossPerRowKernel<__nv_bfloat16><<<rows, 1, 0, executor.stream()>>>(
-        static_cast<const __nv_bfloat16*>(inputs[0].data()),
-        static_cast<const __nv_bfloat16*>(inputs[1].data()),
-        static_cast<const __nv_bfloat16*>(inputs[2].data()),
-        static_cast<const float*>(decoder_norm.data()), rows, input_dim_,
-        feature_dim_, sparsity_penalty_,
-        static_cast<float*>(row_losses.data()));
-  } else {
-    SparseLossPerRowKernel<float><<<rows, 1, 0, executor.stream()>>>(
-        static_cast<const float*>(inputs[0].data()),
-        static_cast<const float*>(inputs[1].data()),
-        static_cast<const float*>(inputs[2].data()),
-        static_cast<const float*>(decoder_norm.data()), rows, input_dim_,
-        feature_dim_, sparsity_penalty_,
-        static_cast<float*>(row_losses.data()));
-  }
-  SparseLossReduceKernel<<<1, 1, 0, executor.stream()>>>(
-      static_cast<const float*>(row_losses.data()), rows,
-      static_cast<float*>(output.data()));
+      SparseLossDecoderNormKernel<<<internal::TileCount(feature_dim_), 1, 0,
+                                    executor.stream()>>>(
+          static_cast<const float*>(inputs[2].data()), input_dim_, feature_dim_,
+          static_cast<float*>(decoder_norm.data()));
+      if (output_type_ == DataType::BF16) {
+        SparseLossPerRowKernel<__nv_bfloat16>
+            <<<rows, 1, 0, executor.stream()>>>(
+                static_cast<const __nv_bfloat16*>(inputs[3].data()),
+                static_cast<const __nv_bfloat16*>(inputs[0].data()),
+                static_cast<const __nv_bfloat16*>(inputs[1].data()),
+                static_cast<const float*>(decoder_norm.data()), rows,
+                input_dim_, feature_dim_, sparsity_penalty_,
+                static_cast<float*>(row_losses.data()));
+      } else {
+        SparseLossPerRowKernel<float><<<rows, 1, 0, executor.stream()>>>(
+            static_cast<const float*>(inputs[3].data()),
+            static_cast<const float*>(inputs[0].data()),
+            static_cast<const float*>(inputs[1].data()),
+            static_cast<const float*>(decoder_norm.data()), rows, input_dim_,
+            feature_dim_, sparsity_penalty_,
+            static_cast<float*>(row_losses.data()));
+      }
   RETURN_IF_ERROR(
       cuda::CudaStatus(cudaGetLastError(), "sparse loss forward launch"));
   state.intermediates.assign(inputs.begin(), inputs.end());
   state.children.clear();
-  return FwdResult{std::move(output), std::move(state)};
+  return FwdResult{{std::move(row_losses)}, std::move(state)};
 }
 
 absl::StatusOr<BufferVec> SparseAutoEncoderLossLayer::bwd_impl(
@@ -1082,28 +1053,28 @@ absl::StatusOr<BufferVec> SparseAutoEncoderLossLayer::bwd_impl(
     SparseLossReconstructionGradientKernel<__nv_bfloat16>
         <<<internal::TileCount(reconstruction_elements), 1, 0,
            executor.stream()>>>(
+            static_cast<const __nv_bfloat16*>(state.intermediates[3].data()),
             static_cast<const __nv_bfloat16*>(state.intermediates[0].data()),
-            static_cast<const __nv_bfloat16*>(state.intermediates[1].data()),
             reconstruction_elements, static_cast<float*>(input_gradient.data()),
             static_cast<float*>(reconstruction_gradient.data()));
     SparseLossDecoderScaleKernel<__nv_bfloat16>
         <<<internal::TileCount(feature_dim_), 1, 0, executor.stream()>>>(
-            static_cast<const __nv_bfloat16*>(state.intermediates[2].data()),
-            static_cast<const float*>(state.intermediates[3].data()), rows,
+            static_cast<const __nv_bfloat16*>(state.intermediates[1].data()),
+            static_cast<const float*>(state.intermediates[2].data()), rows,
             input_dim_, feature_dim_, sparsity_penalty_,
             static_cast<float*>(decoder_scale.data()));
   } else {
     SparseLossReconstructionGradientKernel<float>
         <<<internal::TileCount(reconstruction_elements), 1, 0,
            executor.stream()>>>(
+            static_cast<const float*>(state.intermediates[3].data()),
             static_cast<const float*>(state.intermediates[0].data()),
-            static_cast<const float*>(state.intermediates[1].data()),
             reconstruction_elements, static_cast<float*>(input_gradient.data()),
             static_cast<float*>(reconstruction_gradient.data()));
     SparseLossDecoderScaleKernel<float>
         <<<internal::TileCount(feature_dim_), 1, 0, executor.stream()>>>(
-            static_cast<const float*>(state.intermediates[2].data()),
-            static_cast<const float*>(state.intermediates[3].data()), rows,
+            static_cast<const float*>(state.intermediates[1].data()),
+            static_cast<const float*>(state.intermediates[2].data()), rows,
             input_dim_, feature_dim_, sparsity_penalty_,
             static_cast<float*>(decoder_scale.data()));
   }
@@ -1113,20 +1084,20 @@ absl::StatusOr<BufferVec> SparseAutoEncoderLossLayer::bwd_impl(
       std::min<int64_t>(decoder_elements / internal::kDenseTile,
                         std::numeric_limits<int>::max()));
   SparseLossDecoderGradientKernel<<<decoder_blocks, 1, 0, executor.stream()>>>(
-      static_cast<const float*>(state.intermediates[3].data()),
+      static_cast<const float*>(state.intermediates[2].data()),
       static_cast<const float*>(decoder_scale.data()), decoder_elements,
       feature_dim_, decoder_blocks,
       static_cast<float*>(decoder_gradient.data()));
   SparseLossLatentGradientKernel<<<internal::TileCount(feature_dim_), 1, 0,
                                    executor.stream()>>>(
-      static_cast<const float*>(state.intermediates[3].data()), rows,
+      static_cast<const float*>(state.intermediates[2].data()), rows,
       input_dim_, feature_dim_, sparsity_penalty_,
       static_cast<float*>(latent_gradient.data()));
   RETURN_IF_ERROR(
       cuda::CudaStatus(cudaGetLastError(), "sparse loss backward launch"));
-  return BufferVec{std::move(input_gradient),
-                   std::move(reconstruction_gradient),
-                   std::move(latent_gradient), std::move(decoder_gradient)};
+  return BufferVec{std::move(reconstruction_gradient),
+                   std::move(latent_gradient), std::move(decoder_gradient),
+                   std::move(input_gradient)};
 }
 
 }  // namespace pluto::llm

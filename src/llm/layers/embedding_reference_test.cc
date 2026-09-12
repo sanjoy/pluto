@@ -57,8 +57,8 @@ TEST_F(LayerReferenceTest, LookupAndTiedHeadMatchAcrossShapesAndTypes) {
 
       ASSERT_TRUE(device_lookup.ok()) << device_lookup.status();
       ASSERT_TRUE(reference_lookup.ok()) << reference_lookup.status();
-      EXPECT_TRUE(ActivationBuffersNear(device_lookup->output,
-                                        reference_lookup->output, type, 0.0f));
+      EXPECT_TRUE(ActivationBuffersNear(
+          device_lookup->outputs[0], reference_lookup->outputs[0], type, 0.0f));
       BufferVec device_lookup_gradients = {lookup_gradient_pair->device};
       HostBufferVec reference_lookup_gradients = {lookup_gradient_pair->host};
       auto device_lookup_input = (*device_embedding)
@@ -111,8 +111,8 @@ TEST_F(LayerReferenceTest, LookupAndTiedHeadMatchAcrossShapesAndTypes) {
 
       ASSERT_TRUE(device_logits.ok()) << device_logits.status();
       ASSERT_TRUE(reference_logits.ok()) << reference_logits.status();
-      EXPECT_TRUE(FloatBuffersNear(device_logits->output,
-                                   reference_logits->output, 4e-3f, 3e-3f));
+      EXPECT_TRUE(FloatBuffersNear(device_logits->outputs[0],
+                                   reference_logits->outputs[0], 4e-3f, 3e-3f));
       BufferVec device_logits_gradients = {logits_gradient_pair->device};
       HostBufferVec reference_logits_gradients = {logits_gradient_pair->host};
       auto device_hidden_gradient =
@@ -173,8 +173,8 @@ TEST_F(LayerReferenceTest, PositionEmbeddingForwardAndBackwardMatch) {
 
       ASSERT_TRUE(device_output.ok()) << device_output.status();
       ASSERT_TRUE(reference_output.ok()) << reference_output.status();
-      EXPECT_TRUE(ActivationBuffersNear(device_output->output,
-                                        reference_output->output, type, 0.0f));
+      EXPECT_TRUE(ActivationBuffersNear(
+          device_output->outputs[0], reference_output->outputs[0], type, 0.0f));
       BufferVec device_gradients = {gradient_pair->device};
       HostBufferVec reference_gradients = {gradient_pair->host};
       auto device_input = (*device)->bwd(*executor_, device_gradients,

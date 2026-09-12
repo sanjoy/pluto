@@ -112,7 +112,7 @@ absl::StatusOr<ReferenceFwdResult> AttentionLayerReference::fwd_impl(
   }
   state.intermediates = {inputs[0], output};
   state.children.clear();
-  return ReferenceFwdResult{std::move(output), std::move(state)};
+  return ReferenceFwdResult{{std::move(output)}, std::move(state)};
 }
 
 absl::StatusOr<HostBufferVec> AttentionLayerReference::bwd_impl(

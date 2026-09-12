@@ -61,7 +61,7 @@ TEST_F(LayersTest, LayerNormNormalizesRowsAndRejectsConstantGradient) {
       AllocatePageLockedHostArray<float>(*executor_, kTestModelWidth);
   auto host_input_gradient =
       AllocatePageLockedHostArray<float>(*executor_, kTestModelWidth);
-  ASSERT_EQ(cudaMemcpyAsync(host_output.data(), output->output.data(),
+  ASSERT_EQ(cudaMemcpyAsync(host_output.data(), output->outputs[0].data(),
                             host_output.size() * sizeof(float),
                             cudaMemcpyDeviceToHost, executor_->stream()),
             cudaSuccess);

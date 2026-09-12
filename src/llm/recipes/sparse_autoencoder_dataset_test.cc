@@ -5,8 +5,10 @@
 #include <cstddef>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <memory>
 #include <numeric>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -34,19 +36,17 @@ constexpr int kEmbeddingDimension = 16;
 
 class FixedTokenDataSetIterator final : public DataSetIterator {
  public:
-  explicit FixedTokenDataSetIterator(Buffer data, int batch_size = kBatchSize,
+  explicit FixedTokenDataSetIterator(DataBatch batch,
+                                     int batch_size = kBatchSize,
                                      int sequence_length = kSequenceLength)
-      : data_(std::move(data)),
-        batch_size_(batch_size),
-        sequence_length_(sequence_length) {}
+      : batch_(std::move(batch)) {
+    batch_.batch_size = batch_size;
+    batch_.sequence_length = sequence_length;
+  }
 
   absl::StatusOr<DataBatch> Next() override {
     ++next_calls_;
-    return DataBatch{
-        .data = data_,
-        .batch_size = batch_size_,
-        .sequence_length = sequence_length_,
-    };
+    return batch_;
   }
 
   absl::Status Reset() override {
@@ -58,11 +58,46 @@ class FixedTokenDataSetIterator final : public DataSetIterator {
   int reset_calls() const { return reset_calls_; }
 
  private:
-  Buffer data_;
-  int batch_size_;
-  int sequence_length_;
+  DataBatch batch_;
   int next_calls_ = 0;
   int reset_calls_ = 0;
+};
+
+// Records allocation identities while allowing arbitrary forward output counts.
+class RecordingActivationGenerator final : public Layer {
+ public:
+  explicit RecordingActivationGenerator(BufferVec outputs)
+      : outputs_(std::move(outputs)) {}
+
+  absl::Span<Buffer> weights() override { return {}; }
+  DataType output_type() const override { return DataType::FP16; }
+  const void* input_address() const { return input_address_; }
+  int forward_calls() const { return forward_calls_; }
+  int backward_calls() const { return backward_calls_; }
+
+ private:
+  absl::StatusOr<FwdResult> fwd_impl(
+      cuda::Executor&, absl::Span<const Buffer> inputs) const override {
+    ++forward_calls_;
+    if (inputs.size() != 1)
+      return absl::InvalidArgumentError("expected one generator input");
+    input_address_ = inputs.front().data();
+    return FwdResult{
+        .outputs = outputs_,
+        .state = {.intermediates = {inputs.front()}},
+    };
+  }
+
+  absl::StatusOr<BufferVec> bwd_impl(cuda::Executor&, absl::Span<const Buffer>,
+                                     BackwardState) override {
+    ++backward_calls_;
+    return absl::InternalError("frozen generator must not run backward");
+  }
+
+  BufferVec outputs_;
+  mutable const void* input_address_ = nullptr;
+  mutable int forward_calls_ = 0;
+  int backward_calls_ = 0;
 };
 
 class SparseAutoEncoderDataSetTest : public testing::Test {
@@ -80,23 +115,26 @@ class SparseAutoEncoderDataSetTest : public testing::Test {
     executor_.reset();
   }
 
-  absl::StatusOr<Buffer> MakeData() {
+  absl::StatusOr<DataBatch> MakeData() {
     ASSIGN_OR_RETURN(auto data, cuda::PageLockedHostArray<int>::Allocate(
-                                    *executor_, 2 * kTokenCount));
-    std::iota(data.begin(), data.begin() + kTokenCount, 0);
-    std::iota(data.begin() + kTokenCount, data.end(), 1);
-    auto buffer = Buffer::Allocate(*executor_, data.size() * sizeof(int));
-    if (!buffer.ok())
-      return buffer.status();
-    const cudaError_t error =
-        cudaMemcpyAsync(buffer->data(), data.data(), buffer->size_bytes(),
-                        cudaMemcpyHostToDevice, executor_->stream());
-    if (error != cudaSuccess)
-      return cuda::CudaStatus(error, "cudaMemcpyAsync(test tokens)");
-    const absl::Status sync = executor_->Synchronize();
-    if (!sync.ok())
-      return sync;
-    return *buffer;
+                                    *executor_, kTokenCount + 1));
+    std::iota(data.begin(), data.end(), 0);
+    const size_t token_bytes = kTokenCount * sizeof(int);
+    ASSIGN_OR_RETURN(auto inputs, Buffer::Allocate(*executor_, token_bytes));
+    ASSIGN_OR_RETURN(auto targets, Buffer::Allocate(*executor_, token_bytes));
+    RETURN_IF_ERROR(cuda::CudaStatus(
+        cudaMemcpyAsync(inputs.data(), data.data(), token_bytes,
+                        cudaMemcpyHostToDevice, executor_->stream()),
+        "cudaMemcpyAsync(test inputs)"));
+    RETURN_IF_ERROR(cuda::CudaStatus(
+        cudaMemcpyAsync(targets.data(), data.data() + 1, token_bytes,
+                        cudaMemcpyHostToDevice, executor_->stream()),
+        "cudaMemcpyAsync(test targets)"));
+    RETURN_IF_ERROR(executor_->Synchronize());
+    return DataBatch{.inputs = std::move(inputs),
+                     .targets = std::move(targets),
+                     .batch_size = kBatchSize,
+                     .sequence_length = kSequenceLength};
   }
 
   std::unique_ptr<cuda::Executor> executor_;
@@ -150,14 +188,17 @@ TEST_F(SparseAutoEncoderDataSetTest,
   EXPECT_EQ(batch->sequence_length, kSequenceLength);
   ASSERT_TRUE(batch->token_count().ok());
   EXPECT_EQ(*batch->token_count(), kTokenCount);
-  EXPECT_EQ(batch->data.size_bytes(), static_cast<size_t>(kTokenCount) *
-                                          kEmbeddingDimension * sizeof(float));
+  EXPECT_EQ(batch->inputs.data(), batch->targets.data());
+  EXPECT_EQ(batch->inputs.size_bytes(), batch->targets.size_bytes());
+  EXPECT_EQ(
+      batch->inputs.size_bytes(),
+      static_cast<size_t>(kTokenCount) * kEmbeddingDimension * sizeof(float));
 
   auto actual = cuda::PageLockedHostArray<float>::Allocate(
       *executor_, kTokenCount * kEmbeddingDimension);
   ASSERT_TRUE(actual.ok()) << actual.status();
-  ASSERT_EQ(cudaMemcpyAsync(actual->data(), batch->data.data(),
-                            batch->data.size_bytes(), cudaMemcpyDeviceToHost,
+  ASSERT_EQ(cudaMemcpyAsync(actual->data(), batch->inputs.data(),
+                            batch->inputs.size_bytes(), cudaMemcpyDeviceToHost,
                             executor_->stream()),
             cudaSuccess);
   ASSERT_TRUE(executor_->Synchronize().ok());
@@ -229,8 +270,169 @@ TEST_F(SparseAutoEncoderDataSetTest,
   ASSERT_TRUE(valid.ok()) << valid.status();
   EXPECT_EQ(valid->batch_size, 1);
   EXPECT_EQ(valid->sequence_length, kTokenCount);
-  EXPECT_EQ(valid->data.size_bytes(),
+  EXPECT_EQ(valid->inputs.size_bytes(),
             kTokenCount * kEmbeddingDimension * sizeof(float));
+}
+
+TEST_F(SparseAutoEncoderDataSetTest,
+       ForwardsInputsAndAliasesBothActivationHandlesWithoutCopies) {
+  auto source_batch = MakeData();
+  ASSERT_TRUE(source_batch.ok()) << source_batch.status();
+  auto activations = Buffer::Allocate(
+      *executor_, kTokenCount * kEmbeddingDimension * sizeof(float));
+  ASSERT_TRUE(activations.ok()) << activations.status();
+  RecordingActivationGenerator generator({*activations});
+  FixedTokenDataSetIterator source(*source_batch);
+  const std::filesystem::path checkpoint =
+      std::filesystem::path(testing::TempDir()) / "sae-no-copy-checkpoint";
+  ASSERT_TRUE(WriteToDirectory(*executor_, generator, checkpoint).ok());
+  auto dataset = SparseAutoEncoderDataSetIterator::Create(*executor_, generator,
+                                                          source, checkpoint);
+  ASSERT_TRUE(dataset.ok()) << dataset.status();
+
+  auto first = (*dataset)->Next();
+  ASSERT_TRUE(first.ok()) << first.status();
+  EXPECT_EQ(generator.input_address(), source_batch->inputs.data());
+  EXPECT_NE(generator.input_address(), source_batch->targets.data());
+  EXPECT_EQ(first->inputs.data(), activations->data());
+  EXPECT_EQ(first->targets.data(), activations->data());
+  EXPECT_EQ(first->batch_size, kBatchSize);
+  EXPECT_EQ(first->sequence_length, kSequenceLength);
+
+  auto second = (*dataset)->Next();
+  ASSERT_TRUE(second.ok()) << second.status();
+  EXPECT_EQ(second->inputs.data(), first->inputs.data());
+  EXPECT_EQ(second->targets.data(), first->targets.data());
+  EXPECT_EQ(generator.forward_calls(), 2);
+  EXPECT_EQ(generator.backward_calls(), 0);
+  dataset->reset();
+  EXPECT_EQ(first->inputs.data(), activations->data());
+  EXPECT_EQ(first->targets.data(), activations->data());
+}
+
+TEST_F(SparseAutoEncoderDataSetTest,
+       RejectsMalformedSourceBufferSizesBeforeForward) {
+  auto data = MakeData();
+  ASSERT_TRUE(data.ok()) << data.status();
+  RecordingActivationGenerator generator({data->inputs});
+  const std::filesystem::path checkpoint =
+      std::filesystem::path(testing::TempDir()) / "sae-source-size-checkpoint";
+  ASSERT_TRUE(WriteToDirectory(*executor_, generator, checkpoint).ok());
+  for (bool invalid_inputs : {false, true}) {
+    for (size_t bytes : {size_t{0}, (kTokenCount - 1) * sizeof(int),
+                         2 * kTokenCount * sizeof(int)}) {
+      SCOPED_TRACE(testing::Message() << invalid_inputs << " " << bytes);
+      auto malformed = Buffer::Allocate(*executor_, bytes);
+      ASSERT_TRUE(malformed.ok()) << malformed.status();
+      DataBatch batch = *data;
+      if (invalid_inputs)
+        batch.inputs = *malformed;
+      else
+        batch.targets = *malformed;
+      FixedTokenDataSetIterator source(std::move(batch));
+      auto dataset = SparseAutoEncoderDataSetIterator::Create(
+          *executor_, generator, source, checkpoint);
+      ASSERT_TRUE(dataset.ok()) << dataset.status();
+      auto result = (*dataset)->Next();
+      EXPECT_EQ(result.status().code(), absl::StatusCode::kInvalidArgument);
+    }
+  }
+  EXPECT_EQ(generator.forward_calls(), 0);
+}
+
+TEST_F(SparseAutoEncoderDataSetTest,
+       RejectsSourceBuffersFromAnotherExecutorBeforeForward) {
+  auto other = cuda::Executor::Create();
+  ASSERT_TRUE(other.ok()) << other.status();
+  auto foreign = Buffer::Allocate(**other, kTokenCount * sizeof(int));
+  ASSERT_TRUE(foreign.ok()) << foreign.status();
+  auto data = MakeData();
+  ASSERT_TRUE(data.ok()) << data.status();
+  RecordingActivationGenerator generator({data->inputs});
+  const std::filesystem::path checkpoint =
+      std::filesystem::path(testing::TempDir()) /
+      "sae-source-executor-checkpoint";
+  ASSERT_TRUE(WriteToDirectory(*executor_, generator, checkpoint).ok());
+  for (bool foreign_inputs : {false, true}) {
+    DataBatch batch = *data;
+    if (foreign_inputs)
+      batch.inputs = *foreign;
+    else
+      batch.targets = *foreign;
+    FixedTokenDataSetIterator source(std::move(batch));
+    auto dataset = SparseAutoEncoderDataSetIterator::Create(
+        *executor_, generator, source, checkpoint);
+    ASSERT_TRUE(dataset.ok()) << dataset.status();
+    auto result = (*dataset)->Next();
+    EXPECT_EQ(result.status().code(), absl::StatusCode::kInvalidArgument);
+  }
+  EXPECT_EQ(generator.forward_calls(), 0);
+}
+
+TEST_F(SparseAutoEncoderDataSetTest,
+       RejectsInvalidSourceDimensionsBeforeForward) {
+  auto data = MakeData();
+  ASSERT_TRUE(data.ok()) << data.status();
+  RecordingActivationGenerator generator({data->inputs});
+  const std::filesystem::path checkpoint =
+      std::filesystem::path(testing::TempDir()) / "sae-source-shape-checkpoint";
+  ASSERT_TRUE(WriteToDirectory(*executor_, generator, checkpoint).ok());
+  for (const auto [samples, length] :
+       {std::pair{0, kSequenceLength}, std::pair{-1, kSequenceLength},
+        std::pair{kBatchSize, 0}, std::pair{kBatchSize, -1},
+        std::pair{std::numeric_limits<int>::max(), 2}}) {
+    SCOPED_TRACE(testing::Message() << samples << " x " << length);
+    FixedTokenDataSetIterator source(*data, samples, length);
+    auto dataset = SparseAutoEncoderDataSetIterator::Create(
+        *executor_, generator, source, checkpoint);
+    ASSERT_TRUE(dataset.ok()) << dataset.status();
+    auto result = (*dataset)->Next();
+    EXPECT_EQ(result.status().code(), absl::StatusCode::kInvalidArgument);
+  }
+  EXPECT_EQ(generator.forward_calls(), 0);
+}
+
+TEST_F(SparseAutoEncoderDataSetTest, RequiresExactlyOneGeneratorOutput) {
+  auto data = MakeData();
+  ASSERT_TRUE(data.ok()) << data.status();
+  for (int count : {0, 2}) {
+    SCOPED_TRACE(count);
+    RecordingActivationGenerator generator(BufferVec(count, data->inputs));
+    FixedTokenDataSetIterator source(*data);
+    const std::filesystem::path checkpoint =
+        std::filesystem::path(testing::TempDir()) /
+        ("sae-output-count-" + std::to_string(count));
+    ASSERT_TRUE(WriteToDirectory(*executor_, generator, checkpoint).ok());
+    auto dataset = SparseAutoEncoderDataSetIterator::Create(
+        *executor_, generator, source, checkpoint);
+    ASSERT_TRUE(dataset.ok()) << dataset.status();
+    auto result = (*dataset)->Next();
+    EXPECT_EQ(result.status().code(), absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ(generator.forward_calls(), 1);
+    EXPECT_EQ(generator.backward_calls(), 0);
+  }
+}
+
+TEST_F(SparseAutoEncoderDataSetTest,
+       RejectsGeneratorOutputFromAnotherExecutor) {
+  auto other = cuda::Executor::Create();
+  ASSERT_TRUE(other.ok()) << other.status();
+  auto foreign = Buffer::Allocate(
+      **other, kTokenCount * kEmbeddingDimension * sizeof(float));
+  ASSERT_TRUE(foreign.ok()) << foreign.status();
+  auto data = MakeData();
+  ASSERT_TRUE(data.ok()) << data.status();
+  RecordingActivationGenerator generator({*foreign});
+  FixedTokenDataSetIterator source(*data);
+  const std::filesystem::path checkpoint =
+      std::filesystem::path(testing::TempDir()) /
+      "sae-generator-executor-checkpoint";
+  ASSERT_TRUE(WriteToDirectory(*executor_, generator, checkpoint).ok());
+  auto dataset = SparseAutoEncoderDataSetIterator::Create(*executor_, generator,
+                                                          source, checkpoint);
+  ASSERT_TRUE(dataset.ok()) << dataset.status();
+  auto result = (*dataset)->Next();
+  EXPECT_EQ(result.status().code(), absl::StatusCode::kInvalidArgument);
 }
 
 }  // namespace

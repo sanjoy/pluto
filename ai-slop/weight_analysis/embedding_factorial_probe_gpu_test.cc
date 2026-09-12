@@ -68,7 +68,8 @@ TEST(EmbeddingFactorialGpuTest, NativeDiagonalsAndCausalInputExposure) {
   const std::array<cuda::Buffer, 2> residuals{
       state_a.children[10].intermediates[0],
       state_j.children[10].intermediates[0]};
-  const std::array<cuda::Buffer, 2> native{native_a->output, native_j->output};
+  const std::array<cuda::Buffer, 2> native{native_a->outputs[0],
+                                           native_j->outputs[0]};
   const std::array<const NativeLogitLens*, 2> lenses{lens_a->get(),
                                                      lens_j->get()};
   const std::array<int32_t, 4> rows{0, 5, 10, 11};
@@ -113,7 +114,7 @@ TEST(EmbeddingFactorialGpuTest, NativeDiagonalsAndCausalInputExposure) {
   // Identity control: every cell must reduce to the same native model.
   auto identity = EvaluateEmbeddingFactorial(
       **executor, {lens_a->get(), lens_a->get()}, {residuals[0], residuals[0]},
-      {native_a->output, native_a->output}, {0, 10, 11}, {5, 6, 9});
+      {native_a->outputs[0], native_a->outputs[0]}, {0, 10, 11}, {5, 6, 9});
   ASSERT_TRUE(identity.ok()) << identity.status();
   for (int cell = 1; cell < 4; ++cell) {
     EXPECT_EQ(
@@ -123,9 +124,9 @@ TEST(EmbeddingFactorialGpuTest, NativeDiagonalsAndCausalInputExposure) {
   }
   // Wrong diagonal evidence must fail closed, not silently certify a mixed
   // cell as the recipient. At row 10 the changed input is already visible.
-  EXPECT_FALSE(EvaluateEmbeddingFactorial(**executor, lenses, residuals,
-                                          {native_a->output, native_a->output},
-                                          {10}, {5})
+  EXPECT_FALSE(EvaluateEmbeddingFactorial(
+                   **executor, lenses, residuals,
+                   {native_a->outputs[0], native_a->outputs[0]}, {10}, {5})
                    .ok());
   EXPECT_FALSE(EvaluateEmbeddingFactorial(**executor, {nullptr, lens_j->get()},
                                           residuals, native, rows, targets)
@@ -176,7 +177,8 @@ TEST(EmbeddingFactorialGpuTest, NativeDiagonalsAndCausalInputExposure) {
       **executor, lenses,
       {two_state_a.children[10].intermediates[0],
        two_state_j.children[10].intermediates[0]},
-      {two_native_a->output, two_native_j->output}, two_rows, two_targets);
+      {two_native_a->outputs[0], two_native_j->outputs[0]}, two_rows,
+      two_targets);
   ASSERT_TRUE(two_result.ok()) << two_result.status();
   for (int cell = 0; cell < 4; ++cell) {
     ASSERT_EQ(two_result->logits[cell].size(), two_rows.size() * vocabulary);

@@ -65,13 +65,16 @@ struct CorpusSplit {
 absl::StatusOr<CorpusSplit> SplitCorpus(const TextCorpus& corpus,
                                         double test_fraction);
 
-// One opaque, device-resident batch of equally sized samples. batch_size counts
-// samples (sequences), never flattened tokens. Each sample has sequence_length
-// tokens/activation rows; the concrete iterator defines their element type and
-// layout. Sequence-sensitive models require their configured sequence width;
-// this metadata does not add ragged-batch or variable-length attention support.
+// Device-resident inputs and targets for equally sized samples. batch_size
+// counts samples (sequences), never flattened tokens. Each sample has
+// sequence_length tokens/activation rows; the concrete iterator defines each
+// buffer's element type and row width. Inputs and targets are independent
+// handles and may alias the same allocation, as for autoencoder examples.
+// Sequence-sensitive models require their configured sequence width; this
+// metadata does not add ragged-batch or variable-length attention support.
 struct DataBatch {
-  cuda::Buffer data;
+  cuda::Buffer inputs;
+  cuda::Buffer targets;
   int32_t batch_size;
   int32_t sequence_length = 1;
 
@@ -89,8 +92,8 @@ struct DataBatch {
 
 // Source of device-resident batches.
 //
-// Implementations own their staging storage, so returned Buffer handles stay
-// alive independently through reference counting. Reset() restores the
+// Returned Buffer handles share ownership of their device storage, so they
+// stay alive independently through reference counting. Reset() restores the
 // iterator's original sequence, which lets Evaluate() compare the same sample
 // before and after training.
 class DataSetIterator {
@@ -101,9 +104,9 @@ class DataSetIterator {
   // Reference counting keeps that storage alive, but does not preserve its
   // contents: consume or copy a batch before the next call overwrites it.
   // InMemoryDataSetIterator allocates no new batch storage in Next(); it reuses
-  // the same buffer on every call. Other implementations (such as the SAE
-  // activation iterator) may allocate, so this is not an interface-wide
-  // promise.
+  // the same input and target buffers on every call. Other implementations
+  // (such as the SAE activation iterator) may allocate, so this is not an
+  // interface-wide promise.
   virtual absl::StatusOr<DataBatch> Next() = 0;
   virtual absl::Status Reset() = 0;
 };
@@ -128,15 +131,13 @@ struct InMemoryDataSetOptions {
 // Produces next-token batches from a device-resident copy of a page-locked
 // token array.
 //
-// A batch packs batch_size independent sequences of context_length tokens.
-// Create() uploads the corpus through executor; Next() then assembles each
-// batch entirely with stream-ordered device copies. Its DataBatch::data
-// contains 2 * batch_size * context_length int32 values: model input tokens
-// first, followed by the corresponding one-token-shifted targets. Keeping this
-// concrete schema out of DataBatch lets other iterators expose activation
-// matrices through the same base interface. Random order is appropriate for
-// optimization; sequential order plus Reset() is appropriate for stable
-// train/test evaluation.
+// A batch contains batch_size independent sequences of context_length tokens.
+// Create() uploads the corpus and allocates separate reusable input and target
+// buffers through executor. Next() fills each buffer directly from corpus
+// slices with stream-ordered device copies. Each buffer contains batch_size *
+// context_length int32 values; targets are shifted one token past the inputs.
+// Random order is appropriate for optimization; sequential order plus Reset()
+// is appropriate for stable train/test evaluation.
 class InMemoryDataSetIterator final : public DataSetIterator {
  public:
   // Uploads asynchronously on executor. tokens must use that same executor;
@@ -148,9 +149,9 @@ class InMemoryDataSetIterator final : public DataSetIterator {
       cuda::Executor& executor, cuda::PageLockedHostArray<int> tokens,
       InMemoryDataSetOptions options);
 
-  // Reuses the buffer allocated by Create(), without allocating new memory.
+  // Reuses both buffers allocated by Create(), without allocating new memory.
   // Enqueue consumers on the same executor before calling Next() again; reads
-  // on other streams must finish before the buffer is overwritten.
+  // on other streams must finish before either buffer is overwritten.
   absl::StatusOr<DataBatch> Next() override;
   absl::Status Reset() override;
 
@@ -160,13 +161,15 @@ class InMemoryDataSetIterator final : public DataSetIterator {
   InMemoryDataSetIterator(cuda::Executor& executor, cuda::Buffer corpus,
                           size_t corpus_token_count,
                           InMemoryDataSetOptions options,
-                          cuda::Buffer data_buffer);
+                          cuda::Buffer inputs_buffer,
+                          cuda::Buffer targets_buffer);
 
   cuda::Buffer corpus_;
   size_t corpus_token_count_;
   InMemoryDataSetOptions options_;
   cuda::Executor& executor_;
-  cuda::Buffer data_buffer_;
+  cuda::Buffer inputs_buffer_;
+  cuda::Buffer targets_buffer_;
   std::mt19937_64 random_;
   std::uniform_int_distribution<size_t> random_start_;
   size_t next_sequential_start_ = 0;

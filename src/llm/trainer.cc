@@ -17,7 +17,6 @@
 #include "src/cuda/page_locked_host_array.h"
 #include "src/dataset/dataset.h"
 #include "src/llm/layer.h"
-#include "src/llm/layers/sparse_autoencoder.h"
 #include "src/llm/optimizer.h"
 #include "src/util/status_macros.h"
 
@@ -45,45 +44,75 @@ __tile_global__ void AddLossKernel(const float* __restrict__ losses,
   accumulator_view.store(sum * output_scale, 0);
 }
 
-struct LanguageModelingBatch {
-  Buffer tokens;
-  Buffer targets;
-  int token_count;
+// Private, per-call state only: layer-specific routing is expressed by the
+// forward output vector, not by a model-specific training adapter.
+struct ForwardPass {
+  Buffer loss;
+  int row_count;
+  size_t model_output_count;
+  BackwardState model_state;
+  BackwardState loss_state;
 };
 
-// InMemoryDataSetIterator keeps the generic DataBatch surface small by packing
-// its language-modeling inputs and targets into one allocation. The language-
-// modeling objective unpacks those two contiguous halves here.
-absl::StatusOr<LanguageModelingBatch> PrepareLanguageModelingBatch(
-    cuda::Executor& executor, const DataBatch& batch) {
-  ASSIGN_OR_RETURN(const int token_count, batch.token_count());
-  const size_t token_bytes = static_cast<size_t>(token_count) * sizeof(int);
-  if (batch.data.size_bytes() != 2 * token_bytes) {
+absl::StatusOr<ForwardPass> Forward(cuda::Executor& executor,
+                                    const Layer& model, const Layer& loss_layer,
+                                    const DataBatch& batch) {
+  ASSIGN_OR_RETURN(const int rows, batch.token_count());
+  if (&batch.inputs.executor() != &executor ||
+      &batch.targets.executor() != &executor)
     return absl::InvalidArgumentError(
-        "language-modeling data must contain batch_size * sequence_length "
-        "input tokens followed by the same number of targets");
-  }
-  if (&batch.data.executor() != &executor) {
-    return absl::InvalidArgumentError(
-        "dataset data must belong to the supplied CUDA Executor");
-  }
+        "dataset inputs and targets must belong to the supplied CUDA Executor");
+  // Preserve sample boundaries before layers infer flattened shapes from bytes.
+  RETURN_IF_ERROR(model.ValidateSequenceLength(batch.sequence_length));
+  RETURN_IF_ERROR(loss_layer.ValidateSequenceLength(batch.sequence_length));
 
-  ASSIGN_OR_RETURN(auto tokens, Buffer::Allocate(executor, token_bytes));
-  ASSIGN_OR_RETURN(auto targets, Buffer::Allocate(executor, token_bytes));
-  const auto* data = static_cast<const char*>(batch.data.data());
-  RETURN_IF_ERROR(cuda::CudaStatus(
-      cudaMemcpyAsync(tokens.data(), data, token_bytes,
-                      cudaMemcpyDeviceToDevice, executor.stream()),
-      "cudaMemcpyAsync(language-modeling inputs)"));
-  RETURN_IF_ERROR(cuda::CudaStatus(
-      cudaMemcpyAsync(targets.data(), data + token_bytes, token_bytes,
-                      cudaMemcpyDeviceToDevice, executor.stream()),
-      "cudaMemcpyAsync(language-modeling targets)"));
-  return LanguageModelingBatch{
-      .tokens = std::move(tokens),
-      .targets = std::move(targets),
-      .token_count = token_count,
-  };
+  ASSIGN_OR_RETURN(auto model_fwd, model.fwd(executor, {batch.inputs}));
+  if (model_fwd.outputs.empty())
+    return absl::InvalidArgumentError("model must return at least one output");
+  for (const Buffer& output : model_fwd.outputs)
+    if (&output.executor() != &executor)
+      return absl::InvalidArgumentError(
+          "model output belongs to a different CUDA Executor");
+  const size_t model_output_count = model_fwd.outputs.size();
+  BufferVec loss_inputs = std::move(model_fwd.outputs);
+  loss_inputs.push_back(batch.targets);
+  ASSIGN_OR_RETURN(auto loss_fwd, loss_layer.fwd(executor, loss_inputs));
+  if (loss_fwd.outputs.size() != 1)
+    return absl::InvalidArgumentError("loss must return exactly one buffer");
+  Buffer loss = std::move(loss_fwd.outputs[0]);
+  if (&loss.executor() != &executor)
+    return absl::InvalidArgumentError(
+        "loss belongs to a different CUDA Executor");
+  if (loss.size_bytes() != static_cast<size_t>(rows) * sizeof(float))
+    return absl::InvalidArgumentError(
+        "loss must return one FP32 value per batch token/activation row");
+  return ForwardPass{std::move(loss), rows, model_output_count,
+                     std::move(model_fwd.state), std::move(loss_fwd.state)};
+}
+
+absl::Status Backward(cuda::Executor& executor, Layer& model, Layer& loss_layer,
+                      ForwardPass pass) {
+  ASSIGN_OR_RETURN(auto gradients,
+                   loss_layer.bwd(executor, {}, std::move(pass.loss_state)));
+  if (gradients.size() != pass.model_output_count &&
+      gradients.size() != pass.model_output_count + 1)
+    return absl::InvalidArgumentError(
+        "loss must return gradients for each model output, optionally "
+        "followed by a target gradient");
+  for (size_t i = 0; i < pass.model_output_count; ++i)
+    if (&gradients[i].executor() != &executor)
+      return absl::InvalidArgumentError(
+          "loss gradient belongs to a different CUDA Executor");
+  // A target can alias the input (SAE reconstruction) without becoming part of
+  // the trainable graph. Drop only that trailing target derivative, never the
+  // SAE's latent or direct decoder derivative.
+  ASSIGN_OR_RETURN(auto input_gradients,
+                   model.bwd(executor,
+                             absl::Span<const Buffer>(gradients.data(),
+                                                      pass.model_output_count),
+                             std::move(pass.model_state)));
+  (void)input_gradients;
+  return absl::OkStatus();
 }
 
 absl::StatusOr<double> ReadDeviceLoss(cuda::Executor& executor,
@@ -138,122 +167,10 @@ absl::Status ValidateTrainingOptions(const TrainingOptions& options) {
   return absl::OkStatus();
 }
 
-absl::Status ValidateSparseAutoEncoderBatch(cuda::Executor& executor,
-                                            const SparseAutoEncoderLayer& model,
-                                            const DataBatch& batch) {
-  ASSIGN_OR_RETURN(const int token_count, batch.token_count());
-  if (&batch.data.executor() != &executor) {
-    return absl::InvalidArgumentError(
-        "sparse-autoencoder dataset belongs to a different executor");
-  }
-  const size_t element_bytes =
-      model.output_type() == DataType::BF16 ? sizeof(uint16_t) : sizeof(float);
-  const size_t expected_bytes =
-      static_cast<size_t>(token_count) * model.input_dim() * element_bytes;
-  if (batch.data.size_bytes() != expected_bytes) {
-    return absl::InvalidArgumentError(
-        "sparse-autoencoder data does not match batch_size, sequence_length, "
-        "and input_dim");
-  }
-  return absl::OkStatus();
-}
-
 }  // namespace
 
-absl::StatusOr<ObjectiveForwardPass> LanguageModelingObjective::Forward(
-    cuda::Executor& executor, const DataBatch& data_batch) const {
-  // A valid flattened byte count alone cannot establish sample boundaries.
-  // For example, two half-context samples must not become one full-context
-  // attention sequence and leak information across samples.
-  RETURN_IF_ERROR(model_.ValidateSequenceLength(data_batch.sequence_length));
-  RETURN_IF_ERROR(
-      loss_layer_.ValidateSequenceLength(data_batch.sequence_length));
-  ASSIGN_OR_RETURN(auto batch,
-                   PrepareLanguageModelingBatch(executor, data_batch));
-
-  BufferVec model_inputs = {batch.tokens};
-  ASSIGN_OR_RETURN(auto output_fwd, model_.fwd(executor, model_inputs));
-  auto output = std::move(output_fwd.output);
-
-  BufferVec loss_inputs = {output, batch.targets};
-  ASSIGN_OR_RETURN(auto losses_fwd, loss_layer_.fwd(executor, loss_inputs));
-  auto losses = std::move(losses_fwd.output);
-
-  if (losses.size_bytes() !=
-      static_cast<size_t>(batch.token_count) * sizeof(float)) {
-    return absl::InvalidArgumentError(
-        "language-modeling loss must return one FP32 value per batch token");
-  }
-  return ObjectiveForwardPass{
-      .loss = std::move(losses),
-      .normalization_count = batch.token_count,
-      .model_state = std::move(output_fwd.state),
-      .loss_state = std::move(losses_fwd.state),
-  };
-}
-
-absl::Status LanguageModelingObjective::Backward(cuda::Executor& executor,
-                                                 ObjectiveForwardPass pass) {
-  ASSIGN_OR_RETURN(auto output_gradient,
-                   loss_layer_.bwd(executor, {}, std::move(pass.loss_state)));
-  ASSIGN_OR_RETURN(
-      auto input_gradient,
-      model_.bwd(executor, output_gradient, std::move(pass.model_state)));
-  (void)input_gradient;
-  return absl::OkStatus();
-}
-
-absl::StatusOr<ObjectiveForwardPass> SparseAutoEncoderObjective::Forward(
-    cuda::Executor& executor, const DataBatch& batch) const {
-  RETURN_IF_ERROR(ValidateSparseAutoEncoderBatch(executor, model_, batch));
-  ASSIGN_OR_RETURN(const int token_count, batch.token_count());
-
-  BufferVec model_inputs = {batch.data};
-  ASSIGN_OR_RETURN(auto reconstruction_fwd, model_.fwd(executor, model_inputs));
-  auto reconstruction = std::move(reconstruction_fwd.output);
-
-  ASSIGN_OR_RETURN(auto latents,
-                   model_.latent_activations(reconstruction_fwd.state));
-
-  BufferVec loss_inputs = {batch.data, reconstruction, latents,
-                           model_.decoder()};
-  ASSIGN_OR_RETURN(auto loss_fwd, loss_layer_.fwd(executor, loss_inputs));
-  auto loss = std::move(loss_fwd.output);
-
-  if (loss.size_bytes() != sizeof(float)) {
-    return absl::InvalidArgumentError(
-        "sparse-autoencoder loss must return one FP32 scalar");
-  }
-  return ObjectiveForwardPass{
-      .loss = std::move(loss),
-      .normalization_count = token_count,
-      .model_state = std::move(reconstruction_fwd.state),
-      .loss_state = std::move(loss_fwd.state),
-  };
-}
-
-absl::Status SparseAutoEncoderObjective::Backward(cuda::Executor& executor,
-                                                  ObjectiveForwardPass pass) {
-  ASSIGN_OR_RETURN(auto loss_gradients,
-                   loss_layer_.bwd(executor, {}, std::move(pass.loss_state)));
-  if (loss_gradients.size() != 4) {
-    return absl::InternalError(
-        "sparse-autoencoder loss must return gradients for x, x1, z, and D");
-  }
-  // The activation generator is frozen, so dL/dx is intentionally dropped.
-  // The remaining gradients match SparseAutoEncoderLayer's documented
-  // auxiliary backward inputs.
-  BufferVec model_gradients = {loss_gradients[1], loss_gradients[2],
-                               loss_gradients[3]};
-  ASSIGN_OR_RETURN(
-      auto input_gradient,
-      model_.bwd(executor, model_gradients, std::move(pass.model_state)));
-  (void)input_gradient;
-  return absl::OkStatus();
-}
-
-absl::StatusOr<Buffer> Evaluate(cuda::Executor& executor,
-                                const TrainingObjective& objective,
+absl::StatusOr<Buffer> Evaluate(cuda::Executor& executor, const Layer& model,
+                                const Layer& loss_layer,
                                 DataSetIterator& eval_data,
                                 const EvaluationOptions& options) {
   if (options.batches <= 0)
@@ -268,33 +185,18 @@ absl::StatusOr<Buffer> Evaluate(cuda::Executor& executor,
   int64_t normalization_count = 0;
   for (int index = 0; index < options.batches; ++index) {
     ASSIGN_OR_RETURN(DataBatch batch, eval_data.Next());
-    ASSIGN_OR_RETURN(auto pass, objective.Forward(executor, batch));
-    if (pass.normalization_count <= 0) {
-      return absl::InvalidArgumentError(
-          "objective normalization count must be positive");
-    }
-    if (pass.loss.size_bytes() == 0 ||
-        pass.loss.size_bytes() % sizeof(float) != 0 ||
-        pass.loss.size_bytes() / sizeof(float) >
-            static_cast<size_t>(std::numeric_limits<int>::max())) {
-      return absl::InvalidArgumentError(
-          "objective loss must contain a supported number of FP32 values");
-    }
-    if (&pass.loss.executor() != &executor) {
-      return absl::InvalidArgumentError(
-          "objective loss belongs to a different CUDA Executor");
-    }
+    ASSIGN_OR_RETURN(auto pass, Forward(executor, model, loss_layer, batch));
     if (normalization_count >
-        std::numeric_limits<int64_t>::max() - pass.normalization_count) {
+        std::numeric_limits<int64_t>::max() - pass.row_count) {
       return absl::OutOfRangeError("evaluation normalization count overflowed");
     }
-    normalization_count += pass.normalization_count;
+    normalization_count += pass.row_count;
     const bool final_batch = index + 1 == options.batches;
     const float output_scale =
         final_batch ? 1.0f / static_cast<float>(normalization_count) : 1.0f;
     AddLossKernel<<<1, 1, 0, executor.stream()>>>(
         static_cast<const float*>(pass.loss.data()),
-        static_cast<int>(pass.loss.size_bytes() / sizeof(float)), output_scale,
+        pass.row_count, output_scale,
         static_cast<float*>(mean_loss.data()));
     RETURN_IF_ERROR(
         cuda::CudaStatus(cudaGetLastError(), "AddLossKernel launch"));
@@ -302,9 +204,8 @@ absl::StatusOr<Buffer> Evaluate(cuda::Executor& executor,
   return mean_loss;
 }
 
-absl::StatusOr<TrainingResult> Train(cuda::Executor& executor,
-                                     TrainingObjective& objective,
-                                     Optimizer& optimizer,
+absl::StatusOr<TrainingResult> Train(cuda::Executor& executor, Layer& model,
+                                     Layer& loss_layer, Optimizer& optimizer,
                                      DataSetIterator& training_data,
                                      const TrainingOptions& options) {
   RETURN_IF_ERROR(ValidateTrainingOptions(options));
@@ -319,7 +220,7 @@ absl::StatusOr<TrainingResult> Train(cuda::Executor& executor,
     } else {
       ASSIGN_OR_RETURN(
           auto device_initial_loss,
-          Evaluate(executor, objective, evaluation_data,
+          Evaluate(executor, model, loss_layer, evaluation_data,
                    EvaluationOptions{.batches = options.evaluation_batches}));
       ASSIGN_OR_RETURN(initial_loss,
                        ReadDeviceLoss(executor, device_initial_loss));
@@ -353,8 +254,8 @@ absl::StatusOr<TrainingResult> Train(cuda::Executor& executor,
     if (steps_completed == std::numeric_limits<int>::max())
       return absl::OutOfRangeError("training step number overflowed");
     ASSIGN_OR_RETURN(DataBatch batch, training_data.Next());
-    ASSIGN_OR_RETURN(auto pass, objective.Forward(executor, batch));
-    RETURN_IF_ERROR(objective.Backward(executor, std::move(pass)));
+    ASSIGN_OR_RETURN(auto pass, Forward(executor, model, loss_layer, batch));
+    RETURN_IF_ERROR(Backward(executor, model, loss_layer, std::move(pass)));
     RETURN_IF_ERROR(optimizer.ApplyStep());
     if (options.training_seconds.has_value()) {
       // CUDA launches are asynchronous. The clock must measure completed
@@ -379,7 +280,7 @@ absl::StatusOr<TrainingResult> Train(cuda::Executor& executor,
     if (should_evaluate) {
       ASSIGN_OR_RETURN(
           auto device_training_loss,
-          Evaluate(executor, objective, evaluation_data,
+          Evaluate(executor, model, loss_layer, evaluation_data,
                    EvaluationOptions{.batches = options.evaluation_batches}));
       ASSIGN_OR_RETURN(double training_loss,
                        ReadDeviceLoss(executor, device_training_loss));

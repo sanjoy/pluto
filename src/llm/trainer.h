@@ -13,9 +13,6 @@
 
 namespace pluto::llm {
 
-class SparseAutoEncoderLayer;
-class SparseAutoEncoderLossLayer;
-
 inline constexpr int kUnlimitedTrainingSteps = -1;
 
 struct EvaluationOptions {
@@ -88,94 +85,35 @@ struct TrainingResult {
   double elapsed_training_seconds = 0.0;
 };
 
-// Everything retained from an objective's forward pass until evaluation
-// consumes its loss or training runs its backward pass. normalization_count
-// states how many token/activation rows the loss represents; it may differ from
-// the number of FP32 values in loss. For example, the SAE loss is one sum for
-// an entire activation batch.
-struct ObjectiveForwardPass {
-  Buffer loss;
-  int64_t normalization_count;
-  BackwardState model_state;
-  BackwardState loss_state;
-};
-
-// Adapts a model, loss, and DataBatch schema to the common training loop.
+// Computes mean loss over all token/activation rows in the requested batches.
+// The model consumes {batch.inputs}; the loss consumes model outputs followed
+// by batch.targets and must return one buffer of per-row FP32 loss values.
 //
-// The objective owns no layers. Its referenced model and loss must outlive it.
-// Forward() validates and connects a dataset batch to those layers. Backward()
-// wires the saved loss gradients back through the model. This boundary keeps
-// Train() and Evaluate() independent of model-specific auxiliary outputs.
-class TrainingObjective {
- public:
-  virtual ~TrainingObjective() = default;
-
-  virtual absl::StatusOr<ObjectiveForwardPass> Forward(
-      cuda::Executor& executor, const DataBatch& batch) const = 0;
-  virtual absl::Status Backward(cuda::Executor& executor,
-                                ObjectiveForwardPass pass) = 0;
-};
-
-// Language-modeling wiring for a conventional model and terminal loss layer.
-// DataBatch::data contains batch_size * sequence_length int32 input tokens,
-// followed by that many int32 next-token targets. The loss returns one FP32
-// value per token, and evaluation averages per token, not per sequence. Model
-// and loss sequence-width requirements are checked before flattening samples;
-// fixed-context attention/position layers require matching sequence_length.
-class LanguageModelingObjective final : public TrainingObjective {
- public:
-  LanguageModelingObjective(Layer& model, Layer& loss_layer)
-      : model_(model), loss_layer_(loss_layer) {}
-
-  absl::StatusOr<ObjectiveForwardPass> Forward(
-      cuda::Executor& executor, const DataBatch& batch) const override;
-  absl::Status Backward(cuda::Executor& executor,
-                        ObjectiveForwardPass pass) override;
-
- private:
-  Layer& model_;
-  Layer& loss_layer_;
-};
-
-// Sparse-autoencoder wiring for activation batches. It exposes the SAE's
-// latent activations and decoder to SparseAutoEncoderLossLayer, then routes the
-// loss's auxiliary gradients back to the SAE. The activation generator remains
-// outside this objective and is therefore frozen.
-class SparseAutoEncoderObjective final : public TrainingObjective {
- public:
-  SparseAutoEncoderObjective(SparseAutoEncoderLayer& model,
-                             SparseAutoEncoderLossLayer& loss_layer)
-      : model_(model), loss_layer_(loss_layer) {}
-
-  absl::StatusOr<ObjectiveForwardPass> Forward(
-      cuda::Executor& executor, const DataBatch& batch) const override;
-  absl::Status Backward(cuda::Executor& executor,
-                        ObjectiveForwardPass pass) override;
-
- private:
-  SparseAutoEncoderLayer& model_;
-  SparseAutoEncoderLossLayer& loss_layer_;
-};
-
-// Computes the mean FP32 loss produced by objective over the requested data.
-//
-// The returned Buffer contains one device-resident float and remains ordered
-// on executor's stream. Evaluate() performs no device-to-host transfer or
-// synchronization; callers that need the numeric value on the CPU must make
-// that synchronization boundary explicit. Evaluate() never runs backward or
-// mutates weights. It resets eval_data so repeated calls measure the same
-// batches.
-absl::StatusOr<Buffer> Evaluate(cuda::Executor& executor,
-                                const TrainingObjective& objective,
+// The returned Buffer contains one device-resident float ordered on executor's
+// stream. No device-to-host copy or synchronization is performed. Callers that
+// need a CPU value must explicitly read it back. Evaluation never runs backward
+// or changes weights, and resets eval_data to make repeated passes comparable.
+absl::StatusOr<Buffer> Evaluate(cuda::Executor& executor, const Layer& model,
+                                const Layer& loss_layer,
                                 DataSetIterator& eval_data,
                                 const EvaluationOptions& options);
 
-// Runs the common forward/loss/backward/update loop for any TrainingObjective.
-// Train() clears gradients before the first backward; Optimizer::ApplyStep()
-// applies an update and clears them after each step.
-absl::StatusOr<TrainingResult> Train(cuda::Executor& executor,
-                                     TrainingObjective& objective,
-                                     Optimizer& optimizer,
+// Runs model forward, loss forward/backward, model backward, and an optimizer
+// update, with the same wiring for language models and sparse autoencoders.
+// Loss inputs are model outputs in order, followed by the dataset target.
+// Loss backward returns one gradient per model output, optionally followed by
+// a target gradient. Only model-output gradients are propagated: targets and
+// dataset transforms (such as an activation generator) are not trained.
+//
+// Both losses expose per-row values for evaluation. Backward scaling belongs
+// to the loss: cross-entropy currently differentiates the mean, while SAE
+// differentiates the sum. Train does not rescale either gradient.
+//
+// Train clears gradients before the first backward; ApplyStep applies an update
+// and clears gradients afterwards. Referenced layers, optimizer, and iterators
+// must remain alive for the call.
+absl::StatusOr<TrainingResult> Train(cuda::Executor& executor, Layer& model,
+                                     Layer& loss_layer, Optimizer& optimizer,
                                      DataSetIterator& training_data,
                                      const TrainingOptions& options);
 

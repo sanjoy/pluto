@@ -324,7 +324,7 @@ absl::StatusOr<FwdResult> AttentionLayer::fwd_impl(
                                    "FlashAttentionForwardKernel launch"));
   state.intermediates = {inputs[0], output};
   state.children.clear();
-  return FwdResult{std::move(output), std::move(state)};
+  return FwdResult{{std::move(output)}, std::move(state)};
 }
 
 absl::StatusOr<BufferVec> AttentionLayer::bwd_impl(

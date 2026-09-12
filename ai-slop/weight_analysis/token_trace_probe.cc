@@ -98,7 +98,9 @@ absl::StatusOr<cuda::PageLockedHostArray<uint8_t>> ForwardRow(
     const cuda::Buffer& input, int selected_row) {
   ASSIGN_OR_RETURN(auto logits_fwd,
                    model.fwd(executor, absl::MakeConstSpan(&input, 1)));
-  auto logits = std::move(logits_fwd.output);
+  if (logits_fwd.outputs.size() != 1)
+    return absl::FailedPreconditionError("model must return one logits tensor");
+  auto logits = std::move(logits_fwd.outputs[0]);
 
   ASSIGN_OR_RETURN(auto host, ReadSelectedRow(executor, logits, selected_row,
                                               kPaddedVocabulary, 4));
@@ -178,7 +180,7 @@ absl::Status Run() {
 
       ASSIGN_OR_RETURN(auto original_logits_fwd,
                        model->fwd(*executor, absl::MakeConstSpan(&input, 1)));
-      auto original_logits = std::move(original_logits_fwd.output);
+      auto original_logits = std::move(original_logits_fwd.outputs[0]);
 
       ASSIGN_OR_RETURN(auto baseline,
                        ReadSelectedRow(*executor, original_logits, selected_row,

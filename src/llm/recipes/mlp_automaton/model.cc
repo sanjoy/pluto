@@ -168,7 +168,11 @@ absl::StatusOr<cuda::PageLockedHostArray<TopTransition>> ScanVocabulary(
     // The explicit synchronization below is still needed for CPU reads/reuse.
 
     ASSIGN_OR_RETURN(auto logits_fwd, readout.fwd(executor, {tokens}));
-    auto logits = std::move(logits_fwd.output);
+    if (logits_fwd.outputs.size() != 1) {
+      return absl::FailedPreconditionError(
+          "readout must return one logits tensor");
+    }
+    auto logits = std::move(logits_fwd.outputs[0]);
 
     ASSIGN_OR_RETURN(auto top, ReadTopTransitions(executor, logits, rows,
                                                   vocab_size, padded_vocab));

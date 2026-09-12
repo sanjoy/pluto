@@ -128,7 +128,7 @@ class ConstantBranch final : public llm::Layer {
     }
     state.intermediates.clear();
     state.children.clear();
-    return llm::FwdResult{std::move(branch_), std::move(state)};
+    return llm::FwdResult{{std::move(branch_)}, std::move(state)};
   }
   absl::StatusOr<llm::BufferVec> bwd_impl(cuda::Executor&,
                                           absl::Span<const cuda::Buffer>,
@@ -239,21 +239,21 @@ struct SourceValueProbe::Impl {
     ASSIGN_OR_RETURN(
         auto projected_fwd,
         projection->fwd(executor, absl::MakeConstSpan(&changed_context, 1)));
-    auto projected = std::move(projected_fwd.output);
+        auto projected = std::move(projected_fwd.outputs[0]);
 
-    llm::ResidualLayer residual(
-        std::make_unique<ConstantBranch>(std::move(projected)));
-    llm::BackwardState add_state, tail_state;
+        llm::ResidualLayer residual(
+            std::make_unique<ConstantBranch>(std::move(projected)));
+        llm::BackwardState add_state, tail_state;
     ASSIGN_OR_RETURN(auto after_attention_fwd,
                      residual.fwd(executor, absl::MakeConstSpan(&before, 1)));
-    auto after_attention = std::move(after_attention_fwd.output);
-    add_state = std::move(after_attention_fwd.state);
+        auto after_attention = std::move(after_attention_fwd.outputs[0]);
+        add_state = std::move(after_attention_fwd.state);
     ASSIGN_OR_RETURN(
         auto final_residual_fwd,
         tail->fwd(executor, absl::MakeConstSpan(&after_attention, 1)));
-    auto final_residual = std::move(final_residual_fwd.output);
-    tail_state = std::move(final_residual_fwd.state);
-    return lens->Apply(executor, final_residual);
+        auto final_residual = std::move(final_residual_fwd.outputs[0]);
+        tail_state = std::move(final_residual_fwd.state);
+        return lens->Apply(executor, final_residual);
   }
 
   cuda::Executor& executor;
@@ -357,20 +357,20 @@ absl::StatusOr<std::unique_ptr<SourceValueProbe>> SourceValueProbe::Create(
   ASSIGN_OR_RETURN(
       auto replayed_context_fwd,
       impl->attention->fwd(executor, absl::MakeConstSpan(&qkv, 1)));
-  auto replayed_context = std::move(replayed_context_fwd.output);
+      auto replayed_context = std::move(replayed_context_fwd.outputs[0]);
 
   ASSIGN_OR_RETURN(auto replayed_bytes,
                    ReadPrefix(executor, replayed_context, rows, kWidth, 2));
-  RETURN_IF_ERROR(EqualBytes(replayed_bytes, impl->context_bytes,
-                             "native attention identity replay"));
+      RETURN_IF_ERROR(EqualBytes(replayed_bytes, impl->context_bytes,
+                                 "native attention identity replay"));
   ASSIGN_OR_RETURN(auto replayed_logits, impl->Replay(replayed_context));
   ASSIGN_OR_RETURN(auto logit_bytes,
                    ReadPrefix(executor, replayed_logits, rows,
                               llm::kGpt2PaddedVocabularySize, 4));
-  RETURN_IF_ERROR(EqualBytes(logit_bytes, impl->logits_bytes,
-                             "native full-logit identity replay"));
-  RETURN_IF_ERROR(impl->CheckOriginals());
-  return absl::WrapUnique(new SourceValueProbe(std::move(impl)));
+      RETURN_IF_ERROR(EqualBytes(logit_bytes, impl->logits_bytes,
+                                 "native full-logit identity replay"));
+      RETURN_IF_ERROR(impl->CheckOriginals());
+      return absl::WrapUnique(new SourceValueProbe(std::move(impl)));
 }
 
 absl::StatusOr<SourceValueResult> SourceValueProbe::Apply(
@@ -414,26 +414,27 @@ absl::StatusOr<SourceValueResult> SourceValueProbe::Apply(
   ASSIGN_OR_RETURN(
       auto attention_fwd,
       impl_->attention->fwd(executor, absl::MakeConstSpan(&qkv, 1)));
-  auto attention = std::move(attention_fwd.output);
+      auto attention = std::move(attention_fwd.outputs[0]);
 
   ASSIGN_OR_RETURN(auto context, Clone(executor, impl_->context));
-  RETURN_IF_ERROR(cuda::CudaStatus(
-      cudaMemcpyAsync(
-          static_cast<uint8_t*>(context.data()) + context_offset,
-          static_cast<const uint8_t*>(attention.data()) + context_offset,
-          kHeadBytes, cudaMemcpyDeviceToDevice, executor.stream()),
-      "splice single query head context"));
+      RETURN_IF_ERROR(cuda::CudaStatus(
+          cudaMemcpyAsync(
+              static_cast<uint8_t*>(context.data()) + context_offset,
+              static_cast<const uint8_t*>(attention.data()) + context_offset,
+              kHeadBytes, cudaMemcpyDeviceToDevice, executor.stream()),
+          "splice single query head context"));
   ASSIGN_OR_RETURN(auto attention_bytes,
                    ReadPrefix(executor, attention, impl_->rows, kWidth, 2));
   ASSIGN_OR_RETURN(auto context_bytes,
                    ReadPrefix(executor, context, impl_->rows, kWidth, 2));
-  RETURN_IF_ERROR(FiniteBytes(attention_bytes, false));
-  RETURN_IF_ERROR(EqualOutsideSlice(context_bytes, impl_->context_bytes,
-                                    context_offset, kHeadBytes,
-                                    "spliced attention context"));
-  if (std::memcmp(context_bytes.data() + context_offset,
-                  attention_bytes.data() + context_offset, kHeadBytes)) {
-    return absl::DataLossError("context splice differs from native attention");
+      RETURN_IF_ERROR(FiniteBytes(attention_bytes, false));
+      RETURN_IF_ERROR(EqualOutsideSlice(context_bytes, impl_->context_bytes,
+                                        context_offset, kHeadBytes,
+                                        "spliced attention context"));
+      if (std::memcmp(context_bytes.data() + context_offset,
+                      attention_bytes.data() + context_offset, kHeadBytes)) {
+        return absl::DataLossError(
+            "context splice differs from native attention");
   }
   ASSIGN_OR_RETURN(auto logits, impl_->Replay(context));
   ASSIGN_OR_RETURN(auto logits_bytes,

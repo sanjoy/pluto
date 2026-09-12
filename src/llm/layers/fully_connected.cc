@@ -268,7 +268,7 @@ absl::StatusOr<FwdResult> FullyConnectedLayer::fwd_impl(
   }
   RETURN_IF_ERROR(
       cuda::CudaStatus(cudaGetLastError(), "DenseForwardKernel launch"));
-  return FwdResult{std::move(output), std::move(state)};
+  return FwdResult{{std::move(output)}, std::move(state)};
 }
 
 absl::StatusOr<BufferVec> FullyConnectedLayer::bwd_impl(

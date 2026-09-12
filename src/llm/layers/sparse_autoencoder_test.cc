@@ -186,17 +186,20 @@ TEST_F(LayersTest, ParallelLossHandlesGpt2BatchTenShape) {
               cudaSuccess);
   }
 
-  BufferVec inputs = {*input, *reconstruction, *latents, *decoder};
+  BufferVec inputs = {*reconstruction, *latents, *decoder, *input};
   auto output = (*loss)->fwd(*executor_, inputs);
 
   ASSERT_TRUE(output.ok()) << output.status();
-  auto host_output = AllocatePageLockedHostArray<float>(*executor_, 1);
-  ASSERT_EQ(
-      cudaMemcpyAsync(host_output.data(), output->output.data(), sizeof(float),
-                      cudaMemcpyDeviceToHost, executor_->stream()),
-      cudaSuccess);
+  ASSERT_EQ(output->outputs.size(), 1u);
+  EXPECT_EQ(output->outputs[0].size_bytes(), kRows * sizeof(float));
+  auto host_output = AllocatePageLockedHostArray<float>(*executor_, kRows);
+  ASSERT_EQ(cudaMemcpyAsync(host_output.data(), output->outputs[0].data(),
+                            host_output.size_bytes(), cudaMemcpyDeviceToHost,
+                            executor_->stream()),
+            cudaSuccess);
   ASSERT_TRUE(executor_->Synchronize().ok());
-  EXPECT_FLOAT_EQ(host_output[0], 0.0f);
+  for (float value : host_output)
+    EXPECT_FLOAT_EQ(value, 0.0f);
 }
 
 }  // namespace

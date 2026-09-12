@@ -190,7 +190,9 @@ absl::StatusOr<cuda::PageLockedHostArray<float>> PredictSelectedRow(
 
   ASSIGN_OR_RETURN(auto logits_fwd,
                    model.fwd(executor, absl::MakeConstSpan(&token_buffer, 1)));
-  auto logits = std::move(logits_fwd.output);
+  if (logits_fwd.outputs.size() != 1)
+    return absl::FailedPreconditionError("model must return one logits tensor");
+  auto logits = std::move(logits_fwd.outputs[0]);
 
   if (&logits.executor() != &executor ||
       logits.size_bytes() !=

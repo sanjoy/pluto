@@ -62,9 +62,9 @@ TEST_F(LayersTest, IdentityDenseLayerHasIdentityForwardAndBackward) {
       AllocatePageLockedHostArray<float>(*executor_, input.size());
   auto host_input_gradient =
       AllocatePageLockedHostArray<float>(*executor_, input.size());
-  ASSERT_EQ(cudaMemcpyAsync(host_output.data(), output->output.data(),
-                            output->output.size_bytes(), cudaMemcpyDeviceToHost,
-                            executor_->stream()),
+  ASSERT_EQ(cudaMemcpyAsync(host_output.data(), output->outputs[0].data(),
+                            output->outputs[0].size_bytes(),
+                            cudaMemcpyDeviceToHost, executor_->stream()),
             cudaSuccess);
   ASSERT_EQ(cudaMemcpyAsync(host_input_gradient.data(),
                             input_gradients->front().data(),
@@ -107,9 +107,9 @@ TEST_F(LayersTest, RectangularProjectionUsesDistinctInputAndOutputWidths) {
   ASSERT_TRUE(output.ok()) << output.status();
   auto host_output = AllocatePageLockedHostArray<float>(
       *executor_, kTestTokenCount * kOutputWidth);
-  ASSERT_EQ(cudaMemcpyAsync(host_output.data(), output->output.data(),
-                            output->output.size_bytes(), cudaMemcpyDeviceToHost,
-                            executor_->stream()),
+  ASSERT_EQ(cudaMemcpyAsync(host_output.data(), output->outputs[0].data(),
+                            output->outputs[0].size_bytes(),
+                            cudaMemcpyDeviceToHost, executor_->stream()),
             cudaSuccess);
   ASSERT_TRUE(executor_->Synchronize().ok());
 

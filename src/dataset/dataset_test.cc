@@ -57,25 +57,23 @@ class DataSetTest : public testing::Test {
   }
 
   std::vector<int> Inputs(const DataBatch& batch) {
-    const cuda::PageLockedHostArray<int> packed = CopyToHost(batch.data);
+    const cuda::PageLockedHostArray<int> inputs = CopyToHost(batch.inputs);
     const auto count = batch.token_count();
     EXPECT_TRUE(count.ok()) << count.status();
     if (!count.ok())
       return {};
-    EXPECT_EQ(packed.size(), 2 * static_cast<size_t>(*count));
-    return std::vector<int>(packed.begin(), packed.begin() + *count);
+    EXPECT_EQ(inputs.size(), static_cast<size_t>(*count));
+    return std::vector<int>(inputs.begin(), inputs.end());
   }
 
   std::vector<int> Targets(const DataBatch& batch) {
-    const cuda::PageLockedHostArray<int> packed = CopyToHost(batch.data);
+    const cuda::PageLockedHostArray<int> targets = CopyToHost(batch.targets);
     const auto count = batch.token_count();
     EXPECT_TRUE(count.ok()) << count.status();
     if (!count.ok())
       return {};
-    EXPECT_EQ(packed.size(), 2 * static_cast<size_t>(*count));
-    if (packed.size() < static_cast<size_t>(*count))
-      return {};
-    return std::vector<int>(packed.begin() + *count, packed.end());
+    EXPECT_EQ(targets.size(), static_cast<size_t>(*count));
+    return std::vector<int>(targets.begin(), targets.end());
   }
 
   std::unique_ptr<cuda::Executor> executor_;
@@ -114,6 +112,9 @@ TEST_F(DataSetTest, SequentialBatchesShiftTargetsAndReset) {
   ASSERT_TRUE(first.ok()) << first.status();
   EXPECT_EQ(first->batch_size, 2);
   EXPECT_EQ(first->sequence_length, 4);
+  EXPECT_NE(first->inputs.data(), first->targets.data());
+  EXPECT_EQ(first->inputs.size_bytes(), 8 * sizeof(int));
+  EXPECT_EQ(first->targets.size_bytes(), 8 * sizeof(int));
   const std::vector<int> first_tokens = Inputs(*first);
   EXPECT_EQ(first_tokens, (std::vector<int>{0, 1, 2, 3, 4, 5, 6, 7}));
   EXPECT_EQ(Targets(*first), (std::vector<int>{1, 2, 3, 4, 5, 6, 7, 8}));
@@ -121,15 +122,36 @@ TEST_F(DataSetTest, SequentialBatchesShiftTargetsAndReset) {
   auto second = (*iterator)->Next();
   ASSERT_TRUE(second.ok()) << second.status();
   // Retaining the first handle does not request a snapshot or a new allocation.
-  EXPECT_EQ(second->data.data(), first->data.data());
+  EXPECT_EQ(second->inputs.data(), first->inputs.data());
+  EXPECT_EQ(second->targets.data(), first->targets.data());
+  EXPECT_EQ(Targets(*first), (std::vector<int>{9, 10, 11, 12, 13, 14, 15, 16}));
   EXPECT_EQ(Inputs(*first), (std::vector<int>{8, 9, 10, 11, 12, 13, 14, 15}));
   EXPECT_EQ(Inputs(*second), (std::vector<int>{8, 9, 10, 11, 12, 13, 14, 15}));
 
   ASSERT_TRUE((*iterator)->Reset().ok());
   auto reset = (*iterator)->Next();
   ASSERT_TRUE(reset.ok()) << reset.status();
-  EXPECT_EQ(reset->data.data(), first->data.data());
+  EXPECT_EQ(reset->inputs.data(), first->inputs.data());
+  EXPECT_EQ(reset->targets.data(), first->targets.data());
+  EXPECT_EQ(Targets(*reset), (std::vector<int>{1, 2, 3, 4, 5, 6, 7, 8}));
   EXPECT_EQ(Inputs(*reset), first_tokens);
+}
+
+TEST_F(DataSetTest, BatchBuffersRemainAliveAfterIteratorDestruction) {
+  auto corpus = MakePinnedInts(*executor_, 9);
+  std::iota(corpus.begin(), corpus.end(), 0);
+  auto iterator = InMemoryDataSetIterator::Create(
+      *executor_, corpus,
+      {.batch_size = 2,
+       .context_length = 4,
+       .order = InMemoryDataSetOrder::kSequential});
+  ASSERT_TRUE(iterator.ok()) << iterator.status();
+  auto batch = (*iterator)->Next();
+  ASSERT_TRUE(batch.ok()) << batch.status();
+
+  iterator->reset();
+  EXPECT_EQ(Inputs(*batch), (std::vector<int>{0, 1, 2, 3, 4, 5, 6, 7}));
+  EXPECT_EQ(Targets(*batch), (std::vector<int>{1, 2, 3, 4, 5, 6, 7, 8}));
 }
 
 TEST_F(DataSetTest, CorpusIsUploadedDuringCreation) {
@@ -293,7 +315,8 @@ TEST_F(DataSetTest, BatchSizeCountsIndependentSequencesNotTokens) {
   auto count = batch->token_count();
   ASSERT_TRUE(count.ok()) << count.status();
   EXPECT_EQ(*count, 12);
-  EXPECT_EQ(batch->data.size_bytes(), 24 * sizeof(int));
+  EXPECT_EQ(batch->inputs.size_bytes(), 12 * sizeof(int));
+  EXPECT_EQ(batch->targets.size_bytes(), 12 * sizeof(int));
   EXPECT_EQ(Inputs(*batch),
             (std::vector<int>{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}));
   EXPECT_EQ(Targets(*batch),
@@ -303,13 +326,16 @@ TEST_F(DataSetTest, BatchSizeCountsIndependentSequencesNotTokens) {
 TEST_F(DataSetTest, DataBatchChecksDimensionsBeforeMultiplyingThem) {
   auto storage = cuda::Buffer::Allocate(*executor_, 0);
   ASSERT_TRUE(storage.ok()) << storage.status();
-  const DataBatch valid{
-      .data = *storage, .batch_size = 3, .sequence_length = 4};
+  const DataBatch valid{.inputs = *storage,
+                        .targets = *storage,
+                        .batch_size = 3,
+                        .sequence_length = 4};
   auto count = valid.token_count();
   ASSERT_TRUE(count.ok()) << count.status();
   EXPECT_EQ(*count, 12);
   // One-token samples are the default for non-sequence datasets.
-  const DataBatch one_token_samples{.data = *storage, .batch_size = 3};
+  const DataBatch one_token_samples{
+      .inputs = *storage, .targets = *storage, .batch_size = 3};
   ASSERT_TRUE(one_token_samples.token_count().ok());
   EXPECT_EQ(*one_token_samples.token_count(), 3);
 
@@ -318,11 +344,14 @@ TEST_F(DataSetTest, DataBatchChecksDimensionsBeforeMultiplyingThem) {
         std::pair{std::numeric_limits<int>::max(), 2},
         std::pair{2, std::numeric_limits<int>::max()}}) {
     SCOPED_TRACE(testing::Message() << samples << " x " << length);
-    const DataBatch invalid{
-        .data = *storage, .batch_size = samples, .sequence_length = length};
+    const DataBatch invalid{.inputs = *storage,
+                            .targets = *storage,
+                            .batch_size = samples,
+                            .sequence_length = length};
     EXPECT_FALSE(invalid.token_count().ok());
   }
-  const DataBatch largest{.data = *storage,
+  const DataBatch largest{.inputs = *storage,
+                          .targets = *storage,
                           .batch_size = std::numeric_limits<int>::max(),
                           .sequence_length = 1};
   ASSERT_TRUE(largest.token_count().ok());

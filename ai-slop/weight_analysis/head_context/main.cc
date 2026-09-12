@@ -387,7 +387,7 @@ absl::Status Run(const std::vector<std::string>& argv) {
 
   ASSIGN_OR_RETURN(auto clean_fwd,
                    model->fwd(*executor, absl::MakeConstSpan(&input, 1)));
-  auto clean = std::move(clean_fwd.output);
+  auto clean = std::move(clean_fwd.outputs[0]);
 
   ASSIGN_OR_RETURN(auto probe, Probe::Create(*executor, *model, input,
                                              clean_fwd.state, clean, block));
@@ -473,7 +473,7 @@ absl::Status Run(const std::vector<std::string>& argv) {
 
   ASSIGN_OR_RETURN(auto after_fwd,
                    model->fwd(*executor, absl::MakeConstSpan(&input, 1)));
-  auto after = std::move(after_fwd.output);
+  auto after = std::move(after_fwd.outputs[0]);
 
   ASSIGN_OR_RETURN(auto after_values, Download<float>(*executor, after));
   if (after_values.size_bytes() != clean_values.size_bytes() ||

@@ -409,7 +409,7 @@ absl::StatusOr<FwdResult> EmbeddingLookupLayer::fwd_impl(
       cuda::CudaStatus(cudaGetLastError(), "EmbeddingForwardKernel launch"));
   state.intermediates = {inputs[0]};
   state.children.clear();
-  return FwdResult{std::move(output), std::move(state)};
+  return FwdResult{{std::move(output)}, std::move(state)};
 }
 
 absl::StatusOr<BufferVec> EmbeddingLookupLayer::bwd_impl(
@@ -517,7 +517,7 @@ absl::StatusOr<FwdResult> LanguageModelingHeadLayer::fwd_impl(
                                    "language-modeling-head forward launch"));
   state.intermediates = {inputs[0]};
   state.children.clear();
-  return FwdResult{std::move(output), std::move(state)};
+  return FwdResult{{std::move(output)}, std::move(state)};
 }
 
 absl::StatusOr<BufferVec> LanguageModelingHeadLayer::bwd_impl(
@@ -662,7 +662,7 @@ absl::StatusOr<FwdResult> PositionEmbeddingLayer::fwd_impl(
                                    "PositionEmbeddingForwardKernel launch"));
   state.intermediates.clear();
   state.children.clear();
-  return FwdResult{std::move(output), std::move(state)};
+  return FwdResult{{std::move(output)}, std::move(state)};
 }
 
 absl::StatusOr<BufferVec> PositionEmbeddingLayer::bwd_impl(

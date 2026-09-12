@@ -261,13 +261,14 @@ absl::Status Run() {
       ASSIGN_OR_RETURN(
           auto logits_fwd,
           models[side]->fwd(*executor, absl::MakeConstSpan(&input, 1)));
-      auto logits = std::move(logits_fwd.output);
-      states[side] = std::move(logits_fwd.state);
-      native_logits.push_back(std::move(logits));
-      RETURN_IF_ERROR(ValidateGpt2State(states[side]));
-      // ValidateGpt2State guards this exact production path: final LayerNorm
-      // saves its input, i.e. the post-block-7 residual before final readout.
-      residuals.push_back(states[side].children[10].intermediates[0]);
+          auto logits = std::move(logits_fwd.outputs[0]);
+          states[side] = std::move(logits_fwd.state);
+          native_logits.push_back(std::move(logits));
+          RETURN_IF_ERROR(ValidateGpt2State(states[side]));
+          // ValidateGpt2State guards this exact production path: final
+          // LayerNorm saves its input, i.e. the post-block-7 residual before
+          // final readout.
+          residuals.push_back(states[side].children[10].intermediates[0]);
     }
     std::vector<int32_t> rows, targets;
     const auto batch_targets = batch.targets(first, count);

@@ -38,7 +38,8 @@ struct SparseAutoEncoderZStatistics {
 // x and x1 are row-major [rows, input_dim] activation matrices. W_enc is
 // [feature_dim, input_dim], b_enc is [feature_dim], D is
 // [input_dim, feature_dim], and b_dec is [input_dim]. Parameters and parameter
-// gradients use FP32; x, z, and x1 use output_type().
+// gradients use FP32; x, z, and x1 use output_type(). fwd() returns
+// {x1, z, D}; z shares its saved-state allocation and D shares the parameter.
 class SparseAutoEncoderLayer final : public Layer {
  public:
   enum class Mode { kDefault, kCollectStatistics };
@@ -60,10 +61,6 @@ class SparseAutoEncoderLayer final : public Layer {
   int input_dim() const { return input_dim_; }
   int feature_dim() const { return feature_dim_; }
   const Buffer& decoder() const { return weights_[2]; }
-
-  // Returns the z produced by fwd(). The returned Buffer shares its allocation
-  // with the state, so it remains valid independently of this handle.
-  absl::StatusOr<Buffer> latent_activations(const BackwardState& state) const;
 
   // In kCollectStatistics mode fwd() additionally reduces each row of Z on
   // the GPU and saves its summary in the state. It does not synchronize or
@@ -115,20 +112,20 @@ class SparseAutoEncoderLayer final : public Layer {
   BufferVec gradients_;
 };
 
-// Terminal sparse-autoencoder objective. fwd() expects {x, x1, z, D} and
-// returns one FP32 scalar equal to
+// Terminal sparse-autoencoder loss. fwd() expects {x1, z, D, target_x} and
+// returns one FP32 loss per row, each equal to
 //
-//   sum_rows (||x - x1||^2 +
-//             sparsity_penalty * sum_i z_i ||D[:, i]||_2).
+//   ||target_x - x1||^2 + sparsity_penalty * sum_i z_i ||D[:, i]||_2.
 //
 // The decoder norm is not squared: rescaling a latent by c > 0 and its
 // decoder column by 1/c must leave both reconstruction and penalty unchanged.
 // At an exactly zero decoder column, bwd() chooses the zero subgradient of
 // the L2 norm. No epsilon is added to the norm, preserving scale invariance.
 //
-// bwd() accepts no upstream gradient and returns {dL/dx, dL/dx1, dL/dz,
-// dL/dD}. The last three buffers can be passed to SparseAutoEncoderLayer::bwd;
-// dL/dx is useful when x itself came from an earlier trainable layer.
+// bwd() differentiates the sum of row losses and returns {dL/dx1, dL/dz,
+// dL/dD, dL/dtarget_x}. It accepts no upstream gradient. The first three
+// buffers can be passed directly to SparseAutoEncoderLayer::bwd; the trailing
+// target derivative remains available for callers that need it.
 class SparseAutoEncoderLossLayer final : public Layer {
  public:
   static absl::StatusOr<std::unique_ptr<SparseAutoEncoderLossLayer>> Create(
@@ -180,8 +177,6 @@ class SparseAutoEncoderLayerReference final : public LayerReference {
   int input_dim() const { return input_dim_; }
   int feature_dim() const { return feature_dim_; }
   const HostBuffer& decoder() const { return weights_[2]; }
-  absl::StatusOr<HostBuffer> latent_activations(
-      const ReferenceBackwardState& state) const;
 
  private:
   absl::StatusOr<ReferenceFwdResult> fwd_impl(

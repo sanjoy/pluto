@@ -239,12 +239,13 @@ TEST_F(MlpAutomatonModelTest, NativeReadoutMatchesIndependentCpuFormula) {
 
   ASSERT_TRUE(actual.ok()) << actual.status();
   ASSERT_TRUE(expected.ok()) << expected.status();
-  ASSERT_EQ(actual->output.size_bytes(), tokens.size() * kPaddedVocabulary * 4);
+  ASSERT_EQ(actual->outputs[0].size_bytes(),
+            tokens.size() * kPaddedVocabulary * 4);
   // Scalar reference reductions and native MMA can cross different BF16
   // rounding boundaries. Compare the complete logits, not merely top-1 IDs.
-  EXPECT_TRUE(
-      FloatBuffersNear(actual->output, expected->output, 0.02f, 0.008f));
-  auto logits = ReadDeviceFloats(*executor_, actual->output);
+  EXPECT_TRUE(FloatBuffersNear(actual->outputs[0], expected->outputs[0], 0.02f,
+                               0.008f));
+  auto logits = ReadDeviceFloats(*executor_, actual->outputs[0]);
   ASSERT_TRUE(logits.ok()) << logits.status();
   for (size_t row = 0; row < tokens.size(); ++row) {
     for (int token = 0; token < kPaddedVocabulary; ++token) {
@@ -350,7 +351,7 @@ TEST_F(MlpAutomatonModelTest, ScanCoversEveryTokenAndFinalPartialBatch) {
   auto output = model_->fwd(*executor_, {input->device});
 
   ASSERT_TRUE(output.ok()) << output.status();
-  auto logits = ReadDeviceFloats(*executor_, output->output);
+  auto logits = ReadDeviceFloats(*executor_, output->outputs[0]);
   ASSERT_TRUE(logits.ok()) << logits.status();
   for (int source = 0; source < kDimensions.vocab_size; ++source) {
     const float* row = logits->data() + source * kPaddedVocabulary;
