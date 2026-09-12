@@ -1,5 +1,3 @@
-#include "src/llm/recipes/mlp_automaton/softmax.h"
-
 #include <cuda_runtime.h>
 #include <math_constants.h>
 
@@ -8,6 +6,7 @@
 #include <utility>
 
 #include "absl/status/status.h"
+#include "experiments/mlp_automaton/top_transitions.h"
 
 namespace pluto::llm::mlp_automaton {
 namespace {

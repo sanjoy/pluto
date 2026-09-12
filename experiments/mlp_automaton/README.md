@@ -22,9 +22,9 @@ specify this readout.
 From the repository root, with the project's CUDA/cuTile toolchain available:
 
 ```sh
-bazel build -c opt //src/llm/recipes/mlp_automaton
+bazel build -c opt //experiments/mlp_automaton
 
-bazel-bin/src/llm/recipes/mlp_automaton/mlp_automaton \
+bazel-bin/experiments/mlp_automaton/mlp_automaton \
   --checkpoint=/home/ubuntu/checkpoints/shakespeare/step_13030 \
   --tokenizer=/home/ubuntu/datasets/tokenizer/gpt2 \
   --output_dir=/tmp/b0-automaton \
@@ -114,16 +114,16 @@ comparisons. Generated graph files are not checked into the source tree.
 ## Tests
 
 ```sh
-bazel test -c opt //src/llm/recipes/mlp_automaton/... \
+bazel test -c opt //experiments/mlp_automaton/... \
   --local_test_jobs=1 --test_output=errors
 ```
 
 CPU graph tests cover strict thresholds, invalid graphs, all traversal endings,
 seeded sampling, arbitrary-byte JSON, isolated nodes and I/O failures. GPU
-softmax tests compare against a stable CPU reference across full vocabulary,
+top-transition tests compare against a stable CPU reference across full vocabulary,
 padding, ties, extreme finite logits, nonfinite rows and invalid inputs. Model
 tests compare the composed readout to independently assembled scalar reference
 layers, check sparse checkpoint loading and atomic validation failures, and
 verify complete vocabulary coverage, tail batches and batch-size invariance.
 These tests use synthetic small weights and do not require external checkpoint
-or tokenizer files. Model and softmax tests require a GPU.
+or tokenizer files. Model and top-transition tests require a GPU.

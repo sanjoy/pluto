@@ -1,4 +1,4 @@
-#include "src/llm/recipes/mlp_automaton/graph.h"
+#include "experiments/mlp_automaton/graph.h"
 
 #include <algorithm>
 #include <cmath>

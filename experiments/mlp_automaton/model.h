@@ -6,11 +6,11 @@
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "experiments/mlp_automaton/top_transitions.h"
 #include "src/cuda/executor.h"
 #include "src/cuda/page_locked_host_array.h"
 #include "src/llm/layer.h"
 #include "src/llm/recipes/gpt2.h"
-#include "src/llm/recipes/mlp_automaton/softmax.h"
 
 namespace pluto::llm::mlp_automaton {
 

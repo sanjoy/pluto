@@ -314,7 +314,10 @@ cc_library(
 cc_library(
     name = "layer_reference_test_util",
     testonly = True,
-    visibility = ["//src/llm:__subpackages__"],
+    visibility = [
+        "//experiments/mlp_automaton:__pkg__",
+        "//src/llm:__subpackages__",
+    ],
     hdrs = ["layers/reference_test_util.h"],
     deps = [
         ":layer",

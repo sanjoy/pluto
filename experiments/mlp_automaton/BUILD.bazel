@@ -17,9 +17,9 @@ cc_library(
 )
 
 cuda_library(
-    name = "softmax",
-    srcs = ["softmax.cc"],
-    hdrs = ["softmax.h"],
+    name = "top_transitions",
+    srcs = ["top_transitions.cc"],
+    hdrs = ["top_transitions.h"],
     copts = ["-std=c++20"],
     host_copts = ["-std=c++20"],
     deps = [
@@ -36,7 +36,7 @@ cc_library(
     srcs = ["model.cc"],
     hdrs = ["model.h"],
     deps = [
-        ":softmax",
+        ":top_transitions",
         "//src/cuda:buffer",
         "//src/cuda:executor",
         "//src/cuda:page_locked_host_array",
@@ -84,12 +84,12 @@ cc_test(
 )
 
 cc_test(
-    name = "softmax_test",
+    name = "top_transitions_test",
     size = "small",
-    srcs = ["softmax_test.cc"],
+    srcs = ["top_transitions_test.cc"],
     tags = ["requires-gpu"],
     deps = [
-        ":softmax",
+        ":top_transitions",
         "//src/cuda:buffer",
         "//src/cuda:executor",
         "//src/cuda:page_locked_host_array",
@@ -106,7 +106,7 @@ cc_test(
     tags = ["requires-gpu"],
     deps = [
         ":model",
-        ":softmax",
+        ":top_transitions",
         "//src/cuda:buffer",
         "//src/cuda:executor",
         "//src/cuda:page_locked_host_array",
