@@ -401,6 +401,111 @@ TEST_F(LayersTest, LookupBackwardIsBitwiseRepeatableInOriginalRowOrder) {
   }
 }
 
+TEST_F(LayersTest, LanguageModelingHeadIsBitwiseRepeatableWithRetainedStates) {
+  for (DataType type : {DataType::FP16, DataType::BF16}) {
+    for (const auto& [vocab, width, rows] :
+         {std::tuple{17, 16, 16}, std::tuple{65, 48, 48},
+          std::tuple{257, 80, 80}, std::tuple{50257, 16, 16}}) {
+      SCOPED_TRACE(testing::Message()
+                   << "type=" << static_cast<int>(type) << " vocab=" << vocab
+                   << " width=" << width << " rows=" << rows);
+      auto embedding =
+          EmbeddingLookupLayer::Create(*executor_, vocab, width, type);
+      ASSERT_TRUE(embedding.ok()) << embedding.status();
+      auto head = LanguageModelingHeadLayer::Create(embedding->get());
+      ASSERT_TRUE(head.ok()) << head.status();
+      const int padded = (*embedding)->padded_vocab_size();
+      std::vector<float> table(static_cast<size_t>(padded) * width);
+      for (size_t index = 0; index < table.size(); ++index)
+        table[index] = 0.12f * std::sin(static_cast<float>(index) * 0.091f);
+      ASSERT_TRUE(
+          WriteTestBuffer(*executor_, (*embedding)->weight(), table).ok());
+
+      std::array<BufferVec, 2> inputs;
+      std::array<BufferVec, 2> gradients;
+      std::array<FwdResult, 2> retained;
+      std::array<std::vector<uint32_t>, 2> logits_bits;
+      for (int pass = 0; pass < 2; ++pass) {
+        std::vector<int> tokens(rows);
+        for (int row = 0; row < rows; ++row)
+          tokens[row] = (row * 5 + row / 3 + pass * 7) % vocab;
+        auto token_buffer = MakeTestBuffer(*executor_, tokens);
+        ASSERT_TRUE(token_buffer.ok()) << token_buffer.status();
+        BufferVec token_inputs = {*token_buffer};
+        auto hidden = (*embedding)->fwd(*executor_, token_inputs);
+        ASSERT_TRUE(hidden.ok()) << hidden.status();
+        inputs[pass] = std::move(hidden->outputs);
+        std::vector<float> output_gradient(static_cast<size_t>(rows) * padded);
+        for (size_t index = 0; index < output_gradient.size(); ++index)
+          output_gradient[index] =
+              0.08f * std::cos(static_cast<float>(index) * 0.07f + pass);
+        auto gradient_buffer = MakeTestBuffer(*executor_, output_gradient);
+        ASSERT_TRUE(gradient_buffer.ok()) << gradient_buffer.status();
+        gradients[pass] = {*gradient_buffer};
+        auto logits = (*head)->fwd(*executor_, inputs[pass]);
+        ASSERT_TRUE(logits.ok()) << logits.status();
+        auto bits = ReadTestFloatBits(*executor_, logits->outputs[0]);
+        ASSERT_TRUE(bits.ok()) << bits.status();
+        logits_bits[pass] = std::move(*bits);
+        retained[pass] = std::move(*logits);
+      }
+
+      for (bool nonzero_initial : {false, true}) {
+        SCOPED_TRACE(testing::Message()
+                     << "nonzero initial=" << nonzero_initial);
+        const auto initial = nonzero_initial
+                                 ? InitialTestGradient(table.size())
+                                 : std::vector<float>(table.size(), 0.0f);
+        std::array<std::vector<uint32_t>, 2> first_input_gradients;
+        std::array<std::vector<uint32_t>, 2> first_table_gradients;
+        for (int repeat = 0; repeat < 4; ++repeat) {
+          SCOPED_TRACE(testing::Message() << "repeat=" << repeat);
+          ASSERT_TRUE(
+              WriteTestBuffer(*executor_, (*embedding)->gradients()[0], initial)
+                  .ok());
+          for (int pass = 0; pass < 2; ++pass) {
+            SCOPED_TRACE(testing::Message() << "pass=" << pass);
+            // After the baseline run, make a different input the most recent
+            // forward. Backward must still use its original retained input.
+            const int forward_pass = repeat == 0 ? pass : 1 - pass;
+            auto logits = (*head)->fwd(*executor_, inputs[forward_pass]);
+            ASSERT_TRUE(logits.ok()) << logits.status();
+            auto actual_logits =
+                ReadTestFloatBits(*executor_, logits->outputs[0]);
+            ASSERT_TRUE(actual_logits.ok()) << actual_logits.status();
+            EXPECT_EQ(*actual_logits, logits_bits[forward_pass]);
+            auto input_gradient =
+                (*head)->bwd(*executor_, gradients[pass], retained[pass].state);
+            ASSERT_TRUE(input_gradient.ok()) << input_gradient.status();
+            ASSERT_EQ(input_gradient->size(), 1u);
+            auto input_bits =
+                ReadTestFloatBits(*executor_, input_gradient->front());
+            auto table_bits =
+                ReadTestFloatBits(*executor_, (*embedding)->gradients()[0]);
+            ASSERT_TRUE(input_bits.ok()) << input_bits.status();
+            ASSERT_TRUE(table_bits.ok()) << table_bits.status();
+            if (repeat == 0) {
+              first_input_gradients[pass] = *input_bits;
+              first_table_gradients[pass] = *table_bits;
+            }
+            EXPECT_EQ(*input_bits, first_input_gradients[pass]);
+            EXPECT_EQ(*table_bits, first_table_gradients[pass]);
+          }
+        }
+      }
+      for (int pass = 0; pass < 2; ++pass) {
+        auto actual = ReadTestFloatBits(*executor_, retained[pass].outputs[0]);
+        ASSERT_TRUE(actual.ok()) << actual.status();
+        EXPECT_EQ(*actual, logits_bits[pass]);
+      }
+      auto unchanged_table =
+          ReadTestFloatBits(*executor_, (*embedding)->weight());
+      ASSERT_TRUE(unchanged_table.ok()) << unchanged_table.status();
+      EXPECT_EQ(*unchanged_table, TestFloatBits(table));
+    }
+  }
+}
+
 TEST_F(LayersTest, PositionBackwardIsBitwiseRepeatableWithPartialContexts) {
   for (DataType type : {DataType::FP16, DataType::BF16}) {
     for (const auto& [context, width, rows] :

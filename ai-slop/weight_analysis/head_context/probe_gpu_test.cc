@@ -77,8 +77,7 @@ class HeadContextGpuTest : public ::testing::Test {
         cuda::PageLockedHostArray<int32_t>::Allocate(*executor_, rows_);
     ASSERT_TRUE(tokens.ok()) << tokens.status();
     tokens_ = std::move(*tokens);
-    for (int i = 0; i < rows_; ++i)
-      tokens_[i] = (17 * i + 3) % 1000;
+    for (int i = 0; i < rows_; ++i) tokens_[i] = (17 * i + 3) % 1000;
     auto input = cuda::Buffer::Allocate(*executor_, tokens_.size_bytes());
     ASSERT_TRUE(input.ok()) << input.status();
     input_ = std::move(*input);
@@ -275,8 +274,8 @@ TEST_F(HeadContextGpuTest,
   // statistics in every attention block, even outside the selected block.
   for (int block = 0; block < 8; ++block) {
     for (int saved_buffers : {0, 1, 2, 3, 5}) {
-      SCOPED_TRACE(testing::Message() << "block=" << block
-                                      << " saved_buffers=" << saved_buffers);
+      SCOPED_TRACE(testing::Message()
+                   << "block=" << block << " saved_buffers=" << saved_buffers);
       auto malformed = state_;
       auto& saved = malformed.children[block + 2]
                         .children[0]
@@ -289,6 +288,29 @@ TEST_F(HeadContextGpuTest,
       auto rejected =
           Probe::Create(*executor_, *model_, *input_, malformed, *clean_, 3);
       EXPECT_EQ(rejected.status().code(), absl::StatusCode::kInvalidArgument);
+    }
+  }
+  // Saved LayerNorm statistics are likewise required at every pre-norm and
+  // at the final norm, including blocks outside the selected intervention.
+  for (int saved_buffers : {0, 1, 2, 4}) {
+    auto malformed = state_;
+    const auto buffer = malformed.children[10].intermediates[0];
+    malformed.children[10].intermediates.assign(saved_buffers, buffer);
+    EXPECT_FALSE(
+        Probe::Create(*executor_, *model_, *input_, malformed, *clean_, 3)
+            .ok());
+    for (int block = 0; block < 8; ++block) {
+      for (int branch = 0; branch < 2; ++branch) {
+        malformed = state_;
+        malformed.children[block + 2]
+            .children[branch]
+            .children[0]
+            .children[0]
+            .intermediates.assign(saved_buffers, buffer);
+        EXPECT_FALSE(
+            Probe::Create(*executor_, *model_, *input_, malformed, *clean_, 3)
+                .ok());
+      }
     }
   }
   auto wrong_shape = cuda::Buffer::Allocate(*executor_, sizeof(int32_t));

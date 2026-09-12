@@ -103,7 +103,7 @@ absl::Status ValidateState(const llm::BackwardState& state) {
       !state.children[0].children.empty() ||
       !state.children[1].intermediates.empty() ||
       !state.children[1].children.empty() ||
-      state.children[10].intermediates.size() != 1 ||
+      state.children[10].intermediates.size() != 3 ||
       !state.children[10].children.empty() ||
       state.children[11].intermediates.size() != 1 ||
       !state.children[11].children.empty())
@@ -122,9 +122,11 @@ absl::Status ValidateState(const llm::BackwardState& state) {
       for (int leaf = 0; leaf < 4; ++leaf) {
         const auto& saved = composed.children[leaf];
         // Attention saves Q/K/V and context followed by two FP32 softmax
-        // statistics; replay still reads the first two buffers.
-        if (!saved.children.empty() ||
-            saved.intermediates.size() != (branch == 0 && leaf == 2 ? 4 : 1))
+        // statistics; replay still reads the first two buffers. LayerNorm
+        // also retains its mean and inverse standard deviation.
+        const size_t expected =
+            leaf == 0 ? 3 : (branch == 0 && leaf == 2 ? 4 : 1);
+        if (!saved.children.empty() || saved.intermediates.size() != expected)
           return bad();
       }
     }

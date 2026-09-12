@@ -62,8 +62,7 @@ class PhraseProbeGpuTest : public testing::Test {
     executor_ = std::move(*executor);
   }
   void TearDown() override {
-    if (executor_)
-      EXPECT_TRUE(executor_->Synchronize().ok());
+    if (executor_) EXPECT_TRUE(executor_->Synchronize().ok());
   }
   std::unique_ptr<cuda::Executor> executor_;
 };
@@ -213,14 +212,14 @@ TEST_F(PhraseProbeGpuTest,
                           [](uint8_t x) { return x == 0x5a; }));
 }
 
-TEST_F(PhraseProbeGpuTest,
-       StateTopologyChecksAllBranchesAndAttentionSavedBuffers) {
+TEST_F(PhraseProbeGpuTest, StateTopologyChecksAllBranchesAndSavedStatistics) {
   auto buffer = cuda::Buffer::Allocate(*executor_, 16);
   ASSERT_TRUE(buffer.ok());
   llm::BackwardState state;
   state.children.resize(12);
-  for (int index : {0, 10, 11})
+  for (int index : {0, 11})
     state.children[index].intermediates.push_back(*buffer);
+  state.children[10].intermediates.assign(3, *buffer);
   for (int block = 0; block < 8; ++block) {
     auto& body = state.children[block + 2];
     body.children.resize(2);
@@ -230,17 +229,16 @@ TEST_F(PhraseProbeGpuTest,
       residual.children.resize(1);
       auto& leaves = residual.children[0].children;
       leaves.resize(4);
-      for (auto& leaf : leaves)
-        leaf.intermediates.push_back(*buffer);
-      if (branch == 0)
-        leaves[2].intermediates.assign(4, *buffer);
+      for (auto& leaf : leaves) leaf.intermediates.push_back(*buffer);
+      leaves[0].intermediates.assign(3, *buffer);
+      if (branch == 0) leaves[2].intermediates.assign(4, *buffer);
     }
   }
   EXPECT_TRUE(ValidateGpt2State(state).ok());
   for (int block = 0; block < 8; ++block) {
     for (int saved_buffers : {0, 1, 2, 3, 5}) {
-      SCOPED_TRACE(testing::Message() << "block=" << block
-                                      << " saved_buffers=" << saved_buffers);
+      SCOPED_TRACE(testing::Message()
+                   << "block=" << block << " saved_buffers=" << saved_buffers);
       auto changed = state;
       changed.children[block + 2]
           .children[0]
@@ -249,6 +247,25 @@ TEST_F(PhraseProbeGpuTest,
           .intermediates.assign(saved_buffers, *buffer);
       EXPECT_EQ(ValidateGpt2State(changed).code(),
                 absl::StatusCode::kFailedPrecondition);
+    }
+  }
+  // Every pre-norm and the final norm must retain both row statistics.
+  for (int saved_buffers : {0, 1, 2, 4}) {
+    auto changed = state;
+    changed.children[10].intermediates.assign(saved_buffers, *buffer);
+    EXPECT_EQ(ValidateGpt2State(changed).code(),
+              absl::StatusCode::kFailedPrecondition);
+    for (int block = 0; block < 8; ++block) {
+      for (int branch = 0; branch < 2; ++branch) {
+        changed = state;
+        changed.children[block + 2]
+            .children[branch]
+            .children[0]
+            .children[0]
+            .intermediates.assign(saved_buffers, *buffer);
+        EXPECT_EQ(ValidateGpt2State(changed).code(),
+                  absl::StatusCode::kFailedPrecondition);
+      }
     }
   }
   auto changed = state;

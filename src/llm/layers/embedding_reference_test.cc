@@ -15,7 +15,10 @@ namespace {
 TEST_F(LayerReferenceTest, LookupAndTiedHeadMatchAcrossShapesAndTypes) {
   for (DataType type : {DataType::FP16, DataType::BF16}) {
     for (const auto [vocab, width, rows] :
-         {std::tuple{17, 16, 16}, std::tuple{32, 32, 32}}) {
+         {std::tuple{17, 16, 16}, std::tuple{32, 32, 32},
+          std::tuple{17, 48, 48}, std::tuple{65, 80, 80},
+          std::tuple{257, 48, 16}, std::tuple{257, 80, 48},
+          std::tuple{50257, 16, 16}}) {
       SCOPED_TRACE(testing::Message()
                    << "type=" << static_cast<int>(type) << " vocab=" << vocab
                    << " width=" << width << " rows=" << rows);
@@ -26,6 +29,8 @@ TEST_F(LayerReferenceTest, LookupAndTiedHeadMatchAcrossShapesAndTypes) {
       ASSERT_TRUE(device_embedding.ok()) << device_embedding.status();
       ASSERT_TRUE(reference_embedding.ok()) << reference_embedding.status();
       const int padded = (*device_embedding)->padded_vocab_size();
+      EXPECT_EQ(padded, ((vocab + 15) / 16) * 16);
+      EXPECT_EQ((*reference_embedding)->padded_vocab_size(), padded);
       std::vector<float> table(static_cast<size_t>(padded) * width);
       for (size_t index = 0; index < table.size(); ++index)
         table[index] = 0.12f * std::sin(static_cast<float>(index) * 0.091f);
@@ -33,6 +38,17 @@ TEST_F(LayerReferenceTest, LookupAndTiedHeadMatchAcrossShapesAndTypes) {
       auto reference_weights = (*reference_embedding)->weights();
       ASSERT_TRUE(SetFloatBufferPair(*executor_, device_weights[0],
                                      &reference_weights[0], table)
+                      .ok());
+
+      auto device_table_gradients = (*device_embedding)->gradients();
+      auto reference_table_gradients = (*reference_embedding)->gradients();
+      std::vector<float> initial_gradient(table.size());
+      for (size_t index = 0; index < initial_gradient.size(); ++index)
+        initial_gradient[index] =
+            0.25f + 0.03f * std::sin(static_cast<float>(index) * 0.11f);
+      ASSERT_TRUE(SetFloatBufferPair(*executor_, device_table_gradients[0],
+                                     &reference_table_gradients[0],
+                                     initial_gradient)
                       .ok());
 
       std::vector<int> tokens(rows);
@@ -73,16 +89,11 @@ TEST_F(LayerReferenceTest, LookupAndTiedHeadMatchAcrossShapesAndTypes) {
           << reference_lookup_input.status();
       EXPECT_TRUE(device_lookup_input->empty());
       EXPECT_TRUE(reference_lookup_input->empty());
-      auto device_table_gradients = (*device_embedding)->gradients();
-      auto reference_table_gradients = (*reference_embedding)->gradients();
       EXPECT_TRUE(FloatBuffersNear(device_table_gradients[0],
                                    reference_table_gradients[0], 2e-6f, 2e-5f));
 
-      // Test the tied output projection independently, including its additive
-      // contribution to the same embedding-table gradient.
-      ASSERT_TRUE(ZeroBufferPair(*executor_, device_table_gradients[0],
-                                 &reference_table_gradients[0])
-                      .ok());
+      // The head must add to both the initial accumulator and the lookup's
+      // contribution, including physical vocabulary lanes beyond vocab.
       auto device_head =
           LanguageModelingHeadLayer::Create(device_embedding->get());
       auto reference_head = LanguageModelingHeadLayerReference::Create(
@@ -115,23 +126,30 @@ TEST_F(LayerReferenceTest, LookupAndTiedHeadMatchAcrossShapesAndTypes) {
                                    reference_logits->outputs[0], 4e-3f, 3e-3f));
       BufferVec device_logits_gradients = {logits_gradient_pair->device};
       HostBufferVec reference_logits_gradients = {logits_gradient_pair->host};
-      auto device_hidden_gradient =
-          (*device_head)
-              ->bwd(*executor_, device_logits_gradients,
-                    std::move(device_logits->state));
-      auto reference_hidden_gradient =
-          (*reference_head)
-              ->bwd(reference_logits_gradients,
-                    std::move(reference_logits->state));
-      ASSERT_TRUE(device_hidden_gradient.ok())
-          << device_hidden_gradient.status();
-      ASSERT_TRUE(reference_hidden_gradient.ok())
-          << reference_hidden_gradient.status();
-      EXPECT_TRUE(FloatBuffersNear(device_hidden_gradient->front(),
-                                   reference_hidden_gradient->front(), 4e-3f,
-                                   3e-3f));
-      EXPECT_TRUE(FloatBuffersNear(device_table_gradients[0],
-                                   reference_table_gradients[0], 5e-3f, 3e-3f));
+      for (int pass = 0; pass < 2; ++pass) {
+        SCOPED_TRACE(testing::Message() << "backward pass=" << pass);
+        // Copy the retained state so a second backward pass has the same input
+        // while its table gradient accumulates on top of the first pass.
+        auto device_hidden_gradient =
+            (*device_head)
+                ->bwd(*executor_, device_logits_gradients,
+                      device_logits->state);
+        auto reference_hidden_gradient =
+            (*reference_head)
+                ->bwd(reference_logits_gradients, reference_logits->state);
+        ASSERT_TRUE(device_hidden_gradient.ok())
+            << device_hidden_gradient.status();
+        ASSERT_TRUE(reference_hidden_gradient.ok())
+            << reference_hidden_gradient.status();
+        ASSERT_EQ(device_hidden_gradient->size(), 1u);
+        ASSERT_EQ(reference_hidden_gradient->size(), 1u);
+        EXPECT_TRUE(FloatBuffersNear(device_hidden_gradient->front(),
+                                     reference_hidden_gradient->front(), 4e-3f,
+                                     3e-3f));
+        EXPECT_TRUE(FloatBuffersNear(device_table_gradients[0],
+                                     reference_table_gradients[0], 5e-3f,
+                                     3e-3f));
+      }
     }
   }
 }

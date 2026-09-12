@@ -35,7 +35,7 @@ absl::Status ValidateGpt2State(const llm::BackwardState& state) {
   if (!state.intermediates.empty() || state.children.size() != 12 ||
       state.children[0].intermediates.size() != 1 ||
       !state.children[1].intermediates.empty() ||
-      state.children[10].intermediates.size() != 1 ||
+      state.children[10].intermediates.size() != 3 ||
       state.children[11].intermediates.size() != 1) {
     return BadState();
   }
@@ -53,8 +53,10 @@ absl::Status ValidateGpt2State(const llm::BackwardState& state) {
       for (int leaf = 0; leaf < 4; ++leaf) {
         const auto& saved = sequence.children[leaf];
         // Attention retains packed Q/K/V, output, maximum, and normalizer.
-        // The trace/replay inputs remain at indices zero and one.
-        const size_t expected = branch == 0 && leaf == 2 ? 4 : 1;
+        // LayerNorm also saves its mean and inverse standard deviation.
+        // Existing input/output indices remain unchanged for replay.
+        const size_t expected =
+            leaf == 0 ? 3 : (branch == 0 && leaf == 2 ? 4 : 1);
         if (!saved.children.empty() || saved.intermediates.size() != expected)
           return BadState();
       }

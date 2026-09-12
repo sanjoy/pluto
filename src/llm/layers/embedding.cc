@@ -121,6 +121,13 @@ __tile_global__ void EmbeddingBackwardKernel(
   table_view.store(accumulator, static_cast<int>(token), width_tile);
 }
 
+// These are compute tiles, not model dimensions. Reusing each operand across a
+// 64x64 output tile avoids the many repeated loads of the old 16x16 products.
+// K is traversed in a fixed order and each result tile has a single writer;
+// no atomics or scheduling-dependent split-K reduction are needed. All views
+// are masked because the public shape contract is still multiples of 16.
+constexpr int kLmHeadTile = 64;
+
 template <class Activation>
 __tile_global__ void LanguageModelingHeadForwardKernel(
     const Activation* __restrict__ input, const float* __restrict__ table,
@@ -130,28 +137,29 @@ __tile_global__ void LanguageModelingHeadForwardKernel(
   using namespace ct::literals;
   auto input_view = ct::partition_view{
       ct::tensor_span{input, ct::extents{rows, embedding_dim}},
-      ct::shape{16_ic, 16_ic}};
+      ct::shape{64_ic, 64_ic}};
   auto table_view = ct::partition_view{
       ct::tensor_span{table, ct::extents{padded_vocab_size, embedding_dim}},
-      ct::shape{16_ic, 16_ic}};
+      ct::shape{64_ic, 64_ic}};
   auto output_view = ct::partition_view{
       ct::tensor_span{output, ct::extents{rows, padded_vocab_size}},
-      ct::shape{16_ic, 16_ic}};
-  const int vocabulary_tiles = padded_vocab_size / internal::kDenseTile;
-  const int width_tiles = embedding_dim / internal::kDenseTile;
+      ct::shape{64_ic, 64_ic}};
+  const int vocabulary_tiles =
+      (padded_vocab_size + kLmHeadTile - 1) / kLmHeadTile;
+  const int width_tiles = (embedding_dim + kLmHeadTile - 1) / kLmHeadTile;
   const int block = ct::bid().x;
   const int row_tile = block / vocabulary_tiles;
   const int vocabulary_tile = block % vocabulary_tiles;
-  auto accumulator = ct::zeros<ct::tile<float, ct::shape<16, 16>>>();
+  auto accumulator = ct::zeros<ct::tile<float, ct::shape<64, 64>>>();
   for (int dimension_tile = 0; dimension_tile < width_tiles; ++dimension_tile) {
     auto hidden = ct::element_cast<MmaType<Activation>>(
-        input_view.load(row_tile, dimension_tile));
+        input_view.load_masked(row_tile, dimension_tile));
     auto embedding_transposed =
         ct::transpose(ct::element_cast<MmaType<Activation>>(
-            table_view.load(vocabulary_tile, dimension_tile)));
+            table_view.load_masked(vocabulary_tile, dimension_tile)));
     accumulator = ct::mma(hidden, embedding_transposed, accumulator);
   }
-  output_view.store(accumulator, row_tile, vocabulary_tile);
+  output_view.store_masked(accumulator, row_tile, vocabulary_tile);
 }
 
 __tile_global__ void MaskPaddedLogitsKernel(float* __restrict__ logits,
@@ -183,28 +191,29 @@ __tile_global__ void LanguageModelingHeadInputGradientKernel(
   using namespace ct::literals;
   auto gradient_view = ct::partition_view{
       ct::tensor_span{output_gradient, ct::extents{rows, padded_vocab_size}},
-      ct::shape{16_ic, 16_ic}};
+      ct::shape{64_ic, 64_ic}};
   auto table_view = ct::partition_view{
       ct::tensor_span{table, ct::extents{padded_vocab_size, embedding_dim}},
-      ct::shape{16_ic, 16_ic}};
+      ct::shape{64_ic, 64_ic}};
   auto input_gradient_view = ct::partition_view{
       ct::tensor_span{input_gradient, ct::extents{rows, embedding_dim}},
-      ct::shape{16_ic, 16_ic}};
-  const int width_tiles = embedding_dim / internal::kDenseTile;
-  const int vocabulary_tiles = padded_vocab_size / internal::kDenseTile;
+      ct::shape{64_ic, 64_ic}};
+  const int width_tiles = (embedding_dim + kLmHeadTile - 1) / kLmHeadTile;
+  const int vocabulary_tiles =
+      (padded_vocab_size + kLmHeadTile - 1) / kLmHeadTile;
   const int block = ct::bid().x;
   const int row_tile = block / width_tiles;
   const int dimension_tile = block % width_tiles;
-  auto accumulator = ct::zeros<ct::tile<float, ct::shape<16, 16>>>();
+  auto accumulator = ct::zeros<ct::tile<float, ct::shape<64, 64>>>();
   for (int vocabulary_tile = 0; vocabulary_tile < vocabulary_tiles;
        ++vocabulary_tile) {
     auto gradient = ct::element_cast<MmaType<Activation>>(
-        gradient_view.load(row_tile, vocabulary_tile));
+        gradient_view.load_masked(row_tile, vocabulary_tile));
     auto embeddings = ct::element_cast<MmaType<Activation>>(
-        table_view.load(vocabulary_tile, dimension_tile));
+        table_view.load_masked(vocabulary_tile, dimension_tile));
     accumulator = ct::mma(gradient, embeddings, accumulator);
   }
-  input_gradient_view.store(accumulator, row_tile, dimension_tile);
+  input_gradient_view.store_masked(accumulator, row_tile, dimension_tile);
 }
 
 template <class Activation>
@@ -216,30 +225,31 @@ __tile_global__ void LanguageModelingHeadWeightGradientKernel(
   using namespace ct::literals;
   auto input_view = ct::partition_view{
       ct::tensor_span{input, ct::extents{rows, embedding_dim}},
-      ct::shape{16_ic, 16_ic}};
+      ct::shape{64_ic, 64_ic}};
   auto output_gradient_view = ct::partition_view{
       ct::tensor_span{output_gradient, ct::extents{rows, padded_vocab_size}},
-      ct::shape{16_ic, 16_ic}};
+      ct::shape{64_ic, 64_ic}};
   auto table_gradient_view = ct::partition_view{
       ct::tensor_span{table_gradient,
                       ct::extents{padded_vocab_size, embedding_dim}},
-      ct::shape{16_ic, 16_ic}};
-  const int width_tiles = embedding_dim / internal::kDenseTile;
-  const int row_tiles = rows / internal::kDenseTile;
+      ct::shape{64_ic, 64_ic}};
+  const int width_tiles = (embedding_dim + kLmHeadTile - 1) / kLmHeadTile;
+  const int row_tiles = (rows + kLmHeadTile - 1) / kLmHeadTile;
   const int block = ct::bid().x;
   const int vocabulary_tile = block / width_tiles;
   const int dimension_tile = block % width_tiles;
-  auto accumulator = ct::zeros<ct::tile<float, ct::shape<16, 16>>>();
+  auto accumulator = ct::zeros<ct::tile<float, ct::shape<64, 64>>>();
   for (int row_tile = 0; row_tile < row_tiles; ++row_tile) {
     auto gradient_transposed =
         ct::transpose(ct::element_cast<MmaType<Activation>>(
-            output_gradient_view.load(row_tile, vocabulary_tile)));
+            output_gradient_view.load_masked(row_tile, vocabulary_tile)));
     auto hidden = ct::element_cast<MmaType<Activation>>(
-        input_view.load(row_tile, dimension_tile));
+        input_view.load_masked(row_tile, dimension_tile));
     accumulator = ct::mma(gradient_transposed, hidden, accumulator);
   }
-  table_gradient_view.store(
-      table_gradient_view.load(vocabulary_tile, dimension_tile) + accumulator,
+  table_gradient_view.store_masked(
+      table_gradient_view.load_masked(vocabulary_tile, dimension_tile) +
+          accumulator,
       vocabulary_tile, dimension_tile);
 }
 
@@ -421,9 +431,9 @@ absl::StatusOr<BufferVec> EmbeddingLookupLayer::bwd_impl(
     return absl::InvalidArgumentError(
         "EmbeddingLookupLayer bwd received an incompatible gradient or state");
   }
-  ASSIGN_OR_RETURN(
-      int rows, internal::ElementCount(executor, state.intermediates[0],
-                                       sizeof(int), "embedding token input"));
+  ASSIGN_OR_RETURN(int rows,
+                   internal::ElementCount(executor, state.intermediates[0],
+                                          sizeof(int), "embedding token input"));
   RETURN_IF_ERROR(internal::ValidateBuffer(
       executor, output_gradients[0],
       static_cast<size_t>(rows) * embedding_dim_ * sizeof(float),
@@ -493,8 +503,9 @@ absl::StatusOr<FwdResult> LanguageModelingHeadLayer::fwd_impl(
       Buffer::Allocate(executor, static_cast<size_t>(rows) *
                                      embedding_->padded_vocab_size_ *
                                      sizeof(float)));
-  const int blocks = internal::TileCount(rows) *
-                     internal::TileCount(embedding_->padded_vocab_size_);
+  const int blocks =
+      ((rows + kLmHeadTile - 1) / kLmHeadTile) *
+      ((embedding_->padded_vocab_size_ + kLmHeadTile - 1) / kLmHeadTile);
   if (embedding_->output_type_ == DataType::BF16) {
     LanguageModelingHeadForwardKernel<__nv_bfloat16>
         <<<blocks, 1, 0, executor.stream()>>>(
@@ -543,11 +554,13 @@ absl::StatusOr<BufferVec> LanguageModelingHeadLayer::bwd_impl(
                    Buffer::Allocate(executor, static_cast<size_t>(rows) *
                                                   embedding_->embedding_dim_ *
                                                   sizeof(float)));
-  const int input_blocks = internal::TileCount(rows) *
-                           internal::TileCount(embedding_->embedding_dim_);
+  const int width_tiles =
+      (embedding_->embedding_dim_ + kLmHeadTile - 1) / kLmHeadTile;
+  const int input_blocks =
+      ((rows + kLmHeadTile - 1) / kLmHeadTile) * width_tiles;
   const int weight_blocks =
-      internal::TileCount(embedding_->padded_vocab_size_) *
-      internal::TileCount(embedding_->embedding_dim_);
+      ((embedding_->padded_vocab_size_ + kLmHeadTile - 1) / kLmHeadTile) *
+      width_tiles;
   if (embedding_->output_type_ == DataType::BF16) {
     LanguageModelingHeadInputGradientKernel<__nv_bfloat16>
         <<<input_blocks, 1, 0, executor.stream()>>>(

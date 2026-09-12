@@ -11,6 +11,9 @@ namespace pluto::llm {
 
 // Learned affine LayerNorm. Mean/variance and backward reductions use FP32;
 // gamma/beta are FP32 master parameters and outputs use the activation dtype.
+// Each forward retains its input, FP32 row means, and FP32 inverse standard
+// deviations (in that order), so concurrent saved states never share scratch.
+// Parameter gradients are replaced per backward, with a fixed reduction order.
 class LayerNormLayer final : public Layer {
  public:
   static absl::StatusOr<std::unique_ptr<LayerNormLayer>> Create(
