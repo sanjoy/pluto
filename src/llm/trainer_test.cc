@@ -34,6 +34,7 @@
 namespace pluto::llm {
 namespace {
 
+static_assert(!std::is_default_constructible_v<EvaluationOptions>);
 static_assert(!std::is_default_constructible_v<TrainingOptions>);
 
 class FakeModel final : public Layer {
@@ -221,7 +222,9 @@ absl::StatusOr<Buffer> EvaluateBatch(cuda::Executor& executor,
                                      const Layer& model, const Layer& loss,
                                      const DataBatch& batch) {
   VaryingBatchDataSetIterator data({batch});
-  return Evaluate(executor, model, loss, data, EvaluationOptions{.batches = 1});
+  const EvaluationOptions options{
+      .loss_layer = loss, .eval_data = data, .batches = 1};
+  return Evaluate(executor, model, options);
 }
 
 absl::StatusOr<float> ReadEvaluationLoss(cuda::Executor& executor,
@@ -293,8 +296,10 @@ TEST_F(TrainerTest, EvaluateReturnsDeviceMeanAndResetsDataset) {
   ASSERT_TRUE(loss.ok()) << loss.status();
   ASSERT_TRUE(data.ok()) << data.status();
 
-  auto mean = Evaluate(*executor_, model, **loss, **data,
-                       EvaluationOptions{.batches = 2});
+  auto mean =
+      Evaluate(*executor_, model,
+               EvaluationOptions{
+                   .loss_layer = **loss, .eval_data = **data, .batches = 2});
   ASSERT_TRUE(mean.ok()) << mean.status();
   EXPECT_EQ(&mean->executor(), executor_.get());
   EXPECT_EQ(mean->size_bytes(), sizeof(float));
@@ -304,12 +309,47 @@ TEST_F(TrainerTest, EvaluateReturnsDeviceMeanAndResetsDataset) {
   EXPECT_EQ(model.forward_calls, 2);
   EXPECT_EQ((*loss)->forward_calls, 2);
 
-  auto repeated = Evaluate(*executor_, model, **loss, **data,
-                           EvaluationOptions{.batches = 2});
+  auto repeated =
+      Evaluate(*executor_, model,
+               EvaluationOptions{
+                   .loss_layer = **loss, .eval_data = **data, .batches = 2});
   ASSERT_TRUE(repeated.ok()) << repeated.status();
   auto repeated_host_mean = ReadEvaluationLoss(*executor_, *repeated);
   ASSERT_TRUE(repeated_host_mean.ok()) << repeated_host_mean.status();
   EXPECT_FLOAT_EQ(*repeated_host_mean, *host_mean);
+}
+
+TEST_F(TrainerTest,
+       EvaluateCopiedConstOptionsPreserveAndUseDependencyReferences) {
+  const FakeModel model;
+  auto loss = MakeLoss();
+  auto data = MakeData();
+  ASSERT_TRUE(loss.ok()) << loss.status();
+  ASSERT_TRUE(data.ok()) << data.status();
+  auto batch = (*data)->Next();
+  ASSERT_TRUE(batch.ok()) << batch.status();
+  FixedActivationDataSetIterator eval_data(batch->inputs, batch->batch_size,
+                                           batch->sequence_length);
+
+  const EvaluationOptions options{
+      .loss_layer = **loss, .eval_data = eval_data, .batches = 2};
+  const EvaluationOptions copied_options = options;
+  EXPECT_EQ(&copied_options.loss_layer, loss->get());
+  EXPECT_EQ(&copied_options.eval_data, &eval_data);
+
+  auto mean = Evaluate(*executor_, model, copied_options);
+  ASSERT_TRUE(mean.ok()) << mean.status();
+  EXPECT_EQ(&mean->executor(), executor_.get());
+  EXPECT_EQ(mean->size_bytes(), sizeof(float));
+  auto host_mean = ReadEvaluationLoss(*executor_, *mean);
+  ASSERT_TRUE(host_mean.ok()) << host_mean.status();
+  EXPECT_FLOAT_EQ(*host_mean, 2.5f);
+  EXPECT_EQ(model.forward_calls, 2);
+  EXPECT_EQ((*loss)->forward_calls, 2);
+  EXPECT_EQ(eval_data.reset_calls, 1);
+  EXPECT_EQ(eval_data.next_calls, 2);
+  EXPECT_EQ(model.backward_calls, 0);
+  EXPECT_EQ((*loss)->backward_calls, 0);
 }
 
 TEST_F(TrainerTest, LanguageModelingNormalizesByTokensNotSequences) {
@@ -433,8 +473,9 @@ TEST_F(TrainerTest, EvaluateWeightsUnequalBatchesByTheirTokenCounts) {
                                      .sequence_length = 3}});
   FakeModel model;
   FakeModel loss;
-  auto mean =
-      Evaluate(*executor_, model, loss, data, EvaluationOptions{.batches = 2});
+  auto mean = Evaluate(
+      *executor_, model,
+      EvaluationOptions{.loss_layer = loss, .eval_data = data, .batches = 2});
   ASSERT_TRUE(mean.ok()) << mean.status();
   auto host_mean = ReadEvaluationLoss(*executor_, *mean);
   ASSERT_TRUE(host_mean.ok()) << host_mean.status();
@@ -451,8 +492,10 @@ TEST_F(TrainerTest, EvaluateRejectsADatasetFromAnotherExecutor) {
   ASSERT_TRUE(data.ok()) << data.status();
   ASSERT_TRUE(other_executor.ok()) << other_executor.status();
 
-  const auto mean = Evaluate(**other_executor, model, **loss, **data,
-                             EvaluationOptions{.batches = 1});
+  const auto mean =
+      Evaluate(**other_executor, model,
+               EvaluationOptions{
+                   .loss_layer = **loss, .eval_data = **data, .batches = 1});
   EXPECT_FALSE(mean.ok());
   EXPECT_EQ(mean.status().code(), absl::StatusCode::kInvalidArgument);
 }
@@ -580,7 +623,8 @@ TEST_F(TrainerTest, RejectsMissingModelOutputsAndInvalidLossOutputs) {
   RoutingLayer no_outputs({}, {});
   RoutingLayer loss({*buffer}, {});
   auto invalid_model =
-      Evaluate(*executor_, no_outputs, loss, **data, EvaluationOptions{});
+      Evaluate(*executor_, no_outputs,
+               EvaluationOptions{.loss_layer = loss, .eval_data = **data});
   EXPECT_EQ(invalid_model.status().code(), absl::StatusCode::kInvalidArgument);
   EXPECT_TRUE(loss.observed_inputs.empty());
 
@@ -588,8 +632,9 @@ TEST_F(TrainerTest, RejectsMissingModelOutputsAndInvalidLossOutputs) {
   for (const BufferVec& outputs :
        {BufferVec{}, BufferVec{*buffer, *buffer}, BufferVec{*short_loss}}) {
     RoutingLayer invalid_loss(outputs, {});
-    auto result =
-        Evaluate(*executor_, model, invalid_loss, **data, EvaluationOptions{});
+    auto result = Evaluate(
+        *executor_, model,
+        EvaluationOptions{.loss_layer = invalid_loss, .eval_data = **data});
     EXPECT_EQ(result.status().code(), absl::StatusCode::kInvalidArgument);
   }
 }
@@ -719,8 +764,9 @@ TEST_F(TrainerTest, TrainsAndEvaluatesSparseAutoEncoderDataBatches) {
   ASSERT_TRUE((*model)->InitializeNormal(0.05f, 19).ok());
   FixedActivationDataSetIterator data(*activations, 2, kRows / 2);
 
-  auto initial = Evaluate(*executor_, **model, **loss, data,
-                          EvaluationOptions{.batches = 1});
+  auto initial = Evaluate(
+      *executor_, **model,
+      EvaluationOptions{.loss_layer = **loss, .eval_data = data, .batches = 1});
   ASSERT_TRUE(initial.ok()) << initial.status();
   auto host_initial = ReadEvaluationLoss(*executor_, *initial);
   ASSERT_TRUE(host_initial.ok()) << host_initial.status();
@@ -735,8 +781,10 @@ TEST_F(TrainerTest, TrainsAndEvaluatesSparseAutoEncoderDataBatches) {
   // Grouping the same activation rows into samples cannot change per-token
   // SAE loss. Both single-token samples and longer sequences are supported.
   FixedActivationDataSetIterator single_token_samples(*activations, kRows);
-  auto ungrouped = Evaluate(*executor_, **model, **loss, single_token_samples,
-                            EvaluationOptions{.batches = 1});
+  auto ungrouped = Evaluate(*executor_, **model,
+                            EvaluationOptions{.loss_layer = **loss,
+                                              .eval_data = single_token_samples,
+                                              .batches = 1});
   ASSERT_TRUE(ungrouped.ok()) << ungrouped.status();
   auto host_ungrouped = ReadEvaluationLoss(*executor_, *ungrouped);
   ASSERT_TRUE(host_ungrouped.ok()) << host_ungrouped.status();
@@ -1118,9 +1166,11 @@ TEST_F(TrainerTest, RejectsInvalidOptions) {
                   .code(),
               absl::StatusCode::kInvalidArgument);
   }
-  EXPECT_FALSE(Evaluate(*executor_, model, **loss, **data,
-                        EvaluationOptions{.batches = 0})
-                   .ok());
+  EXPECT_FALSE(
+      Evaluate(*executor_, model,
+               EvaluationOptions{
+                   .loss_layer = **loss, .eval_data = **data, .batches = 0})
+          .ok());
   EXPECT_FALSE(Train(*executor_, model,
                      TrainingOptions{.loss_layer = **loss,
                                      .optimizer = optimizer,

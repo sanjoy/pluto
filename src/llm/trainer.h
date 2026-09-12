@@ -16,6 +16,12 @@ namespace pluto::llm {
 inline constexpr int kUnlimitedTrainingSteps = -1;
 
 struct EvaluationOptions {
+  // Required, non-owning dependencies. These must outlive Evaluate(); copying
+  // options preserves the bindings. The loss is read-only, but evaluation
+  // resets and advances the referenced iterator even with const options.
+  const Layer& loss_layer;
+  DataSetIterator& eval_data;
+
   // Evaluate exactly this many batches after resetting the iterator.
   int batches = 1;
 };
@@ -99,10 +105,8 @@ struct TrainingResult {
 // The returned Buffer contains one device-resident float ordered on executor's
 // stream. No device-to-host copy or synchronization is performed. Callers that
 // need a CPU value must explicitly read it back. Evaluation never runs backward
-// or changes weights, and resets eval_data to make repeated passes comparable.
+// or changes weights, and resets options.eval_data for comparable passes.
 absl::StatusOr<Buffer> Evaluate(cuda::Executor& executor, const Layer& model,
-                                const Layer& loss_layer,
-                                DataSetIterator& eval_data,
                                 const EvaluationOptions& options);
 
 // Runs model forward, loss forward/backward, model backward, and an optimizer

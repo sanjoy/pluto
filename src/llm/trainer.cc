@@ -162,9 +162,9 @@ absl::Status ValidateTrainingOptions(const TrainingOptions& options) {
 }  // namespace
 
 absl::StatusOr<Buffer> Evaluate(cuda::Executor& executor, const Layer& model,
-                                const Layer& loss_layer,
-                                DataSetIterator& eval_data,
                                 const EvaluationOptions& options) {
+  const Layer& loss_layer = options.loss_layer;
+  DataSetIterator& eval_data = options.eval_data;
   if (options.batches <= 0)
     return absl::InvalidArgumentError("evaluation batches must be positive");
   RETURN_IF_ERROR(eval_data.Reset());
@@ -205,16 +205,18 @@ absl::StatusOr<TrainingResult> Train(cuda::Executor& executor, Layer& model,
   DataSetIterator& evaluation_data = options.evaluation_data == nullptr
                                          ? training_data
                                          : *options.evaluation_data;
+  const EvaluationOptions evaluation_options{
+      .loss_layer = loss_layer,
+      .eval_data = evaluation_data,
+      .batches = options.evaluation_batches};
 
   if (options.stop_loss >= 0.0) {
     double initial_loss;
     if (options.initial_loss.has_value()) {
       initial_loss = *options.initial_loss;
     } else {
-      ASSIGN_OR_RETURN(
-          auto device_initial_loss,
-          Evaluate(executor, model, loss_layer, evaluation_data,
-                   EvaluationOptions{.batches = options.evaluation_batches}));
+      ASSIGN_OR_RETURN(auto device_initial_loss,
+                       Evaluate(executor, model, evaluation_options));
       ASSIGN_OR_RETURN(initial_loss,
                        ReadDeviceLoss(executor, device_initial_loss));
       if (options.evaluation_callback)
@@ -271,10 +273,8 @@ absl::StatusOr<TrainingResult> Train(cuda::Executor& executor, Layer& model,
          (has_step_limit && updates_completed == options.max_steps) ||
          reached_time_limit);
     if (should_evaluate) {
-      ASSIGN_OR_RETURN(
-          auto device_training_loss,
-          Evaluate(executor, model, loss_layer, evaluation_data,
-                   EvaluationOptions{.batches = options.evaluation_batches}));
+      ASSIGN_OR_RETURN(auto device_training_loss,
+                       Evaluate(executor, model, evaluation_options));
       ASSIGN_OR_RETURN(double training_loss,
                        ReadDeviceLoss(executor, device_training_loss));
       if (options.evaluation_callback)

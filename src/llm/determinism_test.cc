@@ -130,8 +130,11 @@ absl::StatusOr<std::string> ReadMeanLoss(cuda::Executor& executor,
                                          const Layer& model,
                                          const Layer& loss_layer,
                                          DataSetIterator& data) {
-  ASSIGN_OR_RETURN(auto loss, Evaluate(executor, model, loss_layer, data,
-                                       EvaluationOptions{.batches = 2}));
+  ASSIGN_OR_RETURN(
+      auto loss,
+      Evaluate(executor, model,
+               EvaluationOptions{
+                   .loss_layer = loss_layer, .eval_data = data, .batches = 2}));
   ASSIGN_OR_RETURN(auto bytes, ReadBytes(executor, {loss}));
   if (bytes.size() != sizeof(float))
     return absl::InternalError("Evaluate did not return one FP32 scalar");

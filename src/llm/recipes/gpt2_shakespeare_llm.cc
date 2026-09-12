@@ -419,15 +419,20 @@ absl::Status RunTraining(cuda::Executor& executor,
                                   evaluation_data_options));
 
   const int eval_batches = absl::GetFlag(FLAGS_eval_batches);
-  const EvaluationOptions evaluation_options{.batches = eval_batches};
+  const EvaluationOptions training_evaluation_options{
+      .loss_layer = *loss_layer,
+      .eval_data = *training_evaluation_data,
+      .batches = eval_batches};
+  const EvaluationOptions test_evaluation_options{
+      .loss_layer = *loss_layer,
+      .eval_data = *test_evaluation_data,
+      .batches = eval_batches};
   ASSIGN_OR_RETURN(auto initial_training_loss_buffer,
-                   Evaluate(executor, *model, *loss_layer,
-                            *training_evaluation_data, evaluation_options));
+                   Evaluate(executor, *model, training_evaluation_options));
   ASSIGN_OR_RETURN(double initial_training_loss,
                    ReadEvaluationLoss(executor, initial_training_loss_buffer));
   ASSIGN_OR_RETURN(auto initial_test_loss_buffer,
-                   Evaluate(executor, *model, *loss_layer,
-                            *test_evaluation_data, evaluation_options));
+                   Evaluate(executor, *model, test_evaluation_options));
   ASSIGN_OR_RETURN(double initial_test_loss,
                    ReadEvaluationLoss(executor, initial_test_loss_buffer));
   logger << "model: GPT-2 vocabulary=" << kGpt2VocabularySize
@@ -502,13 +507,11 @@ absl::Status RunTraining(cuda::Executor& executor,
          << training_result.elapsed_training_seconds << '\n';
   RETURN_IF_ERROR(save_checkpoint(training_result.steps_completed));
   ASSIGN_OR_RETURN(auto final_training_loss_buffer,
-                   Evaluate(executor, *model, *loss_layer,
-                            *training_evaluation_data, evaluation_options));
+                   Evaluate(executor, *model, training_evaluation_options));
   ASSIGN_OR_RETURN(double final_training_loss,
                    ReadEvaluationLoss(executor, final_training_loss_buffer));
   ASSIGN_OR_RETURN(auto final_test_loss_buffer,
-                   Evaluate(executor, *model, *loss_layer,
-                            *test_evaluation_data, evaluation_options));
+                   Evaluate(executor, *model, test_evaluation_options));
   ASSIGN_OR_RETURN(double final_test_loss,
                    ReadEvaluationLoss(executor, final_test_loss_buffer));
   logger << "final training loss: " << final_training_loss << '\n'
@@ -624,10 +627,12 @@ absl::Status RunSparseAutoEncoderTraining(
       Optimizer::Create(executor, *autoencoder, OptimizerConfigFromFlags()));
 
   const int eval_batches = absl::GetFlag(FLAGS_eval_batches);
-  const EvaluationOptions evaluation_options{.batches = eval_batches};
+  const EvaluationOptions evaluation_options{
+      .loss_layer = *loss_layer,
+      .eval_data = *evaluation_activations,
+      .batches = eval_batches};
   ASSIGN_OR_RETURN(auto initial_loss_buffer,
-                   Evaluate(executor, *autoencoder, *loss_layer,
-                            *evaluation_activations, evaluation_options));
+                   Evaluate(executor, *autoencoder, evaluation_options));
   ASSIGN_OR_RETURN(double initial_loss,
                    ReadEvaluationLoss(executor, initial_loss_buffer));
   logger << "mode: sparse autoencoder training\n"
@@ -699,8 +704,7 @@ absl::Status RunSparseAutoEncoderTraining(
          << training_result.elapsed_training_seconds << '\n';
   RETURN_IF_ERROR(save_checkpoint(training_result.steps_completed));
   ASSIGN_OR_RETURN(auto final_loss_buffer,
-                   Evaluate(executor, *autoencoder, *loss_layer,
-                            *evaluation_activations, evaluation_options));
+                   Evaluate(executor, *autoencoder, evaluation_options));
   ASSIGN_OR_RETURN(double final_loss,
                    ReadEvaluationLoss(executor, final_loss_buffer));
   logger << "final loss per activation: " << final_loss << '\n';
