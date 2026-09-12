@@ -16,7 +16,7 @@ def layer_library(name, extra_deps = []):
         visibility = ["//visibility:public"],
         deps = [
             ":layer",
-            ":layer_internal",
+            ":layer_util",
             "//src/util:status_macros",
             "//src/cuda:buffer",
             "//src/cuda:executor",

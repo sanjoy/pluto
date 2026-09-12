@@ -15,7 +15,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "src/llm/layers/internal.h"
+#include "src/llm/layers/util.h"
 #include "src/util/status_macros.h"
 
 namespace pluto::llm {

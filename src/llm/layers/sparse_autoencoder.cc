@@ -22,7 +22,7 @@
 #include "absl/types/span.h"
 #include "src/cuda/buffer.h"
 #include "src/cuda/page_locked_host_array.h"
-#include "src/llm/layers/internal.h"
+#include "src/llm/layers/util.h"
 #include "src/util/status_macros.h"
 
 namespace pluto::llm {

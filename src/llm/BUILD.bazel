@@ -139,8 +139,8 @@ cc_test(
 )
 
 cc_library(
-    name = "layer_internal",
-    hdrs = ["layers/internal.h"],
+    name = "layer_util",
+    hdrs = ["layers/util.h"],
     visibility = ["//src/llm:__subpackages__"],
     deps = [
         ":layer",
@@ -212,7 +212,7 @@ cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         ":layer",
-        ":layer_internal",
+        ":layer_util",
         "//src/util:status_macros",
         "//src/cuda:buffer",
         "//src/cuda:executor",
