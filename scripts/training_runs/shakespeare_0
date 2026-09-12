@@ -13,7 +13,7 @@ exec ./bazel-bin/src/llm/recipes/gpt2_shakespeare_llm \
   --corpus="$PWD/testdata/shakespeare.txt" \
   --tokenizer_dir=/home/ubuntu/datasets/tokenizer/gpt2 \
   --seed=17 \
-  --batch_size=1 \
+  --batch_size=20 \
   --learning_rate=0.0003 \
   --adam_beta1=0.9 \
   --adam_beta2=0.95 \
