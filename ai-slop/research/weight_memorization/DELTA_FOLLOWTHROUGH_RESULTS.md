@@ -150,7 +150,7 @@ increments its reported step as `initial_step + update + 1`. Although a generic
 trainer can evaluate using its training iterator if no distinct iterator is
 configured, the historical Shakespeare recipe at
 `b1f6e87530c5d6b604a667592cc2ecb938f0df91` constructs separate training and
-training-evaluation iterators and sets `evaluation_tokens` to the latter.
+training-evaluation iterators and sets `evaluation_data` to the latter.
 The current recipe retains that separation. Therefore the inspected code
 does not support a periodic evaluation-induced reset of the training sampler
 as the explanation for this negative result. This source inspection still

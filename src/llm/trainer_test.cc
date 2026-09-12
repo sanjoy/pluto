@@ -740,7 +740,7 @@ TEST_F(TrainerTest, StopsBeforeFirstUpdateWhenInitialEvaluationQualifies) {
                 .evaluation_interval = 1,
                 .evaluation_batches = 1,
                 .stop_loss = 2.5,
-                .evaluation_tokens = evaluation_data->get(),
+                .evaluation_data = evaluation_data->get(),
                 .evaluation_callback = [&](int steps_completed, double loss) {
                   evaluation_steps.push_back(steps_completed);
                   evaluation_losses.push_back(loss);
@@ -772,7 +772,7 @@ TEST_F(TrainerTest, StopsAfterUpdateWhenPeriodicEvaluationQualifies) {
                 .evaluation_interval = 1,
                 .evaluation_batches = 1,
                 .stop_loss = 2.5,
-                .evaluation_tokens = evaluation_data->get(),
+                .evaluation_data = evaluation_data->get(),
                 .initial_loss = 3.0,
                 .evaluation_callback = [&](int steps_completed, double loss) {
                   evaluation_steps.push_back(steps_completed);
@@ -805,7 +805,7 @@ TEST_F(TrainerTest, CallbackEnablesPeriodicEvaluationWithoutEarlyStopping) {
                 .max_steps = 3,
                 .evaluation_interval = 2,
                 .evaluation_batches = 1,
-                .evaluation_tokens = evaluation_data->get(),
+                .evaluation_data = evaluation_data->get(),
                 .evaluation_callback = [&](int steps_completed, double loss) {
                   evaluation_steps.push_back(steps_completed);
                   evaluation_losses.push_back(loss);
@@ -837,7 +837,7 @@ TEST_F(TrainerTest, ResumedRunUsesAbsoluteStepNumbers) {
                             .initial_step = 570,
                             .evaluation_interval = 2,
                             .evaluation_batches = 1,
-                            .evaluation_tokens = evaluation_data->get(),
+                            .evaluation_data = evaluation_data->get(),
                             .evaluation_callback =
                                 [&](int steps_completed, double) {
                                   evaluation_steps.push_back(steps_completed);
@@ -938,7 +938,7 @@ TEST_F(TrainerTest, TimeLimitWaitsForStreamWorkAndEvaluatesTheFinalStep) {
                             .initial_step = 570,
                             .training_seconds = 0.01,
                             .evaluation_interval = 100,
-                            .evaluation_tokens = evaluation_data->get(),
+                            .evaluation_data = evaluation_data->get(),
                             .evaluation_callback =
                                 [&](int step, double value) {
                                   evaluation_steps.push_back(step);

@@ -466,7 +466,7 @@ absl::Status RunTraining(cuda::Executor& executor,
       .evaluation_interval = absl::GetFlag(FLAGS_training_eval_interval),
       .evaluation_batches = eval_batches,
       .stop_loss = absl::GetFlag(FLAGS_train_until_loss),
-      .evaluation_tokens = training_evaluation_data.get(),
+      .evaluation_data = training_evaluation_data.get(),
       .initial_loss = initial_training_loss,
       .evaluation_callback =
           [&logger](int steps_completed, double loss) {
@@ -662,7 +662,7 @@ absl::Status RunSparseAutoEncoderTraining(
       .evaluation_interval = absl::GetFlag(FLAGS_training_eval_interval),
       .evaluation_batches = eval_batches,
       .stop_loss = absl::GetFlag(FLAGS_train_until_loss),
-      .evaluation_tokens = evaluation_activations.get(),
+      .evaluation_data = evaluation_activations.get(),
       .initial_loss = initial_loss,
       .evaluation_callback =
           [&logger](int steps_completed, double loss) {

@@ -53,8 +53,8 @@ struct TrainingOptions {
 
   // Prefer a distinct sequential iterator here. Evaluate() resets it before
   // every pass, keeping the sample stable without perturbing random training.
-  // If null, training_tokens is used and its position is reset by evaluation.
-  DataSetIterator* evaluation_tokens = nullptr;
+  // If null, training_data is used and its position is reset by evaluation.
+  DataSetIterator* evaluation_data = nullptr;
 
   // A caller that already evaluated the model can avoid a duplicate initial
   // pass. When absent and stop_loss is enabled, Train() evaluates once before

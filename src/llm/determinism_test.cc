@@ -202,7 +202,7 @@ absl::Status RecordTraining(cuda::Executor& executor, Layer& model,
   options.max_steps = kUpdates;
   options.evaluation_interval = 1;
   options.evaluation_batches = 2;
-  options.evaluation_tokens = &evaluation;
+  options.evaluation_data = &evaluation;
   options.step_callback = [&](int) { return record(); };
   options.evaluation_callback = [&](int step, double loss) {
     trajectory.callback_losses.emplace_back(step, DoubleBits(loss));

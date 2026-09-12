@@ -201,9 +201,9 @@ absl::StatusOr<TrainingResult> Train(cuda::Executor& executor, Layer& model,
                                      DataSetIterator& training_data,
                                      const TrainingOptions& options) {
   RETURN_IF_ERROR(ValidateTrainingOptions(options));
-  DataSetIterator& evaluation_data = options.evaluation_tokens == nullptr
+  DataSetIterator& evaluation_data = options.evaluation_data == nullptr
                                          ? training_data
-                                         : *options.evaluation_tokens;
+                                         : *options.evaluation_data;
 
   if (options.stop_loss >= 0.0) {
     double initial_loss;
