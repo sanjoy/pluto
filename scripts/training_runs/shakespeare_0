@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Fixed-seed training from scratch, without a step or wall-clock limit.
+# Save initialization and every 100th step. Reproducibility requires the same
+# code, inputs, flags, and GPU/software stack across runs.
+cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.."
+bazel build -c opt //src/llm/recipes:gpt2_shakespeare_llm
+
+export CUDA_VISIBLE_DEVICES=0
+exec ./bazel-bin/src/llm/recipes/gpt2_shakespeare_llm \
+  --mode=train_model \
+  --corpus="$PWD/testdata/shakespeare.txt" \
+  --tokenizer_dir=/home/ubuntu/datasets/tokenizer/gpt2 \
+  --seed=17 \
+  --batch_size=1 \
+  --learning_rate=0.0003 \
+  --adam_beta1=0.9 \
+  --adam_beta2=0.95 \
+  --adam_epsilon=1e-8 \
+  --weight_decay=0.1 \
+  --test_fraction=0.1 \
+  --eval_batches=4 \
+  --training_eval_interval=100 \
+  --train_until_loss=-1 \
+  --checkpoint_dir=/home/ubuntu/checkpoints/shakespeare_0 \
+  --checkpoint_every=100 \
+  --checkpoint_initial=true \
+  --log_file=/tmp/shakespeare_0.log
