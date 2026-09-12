@@ -171,8 +171,8 @@ absl::StatusOr<Buffer> Evaluate(cuda::Executor& executor,
                                 const EvaluationOptions& options);
 
 // Runs the common forward/loss/backward/update loop for any TrainingObjective.
-// Train() clears gradients before the first backward; Optimizer::Step() applies
-// an update and clears them after each step.
+// Train() clears gradients before the first backward; Optimizer::ApplyStep()
+// applies an update and clears them after each step.
 absl::StatusOr<TrainingResult> Train(cuda::Executor& executor,
                                      TrainingObjective& objective,
                                      Optimizer& optimizer,

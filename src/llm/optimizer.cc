@@ -128,7 +128,7 @@ absl::Status AdamWOptimizer::ZeroGrad() {
   return absl::OkStatus();
 }
 
-absl::Status AdamWOptimizer::Step() {
+absl::Status AdamWOptimizer::ApplyStep() {
   ++step_;
   const float inverse_bias_correction1 =
       1.0f / (1.0f - std::pow(config_.beta1, step_));

@@ -33,11 +33,12 @@ class Optimizer {
       cuda::Executor& executor, Layer& model, AdamWConfig config);
 
   // Clears every unique parameter-gradient accumulator. Call this before the
-  // first backward pass. Step() also clears gradients after applying updates.
+  // first backward pass. ApplyStep() also clears gradients after applying
+  // updates.
   virtual absl::Status ZeroGrad() = 0;
 
   // Applies one update using the accumulated gradients and advances step().
-  virtual absl::Status Step() = 0;
+  virtual absl::Status ApplyStep() = 0;
 
   virtual int step() const = 0;
   virtual size_t parameter_tensor_count() const = 0;
@@ -52,7 +53,7 @@ class AdamWOptimizer final : public Optimizer {
       cuda::Executor& executor, Layer& model, AdamWConfig config);
 
   absl::Status ZeroGrad() override;
-  absl::Status Step() override;
+  absl::Status ApplyStep() override;
 
   int step() const override { return step_; }
   size_t parameter_tensor_count() const override { return weights_.size(); }

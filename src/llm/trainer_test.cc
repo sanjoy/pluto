@@ -116,7 +116,7 @@ class FakeOptimizer final : public Optimizer {
     ++zero_grad_calls;
     return absl::OkStatus();
   }
-  absl::Status Step() override {
+  absl::Status ApplyStep() override {
     ++steps;
     if (step_action)
       return step_action();

@@ -43,7 +43,7 @@ TEST_F(LayersTest, UpdatesFp32MasterWeightsAndClearsGradients) {
                               executor_->stream()),
               cudaSuccess);
   }
-  ASSERT_TRUE(optimizer_interface->Step().ok());
+  ASSERT_TRUE(optimizer_interface->ApplyStep().ok());
   EXPECT_EQ(optimizer_interface->step(), 1);
 
   auto matrix = AllocatePageLockedHostArray<float>(*executor_, 16 * 16);

@@ -355,7 +355,7 @@ absl::StatusOr<TrainingResult> Train(cuda::Executor& executor,
     ASSIGN_OR_RETURN(DataBatch batch, training_data.Next());
     ASSIGN_OR_RETURN(auto pass, objective.Forward(executor, batch));
     RETURN_IF_ERROR(objective.Backward(executor, std::move(pass)));
-    RETURN_IF_ERROR(optimizer.Step());
+    RETURN_IF_ERROR(optimizer.ApplyStep());
     if (options.training_seconds.has_value()) {
       // CUDA launches are asynchronous. The clock must measure completed
       // optimizer work, not how quickly the host fills the stream's queue.
