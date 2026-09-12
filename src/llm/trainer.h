@@ -101,9 +101,10 @@ absl::StatusOr<Buffer> Evaluate(cuda::Executor& executor, const Layer& model,
 // Runs model forward, loss forward/backward, model backward, and an optimizer
 // update, with the same wiring for language models and sparse autoencoders.
 // Loss inputs are model outputs in order, followed by the dataset target.
-// Loss backward returns one gradient per model output, optionally followed by
-// a target gradient. Only model-output gradients are propagated: targets and
-// dataset transforms (such as an activation generator) are not trained.
+// Loss backward must return exactly one gradient per model output, in the same
+// order. Targets are constants: no target gradient is returned, even when a
+// target aliases an input. Dataset transforms (such as an activation generator)
+// are not trained.
 //
 // Both losses expose per-row values for evaluation. Backward scaling belongs
 // to the loss: cross-entropy currently differentiates the mean, while SAE

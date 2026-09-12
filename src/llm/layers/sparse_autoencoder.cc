@@ -441,7 +441,6 @@ template <class Activation>
 __tile_global__ void SparseLossReconstructionGradientKernel(
     const Activation* __restrict__ input,
     const Activation* __restrict__ reconstruction, int elements,
-    float* __restrict__ input_gradient,
     float* __restrict__ reconstruction_gradient) {
   namespace ct = ::cuda::tiles;
   using namespace ct::literals;
@@ -449,8 +448,6 @@ __tile_global__ void SparseLossReconstructionGradientKernel(
       ct::tensor_span{input, ct::extents{elements}}, ct::shape{16_ic}};
   auto reconstruction_view = ct::partition_view{
       ct::tensor_span{reconstruction, ct::extents{elements}}, ct::shape{16_ic}};
-  auto input_gradient_view = ct::partition_view{
-      ct::tensor_span{input_gradient, ct::extents{elements}}, ct::shape{16_ic}};
   auto reconstruction_gradient_view = ct::partition_view{
       ct::tensor_span{reconstruction_gradient, ct::extents{elements}},
       ct::shape{16_ic}};
@@ -458,7 +455,6 @@ __tile_global__ void SparseLossReconstructionGradientKernel(
   auto gradient =
       2.0f * (ct::element_cast<float>(input_view.load(block)) -
               ct::element_cast<float>(reconstruction_view.load(block)));
-  input_gradient_view.store(gradient, block);
   reconstruction_gradient_view.store(-gradient, block);
 }
 
@@ -1032,9 +1028,6 @@ absl::StatusOr<BufferVec> SparseAutoEncoderLossLayer::bwd_impl(
   ASSIGN_OR_RETURN(int rows,
                    ValidateLossInputs(executor, state.intermediates, input_dim_,
                                       feature_dim_, output_type_));
-  ASSIGN_OR_RETURN(auto input_gradient,
-                   Buffer::Allocate(executor, static_cast<size_t>(rows) *
-                                                  input_dim_ * sizeof(float)));
   ASSIGN_OR_RETURN(auto reconstruction_gradient,
                    Buffer::Allocate(executor, static_cast<size_t>(rows) *
                                                   input_dim_ * sizeof(float)));
@@ -1055,7 +1048,7 @@ absl::StatusOr<BufferVec> SparseAutoEncoderLossLayer::bwd_impl(
            executor.stream()>>>(
             static_cast<const __nv_bfloat16*>(state.intermediates[3].data()),
             static_cast<const __nv_bfloat16*>(state.intermediates[0].data()),
-            reconstruction_elements, static_cast<float*>(input_gradient.data()),
+            reconstruction_elements,
             static_cast<float*>(reconstruction_gradient.data()));
     SparseLossDecoderScaleKernel<__nv_bfloat16>
         <<<internal::TileCount(feature_dim_), 1, 0, executor.stream()>>>(
@@ -1069,7 +1062,7 @@ absl::StatusOr<BufferVec> SparseAutoEncoderLossLayer::bwd_impl(
            executor.stream()>>>(
             static_cast<const float*>(state.intermediates[3].data()),
             static_cast<const float*>(state.intermediates[0].data()),
-            reconstruction_elements, static_cast<float*>(input_gradient.data()),
+            reconstruction_elements,
             static_cast<float*>(reconstruction_gradient.data()));
     SparseLossDecoderScaleKernel<float>
         <<<internal::TileCount(feature_dim_), 1, 0, executor.stream()>>>(
@@ -1096,8 +1089,7 @@ absl::StatusOr<BufferVec> SparseAutoEncoderLossLayer::bwd_impl(
   RETURN_IF_ERROR(
       cuda::CudaStatus(cudaGetLastError(), "sparse loss backward launch"));
   return BufferVec{std::move(reconstruction_gradient),
-                   std::move(latent_gradient), std::move(decoder_gradient),
-                   std::move(input_gradient)};
+                   std::move(latent_gradient), std::move(decoder_gradient)};
 }
 
 }  // namespace pluto::llm

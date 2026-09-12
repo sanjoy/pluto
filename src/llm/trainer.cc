@@ -94,23 +94,15 @@ absl::Status Backward(cuda::Executor& executor, Layer& model, Layer& loss_layer,
                       ForwardPass pass) {
   ASSIGN_OR_RETURN(auto gradients,
                    loss_layer.bwd(executor, {}, std::move(pass.loss_state)));
-  if (gradients.size() != pass.model_output_count &&
-      gradients.size() != pass.model_output_count + 1)
+  if (gradients.size() != pass.model_output_count)
     return absl::InvalidArgumentError(
-        "loss must return gradients for each model output, optionally "
-        "followed by a target gradient");
-  for (size_t i = 0; i < pass.model_output_count; ++i)
-    if (&gradients[i].executor() != &executor)
+        "loss must return exactly one gradient per model output");
+  for (const Buffer& gradient : gradients)
+    if (&gradient.executor() != &executor)
       return absl::InvalidArgumentError(
           "loss gradient belongs to a different CUDA Executor");
-  // A target can alias the input (SAE reconstruction) without becoming part of
-  // the trainable graph. Drop only that trailing target derivative, never the
-  // SAE's latent or direct decoder derivative.
   ASSIGN_OR_RETURN(auto input_gradients,
-                   model.bwd(executor,
-                             absl::Span<const Buffer>(gradients.data(),
-                                                      pass.model_output_count),
-                             std::move(pass.model_state)));
+                   model.bwd(executor, gradients, std::move(pass.model_state)));
   (void)input_gradients;
   return absl::OkStatus();
 }

@@ -127,27 +127,29 @@ TEST_F(LayerReferenceTest,
       ASSERT_TRUE(device_loss_gradients.ok()) << device_loss_gradients.status();
       ASSERT_TRUE(reference_loss_gradients.ok())
           << reference_loss_gradients.status();
-      ASSERT_EQ(device_loss_gradients->size(), 4u);
-      ASSERT_EQ(reference_loss_gradients->size(), 4u);
+      ASSERT_EQ(device_loss_gradients->size(), 3u);
+      ASSERT_EQ(reference_loss_gradients->size(), 3u);
+      const size_t expected_gradient_bytes[] = {
+          static_cast<size_t>(rows) * input_dim * sizeof(float),
+          static_cast<size_t>(rows) * feature_dim * sizeof(float),
+          static_cast<size_t>(input_dim) * feature_dim * sizeof(float)};
       for (size_t index = 0; index < device_loss_gradients->size(); ++index) {
+        EXPECT_EQ((*device_loss_gradients)[index].size_bytes(),
+                  expected_gradient_bytes[index]);
+        EXPECT_EQ((*reference_loss_gradients)[index].size_bytes(),
+                  expected_gradient_bytes[index]);
         EXPECT_TRUE(FloatBuffersNear((*device_loss_gradients)[index],
                                      (*reference_loss_gradients)[index], 2e-3f,
                                      2e-3f));
       }
 
-      BufferVec device_autoencoder_gradients = {(*device_loss_gradients)[0],
-                                                (*device_loss_gradients)[1],
-                                                (*device_loss_gradients)[2]};
-      HostBufferVec reference_autoencoder_gradients = {
-          (*reference_loss_gradients)[0], (*reference_loss_gradients)[1],
-          (*reference_loss_gradients)[2]};
       auto device_input_gradient =
           (*device_layer)
-              ->bwd(*executor_, device_autoencoder_gradients,
+              ->bwd(*executor_, *device_loss_gradients,
                     std::move(device_reconstruction->state));
       auto reference_input_gradient =
           (*reference_layer)
-              ->bwd(reference_autoencoder_gradients,
+              ->bwd(*reference_loss_gradients,
                     std::move(reference_reconstruction->state));
       ASSERT_TRUE(device_input_gradient.ok()) << device_input_gradient.status();
       ASSERT_TRUE(reference_input_gradient.ok())
@@ -304,9 +306,7 @@ TEST_F(LayerReferenceTest, RowLossesAndSummedGradientsMatchExactly) {
 
   auto gradients = (*loss)->bwd({}, std::move(value->state));
   ASSERT_TRUE(gradients.ok()) << gradients.status();
-  ASSERT_EQ(gradients->size(), 4u);
-  EXPECT_TRUE(VectorsNear(ReadHostFloats((*gradients)[3]),
-                          std::vector<float>(kRows * kInputDim, 1.0f), 0.0f));
+  ASSERT_EQ(gradients->size(), 3u);
   EXPECT_TRUE(VectorsNear(ReadHostFloats((*gradients)[0]),
                           std::vector<float>(kRows * kInputDim, -1.0f), 0.0f));
   EXPECT_TRUE(VectorsNear(ReadHostFloats((*gradients)[1]),
@@ -410,10 +410,12 @@ TEST_F(LayerReferenceTest,
             (*reference_loss)->bwd({}, std::move(reference->state));
         ASSERT_TRUE(gradients.ok()) << gradients.status();
         ASSERT_TRUE(reference_gradients.ok()) << reference_gradients.status();
+        ASSERT_EQ(gradients->size(), 3u);
+        ASSERT_EQ(reference_gradients->size(), 3u);
         const std::vector<std::vector<float>> expected = {
             std::vector<float>(kRows * kInputDim, -1.0f), expected_d_latents,
-            expected_d_decoder, std::vector<float>(kRows * kInputDim, 1.0f)};
-        for (int index = 0; index < 4; ++index) {
+            expected_d_decoder};
+        for (size_t index = 0; index < expected.size(); ++index) {
           auto host_gradient =
               ReadDeviceFloats(*executor_, (*gradients)[index]);
           ASSERT_TRUE(host_gradient.ok()) << host_gradient.status();
@@ -492,8 +494,8 @@ TEST_F(LayerReferenceTest, AutoEncoderOutputsSurviveInterleavedBackward) {
   ASSERT_TRUE(loss_gradients.ok()) << loss_gradients.status();
   ASSERT_TRUE(reference_loss_gradients.ok())
       << reference_loss_gradients.status();
-  loss_gradients->pop_back();
-  reference_loss_gradients->pop_back();
+  ASSERT_EQ(loss_gradients->size(), 3u);
+  ASSERT_EQ(reference_loss_gradients->size(), 3u);
   auto input_gradient =
       (*device)->bwd(*executor_, *loss_gradients, std::move(first->state));
   auto reference_input_gradient =

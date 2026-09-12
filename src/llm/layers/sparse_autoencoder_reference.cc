@@ -384,8 +384,6 @@ absl::StatusOr<HostBufferVec> SparseAutoEncoderLossLayerReference::bwd_impl(
   int rows;
   RETURN_IF_ERROR(ValidateReferenceLossInputs(
       state.intermediates, input_dim_, feature_dim_, output_type_, &rows));
-  ASSIGN_OR_RETURN(auto input_gradient,
-                   ri::AllocateFloats(static_cast<size_t>(rows) * input_dim_));
   ASSIGN_OR_RETURN(auto reconstruction_gradient,
                    ri::AllocateFloats(static_cast<size_t>(rows) * input_dim_));
   ASSIGN_OR_RETURN(auto latent_gradient,
@@ -393,7 +391,6 @@ absl::StatusOr<HostBufferVec> SparseAutoEncoderLossLayerReference::bwd_impl(
   ASSIGN_OR_RETURN(
       auto decoder_gradient,
       ri::AllocateFloats(static_cast<size_t>(input_dim_) * feature_dim_));
-  auto* d_input = static_cast<float*>(input_gradient.data());
   auto* d_reconstruction = static_cast<float*>(reconstruction_gradient.data());
   auto* d_latent = static_cast<float*>(latent_gradient.data());
   auto* d_decoder = static_cast<float*>(decoder_gradient.data());
@@ -403,11 +400,10 @@ absl::StatusOr<HostBufferVec> SparseAutoEncoderLossLayerReference::bwd_impl(
   for (int row = 0; row < rows; ++row) {
     for (int column = 0; column < input_dim_; ++column) {
       const size_t index = static_cast<size_t>(row) * input_dim_ + column;
-      d_input[index] =
-          2.0f *
+      d_reconstruction[index] =
+          -2.0f *
           (ri::LoadActivation(state.intermediates[3], index, output_type_) -
            ri::LoadActivation(state.intermediates[0], index, output_type_));
-      d_reconstruction[index] = -d_input[index];
     }
     for (int feature = 0; feature < feature_dim_; ++feature) {
       float norm_squared = 0.0f;
@@ -445,8 +441,7 @@ absl::StatusOr<HostBufferVec> SparseAutoEncoderLossLayerReference::bwd_impl(
     }
   }
   return HostBufferVec{std::move(reconstruction_gradient),
-                       std::move(latent_gradient), std::move(decoder_gradient),
-                       std::move(input_gradient)};
+                       std::move(latent_gradient), std::move(decoder_gradient)};
 }
 
 }  // namespace pluto::llm

@@ -476,22 +476,22 @@ TEST_F(TrainerTest, TrainRunsForwardBackwardAndOptimizerSteps) {
   EXPECT_EQ(optimizer.steps, 3);
 }
 
-TEST_F(TrainerTest, RoutesAllModelOutputsAndDropsOnlyTheTargetGradient) {
+TEST_F(TrainerTest, RoutesExactlyOneGradientPerModelOutput) {
   auto data = MakeData();
   ASSERT_TRUE(data.ok()) << data.status();
   auto batch = (*data)->Next();
   ASSERT_TRUE(batch.ok()) << batch.status();
   BufferVec outputs;
   BufferVec gradients;
-  for (int i = 0; i < 4; ++i) {
+  for (int i = 0; i < 3; ++i) {
     auto buffer = Buffer::Allocate(*executor_, 4 * sizeof(float));
     ASSERT_TRUE(buffer.ok()) << buffer.status();
     gradients.push_back(*buffer);
-    if (i < 3) outputs.push_back(*buffer);
+    outputs.push_back(*buffer);
   }
   RoutingLayer model(outputs, {});
-  // Prediction derivatives are the first three; the fourth is d_target.
-  RoutingLayer loss({gradients[3]}, gradients);
+  // Targets remain a forward input, but have no corresponding gradient.
+  RoutingLayer loss({gradients[0]}, gradients);
   FakeOptimizer optimizer;
   auto result = Train(*executor_, model, loss, optimizer, **data,
                       TrainingOptions{.max_steps = 1});
@@ -513,8 +513,8 @@ TEST_F(TrainerTest, RejectsLossGradientsThatDoNotMatchModelOutputs) {
   auto buffer = Buffer::Allocate(*executor_, 4 * sizeof(float));
   ASSERT_TRUE(data.ok()) << data.status();
   ASSERT_TRUE(buffer.ok()) << buffer.status();
-  // Three model outputs permit three gradients, or four including d_target.
-  for (size_t count : {size_t{0}, size_t{1}, size_t{2}, size_t{5}}) {
+  // In particular, the old extra target gradient is now rejected.
+  for (size_t count : {size_t{0}, size_t{1}, size_t{2}, size_t{4}, size_t{5}}) {
     RoutingLayer model({*buffer, *buffer, *buffer}, {});
     RoutingLayer loss({*buffer}, BufferVec(count, *buffer));
     FakeOptimizer optimizer;
@@ -609,14 +609,11 @@ TEST_F(TrainerTest, GenericTrainingMatchesExplicitSparseAutoEncoderUpdate) {
   ASSERT_TRUE(loss_forward.ok()) << loss_forward.status();
   auto gradients = (*loss)->bwd(*executor_, {}, std::move(loss_forward->state));
   ASSERT_TRUE(gradients.ok()) << gradients.status();
-  ASSERT_EQ(gradients->size(), 4);
-  // Include the regularizer's direct d_D. Ignore the reconstruction target's
-  // d_x: the target happens to alias the input, but is not a trainable edge.
-  ASSERT_TRUE((*manual)
-                  ->bwd(*executor_,
-                        {(*gradients)[0], (*gradients)[1], (*gradients)[2]},
-                        std::move(forward->state))
-                  .ok());
+  ASSERT_EQ(gradients->size(), forward->outputs.size());
+  // All returned gradients are model derivatives, including the regularizer's
+  // direct d_D. No target derivative is computed despite the input alias.
+  ASSERT_TRUE(
+      (*manual)->bwd(*executor_, *gradients, std::move(forward->state)).ok());
   ASSERT_TRUE((*manual_optimizer)->ApplyStep().ok());
 
   FixedActivationDataSetIterator data(*input, 2, kRows / 2);

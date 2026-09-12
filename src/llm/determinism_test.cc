@@ -189,12 +189,11 @@ absl::Status RecordTraining(cuda::Executor& executor, Layer& model,
     ASSIGN_OR_RETURN(auto loss_fwd, loss_layer.fwd(executor, loss_inputs));
     ASSIGN_OR_RETURN(auto output_gradients,
                      loss_layer.bwd(executor, {}, std::move(loss_fwd.state)));
+    if (output_gradients.size() != model_fwd.outputs.size())
+      return absl::InternalError("loss returned an unexpected gradient count");
     ASSIGN_OR_RETURN(
         auto input_gradients,
-        model.bwd(executor,
-                  absl::Span<const Buffer>(output_gradients.data(),
-                                           model_fwd.outputs.size()),
-                  std::move(model_fwd.state)));
+        model.bwd(executor, output_gradients, std::move(model_fwd.state)));
     (void)input_gradients;
     ASSIGN_OR_RETURN(auto gradients, ReadBytes(executor, model.gradients()));
     trajectory.gradients.push_back(std::move(gradients));

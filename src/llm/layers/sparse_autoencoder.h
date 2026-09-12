@@ -122,10 +122,10 @@ class SparseAutoEncoderLayer final : public Layer {
 // At an exactly zero decoder column, bwd() chooses the zero subgradient of
 // the L2 norm. No epsilon is added to the norm, preserving scale invariance.
 //
-// bwd() differentiates the sum of row losses and returns {dL/dx1, dL/dz,
-// dL/dD, dL/dtarget_x}. It accepts no upstream gradient. The first three
-// buffers can be passed directly to SparseAutoEncoderLayer::bwd; the trailing
-// target derivative remains available for callers that need it.
+// bwd() differentiates the sum of row losses and returns exactly
+// {dL/dx1, dL/dz, dL/dD}, all in FP32. These buffers can be passed directly to
+// SparseAutoEncoderLayer::bwd. target_x is fixed training data and receives no
+// gradient. The loss accepts no upstream gradient.
 class SparseAutoEncoderLossLayer final : public Layer {
  public:
   static absl::StatusOr<std::unique_ptr<SparseAutoEncoderLossLayer>> Create(
