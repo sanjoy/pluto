@@ -6,6 +6,7 @@
 #include <iomanip>
 #include <iostream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/flags/flag.h"
@@ -14,6 +15,7 @@
 #include "absl/strings/escaping.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_join.h"
+#include "src/dataset/dataset.h"
 #include "src/dataset/gpt2_detokenizer.h"
 #include "src/llm/experiments/mlp_automaton/graph.h"
 #include "src/llm/experiments/mlp_automaton/model.h"
@@ -22,13 +24,20 @@
 ABSL_FLAG(std::string, checkpoint, "", "GPT-2 checkpoint directory to read");
 ABSL_FLAG(std::string, tokenizer, "datasets/tokenizer/gpt2",
           "Directory containing the matching GPT-2 tokenizer.json");
+ABSL_FLAG(std::string, corpus, "testdata/shakespeare.txt",
+          "Text corpus used for training; only paths present in its training "
+          "portion are printed or saved in samples.json");
+ABSL_FLAG(double, test_fraction, 0.1,
+          "Held-out fraction, matching the training run; zero means corpus "
+          "already contains only training text");
 ABSL_FLAG(std::string, output_dir, "",
           "New directory for graph.json, samples.json and metadata.txt");
 ABSL_FLAG(int, batch_size, 256, "GPU batch rows; positive multiple of 16");
 ABSL_FLAG(double, threshold, 0.75,
           "Keep edges with probability strictly greater than this [0.5,1)");
-ABSL_FLAG(int, samples, 50,
-          "Number of distinct random starting tokens to sample");
+ABSL_FLAG(
+    int, samples, 50,
+    "Number of distinct random starting tokens to try before corpus filtering");
 ABSL_FLAG(int, max_tokens, 16, "Maximum tokens per path, including the start");
 ABSL_FLAG(uint64_t, seed, 17, "Seed for sampling starting tokens");
 ABSL_FLAG(std::vector<std::string>, start_tokens, {},
@@ -40,6 +49,8 @@ namespace {
 absl::Status Run() {
   const std::string checkpoint = absl::GetFlag(FLAGS_checkpoint);
   const std::string tokenizer = absl::GetFlag(FLAGS_tokenizer);
+  const std::string corpus_path = absl::GetFlag(FLAGS_corpus);
+  const double test_fraction = absl::GetFlag(FLAGS_test_fraction);
   const std::filesystem::path output_directory =
       absl::GetFlag(FLAGS_output_dir);
   const int batch_size = absl::GetFlag(FLAGS_batch_size);
@@ -54,6 +65,16 @@ absl::Status Run() {
         "supply --checkpoint, --tokenizer and a new --output_dir; "
         "batch_size must be a positive multiple of 16, samples >= 0, "
         "max_tokens > 0 and 0.5 <= threshold < 1");
+  }
+  if (corpus_path.empty() || !std::isfinite(test_fraction) ||
+      test_fraction < 0.0 || test_fraction >= 1.0)
+    return absl::InvalidArgumentError(
+        "supply --corpus and a finite test_fraction in [0, 1)");
+  ASSIGN_OR_RETURN(auto corpus, LoadTextCorpus(corpus_path));
+  TextCorpus training = corpus;
+  if (test_fraction > 0.0) {
+    ASSIGN_OR_RETURN(auto split, SplitCorpus(corpus, test_fraction));
+    training = std::move(split.training);
   }
   std::vector<int> starts;
   for (const std::string& text : absl::GetFlag(FLAGS_start_tokens)) {
@@ -118,6 +139,8 @@ absl::Status Run() {
     ASSIGN_OR_RETURN(auto path, Walk(graph, token, max_tokens));
     paths.push_back(std::move(path));
   }
+  const size_t candidate_count = paths.size();
+  ASSIGN_OR_RETURN(paths, FilterPathsInCorpus(graph, paths, training.text()));
   std::ofstream graph_file(output_directory / "graph.json");
   RETURN_IF_ERROR(WriteGraphJson(graph_file, graph));
   graph_file.close();
@@ -128,6 +151,10 @@ absl::Status Run() {
   metadata << std::setprecision(17)
            << "checkpoint=" << std::filesystem::absolute(checkpoint).string()
            << "\ntokenizer=" << std::filesystem::absolute(tokenizer).string()
+           << "\ncorpus=" << std::filesystem::absolute(corpus_path).string()
+           << "\ntest_fraction=" << test_fraction
+           << "\ntraining_bytes=" << training.size()
+           << "\npath_filter=exact_training_substring"
            << "\nformula=x=E[token]; h=x+FC2(GELU(FC1(LN2_B0(x)))); "
               "logits=LN_final(h)*E^T\n"
            << "position_embeddings=false\nattention=false\nlater_blocks=false\n"
@@ -143,6 +170,7 @@ absl::Status Run() {
            << "\nmax_tokens=" << max_tokens
            << "\nrandom_samples=" << sample_count
            << "\nstart_tokens=" << absl::StrJoin(starts, ",")
+           << "\ncandidate_paths=" << candidate_count
            << "\nedges=" << graph.edges.size() << "\npaths=" << paths.size()
            << "\n";
   metadata.close();
@@ -150,8 +178,9 @@ absl::Status Run() {
     return absl::InternalError("could not finish writing automaton output");
   std::cout << "Wrote " << graph.token_bytes.size() << " nodes, "
             << graph.edges.size() << " edges, " << paths.size()
-            << " sampled paths to " << output_directory << '\n'
-            << "Paths are local token transitions, not necessarily words.\n";
+            << " training-text paths (from " << candidate_count
+            << " candidates) to " << output_directory << '\n'
+            << "Each printed path occurs verbatim in the training text.\n";
   for (const auto& path : paths) {
     std::string bytes;
     std::cout << '[';

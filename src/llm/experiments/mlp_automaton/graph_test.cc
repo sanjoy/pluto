@@ -173,6 +173,75 @@ TEST(MlpAutomatonGraphTest, SamplingIsSeededDistinctAndEdgeOrderIndependent) {
   EXPECT_TRUE(empty->empty());
 }
 
+TEST(MlpAutomatonGraphTest, CorpusFilterMatchesWholePathsAndPreservesOrder) {
+  const Graph graph = ExampleGraph();
+  auto candidates = SamplePaths(graph, 100, 16, 17);
+  ASSERT_TRUE(candidates.ok()) << candidates.status();
+  // The individual pieces "loop" and " Exeunt" both occur; their concatenated
+  // path "loop Exeunt" does not. Explicit isolated starts use the same filter.
+  auto isolated = Walk(graph, 6, 16);
+  ASSERT_TRUE(isolated.ok()) << isolated.status();
+  candidates->push_back(*isolated);
+  const std::string training = "loop\n Exeunt all;  orphan";
+  auto matches = FilterPathsInCorpus(graph, *candidates, training);
+  ASSERT_TRUE(matches.ok()) << matches.status();
+  ASSERT_EQ(matches->size(), 4u);
+  size_t matched = 0;
+  for (const auto& path : *candidates) {
+    if (path.tokens.front() == 4)
+      continue;
+    EXPECT_EQ((*matches)[matched].tokens, path.tokens);
+    EXPECT_EQ((*matches)[matched].termination, path.termination);
+    ++matched;
+  }
+  EXPECT_EQ(graph.edges.size(), 4u);
+}
+
+TEST(MlpAutomatonGraphTest, CorpusFilterUsesExactBytesAndTrainingBoundary) {
+  Graph graph;
+  graph.token_bytes = {
+      " Ex", "eunt", "elsewhere", "A", std::string("\0\xff", 2),
+      "",    "abc",  "def"};
+  graph.edges = {{0, 1, 0.9}, {3, 4, 0.9}, {6, 7, 0.9}};
+  const std::vector<Path> paths = {{{0, 1}, Termination::kNoEdge},
+                                   {{2}, Termination::kNoEdge},
+                                   {{3, 4}, Termination::kNoEdge},
+                                   {{5}, Termination::kNoEdge},
+                                   {{6, 7}, Termination::kNoEdge}};
+  const std::string training =
+      std::string(" Exeunt A") + std::string("\0\xff", 2) + " abc";
+  const std::string corpus = training + "def elsewhere";
+  auto matches = FilterPathsInCorpus(
+      graph, paths, absl::string_view(corpus).substr(0, training.size()));
+  ASSERT_TRUE(matches.ok()) << matches.status();
+  ASSERT_EQ(matches->size(), 2u);
+  EXPECT_EQ((*matches)[0].tokens, paths[0].tokens);
+  EXPECT_EQ((*matches)[1].tokens, paths[2].tokens);
+  // Neither a case fold nor stripping the leading space is allowed.
+  for (absl::string_view text : {" exeunt", "Exeunt", ""}) {
+    auto absent = FilterPathsInCorpus(graph, paths, text);
+    ASSERT_TRUE(absent.ok()) << absent.status();
+    EXPECT_TRUE(absent->empty());
+  }
+  auto all = FilterPathsInCorpus(graph, paths, corpus);
+  ASSERT_TRUE(all.ok()) << all.status();
+  EXPECT_EQ(all->size(), 4u);  // Empty decoded text never counts as a match.
+}
+
+TEST(MlpAutomatonGraphTest, CorpusFilterRejectsInvalidPathsEvenWithEmptyText) {
+  const Graph graph = ExampleGraph();
+  for (const Path path :
+       {Path{{}, Termination::kNoEdge}, Path{{-1}, Termination::kNoEdge},
+        Path{{7}, Termination::kNoEdge},
+        Path{{0}, static_cast<Termination>(99)}}) {
+    const auto result = FilterPathsInCorpus(graph, {&path, 1}, "");
+    EXPECT_EQ(result.status().code(), absl::StatusCode::kInvalidArgument);
+  }
+  Graph invalid = graph;
+  invalid.edges.push_back({0, 1, 0.9});
+  EXPECT_FALSE(FilterPathsInCorpus(invalid, {}, "").ok());
+}
+
 TEST(MlpAutomatonGraphTest,
      GraphJsonIncludesIsolatesAndLosslessArbitraryBytes) {
   Graph graph;

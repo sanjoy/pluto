@@ -222,6 +222,29 @@ absl::StatusOr<std::vector<Path>> SamplePaths(const Graph& graph, size_t count,
   return paths;
 }
 
+absl::StatusOr<std::vector<Path>> FilterPathsInCorpus(
+    const Graph& graph, absl::Span<const Path> paths,
+    absl::string_view training_text) {
+  RETURN_IF_ERROR(ValidateGraph(graph));
+  std::vector<Path> matches;
+  for (const Path& path : paths) {
+    if (path.tokens.empty() || TerminationName(path.termination) == "invalid")
+      return absl::InvalidArgumentError(
+          "Path must have tokens and termination");
+    std::string bytes;
+    for (int token : path.tokens) {
+      if (token < 0 || static_cast<size_t>(token) >= graph.token_bytes.size())
+        return absl::InvalidArgumentError("Path token is outside vocabulary");
+      bytes += graph.token_bytes[token];
+    }
+    // Use the whole byte string, including any closing cycle token. Matching
+    // individual edges (or a shorter prefix) would admit nonexistent phrases.
+    if (!bytes.empty() && training_text.find(bytes) != absl::string_view::npos)
+      matches.push_back(path);
+  }
+  return matches;
+}
+
 absl::Status WriteGraphJson(std::ostream& output, const Graph& graph) {
   RETURN_IF_ERROR(ValidateGraph(graph));
   output << "{\n  \"format\": \"pluto.mlp_automaton.v1\",\n"

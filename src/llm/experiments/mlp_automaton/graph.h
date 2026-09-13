@@ -55,6 +55,15 @@ absl::StatusOr<Path> Walk(const Graph& graph, int start, size_t max_tokens);
 absl::StatusOr<std::vector<Path>> SamplePaths(const Graph& graph, size_t count,
                                               size_t max_tokens, uint64_t seed);
 
+// Keeps paths whose complete concatenated token bytes occur as a contiguous,
+// case-sensitive substring of training_text. No trimming, UTF-8 conversion, or
+// word-boundary requirement is applied. Empty decoded strings never qualify.
+// Preserves order, token IDs and termination reasons; the graph is unchanged.
+// The caller supplies only the training portion, excluding any held-out text.
+absl::StatusOr<std::vector<Path>> FilterPathsInCorpus(
+    const Graph& graph, absl::Span<const Path> paths,
+    absl::string_view training_text);
+
 // JSON contains every vocabulary node, not just nodes participating in edges.
 // bytes_hex is the lossless representation; bytes_escaped is an ASCII-only
 // display using C-style byte escapes. Neither assumes token bytes are UTF-8.

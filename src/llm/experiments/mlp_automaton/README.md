@@ -27,6 +27,8 @@ bazel build -c opt //src/llm/experiments/mlp_automaton
 bazel-bin/src/llm/experiments/mlp_automaton/mlp_automaton \
   --checkpoint=/home/ubuntu/checkpoints/shakespeare/step_13030 \
   --tokenizer=/home/ubuntu/datasets/tokenizer/gpt2 \
+  --corpus=testdata/shakespeare.txt \
+  --test_fraction=0.1 \
   --output_dir=/tmp/b0-automaton \
   --batch_size=256 \
   --threshold=0.75 \
@@ -54,6 +56,28 @@ uploaded. Extra files are ignored. No checkpoint file is modified. Output must
 be a **new** directory, preventing accidental replacement of a previous graph;
 a failed run can leave partial output there.
 
+## Training-text filter
+
+Only paths whose complete concatenated bytes occur verbatim in the training
+text appear on stdout or in `samples.json`. Matching is case-sensitive,
+includes leading whitespace and arbitrary bytes, and imposes no word
+boundaries. The full graph in `graph.json` still records every qualifying
+model transition.
+
+Set `--corpus` to the text used for the checkpoint and `--test_fraction` to
+the training run's value. Defaults are `testdata/shakespeare.txt` and `0.1`.
+The file is memory-mapped and split with the same newline-aligned
+`SplitCorpus` helper as training. Held-out-only matches and matches that
+cross the split boundary are excluded. Use `--test_fraction=0` when the file
+already contains only training text. Checkpoints do not record the corpus
+or split, so these flags must match the run.
+
+Filtering happens after sampling and applies to explicit starts as well.
+`--samples` counts candidate random starts, so fewer paths (possibly zero)
+may be emitted; rejected paths are not shortened to a matching prefix.
+Metadata records the corpus, split, training byte count, and candidate and
+retained path counts.
+
 ## Performance and numerical conventions
 
 The existing production layers perform BF16 activation/matrix math on the GPU
@@ -79,7 +103,7 @@ from a CPU readout or between GPU implementations are possible near a threshold.
 
 - `graph.json`: all vocabulary nodes, including isolated tokens, and edges with
   source/target IDs and probabilities. Its format is `pluto.mlp_automaton.v1`.
-- `samples.json`: token-ID paths, concatenated bytes and a stopping reason.
+- `samples.json`: corpus-matching token-ID paths, concatenated bytes and a stopping reason.
 - `metadata.txt`: checkpoint/tokenizer paths, dimensions, formula, precision,
   threshold, batch size and sampling settings.
 
@@ -104,7 +128,7 @@ probabilities, and a path alone is not proof of memorizing a training example.
 For the historical step-13030 checkpoint, the default scan found **3,749 edges
 among 50,257 nodes**, in about **2.11 seconds** on a GH200 after loading weights
 (including the scan's host/device transfers, excluding output serialization).
-Example sampled paths include `Exeunt all`, `Briefly`, `advisedly`,
+Before corpus filtering, example sampled paths included `Exeunt all`, `Briefly`, `advisedly`,
 `indifferently`, `Fairy Queen`, and `delight in the world`. Malformed samples
 such as `God'st thou` demonstrate the limitations of a context-free graph.
 A second scan with batch size 512 took about 1.31 seconds and produced a
@@ -119,7 +143,8 @@ bazel test -c opt //src/llm/experiments/mlp_automaton/... \
 ```
 
 CPU graph tests cover strict thresholds, invalid graphs, all traversal endings,
-seeded sampling, arbitrary-byte JSON, isolated nodes and I/O failures. GPU
+seeded sampling, exact corpus filtering (including arbitrary bytes and split
+boundaries), arbitrary-byte JSON, isolated nodes and I/O failures. GPU
 top-transition tests compare against a stable CPU reference across full vocabulary,
 padding, ties, extreme finite logits, nonfinite rows and invalid inputs. Model
 tests compare the composed readout to independently assembled scalar reference
