@@ -8,7 +8,7 @@
 #include "absl/strings/escaping.h"
 #include "src/dataset/gpt2_detokenizer.h"
 #include "src/dataset/gpt2_tokenizer.h"
-#include "src/llm/experiments/mlp_automaton/kvq_explorer/readout.h"
+#include "src/llm/experiments/kvq_explorer/readout.h"
 #include "src/util/status_macros.h"
 
 ABSL_FLAG(std::string, checkpoint, "", "GPT-2 recipe checkpoint directory");

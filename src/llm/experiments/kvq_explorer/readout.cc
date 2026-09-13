@@ -1,4 +1,4 @@
-#include "src/llm/experiments/mlp_automaton/kvq_explorer/readout.h"
+#include "src/llm/experiments/kvq_explorer/readout.h"
 
 #include <cuda_runtime.h>
 #include <math_constants.h>

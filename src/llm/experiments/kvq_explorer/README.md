@@ -9,9 +9,9 @@ probabilities for each projection.
 ## Run
 
 ```bash
-bazel build -c opt //src/llm/experiments/mlp_automaton/kvq_explorer
+bazel build -c opt //src/llm/experiments/kvq_explorer
 
-bazel-bin/src/llm/experiments/mlp_automaton/kvq_explorer/kvq_explorer \
+bazel-bin/src/llm/experiments/kvq_explorer/kvq_explorer \
   --checkpoint=/home/ubuntu/checkpoints/shakespeare_0/step_15000 \
   --tokenizer=/home/ubuntu/datasets/tokenizer/gpt2 \
   --prompt='Exeunt all'
@@ -79,7 +79,7 @@ The checkpoint is read-only and the tool does not modify any training model.
 ## Tests
 
 ```bash
-bazel test -c opt //src/llm/experiments/mlp_automaton/kvq_explorer/... \
+bazel test -c opt //src/llm/experiments/kvq_explorer/... \
   --test_output=errors --local_test_jobs=1
 ```
 
