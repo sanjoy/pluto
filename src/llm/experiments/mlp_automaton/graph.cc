@@ -10,6 +10,8 @@
 #include <sstream>
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "src/util/status_macros.h"
 
@@ -243,6 +245,109 @@ absl::StatusOr<std::vector<Path>> FilterPathsInCorpus(
       matches.push_back(path);
   }
   return matches;
+}
+
+absl::StatusOr<std::vector<CombinedPath>> CombinePaths(
+    absl::Span<const BlockPaths> blocks, size_t max_tokens) {
+  if (max_tokens == 0)
+    return absl::InvalidArgumentError("max_tokens must be positive");
+  absl::flat_hash_set<int> block_ids;
+  absl::flat_hash_map<std::string, size_t> index;
+  std::vector<CombinedPath> combined;
+  // Gather candidate strings from the caller's filtered samples. Validate
+  // full walks here so malformed paths cannot invent a combined candidate.
+  for (const BlockPaths& block : blocks) {
+    if (block.mlp_block < 0 || !block_ids.insert(block.mlp_block).second)
+      return absl::InvalidArgumentError(
+          "MLP block IDs must be nonnegative and unique");
+    RETURN_IF_ERROR(ValidateGraph(block.graph));
+    const auto successors = Successors(block.graph);
+    std::vector<size_t> visited(block.graph.token_bytes.size(), 0);
+    for (size_t i = 0; i < block.paths.size(); ++i) {
+      const Path& path = block.paths[i];
+      if (path.tokens.empty() || path.tokens.front() < 0 ||
+          static_cast<size_t>(path.tokens.front()) >= successors.size())
+        return absl::InvalidArgumentError("Invalid combined path start");
+      const Path expected =
+          WalkUnchecked(block.graph, successors, path.tokens.front(),
+                        max_tokens, i + 1, visited);
+      if (path.tokens != expected.tokens ||
+          path.termination != expected.termination)
+        return absl::InvalidArgumentError(
+            "Combined candidates must be full walks under max_tokens");
+      std::string bytes;
+      for (int token : path.tokens)
+        bytes += block.graph.token_bytes[token];
+      if (!bytes.empty() && index.emplace(bytes, combined.size()).second)
+        combined.push_back({std::move(bytes), {}});
+    }
+  }
+  if (combined.empty())
+    return combined;
+
+  // Enumerate each block once, sharing the successor table and visited
+  // scratch across walks. Only texts already sampled in some block are kept.
+  // Looking solely at each block's random samples would miss valid memberships.
+  for (const BlockPaths& block : blocks) {
+    const auto successors = Successors(block.graph);
+    std::vector<size_t> visited(block.graph.token_bytes.size(), 0);
+    std::vector<bool> found(combined.size(), false);
+    for (size_t start = 0; start < successors.size(); ++start) {
+      const Path path =
+          WalkUnchecked(block.graph, successors, static_cast<int>(start),
+                        max_tokens, start + 1, visited);
+      std::string bytes;
+      for (int token : path.tokens)
+        bytes += block.graph.token_bytes[token];
+      const auto entry = index.find(bytes);
+      if (entry == index.end() || found[entry->second])
+        continue;
+      found[entry->second] = true;
+      combined[entry->second].mlp_blocks.push_back(block.mlp_block);
+    }
+  }
+  for (auto& path : combined)
+    std::sort(path.mlp_blocks.begin(), path.mlp_blocks.end());
+  std::sort(combined.begin(), combined.end(),
+            [](const CombinedPath& a, const CombinedPath& b) {
+              return a.bytes < b.bytes;
+            });
+  return combined;
+}
+
+absl::Status WriteCombinedPathsJson(std::ostream& output,
+                                    absl::Span<const CombinedPath> paths) {
+  // Validate before writing any bytes, as with the other JSON serializers.
+  absl::flat_hash_set<absl::string_view> seen;
+  for (const auto& path : paths) {
+    if (path.bytes.empty() || path.mlp_blocks.empty() ||
+        !seen.insert(path.bytes).second)
+      return absl::InvalidArgumentError(
+          "Combined paths must have unique nonempty text and block IDs");
+    int previous = -1;
+    for (int block : path.mlp_blocks) {
+      if (block <= previous)
+        return absl::InvalidArgumentError(
+            "Combined block IDs must be nonnegative, unique and sorted");
+      previous = block;
+    }
+  }
+  output << "{\n  \"format\": \"pluto.mlp_automaton.combined_paths.v1\",\n"
+         << "  \"paths\": [\n";
+  for (size_t i = 0; i < paths.size(); ++i) {
+    const auto& path = paths[i];
+    output << "    {\"bytes_hex\": " << Quote(Hex(path.bytes))
+           << ", \"bytes_escaped\": " << Quote(EscapedBytes(path.bytes))
+           << ", \"mlp_blocks\": [";
+    for (size_t j = 0; j < path.mlp_blocks.size(); ++j) {
+      if (j != 0)
+        output << ", ";
+      output << std::to_string(path.mlp_blocks[j]);
+    }
+    output << "]}" << (i + 1 == paths.size() ? "\n" : ",\n");
+  }
+  output << "  ]\n}\n";
+  return StreamStatus(output);
 }
 
 absl::Status WriteGraphJson(std::ostream& output, const Graph& graph) {

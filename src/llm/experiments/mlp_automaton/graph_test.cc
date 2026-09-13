@@ -329,5 +329,167 @@ TEST(MlpAutomatonGraphTest, JsonPropagatesInvalidGraphAndStreamFailures) {
   EXPECT_FALSE(Walk(graph, 0, 16).ok());
 }
 
+TEST(MlpAutomatonGraphTest,
+     CombinedPathsFindUnsampledBlocksAndDeduplicateText) {
+  Graph first;
+  first.token_bytes = {" Ex",   "eunt", " all",  "other",
+                       " text", " two", " words"};
+  first.edges = {{0, 1, 0.9}, {1, 2, 0.9}, {3, 4, 0.9}, {5, 6, 0.9}};
+  Graph second;
+  second.token_bytes = {" Exeunt", " all", "other text", " two words"};
+  second.edges = {{0, 1, 0.9}};
+  Graph incomplete = first;
+  incomplete.edges = {{0, 1, 0.9}};  // Can't finish " Exeunt all".
+
+  auto exeunt = Walk(first, 0, 16);
+  auto other = Walk(first, 3, 16);
+  auto other_tokenization = Walk(second, 2, 16);
+  ASSERT_TRUE(exeunt.ok()) << exeunt.status();
+  ASSERT_TRUE(other.ok()) << other.status();
+  ASSERT_TRUE(other_tokenization.ok()) << other_tokenization.status();
+  std::vector<BlockPaths> blocks{{5, first, {*exeunt, *other, *exeunt}},
+                                 {1, second, {*other_tokenization}},
+                                 {3, incomplete, {}}};
+  auto combined = CombinePaths(blocks, 16);
+  ASSERT_TRUE(combined.ok()) << combined.status();
+  ASSERT_EQ(combined->size(), 2u);
+  EXPECT_EQ((*combined)[0].bytes, " Exeunt all");
+  EXPECT_EQ((*combined)[0].mlp_blocks, (std::vector<int>{1, 5}));
+  EXPECT_EQ((*combined)[1].bytes, "other text");
+  EXPECT_EQ((*combined)[1].mlp_blocks, (std::vector<int>{1, 5}));
+  // B1 did not sample Exeunt, and its spelling uses a different tokenization.
+  // " two words" is present in both graphs but was never a sampled candidate.
+  std::ostringstream original;
+  ASSERT_TRUE(WriteCombinedPathsJson(original, *combined).ok());
+  std::reverse(blocks.begin(), blocks.end());
+  for (auto& block : blocks)
+    std::reverse(block.paths.begin(), block.paths.end());
+  auto reordered = CombinePaths(blocks, 16);
+  ASSERT_TRUE(reordered.ok()) << reordered.status();
+  std::ostringstream output;
+  ASSERT_TRUE(WriteCombinedPathsJson(output, *reordered).ok());
+  EXPECT_EQ(output.str(), original.str());
+}
+
+TEST(MlpAutomatonGraphTest, CombinedPathsPreserveExactArbitraryBytes) {
+  Graph first;
+  first.token_bytes = {std::string("\0\xff", 2), "Word", " Word", "word"};
+  BlockPaths sampled{0, first, {}};
+  for (int token = 0; token < 4; ++token) {
+    auto path = Walk(first, token, 16);
+    ASSERT_TRUE(path.ok()) << path.status();
+    sampled.paths.push_back(*path);
+  }
+  Graph second;
+  second.token_bytes = {std::string("\0", 1), "\xff", " Word", "Word"};
+  second.edges = {{0, 1, 0.9}, {3, 2, 0.9}};
+  const std::vector<BlockPaths> blocks{sampled, {7, second, {}}};
+  auto combined = CombinePaths(blocks, 16);
+  ASSERT_TRUE(combined.ok()) << combined.status();
+  ASSERT_EQ(combined->size(), 4u);
+  EXPECT_EQ((*combined)[0].bytes, std::string("\0\xff", 2));
+  EXPECT_EQ((*combined)[0].mlp_blocks, (std::vector<int>{0, 7}));
+  EXPECT_EQ((*combined)[1].bytes, " Word");
+  EXPECT_EQ((*combined)[1].mlp_blocks, (std::vector<int>{0, 7}));
+  EXPECT_EQ((*combined)[2].bytes, "Word");
+  EXPECT_EQ((*combined)[2].mlp_blocks, (std::vector<int>{0}));
+  EXPECT_EQ((*combined)[3].bytes, "word");
+  EXPECT_EQ((*combined)[3].mlp_blocks, (std::vector<int>{0}));
+}
+
+TEST(MlpAutomatonGraphTest, CombinedMembershipRespectsCycleEosAndTokenLimit) {
+  Graph cycle;
+  cycle.token_bytes = {"a", "b", "!"};
+  cycle.edges = {{0, 1, 0.9}, {1, 0, 0.9}};
+  Graph longer = cycle;
+  longer.edges = {{0, 1, 0.9}, {1, 2, 0.9}};
+  Graph eos = cycle;
+  eos.eos_token_id = 1;
+  auto short_path = Walk(cycle, 0, 2);
+  auto cycle_path = Walk(cycle, 0, 3);
+  ASSERT_TRUE(short_path.ok()) << short_path.status();
+  ASSERT_TRUE(cycle_path.ok()) << cycle_path.status();
+  EXPECT_EQ(short_path->termination, Termination::kTokenLimit);
+  EXPECT_EQ(cycle_path->termination, Termination::kCycle);
+  std::vector<BlockPaths> blocks{
+      {0, cycle, {*short_path}}, {1, longer, {}}, {2, eos, {}}};
+  auto short_result = CombinePaths(blocks, 2);
+  ASSERT_TRUE(short_result.ok()) << short_result.status();
+  ASSERT_EQ(short_result->size(), 1u);
+  EXPECT_EQ(short_result->front().bytes, "ab");
+  EXPECT_EQ(short_result->front().mlp_blocks, (std::vector<int>{0, 1, 2}));
+  // Same text may terminate differently across blocks. But a prefix of a
+  // longer full walk is not sufficient under the larger token limit.
+  blocks[0].paths = {*cycle_path};
+  auto cycle_result = CombinePaths(blocks, 3);
+  ASSERT_TRUE(cycle_result.ok()) << cycle_result.status();
+  ASSERT_EQ(cycle_result->size(), 1u);
+  EXPECT_EQ(cycle_result->front().bytes, "aba");
+  EXPECT_EQ(cycle_result->front().mlp_blocks, (std::vector<int>{0}));
+}
+
+TEST(MlpAutomatonGraphTest,
+     CombinedPathsRejectInvalidInputsAndHandleNoSamples) {
+  auto empty = CombinePaths({}, 16);
+  ASSERT_TRUE(empty.ok()) << empty.status();
+  EXPECT_TRUE(empty->empty());
+  EXPECT_FALSE(CombinePaths({}, 0).ok());
+  Graph graph = ExampleGraph();
+  std::vector<BlockPaths> blocks{{0, graph, {}}};
+  empty = CombinePaths(blocks, 16);
+  ASSERT_TRUE(empty.ok()) << empty.status();
+  EXPECT_TRUE(empty->empty());
+  blocks.push_back(blocks[0]);
+  EXPECT_FALSE(CombinePaths(blocks, 16).ok());
+  blocks.pop_back();
+  blocks[0].mlp_block = -1;
+  EXPECT_FALSE(CombinePaths(blocks, 16).ok());
+  blocks[0].mlp_block = 0;
+  for (const Path& invalid :
+       {Path{{}, Termination::kNoEdge}, Path{{-1}, Termination::kNoEdge},
+        Path{{0, 99}, Termination::kNoEdge}, Path{{0}, Termination::kNoEdge},
+        Path{{0, 1, 2}, Termination::kCycle}}) {
+    blocks[0].paths = {invalid};
+    EXPECT_EQ(CombinePaths(blocks, 16).status().code(),
+              absl::StatusCode::kInvalidArgument);
+  }
+  blocks[0].paths.clear();
+  blocks[0].graph.edges.push_back({0, 1, 0.9});
+  EXPECT_FALSE(CombinePaths(blocks, 16).ok());
+}
+
+TEST(MlpAutomatonGraphTest, CombinedJsonIsLosslessAndChecksProvenance) {
+  const std::vector<CombinedPath> paths{
+      {std::string("\0\xff\"\\\n", 5), {0, 2, 7}}};
+  std::ostringstream output;
+  output.imbue(std::locale(std::locale::classic(), new CommaDecimal));
+  output << std::hex << std::showbase;
+  ASSERT_TRUE(WriteCombinedPathsJson(output, paths).ok());
+  EXPECT_NE(output.str().find("pluto.mlp_automaton.combined_paths.v1"),
+            std::string::npos);
+  EXPECT_NE(output.str().find("\"bytes_hex\": \"00ff225c0a\""),
+            std::string::npos);
+  EXPECT_NE(output.str().find("\"mlp_blocks\": [0, 2, 7]"), std::string::npos);
+  for (const CombinedPath& invalid :
+       {CombinedPath{"", {0}}, CombinedPath{"text", {}},
+        CombinedPath{"text", {-1}}, CombinedPath{"text", {1, 1}},
+        CombinedPath{"text", {2, 0}}}) {
+    std::ostringstream rejected;
+    EXPECT_FALSE(WriteCombinedPathsJson(rejected, {&invalid, 1}).ok());
+    EXPECT_TRUE(rejected.str().empty());
+  }
+  const std::vector<CombinedPath> duplicates{paths[0], paths[0]};
+  std::ostringstream rejected;
+  EXPECT_FALSE(WriteCombinedPathsJson(rejected, duplicates).ok());
+  EXPECT_TRUE(rejected.str().empty());
+  std::ostringstream empty;
+  ASSERT_TRUE(WriteCombinedPathsJson(empty, {}).ok());
+  EXPECT_NE(empty.str().find("\"paths\": [\n  ]"), std::string::npos);
+  std::ostringstream broken;
+  broken.setstate(std::ios::badbit);
+  EXPECT_EQ(WriteCombinedPathsJson(broken, paths).code(),
+            absl::StatusCode::kDataLoss);
+}
+
 }  // namespace
 }  // namespace pluto::llm::mlp_automaton

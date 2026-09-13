@@ -1,7 +1,7 @@
 # MLP token-transition automaton
 
-Read high-confidence token continuations directly from a selected isolated
-MLP of the GPT-2 recipe (first block by default). This is a diagnostic,
+Read high-confidence token continuations directly from isolated MLPs of the
+GPT-2 recipe (all eight blocks by default). This is a diagnostic,
 **not** the full language model.
 For every logical vocabulary token `t`, it computes:
 
@@ -18,7 +18,8 @@ blocks. Both learned LayerNorms, biases, the residual connection and tied
 embedding/output dictionary are included. A raw MLP matrix alone would not
 specify this readout.
 
-Select the zero-based block index with `--mlp_block` (0 through 7). For example,
+Omit `--mlp_block` to scan all eight MLPs and print one combined list. Set an
+explicit zero-based index (0 through 7) to scan only that block. For example,
 `--mlp_block=3` reads the fourth block's MLP. Each selection applies that
 MLP directly to token embeddings using the formula above; preceding
 transformer blocks are not executed.
@@ -33,10 +34,9 @@ bazel build -c opt //src/llm/experiments/mlp_automaton
 bazel-bin/src/llm/experiments/mlp_automaton/mlp_automaton \
   --checkpoint=/home/ubuntu/checkpoints/shakespeare/step_13030 \
   --tokenizer=/home/ubuntu/datasets/tokenizer/gpt2 \
-  --mlp_block=0 \
   --corpus=testdata/shakespeare.txt \
   --test_fraction=0.1 \
-  --output_dir=/tmp/b0-automaton \
+  --output_dir=/tmp/mlp-automaton \
   --batch_size=256 \
   --threshold=0.75 \
   --samples=50 \
@@ -48,7 +48,8 @@ bazel-bin/src/llm/experiments/mlp_automaton/mlp_automaton \
 The checkpoint and output directory are required; tokenizer defaults to the
 relative path `datasets/tokenizer/gpt2`. The tokenizer must match the checkpoint
 and have 50,257 tokens. This recipe uses model width 512, MLP width 2,048 and
-the eight-block GPT-2 checkpoint layout. It reads only nine FP32 tensor files:
+the eight-block GPT-2 checkpoint layout. Each block readout reads nine FP32
+tensor files:
 
 | Role | File indices | Physical shapes |
 | --- | --- | --- |
@@ -70,7 +71,7 @@ a failed run can leave partial output there.
 ## Training-text filter
 
 Only paths whose complete concatenated bytes occur verbatim in the training
-text appear on stdout or in `samples.json`. Matching is case-sensitive,
+text appear on stdout, in `samples.json`, or in `combined_paths.json`. Matching is case-sensitive,
 includes leading whitespace and arbitrary bytes, and imposes no word
 boundaries. The full graph in `graph.json` still records every qualifying
 model transition.
@@ -84,8 +85,8 @@ already contains only training text. Checkpoints do not record the corpus
 or split, so these flags must match the run.
 
 Filtering happens after sampling and applies to explicit starts as well.
-`--samples` counts candidate random starts, so fewer paths (possibly zero)
-may be emitted; rejected paths are not shortened to a matching prefix.
+`--samples` counts candidate random starts per block, so fewer paths (possibly
+zero) may be emitted; rejected paths are not shortened to a matching prefix.
 Metadata records the corpus, split, training byte count, and candidate and
 retained path counts.
 
@@ -112,6 +113,32 @@ from a CPU readout or between GPU implementations are possible near a threshold.
 
 ## Output and sampling
 
+With no block flag, the output directory contains `block_0/` through
+`block_7/`, each with its own `graph.json`, `samples.json`, and `metadata.txt`.
+The root holds `combined_paths.json` and shared `metadata.txt`. With an explicit
+block flag (including `--mlp_block=0`), its graph, samples, metadata, and the
+combined file are all at the root.
+
+The combined list merges the corpus-matching sampled paths from all scanned
+blocks by their **exact decoded bytes**, even when tokenizations differ.
+Leading spaces and case stay significant. Entries are sorted by bytes; each
+has a sorted, unique `mlp_blocks` array. For example:
+
+```text
+" Exeunt all" (MLP blocks: 0, 2, 7)
+```
+
+That line is an illustration of the format. To determine the block list,
+the tool checks complete walks from **every starting token** in every scanned
+graph, using the same `--max_tokens`. A block need not have randomly sampled a
+text to receive attribution. A prefix of a longer walk does not qualify.
+This extra check does not add unsampled texts to the combined list and never
+joins edges from different blocks. Explicit single-block mode only reports
+membership in that selected block.
+
+- `combined_paths.json`: each unique text's `bytes_hex`, `bytes_escaped`, and
+  `mlp_blocks`; format `pluto.mlp_automaton.combined_paths.v1`.
+
 - `graph.json`: all vocabulary nodes, including isolated tokens, and edges with
   source/target IDs and probabilities. Its format is `pluto.mlp_automaton.v1`.
 - `samples.json`: corpus-matching token-ID paths, concatenated bytes and a
@@ -128,7 +155,8 @@ not interpret the display string as the original text.
 Sampling uniformly selects distinct starting nodes with outgoing edges (except
 EOS), then follows the unique successor. `--samples=0` skips random starts;
 `--start_tokens` adds explicit starts, including nodes with no outgoing edge.
-The seed fixes the sampling order, independently of edge-list order.
+The same seed is used separately for each block. It fixes each sampling
+order independently of edge-list order.
 
 Paths stop at `no_edge`, `end_of_sequence`, `cycle`, or `token_limit`. The length
 limit counts the starting token. A cycle includes its repeated closing token.
@@ -138,7 +166,7 @@ are independently evaluated token transitions: later steps do not receive the
 earlier tokens as context. Their probabilities are not full-model sequence
 probabilities, and a path alone is not proof of memorizing a training example.
 
-For the historical step-13030 checkpoint, the default scan found **3,749 edges
+For the historical step-13030 checkpoint, the B0 scan found **3,749 edges
 among 50,257 nodes**, in about **2.11 seconds** on a GH200 after loading weights
 (including the scan's host/device transfers, excluding output serialization).
 Before corpus filtering, example sampled paths included `Exeunt all`, `Briefly`, `advisedly`,
@@ -157,7 +185,8 @@ bazel test -c opt //src/llm/experiments/mlp_automaton/... \
 
 CPU graph tests cover strict thresholds, invalid graphs, all traversal endings,
 seeded sampling, exact corpus filtering (including arbitrary bytes and split
-boundaries), arbitrary-byte JSON, isolated nodes and I/O failures. GPU
+boundaries), combined attribution (including unsampled blocks and differing
+tokenizations), arbitrary-byte JSON, isolated nodes and I/O failures. GPU
 top-transition tests compare against a stable CPU reference across the full
 vocabulary, padding, ties, extreme finite logits, nonfinite rows and invalid
 inputs. Model

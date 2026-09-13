@@ -22,9 +22,9 @@
 #include "src/util/status_macros.h"
 
 ABSL_FLAG(std::string, checkpoint, "", "GPT-2 checkpoint directory to read");
-ABSL_FLAG(
-    int, mlp_block, 0,
-    "Zero-based transformer block whose isolated MLP to read (0 through 7)");
+ABSL_FLAG(int, mlp_block, 0,
+          "Zero-based transformer block to read (0 through 7); omit to analyze "
+          "all blocks");
 ABSL_FLAG(std::string, tokenizer, "datasets/tokenizer/gpt2",
           "Directory containing the matching GPT-2 tokenizer.json");
 ABSL_FLAG(std::string, corpus, "testdata/shakespeare.txt",
@@ -34,13 +34,14 @@ ABSL_FLAG(double, test_fraction, 0.1,
           "Held-out fraction, matching the training run; zero means corpus "
           "already contains only training text");
 ABSL_FLAG(std::string, output_dir, "",
-          "New directory for graph.json, samples.json and metadata.txt");
+          "New output directory; all-block runs keep each block in block_N/ "
+          "and write combined_paths.json at the root");
 ABSL_FLAG(int, batch_size, 256, "GPU batch rows; positive multiple of 16");
 ABSL_FLAG(double, threshold, 0.75,
           "Keep edges with probability strictly greater than this [0.5,1)");
-ABSL_FLAG(
-    int, samples, 50,
-    "Number of distinct random starting tokens to try before corpus filtering");
+ABSL_FLAG(int, samples, 50,
+          "Number of distinct random starting tokens per block before corpus "
+          "filtering");
 ABSL_FLAG(int, max_tokens, 16, "Maximum tokens per path, including the start");
 ABSL_FLAG(uint64_t, seed, 17, "Seed for sampling starting tokens");
 ABSL_FLAG(std::vector<std::string>, start_tokens, {},
@@ -51,8 +52,9 @@ namespace {
 
 absl::Status Run() {
   const std::string checkpoint = absl::GetFlag(FLAGS_checkpoint);
-  const int mlp_block = absl::GetFlag(FLAGS_mlp_block);
-  if (mlp_block < 0 || mlp_block >= kGpt2TransformerBlockCount)
+  const bool all_blocks = !FLAGS_mlp_block.IsSpecifiedOnCommandLine();
+  const int requested_block = absl::GetFlag(FLAGS_mlp_block);
+  if (requested_block < 0 || requested_block >= kGpt2TransformerBlockCount)
     return absl::InvalidArgumentError("mlp_block must be in [0, 8)");
   const std::string tokenizer = absl::GetFlag(FLAGS_tokenizer);
   const std::string corpus_path = absl::GetFlag(FLAGS_corpus);
@@ -103,105 +105,148 @@ absl::Status Run() {
     return absl::FailedPreconditionError(
         "output_dir must be a new, writable directory");
   }
-  Graph graph;
-  graph.threshold = threshold;
-  graph.eos_token_id = decoder->eos_token_id();
+  Graph vocabulary;
+  vocabulary.threshold = threshold;
+  vocabulary.eos_token_id = decoder->eos_token_id();
   for (int token = 0; token < decoder->vocab_size(); ++token) {
     ASSIGN_OR_RETURN(auto bytes, decoder->Decode({&token, 1}));
-    graph.token_bytes.push_back(std::move(bytes));
+    vocabulary.token_bytes.push_back(std::move(bytes));
   }
   ASSIGN_OR_RETURN(auto executor, cuda::Executor::Create());
   ASSIGN_OR_RETURN(auto readout, CreateReadout(*executor));
-  RETURN_IF_ERROR(LoadMlpWeights(*executor, *readout, checkpoint, mlp_block));
-  const auto began = std::chrono::steady_clock::now();
-  auto last_update = began;
-  std::cout << "Loaded isolated B" << mlp_block << " MLP. Scanning "
-            << decoder->vocab_size() << " tokens, batch_size=" << batch_size
-            << ", p > " << threshold << std::endl;
-  ASSIGN_OR_RETURN(
-      auto transitions,
-      ScanVocabulary(
-          *executor, *readout, decoder->vocab_size(), batch_size,
-          [&](int completed) {
-            const auto now = std::chrono::steady_clock::now();
-            if (completed == decoder->vocab_size() ||
-                now - last_update >= std::chrono::seconds(5)) {
-            std::cout << "Scanned " << completed << '/' << decoder->vocab_size()
-                      << " tokens in "
-                      << std::chrono::duration<double>(now - began).count()
-                      << " seconds" << std::endl;
-            last_update = now;
-            }
-          }));
-  for (int token = 0; token < decoder->vocab_size(); ++token) {
-    if (transitions[token].probability > threshold) {
-      graph.edges.push_back(
-          {token, transitions[token].token, transitions[token].probability});
+  std::vector<BlockPaths> analyses;
+  std::vector<int> block_ids;
+  const int first_block = all_blocks ? 0 : requested_block;
+  const int end_block =
+      all_blocks ? kGpt2TransformerBlockCount : requested_block + 1;
+  for (int mlp_block = first_block; mlp_block < end_block; ++mlp_block) {
+    block_ids.push_back(mlp_block);
+    const auto block_output =
+        all_blocks ? output_directory / ("block_" + std::to_string(mlp_block))
+                   : output_directory;
+    if (all_blocks &&
+        (!std::filesystem::create_directory(block_output, error) || error))
+      return absl::FailedPreconditionError("could not create block output");
+    Graph graph = vocabulary;
+    RETURN_IF_ERROR(LoadMlpWeights(*executor, *readout, checkpoint, mlp_block));
+    const auto began = std::chrono::steady_clock::now();
+    auto last_update = began;
+    std::cout << "Loaded isolated B" << mlp_block << " MLP. Scanning "
+              << decoder->vocab_size() << " tokens, batch_size=" << batch_size
+              << ", p > " << threshold << std::endl;
+    ASSIGN_OR_RETURN(
+        auto transitions,
+        ScanVocabulary(
+            *executor, *readout, decoder->vocab_size(), batch_size,
+            [&](int completed) {
+              const auto now = std::chrono::steady_clock::now();
+              if (completed == decoder->vocab_size() ||
+                  now - last_update >= std::chrono::seconds(5)) {
+              std::cout << "Scanned " << completed << '/'
+                        << decoder->vocab_size() << " tokens in "
+                        << std::chrono::duration<double>(now - began).count()
+                        << " seconds" << std::endl;
+              last_update = now;
+              }
+            }));
+    for (int token = 0; token < decoder->vocab_size(); ++token) {
+      if (transitions[token].probability > threshold) {
+        graph.edges.push_back(
+            {token, transitions[token].token, transitions[token].probability});
+      }
     }
-  }
-  ASSIGN_OR_RETURN(auto paths, SamplePaths(graph, sample_count, max_tokens,
-                                           absl::GetFlag(FLAGS_seed)));
-  for (int token : starts) {
-    ASSIGN_OR_RETURN(auto path, Walk(graph, token, max_tokens));
-    paths.push_back(std::move(path));
-  }
-  const size_t candidate_count = paths.size();
-  ASSIGN_OR_RETURN(paths, FilterPathsInCorpus(graph, paths, training.text()));
-  std::ofstream graph_file(output_directory / "graph.json");
-  RETURN_IF_ERROR(WriteGraphJson(graph_file, graph));
-  graph_file.close();
-  std::ofstream samples_file(output_directory / "samples.json");
-  RETURN_IF_ERROR(WritePathsJson(samples_file, graph, paths));
-  samples_file.close();
-  std::ofstream metadata(output_directory / "metadata.txt");
-  metadata << std::setprecision(17)
-           << "checkpoint=" << std::filesystem::absolute(checkpoint).string()
-           << "\ntokenizer=" << std::filesystem::absolute(tokenizer).string()
-           << "\ncorpus=" << std::filesystem::absolute(corpus_path).string()
-           << "\ntest_fraction=" << test_fraction
-           << "\ntraining_bytes=" << training.size()
-           << "\npath_filter=exact_training_substring"
-           << "\nmlp_block=" << mlp_block
-           << "\nmlp_checkpoint_indices=" << 8 + 12 * mlp_block << ".."
-           << 13 + 12 * mlp_block << "\nformula=x=E[token]; h=x+FC2_B"
-           << mlp_block << "(GELU(FC1_B" << mlp_block << "(LN2_B" << mlp_block
-           << "(x)))); logits=LN_final(h)*E^T\n"
-           << "position_embeddings=false\nattention=false\nother_blocks=false\n"
-           << "activations=BF16\nmaster_weights=FP32\nlogits=FP32\n"
-           << "softmax_reductions=FP32\ntemperature=1\n"
-           << "vocab_size=" << kGpt2VocabularySize
-           << "\npadded_vocab_size=" << kGpt2PaddedVocabularySize
-           << "\nmodel_width=" << kGpt2ModelWidth
-           << "\nfeed_forward_width=" << kGpt2FeedForwardWidth
-           << "\nthreshold_strictly_greater_than=" << threshold
-           << "\nbatch_size=" << batch_size
-           << "\nseed=" << absl::GetFlag(FLAGS_seed)
-           << "\nmax_tokens=" << max_tokens
-           << "\nrandom_samples=" << sample_count
-           << "\nstart_tokens=" << absl::StrJoin(starts, ",")
-           << "\ncandidate_paths=" << candidate_count
-           << "\nedges=" << graph.edges.size() << "\npaths=" << paths.size()
-           << "\n";
-  metadata.close();
-  if (!graph_file || !samples_file || !metadata)
-    return absl::InternalError("could not finish writing automaton output");
-  std::cout << "Wrote " << graph.token_bytes.size() << " nodes, "
-            << graph.edges.size() << " edges, " << paths.size()
-            << " training-text paths (from " << candidate_count
-            << " candidates) to " << output_directory << '\n'
-            << "Each printed path occurs verbatim in the training text.\n";
-  for (const auto& path : paths) {
-    std::string bytes;
-    std::cout << '[';
-    for (size_t index = 0; index < path.tokens.size(); ++index) {
-      if (index)
-        std::cout << ',';
-      std::cout << path.tokens[index];
-      bytes += graph.token_bytes[path.tokens[index]];
+    ASSIGN_OR_RETURN(auto paths, SamplePaths(graph, sample_count, max_tokens,
+                                             absl::GetFlag(FLAGS_seed)));
+    for (int token : starts) {
+      ASSIGN_OR_RETURN(auto path, Walk(graph, token, max_tokens));
+      paths.push_back(std::move(path));
     }
-    std::cout << "] \"" << absl::CEscape(bytes) << "\" ("
-              << TerminationName(path.termination) << ")\n";
+    const size_t candidate_count = paths.size();
+    ASSIGN_OR_RETURN(paths, FilterPathsInCorpus(graph, paths, training.text()));
+    std::ofstream graph_file(block_output / "graph.json");
+    RETURN_IF_ERROR(WriteGraphJson(graph_file, graph));
+    graph_file.close();
+    std::ofstream samples_file(block_output / "samples.json");
+    RETURN_IF_ERROR(WritePathsJson(samples_file, graph, paths));
+    samples_file.close();
+    std::ofstream metadata(block_output / "metadata.txt");
+    metadata
+        << std::setprecision(17)
+        << "checkpoint=" << std::filesystem::absolute(checkpoint).string()
+        << "\ntokenizer=" << std::filesystem::absolute(tokenizer).string()
+        << "\ncorpus=" << std::filesystem::absolute(corpus_path).string()
+        << "\ntest_fraction=" << test_fraction
+        << "\ntraining_bytes=" << training.size()
+        << "\npath_filter=exact_training_substring"
+        << "\nmlp_block=" << mlp_block
+        << "\nmlp_checkpoint_indices=" << 8 + 12 * mlp_block << ".."
+        << 13 + 12 * mlp_block << "\nformula=x=E[token]; h=x+FC2_B" << mlp_block
+        << "(GELU(FC1_B" << mlp_block << "(LN2_B" << mlp_block
+        << "(x)))); logits=LN_final(h)*E^T\n"
+        << "position_embeddings=false\nattention=false\nother_blocks=false\n"
+        << "activations=BF16\nmaster_weights=FP32\nlogits=FP32\n"
+        << "softmax_reductions=FP32\ntemperature=1\n"
+        << "vocab_size=" << kGpt2VocabularySize
+        << "\npadded_vocab_size=" << kGpt2PaddedVocabularySize
+        << "\nmodel_width=" << kGpt2ModelWidth
+        << "\nfeed_forward_width=" << kGpt2FeedForwardWidth
+        << "\nthreshold_strictly_greater_than=" << threshold
+        << "\nbatch_size=" << batch_size
+        << "\nseed=" << absl::GetFlag(FLAGS_seed)
+        << "\nmax_tokens=" << max_tokens << "\nrandom_samples=" << sample_count
+        << "\nstart_tokens=" << absl::StrJoin(starts, ",")
+        << "\ncandidate_paths=" << candidate_count
+        << "\nedges=" << graph.edges.size() << "\npaths=" << paths.size()
+        << "\n";
+    metadata.close();
+    if (!graph_file || !samples_file || !metadata)
+      return absl::InternalError("could not finish writing automaton output");
+    std::cout << "Wrote " << graph.token_bytes.size() << " nodes, "
+              << graph.edges.size() << " edges, " << paths.size()
+              << " training-text paths (from " << candidate_count
+              << " candidates) to " << block_output << '\n'
+              << "B" << mlp_block << " scan complete.\n";
+    analyses.push_back({mlp_block, std::move(graph), std::move(paths)});
   }
+
+  ASSIGN_OR_RETURN(auto combined, CombinePaths(analyses, max_tokens));
+  std::ofstream combined_file(output_directory / "combined_paths.json");
+  RETURN_IF_ERROR(WriteCombinedPathsJson(combined_file, combined));
+  combined_file.close();
+  if (!combined_file)
+    return absl::InternalError("could not finish writing combined paths");
+
+  if (all_blocks) {
+    // Per-block metadata retains each graph's exact formula, weights, and
+    // sample counts. The root records the shared configuration and merge rule.
+    std::ofstream metadata(output_directory / "metadata.txt");
+    metadata << std::setprecision(17)
+             << "checkpoint=" << std::filesystem::absolute(checkpoint).string()
+             << "\ntokenizer=" << std::filesystem::absolute(tokenizer).string()
+             << "\ncorpus=" << std::filesystem::absolute(corpus_path).string()
+             << "\ntest_fraction=" << test_fraction
+             << "\ntraining_bytes=" << training.size()
+             << "\nmlp_blocks=" << absl::StrJoin(block_ids, ",")
+             << "\npath_filter=exact_training_substring"
+             << "\npath_identity=exact_decoded_bytes"
+             << "\nblock_membership=complete_walk_from_any_start"
+             << "\nthreshold_strictly_greater_than=" << threshold
+             << "\nbatch_size=" << batch_size
+             << "\nrandom_samples_per_block=" << sample_count
+             << "\nseed=" << absl::GetFlag(FLAGS_seed)
+             << "\nmax_tokens=" << max_tokens
+             << "\nstart_tokens=" << absl::StrJoin(starts, ",")
+             << "\ncombined_paths=" << combined.size() << '\n';
+    metadata.close();
+    if (!metadata)
+      return absl::InternalError("could not finish writing combined metadata");
+  }
+  std::cout << "Combined " << combined.size() << " distinct training-text paths"
+            << " across MLP blocks " << absl::StrJoin(block_ids, ", ") << ".\n";
+  for (const auto& path : combined)
+    std::cout << '"' << absl::CEscape(path.bytes)
+              << "\" (MLP blocks: " << absl::StrJoin(path.mlp_blocks, ", ")
+              << ")\n";
   return absl::OkStatus();
 }
 

@@ -39,6 +39,21 @@ struct Path {
   Termination termination;
 };
 
+// A block's full transition graph and corpus-filtered sampled paths. Keeping
+// graphs separate prevents accidentally stitching together different MLPs.
+struct BlockPaths {
+  int mlp_block;
+  Graph graph;
+  std::vector<Path> paths;
+};
+
+// One exact decoded byte string, deduplicated across paths/tokenizations.
+// Block IDs are unique, sorted and zero-based. Whitespace remains significant.
+struct CombinedPath {
+  std::string bytes;
+  std::vector<int> mlp_blocks;
+};
+
 absl::string_view TerminationName(Termination termination);
 
 // Checks ID bounds, unique sources, the threshold, and finite probabilities in
@@ -63,6 +78,21 @@ absl::StatusOr<std::vector<Path>> SamplePaths(const Graph& graph, size_t count,
 absl::StatusOr<std::vector<Path>> FilterPathsInCorpus(
     const Graph& graph, absl::Span<const Path> paths,
     absl::string_view training_text);
+
+// Combines the sampled texts, then checks every starting token in every
+// supplied graph for each text's membership. Thus block attribution does not
+// depend on that block also having sampled the text. Membership means a full
+// Walk ending under the same max_tokens limit (not just a prefix of one).
+// Results are sorted by exact bytes, independently of block/sample order.
+// Input paths must be full walks in their block under that same token limit;
+// block IDs must be nonnegative and unique. An empty input returns no results.
+absl::StatusOr<std::vector<CombinedPath>> CombinePaths(
+    absl::Span<const BlockPaths> blocks, size_t max_tokens);
+
+// Writes a lossless bytes_hex, ASCII bytes_escaped, and mlp_blocks array for
+// each combined path. No single tokenization represents all possible blocks.
+absl::Status WriteCombinedPathsJson(std::ostream& output,
+                                    absl::Span<const CombinedPath> paths);
 
 // JSON contains every vocabulary node, not just nodes participating in edges.
 // bytes_hex is the lossless representation; bytes_escaped is an ASCII-only
