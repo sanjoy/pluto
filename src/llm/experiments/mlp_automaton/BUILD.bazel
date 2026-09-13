@@ -59,7 +59,7 @@ cc_library(
 
 cc_binary(
     name = "mlp_automaton",
-    srcs = ["main.cc"],
+    srcs = ["mlp_automaton.cc"],
     deps = [
         ":graph",
         ":model",
