@@ -26,17 +26,22 @@ namespace {
 
 constexpr int kTile = 16;
 constexpr float kEpsilon = 1e-5f;
-// Each GPT-2 block contributes twelve unique tensors after E and positions.
-constexpr std::array<int, 9> kCheckpointIndices = {
-    0,
-    8,
-    9,
-    10,
-    11,
-    12,
-    13,
-    2 + 12 * kGpt2TransformerBlockCount,
-    3 + 12 * kGpt2TransformerBlockCount};
+// Checkpoint traversal writes E and position embeddings first, then twelve
+// tensors per block: six for attention (LN1, QKV, output projection) and six
+// for the MLP (LN2, input projection, output projection). Select only the MLP;
+// the shared embedding and final LayerNorm always come from the same files.
+std::array<int, 9> CheckpointIndices(int mlp_block) {
+  const int mlp_start = 2 + 12 * mlp_block + 6;
+  return {0,
+          mlp_start,
+          mlp_start + 1,
+          mlp_start + 2,
+          mlp_start + 3,
+          mlp_start + 4,
+          mlp_start + 5,
+          2 + 12 * kGpt2TransformerBlockCount,
+          3 + 12 * kGpt2TransformerBlockCount};
+}
 
 absl::StatusOr<cuda::PageLockedHostArray<float>> ReadWeight(
     cuda::Executor& executor, const std::filesystem::path& path,
@@ -98,8 +103,14 @@ absl::StatusOr<std::unique_ptr<Layer>> CreateReadout(
   return std::unique_ptr<Layer>(std::move(result));
 }
 
-absl::Status LoadB0Weights(cuda::Executor& executor, Layer& readout,
-                           const std::filesystem::path& directory) {
+absl::Status LoadMlpWeights(cuda::Executor& executor, Layer& readout,
+                            const std::filesystem::path& directory,
+                            int mlp_block) {
+  // Check before filename arithmetic or any device mutation.
+  if (mlp_block < 0 || mlp_block >= kGpt2TransformerBlockCount)
+    return absl::InvalidArgumentError(absl::StrCat(
+        "mlp_block must be in [0, ", kGpt2TransformerBlockCount, ")"));
+  const auto checkpoint_indices = CheckpointIndices(mlp_block);
   if (directory.empty())
     return absl::InvalidArgumentError("checkpoint directory must not be empty");
   std::vector<Buffer*> weights;
@@ -110,14 +121,14 @@ absl::Status LoadB0Weights(cuda::Executor& executor, Layer& readout,
     if (seen.insert(weight.data()).second)
       weights.push_back(&weight);
   }
-  if (weights.size() != kCheckpointIndices.size()) {
+  if (weights.size() != checkpoint_indices.size()) {
     return absl::InvalidArgumentError(
-        "B0 loader requires the nine unique CreateReadout weights");
+        "MLP loader requires the nine unique CreateReadout weights");
   }
   std::vector<cuda::PageLockedHostArray<float>> staging;
   for (size_t index = 0; index < weights.size(); ++index) {
     const auto path =
-        directory / absl::StrCat("weight_", kCheckpointIndices[index], ".bin");
+        directory / absl::StrCat("weight_", checkpoint_indices[index], ".bin");
     ASSIGN_OR_RETURN(auto values,
                      ReadWeight(executor, path, weights[index]->size_bytes()));
     staging.push_back(std::move(values));

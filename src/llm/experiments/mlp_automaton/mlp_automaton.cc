@@ -22,6 +22,9 @@
 #include "src/util/status_macros.h"
 
 ABSL_FLAG(std::string, checkpoint, "", "GPT-2 checkpoint directory to read");
+ABSL_FLAG(
+    int, mlp_block, 0,
+    "Zero-based transformer block whose isolated MLP to read (0 through 7)");
 ABSL_FLAG(std::string, tokenizer, "datasets/tokenizer/gpt2",
           "Directory containing the matching GPT-2 tokenizer.json");
 ABSL_FLAG(std::string, corpus, "testdata/shakespeare.txt",
@@ -48,6 +51,9 @@ namespace {
 
 absl::Status Run() {
   const std::string checkpoint = absl::GetFlag(FLAGS_checkpoint);
+  const int mlp_block = absl::GetFlag(FLAGS_mlp_block);
+  if (mlp_block < 0 || mlp_block >= kGpt2TransformerBlockCount)
+    return absl::InvalidArgumentError("mlp_block must be in [0, 8)");
   const std::string tokenizer = absl::GetFlag(FLAGS_tokenizer);
   const std::string corpus_path = absl::GetFlag(FLAGS_corpus);
   const double test_fraction = absl::GetFlag(FLAGS_test_fraction);
@@ -106,12 +112,12 @@ absl::Status Run() {
   }
   ASSIGN_OR_RETURN(auto executor, cuda::Executor::Create());
   ASSIGN_OR_RETURN(auto readout, CreateReadout(*executor));
-  RETURN_IF_ERROR(LoadB0Weights(*executor, *readout, checkpoint));
+  RETURN_IF_ERROR(LoadMlpWeights(*executor, *readout, checkpoint, mlp_block));
   const auto began = std::chrono::steady_clock::now();
   auto last_update = began;
-  std::cout << "Loaded isolated B0 MLP. Scanning " << decoder->vocab_size()
-            << " tokens, batch_size=" << batch_size << ", p > " << threshold
-            << std::endl;
+  std::cout << "Loaded isolated B" << mlp_block << " MLP. Scanning "
+            << decoder->vocab_size() << " tokens, batch_size=" << batch_size
+            << ", p > " << threshold << std::endl;
   ASSIGN_OR_RETURN(
       auto transitions,
       ScanVocabulary(
@@ -155,9 +161,12 @@ absl::Status Run() {
            << "\ntest_fraction=" << test_fraction
            << "\ntraining_bytes=" << training.size()
            << "\npath_filter=exact_training_substring"
-           << "\nformula=x=E[token]; h=x+FC2(GELU(FC1(LN2_B0(x)))); "
-              "logits=LN_final(h)*E^T\n"
-           << "position_embeddings=false\nattention=false\nlater_blocks=false\n"
+           << "\nmlp_block=" << mlp_block
+           << "\nmlp_checkpoint_indices=" << 8 + 12 * mlp_block << ".."
+           << 13 + 12 * mlp_block << "\nformula=x=E[token]; h=x+FC2_B"
+           << mlp_block << "(GELU(FC1_B" << mlp_block << "(LN2_B" << mlp_block
+           << "(x)))); logits=LN_final(h)*E^T\n"
+           << "position_embeddings=false\nattention=false\nother_blocks=false\n"
            << "activations=BF16\nmaster_weights=FP32\nlogits=FP32\n"
            << "softmax_reductions=FP32\ntemperature=1\n"
            << "vocab_size=" << kGpt2VocabularySize

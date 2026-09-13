@@ -1,21 +1,27 @@
-# B0 MLP token-transition automaton
+# MLP token-transition automaton
 
-Read high-confidence token continuations directly from an isolated first-block
-MLP of the GPT-2 recipe. This is a diagnostic, **not** the full language model.
+Read high-confidence token continuations directly from a selected isolated
+MLP of the GPT-2 recipe (first block by default). This is a diagnostic,
+**not** the full language model.
 For every logical vocabulary token `t`, it computes:
 
 ```text
 x = E[t]
-z = GELU(LN2_B0(x) @ W1 + b1)
-h = x + z @ W2 + b2
+z = GELU(LN2_Bi(x) @ W1_Bi + b1_Bi)
+h = x + z @ W2_Bi + b2_Bi
 p = softmax(LN_final(h) @ E.T)   # temperature = 1
 ```
 
 It adds the directed edge `t -> u` exactly when `p[u] > threshold` (default
-`0.75`). There are no position embeddings, attention, or later transformer
+`0.75`). There are no position embeddings, attention, or other transformer
 blocks. Both learned LayerNorms, biases, the residual connection and tied
 embedding/output dictionary are included. A raw MLP matrix alone would not
 specify this readout.
+
+Select the zero-based block index with `--mlp_block` (0 through 7). For example,
+`--mlp_block=3` reads the fourth block's MLP. Each selection applies that
+MLP directly to token embeddings using the formula above; preceding
+transformer blocks are not executed.
 
 ## Run
 
@@ -27,6 +33,7 @@ bazel build -c opt //src/llm/experiments/mlp_automaton
 bazel-bin/src/llm/experiments/mlp_automaton/mlp_automaton \
   --checkpoint=/home/ubuntu/checkpoints/shakespeare/step_13030 \
   --tokenizer=/home/ubuntu/datasets/tokenizer/gpt2 \
+  --mlp_block=0 \
   --corpus=testdata/shakespeare.txt \
   --test_fraction=0.1 \
   --output_dir=/tmp/b0-automaton \
@@ -46,10 +53,14 @@ the eight-block GPT-2 checkpoint layout. It reads only nine FP32 tensor files:
 | Role | File indices | Physical shapes |
 | --- | --- | --- |
 | Token embedding / tied output dictionary | 0 | `[50272,512]` |
-| B0 MLP LayerNorm scale and bias | 8, 9 | `[512]`, `[512]` |
-| First projection and bias | 10, 11 | `[512,2048]`, `[2048]` |
-| Second projection and bias | 12, 13 | `[2048,512]`, `[512]` |
+| Block i MLP LayerNorm scale and bias | `8 + 12*i`, `9 + 12*i` | `[512]`, `[512]` |
+| First projection and bias | `10 + 12*i`, `11 + 12*i` | `[512,2048]`, `[2048]` |
+| Second projection and bias | `12 + 12*i`, `13 + 12*i` | `[2048,512]`, `[512]` |
 | Final LayerNorm scale and bias | 98, 99 | `[512]`, `[512]` |
+
+Here `i` is `--mlp_block`. The embedding and final LayerNorm stay shared
+across block selections. For block 7 the selected MLP files are 92 through 97.
+Invalid indices are rejected before creating the output directory.
 
 All required file sizes and finite values are checked before weights are
 uploaded. Extra files are ignored. No checkpoint file is modified. Output must
@@ -103,9 +114,11 @@ from a CPU readout or between GPU implementations are possible near a threshold.
 
 - `graph.json`: all vocabulary nodes, including isolated tokens, and edges with
   source/target IDs and probabilities. Its format is `pluto.mlp_automaton.v1`.
-- `samples.json`: corpus-matching token-ID paths, concatenated bytes and a stopping reason.
-- `metadata.txt`: checkpoint/tokenizer paths, dimensions, formula, precision,
-  threshold, batch size and sampling settings.
+- `samples.json`: corpus-matching token-ID paths, concatenated bytes and a
+  stopping reason.
+- `metadata.txt`: checkpoint/tokenizer/corpus paths, selected block and weight
+  indices, dimensions, formula, precision, threshold, batch size and sampling
+  settings.
 
 GPT-2 tokens can be arbitrary byte fragments, not individually valid UTF-8.
 Both graph nodes and sampled paths therefore include lossless `bytes_hex` and
@@ -145,10 +158,12 @@ bazel test -c opt //src/llm/experiments/mlp_automaton/... \
 CPU graph tests cover strict thresholds, invalid graphs, all traversal endings,
 seeded sampling, exact corpus filtering (including arbitrary bytes and split
 boundaries), arbitrary-byte JSON, isolated nodes and I/O failures. GPU
-top-transition tests compare against a stable CPU reference across full vocabulary,
-padding, ties, extreme finite logits, nonfinite rows and invalid inputs. Model
+top-transition tests compare against a stable CPU reference across the full
+vocabulary, padding, ties, extreme finite logits, nonfinite rows and invalid
+inputs. Model
 tests compare the composed readout to independently assembled scalar reference
-layers, check sparse checkpoint loading and atomic validation failures, and
-verify complete vocabulary coverage, tail batches and batch-size invariance.
+layers for all eight block selections, check sparse checkpoint loading,
+invalid block indices, missing selected weights and atomic validation failures,
+and verify complete vocabulary coverage, tail batches and batch-size invariance.
 These tests use synthetic small weights and do not require external checkpoint
 or tokenizer files. Model and top-transition tests require a GPU.

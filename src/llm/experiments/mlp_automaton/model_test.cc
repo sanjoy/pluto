@@ -32,8 +32,18 @@ namespace {
 
 constexpr Dimensions kDimensions{17, 16, 32};
 constexpr int kPaddedVocabulary = 32;
-constexpr std::array<int, 9> kCheckpointIndices{0,  8,  9,  10, 11,
-                                                12, 13, 98, 99};
+// Literal checkpoint layouts independently document all eight selections.
+constexpr std::array<std::array<int, 9>, 8> kBlockCheckpointIndices{{
+    {0, 8, 9, 10, 11, 12, 13, 98, 99},
+    {0, 20, 21, 22, 23, 24, 25, 98, 99},
+    {0, 32, 33, 34, 35, 36, 37, 98, 99},
+    {0, 44, 45, 46, 47, 48, 49, 98, 99},
+    {0, 56, 57, 58, 59, 60, 61, 98, 99},
+    {0, 68, 69, 70, 71, 72, 73, 98, 99},
+    {0, 80, 81, 82, 83, 84, 85, 98, 99},
+    {0, 92, 93, 94, 95, 96, 97, 98, 99},
+}};
+constexpr auto kCheckpointIndices = kBlockCheckpointIndices[0];
 constexpr std::array<size_t, 9> kWeightElements{32 * 16, 16, 16, 16 * 32, 32,
                                                 32 * 16, 16, 16, 16};
 
@@ -131,15 +141,18 @@ class MlpAutomatonModelTest : public LayerReferenceTest {
   }
 
   void WriteCheckpoint(const std::filesystem::path& directory,
-                       bool omit_last = false) {
-    ASSERT_TRUE(std::filesystem::create_directory(directory));
+                       bool omit_last = false, int mlp_block = 0) {
+    if (!std::filesystem::exists(directory))
+      ASSERT_TRUE(std::filesystem::create_directory(directory));
     auto weights = DistinctWeights(reference_->weights());
     for (size_t index = 0; index < weights.size(); ++index) {
       if (omit_last && index + 1 == weights.size())
         continue;
       std::ofstream output(
           directory /
-              ("weight_" + std::to_string(kCheckpointIndices[index]) + ".bin"),
+              ("weight_" +
+               std::to_string(kBlockCheckpointIndices[mlp_block][index]) +
+               ".bin"),
           std::ios::binary);
       ASSERT_TRUE(output.good());
       output.write(static_cast<const char*>(weights[index].data()),
@@ -202,7 +215,7 @@ TEST_F(MlpAutomatonModelTest, TiedWeightLayoutAndSparseFileIndices) {
   std::ofstream note(checkpoint / "README.txt");
   note << "ignored";
   note.close();
-  const auto loaded = LoadB0Weights(*executor_, *model_, checkpoint);
+  const auto loaded = LoadMlpWeights(*executor_, *model_, checkpoint);
   ASSERT_TRUE(loaded.ok()) << loaded;
   const auto actual = Snapshot();
   const auto expected = DistinctWeights(reference_->weights());
@@ -219,7 +232,7 @@ TEST_F(MlpAutomatonModelTest, NativeReadoutMatchesIndependentCpuFormula) {
   const auto checkpoint = directory_ / "checkpoint";
   WriteCheckpoint(checkpoint);
   ASSERT_FALSE(HasFatalFailure());
-  const auto loaded = LoadB0Weights(*executor_, *model_, checkpoint);
+  const auto loaded = LoadMlpWeights(*executor_, *model_, checkpoint);
   ASSERT_TRUE(loaded.ok()) << loaded;
   std::vector<int> tokens(32);
   for (size_t row = 0; row < tokens.size(); ++row) {
@@ -263,6 +276,81 @@ TEST_F(MlpAutomatonModelTest, NativeReadoutMatchesIndependentCpuFormula) {
             0);
 }
 
+TEST_F(MlpAutomatonModelTest, EveryBlockLoadsItsOwnMlpAndMatchesCpuReadout) {
+  const auto checkpoint = directory_ / "all_blocks";
+  auto reference_weights = DistinctWeights(reference_->weights());
+  std::vector<std::vector<std::vector<float>>> expected;
+  // Give every MLP distinct weights within a single checkpoint. Embedding and
+  // final-normalization weights stay shared, as in a real GPT-2 checkpoint.
+  for (int block = 0; block < 8; ++block) {
+    for (size_t tensor = 1; tensor <= 6; ++tensor) {
+      auto* values = static_cast<float*>(reference_weights[tensor].data());
+      for (size_t element = 0; element < kWeightElements[tensor]; ++element) {
+        const float phase = element * 0.19f + block * 0.57f + tensor * 0.71f;
+        values[element] = tensor == 1
+                              ? 0.7f + block * 0.05f + 0.015f * std::sin(phase)
+                              : 0.1f * std::sin(phase);
+      }
+    }
+    WriteCheckpoint(checkpoint, false, block);
+    ASSERT_FALSE(HasFatalFailure());
+    std::vector<std::vector<float>> block_weights;
+    for (const auto& weight : reference_weights)
+      block_weights.push_back(ReadHostFloats(weight));
+    expected.push_back(std::move(block_weights));
+  }
+  std::vector<int> tokens(32);
+  for (size_t row = 0; row < tokens.size(); ++row)
+    tokens[row] = row % kDimensions.vocab_size;
+  auto input = MakeRawBufferPair<int>(*executor_, tokens);
+  ASSERT_TRUE(input.ok()) << input.status();
+  std::vector<float> previous_logits;
+  for (int block = 0; block < 8; ++block) {
+    SCOPED_TRACE(block);
+    ASSERT_TRUE(LoadMlpWeights(*executor_, *model_, checkpoint, block).ok());
+    const auto actual_weights = Snapshot();
+    ASSERT_EQ(actual_weights, expected[block]);
+    for (size_t tensor = 0; tensor < reference_weights.size(); ++tensor)
+      std::memcpy(reference_weights[tensor].data(),
+                  expected[block][tensor].data(),
+                  reference_weights[tensor].size_bytes());
+    auto actual = model_->fwd(*executor_, BufferVec{input->device});
+    auto reference = reference_->fwd(HostBufferVec{input->host});
+    ASSERT_TRUE(actual.ok()) << actual.status();
+    ASSERT_TRUE(reference.ok()) << reference.status();
+    EXPECT_TRUE(FloatBuffersNear(actual->outputs[0], reference->outputs[0],
+                                 0.02f, 0.008f));
+    auto logits = ReadDeviceFloats(*executor_, actual->outputs[0]);
+    ASSERT_TRUE(logits.ok()) << logits.status();
+    std::vector<float> current_logits(logits->begin(), logits->end());
+    if (block != 0)
+      EXPECT_NE(current_logits, previous_logits);
+    previous_logits = std::move(current_logits);
+  }
+}
+
+TEST_F(MlpAutomatonModelTest, RejectsInvalidBlocksWithoutChangingWeights) {
+  const auto before = Snapshot();
+  for (int block : {-1, 8, std::numeric_limits<int>::min(),
+                    std::numeric_limits<int>::max()}) {
+    const auto status = LoadMlpWeights(*executor_, *model_, directory_, block);
+    EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
+    ExpectUnchanged(before);
+  }
+}
+
+TEST_F(MlpAutomatonModelTest, MissingSelectedBlockDoesNotFallBackToBlockZero) {
+  const auto checkpoint = directory_ / "only_block_zero";
+  WriteCheckpoint(checkpoint);
+  ASSERT_FALSE(HasFatalFailure());
+  const auto before = Snapshot();
+  for (int block : {1, 7}) {
+    const auto status = LoadMlpWeights(*executor_, *model_, checkpoint, block);
+    EXPECT_EQ(status.code(), absl::StatusCode::kNotFound);
+    ExpectUnchanged(before);
+  }
+}
+
 TEST_F(MlpAutomatonModelTest, InvalidLateFileDoesNotModifyAnyDeviceWeight) {
   const auto before = Snapshot();
   ASSERT_EQ(before.size(), kCheckpointIndices.size());
@@ -289,7 +377,7 @@ TEST_F(MlpAutomatonModelTest, InvalidLateFileDoesNotModifyAnyDeviceWeight) {
       last.close();
       ASSERT_TRUE(last.good());
     }
-    const auto status = LoadB0Weights(*executor_, *model_, checkpoint);
+    const auto status = LoadMlpWeights(*executor_, *model_, checkpoint);
     EXPECT_FALSE(status.ok());
     ExpectUnchanged(before);
   }
@@ -302,7 +390,7 @@ TEST_F(MlpAutomatonModelTest, RejectsDifferentExecutorBeforeLoading) {
   const auto before = Snapshot();
   auto other = cuda::Executor::Create();
   ASSERT_TRUE(other.ok()) << other.status();
-  const auto status = LoadB0Weights(**other, *model_, checkpoint);
+  const auto status = LoadMlpWeights(**other, *model_, checkpoint);
   EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
   ExpectUnchanged(before);
 }
@@ -314,7 +402,7 @@ TEST_F(MlpAutomatonModelTest, RejectsIncompatibleWeightLayout) {
   auto unrelated =
       FullyConnectedLayer::Create(*executor_, 16, 32, DataType::BF16);
   ASSERT_TRUE(unrelated.ok()) << unrelated.status();
-  EXPECT_FALSE(LoadB0Weights(*executor_, **unrelated, checkpoint).ok());
+  EXPECT_FALSE(LoadMlpWeights(*executor_, **unrelated, checkpoint).ok());
 }
 
 TEST_F(MlpAutomatonModelTest, RejectsInvalidDimensions) {
@@ -329,7 +417,7 @@ TEST_F(MlpAutomatonModelTest, ScanCoversEveryTokenAndFinalPartialBatch) {
   const auto checkpoint = directory_ / "checkpoint";
   WriteCheckpoint(checkpoint);
   ASSERT_FALSE(HasFatalFailure());
-  const auto loaded = LoadB0Weights(*executor_, *model_, checkpoint);
+  const auto loaded = LoadMlpWeights(*executor_, *model_, checkpoint);
   ASSERT_TRUE(loaded.ok()) << loaded;
 
   std::vector<int> progress;
@@ -410,7 +498,7 @@ TEST_F(MlpAutomatonModelTest, ScanRejectsNonfiniteModelOutputs) {
   const auto checkpoint = directory_ / "checkpoint";
   WriteCheckpoint(checkpoint);
   ASSERT_FALSE(HasFatalFailure());
-  const auto loaded = LoadB0Weights(*executor_, *model_, checkpoint);
+  const auto loaded = LoadMlpWeights(*executor_, *model_, checkpoint);
   ASSERT_TRUE(loaded.ok()) << loaded;
   auto device_weights = DistinctWeights(model_->weights());
   auto host_weights = DistinctWeights(reference_->weights());
