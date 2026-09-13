@@ -1,4 +1,4 @@
-#include "experiments/mlp_automaton/model.h"
+#include "src/llm/experiments/mlp_automaton/model.h"
 
 #include <array>
 #include <cmath>

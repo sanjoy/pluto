@@ -1,3 +1,5 @@
+#include "src/llm/experiments/mlp_automaton/top_transitions.h"
+
 #include <cuda_runtime_api.h>
 
 #include <algorithm>
@@ -9,7 +11,6 @@
 #include <vector>
 
 #include "absl/status/status.h"
-#include "experiments/mlp_automaton/top_transitions.h"
 #include "gtest/gtest.h"
 #include "src/cuda/page_locked_host_array.h"
 

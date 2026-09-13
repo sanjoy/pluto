@@ -14,9 +14,9 @@
 #include "absl/strings/escaping.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_join.h"
-#include "experiments/mlp_automaton/graph.h"
-#include "experiments/mlp_automaton/model.h"
 #include "src/dataset/gpt2_detokenizer.h"
+#include "src/llm/experiments/mlp_automaton/graph.h"
+#include "src/llm/experiments/mlp_automaton/model.h"
 #include "src/util/status_macros.h"
 
 ABSL_FLAG(std::string, checkpoint, "", "GPT-2 checkpoint directory to read");

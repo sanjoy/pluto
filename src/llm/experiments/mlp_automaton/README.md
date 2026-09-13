@@ -22,9 +22,9 @@ specify this readout.
 From the repository root, with the project's CUDA/cuTile toolchain available:
 
 ```sh
-bazel build -c opt //experiments/mlp_automaton
+bazel build -c opt //src/llm/experiments/mlp_automaton
 
-bazel-bin/experiments/mlp_automaton/mlp_automaton \
+bazel-bin/src/llm/experiments/mlp_automaton/mlp_automaton \
   --checkpoint=/home/ubuntu/checkpoints/shakespeare/step_13030 \
   --tokenizer=/home/ubuntu/datasets/tokenizer/gpt2 \
   --output_dir=/tmp/b0-automaton \
@@ -114,7 +114,7 @@ comparisons. Generated graph files are not checked into the source tree.
 ## Tests
 
 ```sh
-bazel test -c opt //experiments/mlp_automaton/... \
+bazel test -c opt //src/llm/experiments/mlp_automaton/... \
   --local_test_jobs=1 --test_output=errors
 ```
 
