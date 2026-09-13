@@ -2,6 +2,7 @@
 
 #include <utility>
 
+#include "absl/base/optimization.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 
@@ -10,7 +11,7 @@
 #define RETURN_IF_ERROR(expression)                                \
   do {                                                             \
     const ::absl::Status pluto_status_macro_status = (expression); \
-    if (!pluto_status_macro_status.ok()) {                         \
+    if (ABSL_PREDICT_FALSE(!pluto_status_macro_status.ok())) {     \
       return pluto_status_macro_status;                            \
     }                                                              \
   } while (false)
@@ -31,7 +32,7 @@
 
 #define PLUTO_STATUS_MACROS_ASSIGN_OR_RETURN_(status_or, lhs, expression) \
   auto status_or = (expression);                                          \
-  if (!status_or.ok()) {                                                  \
+  if (ABSL_PREDICT_FALSE(!status_or.ok())) {                              \
     return status_or.status();                                            \
   }                                                                       \
   lhs = std::move(status_or).value()
