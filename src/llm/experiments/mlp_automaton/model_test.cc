@@ -1,6 +1,7 @@
 #include "src/llm/experiments/mlp_automaton/model.h"
 
 #include <array>
+#include <atomic>
 #include <cmath>
 #include <cstddef>
 #include <cstdlib>
@@ -18,6 +19,7 @@
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "gtest/gtest.h"
+#include "src/cuda/thread_pool.h"
 #include "src/llm/layer.h"
 #include "src/llm/layers/combinators.h"
 #include "src/llm/layers/embedding.h"
@@ -469,6 +471,129 @@ TEST_F(MlpAutomatonModelTest, ScanCoversEveryTokenAndFinalPartialBatch) {
     EXPECT_EQ(std::memcmp(scan->data(), differently_batched->data(),
                           scan->size_bytes()),
               0);
+  }
+}
+
+TEST_F(MlpAutomatonModelTest,
+       ParallelCheckpointReadoutsMatchSequentialExactly) {
+  constexpr int kCheckpoints = 3;
+  constexpr int kWorkers = 3;
+  using CheckpointScans = std::array<std::vector<TopTransition>, 8>;
+  std::array<std::filesystem::path, kCheckpoints> checkpoints;
+  auto reference_weights = DistinctWeights(reference_->weights());
+
+  // Each checkpoint has distinct embeddings and final normalization, and each
+  // block has distinct MLP tensors. Sharing one mutable readout across workers
+  // would therefore mix weights and fail the exact sequential comparison.
+  for (int checkpoint = 0; checkpoint < kCheckpoints; ++checkpoint) {
+    checkpoints[checkpoint] =
+        directory_ / ("checkpoint_" + std::to_string(checkpoint));
+    for (int block = 0; block < 8; ++block) {
+      for (size_t tensor = 0; tensor < reference_weights.size(); ++tensor) {
+        auto* values = static_cast<float*>(reference_weights[tensor].data());
+        for (size_t element = 0; element < kWeightElements[tensor]; ++element) {
+          const float phase =
+              element * 0.19f + tensor * 0.71f + checkpoint * 0.43f +
+              (tensor >= 1 && tensor <= 6 ? block * 0.57f : 0.0f);
+          values[element] =
+              tensor == 1 || tensor == 7
+                  ? 0.7f + checkpoint * 0.1f + 0.05f * std::sin(phase)
+                  : 0.14f * std::sin(phase) + 0.04f * std::cos(phase * 0.37f);
+        }
+      }
+      WriteCheckpoint(checkpoints[checkpoint], false, block);
+      ASSERT_FALSE(HasFatalFailure());
+    }
+  }
+
+  std::array<CheckpointScans, kCheckpoints> expected;
+  for (int checkpoint = 0; checkpoint < kCheckpoints; ++checkpoint) {
+    for (int block = 0; block < 8; ++block) {
+      ASSERT_TRUE(
+          LoadMlpWeights(*executor_, *model_, checkpoints[checkpoint], block)
+              .ok());
+      auto scan = ScanVocabulary(*executor_, *model_, kDimensions.vocab_size,
+                                 16, [](int) {});
+      ASSERT_TRUE(scan.ok()) << scan.status();
+      expected[checkpoint][block].assign(scan->begin(), scan->end());
+    }
+  }
+  // Guard against accidentally generating indistinguishable fixtures.
+  for (int block = 0; block < 8; ++block) {
+    for (int checkpoint = 1; checkpoint < kCheckpoints; ++checkpoint) {
+      bool differs = false;
+      for (int token = 0; token < kDimensions.vocab_size; ++token) {
+        const auto& first = expected[0][block][token];
+        const auto& other = expected[checkpoint][block][token];
+        differs |= first.token != other.token ||
+                   first.probability != other.probability;
+      }
+      EXPECT_TRUE(differs) << "checkpoint " << checkpoint << " block " << block;
+    }
+  }
+
+  auto pool = cuda::ThreadPool::Create(kWorkers);
+  ASSERT_TRUE(pool.ok()) << pool.status();
+  std::array<std::array<CheckpointScans, kCheckpoints>, kWorkers> actual;
+  std::array<std::vector<TopTransition>, kWorkers> after_failed_load;
+  std::atomic<int> next_worker = 0;
+  const auto status =
+      (*pool)->ParallelFor([&](cuda::Executor& executor) -> absl::Status {
+        const int worker = next_worker.fetch_add(1);
+        ASSIGN_OR_RETURN(auto readout, CreateReadout(executor, kDimensions));
+        // Keep one private readout per worker and repeatedly replace all of its
+        // weights. Workers visit different checkpoints at the same time.
+        for (int turn = 0; turn < kCheckpoints; ++turn) {
+          const int checkpoint = (worker + turn) % kCheckpoints;
+          for (int block = 0; block < 8; ++block) {
+            RETURN_IF_ERROR(LoadMlpWeights(executor, *readout,
+                                           checkpoints[checkpoint], block));
+            auto scan = ScanVocabulary(executor, *readout,
+                                       kDimensions.vocab_size, 16, [](int) {});
+            RETURN_IF_ERROR(scan.status());
+            // DMA is complete on return. Copy into ordinary CPU storage so
+            // no executor-backed pinned allocation can outlive this worker.
+            actual[worker][checkpoint][block].assign(scan->begin(),
+                                                     scan->end());
+          }
+          if (turn == 0) {
+            const auto missing = LoadMlpWeights(
+                executor, *readout, directory_ / "missing_checkpoint", 7);
+            if (missing.code() != absl::StatusCode::kNotFound)
+              return absl::InternalError(
+                  "missing checkpoint did not return NotFound");
+            auto scan = ScanVocabulary(executor, *readout,
+                                       kDimensions.vocab_size, 16, [](int) {});
+            RETURN_IF_ERROR(scan.status());
+            after_failed_load[worker].assign(scan->begin(), scan->end());
+          }
+        }
+        return absl::OkStatus();
+      });
+  ASSERT_TRUE(status.ok()) << status;
+  EXPECT_EQ(next_worker.load(), kWorkers);
+  for (int worker = 0; worker < kWorkers; ++worker) {
+    for (int checkpoint = 0; checkpoint < kCheckpoints; ++checkpoint) {
+      for (int block = 0; block < 8; ++block) {
+        SCOPED_TRACE(testing::Message() << "worker " << worker << " checkpoint "
+                                        << checkpoint << " block " << block);
+        const auto& scan = actual[worker][checkpoint][block];
+        ASSERT_EQ(scan.size(), expected[checkpoint][block].size());
+        for (int token = 0; token < kDimensions.vocab_size; ++token) {
+          EXPECT_EQ(scan[token].token,
+                    expected[checkpoint][block][token].token);
+          EXPECT_EQ(scan[token].probability,
+                    expected[checkpoint][block][token].probability);
+        }
+      }
+    }
+    ASSERT_EQ(after_failed_load[worker].size(), expected[worker][7].size());
+    for (int token = 0; token < kDimensions.vocab_size; ++token) {
+      EXPECT_EQ(after_failed_load[worker][token].token,
+                expected[worker][7][token].token);
+      EXPECT_EQ(after_failed_load[worker][token].probability,
+                expected[worker][7][token].probability);
+    }
   }
 }
 

@@ -71,7 +71,8 @@ a failed run can leave partial output there.
 ## Checkpoint histories
 
 Pass a parent directory instead of one checkpoint to analyze every direct
-`step_N` subdirectory, once each, in increasing **numeric** step order:
+`step_N` subdirectory once each. Checkpoints are scanned in parallel, then
+combined in increasing **numeric** step order:
 
 ```sh
 bazel-bin/src/llm/experiments/mlp_automaton/mlp_automaton \
@@ -80,6 +81,7 @@ bazel-bin/src/llm/experiments/mlp_automaton/mlp_automaton \
   --corpus=testdata/shakespeare.txt \
   --test_fraction=0.1 \
   --output_dir=/tmp/mlp-history \
+  --threads=4 \
   --samples=50 \
   --start_tokens=1475,3109,68
 ```
@@ -88,6 +90,27 @@ Omit `--mlp_block` to inspect all eight blocks at each checkpoint; supplying
 it still selects just that block. A directory containing `weight_0.bin`
 is treated as a single checkpoint, preserving the existing behavior and
 output layout even if its directory name is not `step_N`.
+
+`--threads=N` creates N persistent CPU workers with one CUDA Executor per
+worker, all targeting the GPU selected when the pool is created. The default
+`--threads=-1` uses one worker per logical CPU (or one if CPU detection is
+unavailable); other nonpositive values are rejected. Checkpoints are split into
+balanced contiguous slices, so each active worker scans roughly
+checkpoint-count / thread-count checkpoints. Blocks within one checkpoint are
+still scanned serially. Workers with empty slices do not allocate a readout.
+
+Each active worker owns and reuses a **private GPU readout**, including weights,
+gradients, activations, and logits, as well as pinned-host transfer buffers.
+Thus peak GPU and host memory increase with the number of concurrently active
+workers; use a smaller `--threads=N`, or `--threads=1` for serial execution, if
+memory is tight. Parallelism overlaps checkpoint loading, GPU work and CPU
+postprocessing; it does not guarantee a speedup on an already saturated GPU.
+
+Progress messages may arrive out of order, but each message stays intact.
+The decoded vocabulary and read-only corpus mapping are shared. Sampling keeps
+the same per-block seed regardless of scheduling, and only after every worker
+succeeds are results merged in numeric checkpoint order. Output graphs, sampled
+paths and final history therefore do not depend on worker completion order.
 
 The combined history is printed on stdout and saved to
 `combined_history.txt`. For example, this illustrates the output format:
@@ -138,11 +161,14 @@ parent are errors. A malformed selected checkpoint fails the run rather
 than silently bridging a gap; already-written per-checkpoint outputs may
 remain, but no completed combined history is written.
 
-GPU inference is performed once per selected block/checkpoint, reusing the
-readout and decoded vocabulary. Only one checkpoint's full graphs are held
-at a time; the accumulator retains compact text/block membership ranges.
-All per-checkpoint graphs are still saved, so disk use grows with the number
-of checkpoints and selected blocks.
+GPU inference is performed once per selected block/checkpoint. Each active
+worker holds one checkpoint's full graphs at a time and reuses its readout for
+the next checkpoint in its slice. Per-checkpoint text/block memberships remain
+in host memory until all workers finish, then the caller combines them into
+chronological ranges. All per-checkpoint graphs are still saved, so disk use
+grows with the number of checkpoints and selected blocks. On any worker error,
+the run waits for the other workers, reports the failure, and does not write a
+completed combined history; partial per-checkpoint output may remain.
 
 ## Training-text filter
 

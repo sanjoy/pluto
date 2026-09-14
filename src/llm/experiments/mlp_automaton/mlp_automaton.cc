@@ -1,3 +1,5 @@
+#include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -6,6 +8,7 @@
 #include <iomanip>
 #include <iostream>
 #include <string>
+#include <syncstream>
 #include <utility>
 #include <vector>
 
@@ -16,6 +19,7 @@
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "src/cuda/thread_pool.h"
 #include "src/dataset/dataset.h"
 #include "src/dataset/gpt2_detokenizer.h"
 #include "src/llm/experiments/mlp_automaton/graph.h"
@@ -42,6 +46,9 @@ ABSL_FLAG(
     "New output directory; checkpoint histories have step_N/ subdirectories "
     "and combined_history.txt/json");
 ABSL_FLAG(int, batch_size, 256, "GPU batch rows; positive multiple of 16");
+ABSL_FLAG(int, threads, -1,
+          "Checkpoint workers; positive count, or -1 for one per logical CPU. "
+          "Each active worker keeps a private GPU readout");
 ABSL_FLAG(double, threshold, 0.75,
           "Keep edges with probability strictly greater than this [0.5,1)");
 ABSL_FLAG(int, samples, 50,
@@ -117,9 +124,10 @@ absl::StatusOr<CheckpointResult> ScanCheckpoint(
     RETURN_IF_ERROR(LoadMlpWeights(executor, readout, checkpoint, mlp_block));
     const auto began = std::chrono::steady_clock::now();
     auto last_update = began;
-    std::cout << "Loaded isolated B" << mlp_block << " MLP. Scanning "
-              << vocab_size << " tokens, batch_size=" << batch_size << ", p > "
-              << threshold << std::endl;
+    std::osyncstream(std::cout) << "Loaded " << checkpoint << " isolated B"
+                                << mlp_block << " MLP. Scanning " << vocab_size
+                                << " tokens, batch_size=" << batch_size
+                                << ", p > " << threshold << std::endl;
     ASSIGN_OR_RETURN(
         auto transitions,
         ScanVocabulary(
@@ -128,10 +136,11 @@ absl::StatusOr<CheckpointResult> ScanCheckpoint(
               const auto now = std::chrono::steady_clock::now();
               if (completed == vocab_size ||
                   now - last_update >= std::chrono::seconds(5)) {
-              std::cout << "Scanned " << completed << '/' << vocab_size
-                        << " tokens in "
-                        << std::chrono::duration<double>(now - began).count()
-                        << " seconds" << std::endl;
+              std::osyncstream(std::cout)
+                  << checkpoint << " B" << mlp_block << ": scanned "
+                  << completed << '/' << vocab_size << " tokens in "
+                  << std::chrono::duration<double>(now - began).count()
+                  << " seconds" << std::endl;
               last_update = now;
               }
             }));
@@ -185,11 +194,12 @@ absl::StatusOr<CheckpointResult> ScanCheckpoint(
     metadata.close();
     if (!graph_file || !samples_file || !metadata)
       return absl::InternalError("could not finish writing automaton output");
-    std::cout << "Wrote " << graph.token_bytes.size() << " nodes, "
-              << graph.edges.size() << " edges, " << paths.size()
-              << " training-text paths (from " << candidate_count
-              << " candidates) to " << block_output << '\n'
-              << "B" << mlp_block << " scan complete.\n";
+    std::osyncstream(std::cout)
+        << "Wrote " << graph.token_bytes.size() << " nodes, "
+        << graph.edges.size() << " edges, " << paths.size()
+        << " training-text paths (from " << candidate_count
+        << " candidates) to " << block_output << '\n'
+        << "B" << mlp_block << " scan complete.\n";
     analyses.push_back({mlp_block, std::move(graph), std::move(paths)});
   }
 
@@ -223,13 +233,15 @@ absl::StatusOr<CheckpointResult> ScanCheckpoint(
       return absl::InternalError("could not finish writing combined metadata");
   }
   if (!history) {
-    std::cout << "Combined " << combined.size()
-              << " distinct training-text paths across MLP blocks "
-              << absl::StrJoin(block_ids, ", ") << ".\n";
+    std::osyncstream(std::cout)
+        << "Combined " << combined.size()
+        << " distinct training-text paths across MLP blocks "
+        << absl::StrJoin(block_ids, ", ") << ".\n";
     for (const auto& path : combined)
-      std::cout << '"' << absl::CEscape(path.bytes)
-                << "\" (MLP blocks: " << absl::StrJoin(path.mlp_blocks, ", ")
-                << ")\n";
+      std::osyncstream(std::cout)
+          << '"' << absl::CEscape(path.bytes)
+          << "\" (MLP blocks: " << absl::StrJoin(path.mlp_blocks, ", ")
+          << ")\n";
   }
   std::vector<CombinedPath> complete;
   if (history && (sample_count > 0 || !starts.empty())) {
@@ -249,6 +261,7 @@ absl::Status Run() {
   const double test_fraction = absl::GetFlag(FLAGS_test_fraction);
   std::filesystem::path output_directory = absl::GetFlag(FLAGS_output_dir);
   const int batch_size = absl::GetFlag(FLAGS_batch_size);
+  const int num_threads = absl::GetFlag(FLAGS_threads);
   const int sample_count = absl::GetFlag(FLAGS_samples);
   const int max_tokens = absl::GetFlag(FLAGS_max_tokens);
   const double threshold = absl::GetFlag(FLAGS_threshold);
@@ -261,6 +274,8 @@ absl::Status Run() {
         "batch_size must be a positive multiple of 16, samples >= 0, "
         "max_tokens > 0 and 0.5 <= threshold < 1");
   }
+  if (num_threads != -1 && num_threads <= 0)
+    return absl::InvalidArgumentError("threads must be positive or -1");
   if (corpus_path.empty() || !std::isfinite(test_fraction) ||
       test_fraction < 0.0 || test_fraction >= 1.0)
     return absl::InvalidArgumentError(
@@ -308,36 +323,77 @@ absl::Status Run() {
     ASSIGN_OR_RETURN(auto bytes, decoder->Decode({&token, 1}));
     vocabulary.token_bytes.push_back(std::move(bytes));
   }
-  ASSIGN_OR_RETURN(auto executor, cuda::Executor::Create());
-  ASSIGN_OR_RETURN(auto readout, CreateReadout(*executor));
+  ASSIGN_OR_RETURN(auto pool, cuda::ThreadPool::Create(num_threads));
   const ScanOptions options{
       all_blocks,        requested_block,     tokenizer,
       corpus_path,       test_fraction,       batch_size,
       sample_count,      max_tokens,          absl::GetFlag(FLAGS_seed),
       std::move(starts), selection.is_history};
+  const size_t checkpoint_count = selection.checkpoints.size();
+  const size_t worker_count = static_cast<size_t>(pool->size());
+  std::vector<CheckpointResult> results(checkpoint_count);
+  std::atomic<size_t> next_worker{0};
+  RETURN_IF_ERROR(
+      pool->ParallelFor([&](cuda::Executor& executor) -> absl::Status {
+        // ParallelFor calls us once per worker. Balanced contiguous slices
+        // cover every checkpoint exactly once, including when the count is not
+        // divisible by the pool size. This arithmetic never multiplies two
+        // large counts.
+        const size_t worker =
+            next_worker.fetch_add(1, std::memory_order_relaxed);
+        const size_t quotient = checkpoint_count / worker_count;
+        const size_t remainder = checkpoint_count % worker_count;
+        const size_t begin = worker * quotient + std::min(worker, remainder);
+        const size_t end = begin + quotient + (worker < remainder ? 1 : 0);
+        if (begin == end)
+          return absl::OkStatus();
+
+        // Loading changes weights, and every GPU allocation belongs to its
+        // worker's Executor. Reuse this private model across the slice and its
+        // serial block scans; never share a readout between concurrent
+        // checkpoints.
+        ASSIGN_OR_RETURN(auto readout, CreateReadout(executor));
+        for (size_t index = begin; index < end; ++index) {
+          const auto& selected = selection.checkpoints[index];
+          const auto checkpoint_output =
+              selection.is_history
+                  ? output_directory / ("step_" + std::to_string(selected.step))
+                  : output_directory;
+          if (selection.is_history) {
+            std::error_code directory_error;
+            if (!std::filesystem::create_directory(checkpoint_output,
+                                                   directory_error) ||
+                directory_error)
+              return absl::FailedPreconditionError(
+                  absl::StrCat("could not create checkpoint output: ",
+                               checkpoint_output.string()));
+            std::osyncstream(std::cout)
+                << "Checkpoint " << selected.step << " (" << index + 1 << '/'
+                << checkpoint_count << "): " << selected.directory << std::endl;
+          }
+          auto result =
+              ScanCheckpoint(executor, *readout, vocabulary, training, options,
+                             selected.directory, checkpoint_output);
+          if (!result.ok())
+            return absl::Status(
+                result.status().code(),
+                absl::StrCat("checkpoint ", selected.directory.string(), ": ",
+                             result.status().message()));
+          // The vector never resizes, and only this worker touches this slot.
+          results[index] = std::move(*result);
+        }
+        return absl::OkStatus();
+      }));
   HistoryAccumulator history;
   std::vector<int64_t> steps;
-  for (size_t index = 0; index < selection.checkpoints.size(); ++index) {
+  for (size_t index = 0; index < checkpoint_count; ++index) {
     const auto& selected = selection.checkpoints[index];
-    const auto checkpoint_output =
-        selection.is_history
-            ? output_directory / ("step_" + std::to_string(selected.step))
-            : output_directory;
+    const auto& result = results[index];
     if (selection.is_history) {
-      if (!std::filesystem::create_directory(checkpoint_output, error) || error)
-        return absl::FailedPreconditionError(
-            "could not create checkpoint output");
-      std::cout << "Checkpoint " << selected.step << " (" << index + 1 << '/'
-                << selection.checkpoints.size() << "): " << selected.directory
-                << std::endl;
-    }
-    ASSIGN_OR_RETURN(
-        auto result,
-        ScanCheckpoint(*executor, *readout, vocabulary, training, options,
-                       selected.directory, checkpoint_output));
-    if (selection.is_history) {
-      // Only sampled strings can reach the final report, and samples have
-      // already passed the corpus filter. Keep complete graph memberships
+      // Completion order must not affect ranges or attribution. Merge only on
+      // the caller, in discovered numeric step order, after every scan
+      // succeeds. Only sampled strings can reach the final report, and samples
+      // have already passed the corpus filter. Keep complete graph memberships
       // without searching the corpus for every unsampled vocabulary path.
       RETURN_IF_ERROR(history.AddCheckpoint(selected.step, result.complete,
                                             result.sampled));
@@ -359,8 +415,8 @@ absl::Status Run() {
            << "checkpoint_parent=" << checkpoint.string()
            << "\ncheckpoint_steps=" << absl::StrJoin(steps, ",")
            << "\ncheckpoint_count=" << steps.size()
-           << "\ntokenizer=" << tokenizer << "\ncorpus=" << corpus_path
-           << "\ntest_fraction=" << test_fraction
+           << "\nthreads=" << pool->size() << "\ntokenizer=" << tokenizer
+           << "\ncorpus=" << corpus_path << "\ntest_fraction=" << test_fraction
            << "\ntraining_bytes=" << training.size() << "\nmlp_blocks="
            << (all_blocks ? "all" : std::to_string(requested_block))
            << "\npath_filter=exact_training_substring"
