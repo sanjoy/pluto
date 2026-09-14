@@ -20,6 +20,7 @@ cc_library(
         "@abseil-cpp//absl/container:inlined_vector",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings:string_view",
         "@abseil-cpp//absl/types:span",
         "@cuda//:cuda_runtime",
     ],
@@ -32,6 +33,21 @@ cc_test(
         ":layer",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/types:span",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "layer_name_test",
+    srcs = ["layer_name_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":layer",
+        ":layer_references",
+        ":layer_test_util",
+        ":layers",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings:string_view",
         "@googletest//:gtest_main",
     ],
 )

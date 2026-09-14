@@ -66,6 +66,10 @@ class FixedTokenDataSetIterator final : public DataSetIterator {
 // Records allocation identities while allowing arbitrary forward output counts.
 class RecordingActivationGenerator final : public Layer {
  public:
+  absl::string_view name() const override {
+    return "RecordingActivationGenerator";
+  }
+
   explicit RecordingActivationGenerator(BufferVec outputs)
       : outputs_(std::move(outputs)) {
     for (size_t i = 0; i < outputs_.size(); ++i)

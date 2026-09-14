@@ -21,6 +21,8 @@ namespace pluto::llm {
 // activations.
 class CrossEntropyLossLayer final : public Layer {
  public:
+  absl::string_view name() const override { return "CrossEntropyLossLayer"; }
+
   static absl::StatusOr<std::unique_ptr<CrossEntropyLossLayer>> Create(
       cuda::Executor& executor, int vocabulary_size, DataType data_type,
       int sequence_length = 1);
@@ -71,6 +73,10 @@ class CrossEntropyLossLayer final : public Layer {
 // Scalar log-sum-exp reference for the terminal cross-entropy operation.
 class CrossEntropyLossLayerReference final : public LayerReference {
  public:
+  absl::string_view name() const override {
+    return "CrossEntropyLossLayerReference";
+  }
+
   static absl::StatusOr<std::unique_ptr<CrossEntropyLossLayerReference>> Create(
       int vocabulary_size, DataType data_type, int sequence_length = 1);
 

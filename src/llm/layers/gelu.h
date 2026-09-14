@@ -17,6 +17,8 @@ namespace pluto::llm {
 // widths need only be positive; the total runtime element count must be tiled.
 class GeluLayer final : public Layer {
  public:
+  absl::string_view name() const override { return "GeluLayer"; }
+
   // sequence_length is activation rows/tokens per sample, not batch size.
   // The default treats each row as its own sample. Signatures preserve the
   // batch, sequence, and feature axes even though kernels flatten
@@ -71,6 +73,8 @@ class GeluLayer final : public Layer {
 
 class GeluLayerReference final : public LayerReference {
  public:
+  absl::string_view name() const override { return "GeluLayerReference"; }
+
   // sequence_length is activation rows/tokens per sample, not batch size.
   // The default treats each row as its own sample. Signatures preserve the
   // batch, sequence, and feature axes even though kernels flatten

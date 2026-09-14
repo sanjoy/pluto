@@ -40,6 +40,8 @@ static_assert(!std::is_default_constructible_v<TrainingOptions>);
 
 class FakeModel final : public Layer {
  public:
+  absl::string_view name() const override { return "FakeModel"; }
+
   absl::Span<const ActivationType> input_types() const override {
     return types_;
   }
@@ -75,6 +77,8 @@ class FakeModel final : public Layer {
 
 class FakeLoss final : public Layer {
  public:
+  absl::string_view name() const override { return "FakeLoss"; }
+
   static absl::StatusOr<std::unique_ptr<FakeLoss>> Create(
       cuda::Executor& executor, absl::Span<const float> losses) {
     auto device_losses =
@@ -141,6 +145,8 @@ class FakeLoss final : public Layer {
 // the public vector contract, not on concrete layer type or saved-state layout.
 class RoutingLayer final : public Layer {
  public:
+  absl::string_view name() const override { return "RoutingLayer"; }
+
   RoutingLayer(BufferVec outputs, BufferVec gradients)
       : outputs_(std::move(outputs)), gradients_(std::move(gradients)) {
     // These tests deliberately return arbitrary buffers; the declared signature

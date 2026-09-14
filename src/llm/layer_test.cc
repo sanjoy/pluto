@@ -16,6 +16,8 @@ namespace {
 // implementations private also checks that callers use the inherited API.
 class IdentityLayer final : public Layer {
  public:
+  absl::string_view name() const override { return "IdentityLayer"; }
+
   absl::Span<Buffer> weights() override { return {}; }
   DataType output_type() const override { return DataType::FP16; }
 
@@ -63,6 +65,8 @@ class IdentityLayer final : public Layer {
 // both derivatives makes the composition's reverse routing observable.
 class ParameterOutputLayer final : public Layer {
  public:
+  absl::string_view name() const override { return "ParameterOutputLayer"; }
+
   explicit ParameterOutputLayer(Buffer parameter)
       : parameters_{std::move(parameter)} {}
   absl::Span<Buffer> weights() override { return absl::MakeSpan(parameters_); }
@@ -104,6 +108,8 @@ class ParameterOutputLayer final : public Layer {
 
 class SwapOutputsLayer final : public Layer {
  public:
+  absl::string_view name() const override { return "SwapOutputsLayer"; }
+
   absl::Span<Buffer> weights() override { return {}; }
   DataType output_type() const override { return DataType::FP16; }
 

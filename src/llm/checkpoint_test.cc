@@ -25,6 +25,8 @@ namespace {
 
 class CheckpointLayer final : public Layer {
  public:
+  absl::string_view name() const override { return "CheckpointLayer"; }
+
   explicit CheckpointLayer(BufferVec weights) : weights_(std::move(weights)) {}
 
   absl::Span<Buffer> weights() override { return absl::MakeSpan(weights_); }

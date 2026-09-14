@@ -9,6 +9,7 @@
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "src/cuda/buffer.h"
 #include "src/cuda/executor.h"
@@ -116,6 +117,11 @@ class Layer {
  public:
   virtual ~Layer() = default;
 
+  // Diagnostic class name, not a unique instance identifier. The returned
+  // non-owning view remains valid for the layer's lifetime. Built-in layers
+  // return string literals, so inspecting a name never allocates memory.
+  virtual absl::string_view name() const = 0;
+
   // Ordered forward signatures, immutable for the layer's lifetime. Batch is
   // the number of samples, not flattened token rows. Buffer remains untyped:
   // these declarations check graph wiring, not the dtype of arbitrary bytes
@@ -205,6 +211,10 @@ struct ReferenceFwdResult {
 class LayerReference {
  public:
   virtual ~LayerReference() = default;
+
+  // Same contract as Layer::name(); reference names include the "Reference"
+  // suffix so diagnostics distinguish CPU and GPU implementations.
+  virtual absl::string_view name() const = 0;
 
   // Same physical dtypes and logical shapes as the corresponding GPU layer.
   virtual absl::Span<const ActivationType> input_types() const = 0;

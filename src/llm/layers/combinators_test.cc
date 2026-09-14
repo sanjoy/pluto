@@ -26,6 +26,8 @@ namespace {
 // its data path is deliberately unavailable because these tests never run it.
 class TestLayer final : public Layer {
  public:
+  absl::string_view name() const override { return "TestLayer"; }
+
   // This fake explicitly converts FP32 input to the requested output storage.
   // In particular, the FP8 builder test is a real declared conversion, not an
   // exception to exact producer/consumer matching.

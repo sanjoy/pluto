@@ -22,6 +22,8 @@ namespace {
 // forward/backward are identity operations only for its equal-signature uses.
 class SignatureReference final : public LayerReference {
  public:
+  absl::string_view name() const override { return "SignatureReference"; }
+
   SignatureReference(std::vector<ActivationType> inputs,
                      std::vector<ActivationType> outputs,
                      DataType policy = DataType::FP16)
@@ -56,6 +58,8 @@ class SignatureReference final : public LayerReference {
 
 class SignatureIdentity final : public Layer {
  public:
+  absl::string_view name() const override { return "SignatureIdentity"; }
+
   SignatureIdentity(DataType storage, DataType policy)
       : type_{storage, {ActivationType::kBatchDimension, 1, 16}},
         policy_(policy) {}

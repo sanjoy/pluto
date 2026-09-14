@@ -16,6 +16,8 @@ namespace pluto::llm {
 // FP32 master buffers for the external optimizer.
 class FullyConnectedLayer final : public Layer {
  public:
+  absl::string_view name() const override { return "FullyConnectedLayer"; }
+
   // sequence_length is activation rows/tokens per sample, not batch size.
   // The default treats each row as its own sample. Signatures preserve the
   // batch, sequence, and feature axes even though kernels flatten
@@ -88,6 +90,10 @@ class FullyConnectedLayer final : public Layer {
 // parameters and gradients in the same order as the device layer.
 class FullyConnectedLayerReference final : public LayerReference {
  public:
+  absl::string_view name() const override {
+    return "FullyConnectedLayerReference";
+  }
+
   // sequence_length is activation rows/tokens per sample, not batch size.
   // The default treats each row as its own sample. Signatures preserve the
   // batch, sequence, and feature axes even though kernels flatten

@@ -45,6 +45,8 @@ struct SparseAutoEncoderZStatistics {
 // flatten the first two axes into rows. Only the batch dimension is symbolic.
 class SparseAutoEncoderLayer final : public Layer {
  public:
+  absl::string_view name() const override { return "SparseAutoEncoderLayer"; }
+
   enum class Mode { kDefault, kCollectStatistics };
 
   static absl::StatusOr<std::unique_ptr<SparseAutoEncoderLayer>> Create(
@@ -152,6 +154,10 @@ class SparseAutoEncoderLayer final : public Layer {
 // gradient. The loss accepts no upstream gradient.
 class SparseAutoEncoderLossLayer final : public Layer {
  public:
+  absl::string_view name() const override {
+    return "SparseAutoEncoderLossLayer";
+  }
+
   static absl::StatusOr<std::unique_ptr<SparseAutoEncoderLossLayer>> Create(
       cuda::Executor& executor, int input_dim, int feature_dim,
       float sparsity_penalty, DataType data_type, int sequence_length = 1);
@@ -207,6 +213,10 @@ class SparseAutoEncoderLossLayer final : public Layer {
 // Scalar CPU specification for SparseAutoEncoderLayer.
 class SparseAutoEncoderLayerReference final : public LayerReference {
  public:
+  absl::string_view name() const override {
+    return "SparseAutoEncoderLayerReference";
+  }
+
   static absl::StatusOr<std::unique_ptr<SparseAutoEncoderLayerReference>>
   Create(int input_dim, int feature_dim, DataType data_type,
          int sequence_length = 1);
@@ -275,6 +285,10 @@ class SparseAutoEncoderLayerReference final : public LayerReference {
 // Scalar CPU specification for SparseAutoEncoderLossLayer.
 class SparseAutoEncoderLossLayerReference final : public LayerReference {
  public:
+  absl::string_view name() const override {
+    return "SparseAutoEncoderLossLayerReference";
+  }
+
   static absl::StatusOr<std::unique_ptr<SparseAutoEncoderLossLayerReference>>
   Create(int input_dim, int feature_dim, float sparsity_penalty,
          DataType data_type, int sequence_length = 1);

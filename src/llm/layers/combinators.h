@@ -15,6 +15,8 @@ namespace pluto::llm {
 // Wraps a unary layer as x + layer(x), retaining the child's state and weights.
 class ResidualLayer final : public Layer {
  public:
+  absl::string_view name() const override { return "ResidualLayer"; }
+
   // Rejects null, non-unary, or shape/dtype-changing branches before use.
   static absl::StatusOr<std::unique_ptr<ResidualLayer>> Create(
       std::unique_ptr<Layer> layer);
@@ -51,6 +53,8 @@ class ResidualLayer final : public Layer {
 // rank, and dimensions. No broadcasting or flattening is implicit.
 class ComposedLayer final : public Layer {
  public:
+  absl::string_view name() const override { return "ComposedLayer"; }
+
   // Requires at least one non-null child and exact adjacent signatures.
   static absl::StatusOr<std::unique_ptr<ComposedLayer>> Create(
       std::vector<std::unique_ptr<Layer>> layers);
@@ -122,6 +126,8 @@ class ComposedLayerBuilder final {
 // so the complete residual forward and backward graphs stay on the host.
 class ResidualLayerReference final : public LayerReference {
  public:
+  absl::string_view name() const override { return "ResidualLayerReference"; }
+
   // Rejects null, non-unary, or shape/dtype-changing branches before use.
   static absl::StatusOr<std::unique_ptr<ResidualLayerReference>> Create(
       std::unique_ptr<LayerReference> layer);
@@ -158,6 +164,8 @@ class ResidualLayerReference final : public LayerReference {
 // exactly.
 class ComposedLayerReference final : public LayerReference {
  public:
+  absl::string_view name() const override { return "ComposedLayerReference"; }
+
   // Requires at least one non-null child and exact adjacent signatures.
   static absl::StatusOr<std::unique_ptr<ComposedLayerReference>> Create(
       std::vector<std::unique_ptr<LayerReference>> layers);

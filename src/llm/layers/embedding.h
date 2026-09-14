@@ -16,6 +16,8 @@ namespace pluto::llm {
 // the exact logical vocabulary accepted by the tokenizer.
 class EmbeddingLookupLayer final : public Layer {
  public:
+  absl::string_view name() const override { return "EmbeddingLookupLayer"; }
+
   // sequence_length is tokens per sample, not batch size. The default treats
   // each token as a separate one-token sample; larger values preserve a
   // [-2, sequence_length] input and [-2, sequence_length, embedding_dim]
@@ -88,6 +90,10 @@ class EmbeddingLookupLayer final : public Layer {
 // and gradient. The embedding owns the shared master weight and gradient.
 class LanguageModelingHeadLayer final : public Layer {
  public:
+  absl::string_view name() const override {
+    return "LanguageModelingHeadLayer";
+  }
+
   static absl::StatusOr<std::unique_ptr<LanguageModelingHeadLayer>> Create(
       EmbeddingLookupLayer* embedding);
 
@@ -125,6 +131,8 @@ class LanguageModelingHeadLayer final : public Layer {
 // Learned absolute position embeddings repeated for each packed sequence.
 class PositionEmbeddingLayer final : public Layer {
  public:
+  absl::string_view name() const override { return "PositionEmbeddingLayer"; }
+
   // Positions restart at the configured fixed width, not at a length inferred
   // from the total number of rows in a flattened batch.
   absl::Status ValidateSequenceLength(int sequence_length) const override;
@@ -180,6 +188,10 @@ class LanguageModelingHeadLayerReference;
 // exactly like the GPU layer, while returned activations use output_type().
 class EmbeddingLookupLayerReference final : public LayerReference {
  public:
+  absl::string_view name() const override {
+    return "EmbeddingLookupLayerReference";
+  }
+
   // sequence_length is tokens per sample, not batch size. The default treats
   // each token as a separate one-token sample; larger values preserve a
   // [-2, sequence_length] input and [-2, sequence_length, embedding_dim]
@@ -250,6 +262,10 @@ class EmbeddingLookupLayerReference final : public LayerReference {
 // Obvious dense projection using the reference embedding's transposed table.
 class LanguageModelingHeadLayerReference final : public LayerReference {
  public:
+  absl::string_view name() const override {
+    return "LanguageModelingHeadLayerReference";
+  }
+
   static absl::StatusOr<std::unique_ptr<LanguageModelingHeadLayerReference>>
   Create(EmbeddingLookupLayerReference* embedding);
 
@@ -285,6 +301,10 @@ class LanguageModelingHeadLayerReference final : public LayerReference {
 // Scalar learned-position addition and gradient accumulation reference.
 class PositionEmbeddingLayerReference final : public LayerReference {
  public:
+  absl::string_view name() const override {
+    return "PositionEmbeddingLayerReference";
+  }
+
   static absl::StatusOr<std::unique_ptr<PositionEmbeddingLayerReference>>
   Create(int context_length, int embedding_dim, DataType data_type);
   absl::Status InitializeNormal(float standard_deviation, uint64_t seed);

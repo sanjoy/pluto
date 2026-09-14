@@ -20,6 +20,8 @@ namespace pluto::llm {
 // masked at both sequence and head bounds.
 class AttentionLayer final : public Layer {
  public:
+  absl::string_view name() const override { return "AttentionLayer"; }
+
   static absl::StatusOr<std::unique_ptr<AttentionLayer>> Create(
       cuda::Executor& executor, int context_length, int num_heads,
       int embedding_dim, DataType data_type);
@@ -71,6 +73,8 @@ class AttentionLayer final : public Layer {
 // speed: it materializes each query row's softmax probabilities.
 class AttentionLayerReference final : public LayerReference {
  public:
+  absl::string_view name() const override { return "AttentionLayerReference"; }
+
   static absl::StatusOr<std::unique_ptr<AttentionLayerReference>> Create(
       int context_length, int num_heads, int embedding_dim, DataType data_type);
 

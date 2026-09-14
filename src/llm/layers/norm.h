@@ -16,6 +16,8 @@ namespace pluto::llm {
 // Parameter gradients are replaced per backward, with a fixed reduction order.
 class LayerNormLayer final : public Layer {
  public:
+  absl::string_view name() const override { return "LayerNormLayer"; }
+
   // sequence_length is activation rows/tokens per sample, not batch size.
   // The default treats each row as its own sample. Signatures preserve the
   // batch, sequence, and feature axes even though kernels flatten
@@ -80,6 +82,8 @@ class LayerNormLayer final : public Layer {
 // Direct row-by-row LayerNorm equations used to validate both CUDA passes.
 class LayerNormLayerReference final : public LayerReference {
  public:
+  absl::string_view name() const override { return "LayerNormLayerReference"; }
+
   // sequence_length is activation rows/tokens per sample, not batch size.
   // The default treats each row as its own sample. Signatures preserve the
   // batch, sequence, and feature axes even though kernels flatten
