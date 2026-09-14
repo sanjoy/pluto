@@ -3,6 +3,29 @@ load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("@rules_cuda//cuda:defs.bzl", "cuda_test")
 
 cc_library(
+    name = "combine_statuses",
+    srcs = ["combine_statuses.cc"],
+    hdrs = ["combine_statuses.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "combine_statuses_test",
+    size = "small",
+    srcs = ["combine_statuses_test.cc"],
+    deps = [
+        ":combine_statuses",
+        "@abseil-cpp//absl/status",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "status_macros",
     hdrs = ["status_macros.h"],
     visibility = ["//visibility:public"],

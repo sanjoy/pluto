@@ -7,7 +7,6 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
-#include <map>
 #include <mutex>
 #include <thread>
 #include <utility>
@@ -35,7 +34,13 @@ TEST(ThreadPoolTest, DefaultCreatesOneWorkerPerReportedCore) {
   EXPECT_EQ(static_cast<unsigned int>((*pool)->size()),
             std::max(1u, std::thread::hardware_concurrency()));
   std::atomic<int> count = 0;
-  EXPECT_TRUE((*pool)->ParallelFor([&](Executor&) { ++count; }).ok());
+  EXPECT_TRUE((*pool)
+                  ->ParallelFor([&](Executor&, int index) {
+                    EXPECT_GE(index, 0);
+                    EXPECT_LT(index, (*pool)->size());
+                    ++count;
+                  })
+                  .ok());
   EXPECT_EQ(count, (*pool)->size());
 }
 
@@ -49,61 +54,82 @@ TEST(ThreadPoolTest, SingleWorkerCanRunRepeatedlyAndBeDestroyedUnused) {
   EXPECT_EQ((*pool)->size(), 1);
   int count = 0;
   for (int iteration = 0; iteration < 5; ++iteration)
-    ASSERT_TRUE((*pool)->ParallelFor([&](Executor&) { ++count; }).ok());
+    ASSERT_TRUE((*pool)
+                    ->ParallelFor([&](Executor&, int index) {
+                      EXPECT_EQ(index, 0);
+                      ++count;
+                    })
+                    .ok());
   EXPECT_EQ(count, 5);
 }
 
-TEST(ThreadPoolTest, WorkersRunConcurrentlyAndRetainTheirOwnExecutors) {
+TEST(ThreadPoolTest, WorkersRunConcurrentlyAndRetainTheirIndexedExecutors) {
   constexpr int kWorkers = 3;
   auto pool = ThreadPool::Create(kWorkers);
   ASSERT_TRUE(pool.ok()) << pool.status();
   int creating_device = -1;
   ASSERT_EQ(cudaGetDevice(&creating_device), cudaSuccess);
 
+  struct Identity {
+    std::thread::id thread;
+    Executor* executor = nullptr;
+    cudaStream_t stream = nullptr;
+  };
+  std::vector<Identity> identities(kWorkers);
+  std::vector<int> calls(kWorkers);
   std::mutex mutex;
   std::condition_variable condition;
   int arrived = 0;
-  std::map<std::thread::id, std::pair<Executor*, cudaStream_t>> identities;
   const auto caller_thread = std::this_thread::get_id();
-  absl::Status status = (*pool)->ParallelFor([&](Executor& executor) {
-    int device = -1;
-    EXPECT_EQ(cudaGetDevice(&device), cudaSuccess);
-    EXPECT_EQ(device, creating_device);
-    EXPECT_NE(std::this_thread::get_id(), caller_thread);
-    EXPECT_NE(executor.stream(), nullptr);
-    EXPECT_NE(executor.stream(), cudaStreamLegacy);
-    EXPECT_NE(executor.stream(), cudaStreamPerThread);
-    std::unique_lock<std::mutex> lock(mutex);
-    EXPECT_TRUE(identities
-                    .emplace(std::this_thread::get_id(),
-                             std::make_pair(&executor, executor.stream()))
-                    .second);
-    ++arrived;
-    condition.notify_all();
-    // A serial implementation must fail, rather than permanently deadlock at
-    // the test barrier. Every worker releases the mutex while waiting.
-    EXPECT_TRUE(
-        condition.wait_for(lock, 10s, [&] { return arrived == kWorkers; }));
-  });
+  absl::Status status =
+      (*pool)->ParallelFor([&](Executor& executor, int index) {
+        ASSERT_GE(index, 0);
+        ASSERT_LT(index, kWorkers);
+        int device = -1;
+        EXPECT_EQ(cudaGetDevice(&device), cudaSuccess);
+        EXPECT_EQ(device, creating_device);
+        EXPECT_NE(std::this_thread::get_id(), caller_thread);
+        EXPECT_NE(executor.stream(), nullptr);
+        EXPECT_NE(executor.stream(), cudaStreamLegacy);
+        EXPECT_NE(executor.stream(), cudaStreamPerThread);
+        std::unique_lock<std::mutex> lock(mutex);
+        EXPECT_EQ(calls[index]++, 0);
+        identities[index] = {std::this_thread::get_id(), &executor,
+                             executor.stream()};
+        ++arrived;
+        condition.notify_all();
+        // A serial implementation must fail, rather than permanently deadlock
+        // at the test barrier. Every worker releases the mutex while waiting.
+        EXPECT_TRUE(
+            condition.wait_for(lock, 10s, [&] { return arrived == kWorkers; }));
+      });
   ASSERT_TRUE(status.ok()) << status;
-  ASSERT_EQ(identities.size(), static_cast<size_t>(kWorkers));
-  for (auto first = identities.begin(); first != identities.end(); ++first)
-    for (auto second = identities.begin(); second != first; ++second) {
-      EXPECT_NE(first->second.first, second->second.first);
-      EXPECT_NE(first->second.second, second->second.second);
+  for (int index = 0; index < kWorkers; ++index) {
+    EXPECT_EQ(calls[index], 1);
+    for (int previous = 0; previous < index; ++previous) {
+      EXPECT_NE(identities[index].thread, identities[previous].thread);
+      EXPECT_NE(identities[index].executor, identities[previous].executor);
+      EXPECT_NE(identities[index].stream, identities[previous].stream);
     }
+  }
 
   for (int iteration = 0; iteration < 3; ++iteration) {
-    std::atomic<int> count = 0;
-    status = (*pool)->ParallelFor([&](Executor& executor) {
-      const auto found = identities.find(std::this_thread::get_id());
-      ASSERT_NE(found, identities.end());
-      EXPECT_EQ(found->second.first, &executor);
-      EXPECT_EQ(found->second.second, executor.stream());
-      ++count;
+    std::fill(calls.begin(), calls.end(), 0);
+    // The initial void callback and these Status callbacks must use the same
+    // stable, contiguous worker indices, not indices assigned by arrival time.
+    status = (*pool)->ParallelFor([&](Executor& executor, int index) {
+      std::lock_guard<std::mutex> lock(mutex);
+      if (index < 0 || index >= kWorkers)
+        return absl::OutOfRangeError("invalid worker index");
+      EXPECT_EQ(identities[index].thread, std::this_thread::get_id());
+      EXPECT_EQ(identities[index].executor, &executor);
+      EXPECT_EQ(identities[index].stream, executor.stream());
+      ++calls[index];
+      return absl::OkStatus();
     });
     ASSERT_TRUE(status.ok()) << status;
-    EXPECT_EQ(count, kWorkers);
+    for (int index = 0; index < kWorkers; ++index)
+      EXPECT_EQ(calls[index], 1);
   }
 }
 
@@ -115,10 +141,8 @@ TEST(ThreadPoolTest, CompletesDeviceTransfersBeforeReturning) {
   // These arrays are destroyed before the pool: their stream-ordered frees
   // still need the worker-owned executors to exist.
   std::vector<PageLockedHostArray<uint8_t>> outputs(kWorkers);
-  std::atomic<int> next = 0;
   const absl::Status status =
-      (*pool)->ParallelFor([&](Executor& executor) -> absl::Status {
-        const int index = next++;
+      (*pool)->ParallelFor([&](Executor& executor, int index) -> absl::Status {
         auto device = Buffer::Allocate(executor, kBytes);
         if (!device.ok())
           return device.status();
@@ -140,7 +164,6 @@ TEST(ThreadPoolTest, CompletesDeviceTransfersBeforeReturning) {
             "cudaMemcpyAsync");
       });
   ASSERT_TRUE(status.ok()) << status;
-  ASSERT_EQ(next, kWorkers);
   for (int index = 0; index < kWorkers; ++index) {
     EXPECT_EQ(cudaStreamQuery(outputs[index].executor().stream()), cudaSuccess);
     EXPECT_TRUE(
@@ -175,12 +198,11 @@ TEST(ThreadPoolTest, CallbackErrorDoesNotSkipWorkersOrPendingGpuWork) {
   auto pool = ThreadPool::Create(kWorkers);
   ASSERT_TRUE(pool.ok()) << pool.status();
   CompletionGate gate;
-  std::atomic<int> next = 0;
   std::vector<Executor*> executors(kWorkers);
   absl::Status result;
   std::thread caller([&] {
-    result = (*pool)->ParallelFor([&](Executor& executor) -> absl::Status {
-      const int index = next++;
+    result = (*pool)->ParallelFor([&](Executor& executor,
+                                      int index) -> absl::Status {
       executors[index] = &executor;
       const absl::Status queued = CudaStatus(
           cudaLaunchHostFunc(executor.stream(), CompletionGate::Wait, &gate),
@@ -211,8 +233,10 @@ TEST(ThreadPoolTest, CallbackErrorDoesNotSkipWorkersOrPendingGpuWork) {
     gate.condition.notify_all();
   }
   caller.join();
-  EXPECT_EQ(result, absl::InvalidArgumentError("test callback failure"));
-  EXPECT_EQ(next, kWorkers);
+  EXPECT_EQ(result.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_EQ(result.message(),
+            "Failures:\n  [0] INVALID_ARGUMENT: test callback failure");
+  EXPECT_EQ(gate.queued, kWorkers);
   // Also drain explicitly if an implementation regresses: a failing test
   // must not destroy gate while an asynchronous host callback still uses it.
   for (Executor* executor : executors) {
@@ -223,21 +247,54 @@ TEST(ThreadPoolTest, CallbackErrorDoesNotSkipWorkersOrPendingGpuWork) {
   EXPECT_EQ(gate.completed, kWorkers);
   EXPECT_FALSE(gate.timed_out);
   std::atomic<int> rerun = 0;
-  EXPECT_TRUE((*pool)->ParallelFor([&](Executor&) { ++rerun; }).ok());
+  EXPECT_TRUE((*pool)->ParallelFor([&](Executor&, int) { ++rerun; }).ok());
   EXPECT_EQ(rerun, kWorkers);
+}
+
+TEST(ThreadPoolTest, CollatesAllFailuresByIndexAndRemainsUsable) {
+  constexpr int kWorkers = 4;
+  auto pool = ThreadPool::Create(kWorkers);
+  ASSERT_TRUE(pool.ok()) << pool.status();
+  for (int iteration = 0; iteration < 3; ++iteration) {
+    std::atomic<int> calls = 0;
+    std::atomic<unsigned int> visited = 0;
+    const absl::Status result = (*pool)->ParallelFor([&](Executor&, int index) {
+      ++calls;
+      if (index < 0 || index >= kWorkers)
+        return absl::OutOfRangeError("invalid worker index");
+      visited.fetch_or(1u << index);
+      if (index == 1)
+        return absl::NotFoundError("missing worker value");
+      if (index == 3)
+        return absl::PermissionDeniedError("worker cannot write");
+      return absl::OkStatus();
+    });
+    EXPECT_EQ(calls, kWorkers);
+    EXPECT_EQ(visited, (1u << kWorkers) - 1);
+    // Failure indices refer to original workers, not the compacted list of
+    // failed statuses, and completion order must not affect the result.
+    EXPECT_EQ(result.code(), absl::StatusCode::kNotFound);
+    EXPECT_EQ(result.message(),
+              "Failures:\n  [1] NOT_FOUND: missing worker value"
+              "\n  [3] PERMISSION_DENIED: worker cannot write");
+    std::atomic<int> rerun = 0;
+    EXPECT_TRUE((*pool)->ParallelFor([&](Executor&, int) { ++rerun; }).ok());
+    EXPECT_EQ(rerun, kWorkers);
+  }
 }
 
 TEST(ThreadPoolTest, RejectsSamePoolRecursionAndRemainsUsable) {
   auto pool = ThreadPool::Create(2);
   ASSERT_TRUE(pool.ok()) << pool.status();
   std::atomic<int> inner_calls = 0;
-  const absl::Status status = (*pool)->ParallelFor([&](Executor&) {
-    const auto nested = (*pool)->ParallelFor([&](Executor&) { ++inner_calls; });
+  const absl::Status status = (*pool)->ParallelFor([&](Executor&, int) {
+    const auto nested =
+        (*pool)->ParallelFor([&](Executor&, int) { ++inner_calls; });
     EXPECT_TRUE(absl::IsFailedPrecondition(nested)) << nested;
   });
   EXPECT_TRUE(status.ok()) << status;
   EXPECT_EQ(inner_calls, 0);
-  EXPECT_TRUE((*pool)->ParallelFor([](Executor&) {}).ok());
+  EXPECT_TRUE((*pool)->ParallelFor([](Executor&, int) {}).ok());
 }
 
 TEST(ThreadPoolTest, SerializesConcurrentCallersWithoutLosingDispatches) {
@@ -255,7 +312,7 @@ TEST(ThreadPoolTest, SerializesConcurrentCallersWithoutLosingDispatches) {
       condition.notify_all();
       EXPECT_TRUE(condition.wait_for(lock, 10s, [&] { return ready == 2; }));
     }
-    const absl::Status status = (*pool)->ParallelFor([&](Executor&) {
+    const absl::Status status = (*pool)->ParallelFor([&](Executor&, int) {
       std::lock_guard<std::mutex> lock(mutex);
       runs.push_back(run);
     });

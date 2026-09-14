@@ -36,8 +36,11 @@ class ThreadPool final {
 
   // Invokes the same callable exactly once on each worker, in parallel, then
   // waits for every callback AND the work queued on its Executor. The callable
-  // may return void or absl::Status; all workers finish even if one fails.
-  // The first error in worker-index order is returned (including CUDA errors).
+  // receives (Executor&, int index) and may return void or absl::Status.
+  // Indices are stable worker IDs in [0, size()), not completion-order IDs.
+  // All workers finish even if one fails. Every failed worker index and status
+  // is included in the result; its code is the first failed worker's code in
+  // index order (including CUDA errors).
   //
   // Each worker reuses its own thread/Executor across calls. The callable and
   // any shared captures must support concurrent invocation. Buffers may outlive
@@ -50,20 +53,27 @@ class ThreadPool final {
   // exceptions, including thread-creation/allocation failures, are fatal.
   template <class Function>
   absl::Status ParallelFor(Function&& function) {
-    return Run([&](Executor& executor) -> absl::Status {
+    return RunOnEachThread([&](Executor& executor, int index) -> absl::Status {
       if constexpr (std::is_void_v<
-                        std::invoke_result_t<Function&, Executor&>>) {
-        function(executor);
+                        std::invoke_result_t<Function&, Executor&, int>>) {
+        function(executor, index);
         return absl::OkStatus();
       } else {
-        return function(executor);
+        return function(executor, index);
       }
     });
   }
 
  private:
   ThreadPool(int num_threads, int device);
-  absl::Status Run(absl::FunctionRef<absl::Status(Executor&)> function);
+  // Blocking dispatch shared by the void- and Status-returning adapters above.
+  // Serializes external callers, lends the callback to each persistent worker
+  // exactly once with its Executor and stable index, and waits for all
+  // callbacks and their queued GPU work before combining failures. The callback
+  // is borrowed only for this call; the caller must keep its captures alive.
+  // Rejects calls from this pool's own workers to avoid a recursive deadlock.
+  absl::Status RunOnEachThread(
+      absl::FunctionRef<absl::Status(Executor&, int)> function);
   void Worker(int index);
 
   const int num_threads_;
@@ -79,7 +89,7 @@ class ThreadPool final {
   bool stopping_ = false;
   uint64_t generation_ = 0;
   int remaining_;
-  std::optional<absl::FunctionRef<absl::Status(Executor&)>> function_;
+  std::optional<absl::FunctionRef<absl::Status(Executor&, int)>> function_;
   std::vector<absl::Status> statuses_;
 };
 

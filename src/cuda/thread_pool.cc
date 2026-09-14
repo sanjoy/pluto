@@ -3,11 +3,13 @@
 #include <cuda_runtime_api.h>
 
 #include <algorithm>
-#include <limits>
+#include <array>
 #include <memory>
 #include <utility>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
+#include "src/util/combine_statuses.h"
 #include "src/util/status_macros.h"
 
 namespace pluto::cuda {
@@ -16,6 +18,28 @@ namespace {
 // Detect direct reentrancy before taking call_mutex_: the outer caller holds
 // that mutex while waiting for this worker. Waiting again would deadlock.
 thread_local const ThreadPool* current_pool = nullptr;
+
+// Keep the usual single failure unwrapped. If callback and cleanup both fail,
+// retain both diagnostics with phase indices, distinct from the worker indices
+// that RunOnEachThread adds. Status::Update would silently discard later
+// errors.
+absl::Status CombineWorkerStatuses(const std::array<absl::Status, 3>& phases) {
+  const absl::Status* failure = nullptr;
+  for (const auto& phase : phases) {
+    if (phase.ok())
+      continue;
+    if (failure != nullptr) {
+      const auto combined = util::CombineStatuses(phases);
+      return absl::Status(
+          combined.code(),
+          absl::StrCat("Worker phases (0=callback/device selection, "
+                       "1=device restore, 2=stream synchronization):\n",
+                       combined.message()));
+    }
+    failure = &phase;
+  }
+  return failure == nullptr ? absl::OkStatus() : *failure;
+}
 
 }  // namespace
 
@@ -30,8 +54,6 @@ absl::StatusOr<std::unique_ptr<ThreadPool>> ThreadPool::Create(
   if (num_threads == -1) {
     const unsigned int cores =
         std::max(1u, std::thread::hardware_concurrency());
-    if (cores > static_cast<unsigned int>(std::numeric_limits<int>::max()))
-      return absl::InvalidArgumentError("CPU count exceeds ThreadPool limit");
     num_threads = static_cast<int>(cores);
   }
   if (num_threads <= 0)
@@ -49,8 +71,7 @@ absl::StatusOr<std::unique_ptr<ThreadPool>> ThreadPool::Create(
   {
     std::unique_lock lock(pool->mutex_);
     pool->finished_.wait(lock, [&] { return pool->remaining_ == 0; });
-    for (const auto& status : pool->statuses_)
-      RETURN_IF_ERROR(status);
+    RETURN_IF_ERROR(util::CombineStatuses(pool->statuses_));
   }
   return pool;
 }
@@ -65,8 +86,8 @@ ThreadPool::~ThreadPool() {
     thread.join();
 }
 
-absl::Status ThreadPool::Run(
-    absl::FunctionRef<absl::Status(Executor&)> function) {
+absl::Status ThreadPool::RunOnEachThread(
+    absl::FunctionRef<absl::Status(Executor&, int)> function) {
   if (current_pool == this)
     return absl::FailedPreconditionError(
         "ParallelFor cannot recursively use the same ThreadPool");
@@ -78,9 +99,7 @@ absl::Status ThreadPool::Run(
   work_available_.notify_all();
   finished_.wait(lock, [&] { return remaining_ == 0; });
   function_.reset();
-  for (const auto& status : statuses_)
-    RETURN_IF_ERROR(status);
-  return absl::OkStatus();
+  return util::CombineStatuses(statuses_);
 }
 
 void ThreadPool::Worker(int index) {
@@ -117,14 +136,14 @@ void ThreadPool::Worker(int index) {
 
     status = CudaStatus(cudaSetDevice(device_), "cudaSetDevice");
     if (status.ok())
-      status = function(*executor);
+      status = function(*executor, index);
     // Even an error-returning callback may have queued GPU work. Drain it
     // before publishing completion or accepting another invocation. Restore
     // the device in case the callback temporarily selected a different one.
     const auto selected = CudaStatus(cudaSetDevice(device_), "cudaSetDevice");
-    status.Update(selected);
-    if (selected.ok())
-      status.Update(executor->Synchronize());
+    const auto synchronized =
+        selected.ok() ? executor->Synchronize() : absl::OkStatus();
+    status = CombineWorkerStatuses({status, selected, synchronized});
 
     lock.lock();
     statuses_[index] = std::move(status);

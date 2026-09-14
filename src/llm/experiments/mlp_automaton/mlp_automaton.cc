@@ -1,5 +1,4 @@
 #include <algorithm>
-#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -332,15 +331,13 @@ absl::Status Run() {
   const size_t checkpoint_count = selection.checkpoints.size();
   const size_t worker_count = static_cast<size_t>(pool->size());
   std::vector<CheckpointResult> results(checkpoint_count);
-  std::atomic<size_t> next_worker{0};
-  RETURN_IF_ERROR(
-      pool->ParallelFor([&](cuda::Executor& executor) -> absl::Status {
+  RETURN_IF_ERROR(pool->ParallelFor(
+      [&](cuda::Executor& executor, int worker_index) -> absl::Status {
         // ParallelFor calls us once per worker. Balanced contiguous slices
         // cover every checkpoint exactly once, including when the count is not
         // divisible by the pool size. This arithmetic never multiplies two
         // large counts.
-        const size_t worker =
-            next_worker.fetch_add(1, std::memory_order_relaxed);
+        const size_t worker = static_cast<size_t>(worker_index);
         const size_t quotient = checkpoint_count / worker_count;
         const size_t remainder = checkpoint_count % worker_count;
         const size_t begin = worker * quotient + std::min(worker, remainder);

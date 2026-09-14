@@ -1,7 +1,6 @@
 #include "src/llm/experiments/mlp_automaton/model.h"
 
 #include <array>
-#include <atomic>
 #include <cmath>
 #include <cstddef>
 #include <cstdlib>
@@ -536,42 +535,38 @@ TEST_F(MlpAutomatonModelTest,
   ASSERT_TRUE(pool.ok()) << pool.status();
   std::array<std::array<CheckpointScans, kCheckpoints>, kWorkers> actual;
   std::array<std::vector<TopTransition>, kWorkers> after_failed_load;
-  std::atomic<int> next_worker = 0;
-  const auto status =
-      (*pool)->ParallelFor([&](cuda::Executor& executor) -> absl::Status {
-        const int worker = next_worker.fetch_add(1);
-        ASSIGN_OR_RETURN(auto readout, CreateReadout(executor, kDimensions));
-        // Keep one private readout per worker and repeatedly replace all of its
-        // weights. Workers visit different checkpoints at the same time.
-        for (int turn = 0; turn < kCheckpoints; ++turn) {
-          const int checkpoint = (worker + turn) % kCheckpoints;
-          for (int block = 0; block < 8; ++block) {
-            RETURN_IF_ERROR(LoadMlpWeights(executor, *readout,
-                                           checkpoints[checkpoint], block));
-            auto scan = ScanVocabulary(executor, *readout,
-                                       kDimensions.vocab_size, 16, [](int) {});
-            RETURN_IF_ERROR(scan.status());
-            // DMA is complete on return. Copy into ordinary CPU storage so
-            // no executor-backed pinned allocation can outlive this worker.
-            actual[worker][checkpoint][block].assign(scan->begin(),
-                                                     scan->end());
-          }
-          if (turn == 0) {
-            const auto missing = LoadMlpWeights(
-                executor, *readout, directory_ / "missing_checkpoint", 7);
-            if (missing.code() != absl::StatusCode::kNotFound)
-              return absl::InternalError(
-                  "missing checkpoint did not return NotFound");
-            auto scan = ScanVocabulary(executor, *readout,
-                                       kDimensions.vocab_size, 16, [](int) {});
-            RETURN_IF_ERROR(scan.status());
-            after_failed_load[worker].assign(scan->begin(), scan->end());
-          }
-        }
-        return absl::OkStatus();
-      });
+  const auto status = (*pool)->ParallelFor([&](cuda::Executor& executor,
+                                               int worker) -> absl::Status {
+    ASSIGN_OR_RETURN(auto readout, CreateReadout(executor, kDimensions));
+    // Keep one private readout per worker and repeatedly replace all of its
+    // weights. Workers visit different checkpoints at the same time.
+    for (int turn = 0; turn < kCheckpoints; ++turn) {
+      const int checkpoint = (worker + turn) % kCheckpoints;
+      for (int block = 0; block < 8; ++block) {
+        RETURN_IF_ERROR(
+            LoadMlpWeights(executor, *readout, checkpoints[checkpoint], block));
+        auto scan = ScanVocabulary(executor, *readout, kDimensions.vocab_size,
+                                   16, [](int) {});
+        RETURN_IF_ERROR(scan.status());
+        // DMA is complete on return. Copy into ordinary CPU storage so
+        // no executor-backed pinned allocation can outlive this worker.
+        actual[worker][checkpoint][block].assign(scan->begin(), scan->end());
+      }
+      if (turn == 0) {
+        const auto missing = LoadMlpWeights(
+            executor, *readout, directory_ / "missing_checkpoint", 7);
+        if (missing.code() != absl::StatusCode::kNotFound)
+          return absl::InternalError(
+              "missing checkpoint did not return NotFound");
+        auto scan = ScanVocabulary(executor, *readout, kDimensions.vocab_size,
+                                   16, [](int) {});
+        RETURN_IF_ERROR(scan.status());
+        after_failed_load[worker].assign(scan->begin(), scan->end());
+      }
+    }
+    return absl::OkStatus();
+  });
   ASSERT_TRUE(status.ok()) << status;
-  EXPECT_EQ(next_worker.load(), kWorkers);
   for (int worker = 0; worker < kWorkers; ++worker) {
     for (int checkpoint = 0; checkpoint < kCheckpoints; ++checkpoint) {
       for (int block = 0; block < 8; ++block) {

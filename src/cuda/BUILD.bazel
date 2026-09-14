@@ -128,11 +128,13 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":executor",
+        "//src/util:combine_statuses",
         "//src/util:status_macros",
         "@abseil-cpp//absl/functional:function_ref",
         "@abseil-cpp//absl/memory",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
         "@cuda//:cuda_runtime",
     ],
 )
