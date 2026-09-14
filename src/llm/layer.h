@@ -131,14 +131,11 @@ class Layer {
   virtual absl::Span<const ActivationType> output_types() const = 0;
 
   // State is published only with a successful output. Failed calls cannot
-  // overwrite state retained from an earlier forward pass.
+  // overwrite state retained from an earlier forward pass. If this Executor
+  // has LayerHooks attached, ActivationHook processes successful outputs before
+  // they are published. See layer_hooks.h for replacement/aliasing rules.
   absl::StatusOr<FwdResult> fwd(cuda::Executor& executor,
-                                absl::Span<const Buffer> inputs) const {
-    auto result = fwd_impl(executor, inputs);
-    if (result.ok())
-      result->state.layer = this;
-    return result;
-  }
+                                absl::Span<const Buffer> inputs) const;
 
   // Output gradients follow the forward outputs' order; returned gradients
   // follow the forward inputs' order. Layer-specific exceptions are documented
@@ -146,14 +143,12 @@ class Layer {
   // consuming nondifferentiable integer inputs may return no input gradients.
   // Check instance identity before dispatching any backward work. Matching
   // shapes or layer types alone do not make another layer's saved state valid.
+  // An attached GradientHook processes incoming output gradients (FP32) before
+  // bwd_impl computes parameter/input gradients. Its handle replacements do
+  // not alter the caller's gradient handles.
   absl::StatusOr<BufferVec> bwd(cuda::Executor& executor,
                                 absl::Span<const Buffer> output_gradients,
-                                BackwardState state) {
-    if (state.layer != this)
-      return absl::InvalidArgumentError(
-          "bwd requires a state from this layer's successful fwd");
-    return bwd_impl(executor, output_gradients, std::move(state));
-  }
+                                BackwardState state);
   virtual absl::Span<Buffer> weights() = 0;
   // Read-only access for serialization and inspection. Implementations expose
   // the same handles as weights(); callers must not mutate their device bytes.

@@ -25,6 +25,7 @@
 #include "src/dataset/dataset.h"
 #include "src/llm/adamw_optimizer.h"
 #include "src/llm/layer.h"
+#include "src/llm/layer_hooks.h"
 #include "src/llm/layers/attention.h"
 #include "src/llm/layers/combinators.h"
 #include "src/llm/layers/embedding.h"
@@ -355,6 +356,122 @@ class TrainerTest : public testing::Test {
   std::unique_ptr<cuda::Executor> executor_;
   cuda::PageLockedHostArray<int> corpus_;
 };
+
+// Scoped attachment makes even an ASSERT failure detach before fixture
+// teardown.
+class TrainingLayerHooks final : public LayerHooks {
+ public:
+  explicit TrainingLayerHooks(cuda::Executor& executor) : executor_(executor) {
+    executor_.set_layer_hooks(this);
+  }
+  ~TrainingLayerHooks() override { executor_.set_layer_hooks(nullptr); }
+
+  absl::Status ActivationHook(cuda::Executor& executor, absl::string_view name,
+                              absl::Span<const ActivationType> types,
+                              absl::Span<Buffer> buffers) override {
+    EXPECT_EQ(&executor, &executor_);
+    EXPECT_EQ(types.size(), 1);
+    EXPECT_EQ(buffers.size(), 1);
+    if (name == "FakeModel")
+      ++model_forward;
+    else {
+      EXPECT_EQ(name, "FakeLoss");
+      ++loss_forward;
+    }
+    return absl::OkStatus();
+  }
+
+  absl::Status GradientHook(cuda::Executor& executor, absl::string_view name,
+                            absl::Span<const ActivationType> types,
+                            absl::Span<Buffer> gradients) override {
+    EXPECT_EQ(&executor, &executor_);
+    if (name == "FakeLoss") {
+      ++loss_backward;
+      EXPECT_TRUE(types.empty());
+      EXPECT_TRUE(gradients.empty());
+    } else {
+      EXPECT_EQ(name, "FakeModel");
+      ++model_backward;
+      EXPECT_EQ(gradients.size(), 1);
+      EXPECT_EQ(types.size(), 1);
+      if (types.size() == 1)
+        EXPECT_EQ(types[0], kFloatType);
+    }
+    return fail_gradient ? absl::AbortedError("hooks stopped backward")
+                         : absl::OkStatus();
+  }
+
+  int model_forward = 0;
+  int loss_forward = 0;
+  int model_backward = 0;
+  int loss_backward = 0;
+  bool fail_gradient = false;
+
+ private:
+  cuda::Executor& executor_;
+};
+
+TEST_F(TrainerTest, ExecutorLayerHooksReachesEvaluateAndTrainWithoutAdapters) {
+  FakeModel model;
+  FakeOptimizer optimizer;
+  auto loss = MakeLoss();
+  auto data = MakeData();
+  ASSERT_TRUE(loss.ok()) << loss.status();
+  ASSERT_TRUE(data.ok()) << data.status();
+  TrainingLayerHooks hooks(*executor_);
+
+  auto evaluated =
+      Evaluate(*executor_, model,
+               EvaluationOptions{
+                   .loss_layer = **loss, .eval_data = **data, .batches = 2});
+  ASSERT_TRUE(evaluated.ok()) << evaluated.status();
+  EXPECT_EQ(hooks.model_forward, 2);
+  EXPECT_EQ(hooks.loss_forward, 2);
+  EXPECT_EQ(hooks.model_backward, 0);
+  EXPECT_EQ(hooks.loss_backward, 0);
+
+  auto trained = Train(*executor_, model,
+                       TrainingOptions{.loss_layer = **loss,
+                                       .optimizer = optimizer,
+                                       .training_data = **data,
+                                       .max_steps = 3});
+  ASSERT_TRUE(trained.ok()) << trained.status();
+  EXPECT_EQ(hooks.model_forward, model.forward_calls);
+  EXPECT_EQ(hooks.loss_forward, (*loss)->forward_calls);
+  EXPECT_EQ(hooks.model_backward, model.backward_calls);
+  EXPECT_EQ(hooks.loss_backward, (*loss)->backward_calls);
+  EXPECT_EQ(hooks.model_forward, 5);
+  EXPECT_EQ(hooks.loss_forward, 5);
+  EXPECT_EQ(hooks.model_backward, 3);
+  EXPECT_EQ(hooks.loss_backward, 3);
+  EXPECT_EQ(optimizer.steps, 3);
+}
+
+TEST_F(TrainerTest, HookFailureStopsTrainingBeforeBackwardAndOptimizer) {
+  FakeModel model;
+  FakeOptimizer optimizer;
+  auto loss = MakeLoss();
+  auto data = MakeData();
+  ASSERT_TRUE(loss.ok()) << loss.status();
+  ASSERT_TRUE(data.ok()) << data.status();
+  TrainingLayerHooks hooks(*executor_);
+  hooks.fail_gradient = true;
+
+  auto result = Train(*executor_, model,
+                      TrainingOptions{.loss_layer = **loss,
+                                      .optimizer = optimizer,
+                                      .training_data = **data,
+                                      .max_steps = 1});
+  EXPECT_EQ(result.status().code(), absl::StatusCode::kAborted);
+  EXPECT_EQ(result.status().message(), "hooks stopped backward");
+  EXPECT_EQ(hooks.model_forward, model.forward_calls);
+  EXPECT_EQ(hooks.loss_forward, (*loss)->forward_calls);
+  EXPECT_EQ(hooks.loss_backward, 1);
+  EXPECT_EQ(hooks.model_backward, 0);
+  EXPECT_EQ((*loss)->backward_calls, 0);
+  EXPECT_EQ(model.backward_calls, 0);
+  EXPECT_EQ(optimizer.steps, 0);
+}
 
 TEST_F(TrainerTest, EvaluateReturnsDeviceMeanAndResetsDataset) {
   FakeModel model;

@@ -11,18 +11,59 @@ load(
 
 cc_library(
     name = "layer",
+    srcs = ["layer.cc"],
     hdrs = ["layer.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":layer_hooks",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/host:buffer",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/container:inlined_vector",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/strings:string_view",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_library(
+    name = "layer_hooks",
+    hdrs = ["layer_hooks.h"],
     visibility = ["//visibility:public"],
     deps = [
         "//src/cuda:buffer",
         "//src/cuda:executor",
-        "//src/host:buffer",
-        "@abseil-cpp//absl/container:inlined_vector",
         "@abseil-cpp//absl/status",
-        "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings:string_view",
         "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "layer_hooks_test",
+    srcs = ["layer_hooks_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":layer_hooks",
+        ":combinators",
+        ":fully_connected",
+        ":layer",
+        ":layer_test_util",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/memory",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
         "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -242,7 +283,11 @@ cc_library(
 )
 
 layer_library("attention")
-layer_library("combinators", [":layer_type_check"])
+layer_library("combinators", [
+    ":layer_hooks",
+    ":layer_type_check",
+    "@abseil-cpp//absl/cleanup",
+])
 layer_library("cross_entropy_loss")
 layer_library("embedding", ["@cuda//:cub"])
 layer_library("fully_connected")
@@ -336,6 +381,7 @@ cc_test(
     srcs = ["trainer_test.cc"],
     tags = ["requires-gpu"],
     deps = [
+        ":layer_hooks",
         ":attention",
         ":combinators",
         ":embedding",
