@@ -13,6 +13,88 @@
 namespace pluto::llm {
 namespace {
 
+TEST_F(LayerReferenceTest, SparseAutoEncoderTypesKeepDecoderUnbatchedAndFP32) {
+  constexpr int64_t kBatch = ActivationType::kBatchDimension;
+  for (DataType type : {DataType::FP16, DataType::BF16}) {
+    const DataType storage =
+        type == DataType::BF16 ? DataType::BF16 : DataType::FP32;
+    for (int sequence_length : {1, 7}) {
+      auto reference = SparseAutoEncoderLayerReference::Create(16, 32, type,
+                                                               sequence_length);
+      auto reference_loss = SparseAutoEncoderLossLayerReference::Create(
+          16, 32, 0.5f, type, sequence_length);
+      auto loss = SparseAutoEncoderLossLayer::Create(*executor_, 16, 32, 0.5f,
+                                                     type, sequence_length);
+      ASSERT_TRUE(reference.ok()) << reference.status();
+      ASSERT_TRUE(reference_loss.ok()) << reference_loss.status();
+      ASSERT_TRUE(loss.ok()) << loss.status();
+      const ActivationType reconstruction(storage,
+                                          {kBatch, sequence_length, 16});
+      const ActivationType features(storage, {kBatch, sequence_length, 32});
+      const ActivationType decoder(DataType::FP32, {16, 32});
+      const ActivationType losses(DataType::FP32, {kBatch, sequence_length});
+      const ActivationType expected_outputs[] = {reconstruction, features,
+                                                 decoder};
+      for (auto mode : {SparseAutoEncoderLayer::Mode::kDefault,
+                        SparseAutoEncoderLayer::Mode::kCollectStatistics}) {
+        auto device = SparseAutoEncoderLayer::Create(*executor_, 16, 32, type,
+                                                     mode, sequence_length);
+        ASSERT_TRUE(device.ok()) << device.status();
+        ASSERT_EQ((*device)->input_types().size(), 1);
+        ASSERT_EQ((*reference)->input_types().size(), 1);
+        EXPECT_EQ((*device)->input_types()[0], reconstruction);
+        EXPECT_EQ((*reference)->input_types()[0], reconstruction);
+        ASSERT_EQ((*device)->output_types().size(), 3);
+        ASSERT_EQ((*reference)->output_types().size(), 3);
+        ASSERT_EQ((*loss)->input_types().size(), 4);
+        ASSERT_EQ((*reference_loss)->input_types().size(), 4);
+        for (size_t index = 0; index < 3; ++index) {
+          EXPECT_EQ((*device)->output_types()[index], expected_outputs[index]);
+          EXPECT_EQ((*reference)->output_types()[index],
+                    expected_outputs[index]);
+          EXPECT_EQ((*loss)->input_types()[index], expected_outputs[index]);
+          EXPECT_EQ((*reference_loss)->input_types()[index],
+                    expected_outputs[index]);
+        }
+        EXPECT_TRUE((*device)->ValidateSequenceLength(sequence_length).ok());
+        EXPECT_FALSE(
+            (*device)->ValidateSequenceLength(sequence_length + 1).ok());
+      }
+      EXPECT_EQ((*loss)->input_types()[3], reconstruction);
+      EXPECT_EQ((*reference_loss)->input_types()[3], reconstruction);
+      ASSERT_EQ((*loss)->output_types().size(), 1);
+      ASSERT_EQ((*reference_loss)->output_types().size(), 1);
+      EXPECT_EQ((*loss)->output_types()[0], losses);
+      EXPECT_EQ((*reference_loss)->output_types()[0], losses);
+      EXPECT_TRUE((*loss)->ValidateSequenceLength(sequence_length).ok());
+      EXPECT_FALSE((*loss)->ValidateSequenceLength(sequence_length + 1).ok());
+    }
+    for (int invalid_length : {0, -1, -2}) {
+      EXPECT_EQ(SparseAutoEncoderLayer::Create(
+                    *executor_, 16, 32, type,
+                    SparseAutoEncoderLayer::Mode::kDefault, invalid_length)
+                    .status()
+                    .code(),
+                absl::StatusCode::kInvalidArgument);
+      EXPECT_EQ(
+          SparseAutoEncoderLayerReference::Create(16, 32, type, invalid_length)
+              .status()
+              .code(),
+          absl::StatusCode::kInvalidArgument);
+      EXPECT_EQ(SparseAutoEncoderLossLayer::Create(*executor_, 16, 32, 0.5f,
+                                                   type, invalid_length)
+                    .status()
+                    .code(),
+                absl::StatusCode::kInvalidArgument);
+      EXPECT_EQ(SparseAutoEncoderLossLayerReference::Create(16, 32, 0.5f, type,
+                                                            invalid_length)
+                    .status()
+                    .code(),
+                absl::StatusCode::kInvalidArgument);
+    }
+  }
+}
+
 TEST_F(LayerReferenceTest,
        AutoEncoderAndLossForwardBackwardMatchAcrossShapesAndTypes) {
   constexpr float kSparsityPenalty = 0.07f;

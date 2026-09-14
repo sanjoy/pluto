@@ -217,5 +217,54 @@ TEST_F(LayerReferenceTest, FP8IsRejectedConsistently) {
   EXPECT_EQ(reference.status().code(), absl::StatusCode::kUnimplemented);
 }
 
+TEST_F(LayerReferenceTest, DenseSignaturesRetainRectangularDimensions) {
+  for (DataType compute : {DataType::FP16, DataType::BF16}) {
+    const DataType storage =
+        compute == DataType::BF16 ? DataType::BF16 : DataType::FP32;
+    auto device = FullyConnectedLayer::Create(*executor_, 32, 64, compute, 7);
+    auto reference = FullyConnectedLayerReference::Create(32, 64, compute, 7);
+    ASSERT_TRUE(device.ok()) << device.status();
+    ASSERT_TRUE(reference.ok()) << reference.status();
+    const ActivationType input(storage, {-2, 7, 32});
+    const ActivationType output(storage, {-2, 7, 64});
+    ASSERT_EQ((*device)->input_types().size(), 1);
+    ASSERT_EQ((*device)->output_types().size(), 1);
+    ASSERT_EQ((*reference)->input_types().size(), 1);
+    ASSERT_EQ((*reference)->output_types().size(), 1);
+    EXPECT_EQ((*device)->input_types()[0], input);
+    EXPECT_EQ((*reference)->input_types()[0], input);
+    EXPECT_EQ((*device)->output_types()[0], output);
+    EXPECT_EQ((*reference)->output_types()[0], output);
+    EXPECT_TRUE((*device)->ValidateSequenceLength(7).ok());
+    EXPECT_FALSE((*device)->ValidateSequenceLength(1).ok());
+
+    // The square convenience overload must forward the configured sample size.
+    auto square = FullyConnectedLayer::Create(*executor_, 32, compute, 7);
+    auto reference_square =
+        FullyConnectedLayerReference::Create(32, compute, 7);
+    ASSERT_TRUE(square.ok()) << square.status();
+    ASSERT_TRUE(reference_square.ok()) << reference_square.status();
+    EXPECT_EQ((*square)->input_types()[0], input);
+    EXPECT_EQ((*square)->output_types()[0], input);
+    EXPECT_EQ((*reference_square)->input_types()[0], input);
+    EXPECT_EQ((*reference_square)->output_types()[0], input);
+  }
+}
+
+TEST_F(LayerReferenceTest, DenseRejectsNonpositiveSequenceLength) {
+  for (int length : {0, -1, -2}) {
+    EXPECT_EQ(
+        FullyConnectedLayer::Create(*executor_, 32, 64, DataType::FP16, length)
+            .status()
+            .code(),
+        absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ(
+        FullyConnectedLayerReference::Create(32, 64, DataType::FP16, length)
+            .status()
+            .code(),
+        absl::StatusCode::kInvalidArgument);
+  }
+}
+
 }  // namespace
 }  // namespace pluto::llm

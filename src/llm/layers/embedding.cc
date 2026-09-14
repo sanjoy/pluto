@@ -330,12 +330,16 @@ absl::Status CopyNormalInitialization(cuda::Executor& executor, Buffer& weight,
 
 }  // namespace
 
-EmbeddingLookupLayer::EmbeddingLookupLayer(
-    cuda::Executor& executor, int vocab_size, int padded_vocab_size,
-    int embedding_dim, DataType data_type, Buffer weight, Buffer gradient)
+EmbeddingLookupLayer::EmbeddingLookupLayer(cuda::Executor& executor,
+                                           int vocab_size,
+                                           int padded_vocab_size,
+                                           int embedding_dim,
+                                           DataType data_type, Buffer weight,
+                                           Buffer gradient, int sequence_length)
     : vocab_size_(vocab_size),
       padded_vocab_size_(padded_vocab_size),
       embedding_dim_(embedding_dim),
+      sequence_length_(sequence_length),
       output_type_(data_type),
       executor_(executor),
       weight_(std::move(weight)),
@@ -343,8 +347,11 @@ EmbeddingLookupLayer::EmbeddingLookupLayer(
 
 absl::StatusOr<std::unique_ptr<EmbeddingLookupLayer>>
 EmbeddingLookupLayer::Create(cuda::Executor& executor, int vocab_size,
-                             int embedding_dim, DataType data_type) {
+                             int embedding_dim, DataType data_type,
+                             int sequence_length) {
   RETURN_IF_ERROR(internal::ValidateComputeType(data_type));
+  if (sequence_length <= 0)
+    return absl::InvalidArgumentError("sequence_length must be positive");
   if (vocab_size <= 0)
     return absl::InvalidArgumentError("vocab_size must be positive");
   RETURN_IF_ERROR(
@@ -362,7 +369,7 @@ EmbeddingLookupLayer::Create(cuda::Executor& executor, int vocab_size,
   }
   return absl::WrapUnique(new EmbeddingLookupLayer(
       executor, vocab_size, padded_vocab_size, embedding_dim, data_type,
-      std::move(weight), std::move(gradient)));
+      std::move(weight), std::move(gradient), sequence_length));
 }
 
 absl::Status EmbeddingLookupLayer::InitializeIdentity(float scale) {

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -23,7 +25,66 @@ enum class DataType {
   FP16,
   BF16,
   FP8,
+  FP32,
+  INT32,
 };
+
+// Physical dtype and logical dimensions of one forward input/output buffer.
+// The leading batch dimension is symbolic: -2 matches only -2, never a fixed
+// extent or another special value. All other dimensions are positive and
+// concrete. Thus [-2, 1024, 512] and [-2, 512] are different types even though
+// kernels flatten the former's batch/token axes into contiguous matrix rows.
+// Scalar tensors use an empty dimensions vector. A signature may also include
+// unbatched tensors, such as SAE's FP32 [input_dim, feature_dim] decoder
+// output.
+class ActivationType {
+ public:
+  static constexpr int64_t kBatchDimension = -2;
+
+  ActivationType(DataType data_type, absl::InlinedVector<int64_t, 4> dimensions)
+      : data_type_(data_type), dimensions_(std::move(dimensions)) {}
+
+  DataType data_type() const { return data_type_; }
+  absl::Span<const int64_t> dimensions() const { return dimensions_; }
+
+  // No broadcasting, flattening, or wildcard matching is performed here.
+  bool operator==(const ActivationType& other) const {
+    return data_type_ == other.data_type_ && dimensions_ == other.dimensions_;
+  }
+  bool operator!=(const ActivationType& other) const {
+    return !(*this == other);
+  }
+
+  absl::Status Validate() const {
+    switch (data_type_) {
+      case DataType::FP16:
+      case DataType::BF16:
+      case DataType::FP8:
+      case DataType::FP32:
+      case DataType::INT32:
+        break;
+      default:
+        return absl::InvalidArgumentError("unknown activation data type");
+    }
+    for (size_t i = 0; i < dimensions_.size(); ++i)
+      if (dimensions_[i] <= 0 && !(i == 0 && dimensions_[i] == kBatchDimension))
+        return absl::InvalidArgumentError(
+            "activation dimensions must be positive, except leading batch "
+            "(-2)");
+    return absl::OkStatus();
+  }
+
+ private:
+  DataType data_type_;
+  absl::InlinedVector<int64_t, 4> dimensions_;
+};
+
+// output_type() historically names a compute policy. In particular, the FP16
+// kernels retain FP32 activations. Signatures describe actual buffer storage,
+// not that policy. FP32/INT32 describe tensors; they do not enable new kernels.
+inline DataType ActivationDataType(DataType compute_type) {
+  return compute_type == DataType::FP16 ? DataType::FP32 : compute_type;
+}
 
 class Layer;
 
@@ -55,9 +116,16 @@ class Layer {
  public:
   virtual ~Layer() = default;
 
+  // Ordered forward signatures, immutable for the layer's lifetime. Batch is
+  // the number of samples, not flattened token rows. Buffer remains untyped:
+  // these declarations check graph wiring, not the dtype of arbitrary bytes
+  // supplied by callers. Existing per-kernel buffer checks remain necessary.
+  virtual absl::Span<const ActivationType> input_types() const = 0;
+  virtual absl::Span<const ActivationType> output_types() const = 0;
+
   // Validates sample boundaries before dataset batches are flattened for fwd().
-  // Per-token layers accept every positive length. Layers whose kernels use a
-  // fixed sequence width override this; combinators check all descendants.
+  // Concrete layers enforce their declared sample width; combinators check all
+  // descendants. The default accepts any positive width for custom layers.
   // Callers supplying raw Buffers directly must preserve those same boundaries:
   // fwd() cannot recover sample lengths from an untyped flat allocation.
   virtual absl::Status ValidateSequenceLength(int sequence_length) const {
@@ -71,7 +139,8 @@ class Layer {
   absl::StatusOr<FwdResult> fwd(cuda::Executor& executor,
                                 absl::Span<const Buffer> inputs) const {
     auto result = fwd_impl(executor, inputs);
-    if (result.ok()) result->state.layer = this;
+    if (result.ok())
+      result->state.layer = this;
     return result;
   }
 
@@ -137,11 +206,16 @@ class LayerReference {
  public:
   virtual ~LayerReference() = default;
 
+  // Same physical dtypes and logical shapes as the corresponding GPU layer.
+  virtual absl::Span<const ActivationType> input_types() const = 0;
+  virtual absl::Span<const ActivationType> output_types() const = 0;
+
   // Match the GPU contract: failed forward calls return no partial state.
   absl::StatusOr<ReferenceFwdResult> fwd(
       absl::Span<const HostBuffer> inputs) const {
     auto result = fwd_impl(inputs);
-    if (result.ok()) result->state.layer = this;
+    if (result.ok())
+      result->state.layer = this;
     return result;
   }
   // Uses Layer::bwd's ordered output/input gradient convention, including

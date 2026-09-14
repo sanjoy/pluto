@@ -51,8 +51,8 @@ constexpr int kUpdates = 4;
 absl::StatusOr<std::unique_ptr<ComposedLayer>> MakeLanguageModel(
     cuda::Executor& executor, DataType type, uint64_t seed) {
   ComposedLayerBuilder model;
-  RETURN_IF_ERROR(model.add(
-      EmbeddingLookupLayer::Create(executor, kVocabulary, kWidth, type)));
+  RETURN_IF_ERROR(model.add(EmbeddingLookupLayer::Create(
+      executor, kVocabulary, kWidth, type, kContext)));
   auto* embedding = static_cast<EmbeddingLookupLayer*>(model.back());
   RETURN_IF_ERROR(embedding->InitializeNormal(0.08f, seed));
   RETURN_IF_ERROR(model.add(
@@ -63,40 +63,40 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> MakeLanguageModel(
   for (int block = 0; block < 2; ++block) {
     const uint64_t block_seed = seed + 100 + 10 * block;
     ComposedLayerBuilder attention;
-    RETURN_IF_ERROR(
-        attention.add(LayerNormLayer::Create(executor, kWidth, 1e-5f, type)));
     RETURN_IF_ERROR(attention.add(
-        FullyConnectedLayer::Create(executor, kWidth, 3 * kWidth, type)));
+        LayerNormLayer::Create(executor, kWidth, 1e-5f, type, kContext)));
+    RETURN_IF_ERROR(attention.add(FullyConnectedLayer::Create(
+        executor, kWidth, 3 * kWidth, type, kContext)));
     RETURN_IF_ERROR(static_cast<FullyConnectedLayer*>(attention.back())
                         ->InitializeNormal(0.06f, block_seed));
     RETURN_IF_ERROR(attention.add(
         AttentionLayer::Create(executor, kContext, 2, kWidth, type)));
     RETURN_IF_ERROR(attention.add(
-        FullyConnectedLayer::Create(executor, kWidth, kWidth, type)));
+        FullyConnectedLayer::Create(executor, kWidth, kWidth, type, kContext)));
     RETURN_IF_ERROR(static_cast<FullyConnectedLayer*>(attention.back())
                         ->InitializeNormal(0.03f, block_seed + 1));
     ASSIGN_OR_RETURN(auto attention_branch, attention.create());
-    RETURN_IF_ERROR(model.add(
-        std::make_unique<ResidualLayer>(std::move(attention_branch))));
+    RETURN_IF_ERROR(
+        model.add(ResidualLayer::Create(std::move(attention_branch))));
 
     ComposedLayerBuilder mlp;
-    RETURN_IF_ERROR(
-        mlp.add(LayerNormLayer::Create(executor, kWidth, 1e-5f, type)));
     RETURN_IF_ERROR(mlp.add(
-        FullyConnectedLayer::Create(executor, kWidth, 2 * kWidth, type)));
+        LayerNormLayer::Create(executor, kWidth, 1e-5f, type, kContext)));
+    RETURN_IF_ERROR(mlp.add(FullyConnectedLayer::Create(
+        executor, kWidth, 2 * kWidth, type, kContext)));
     RETURN_IF_ERROR(static_cast<FullyConnectedLayer*>(mlp.back())
                         ->InitializeNormal(0.06f, block_seed + 2));
-    RETURN_IF_ERROR(mlp.add(GeluLayer::Create(executor, type)));
-    RETURN_IF_ERROR(mlp.add(
-        FullyConnectedLayer::Create(executor, 2 * kWidth, kWidth, type)));
+    RETURN_IF_ERROR(
+        mlp.add(GeluLayer::Create(executor, 2 * kWidth, type, kContext)));
+    RETURN_IF_ERROR(mlp.add(FullyConnectedLayer::Create(
+        executor, 2 * kWidth, kWidth, type, kContext)));
     RETURN_IF_ERROR(static_cast<FullyConnectedLayer*>(mlp.back())
                         ->InitializeNormal(0.03f, block_seed + 3));
     ASSIGN_OR_RETURN(auto mlp_branch, mlp.create());
-    RETURN_IF_ERROR(
-        model.add(std::make_unique<ResidualLayer>(std::move(mlp_branch))));
+    RETURN_IF_ERROR(model.add(ResidualLayer::Create(std::move(mlp_branch))));
   }
-  RETURN_IF_ERROR(
-      model.add(LayerNormLayer::Create(executor, kWidth, 1e-5f, type)));
+  RETURN_IF_ERROR(model.add(
+      LayerNormLayer::Create(executor, kWidth, 1e-5f, type, kContext)));
   RETURN_IF_ERROR(model.add(LanguageModelingHeadLayer::Create(embedding)));
   return model.create();
 }
@@ -281,8 +281,8 @@ absl::StatusOr<Trajectory> RunLanguageModel(DataType type, bool perturb) {
   ASSIGN_OR_RETURN(auto allocation_noise,
                    PerturbAllocations(*executor, perturb));
   ASSIGN_OR_RETURN(auto model, MakeLanguageModel(*executor, type, 193));
-  ASSIGN_OR_RETURN(auto loss,
-                   CrossEntropyLossLayer::Create(*executor, kVocabulary, type));
+  ASSIGN_OR_RETURN(auto loss, CrossEntropyLossLayer::Create(
+                                  *executor, kVocabulary, type, kContext));
   ASSIGN_OR_RETURN(auto corpus,
                    cuda::PageLockedHostArray<int>::Allocate(*executor, 257));
   for (size_t index = 0; index < corpus.size(); ++index) {
@@ -330,11 +330,13 @@ absl::StatusOr<Trajectory> RunSparseAutoEncoder(
   ASSIGN_OR_RETURN(auto executor, cuda::Executor::Create());
   ASSIGN_OR_RETURN(auto allocation_noise,
                    PerturbAllocations(*executor, perturb));
-  ASSIGN_OR_RETURN(auto model, SparseAutoEncoderLayer::Create(
-                                   *executor, kWidth, kFeatures, type, mode));
+  ASSIGN_OR_RETURN(auto model,
+                   SparseAutoEncoderLayer::Create(*executor, kWidth, kFeatures,
+                                                  type, mode, kRows / 3));
   RETURN_IF_ERROR(model->InitializeNormal(0.1f, 817263));
-  ASSIGN_OR_RETURN(auto loss, SparseAutoEncoderLossLayer::Create(
-                                  *executor, kWidth, kFeatures, 0.5f, type));
+  ASSIGN_OR_RETURN(auto loss,
+                   SparseAutoEncoderLossLayer::Create(
+                       *executor, kWidth, kFeatures, 0.5f, type, kRows / 3));
   std::vector<float> values(kRows * kWidth);
   for (size_t index = 0; index < values.size(); ++index)
     values[index] = (static_cast<int>(index % 29) - 14) * 0.0625f;
@@ -358,8 +360,8 @@ absl::StatusOr<Trajectory> RunSparseAutoEncoder(
                    ReadBytes(*executor, {reconstruction, latents}));
   trajectory.outputs.push_back(std::move(outputs));
   if (mode == SparseAutoEncoderLayer::Mode::kCollectStatistics) {
-    ASSIGN_OR_RETURN(auto stats, model->ReadZStatistics(
-                                     *executor, reconstruction_fwd.state));
+    ASSIGN_OR_RETURN(
+        auto stats, model->ReadZStatistics(*executor, reconstruction_fwd.state));
     trajectory.statistics = {static_cast<uint64_t>(stats.rows),
                              static_cast<uint64_t>(stats.feature_dim),
                              static_cast<uint64_t>(stats.active_count),

@@ -16,6 +16,47 @@
 namespace pluto::llm {
 namespace {
 
+TEST_F(LayerReferenceTest, CrossEntropyActivationTypesDescribePhysicalStorage) {
+  constexpr int64_t kBatch = ActivationType::kBatchDimension;
+  for (DataType type : {DataType::FP16, DataType::BF16}) {
+    for (int sequence_length : {1, 7}) {
+      auto device =
+          CrossEntropyLossLayer::Create(*executor_, 17, type, sequence_length);
+      auto reference =
+          CrossEntropyLossLayerReference::Create(17, type, sequence_length);
+      ASSERT_TRUE(device.ok()) << device.status();
+      ASSERT_TRUE(reference.ok()) << reference.status();
+      const ActivationType logits(DataType::FP32,
+                                  {kBatch, sequence_length, 32});
+      const ActivationType targets(DataType::INT32, {kBatch, sequence_length});
+      const ActivationType losses(DataType::FP32, {kBatch, sequence_length});
+      ASSERT_EQ((*device)->input_types().size(), 2);
+      ASSERT_EQ((*device)->output_types().size(), 1);
+      ASSERT_EQ((*reference)->input_types().size(), 2);
+      ASSERT_EQ((*reference)->output_types().size(), 1);
+      EXPECT_EQ((*device)->input_types()[0], logits);
+      EXPECT_EQ((*device)->input_types()[1], targets);
+      EXPECT_EQ((*device)->output_types()[0], losses);
+      EXPECT_EQ((*reference)->input_types()[0], logits);
+      EXPECT_EQ((*reference)->input_types()[1], targets);
+      EXPECT_EQ((*reference)->output_types()[0], losses);
+      EXPECT_TRUE((*device)->ValidateSequenceLength(sequence_length).ok());
+      EXPECT_FALSE((*device)->ValidateSequenceLength(sequence_length + 1).ok());
+    }
+    for (int invalid_length : {0, -1, -2}) {
+      EXPECT_EQ(
+          CrossEntropyLossLayer::Create(*executor_, 17, type, invalid_length)
+              .status()
+              .code(),
+          absl::StatusCode::kInvalidArgument);
+      EXPECT_EQ(CrossEntropyLossLayerReference::Create(17, type, invalid_length)
+                    .status()
+                    .code(),
+                absl::StatusCode::kInvalidArgument);
+    }
+  }
+}
+
 TEST_F(LayerReferenceTest, StableForwardAndBackwardMatchForPaddedVocabularies) {
   for (DataType type : {DataType::FP16, DataType::BF16}) {
     for (const auto [rows, vocab] :

@@ -16,8 +16,10 @@ namespace ri = reference_internal;
 
 absl::StatusOr<std::unique_ptr<LayerNormLayerReference>>
 LayerNormLayerReference::Create(int embedding_dim, float epsilon,
-                                DataType data_type) {
+                                DataType data_type, int sequence_length) {
   RETURN_IF_ERROR(ri::ValidateComputeType(data_type));
+  if (sequence_length <= 0)
+    return absl::InvalidArgumentError("sequence_length must be positive");
   if (!(epsilon > 0.0f))
     return absl::InvalidArgumentError("layer-norm epsilon must be positive");
   RETURN_IF_ERROR(ri::ValidateTiledExtent(embedding_dim, "embedding_dim"));
@@ -30,7 +32,7 @@ LayerNormLayerReference::Create(int embedding_dim, float epsilon,
     gamma_values[column] = 1.0f;
   return absl::WrapUnique(new LayerNormLayerReference(
       embedding_dim, epsilon, data_type, std::move(gamma), std::move(beta),
-      std::move(d_gamma), std::move(d_beta)));
+      std::move(d_gamma), std::move(d_beta), sequence_length));
 }
 
 absl::StatusOr<ReferenceFwdResult> LayerNormLayerReference::fwd_impl(

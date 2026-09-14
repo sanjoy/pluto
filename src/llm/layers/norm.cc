@@ -339,8 +339,10 @@ void LaunchBackward(cuda::Executor& executor, const BackwardState& state,
 
 absl::StatusOr<std::unique_ptr<LayerNormLayer>> LayerNormLayer::Create(
     cuda::Executor& executor, int embedding_dim, float epsilon,
-    DataType data_type) {
+    DataType data_type, int sequence_length) {
   RETURN_IF_ERROR(internal::ValidateComputeType(data_type));
+  if (sequence_length <= 0)
+    return absl::InvalidArgumentError("sequence_length must be positive");
   if (!(epsilon > 0.0f))
     return absl::InvalidArgumentError("layer-norm epsilon must be positive");
   RETURN_IF_ERROR(
@@ -366,7 +368,8 @@ absl::StatusOr<std::unique_ptr<LayerNormLayer>> LayerNormLayer::Create(
   // gamma_values is released in stream order after its upload completes.
   return absl::WrapUnique(new LayerNormLayer(
       executor, embedding_dim, epsilon, data_type, std::move(gamma),
-      std::move(beta), std::move(gamma_gradient), std::move(beta_gradient)));
+      std::move(beta), std::move(gamma_gradient), std::move(beta_gradient),
+      sequence_length));
 }
 
 absl::StatusOr<FwdResult> LayerNormLayer::fwd_impl(

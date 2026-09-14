@@ -55,6 +55,40 @@ TEST_F(Gpt2Test, ZeroBlocksTapsEmbeddingActivations) {
   EXPECT_EQ((*generator)->output_type(), DataType::BF16);
 }
 
+TEST_F(Gpt2Test, ActivationSignaturesKeepBatchSeparateFromContext) {
+  for (DataType compute : {DataType::FP16, DataType::BF16}) {
+    auto generator = CreateActivationGenerator(*executor_, 0, compute, 123);
+    ASSERT_TRUE(generator.ok()) << generator.status();
+    ASSERT_EQ((*generator)->input_types().size(), 1);
+    ASSERT_EQ((*generator)->output_types().size(), 1);
+    EXPECT_EQ((*generator)->input_types()[0],
+              ActivationType(DataType::INT32, {ActivationType::kBatchDimension,
+                                               kGpt2ContextLength}));
+    EXPECT_EQ((*generator)->output_types()[0],
+              ActivationType(ActivationDataType(compute),
+                             {ActivationType::kBatchDimension,
+                              kGpt2ContextLength, kGpt2ModelWidth}));
+    EXPECT_TRUE((*generator)->ValidateSequenceLength(kGpt2ContextLength).ok());
+    EXPECT_FALSE((*generator)->ValidateSequenceLength(1).ok());
+  }
+}
+
+TEST_F(Gpt2Test, FullModelProducesPaddedFp32LogitsFromBf16Activations) {
+  auto model = CreateGpt2(*executor_, DataType::BF16, 123);
+  ASSERT_TRUE(model.ok()) << model.status();
+  ASSERT_EQ((*model)->input_types().size(), 1);
+  ASSERT_EQ((*model)->output_types().size(), 1);
+  EXPECT_EQ((*model)->input_types()[0],
+            ActivationType(DataType::INT32, {ActivationType::kBatchDimension,
+                                             kGpt2ContextLength}));
+  // The tied head emits FP32 even though the residual stream uses BF16.
+  EXPECT_EQ((*model)->output_types()[0],
+            ActivationType(DataType::FP32,
+                           {ActivationType::kBatchDimension, kGpt2ContextLength,
+                            kGpt2PaddedVocabularySize}));
+  EXPECT_TRUE((*model)->ValidateSequenceLength(kGpt2ContextLength).ok());
+}
+
 TEST_F(Gpt2Test, OneBlockProducesResidualStreamActivations) {
   auto generator =
       CreateActivationGenerator(*executor_, 1, DataType::BF16, 123);

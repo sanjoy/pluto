@@ -45,8 +45,11 @@ absl::Status ValidateReferenceLossInputs(absl::Span<const HostBuffer> inputs,
 
 absl::StatusOr<std::unique_ptr<SparseAutoEncoderLayerReference>>
 SparseAutoEncoderLayerReference::Create(int input_dim, int feature_dim,
-                                        DataType data_type) {
+                                        DataType data_type,
+                                        int sequence_length) {
   RETURN_IF_ERROR(ri::ValidateComputeType(data_type));
+  if (sequence_length <= 0)
+    return absl::InvalidArgumentError("sequence_length must be positive");
   RETURN_IF_ERROR(ri::ValidateTiledExtent(input_dim, "input_dim"));
   RETURN_IF_ERROR(ri::ValidateTiledExtent(feature_dim, "feature_dim"));
   ASSIGN_OR_RETURN(
@@ -68,7 +71,7 @@ SparseAutoEncoderLayerReference::Create(int input_dim, int feature_dim,
   ASSIGN_OR_RETURN(auto decoder_bias_gradient,
                    ri::AllocateFloats(input_dim, true));
   return absl::WrapUnique(new SparseAutoEncoderLayerReference(
-      input_dim, feature_dim, data_type, std::move(encoder),
+      input_dim, feature_dim, data_type, sequence_length, std::move(encoder),
       std::move(encoder_bias), std::move(decoder), std::move(decoder_bias),
       std::move(encoder_gradient), std::move(encoder_bias_gradient),
       std::move(decoder_gradient), std::move(decoder_bias_gradient)));
@@ -162,7 +165,6 @@ absl::StatusOr<ReferenceFwdResult> SparseAutoEncoderLayerReference::fwd_impl(
       {std::move(reconstruction), std::move(latents), weights_[2]},
       std::move(state)};
 }
-
 
 absl::StatusOr<HostBufferVec> SparseAutoEncoderLayerReference::bwd_impl(
     absl::Span<const HostBuffer> output_gradients,
@@ -319,8 +321,11 @@ absl::StatusOr<HostBufferVec> SparseAutoEncoderLayerReference::bwd_impl(
 absl::StatusOr<std::unique_ptr<SparseAutoEncoderLossLayerReference>>
 SparseAutoEncoderLossLayerReference::Create(int input_dim, int feature_dim,
                                             float sparsity_penalty,
-                                            DataType data_type) {
+                                            DataType data_type,
+                                            int sequence_length) {
   RETURN_IF_ERROR(ri::ValidateComputeType(data_type));
+  if (sequence_length <= 0)
+    return absl::InvalidArgumentError("sequence_length must be positive");
   RETURN_IF_ERROR(ri::ValidateTiledExtent(input_dim, "input_dim"));
   RETURN_IF_ERROR(ri::ValidateTiledExtent(feature_dim, "feature_dim"));
   if (!std::isfinite(sparsity_penalty) || sparsity_penalty < 0.0f) {
@@ -328,7 +333,7 @@ SparseAutoEncoderLossLayerReference::Create(int input_dim, int feature_dim,
         "sparsity_penalty must be finite and non-negative");
   }
   return absl::WrapUnique(new SparseAutoEncoderLossLayerReference(
-      input_dim, feature_dim, sparsity_penalty, data_type));
+      input_dim, feature_dim, sparsity_penalty, data_type, sequence_length));
 }
 
 absl::StatusOr<ReferenceFwdResult>

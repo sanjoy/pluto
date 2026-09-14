@@ -38,25 +38,36 @@ struct SparseAutoEncoderZStatistics {
 // x and x1 are row-major [rows, input_dim] activation matrices. W_enc is
 // [feature_dim, input_dim], b_enc is [feature_dim], D is
 // [input_dim, feature_dim], and b_dec is [input_dim]. Parameters and parameter
-// gradients use FP32; x, z, and x1 use output_type(). fwd() returns
-// {x1, z, D}; z shares its saved-state allocation and D shares the parameter.
+// gradients use FP32; x, z, and x1 use BF16 storage for BF16 compute and
+// FP32 storage for the legacy FP16 compute policy. fwd() returns {x1, z, D};
+// z shares its saved-state allocation and D shares the parameter.
+// Activation types retain [batch, sequence_length, width] even though kernels
+// flatten the first two axes into rows. Only the batch dimension is symbolic.
 class SparseAutoEncoderLayer final : public Layer {
  public:
   enum class Mode { kDefault, kCollectStatistics };
 
   static absl::StatusOr<std::unique_ptr<SparseAutoEncoderLayer>> Create(
       cuda::Executor& executor, int input_dim, int feature_dim,
-      DataType data_type, Mode mode = Mode::kDefault);
+      DataType data_type, Mode mode = Mode::kDefault, int sequence_length = 1);
 
   // Initializes W_enc and D independently from N(0, standard_deviation^2).
   // Both biases remain zero.
   absl::Status InitializeNormal(float standard_deviation, uint64_t seed);
+
+  absl::Status ValidateSequenceLength(int sequence_length) const override;
 
   // Parameter order follows the table in the class comment:
   // W_enc, b_enc, D, b_dec.
   absl::Span<Buffer> weights() override { return absl::MakeSpan(weights_); }
   absl::Span<Buffer> gradients() override { return absl::MakeSpan(gradients_); }
   DataType output_type() const override { return output_type_; }
+  absl::Span<const ActivationType> input_types() const override {
+    return input_types_;
+  }
+  absl::Span<const ActivationType> output_types() const override {
+    return output_types_;
+  }
 
   int input_dim() const { return input_dim_; }
   int feature_dim() const { return feature_dim_; }
@@ -88,12 +99,14 @@ class SparseAutoEncoderLayer final : public Layer {
 
   SparseAutoEncoderLayer(cuda::Executor& executor, int input_dim,
                          int feature_dim, DataType data_type, Mode mode,
-                         Buffer encoder, Buffer encoder_bias, Buffer decoder,
+                         int sequence_length, Buffer encoder,
+                         Buffer encoder_bias, Buffer decoder,
                          Buffer decoder_bias, Buffer encoder_gradient,
                          Buffer encoder_bias_gradient, Buffer decoder_gradient,
                          Buffer decoder_bias_gradient)
       : input_dim_(input_dim),
         feature_dim_(feature_dim),
+        sequence_length_(sequence_length),
         output_type_(data_type),
         mode_(mode),
         executor_(executor),
@@ -105,11 +118,22 @@ class SparseAutoEncoderLayer final : public Layer {
 
   int input_dim_;
   int feature_dim_;
+  int sequence_length_;
   DataType output_type_;
   Mode mode_;
   cuda::Executor& executor_;
   BufferVec weights_;
   BufferVec gradients_;
+  const ActivationType input_types_[1] = {
+      {ActivationDataType(output_type_),
+       {ActivationType::kBatchDimension, sequence_length_, input_dim_}}};
+  // D is an unbatched FP32 parameter, not a compute-precision activation.
+  const ActivationType output_types_[3] = {
+      {ActivationDataType(output_type_),
+       {ActivationType::kBatchDimension, sequence_length_, input_dim_}},
+      {ActivationDataType(output_type_),
+       {ActivationType::kBatchDimension, sequence_length_, feature_dim_}},
+      {DataType::FP32, {input_dim_, feature_dim_}}};
 };
 
 // Terminal sparse-autoencoder loss. fwd() expects {x1, z, D, target_x} and
@@ -130,10 +154,18 @@ class SparseAutoEncoderLossLayer final : public Layer {
  public:
   static absl::StatusOr<std::unique_ptr<SparseAutoEncoderLossLayer>> Create(
       cuda::Executor& executor, int input_dim, int feature_dim,
-      float sparsity_penalty, DataType data_type);
+      float sparsity_penalty, DataType data_type, int sequence_length = 1);
+
+  absl::Status ValidateSequenceLength(int sequence_length) const override;
 
   absl::Span<Buffer> weights() override { return {}; }
   DataType output_type() const override { return output_type_; }
+  absl::Span<const ActivationType> input_types() const override {
+    return input_types_;
+  }
+  absl::Span<const ActivationType> output_types() const override {
+    return output_types_;
+  }
 
   float sparsity_penalty() const { return sparsity_penalty_; }
 
@@ -146,25 +178,38 @@ class SparseAutoEncoderLossLayer final : public Layer {
 
   SparseAutoEncoderLossLayer(cuda::Executor& executor, int input_dim,
                              int feature_dim, float sparsity_penalty,
-                             DataType data_type)
+                             DataType data_type, int sequence_length)
       : input_dim_(input_dim),
         feature_dim_(feature_dim),
+        sequence_length_(sequence_length),
         sparsity_penalty_(sparsity_penalty),
         output_type_(data_type),
         executor_(executor) {}
 
   int input_dim_;
   int feature_dim_;
+  int sequence_length_;
   float sparsity_penalty_;
   DataType output_type_;
   cuda::Executor& executor_;
+  const ActivationType input_types_[4] = {
+      {ActivationDataType(output_type_),
+       {ActivationType::kBatchDimension, sequence_length_, input_dim_}},
+      {ActivationDataType(output_type_),
+       {ActivationType::kBatchDimension, sequence_length_, feature_dim_}},
+      {DataType::FP32, {input_dim_, feature_dim_}},
+      {ActivationDataType(output_type_),
+       {ActivationType::kBatchDimension, sequence_length_, input_dim_}}};
+  const ActivationType output_types_[1] = {
+      {DataType::FP32, {ActivationType::kBatchDimension, sequence_length_}}};
 };
 
 // Scalar CPU specification for SparseAutoEncoderLayer.
 class SparseAutoEncoderLayerReference final : public LayerReference {
  public:
   static absl::StatusOr<std::unique_ptr<SparseAutoEncoderLayerReference>>
-  Create(int input_dim, int feature_dim, DataType data_type);
+  Create(int input_dim, int feature_dim, DataType data_type,
+         int sequence_length = 1);
 
   absl::Status InitializeNormal(float standard_deviation, uint64_t seed);
 
@@ -173,6 +218,12 @@ class SparseAutoEncoderLayerReference final : public LayerReference {
     return absl::MakeSpan(gradients_);
   }
   DataType output_type() const override { return output_type_; }
+  absl::Span<const ActivationType> input_types() const override {
+    return input_types_;
+  }
+  absl::Span<const ActivationType> output_types() const override {
+    return output_types_;
+  }
 
   int input_dim() const { return input_dim_; }
   int feature_dim() const { return feature_dim_; }
@@ -185,13 +236,17 @@ class SparseAutoEncoderLayerReference final : public LayerReference {
       absl::Span<const HostBuffer> output_gradients,
       ReferenceBackwardState state) override;
 
-  SparseAutoEncoderLayerReference(
-      int input_dim, int feature_dim, DataType data_type, HostBuffer encoder,
-      HostBuffer encoder_bias, HostBuffer decoder, HostBuffer decoder_bias,
-      HostBuffer encoder_gradient, HostBuffer encoder_bias_gradient,
-      HostBuffer decoder_gradient, HostBuffer decoder_bias_gradient)
+  SparseAutoEncoderLayerReference(int input_dim, int feature_dim,
+                                  DataType data_type, int sequence_length,
+                                  HostBuffer encoder, HostBuffer encoder_bias,
+                                  HostBuffer decoder, HostBuffer decoder_bias,
+                                  HostBuffer encoder_gradient,
+                                  HostBuffer encoder_bias_gradient,
+                                  HostBuffer decoder_gradient,
+                                  HostBuffer decoder_bias_gradient)
       : input_dim_(input_dim),
         feature_dim_(feature_dim),
+        sequence_length_(sequence_length),
         output_type_(data_type),
         weights_{std::move(encoder), std::move(encoder_bias),
                  std::move(decoder), std::move(decoder_bias)},
@@ -201,9 +256,20 @@ class SparseAutoEncoderLayerReference final : public LayerReference {
 
   int input_dim_;
   int feature_dim_;
+  int sequence_length_;
   DataType output_type_;
   HostBufferVec weights_;
   HostBufferVec gradients_;
+  const ActivationType input_types_[1] = {
+      {ActivationDataType(output_type_),
+       {ActivationType::kBatchDimension, sequence_length_, input_dim_}}};
+  // D is an unbatched FP32 parameter, not a compute-precision activation.
+  const ActivationType output_types_[3] = {
+      {ActivationDataType(output_type_),
+       {ActivationType::kBatchDimension, sequence_length_, input_dim_}},
+      {ActivationDataType(output_type_),
+       {ActivationType::kBatchDimension, sequence_length_, feature_dim_}},
+      {DataType::FP32, {input_dim_, feature_dim_}}};
 };
 
 // Scalar CPU specification for SparseAutoEncoderLossLayer.
@@ -211,10 +277,16 @@ class SparseAutoEncoderLossLayerReference final : public LayerReference {
  public:
   static absl::StatusOr<std::unique_ptr<SparseAutoEncoderLossLayerReference>>
   Create(int input_dim, int feature_dim, float sparsity_penalty,
-         DataType data_type);
+         DataType data_type, int sequence_length = 1);
 
   absl::Span<HostBuffer> weights() override { return {}; }
   DataType output_type() const override { return output_type_; }
+  absl::Span<const ActivationType> input_types() const override {
+    return input_types_;
+  }
+  absl::Span<const ActivationType> output_types() const override {
+    return output_types_;
+  }
 
  private:
   absl::StatusOr<ReferenceFwdResult> fwd_impl(
@@ -225,16 +297,28 @@ class SparseAutoEncoderLossLayerReference final : public LayerReference {
 
   SparseAutoEncoderLossLayerReference(int input_dim, int feature_dim,
                                       float sparsity_penalty,
-                                      DataType data_type)
+                                      DataType data_type, int sequence_length)
       : input_dim_(input_dim),
         feature_dim_(feature_dim),
+        sequence_length_(sequence_length),
         sparsity_penalty_(sparsity_penalty),
         output_type_(data_type) {}
 
   int input_dim_;
   int feature_dim_;
+  int sequence_length_;
   float sparsity_penalty_;
   DataType output_type_;
+  const ActivationType input_types_[4] = {
+      {ActivationDataType(output_type_),
+       {ActivationType::kBatchDimension, sequence_length_, input_dim_}},
+      {ActivationDataType(output_type_),
+       {ActivationType::kBatchDimension, sequence_length_, feature_dim_}},
+      {DataType::FP32, {input_dim_, feature_dim_}},
+      {ActivationDataType(output_type_),
+       {ActivationType::kBatchDimension, sequence_length_, input_dim_}}};
+  const ActivationType output_types_[1] = {
+      {DataType::FP32, {ActivationType::kBatchDimension, sequence_length_}}};
 };
 
 }  // namespace pluto::llm

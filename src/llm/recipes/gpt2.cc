@@ -43,10 +43,12 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateTransformerBlock(
       1'000 + static_cast<uint64_t>(block_index) * 100;
 
   ComposedLayerBuilder attention_builder;
-  RETURN_IF_ERROR(attention_builder.add(LayerNormLayer::Create(
-      executor, kGpt2ModelWidth, kLayerNormEpsilon, output_type)));
+  RETURN_IF_ERROR(attention_builder.add(
+      LayerNormLayer::Create(executor, kGpt2ModelWidth, kLayerNormEpsilon,
+                             output_type, kGpt2ContextLength)));
   RETURN_IF_ERROR(attention_builder.add(FullyConnectedLayer::Create(
-      executor, kGpt2ModelWidth, 3 * kGpt2ModelWidth, output_type)));
+      executor, kGpt2ModelWidth, 3 * kGpt2ModelWidth, output_type,
+      kGpt2ContextLength)));
   auto* qkv_projection =
       static_cast<FullyConnectedLayer*>(attention_builder.back());
   RETURN_IF_ERROR(qkv_projection->InitializeNormal(
@@ -54,24 +56,29 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateTransformerBlock(
   RETURN_IF_ERROR(attention_builder.add(
       AttentionLayer::Create(executor, kGpt2ContextLength, kGpt2AttentionHeads,
                              kGpt2ModelWidth, output_type)));
-  RETURN_IF_ERROR(attention_builder.add(FullyConnectedLayer::Create(
-      executor, kGpt2ModelWidth, kGpt2ModelWidth, output_type)));
+  RETURN_IF_ERROR(attention_builder.add(
+      FullyConnectedLayer::Create(executor, kGpt2ModelWidth, kGpt2ModelWidth,
+                                  output_type, kGpt2ContextLength)));
   auto* attention_projection =
       static_cast<FullyConnectedLayer*>(attention_builder.back());
   RETURN_IF_ERROR(attention_projection->InitializeNormal(
       residual_standard_deviation, seed_base + 2));
 
   ComposedLayerBuilder mlp_builder;
-  RETURN_IF_ERROR(mlp_builder.add(LayerNormLayer::Create(
-      executor, kGpt2ModelWidth, kLayerNormEpsilon, output_type)));
+  RETURN_IF_ERROR(mlp_builder.add(
+      LayerNormLayer::Create(executor, kGpt2ModelWidth, kLayerNormEpsilon,
+                             output_type, kGpt2ContextLength)));
   RETURN_IF_ERROR(mlp_builder.add(FullyConnectedLayer::Create(
-      executor, kGpt2ModelWidth, kGpt2FeedForwardWidth, output_type)));
+      executor, kGpt2ModelWidth, kGpt2FeedForwardWidth, output_type,
+      kGpt2ContextLength)));
   auto* mlp_input = static_cast<FullyConnectedLayer*>(mlp_builder.back());
   RETURN_IF_ERROR(mlp_input->InitializeNormal(kInitializationStandardDeviation,
                                               seed_base + 3));
-  RETURN_IF_ERROR(mlp_builder.add(GeluLayer::Create(executor, output_type)));
+  RETURN_IF_ERROR(mlp_builder.add(GeluLayer::Create(
+      executor, kGpt2FeedForwardWidth, output_type, kGpt2ContextLength)));
   RETURN_IF_ERROR(mlp_builder.add(FullyConnectedLayer::Create(
-      executor, kGpt2FeedForwardWidth, kGpt2ModelWidth, output_type)));
+      executor, kGpt2FeedForwardWidth, kGpt2ModelWidth, output_type,
+      kGpt2ContextLength)));
   auto* mlp_output = static_cast<FullyConnectedLayer*>(mlp_builder.back());
   RETURN_IF_ERROR(
       mlp_output->InitializeNormal(residual_standard_deviation, seed_base + 4));
@@ -80,9 +87,8 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateTransformerBlock(
   ASSIGN_OR_RETURN(auto mlp, mlp_builder.create());
   ComposedLayerBuilder block_builder;
   RETURN_IF_ERROR(
-      block_builder.add(std::make_unique<ResidualLayer>(std::move(attention))));
-  RETURN_IF_ERROR(
-      block_builder.add(std::make_unique<ResidualLayer>(std::move(mlp))));
+      block_builder.add(ResidualLayer::Create(std::move(attention))));
+  RETURN_IF_ERROR(block_builder.add(ResidualLayer::Create(std::move(mlp))));
   return block_builder.create();
 }
 
@@ -101,7 +107,8 @@ absl::StatusOr<EmbeddingLookupLayer*> AddActivationGeneratorLayers(
   }
 
   RETURN_IF_ERROR(builder.add(EmbeddingLookupLayer::Create(
-      executor, kGpt2VocabularySize, kGpt2ModelWidth, output_type)));
+      executor, kGpt2VocabularySize, kGpt2ModelWidth, output_type,
+      kGpt2ContextLength)));
   auto* embedding = static_cast<EmbeddingLookupLayer*>(builder.back());
   RETURN_IF_ERROR(embedding->InitializeNormal(kInitializationStandardDeviation,
                                               static_cast<uint64_t>(seed)));
@@ -142,8 +149,9 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateGpt2(
       AddActivationGeneratorLayers(
           executor, builder, kGpt2TransformerBlockCount, output_type, seed));
 
-  RETURN_IF_ERROR(builder.add(LayerNormLayer::Create(
-      executor, kGpt2ModelWidth, kLayerNormEpsilon, output_type)));
+  RETURN_IF_ERROR(builder.add(
+      LayerNormLayer::Create(executor, kGpt2ModelWidth, kLayerNormEpsilon,
+                             output_type, kGpt2ContextLength)));
   RETURN_IF_ERROR(builder.add(LanguageModelingHeadLayer::Create(embedding)));
   return builder.create();
 }

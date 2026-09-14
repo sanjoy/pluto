@@ -17,13 +17,16 @@ namespace pluto::llm {
 namespace ri = reference_internal;
 
 absl::StatusOr<std::unique_ptr<CrossEntropyLossLayerReference>>
-CrossEntropyLossLayerReference::Create(int vocabulary_size,
-                                       DataType data_type) {
+CrossEntropyLossLayerReference::Create(int vocabulary_size, DataType data_type,
+                                       int sequence_length) {
   RETURN_IF_ERROR(ri::ValidateComputeType(data_type));
+  if (sequence_length <= 0)
+    return absl::InvalidArgumentError("sequence_length must be positive");
   if (vocabulary_size <= 0)
     return absl::InvalidArgumentError("vocabulary_size must be positive");
   return absl::WrapUnique(new CrossEntropyLossLayerReference(
-      vocabulary_size, ri::RoundUpToTile(vocabulary_size), data_type));
+      vocabulary_size, ri::RoundUpToTile(vocabulary_size), data_type,
+      sequence_length));
 }
 
 absl::StatusOr<ReferenceFwdResult> CrossEntropyLossLayerReference::fwd_impl(

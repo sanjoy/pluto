@@ -64,18 +64,25 @@ __tile_global__ void GeluBackwardKernel(
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<GeluLayer>> GeluLayer::Create(
-    cuda::Executor& executor, DataType data_type) {
+    cuda::Executor& executor, int embedding_dim, DataType data_type,
+    int sequence_length) {
   RETURN_IF_ERROR(internal::ValidateComputeType(data_type));
-  return absl::WrapUnique(new GeluLayer(executor, data_type));
+  if (sequence_length <= 0)
+    return absl::InvalidArgumentError("sequence_length must be positive");
+  // Elementwise tiles cross row boundaries. Only the total element count,
+  // checked by fwd(), needs to be a multiple of the tile width.
+  if (embedding_dim <= 0)
+    return absl::InvalidArgumentError("embedding_dim must be positive");
+  return absl::WrapUnique(
+      new GeluLayer(executor, embedding_dim, data_type, sequence_length));
 }
 
 absl::StatusOr<FwdResult> GeluLayer::fwd_impl(
     cuda::Executor& executor, absl::Span<const Buffer> inputs) const {
   BackwardState state;
   RETURN_IF_ERROR(internal::ValidateExecutor(executor_, executor, "GeluLayer"));
-  if (inputs.size() != 1) {
+  if (inputs.size() != 1)
     return absl::InvalidArgumentError("GeluLayer fwd expects one input");
-  }
   ASSIGN_OR_RETURN(
       int elements,
       internal::ElementCount(executor, inputs[0],

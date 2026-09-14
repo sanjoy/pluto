@@ -29,6 +29,12 @@ class AttentionLayer final : public Layer {
 
   absl::Span<Buffer> weights() override { return {}; }
   DataType output_type() const override { return output_type_; }
+  absl::Span<const ActivationType> input_types() const override {
+    return input_types_;
+  }
+  absl::Span<const ActivationType> output_types() const override {
+    return output_types_;
+  }
 
  private:
   absl::StatusOr<FwdResult> fwd_impl(
@@ -50,6 +56,14 @@ class AttentionLayer final : public Layer {
   int embedding_dim_;
   DataType output_type_;
   cuda::Executor& executor_;
+  // The batch sentinel is symbolic; context and packed feature width are exact.
+  const ActivationType input_types_[1] = {
+      {ActivationDataType(output_type_),
+       {ActivationType::kBatchDimension, context_length_,
+        3LL * embedding_dim_}}};
+  const ActivationType output_types_[1] = {
+      {ActivationDataType(output_type_),
+       {ActivationType::kBatchDimension, context_length_, embedding_dim_}}};
 };
 
 // Scalar causal multi-head attention used as an executable specification for
@@ -62,6 +76,12 @@ class AttentionLayerReference final : public LayerReference {
 
   absl::Span<HostBuffer> weights() override { return {}; }
   DataType output_type() const override { return output_type_; }
+  absl::Span<const ActivationType> input_types() const override {
+    return input_types_;
+  }
+  absl::Span<const ActivationType> output_types() const override {
+    return output_types_;
+  }
 
  private:
   absl::StatusOr<ReferenceFwdResult> fwd_impl(
@@ -81,6 +101,14 @@ class AttentionLayerReference final : public LayerReference {
   int num_heads_;
   int embedding_dim_;
   DataType output_type_;
+  // The batch sentinel is symbolic; context and packed feature width are exact.
+  const ActivationType input_types_[1] = {
+      {ActivationDataType(output_type_),
+       {ActivationType::kBatchDimension, context_length_,
+        3LL * embedding_dim_}}};
+  const ActivationType output_types_[1] = {
+      {ActivationDataType(output_type_),
+       {ActivationType::kBatchDimension, context_length_, embedding_dim_}}};
 };
 
 }  // namespace pluto::llm

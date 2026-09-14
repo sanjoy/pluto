@@ -68,7 +68,8 @@ absl::StatusOr<std::unique_ptr<LayerReference>> CreateReference() {
   RETURN_IF_ERROR(mlp.add(FullyConnectedLayerReference::Create(
       kDimensions.model_width, kDimensions.feed_forward_width,
       DataType::BF16)));
-  RETURN_IF_ERROR(mlp.add(GeluLayerReference::Create(DataType::BF16)));
+  RETURN_IF_ERROR(mlp.add(GeluLayerReference::Create(
+      kDimensions.feed_forward_width, DataType::BF16)));
   RETURN_IF_ERROR(mlp.add(FullyConnectedLayerReference::Create(
       kDimensions.feed_forward_width, kDimensions.model_width,
       DataType::BF16)));
@@ -79,7 +80,7 @@ absl::StatusOr<std::unique_ptr<LayerReference>> CreateReference() {
       kDimensions.vocab_size, kDimensions.model_width, DataType::BF16)));
   auto* embedding = static_cast<EmbeddingLookupLayerReference*>(readout.back());
   RETURN_IF_ERROR(
-      readout.add(std::make_unique<ResidualLayerReference>(std::move(branch))));
+      readout.add(ResidualLayerReference::Create(std::move(branch))));
   RETURN_IF_ERROR(readout.add(LayerNormLayerReference::Create(
       kDimensions.model_width, 1e-5f, DataType::BF16)));
   RETURN_IF_ERROR(

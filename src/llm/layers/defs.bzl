@@ -30,7 +30,7 @@ def layer_library(name, extra_deps = []):
         ] + extra_deps,
     )
 
-def layer_reference_library(name):
+def layer_reference_library(name, extra_deps = []):
     """Defines a host-only scalar reference implementation for one layer."""
     cc_library(
         name = name + "_reference",
@@ -47,7 +47,7 @@ def layer_reference_library(name):
             "@abseil-cpp//absl/status",
             "@abseil-cpp//absl/status:statusor",
             "@abseil-cpp//absl/types:span",
-        ],
+        ] + extra_deps,
     )
 
 def layer_test(name, extra_deps = []):

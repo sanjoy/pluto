@@ -15,7 +15,9 @@ namespace pluto::llm {
 // Wraps a unary layer as x + layer(x), retaining the child's state and weights.
 class ResidualLayer final : public Layer {
  public:
-  explicit ResidualLayer(std::unique_ptr<Layer> layer);
+  // Rejects null, non-unary, or shape/dtype-changing branches before use.
+  static absl::StatusOr<std::unique_ptr<ResidualLayer>> Create(
+      std::unique_ptr<Layer> layer);
 
   absl::Status ValidateSequenceLength(int sequence_length) const override;
 
@@ -23,7 +25,16 @@ class ResidualLayer final : public Layer {
   absl::Span<Buffer> gradients() override { return absl::MakeSpan(gradients_); }
   DataType output_type() const override { return layer_->output_type(); }
 
+  absl::Span<const ActivationType> input_types() const override {
+    return layer_->input_types();
+  }
+  absl::Span<const ActivationType> output_types() const override {
+    return layer_->output_types();
+  }
+
  private:
+  explicit ResidualLayer(std::unique_ptr<Layer> layer);
+
   absl::StatusOr<FwdResult> fwd_impl(
       cuda::Executor& executor, absl::Span<const Buffer> inputs) const override;
   absl::StatusOr<BufferVec> bwd_impl(cuda::Executor& executor,
@@ -36,10 +47,13 @@ class ResidualLayer final : public Layer {
 };
 
 // Sequentially composes layers, passing complete output and gradient vectors.
-// Each child validates the arity it supports.
+// Adjacent forward signatures must match exactly, including arity, dtype,
+// rank, and dimensions. No broadcasting or flattening is implicit.
 class ComposedLayer final : public Layer {
  public:
-  ComposedLayer(DataType data_type, std::vector<std::unique_ptr<Layer>> layers);
+  // Requires at least one non-null child and exact adjacent signatures.
+  static absl::StatusOr<std::unique_ptr<ComposedLayer>> Create(
+      std::vector<std::unique_ptr<Layer>> layers);
 
   absl::Status ValidateSequenceLength(int sequence_length) const override;
 
@@ -47,7 +61,16 @@ class ComposedLayer final : public Layer {
   absl::Span<Buffer> gradients() override { return absl::MakeSpan(gradients_); }
   DataType output_type() const override { return output_type_; }
 
+  absl::Span<const ActivationType> input_types() const override {
+    return layers_.front()->input_types();
+  }
+  absl::Span<const ActivationType> output_types() const override {
+    return layers_.back()->output_types();
+  }
+
  private:
+  explicit ComposedLayer(std::vector<std::unique_ptr<Layer>> layers);
+
   absl::StatusOr<FwdResult> fwd_impl(
       cuda::Executor& executor, absl::Span<const Buffer> inputs) const override;
   absl::StatusOr<BufferVec> bwd_impl(cuda::Executor& executor,
@@ -66,7 +89,8 @@ class ComposedLayer final : public Layer {
 class ComposedLayerBuilder final {
  public:
   // Adds an infallibly-created child to the end of the composition. A null
-  // child is rejected so back() and create() never expose an invalid layer.
+  // child or an incompatible signature is rejected without modifying the
+  // builder.
   absl::Status add(std::unique_ptr<Layer> layer);
 
   // Propagates a failed layer factory, or transfers its successful result into
@@ -98,7 +122,9 @@ class ComposedLayerBuilder final {
 // so the complete residual forward and backward graphs stay on the host.
 class ResidualLayerReference final : public LayerReference {
  public:
-  explicit ResidualLayerReference(std::unique_ptr<LayerReference> layer);
+  // Rejects null, non-unary, or shape/dtype-changing branches before use.
+  static absl::StatusOr<std::unique_ptr<ResidualLayerReference>> Create(
+      std::unique_ptr<LayerReference> layer);
 
   absl::Span<HostBuffer> weights() override { return absl::MakeSpan(weights_); }
   absl::Span<HostBuffer> gradients() override {
@@ -106,7 +132,16 @@ class ResidualLayerReference final : public LayerReference {
   }
   DataType output_type() const override { return layer_->output_type(); }
 
+  absl::Span<const ActivationType> input_types() const override {
+    return layer_->input_types();
+  }
+  absl::Span<const ActivationType> output_types() const override {
+    return layer_->output_types();
+  }
+
  private:
+  explicit ResidualLayerReference(std::unique_ptr<LayerReference> layer);
+
   absl::StatusOr<ReferenceFwdResult> fwd_impl(
       absl::Span<const HostBuffer> inputs) const override;
   absl::StatusOr<HostBufferVec> bwd_impl(
@@ -123,8 +158,9 @@ class ResidualLayerReference final : public LayerReference {
 // exactly.
 class ComposedLayerReference final : public LayerReference {
  public:
-  ComposedLayerReference(DataType data_type,
-                         std::vector<std::unique_ptr<LayerReference>> layers);
+  // Requires at least one non-null child and exact adjacent signatures.
+  static absl::StatusOr<std::unique_ptr<ComposedLayerReference>> Create(
+      std::vector<std::unique_ptr<LayerReference>> layers);
 
   absl::Span<HostBuffer> weights() override { return absl::MakeSpan(weights_); }
   absl::Span<HostBuffer> gradients() override {
@@ -132,7 +168,17 @@ class ComposedLayerReference final : public LayerReference {
   }
   DataType output_type() const override { return output_type_; }
 
+  absl::Span<const ActivationType> input_types() const override {
+    return layers_.front()->input_types();
+  }
+  absl::Span<const ActivationType> output_types() const override {
+    return layers_.back()->output_types();
+  }
+
  private:
+  explicit ComposedLayerReference(
+      std::vector<std::unique_ptr<LayerReference>> layers);
+
   absl::StatusOr<ReferenceFwdResult> fwd_impl(
       absl::Span<const HostBuffer> inputs) const override;
   absl::StatusOr<HostBufferVec> bwd_impl(

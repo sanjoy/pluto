@@ -112,13 +112,24 @@ __tile_global__ void CrossEntropyBackwardKernel(
 
 absl::StatusOr<std::unique_ptr<CrossEntropyLossLayer>>
 CrossEntropyLossLayer::Create(cuda::Executor& executor, int vocabulary_size,
-                              DataType data_type) {
+                              DataType data_type, int sequence_length) {
   RETURN_IF_ERROR(internal::ValidateComputeType(data_type));
+  if (sequence_length <= 0)
+    return absl::InvalidArgumentError("sequence_length must be positive");
   if (vocabulary_size <= 0)
     return absl::InvalidArgumentError("vocabulary_size must be positive");
   return absl::WrapUnique(new CrossEntropyLossLayer(
       executor, vocabulary_size, internal::RoundUpToTile(vocabulary_size),
-      data_type));
+      data_type, sequence_length));
+}
+
+absl::Status CrossEntropyLossLayer::ValidateSequenceLength(
+    int sequence_length) const {
+  if (sequence_length != sequence_length_)
+    return absl::InvalidArgumentError(
+        "CrossEntropyLossLayer sequence length does not match its activation "
+        "type");
+  return absl::OkStatus();
 }
 
 absl::StatusOr<FwdResult> CrossEntropyLossLayer::fwd_impl(

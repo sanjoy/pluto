@@ -38,8 +38,10 @@ absl::Status InitializeBufferNormal(HostBuffer* buffer,
 
 absl::StatusOr<std::unique_ptr<EmbeddingLookupLayerReference>>
 EmbeddingLookupLayerReference::Create(int vocab_size, int embedding_dim,
-                                      DataType data_type) {
+                                      DataType data_type, int sequence_length) {
   RETURN_IF_ERROR(ri::ValidateComputeType(data_type));
+  if (sequence_length <= 0)
+    return absl::InvalidArgumentError("sequence_length must be positive");
   if (vocab_size <= 0)
     return absl::InvalidArgumentError("vocab_size must be positive");
   RETURN_IF_ERROR(ri::ValidateTiledExtent(embedding_dim, "embedding_dim"));
@@ -50,7 +52,7 @@ EmbeddingLookupLayerReference::Create(int vocab_size, int embedding_dim,
   ASSIGN_OR_RETURN(auto gradient, ri::AllocateFloats(elements, true));
   return absl::WrapUnique(new EmbeddingLookupLayerReference(
       vocab_size, padded_vocab_size, embedding_dim, data_type,
-      std::move(weight), std::move(gradient)));
+      std::move(weight), std::move(gradient), sequence_length));
 }
 
 absl::Status EmbeddingLookupLayerReference::InitializeIdentity(float scale) {

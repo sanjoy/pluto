@@ -24,7 +24,17 @@ class IdentityLayer final : public Layer {
   bool fail_forward = false;
   bool fail_backward = false;
 
+  absl::Span<const ActivationType> input_types() const override {
+    return input_types_;
+  }
+  absl::Span<const ActivationType> output_types() const override {
+    return output_types_;
+  }
+
  private:
+  const ActivationType input_types_[1] = {{DataType::FP32, {}}};
+  const ActivationType output_types_[1] = {{DataType::FP32, {}}};
+
   absl::StatusOr<FwdResult> fwd_impl(
       cuda::Executor&, absl::Span<const Buffer> inputs) const override {
     BackwardState state;
@@ -34,7 +44,8 @@ class IdentityLayer final : public Layer {
     EXPECT_TRUE(state.children.empty());
     // Populate state even on failure to exercise partially written states.
     state.intermediates = {inputs[0]};
-    if (fail_forward) return absl::ResourceExhaustedError("forward failed");
+    if (fail_forward)
+      return absl::ResourceExhaustedError("forward failed");
     return FwdResult{{std::move(inputs[0])}, std::move(state)};
   }
 
@@ -42,7 +53,8 @@ class IdentityLayer final : public Layer {
                                      BackwardState state) override {
     ++backward_calls;
     EXPECT_EQ(state.layer, this);
-    if (fail_backward) return absl::InternalError("backward failed");
+    if (fail_backward)
+      return absl::InternalError("backward failed");
     return std::move(state.intermediates);
   }
 };
@@ -58,7 +70,18 @@ class ParameterOutputLayer final : public Layer {
   BufferVec received_gradients;
   BufferVec saved_inputs;
 
+  absl::Span<const ActivationType> input_types() const override {
+    return input_types_;
+  }
+  absl::Span<const ActivationType> output_types() const override {
+    return output_types_;
+  }
+
  private:
+  const ActivationType input_types_[1] = {{DataType::FP32, {}}};
+  const ActivationType output_types_[2] = {{DataType::FP32, {}},
+                                           {DataType::FP32, {}}};
+
   absl::StatusOr<FwdResult> fwd_impl(
       cuda::Executor&, absl::Span<const Buffer> inputs) const override {
     if (inputs.size() != 1)
@@ -84,7 +107,19 @@ class SwapOutputsLayer final : public Layer {
   absl::Span<Buffer> weights() override { return {}; }
   DataType output_type() const override { return DataType::FP16; }
 
+  absl::Span<const ActivationType> input_types() const override {
+    return input_types_;
+  }
+  absl::Span<const ActivationType> output_types() const override {
+    return output_types_;
+  }
+
  private:
+  const ActivationType input_types_[2] = {{DataType::FP32, {}},
+                                          {DataType::FP32, {}}};
+  const ActivationType output_types_[2] = {{DataType::FP32, {}},
+                                           {DataType::FP32, {}}};
+
   absl::StatusOr<FwdResult> fwd_impl(
       cuda::Executor&, absl::Span<const Buffer> inputs) const override {
     if (inputs.size() != 2)
@@ -216,12 +251,15 @@ TEST_F(LayerTest, NestedCompositionChecksIndividualChildIdentity) {
   std::vector<std::unique_ptr<Layer>> children;
   children.push_back(std::move(first));
   children.push_back(std::move(second));
-  auto inner =
-      std::make_unique<ComposedLayer>(DataType::FP16, std::move(children));
+  auto inner_result = ComposedLayer::Create(std::move(children));
+  ASSERT_TRUE(inner_result.ok()) << inner_result.status();
+  auto inner = std::move(*inner_result);
   const auto* inner_ptr = inner.get();
   std::vector<std::unique_ptr<Layer>> outer_children;
   outer_children.push_back(std::move(inner));
-  ComposedLayer outer(DataType::FP16, std::move(outer_children));
+  auto outer_result = ComposedLayer::Create(std::move(outer_children));
+  ASSERT_TRUE(outer_result.ok()) << outer_result.status();
+  auto& outer = **outer_result;
 
   auto result = outer.fwd(*executor_, inputs_);
   ASSERT_TRUE(result.ok()) << result.status();
@@ -254,7 +292,9 @@ TEST_F(LayerTest, CompositionRoutesMultipleOutputsAndInterleavedStates) {
   std::vector<std::unique_ptr<Layer>> children;
   children.push_back(std::move(source));
   children.push_back(std::make_unique<SwapOutputsLayer>());
-  ComposedLayer model(DataType::FP16, std::move(children));
+  auto model_result = ComposedLayer::Create(std::move(children));
+  ASSERT_TRUE(model_result.ok()) << model_result.status();
+  auto& model = **model_result;
 
   auto first = model.fwd(*executor_, inputs_);
   auto second = model.fwd(*executor_, BufferVec{*other_input});
@@ -289,7 +329,9 @@ TEST_F(LayerTest, CompositionAcceptsAndReturnsMultipleInputsAndGradients) {
   ASSERT_TRUE(second.ok()) << second.status();
   std::vector<std::unique_ptr<Layer>> children;
   children.push_back(std::make_unique<SwapOutputsLayer>());
-  ComposedLayer model(DataType::FP16, std::move(children));
+  auto model_result = ComposedLayer::Create(std::move(children));
+  ASSERT_TRUE(model_result.ok()) << model_result.status();
+  auto& model = **model_result;
   BufferVec inputs{inputs_[0], *second};
   auto result = model.fwd(*executor_, inputs);
   ASSERT_TRUE(result.ok()) << result.status();
@@ -304,8 +346,8 @@ TEST_F(LayerTest, CompositionAcceptsAndReturnsMultipleInputsAndGradients) {
 }
 
 TEST_F(LayerTest, ResidualRejectsMultipleBranchOutputs) {
-  ResidualLayer residual(std::make_unique<ParameterOutputLayer>(inputs_[0]));
-  auto result = residual.fwd(*executor_, inputs_);
+  auto result =
+      ResidualLayer::Create(std::make_unique<ParameterOutputLayer>(inputs_[0]));
   EXPECT_EQ(result.status().code(), absl::StatusCode::kInvalidArgument);
 }
 

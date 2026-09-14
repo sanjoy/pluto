@@ -23,7 +23,17 @@ class IdentityLayerReference final : public LayerReference {
   bool fail_forward = false;
   bool fail_backward = false;
 
+  absl::Span<const ActivationType> input_types() const override {
+    return input_types_;
+  }
+  absl::Span<const ActivationType> output_types() const override {
+    return output_types_;
+  }
+
  private:
+  const ActivationType input_types_[1] = {{DataType::FP32, {}}};
+  const ActivationType output_types_[1] = {{DataType::FP32, {}}};
+
   absl::StatusOr<ReferenceFwdResult> fwd_impl(
       absl::Span<const HostBuffer> inputs) const override {
     ReferenceBackwardState state;
@@ -33,7 +43,8 @@ class IdentityLayerReference final : public LayerReference {
     EXPECT_TRUE(state.children.empty());
     // Populate state even on failure to exercise partially written states.
     state.intermediates = {inputs[0]};
-    if (fail_forward) return absl::ResourceExhaustedError("forward failed");
+    if (fail_forward)
+      return absl::ResourceExhaustedError("forward failed");
     return ReferenceFwdResult{{std::move(inputs[0])}, std::move(state)};
   }
 
@@ -41,7 +52,8 @@ class IdentityLayerReference final : public LayerReference {
       absl::Span<const HostBuffer>, ReferenceBackwardState state) override {
     ++backward_calls;
     EXPECT_EQ(state.layer, this);
-    if (fail_backward) return absl::InternalError("backward failed");
+    if (fail_backward)
+      return absl::InternalError("backward failed");
     return std::move(state.intermediates);
   }
 };
@@ -59,7 +71,18 @@ class ParameterOutputLayer final : public LayerReference {
   HostBufferVec received_gradients;
   HostBufferVec saved_inputs;
 
+  absl::Span<const ActivationType> input_types() const override {
+    return input_types_;
+  }
+  absl::Span<const ActivationType> output_types() const override {
+    return output_types_;
+  }
+
  private:
+  const ActivationType input_types_[1] = {{DataType::FP32, {}}};
+  const ActivationType output_types_[2] = {{DataType::FP32, {}},
+                                           {DataType::FP32, {}}};
+
   absl::StatusOr<ReferenceFwdResult> fwd_impl(
       absl::Span<const HostBuffer> inputs) const override {
     if (inputs.size() != 1)
@@ -85,7 +108,19 @@ class SwapOutputsLayer final : public LayerReference {
   absl::Span<HostBuffer> weights() override { return {}; }
   DataType output_type() const override { return DataType::FP16; }
 
+  absl::Span<const ActivationType> input_types() const override {
+    return input_types_;
+  }
+  absl::Span<const ActivationType> output_types() const override {
+    return output_types_;
+  }
+
  private:
+  const ActivationType input_types_[2] = {{DataType::FP32, {}},
+                                          {DataType::FP32, {}}};
+  const ActivationType output_types_[2] = {{DataType::FP32, {}},
+                                           {DataType::FP32, {}}};
+
   absl::StatusOr<ReferenceFwdResult> fwd_impl(
       absl::Span<const HostBuffer> inputs) const override {
     if (inputs.size() != 2)
@@ -215,12 +250,15 @@ TEST_F(LayerReferenceStateTest,
   std::vector<std::unique_ptr<LayerReference>> children;
   children.push_back(std::move(first));
   children.push_back(std::move(second));
-  auto inner = std::make_unique<ComposedLayerReference>(DataType::FP16,
-                                                        std::move(children));
+  auto inner_result = ComposedLayerReference::Create(std::move(children));
+  ASSERT_TRUE(inner_result.ok()) << inner_result.status();
+  auto inner = std::move(*inner_result);
   const auto* inner_ptr = inner.get();
   std::vector<std::unique_ptr<LayerReference>> outer_children;
   outer_children.push_back(std::move(inner));
-  ComposedLayerReference outer(DataType::FP16, std::move(outer_children));
+  auto outer_result = ComposedLayerReference::Create(std::move(outer_children));
+  ASSERT_TRUE(outer_result.ok()) << outer_result.status();
+  auto& outer = **outer_result;
 
   auto result = outer.fwd(inputs_);
   ASSERT_TRUE(result.ok()) << result.status();
@@ -254,7 +292,9 @@ TEST_F(LayerReferenceStateTest,
   std::vector<std::unique_ptr<LayerReference>> children;
   children.push_back(std::move(source));
   children.push_back(std::make_unique<SwapOutputsLayer>());
-  ComposedLayerReference model(DataType::FP16, std::move(children));
+  auto model_result = ComposedLayerReference::Create(std::move(children));
+  ASSERT_TRUE(model_result.ok()) << model_result.status();
+  auto& model = **model_result;
 
   auto first = model.fwd(inputs_);
   auto second = model.fwd(HostBufferVec{*other_input});
@@ -288,7 +328,9 @@ TEST_F(LayerReferenceStateTest,
   ASSERT_TRUE(second.ok()) << second.status();
   std::vector<std::unique_ptr<LayerReference>> children;
   children.push_back(std::make_unique<SwapOutputsLayer>());
-  ComposedLayerReference model(DataType::FP16, std::move(children));
+  auto model_result = ComposedLayerReference::Create(std::move(children));
+  ASSERT_TRUE(model_result.ok()) << model_result.status();
+  auto& model = **model_result;
   HostBufferVec inputs{inputs_[0], *second};
   auto result = model.fwd(inputs);
   ASSERT_TRUE(result.ok()) << result.status();
@@ -303,9 +345,8 @@ TEST_F(LayerReferenceStateTest,
 }
 
 TEST_F(LayerReferenceStateTest, ResidualRejectsMultipleBranchOutputs) {
-  ResidualLayerReference residual(
+  auto result = ResidualLayerReference::Create(
       std::make_unique<ParameterOutputLayer>(inputs_[0]));
-  auto result = residual.fwd(inputs_);
   EXPECT_EQ(result.status().code(), absl::StatusCode::kInvalidArgument);
 }
 

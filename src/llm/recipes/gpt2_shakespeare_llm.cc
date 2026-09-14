@@ -388,9 +388,9 @@ absl::Status RunTraining(cuda::Executor& executor,
            << "] resumed from checkpoint: " << checkpoint.directory.string()
            << " (step " << initial_step << ")\n";
   }
-  ASSIGN_OR_RETURN(auto loss_layer,
-                   CrossEntropyLossLayer::Create(executor, kGpt2VocabularySize,
-                                                 DataType::BF16));
+  ASSIGN_OR_RETURN(auto loss_layer, CrossEntropyLossLayer::Create(
+                                        executor, kGpt2VocabularySize,
+                                        DataType::BF16, kGpt2ContextLength));
   ASSIGN_OR_RETURN(
       auto optimizer,
       Optimizer::Create(executor, *model, OptimizerConfigFromFlags()));
@@ -592,10 +592,12 @@ absl::Status RunSparseAutoEncoderTraining(
                        executor, *activation_generator, *evaluation_source,
                        gpt2_checkpoint.directory));
 
-  ASSIGN_OR_RETURN(auto autoencoder,
-                   SparseAutoEncoderLayer::Create(
-                       executor, kGpt2ModelWidth,
-                       kSparseAutoEncoderFeatureDimension, DataType::BF16));
+  ASSIGN_OR_RETURN(
+      auto autoencoder,
+      SparseAutoEncoderLayer::Create(
+          executor, kGpt2ModelWidth, kSparseAutoEncoderFeatureDimension,
+          DataType::BF16, SparseAutoEncoderLayer::Mode::kDefault,
+          kGpt2ContextLength));
   RETURN_IF_ERROR(autoencoder->InitializeNormal(
       1.0f / std::sqrt(static_cast<float>(kGpt2ModelWidth)),
       static_cast<uint64_t>(absl::GetFlag(FLAGS_seed)) + 20'000));
@@ -621,7 +623,7 @@ absl::Status RunSparseAutoEncoderTraining(
       auto loss_layer,
       SparseAutoEncoderLossLayer::Create(
           executor, kGpt2ModelWidth, kSparseAutoEncoderFeatureDimension,
-          kSparseAutoEncoderPenalty, DataType::BF16));
+          kSparseAutoEncoderPenalty, DataType::BF16, kGpt2ContextLength));
   ASSIGN_OR_RETURN(
       auto optimizer,
       Optimizer::Create(executor, *autoencoder, OptimizerConfigFromFlags()));
@@ -851,7 +853,8 @@ absl::Status RunSparseAutoEncoderInference(
       auto autoencoder,
       SparseAutoEncoderLayer::Create(
           executor, kGpt2ModelWidth, kSparseAutoEncoderFeatureDimension,
-          DataType::BF16, SparseAutoEncoderLayer::Mode::kCollectStatistics));
+          DataType::BF16, SparseAutoEncoderLayer::Mode::kCollectStatistics,
+          kGpt2ContextLength));
   RETURN_IF_ERROR(
       ReadFromDirectory(executor, *autoencoder, sae_checkpoint.directory));
   ASSIGN_OR_RETURN(auto token_buffer,

@@ -13,12 +13,14 @@
 #include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "src/cuda/buffer.h"
 #include "src/llm/layers/util.h"
+#include "src/llm/layers/util/type_check.h"
 #include "src/util/status_macros.h"
 
 namespace pluto::llm {
@@ -54,6 +56,15 @@ __tile_global__ void AddKernel(const Element* __restrict__ left,
 
 }  // namespace
 
+absl::StatusOr<std::unique_ptr<ResidualLayer>> ResidualLayer::Create(
+    std::unique_ptr<Layer> layer) {
+  if (layer == nullptr)
+    return absl::InvalidArgumentError("residual branch must not be null");
+  RETURN_IF_ERROR(internal::ValidateResidualTypes(layer->input_types(),
+                                                  layer->output_types()));
+  return absl::WrapUnique(new ResidualLayer(std::move(layer)));
+}
+
 ResidualLayer::ResidualLayer(std::unique_ptr<Layer> layer)
     : layer_(std::move(layer)) {
   for (const Buffer& weight : layer_->weights())
@@ -70,9 +81,8 @@ absl::Status ResidualLayer::ValidateSequenceLength(int sequence_length) const {
 absl::StatusOr<FwdResult> ResidualLayer::fwd_impl(
     cuda::Executor& executor, absl::Span<const Buffer> inputs) const {
   BackwardState state;
-  if (inputs.size() != 1) {
+  if (inputs.size() != 1)
     return absl::InvalidArgumentError("ResidualLayer fwd expects one input");
-  }
 
   ASSIGN_OR_RETURN(auto branch_fwd, layer_->fwd(executor, inputs));
   if (branch_fwd.outputs.size() != 1) {
@@ -86,16 +96,19 @@ absl::StatusOr<FwdResult> ResidualLayer::fwd_impl(
     return absl::InvalidArgumentError(
         "ResidualLayer branch changed the activation shape or executor");
   }
+  // The branch's compute policy can differ from its physical output dtype.
+  // Both element counting and addition must follow the checked signature.
+  const DataType storage_type = input_types()[0].data_type();
   ASSIGN_OR_RETURN(auto output,
                    Buffer::Allocate(executor, inputs[0].size_bytes()));
   ASSIGN_OR_RETURN(int elements,
                    ElementCount(executor, inputs[0],
-                                internal::ActivationElementBytes(output_type()),
+                                internal::ActivationElementBytes(storage_type),
                                 "residual input"));
   RETURN_IF_ERROR(ValidateTiledExtent(elements, "residual element count"));
   state.intermediates = {inputs[0]};
   state.children = {std::move(branch_fwd.state)};
-  if (output_type() == DataType::BF16) {
+  if (storage_type == DataType::BF16) {
     AddKernel<__nv_bfloat16><<<TileCount(elements), 1, 0, executor.stream()>>>(
         static_cast<const __nv_bfloat16*>(inputs[0].data()),
         static_cast<const __nv_bfloat16*>(branch.data()), elements,
@@ -140,9 +153,29 @@ absl::StatusOr<BufferVec> ResidualLayer::bwd_impl(
   return BufferVec{std::move(input_gradient)};
 }
 
-ComposedLayer::ComposedLayer(DataType data_type,
-                             std::vector<std::unique_ptr<Layer>> layers)
-    : output_type_(data_type), layers_(std::move(layers)) {
+absl::StatusOr<std::unique_ptr<ComposedLayer>> ComposedLayer::Create(
+    std::vector<std::unique_ptr<Layer>> layers) {
+  if (layers.empty())
+    return absl::FailedPreconditionError(
+        "cannot create an empty ComposedLayer");
+  for (size_t i = 0; i < layers.size(); ++i) {
+    if (layers[i] == nullptr)
+      return absl::InvalidArgumentError("composed child must not be null");
+    RETURN_IF_ERROR(internal::ValidateTypes(layers[i]->input_types()));
+    RETURN_IF_ERROR(internal::ValidateTypes(layers[i]->output_types()));
+    if (i != 0) {
+      const auto status = internal::ValidateTypeConnection(
+          layers[i - 1]->output_types(), layers[i]->input_types());
+      if (!status.ok())
+        return absl::InvalidArgumentError(
+            absl::StrCat("composed child ", i, ": ", status.message()));
+    }
+  }
+  return absl::WrapUnique(new ComposedLayer(std::move(layers)));
+}
+
+ComposedLayer::ComposedLayer(std::vector<std::unique_ptr<Layer>> layers)
+    : output_type_(layers.back()->output_type()), layers_(std::move(layers)) {
   for (const auto& layer : layers_) {
     for (const Buffer& weight : layer->weights())
       weights_.push_back(weight);
@@ -191,6 +224,12 @@ absl::Status ComposedLayerBuilder::add(std::unique_ptr<Layer> layer) {
     return absl::InvalidArgumentError(
         "ComposedLayerBuilder cannot add a null layer");
   }
+  RETURN_IF_ERROR(internal::ValidateTypes(layer->input_types()));
+  RETURN_IF_ERROR(internal::ValidateTypes(layer->output_types()));
+  if (!layers_.empty()) {
+    RETURN_IF_ERROR(internal::ValidateTypeConnection(
+        layers_.back()->output_types(), layer->input_types()));
+  }
   layers_.push_back(std::move(layer));
   return absl::OkStatus();
 }
@@ -208,10 +247,9 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> ComposedLayerBuilder::create() {
     return absl::FailedPreconditionError(
         "cannot create an empty ComposedLayer");
   }
-  const DataType output_type = layers_.back()->output_type();
   std::vector<std::unique_ptr<Layer>> layers;
   layers.swap(layers_);
-  return std::make_unique<ComposedLayer>(output_type, std::move(layers));
+  return ComposedLayer::Create(std::move(layers));
 }
 
 }  // namespace pluto::llm

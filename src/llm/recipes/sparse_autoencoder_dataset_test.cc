@@ -67,10 +67,22 @@ class FixedTokenDataSetIterator final : public DataSetIterator {
 class RecordingActivationGenerator final : public Layer {
  public:
   explicit RecordingActivationGenerator(BufferVec outputs)
-      : outputs_(std::move(outputs)) {}
+      : outputs_(std::move(outputs)) {
+    for (size_t i = 0; i < outputs_.size(); ++i)
+      output_types_.emplace_back(
+          DataType::FP32, absl::InlinedVector<int64_t, 4>{
+                              ActivationType::kBatchDimension, kSequenceLength,
+                              kEmbeddingDimension});
+  }
 
   absl::Span<Buffer> weights() override { return {}; }
   DataType output_type() const override { return DataType::FP16; }
+  absl::Span<const ActivationType> input_types() const override {
+    return input_types_;
+  }
+  absl::Span<const ActivationType> output_types() const override {
+    return output_types_;
+  }
   const void* input_address() const { return input_address_; }
   int forward_calls() const { return forward_calls_; }
   int backward_calls() const { return backward_calls_; }
@@ -94,6 +106,9 @@ class RecordingActivationGenerator final : public Layer {
     return absl::InternalError("frozen generator must not run backward");
   }
 
+  const ActivationType input_types_[1] = {
+      {DataType::INT32, {ActivationType::kBatchDimension, kSequenceLength}}};
+  std::vector<ActivationType> output_types_;
   BufferVec outputs_;
   mutable const void* input_address_ = nullptr;
   mutable int forward_calls_ = 0;
@@ -143,7 +158,8 @@ class SparseAutoEncoderDataSetTest : public testing::Test {
 TEST_F(SparseAutoEncoderDataSetTest,
        LoadsPrefixCheckpointAndGeneratesActivationsLazily) {
   auto checkpoint_embedding = EmbeddingLookupLayer::Create(
-      *executor_, kVocabularySize, kEmbeddingDimension, DataType::FP16);
+      *executor_, kVocabularySize, kEmbeddingDimension, DataType::FP16,
+      kSequenceLength);
   ASSERT_TRUE(checkpoint_embedding.ok()) << checkpoint_embedding.status();
   std::vector<float> table(kVocabularySize * kEmbeddingDimension);
   for (int token = 0; token < kVocabularySize; ++token) {
@@ -169,7 +185,8 @@ TEST_F(SparseAutoEncoderDataSetTest,
   std::ofstream(checkpoint / "weight_1.bin", std::ios::binary) << "unused";
 
   auto activation_generator = EmbeddingLookupLayer::Create(
-      *executor_, kVocabularySize, kEmbeddingDimension, DataType::FP16);
+      *executor_, kVocabularySize, kEmbeddingDimension, DataType::FP16,
+      kSequenceLength);
   ASSERT_TRUE(activation_generator.ok()) << activation_generator.status();
   auto data = MakeData();
   ASSERT_TRUE(data.ok()) << data.status();
@@ -221,7 +238,8 @@ TEST_F(SparseAutoEncoderDataSetTest,
   std::ofstream(checkpoint / "weight_0.bin", std::ios::binary) << "too short";
 
   auto activation_generator = EmbeddingLookupLayer::Create(
-      *executor_, kVocabularySize, kEmbeddingDimension, DataType::FP16);
+      *executor_, kVocabularySize, kEmbeddingDimension, DataType::FP16,
+      kSequenceLength);
   ASSERT_TRUE(activation_generator.ok()) << activation_generator.status();
   auto data = MakeData();
   ASSERT_TRUE(data.ok()) << data.status();
@@ -235,8 +253,9 @@ TEST_F(SparseAutoEncoderDataSetTest,
 
 TEST_F(SparseAutoEncoderDataSetTest,
        RejectsSamplesThatWouldSharePositionBoundaries) {
-  auto embedding = EmbeddingLookupLayer::Create(
-      *executor_, kVocabularySize, kEmbeddingDimension, DataType::FP16);
+  auto embedding = EmbeddingLookupLayer::Create(*executor_, kVocabularySize,
+                                                kEmbeddingDimension,
+                                                DataType::FP16, kTokenCount);
   auto positions = PositionEmbeddingLayer::Create(
       *executor_, kTokenCount, kEmbeddingDimension, DataType::FP16);
   ASSERT_TRUE(embedding.ok()) << embedding.status();

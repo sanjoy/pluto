@@ -464,5 +464,41 @@ TEST_F(LayerReferenceTest, FP8IsRejectedConsistently) {
   EXPECT_EQ(reference.status().code(), absl::StatusCode::kUnimplemented);
 }
 
+TEST_F(LayerReferenceTest, LayerNormSignaturesPreserveSampleDimensions) {
+  for (DataType compute : {DataType::FP16, DataType::BF16}) {
+    const DataType storage =
+        compute == DataType::BF16 ? DataType::BF16 : DataType::FP32;
+    auto device = LayerNormLayer::Create(*executor_, 32, 1e-5f, compute, 7);
+    auto reference = LayerNormLayerReference::Create(32, 1e-5f, compute, 7);
+    ASSERT_TRUE(device.ok()) << device.status();
+    ASSERT_TRUE(reference.ok()) << reference.status();
+    const ActivationType activation(storage, {-2, 7, 32});
+    ASSERT_EQ((*device)->input_types().size(), 1);
+    ASSERT_EQ((*device)->output_types().size(), 1);
+    ASSERT_EQ((*reference)->input_types().size(), 1);
+    ASSERT_EQ((*reference)->output_types().size(), 1);
+    EXPECT_EQ((*device)->input_types()[0], activation);
+    EXPECT_EQ((*device)->output_types()[0], activation);
+    EXPECT_EQ((*reference)->input_types()[0], activation);
+    EXPECT_EQ((*reference)->output_types()[0], activation);
+    EXPECT_TRUE((*device)->ValidateSequenceLength(7).ok());
+    EXPECT_FALSE((*device)->ValidateSequenceLength(1).ok());
+  }
+}
+
+TEST_F(LayerReferenceTest, LayerNormRejectsNonpositiveSequenceLength) {
+  for (int length : {0, -1, -2}) {
+    EXPECT_EQ(
+        LayerNormLayer::Create(*executor_, 32, 1e-5f, DataType::FP16, length)
+            .status()
+            .code(),
+        absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ(LayerNormLayerReference::Create(32, 1e-5f, DataType::FP16, length)
+                  .status()
+                  .code(),
+              absl::StatusCode::kInvalidArgument);
+  }
+}
+
 }  // namespace
 }  // namespace pluto::llm

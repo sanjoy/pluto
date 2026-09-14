@@ -5,6 +5,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "gtest/gtest.h"
 #include "src/llm/layer.h"
@@ -15,6 +16,235 @@
 
 namespace pluto::llm {
 namespace {
+
+// These fakes isolate signature plumbing from numerical kernels. The reference
+// fake can declare arbitrary signatures for construction-only rejection tests;
+// forward/backward are identity operations only for its equal-signature uses.
+class SignatureReference final : public LayerReference {
+ public:
+  SignatureReference(std::vector<ActivationType> inputs,
+                     std::vector<ActivationType> outputs,
+                     DataType policy = DataType::FP16)
+      : inputs_(std::move(inputs)),
+        outputs_(std::move(outputs)),
+        policy_(policy) {}
+
+  absl::Span<const ActivationType> input_types() const override {
+    return inputs_;
+  }
+  absl::Span<const ActivationType> output_types() const override {
+    return outputs_;
+  }
+  absl::Span<HostBuffer> weights() override { return {}; }
+  DataType output_type() const override { return policy_; }
+
+ private:
+  absl::StatusOr<ReferenceFwdResult> fwd_impl(
+      absl::Span<const HostBuffer> inputs) const override {
+    return ReferenceFwdResult{HostBufferVec(inputs.begin(), inputs.end()), {}};
+  }
+  absl::StatusOr<HostBufferVec> bwd_impl(
+      absl::Span<const HostBuffer> gradients,
+      ReferenceBackwardState state) override {
+    return HostBufferVec(gradients.begin(), gradients.end());
+  }
+
+  const std::vector<ActivationType> inputs_;
+  const std::vector<ActivationType> outputs_;
+  const DataType policy_;
+};
+
+class SignatureIdentity final : public Layer {
+ public:
+  SignatureIdentity(DataType storage, DataType policy)
+      : type_{storage, {ActivationType::kBatchDimension, 1, 16}},
+        policy_(policy) {}
+
+  absl::Span<const ActivationType> input_types() const override {
+    return absl::Span<const ActivationType>(&type_, 1);
+  }
+  absl::Span<const ActivationType> output_types() const override {
+    return input_types();
+  }
+  absl::Span<Buffer> weights() override { return {}; }
+  DataType output_type() const override { return policy_; }
+
+ private:
+  absl::StatusOr<FwdResult> fwd_impl(
+      cuda::Executor& executor,
+      absl::Span<const Buffer> inputs) const override {
+    return FwdResult{BufferVec(inputs.begin(), inputs.end()), {}};
+  }
+  absl::StatusOr<BufferVec> bwd_impl(cuda::Executor& executor,
+                                     absl::Span<const Buffer> gradients,
+                                     BackwardState state) override {
+    return BufferVec(gradients.begin(), gradients.end());
+  }
+
+  const ActivationType type_;
+  const DataType policy_;
+};
+
+TEST_F(LayerReferenceTest, ResidualStorageFollowsSignatureNotComputePolicy) {
+  for (DataType storage : {DataType::FP32, DataType::BF16}) {
+    // Deliberately disagree in both directions. Counting FP32 bytes as BF16
+    // overreads the buffer; counting BF16 bytes as FP32 leaves half unwritten.
+    const DataType policy =
+        storage == DataType::FP32 ? DataType::BF16 : DataType::FP16;
+    const DataType storage_policy =
+        storage == DataType::FP32 ? DataType::FP16 : DataType::BF16;
+    const ActivationType type(storage,
+                              {ActivationType::kBatchDimension, 1, 16});
+    auto device = ResidualLayer::Create(
+        absl::make_unique<SignatureIdentity>(storage, policy));
+    auto reference =
+        ResidualLayerReference::Create(absl::make_unique<SignatureReference>(
+            std::vector<ActivationType>{type},
+            std::vector<ActivationType>{type}, policy));
+    ASSERT_TRUE(device.ok()) << device.status();
+    ASSERT_TRUE(reference.ok()) << reference.status();
+
+    std::vector<float> input(32);
+    std::vector<float> expected(32);
+    for (size_t index = 0; index < input.size(); ++index) {
+      input[index] = (static_cast<int>(index % 11) - 5) / 8.0f;
+      expected[index] = 2.0f * input[index];
+    }
+    auto buffers = MakeActivationBufferPair(*executor_, input, storage_policy);
+    ASSERT_TRUE(buffers.ok()) << buffers.status();
+    BufferVec device_inputs{buffers->device};
+    HostBufferVec reference_inputs{buffers->host};
+    auto actual = (*device)->fwd(*executor_, device_inputs);
+    auto expected_reference = (*reference)->fwd(reference_inputs);
+    ASSERT_TRUE(actual.ok()) << actual.status();
+    ASSERT_TRUE(expected_reference.ok()) << expected_reference.status();
+    ASSERT_EQ(actual->outputs.size(), 1);
+    ASSERT_EQ(expected_reference->outputs.size(), 1);
+    EXPECT_EQ(actual->outputs[0].size_bytes(), buffers->device.size_bytes());
+    EXPECT_EQ(expected_reference->outputs[0].size_bytes(),
+              buffers->host.size_bytes());
+    auto readback =
+        ReadDeviceActivations(*executor_, actual->outputs[0], storage_policy);
+    ASSERT_TRUE(readback.ok()) << readback.status();
+    EXPECT_TRUE(VectorsNear(readback->span(), expected, 0.0f));
+    EXPECT_TRUE(VectorsNear(
+        ReadHostActivations(expected_reference->outputs[0], storage_policy),
+        expected, 0.0f));
+  }
+}
+
+TEST(ReferenceCombinatorTypesTest, ConnectionsRequireExactSignatures) {
+  constexpr int64_t kBatch = ActivationType::kBatchDimension;
+  const ActivationType base(DataType::FP32, {kBatch, 8, 32});
+  const std::vector<std::vector<ActivationType>> mismatches = {
+      {{DataType::FP32, {3, 8, 32}}},       // Batch is not a fixed number.
+      {{DataType::FP32, {kBatch, 8, 64}}},  // Feature width differs.
+      {{DataType::FP32, {kBatch, 256}}},    // Same size, different rank.
+      {{DataType::BF16, {kBatch, 8, 32}}},  // Different physical dtype.
+      {base, base},                         // Different buffer arity.
+  };
+  for (const auto& mismatch : mismatches) {
+    ComposedLayerReferenceBuilder builder;
+    ASSERT_TRUE(builder
+                    .add(absl::make_unique<SignatureReference>(
+                        std::vector<ActivationType>{base},
+                        std::vector<ActivationType>{base}))
+                    .ok());
+    const LayerReference* first = builder.back();
+    const auto status = builder.add(absl::make_unique<SignatureReference>(
+        mismatch, std::vector<ActivationType>{base}));
+    EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ(builder.back(), first);
+
+    // Rejection leaves the existing composition usable.
+    ASSERT_TRUE(builder
+                    .add(absl::make_unique<SignatureReference>(
+                        std::vector<ActivationType>{base},
+                        std::vector<ActivationType>{base}))
+                    .ok());
+    EXPECT_TRUE(builder.create().ok());
+
+    std::vector<std::unique_ptr<LayerReference>> children;
+    children.push_back(absl::make_unique<SignatureReference>(
+        std::vector<ActivationType>{base}, std::vector<ActivationType>{base}));
+    children.push_back(absl::make_unique<SignatureReference>(
+        mismatch, std::vector<ActivationType>{base}));
+    EXPECT_EQ(
+        ComposedLayerReference::Create(std::move(children)).status().code(),
+        absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ(ResidualLayerReference::Create(
+                  absl::make_unique<SignatureReference>(
+                      std::vector<ActivationType>{base}, mismatch))
+                  .status()
+                  .code(),
+              absl::StatusCode::kInvalidArgument);
+  }
+}
+
+TEST(ReferenceCombinatorTypesTest, InvalidDimensionsNeverMatchEvenThemselves) {
+  for (const ActivationType invalid :
+       {ActivationType(DataType::FP32, {-1, 8, 32}),
+        ActivationType(DataType::FP32, {8, -2, 32}),
+        ActivationType(DataType::FP32, {-2, 0, 32})}) {
+    ComposedLayerReferenceBuilder builder;
+    EXPECT_EQ(builder
+                  .add(absl::make_unique<SignatureReference>(
+                      std::vector<ActivationType>{invalid},
+                      std::vector<ActivationType>{invalid}))
+                  .code(),
+              absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ(builder.back(), nullptr);
+    EXPECT_EQ(ResidualLayerReference::Create(
+                  absl::make_unique<SignatureReference>(
+                      std::vector<ActivationType>{invalid},
+                      std::vector<ActivationType>{invalid}))
+                  .status()
+                  .code(),
+              absl::StatusCode::kInvalidArgument);
+  }
+  const ActivationType integers(DataType::INT32, {-2, 8});
+  EXPECT_EQ(
+      ResidualLayerReference::Create(absl::make_unique<SignatureReference>(
+                                         std::vector<ActivationType>{integers},
+                                         std::vector<ActivationType>{integers}))
+          .status()
+          .code(),
+      absl::StatusCode::kUnimplemented);
+}
+
+TEST(ReferenceCombinatorTypesTest, NestedSignaturesPropagateWithoutFlattening) {
+  const ActivationType tokens(DataType::INT32, {-2, 8});
+  const ActivationType hidden(DataType::BF16, {-2, 8, 32});
+  const ActivationType logits(DataType::FP32, {-2, 8, 48});
+  ComposedLayerReferenceBuilder inside;
+  ASSERT_TRUE(inside
+                  .add(absl::make_unique<SignatureReference>(
+                      std::vector<ActivationType>{tokens},
+                      std::vector<ActivationType>{hidden}))
+                  .ok());
+  ASSERT_TRUE(inside
+                  .add(ResidualLayerReference::Create(
+                      absl::make_unique<SignatureReference>(
+                          std::vector<ActivationType>{hidden},
+                          std::vector<ActivationType>{hidden}, DataType::BF16)))
+                  .ok());
+  auto nested = inside.create();
+  ASSERT_TRUE(nested.ok()) << nested.status();
+  EXPECT_EQ((*nested)->input_types()[0], tokens);
+  EXPECT_EQ((*nested)->output_types()[0], hidden);
+
+  ComposedLayerReferenceBuilder outside;
+  ASSERT_TRUE(outside.add(std::move(nested)).ok());
+  ASSERT_TRUE(outside
+                  .add(absl::make_unique<SignatureReference>(
+                      std::vector<ActivationType>{hidden},
+                      std::vector<ActivationType>{logits}))
+                  .ok());
+  auto model = outside.create();
+  ASSERT_TRUE(model.ok()) << model.status();
+  EXPECT_EQ((*model)->input_types()[0], tokens);
+  EXPECT_EQ((*model)->output_types()[0], logits);
+}
 
 TEST_F(LayerReferenceTest, ResidualCompositionAndBuildersMatchBothPasses) {
   for (DataType type : {DataType::FP16, DataType::BF16}) {
@@ -46,17 +276,18 @@ TEST_F(LayerReferenceTest, ResidualCompositionAndBuildersMatchBothPasses) {
       ComposedLayerBuilder device_builder;
       ComposedLayerReferenceBuilder reference_builder;
       ASSERT_TRUE(
-          device_builder
-              .add(std::make_unique<ResidualLayer>(std::move(*device_dense)))
+          device_builder.add(ResidualLayer::Create(std::move(*device_dense)))
               .ok());
-      ASSERT_TRUE(reference_builder
-                      .add(std::make_unique<ResidualLayerReference>(
-                          std::move(*reference_dense)))
-                      .ok());
+      ASSERT_TRUE(
+          reference_builder
+              .add(ResidualLayerReference::Create(std::move(*reference_dense)))
+              .ok());
       ASSERT_NE(device_builder.back(), nullptr);
       ASSERT_NE(reference_builder.back(), nullptr);
-      ASSERT_TRUE(device_builder.add(GeluLayer::Create(*executor_, type)).ok());
-      ASSERT_TRUE(reference_builder.add(GeluLayerReference::Create(type)).ok());
+      ASSERT_TRUE(
+          device_builder.add(GeluLayer::Create(*executor_, width, type)).ok());
+      ASSERT_TRUE(
+          reference_builder.add(GeluLayerReference::Create(width, type)).ok());
       auto device_model = device_builder.create();
       auto reference_model = reference_builder.create();
       ASSERT_TRUE(device_model.ok()) << device_model.status();
@@ -117,9 +348,9 @@ TEST_F(LayerReferenceTest, BuildersPropagateFP8Rejection) {
   ComposedLayerBuilder device_builder;
   ComposedLayerReferenceBuilder reference_builder;
   const absl::Status device_status =
-      device_builder.add(GeluLayer::Create(*executor_, DataType::FP8));
+      device_builder.add(GeluLayer::Create(*executor_, 16, DataType::FP8));
   const absl::Status reference_status =
-      reference_builder.add(GeluLayerReference::Create(DataType::FP8));
+      reference_builder.add(GeluLayerReference::Create(16, DataType::FP8));
   EXPECT_EQ(device_status.code(), absl::StatusCode::kUnimplemented);
   EXPECT_EQ(reference_status.code(), absl::StatusCode::kUnimplemented);
   EXPECT_EQ(device_builder.back(), nullptr);

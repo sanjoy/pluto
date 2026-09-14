@@ -230,5 +230,75 @@ TEST_F(LayerReferenceTest, FP8IsRejectedConsistently) {
             absl::StatusCode::kUnimplemented);
 }
 
+TEST_F(LayerReferenceTest, EmbeddingSignaturesPreserveSequenceAndStorageTypes) {
+  for (DataType compute : {DataType::FP16, DataType::BF16}) {
+    const DataType storage =
+        compute == DataType::BF16 ? DataType::BF16 : DataType::FP32;
+    auto device = EmbeddingLookupLayer::Create(*executor_, 17, 32, compute, 7);
+    auto reference = EmbeddingLookupLayerReference::Create(17, 32, compute, 7);
+    ASSERT_TRUE(device.ok()) << device.status();
+    ASSERT_TRUE(reference.ok()) << reference.status();
+    const ActivationType tokens(DataType::INT32, {-2, 7});
+    const ActivationType activations(storage, {-2, 7, 32});
+    const ActivationType logits(DataType::FP32, {-2, 7, 32});
+    ASSERT_EQ((*device)->input_types().size(), 1);
+    ASSERT_EQ((*device)->output_types().size(), 1);
+    ASSERT_EQ((*reference)->input_types().size(), 1);
+    ASSERT_EQ((*reference)->output_types().size(), 1);
+    EXPECT_EQ((*device)->input_types()[0], tokens);
+    EXPECT_EQ((*reference)->input_types()[0], tokens);
+    EXPECT_EQ((*device)->output_types()[0], activations);
+    EXPECT_EQ((*reference)->output_types()[0], activations);
+    EXPECT_TRUE((*device)->ValidateSequenceLength(7).ok());
+    EXPECT_FALSE((*device)->ValidateSequenceLength(1).ok());
+
+    auto head = LanguageModelingHeadLayer::Create(device->get());
+    auto reference_head =
+        LanguageModelingHeadLayerReference::Create(reference->get());
+    ASSERT_TRUE(head.ok()) << head.status();
+    ASSERT_TRUE(reference_head.ok()) << reference_head.status();
+    ASSERT_EQ((*head)->input_types().size(), 1);
+    ASSERT_EQ((*head)->output_types().size(), 1);
+    ASSERT_EQ((*reference_head)->input_types().size(), 1);
+    ASSERT_EQ((*reference_head)->output_types().size(), 1);
+    EXPECT_EQ((*head)->input_types()[0], activations);
+    EXPECT_EQ((*reference_head)->input_types()[0], activations);
+    // The logical vocabulary is 17, but the physical projection has 32 lanes.
+    EXPECT_EQ((*head)->output_types()[0], logits);
+    EXPECT_EQ((*reference_head)->output_types()[0], logits);
+    EXPECT_TRUE((*head)->ValidateSequenceLength(7).ok());
+    EXPECT_FALSE((*head)->ValidateSequenceLength(1).ok());
+
+    auto position = PositionEmbeddingLayer::Create(*executor_, 7, 32, compute);
+    auto reference_position =
+        PositionEmbeddingLayerReference::Create(7, 32, compute);
+    ASSERT_TRUE(position.ok()) << position.status();
+    ASSERT_TRUE(reference_position.ok()) << reference_position.status();
+    ASSERT_EQ((*position)->input_types().size(), 1);
+    ASSERT_EQ((*position)->output_types().size(), 1);
+    ASSERT_EQ((*reference_position)->input_types().size(), 1);
+    ASSERT_EQ((*reference_position)->output_types().size(), 1);
+    EXPECT_EQ((*position)->input_types()[0], activations);
+    EXPECT_EQ((*position)->output_types()[0], activations);
+    EXPECT_EQ((*reference_position)->input_types()[0], activations);
+    EXPECT_EQ((*reference_position)->output_types()[0], activations);
+  }
+}
+
+TEST_F(LayerReferenceTest, EmbeddingRejectsNonpositiveSequenceLength) {
+  for (int length : {0, -1, -2}) {
+    EXPECT_EQ(
+        EmbeddingLookupLayer::Create(*executor_, 17, 32, DataType::FP16, length)
+            .status()
+            .code(),
+        absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ(
+        EmbeddingLookupLayerReference::Create(17, 32, DataType::FP16, length)
+            .status()
+            .code(),
+        absl::StatusCode::kInvalidArgument);
+  }
+}
+
 }  // namespace
 }  // namespace pluto::llm

@@ -3,15 +3,26 @@
 #include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "src/llm/layers/combinators.h"
 #include "src/llm/layers/reference_internal.h"
+#include "src/llm/layers/util/type_check.h"
 #include "src/util/status_macros.h"
 
 namespace pluto::llm {
 namespace ri = reference_internal;
+
+absl::StatusOr<std::unique_ptr<ResidualLayerReference>>
+ResidualLayerReference::Create(std::unique_ptr<LayerReference> layer) {
+  if (layer == nullptr)
+    return absl::InvalidArgumentError("residual branch must not be null");
+  RETURN_IF_ERROR(internal::ValidateResidualTypes(layer->input_types(),
+                                                  layer->output_types()));
+  return absl::WrapUnique(new ResidualLayerReference(std::move(layer)));
+}
 
 ResidualLayerReference::ResidualLayerReference(
     std::unique_ptr<LayerReference> layer)
@@ -41,18 +52,21 @@ absl::StatusOr<ReferenceFwdResult> ResidualLayerReference::fwd_impl(
     return absl::InvalidArgumentError(
         "reference residual branch changed activation shape");
   }
+  // As on the device, the physical signature controls storage. output_type()
+  // is a compute policy and does not necessarily describe these bytes.
+  const DataType storage_type = input_types()[0].data_type();
   ASSIGN_OR_RETURN(
       int elements,
-      ri::ElementCount(inputs[0], ri::ActivationElementBytes(output_type()),
+      ri::ElementCount(inputs[0], ri::ActivationElementBytes(storage_type),
                        "residual input"));
   RETURN_IF_ERROR(ri::ValidateTiledExtent(elements, "residual elements"));
-  ASSIGN_OR_RETURN(auto output, ri::AllocateActivation(elements, output_type()));
+  ASSIGN_OR_RETURN(auto output, ri::AllocateActivation(elements, storage_type));
   // The reference operation is deliberately just x[i] + branch[i]. Rounding
   // happens once when the sum is stored in the activation dtype.
   for (int index = 0; index < elements; ++index) {
-    ri::StoreActivation(&output, index, output_type(),
-                        ri::LoadActivation(inputs[0], index, output_type()) +
-                            ri::LoadActivation(branch, index, output_type()));
+    ri::StoreActivation(&output, index, storage_type,
+                        ri::LoadActivation(inputs[0], index, storage_type) +
+                            ri::LoadActivation(branch, index, storage_type));
   }
   state.intermediates = {inputs[0]};
   state.children = {std::move(branch_fwd.state)};
@@ -86,9 +100,31 @@ absl::StatusOr<HostBufferVec> ResidualLayerReference::bwd_impl(
   return HostBufferVec{std::move(input_gradient)};
 }
 
+absl::StatusOr<std::unique_ptr<ComposedLayerReference>>
+ComposedLayerReference::Create(
+    std::vector<std::unique_ptr<LayerReference>> layers) {
+  if (layers.empty())
+    return absl::FailedPreconditionError(
+        "cannot create an empty ComposedLayerReference");
+  for (size_t i = 0; i < layers.size(); ++i) {
+    if (layers[i] == nullptr)
+      return absl::InvalidArgumentError("composed child must not be null");
+    RETURN_IF_ERROR(internal::ValidateTypes(layers[i]->input_types()));
+    RETURN_IF_ERROR(internal::ValidateTypes(layers[i]->output_types()));
+    if (i != 0) {
+      const auto status = internal::ValidateTypeConnection(
+          layers[i - 1]->output_types(), layers[i]->input_types());
+      if (!status.ok())
+        return absl::InvalidArgumentError(
+            absl::StrCat("composed child ", i, ": ", status.message()));
+    }
+  }
+  return absl::WrapUnique(new ComposedLayerReference(std::move(layers)));
+}
+
 ComposedLayerReference::ComposedLayerReference(
-    DataType data_type, std::vector<std::unique_ptr<LayerReference>> layers)
-    : output_type_(data_type), layers_(std::move(layers)) {
+    std::vector<std::unique_ptr<LayerReference>> layers)
+    : output_type_(layers.back()->output_type()), layers_(std::move(layers)) {
   for (const auto& layer : layers_) {
     for (const HostBuffer& weight : layer->weights())
       weights_.push_back(weight);
@@ -131,6 +167,12 @@ absl::Status ComposedLayerReferenceBuilder::add(
     return absl::InvalidArgumentError(
         "ComposedLayerReferenceBuilder cannot add a null layer");
   }
+  RETURN_IF_ERROR(internal::ValidateTypes(layer->input_types()));
+  RETURN_IF_ERROR(internal::ValidateTypes(layer->output_types()));
+  if (!layers_.empty()) {
+    RETURN_IF_ERROR(internal::ValidateTypeConnection(
+        layers_.back()->output_types(), layer->input_types()));
+  }
   layers_.push_back(std::move(layer));
   return absl::OkStatus();
 }
@@ -149,11 +191,9 @@ ComposedLayerReferenceBuilder::create() {
     return absl::FailedPreconditionError(
         "cannot create an empty ComposedLayerReference");
   }
-  const DataType output_type = layers_.back()->output_type();
   std::vector<std::unique_ptr<LayerReference>> layers;
   layers.swap(layers_);
-  return std::make_unique<ComposedLayerReference>(output_type,
-                                                  std::move(layers));
+  return ComposedLayerReference::Create(std::move(layers));
 }
 
 }  // namespace pluto::llm

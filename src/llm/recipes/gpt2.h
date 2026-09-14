@@ -29,8 +29,10 @@ static_assert(kGpt2FeedForwardWidth == 4 * kGpt2ModelWidth);
 // layer applies the token and learned position embeddings followed by exactly
 // transformer_block_count pre-LayerNorm transformer blocks. It deliberately
 // omits the final LayerNorm and language-modeling head so its output is the
-// [token_count, kGpt2ModelWidth] residual-stream activation that follows the
-// requested block. Passing zero taps the summed token and position embeddings.
+// [-2, kGpt2ContextLength, kGpt2ModelWidth] residual-stream activation that
+// follows the requested block. The batch and context axes are contiguous and
+// flattened into token rows by kernels. Passing zero taps the summed token and
+// position embeddings.
 //
 // transformer_block_count must be in [0, kGpt2TransformerBlockCount]. The seed
 // and initialization scheme match CreateGpt2(), so the returned layer has the
@@ -41,8 +43,10 @@ absl::StatusOr<std::unique_ptr<Layer>> CreateActivationGenerator(
 
 // Builds the fixed GPT-2-style architecture used by the training binaries:
 // learned token and position embeddings, eight pre-LayerNorm transformer
-// blocks, a final LayerNorm, and a tied language-modeling head. Activations use
-// output_type while parameters and gradients remain FP32.
+// blocks, a final LayerNorm, and a tied language-modeling head. Every layer
+// declares the fixed context length and symbolic batch dimension (-2). The
+// head returns FP32 [-2, kGpt2ContextLength, kGpt2PaddedVocabularySize] logits.
+// output_type selects the compute policy; parameters and gradients remain FP32.
 absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateGpt2(
     cuda::Executor& executor, DataType output_type, int seed);
 

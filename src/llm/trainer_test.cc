@@ -28,6 +28,7 @@
 #include "src/llm/layers/attention.h"
 #include "src/llm/layers/combinators.h"
 #include "src/llm/layers/embedding.h"
+#include "src/llm/layers/fully_connected.h"
 #include "src/llm/layers/sparse_autoencoder.h"
 #include "src/llm/optimizer.h"
 
@@ -39,8 +40,18 @@ static_assert(!std::is_default_constructible_v<TrainingOptions>);
 
 class FakeModel final : public Layer {
  public:
+  absl::Span<const ActivationType> input_types() const override {
+    return types_;
+  }
+  absl::Span<const ActivationType> output_types() const override {
+    return types_;
+  }
+
   absl::Span<Buffer> weights() override { return {}; }
   DataType output_type() const override { return DataType::FP16; }
+
+  const ActivationType types_[1] = {
+      {DataType::FP32, {ActivationType::kBatchDimension, 4}}};
 
   mutable int forward_calls = 0;
   int backward_calls = 0;
@@ -86,6 +97,12 @@ class FakeLoss final : public Layer {
         new FakeLoss(std::move(*device_losses), std::move(*gradient)));
   }
 
+  absl::Span<const ActivationType> input_types() const override {
+    return input_types_;
+  }
+  absl::Span<const ActivationType> output_types() const override {
+    return output_types_;
+  }
   absl::Span<Buffer> weights() override { return {}; }
   DataType output_type() const override { return DataType::FP16; }
 
@@ -111,6 +128,11 @@ class FakeLoss final : public Layer {
   FakeLoss(Buffer losses, Buffer gradient)
       : losses_(std::move(losses)), gradient_(std::move(gradient)) {}
 
+  const ActivationType input_types_[2] = {
+      {DataType::FP32, {ActivationType::kBatchDimension, 4}},
+      {DataType::FP32, {ActivationType::kBatchDimension, 4}}};
+  const ActivationType output_types_[1] = {
+      {DataType::FP32, {ActivationType::kBatchDimension, 4}}};
   Buffer losses_;
   Buffer gradient_;
 };
@@ -120,8 +142,21 @@ class FakeLoss final : public Layer {
 class RoutingLayer final : public Layer {
  public:
   RoutingLayer(BufferVec outputs, BufferVec gradients)
-      : outputs_(std::move(outputs)), gradients_(std::move(gradients)) {}
+      : outputs_(std::move(outputs)), gradients_(std::move(gradients)) {
+    // These tests deliberately return arbitrary buffers; the declared signature
+    // tracks arity while runtime failure cases exercise the trainer's checks.
+    const ActivationType type(DataType::FP32,
+                              {ActivationType::kBatchDimension, 4});
+    input_types_.assign(gradients_.empty() ? 1 : gradients_.size() + 1, type);
+    output_types_.assign(outputs_.size(), type);
+  }
 
+  absl::Span<const ActivationType> input_types() const override {
+    return input_types_;
+  }
+  absl::Span<const ActivationType> output_types() const override {
+    return output_types_;
+  }
   absl::Span<Buffer> weights() override { return {}; }
   DataType output_type() const override { return DataType::FP16; }
 
@@ -144,6 +179,8 @@ class RoutingLayer final : public Layer {
     return gradients_;
   }
 
+  std::vector<ActivationType> input_types_;
+  std::vector<ActivationType> output_types_;
   BufferVec outputs_;
   BufferVec gradients_;
 };
@@ -382,15 +419,14 @@ TEST_F(TrainerTest, LanguageModelingNormalizesByTokensNotSequences) {
 TEST_F(TrainerTest,
        ChecksSequenceBoundariesBeforeFlatteningLanguageModelBatches) {
   auto embedding =
-      EmbeddingLookupLayer::Create(*executor_, 32, 16, DataType::FP16);
+      EmbeddingLookupLayer::Create(*executor_, 32, 16, DataType::FP16, 4);
   auto positions =
       PositionEmbeddingLayer::Create(*executor_, 4, 16, DataType::FP16);
   ASSERT_TRUE(embedding.ok()) << embedding.status();
   ASSERT_TRUE(positions.ok()) << positions.status();
   ComposedLayerBuilder builder;
   ASSERT_TRUE(builder.add(std::move(*embedding)).ok());
-  ASSERT_TRUE(
-      builder.add(std::make_unique<ResidualLayer>(std::move(*positions))).ok());
+  ASSERT_TRUE(builder.add(ResidualLayer::Create(std::move(*positions))).ok());
   auto model = builder.create();
   auto data = MakeData();
   auto loss = MakeLoss();
@@ -432,10 +468,19 @@ TEST_F(TrainerTest, SequenceValidationChecksNestedAttentionAndPerTokenLayers) {
 
   // Validation must reach a stateful descendant even through both sequential
   // and residual wrappers; checking only a composition's outer type misses it.
+  // Attention consumes packed QKV, so its projection must live inside the
+  // residual branch for both ends of the branch to have model width 16.
+  ComposedLayerBuilder branch;
+  ASSERT_TRUE(branch
+                  .add(FullyConnectedLayer::Create(*executor_, 16, 48,
+                                                   DataType::FP16, 4))
+                  .ok());
+  ASSERT_TRUE(branch.add(std::move(*attention)).ok());
+  auto attention_branch = branch.create();
+  ASSERT_TRUE(attention_branch.ok()) << attention_branch.status();
   ComposedLayerBuilder builder;
-  ASSERT_TRUE(builder.add(std::make_unique<FakeModel>()).ok());
   ASSERT_TRUE(
-      builder.add(std::make_unique<ResidualLayer>(std::move(*attention))).ok());
+      builder.add(ResidualLayer::Create(std::move(*attention_branch))).ok());
   auto model = builder.create();
   ASSERT_TRUE(model.ok()) << model.status();
   EXPECT_TRUE((*model)->ValidateSequenceLength(4).ok());
@@ -672,12 +717,14 @@ TEST_F(TrainerTest, GenericTrainingMatchesExplicitSparseAutoEncoderUpdate) {
                             cudaMemcpyHostToDevice, executor_->stream()),
             cudaSuccess);
 
-  auto manual = SparseAutoEncoderLayer::Create(*executor_, kWidth, kFeatures,
-                                               DataType::FP16);
-  auto trained = SparseAutoEncoderLayer::Create(*executor_, kWidth, kFeatures,
-                                                DataType::FP16);
-  auto loss = SparseAutoEncoderLossLayer::Create(*executor_, kWidth, kFeatures,
-                                                 0.5f, DataType::FP16);
+  auto manual = SparseAutoEncoderLayer::Create(
+      *executor_, kWidth, kFeatures, DataType::FP16,
+      SparseAutoEncoderLayer::Mode::kDefault, kRows / 2);
+  auto trained = SparseAutoEncoderLayer::Create(
+      *executor_, kWidth, kFeatures, DataType::FP16,
+      SparseAutoEncoderLayer::Mode::kDefault, kRows / 2);
+  auto loss = SparseAutoEncoderLossLayer::Create(
+      *executor_, kWidth, kFeatures, 0.5f, DataType::FP16, kRows / 2);
   ASSERT_TRUE(manual.ok()) << manual.status();
   ASSERT_TRUE(trained.ok()) << trained.status();
   ASSERT_TRUE(loss.ok()) << loss.status();
@@ -756,9 +803,11 @@ TEST_F(TrainerTest, TrainsAndEvaluatesSparseAutoEncoderDataBatches) {
             cudaSuccess);
 
   auto model = SparseAutoEncoderLayer::Create(
-      *executor_, kInputDimension, kFeatureDimension, DataType::FP16);
-  auto loss = SparseAutoEncoderLossLayer::Create(
-      *executor_, kInputDimension, kFeatureDimension, 0.5f, DataType::FP16);
+      *executor_, kInputDimension, kFeatureDimension, DataType::FP16,
+      SparseAutoEncoderLayer::Mode::kDefault, kRows / 2);
+  auto loss = SparseAutoEncoderLossLayer::Create(*executor_, kInputDimension,
+                                                 kFeatureDimension, 0.5f,
+                                                 DataType::FP16, kRows / 2);
   ASSERT_TRUE(model.ok()) << model.status();
   ASSERT_TRUE(loss.ok()) << loss.status();
   ASSERT_TRUE((*model)->InitializeNormal(0.05f, 19).ok());
@@ -778,17 +827,38 @@ TEST_F(TrainerTest, TrainsAndEvaluatesSparseAutoEncoderDataBatches) {
   auto pass = EvaluateBatch(*executor_, **model, **loss, *batch);
   ASSERT_TRUE(pass.ok()) << pass.status();
   EXPECT_EQ(*batch->token_count(), kRows);
-  // Grouping the same activation rows into samples cannot change per-token
-  // SAE loss. Both single-token samples and longer sequences are supported.
+  // Batch is symbolic, but the declared per-sample sequence length is exact.
+  // Reinterpreting these rows as one-token samples requires another layer
+  // instance with that signature; an equal flattened byte size is not enough.
   FixedActivationDataSetIterator single_token_samples(*activations, kRows);
   auto ungrouped = Evaluate(*executor_, **model,
                             EvaluationOptions{.loss_layer = **loss,
                                               .eval_data = single_token_samples,
                                               .batches = 1});
-  ASSERT_TRUE(ungrouped.ok()) << ungrouped.status();
-  auto host_ungrouped = ReadEvaluationLoss(*executor_, *ungrouped);
-  ASSERT_TRUE(host_ungrouped.ok()) << host_ungrouped.status();
-  EXPECT_FLOAT_EQ(*host_ungrouped, *host_initial);
+  EXPECT_EQ(ungrouped.status().code(), absl::StatusCode::kInvalidArgument);
+
+  // A separately declared one-token model can process the very same rows.
+  // Its identically initialized weights must give the same per-token mean:
+  // changing sample grouping does not change SAE math or loss normalization.
+  auto single_token_model = SparseAutoEncoderLayer::Create(
+      *executor_, kInputDimension, kFeatureDimension, DataType::FP16,
+      SparseAutoEncoderLayer::Mode::kDefault, 1);
+  auto single_token_loss = SparseAutoEncoderLossLayer::Create(
+      *executor_, kInputDimension, kFeatureDimension, 0.5f, DataType::FP16, 1);
+  ASSERT_TRUE(single_token_model.ok()) << single_token_model.status();
+  ASSERT_TRUE(single_token_loss.ok()) << single_token_loss.status();
+  ASSERT_TRUE((*single_token_model)->InitializeNormal(0.05f, 19).ok());
+  auto single_token_mean =
+      Evaluate(*executor_, **single_token_model,
+               EvaluationOptions{.loss_layer = **single_token_loss,
+                                 .eval_data = single_token_samples,
+                                 .batches = 1});
+  ASSERT_TRUE(single_token_mean.ok()) << single_token_mean.status();
+  auto host_single_token_mean =
+      ReadEvaluationLoss(*executor_, *single_token_mean);
+  ASSERT_TRUE(host_single_token_mean.ok()) << host_single_token_mean.status();
+  EXPECT_FLOAT_EQ(*host_single_token_mean, *host_initial);
+
   batch->sequence_length = kRows;
   EXPECT_FALSE(EvaluateBatch(*executor_, **model, **loss, *batch).ok());
   batch->sequence_length = -1;

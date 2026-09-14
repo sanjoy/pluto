@@ -606,8 +606,11 @@ absl::Status CopyNormal(cuda::Executor& executor, Buffer& destination,
 
 absl::StatusOr<std::unique_ptr<SparseAutoEncoderLayer>>
 SparseAutoEncoderLayer::Create(cuda::Executor& executor, int input_dim,
-                               int feature_dim, DataType data_type, Mode mode) {
+                               int feature_dim, DataType data_type, Mode mode,
+                               int sequence_length) {
   RETURN_IF_ERROR(internal::ValidateComputeType(data_type));
+  if (sequence_length <= 0)
+    return absl::InvalidArgumentError("sequence_length must be positive");
   RETURN_IF_ERROR(internal::ValidateTiledExtent(input_dim, "input_dim"));
   RETURN_IF_ERROR(internal::ValidateTiledExtent(feature_dim, "feature_dim"));
   // Row counts are stored in FP32 alongside the moments, so keep them exact.
@@ -646,10 +649,20 @@ SparseAutoEncoderLayer::Create(cuda::Executor& executor, int input_dim,
         "cudaMemsetAsync(sparse autoencoder parameter)"));
   }
   return absl::WrapUnique(new SparseAutoEncoderLayer(
-      executor, input_dim, feature_dim, data_type, mode, std::move(encoder),
-      std::move(encoder_bias), std::move(decoder), std::move(decoder_bias),
-      std::move(encoder_gradient), std::move(encoder_bias_gradient),
-      std::move(decoder_gradient), std::move(decoder_bias_gradient)));
+      executor, input_dim, feature_dim, data_type, mode, sequence_length,
+      std::move(encoder), std::move(encoder_bias), std::move(decoder),
+      std::move(decoder_bias), std::move(encoder_gradient),
+      std::move(encoder_bias_gradient), std::move(decoder_gradient),
+      std::move(decoder_bias_gradient)));
+}
+
+absl::Status SparseAutoEncoderLayer::ValidateSequenceLength(
+    int sequence_length) const {
+  if (sequence_length != sequence_length_)
+    return absl::InvalidArgumentError(
+        "SparseAutoEncoderLayer sequence length does not match its activation "
+        "type");
+  return absl::OkStatus();
 }
 
 absl::Status SparseAutoEncoderLayer::InitializeNormal(float standard_deviation,
@@ -961,8 +974,10 @@ absl::StatusOr<BufferVec> SparseAutoEncoderLayer::bwd_impl(
 absl::StatusOr<std::unique_ptr<SparseAutoEncoderLossLayer>>
 SparseAutoEncoderLossLayer::Create(cuda::Executor& executor, int input_dim,
                                    int feature_dim, float sparsity_penalty,
-                                   DataType data_type) {
+                                   DataType data_type, int sequence_length) {
   RETURN_IF_ERROR(internal::ValidateComputeType(data_type));
+  if (sequence_length <= 0)
+    return absl::InvalidArgumentError("sequence_length must be positive");
   RETURN_IF_ERROR(internal::ValidateTiledExtent(input_dim, "input_dim"));
   RETURN_IF_ERROR(internal::ValidateTiledExtent(feature_dim, "feature_dim"));
   if (!std::isfinite(sparsity_penalty) || sparsity_penalty < 0.0f) {
@@ -970,7 +985,17 @@ SparseAutoEncoderLossLayer::Create(cuda::Executor& executor, int input_dim,
         "sparsity_penalty must be finite and non-negative");
   }
   return absl::WrapUnique(new SparseAutoEncoderLossLayer(
-      executor, input_dim, feature_dim, sparsity_penalty, data_type));
+      executor, input_dim, feature_dim, sparsity_penalty, data_type,
+      sequence_length));
+}
+
+absl::Status SparseAutoEncoderLossLayer::ValidateSequenceLength(
+    int sequence_length) const {
+  if (sequence_length != sequence_length_)
+    return absl::InvalidArgumentError(
+        "SparseAutoEncoderLossLayer sequence length does not match its "
+        "activation type");
+  return absl::OkStatus();
 }
 
 absl::StatusOr<FwdResult> SparseAutoEncoderLossLayer::fwd_impl(
@@ -987,28 +1012,27 @@ absl::StatusOr<FwdResult> SparseAutoEncoderLossLayer::fwd_impl(
   ASSIGN_OR_RETURN(
       auto row_losses,
       Buffer::Allocate(executor, static_cast<size_t>(rows) * sizeof(float)));
-      SparseLossDecoderNormKernel<<<internal::TileCount(feature_dim_), 1, 0,
-                                    executor.stream()>>>(
-          static_cast<const float*>(inputs[2].data()), input_dim_, feature_dim_,
-          static_cast<float*>(decoder_norm.data()));
-      if (output_type_ == DataType::BF16) {
-        SparseLossPerRowKernel<__nv_bfloat16>
-            <<<rows, 1, 0, executor.stream()>>>(
-                static_cast<const __nv_bfloat16*>(inputs[3].data()),
-                static_cast<const __nv_bfloat16*>(inputs[0].data()),
-                static_cast<const __nv_bfloat16*>(inputs[1].data()),
-                static_cast<const float*>(decoder_norm.data()), rows,
-                input_dim_, feature_dim_, sparsity_penalty_,
-                static_cast<float*>(row_losses.data()));
-      } else {
-        SparseLossPerRowKernel<float><<<rows, 1, 0, executor.stream()>>>(
-            static_cast<const float*>(inputs[3].data()),
-            static_cast<const float*>(inputs[0].data()),
-            static_cast<const float*>(inputs[1].data()),
-            static_cast<const float*>(decoder_norm.data()), rows, input_dim_,
-            feature_dim_, sparsity_penalty_,
-            static_cast<float*>(row_losses.data()));
-      }
+  SparseLossDecoderNormKernel<<<internal::TileCount(feature_dim_), 1, 0,
+                                executor.stream()>>>(
+      static_cast<const float*>(inputs[2].data()), input_dim_, feature_dim_,
+      static_cast<float*>(decoder_norm.data()));
+  if (output_type_ == DataType::BF16) {
+    SparseLossPerRowKernel<__nv_bfloat16><<<rows, 1, 0, executor.stream()>>>(
+        static_cast<const __nv_bfloat16*>(inputs[3].data()),
+        static_cast<const __nv_bfloat16*>(inputs[0].data()),
+        static_cast<const __nv_bfloat16*>(inputs[1].data()),
+        static_cast<const float*>(decoder_norm.data()), rows, input_dim_,
+        feature_dim_, sparsity_penalty_,
+        static_cast<float*>(row_losses.data()));
+  } else {
+    SparseLossPerRowKernel<float><<<rows, 1, 0, executor.stream()>>>(
+        static_cast<const float*>(inputs[3].data()),
+        static_cast<const float*>(inputs[0].data()),
+        static_cast<const float*>(inputs[1].data()),
+        static_cast<const float*>(decoder_norm.data()), rows, input_dim_,
+        feature_dim_, sparsity_penalty_,
+        static_cast<float*>(row_losses.data()));
+  }
   RETURN_IF_ERROR(
       cuda::CudaStatus(cudaGetLastError(), "sparse loss forward launch"));
   state.intermediates.assign(inputs.begin(), inputs.end());

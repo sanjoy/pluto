@@ -113,6 +113,9 @@ inline absl::StatusOr<int> ElementCount(cuda::Executor& executor,
 inline absl::Status ValidateComputeType(DataType data_type) {
   if (data_type == DataType::FP16 || data_type == DataType::BF16)
     return absl::OkStatus();
+  if (data_type != DataType::FP8)
+    return absl::UnimplementedError(
+        "this backend supports only FP16 and BF16 compute policies");
   return absl::UnimplementedError(
       "FP8 requires an explicit scaling policy; this cuTile backend currently "
       "implements FP16 and BF16 compute with FP32 master weights");

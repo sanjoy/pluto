@@ -13,7 +13,7 @@ namespace pluto::llm {
 namespace {
 
 TEST_F(LayersTest, ZeroHasZeroOutputAndHalfGradient) {
-  auto gelu = GeluLayer::Create(*executor_, DataType::FP16);
+  auto gelu = GeluLayer::Create(*executor_, kTestTokenCount, DataType::FP16);
   ASSERT_TRUE(gelu.ok()) << gelu.status();
 
   std::vector<float> input(kTestTokenCount, 0.0f);
@@ -68,7 +68,7 @@ TEST_F(LayersTest, ZeroHasZeroOutputAndHalfGradient) {
 }
 
 TEST_F(LayersTest, RejectsExecutionOnADifferentExecutor) {
-  auto gelu = GeluLayer::Create(*executor_, DataType::FP16);
+  auto gelu = GeluLayer::Create(*executor_, kTestTokenCount, DataType::FP16);
   ASSERT_TRUE(gelu.ok()) << gelu.status();
   auto input = Buffer::Allocate(*executor_, kTestTokenCount * sizeof(float));
   ASSERT_TRUE(input.ok()) << input.status();

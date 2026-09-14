@@ -189,9 +189,11 @@ FullyConnectedLayer::FullyConnectedLayer(cuda::Executor& executor,
                                          int input_dim, int output_dim,
                                          DataType data_type, Buffer matrix,
                                          Buffer bias, Buffer matrix_gradient,
-                                         Buffer bias_gradient)
+                                         Buffer bias_gradient,
+                                         int sequence_length)
     : input_dim_(input_dim),
       output_dim_(output_dim),
+      sequence_length_(sequence_length),
       output_type_(data_type),
       executor_(executor),
       weights_{std::move(matrix), std::move(bias)},
@@ -199,7 +201,10 @@ FullyConnectedLayer::FullyConnectedLayer(cuda::Executor& executor,
 
 absl::StatusOr<std::unique_ptr<FullyConnectedLayer>>
 FullyConnectedLayer::Create(cuda::Executor& executor, int input_dim,
-                            int output_dim, DataType data_type) {
+                            int output_dim, DataType data_type,
+                            int sequence_length) {
+  if (sequence_length <= 0)
+    return absl::InvalidArgumentError("sequence_length must be positive");
   RETURN_IF_ERROR(internal::ValidateComputeType(data_type));
   RETURN_IF_ERROR(internal::ValidateTiledExtent(input_dim, "input_dim"));
   RETURN_IF_ERROR(internal::ValidateTiledExtent(output_dim, "output_dim"));
@@ -219,7 +224,8 @@ FullyConnectedLayer::Create(cuda::Executor& executor, int input_dim,
   }
   return absl::WrapUnique(new FullyConnectedLayer(
       executor, input_dim, output_dim, data_type, std::move(matrix),
-      std::move(bias), std::move(matrix_gradient), std::move(bias_gradient)));
+      std::move(bias), std::move(matrix_gradient), std::move(bias_gradient),
+      sequence_length));
 }
 
 absl::Status FullyConnectedLayer::InitializeIdentity(float scale) {

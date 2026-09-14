@@ -28,6 +28,9 @@ inline size_t ActivationElementBytes(DataType type) {
 inline absl::Status ValidateComputeType(DataType type) {
   if (type == DataType::FP16 || type == DataType::BF16)
     return absl::OkStatus();
+  if (type != DataType::FP8)
+    return absl::UnimplementedError(
+        "reference backend supports only FP16 and BF16 compute policies");
   // FP8 arithmetic is meaningless without the same per-tensor scale used by
   // the device kernel. The production backend rejects FP8 for that reason, so
   // the reference rejects it too instead of inventing a different contract.

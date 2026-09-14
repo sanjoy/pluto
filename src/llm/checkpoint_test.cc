@@ -31,6 +31,10 @@ class CheckpointLayer final : public Layer {
 
   DataType output_type() const override { return DataType::FP16; }
 
+  // This serialization-only fixture deliberately has no forward data path.
+  absl::Span<const ActivationType> input_types() const override { return {}; }
+  absl::Span<const ActivationType> output_types() const override { return {}; }
+
  private:
   absl::StatusOr<FwdResult> fwd_impl(cuda::Executor&,
                                      absl::Span<const Buffer>) const override {

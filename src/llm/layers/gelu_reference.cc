@@ -33,9 +33,16 @@ float GeluDerivative(float x) {
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<GeluLayerReference>> GeluLayerReference::Create(
-    DataType data_type) {
+    int embedding_dim, DataType data_type, int sequence_length) {
   RETURN_IF_ERROR(ri::ValidateComputeType(data_type));
-  return absl::WrapUnique(new GeluLayerReference(data_type));
+  if (sequence_length <= 0)
+    return absl::InvalidArgumentError("sequence_length must be positive");
+  // Elementwise tiles cross row boundaries. Only the total element count,
+  // checked by fwd(), needs to be a multiple of the tile width.
+  if (embedding_dim <= 0)
+    return absl::InvalidArgumentError("embedding_dim must be positive");
+  return absl::WrapUnique(
+      new GeluLayerReference(embedding_dim, data_type, sequence_length));
 }
 
 absl::StatusOr<ReferenceFwdResult> GeluLayerReference::fwd_impl(

@@ -26,6 +26,17 @@ cc_library(
 )
 
 cc_test(
+    name = "activation_type_test",
+    srcs = ["activation_type_test.cc"],
+    deps = [
+        ":layer",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/types:span",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "layer_test",
     srcs = ["layer_test.cc"],
     tags = ["requires-gpu"],
@@ -167,8 +178,20 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "layer_type_check",
+    hdrs = ["layers/util/type_check.h"],
+    deps = [
+        ":layer",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
 layer_library("attention")
-layer_library("combinators")
+layer_library("combinators", [":layer_type_check"])
 layer_library("cross_entropy_loss")
 layer_library("embedding", ["@cuda//:cub"])
 layer_library("fully_connected")
@@ -177,7 +200,7 @@ layer_library("norm")
 layer_library("sparse_autoencoder")
 
 layer_reference_library("attention")
-layer_reference_library("combinators")
+layer_reference_library("combinators", [":layer_type_check"])
 layer_reference_library("cross_entropy_loss")
 layer_reference_library("embedding")
 layer_reference_library("fully_connected")
@@ -264,6 +287,7 @@ cc_test(
         ":attention",
         ":combinators",
         ":embedding",
+        ":fully_connected",
         ":layer",
         ":optimizer",
         ":sparse_autoencoder",
@@ -344,7 +368,9 @@ layer_test("attention", [
 ])
 layer_test("combinators", [
     ":fully_connected",
+    ":gelu",
     "//src/util:status_macros",
+    "@abseil-cpp//absl/memory",
     "@abseil-cpp//absl/status",
     "@abseil-cpp//absl/status:statusor",
     "@abseil-cpp//absl/types:span",
@@ -367,6 +393,7 @@ layer_reference_test("combinators", [
     ":fully_connected_reference",
     ":gelu",
     ":gelu_reference",
+    "@abseil-cpp//absl/memory",
 ])
 layer_reference_test("cross_entropy_loss")
 layer_reference_test("embedding")

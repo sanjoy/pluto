@@ -72,6 +72,32 @@ class AttentionReferenceTest : public LayerReferenceTest {
   }
 };
 
+TEST_F(AttentionReferenceTest, ActivationTypesKeepBatchAndContextDistinct) {
+  constexpr int64_t kBatch = ActivationType::kBatchDimension;
+  for (DataType type : {DataType::FP16, DataType::BF16}) {
+    const DataType storage =
+        type == DataType::BF16 ? DataType::BF16 : DataType::FP32;
+    for (int context : {1, 17}) {
+      auto device = AttentionLayer::Create(*executor_, context, 2, 32, type);
+      auto reference = AttentionLayerReference::Create(context, 2, 32, type);
+      ASSERT_TRUE(device.ok()) << device.status();
+      ASSERT_TRUE(reference.ok()) << reference.status();
+      const ActivationType input(storage, {kBatch, context, 96});
+      const ActivationType output(storage, {kBatch, context, 32});
+      ASSERT_EQ((*device)->input_types().size(), 1);
+      ASSERT_EQ((*device)->output_types().size(), 1);
+      ASSERT_EQ((*reference)->input_types().size(), 1);
+      ASSERT_EQ((*reference)->output_types().size(), 1);
+      EXPECT_EQ((*device)->input_types()[0], input);
+      EXPECT_EQ((*device)->output_types()[0], output);
+      EXPECT_EQ((*reference)->input_types()[0], input);
+      EXPECT_EQ((*reference)->output_types()[0], output);
+      EXPECT_TRUE((*device)->ValidateSequenceLength(context).ok());
+      EXPECT_FALSE((*device)->ValidateSequenceLength(context + 1).ok());
+    }
+  }
+}
+
 TEST_F(AttentionReferenceTest,
        CausalForwardAndBackwardMatchAcrossConfigurations) {
   for (DataType type : {DataType::FP16, DataType::BF16}) {

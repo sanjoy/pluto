@@ -21,7 +21,9 @@ namespace ri = reference_internal;
 
 absl::StatusOr<std::unique_ptr<FullyConnectedLayerReference>>
 FullyConnectedLayerReference::Create(int input_dim, int output_dim,
-                                     DataType data_type) {
+                                     DataType data_type, int sequence_length) {
+  if (sequence_length <= 0)
+    return absl::InvalidArgumentError("sequence_length must be positive");
   RETURN_IF_ERROR(ri::ValidateComputeType(data_type));
   RETURN_IF_ERROR(ri::ValidateTiledExtent(input_dim, "input_dim"));
   RETURN_IF_ERROR(ri::ValidateTiledExtent(output_dim, "output_dim"));
@@ -35,7 +37,7 @@ FullyConnectedLayerReference::Create(int input_dim, int output_dim,
   ASSIGN_OR_RETURN(auto bias_gradient, ri::AllocateFloats(output_dim, true));
   return absl::WrapUnique(new FullyConnectedLayerReference(
       input_dim, output_dim, data_type, std::move(matrix), std::move(bias),
-      std::move(matrix_gradient), std::move(bias_gradient)));
+      std::move(matrix_gradient), std::move(bias_gradient), sequence_length));
 }
 
 absl::Status FullyConnectedLayerReference::InitializeIdentity(float scale) {
