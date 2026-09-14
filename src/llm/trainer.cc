@@ -16,6 +16,7 @@
 #include "src/cuda/executor.h"
 #include "src/cuda/page_locked_host_array.h"
 #include "src/dataset/dataset.h"
+#include "src/llm/batch_validation.h"
 #include "src/llm/layer.h"
 #include "src/llm/optimizer.h"
 #include "src/util/status_macros.h"
@@ -57,35 +58,24 @@ struct ForwardPass {
 absl::StatusOr<ForwardPass> Forward(cuda::Executor& executor,
                                     const Layer& model, const Layer& loss_layer,
                                     const DataBatch& batch) {
+  // Bind every symbolic batch axis to this batch before launching any model
+  // work. Exact sample shapes preserve sequence boundaries even though kernels
+  // consume flat, untyped allocations.
+  RETURN_IF_ERROR(ValidateTrainingBatch(executor, model, loss_layer, batch));
   ASSIGN_OR_RETURN(const int rows, batch.token_count());
-  if (&batch.inputs.executor() != &executor ||
-      &batch.targets.executor() != &executor)
-    return absl::InvalidArgumentError(
-        "dataset inputs and targets must belong to the supplied CUDA Executor");
-  // Preserve sample boundaries before layers infer flattened shapes from bytes.
-  RETURN_IF_ERROR(model.ValidateSequenceLength(batch.sequence_length));
-  RETURN_IF_ERROR(loss_layer.ValidateSequenceLength(batch.sequence_length));
-
   ASSIGN_OR_RETURN(auto model_fwd, model.fwd(executor, {batch.inputs}));
-  if (model_fwd.outputs.empty())
-    return absl::InvalidArgumentError("model must return at least one output");
-  for (const Buffer& output : model_fwd.outputs)
-    if (&output.executor() != &executor)
-      return absl::InvalidArgumentError(
-          "model output belongs to a different CUDA Executor");
+  RETURN_IF_ERROR(ValidateBatchBuffers(executor, batch, model_fwd.outputs,
+                                       model.output_types(), model.name()));
   const size_t model_output_count = model_fwd.outputs.size();
   BufferVec loss_inputs = std::move(model_fwd.outputs);
   loss_inputs.push_back(batch.targets);
   ASSIGN_OR_RETURN(auto loss_fwd, loss_layer.fwd(executor, loss_inputs));
-  if (loss_fwd.outputs.size() != 1)
-    return absl::InvalidArgumentError("loss must return exactly one buffer");
+  RETURN_IF_ERROR(ValidateBatchBuffers(executor, batch, loss_fwd.outputs,
+                                       loss_layer.output_types(),
+                                       loss_layer.name()));
+  // Preflight established one FP32 value per token/activation row; the
+  // returned-buffer validation above confirms that the implementation agrees.
   Buffer loss = std::move(loss_fwd.outputs[0]);
-  if (&loss.executor() != &executor)
-    return absl::InvalidArgumentError(
-        "loss belongs to a different CUDA Executor");
-  if (loss.size_bytes() != static_cast<size_t>(rows) * sizeof(float))
-    return absl::InvalidArgumentError(
-        "loss must return one FP32 value per batch token/activation row");
   return ForwardPass{std::move(loss), rows, model_output_count,
                      std::move(model_fwd.state), std::move(loss_fwd.state)};
 }
@@ -187,9 +177,8 @@ absl::StatusOr<Buffer> Evaluate(cuda::Executor& executor, const Layer& model,
     const float output_scale =
         final_batch ? 1.0f / static_cast<float>(normalization_count) : 1.0f;
     AddLossKernel<<<1, 1, 0, executor.stream()>>>(
-        static_cast<const float*>(pass.loss.data()),
-        pass.row_count, output_scale,
-        static_cast<float*>(mean_loss.data()));
+        static_cast<const float*>(pass.loss.data()), pass.row_count,
+        output_scale, static_cast<float*>(mean_loss.data()));
     RETURN_IF_ERROR(
         cuda::CudaStatus(cudaGetLastError(), "AddLossKernel launch"));
   }

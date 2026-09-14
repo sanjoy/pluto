@@ -249,8 +249,6 @@ TEST_F(LayerReferenceTest, EmbeddingSignaturesPreserveSequenceAndStorageTypes) {
     EXPECT_EQ((*reference)->input_types()[0], tokens);
     EXPECT_EQ((*device)->output_types()[0], activations);
     EXPECT_EQ((*reference)->output_types()[0], activations);
-    EXPECT_TRUE((*device)->ValidateSequenceLength(7).ok());
-    EXPECT_FALSE((*device)->ValidateSequenceLength(1).ok());
 
     auto head = LanguageModelingHeadLayer::Create(device->get());
     auto reference_head =
@@ -266,8 +264,6 @@ TEST_F(LayerReferenceTest, EmbeddingSignaturesPreserveSequenceAndStorageTypes) {
     // The logical vocabulary is 17, but the physical projection has 32 lanes.
     EXPECT_EQ((*head)->output_types()[0], logits);
     EXPECT_EQ((*reference_head)->output_types()[0], logits);
-    EXPECT_TRUE((*head)->ValidateSequenceLength(7).ok());
-    EXPECT_FALSE((*head)->ValidateSequenceLength(1).ok());
 
     auto position = PositionEmbeddingLayer::Create(*executor_, 7, 32, compute);
     auto reference_position =

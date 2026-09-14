@@ -198,6 +198,7 @@ cc_library(
     copts = ["-std=c++20"],
     visibility = ["//visibility:public"],
     deps = [
+        "//src/llm:batch_validation",
         "//src/cuda:buffer",
         "//src/cuda:executor",
         "//src/dataset",

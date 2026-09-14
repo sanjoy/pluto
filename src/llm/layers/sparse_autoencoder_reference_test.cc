@@ -56,9 +56,6 @@ TEST_F(LayerReferenceTest, SparseAutoEncoderTypesKeepDecoderUnbatchedAndFP32) {
           EXPECT_EQ((*reference_loss)->input_types()[index],
                     expected_outputs[index]);
         }
-        EXPECT_TRUE((*device)->ValidateSequenceLength(sequence_length).ok());
-        EXPECT_FALSE(
-            (*device)->ValidateSequenceLength(sequence_length + 1).ok());
       }
       EXPECT_EQ((*loss)->input_types()[3], reconstruction);
       EXPECT_EQ((*reference_loss)->input_types()[3], reconstruction);
@@ -66,8 +63,6 @@ TEST_F(LayerReferenceTest, SparseAutoEncoderTypesKeepDecoderUnbatchedAndFP32) {
       ASSERT_EQ((*reference_loss)->output_types().size(), 1);
       EXPECT_EQ((*loss)->output_types()[0], losses);
       EXPECT_EQ((*reference_loss)->output_types()[0], losses);
-      EXPECT_TRUE((*loss)->ValidateSequenceLength(sequence_length).ok());
-      EXPECT_FALSE((*loss)->ValidateSequenceLength(sequence_length + 1).ok());
     }
     for (int invalid_length : {0, -1, -2}) {
       EXPECT_EQ(SparseAutoEncoderLayer::Create(

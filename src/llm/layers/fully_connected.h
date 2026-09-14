@@ -48,13 +48,6 @@ class FullyConnectedLayer final : public Layer {
     return absl::MakeConstSpan(&output_type_signature_, 1);
   }
 
-  absl::Status ValidateSequenceLength(int sequence_length) const override {
-    if (sequence_length != sequence_length_)
-      return absl::InvalidArgumentError(
-          "sequence_length must match the layer's configured sample shape");
-    return absl::OkStatus();
-  }
-
   int input_dim() const { return input_dim_; }
   int output_dim() const { return output_dim_; }
 

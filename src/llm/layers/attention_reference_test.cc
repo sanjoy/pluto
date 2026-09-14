@@ -92,8 +92,6 @@ TEST_F(AttentionReferenceTest, ActivationTypesKeepBatchAndContextDistinct) {
       EXPECT_EQ((*device)->output_types()[0], output);
       EXPECT_EQ((*reference)->input_types()[0], input);
       EXPECT_EQ((*reference)->output_types()[0], output);
-      EXPECT_TRUE((*device)->ValidateSequenceLength(context).ok());
-      EXPECT_FALSE((*device)->ValidateSequenceLength(context + 1).ok());
     }
   }
 }

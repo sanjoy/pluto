@@ -79,6 +79,41 @@ cc_test(
 )
 
 cc_library(
+    name = "batch_validation",
+    srcs = ["batch_validation.cc"],
+    hdrs = ["batch_validation.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":layer",
+        ":layer_type_check",
+        "//src/cuda:executor",
+        "//src/dataset",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "batch_validation_test",
+    srcs = ["batch_validation_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":batch_validation",
+        ":layer",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/dataset",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/strings:string_view",
+        "@abseil-cpp//absl/types:span",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "sampling",
     srcs = ["sampling.cc"],
     hdrs = ["sampling.h"],
@@ -280,6 +315,7 @@ cuda_library(
     host_copts = ["-std=c++20"],
     visibility = ["//visibility:public"],
     deps = [
+        ":batch_validation",
         ":layer",
         ":optimizer",
         "//src/dataset",

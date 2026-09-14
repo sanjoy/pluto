@@ -42,13 +42,6 @@ class EmbeddingLookupLayer final : public Layer {
     return absl::MakeConstSpan(&output_type_signature_, 1);
   }
 
-  absl::Status ValidateSequenceLength(int sequence_length) const override {
-    if (sequence_length != sequence_length_)
-      return absl::InvalidArgumentError(
-          "sequence_length must match the layer's configured sample shape");
-    return absl::OkStatus();
-  }
-
   int vocab_size() const { return vocab_size_; }
   int padded_vocab_size() const { return padded_vocab_size_; }
   int embedding_dim() const { return embedding_dim_; }
@@ -107,10 +100,6 @@ class LanguageModelingHeadLayer final : public Layer {
     return absl::MakeConstSpan(&output_type_signature_, 1);
   }
 
-  absl::Status ValidateSequenceLength(int sequence_length) const override {
-    return embedding_->ValidateSequenceLength(sequence_length);
-  }
-
  private:
   absl::StatusOr<FwdResult> fwd_impl(
       cuda::Executor& executor, absl::Span<const Buffer> inputs) const override;
@@ -135,8 +124,6 @@ class PositionEmbeddingLayer final : public Layer {
 
   // Positions restart at the configured fixed width, not at a length inferred
   // from the total number of rows in a flattened batch.
-  absl::Status ValidateSequenceLength(int sequence_length) const override;
-
   static absl::StatusOr<std::unique_ptr<PositionEmbeddingLayer>> Create(
       cuda::Executor& executor, int context_length, int embedding_dim,
       DataType data_type);

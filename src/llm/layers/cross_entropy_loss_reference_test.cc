@@ -40,8 +40,6 @@ TEST_F(LayerReferenceTest, CrossEntropyActivationTypesDescribePhysicalStorage) {
       EXPECT_EQ((*reference)->input_types()[0], logits);
       EXPECT_EQ((*reference)->input_types()[1], targets);
       EXPECT_EQ((*reference)->output_types()[0], losses);
-      EXPECT_TRUE((*device)->ValidateSequenceLength(sequence_length).ok());
-      EXPECT_FALSE((*device)->ValidateSequenceLength(sequence_length + 1).ok());
     }
     for (int invalid_length : {0, -1, -2}) {
       EXPECT_EQ(

@@ -656,15 +656,6 @@ SparseAutoEncoderLayer::Create(cuda::Executor& executor, int input_dim,
       std::move(decoder_bias_gradient)));
 }
 
-absl::Status SparseAutoEncoderLayer::ValidateSequenceLength(
-    int sequence_length) const {
-  if (sequence_length != sequence_length_)
-    return absl::InvalidArgumentError(
-        "SparseAutoEncoderLayer sequence length does not match its activation "
-        "type");
-  return absl::OkStatus();
-}
-
 absl::Status SparseAutoEncoderLayer::InitializeNormal(float standard_deviation,
                                                       uint64_t seed) {
   if (!(standard_deviation > 0.0f)) {
@@ -987,15 +978,6 @@ SparseAutoEncoderLossLayer::Create(cuda::Executor& executor, int input_dim,
   return absl::WrapUnique(new SparseAutoEncoderLossLayer(
       executor, input_dim, feature_dim, sparsity_penalty, data_type,
       sequence_length));
-}
-
-absl::Status SparseAutoEncoderLossLayer::ValidateSequenceLength(
-    int sequence_length) const {
-  if (sequence_length != sequence_length_)
-    return absl::InvalidArgumentError(
-        "SparseAutoEncoderLossLayer sequence length does not match its "
-        "activation type");
-  return absl::OkStatus();
 }
 
 absl::StatusOr<FwdResult> SparseAutoEncoderLossLayer::fwd_impl(

@@ -26,13 +26,6 @@ class LayerNormLayer final : public Layer {
       cuda::Executor& executor, int embedding_dim, float epsilon,
       DataType data_type, int sequence_length = 1);
 
-  absl::Status ValidateSequenceLength(int sequence_length) const override {
-    if (sequence_length != sequence_length_)
-      return absl::InvalidArgumentError(
-          "sequence_length must match the layer's configured sample shape");
-    return absl::OkStatus();
-  }
-
   absl::Span<Buffer> weights() override { return absl::MakeSpan(weights_); }
   absl::Span<Buffer> gradients() override { return absl::MakeSpan(gradients_); }
   DataType output_type() const override { return output_type_; }

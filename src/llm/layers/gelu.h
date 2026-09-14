@@ -27,13 +27,6 @@ class GeluLayer final : public Layer {
       cuda::Executor& executor, int embedding_dim, DataType data_type,
       int sequence_length = 1);
 
-  absl::Status ValidateSequenceLength(int sequence_length) const override {
-    if (sequence_length != sequence_length_)
-      return absl::InvalidArgumentError(
-          "sequence_length must match the layer's configured sample shape");
-    return absl::OkStatus();
-  }
-
   absl::Span<Buffer> weights() override { return {}; }
   DataType output_type() const override { return output_type_; }
 

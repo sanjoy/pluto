@@ -11,6 +11,7 @@
 #include "src/cuda/buffer.h"
 #include "src/cuda/executor.h"
 #include "src/dataset/dataset.h"
+#include "src/llm/batch_validation.h"
 #include "src/llm/checkpoint.h"
 #include "src/llm/layer.h"
 #include "src/util/status_macros.h"
@@ -52,24 +53,40 @@ SparseAutoEncoderDataSetIterator::Create(
 absl::StatusOr<DataBatch> SparseAutoEncoderDataSetIterator::Next() {
   ASSIGN_OR_RETURN(DataBatch batch, source_.Next());
   RETURN_IF_ERROR(ValidateSourceBatch(executor_, batch));
-  // Preserve sequence boundaries, not merely the flattened activation count.
-  // Fixed-context generators must reject shorter samples instead of allowing
-  // attention and position kernels to silently join neighboring samples.
-  RETURN_IF_ERROR(
-      activation_generator_.ValidateSequenceLength(batch.sequence_length));
+  const auto input_types = activation_generator_.input_types();
+  const ActivationType token_type(
+      DataType::INT32,
+      {ActivationType::kBatchDimension, batch.sequence_length});
+  if (input_types.size() != 1 || input_types.front() != token_type)
+    return absl::InvalidArgumentError(
+        "activation generator must accept one INT32 [batch, sequence] input "
+        "matching the source sample boundaries");
+  RETURN_IF_ERROR(ValidateBatchInput(executor_, batch, batch.inputs,
+                                     input_types.front(), "generator input"));
+
+  // We forward source sample metadata unchanged, so the generator must keep
+  // both leading axes. Equal flattened byte counts do not imply equal sample
+  // boundaries: two short sequences must not become one long sequence.
+  const auto output_types = activation_generator_.output_types();
+  if (output_types.size() != 1)
+    return absl::InvalidArgumentError(
+        "activation generator must declare exactly one output");
+  const auto dimensions = output_types.front().dimensions();
+  if (dimensions.size() < 2 ||
+      dimensions[0] != ActivationType::kBatchDimension ||
+      dimensions[1] != batch.sequence_length)
+    return absl::InvalidArgumentError(
+        "activation generator output must preserve [batch, sequence] axes");
+  RETURN_IF_ERROR(ValidateBatchTypes(batch, output_types, "generator output"));
+
   BufferVec inputs = {batch.inputs};
   ASSIGN_OR_RETURN(auto activations_fwd,
                    activation_generator_.fwd(executor_, inputs));
-  if (activations_fwd.outputs.size() != 1) {
-    return absl::InvalidArgumentError(
-        "activation generator must return exactly one output");
-  }
+  RETURN_IF_ERROR(ValidateBatchBuffers(executor_, batch,
+                                       activations_fwd.outputs, output_types,
+                                       "generator output"));
   auto activations = std::move(activations_fwd.outputs.front());
 
-  if (&activations.executor() != &executor_) {
-    return absl::InvalidArgumentError(
-        "activation generator returned a buffer on a different executor");
-  }
   return DataBatch{
       .inputs = activations,
       .targets = std::move(activations),

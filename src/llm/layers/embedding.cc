@@ -641,16 +641,6 @@ absl::Status PositionEmbeddingLayer::InitializeNormal(float standard_deviation,
                                   "cudaMemcpyAsync(normal positions)");
 }
 
-absl::Status PositionEmbeddingLayer::ValidateSequenceLength(
-    int sequence_length) const {
-  if (sequence_length != context_length_) {
-    return absl::InvalidArgumentError(
-        "position-embedding sequence_length must equal its configured "
-        "context_length");
-  }
-  return absl::OkStatus();
-}
-
 absl::StatusOr<FwdResult> PositionEmbeddingLayer::fwd_impl(
     cuda::Executor& executor, absl::Span<const Buffer> inputs) const {
   BackwardState state;

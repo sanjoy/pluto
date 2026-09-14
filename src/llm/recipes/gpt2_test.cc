@@ -68,8 +68,6 @@ TEST_F(Gpt2Test, ActivationSignaturesKeepBatchSeparateFromContext) {
               ActivationType(ActivationDataType(compute),
                              {ActivationType::kBatchDimension,
                               kGpt2ContextLength, kGpt2ModelWidth}));
-    EXPECT_TRUE((*generator)->ValidateSequenceLength(kGpt2ContextLength).ok());
-    EXPECT_FALSE((*generator)->ValidateSequenceLength(1).ok());
   }
 }
 
@@ -86,7 +84,6 @@ TEST_F(Gpt2Test, FullModelProducesPaddedFp32LogitsFromBf16Activations) {
             ActivationType(DataType::FP32,
                            {ActivationType::kBatchDimension, kGpt2ContextLength,
                             kGpt2PaddedVocabularySize}));
-  EXPECT_TRUE((*model)->ValidateSequenceLength(kGpt2ContextLength).ok());
 }
 
 TEST_F(Gpt2Test, OneBlockProducesResidualStreamActivations) {

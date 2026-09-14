@@ -124,21 +124,11 @@ class Layer {
 
   // Ordered forward signatures, immutable for the layer's lifetime. Batch is
   // the number of samples, not flattened token rows. Buffer remains untyped:
-  // these declarations check graph wiring, not the dtype of arbitrary bytes
-  // supplied by callers. Existing per-kernel buffer checks remain necessary.
+  // graph construction and dataset boundaries check these shapes, but cannot
+  // recover dtype or sample boundaries from arbitrary bytes. Raw fwd callers
+  // must honor the signatures; per-kernel buffer checks remain necessary.
   virtual absl::Span<const ActivationType> input_types() const = 0;
   virtual absl::Span<const ActivationType> output_types() const = 0;
-
-  // Validates sample boundaries before dataset batches are flattened for fwd().
-  // Concrete layers enforce their declared sample width; combinators check all
-  // descendants. The default accepts any positive width for custom layers.
-  // Callers supplying raw Buffers directly must preserve those same boundaries:
-  // fwd() cannot recover sample lengths from an untyped flat allocation.
-  virtual absl::Status ValidateSequenceLength(int sequence_length) const {
-    if (sequence_length <= 0)
-      return absl::InvalidArgumentError("sequence_length must be positive");
-    return absl::OkStatus();
-  }
 
   // State is published only with a successful output. Failed calls cannot
   // overwrite state retained from an earlier forward pass.

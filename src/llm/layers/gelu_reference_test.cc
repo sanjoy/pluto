@@ -107,8 +107,6 @@ TEST_F(LayerReferenceTest, GeluSignaturesPreserveSampleDimensions) {
     EXPECT_EQ((*device)->output_types()[0], activation);
     EXPECT_EQ((*reference)->input_types()[0], activation);
     EXPECT_EQ((*reference)->output_types()[0], activation);
-    EXPECT_TRUE((*device)->ValidateSequenceLength(7).ok());
-    EXPECT_FALSE((*device)->ValidateSequenceLength(1).ok());
   }
 }
 

@@ -79,6 +79,15 @@ class RecordingActivationGenerator final : public Layer {
                               kEmbeddingDimension});
   }
 
+  // Explicit schemas let rejection tests distinguish a bad declaration from
+  // a forward implementation that violates an otherwise valid declaration.
+  RecordingActivationGenerator(BufferVec outputs,
+                               std::vector<ActivationType> input_types,
+                               std::vector<ActivationType> output_types)
+      : input_types_(std::move(input_types)),
+        output_types_(std::move(output_types)),
+        outputs_(std::move(outputs)) {}
+
   absl::Span<Buffer> weights() override { return {}; }
   DataType output_type() const override { return DataType::FP16; }
   absl::Span<const ActivationType> input_types() const override {
@@ -110,7 +119,7 @@ class RecordingActivationGenerator final : public Layer {
     return absl::InternalError("frozen generator must not run backward");
   }
 
-  const ActivationType input_types_[1] = {
+  const std::vector<ActivationType> input_types_ = {
       {DataType::INT32, {ActivationType::kBatchDimension, kSequenceLength}}};
   std::vector<ActivationType> output_types_;
   BufferVec outputs_;
@@ -337,7 +346,10 @@ TEST_F(SparseAutoEncoderDataSetTest,
        RejectsMalformedSourceBufferSizesBeforeForward) {
   auto data = MakeData();
   ASSERT_TRUE(data.ok()) << data.status();
-  RecordingActivationGenerator generator({data->inputs});
+  RecordingActivationGenerator generator(
+      {data->inputs},
+      {{DataType::INT32, {ActivationType::kBatchDimension, kSequenceLength}}},
+      {{DataType::INT32, {ActivationType::kBatchDimension, kSequenceLength}}});
   const std::filesystem::path checkpoint =
       std::filesystem::path(testing::TempDir()) / "sae-source-size-checkpoint";
   ASSERT_TRUE(WriteToDirectory(*executor_, generator, checkpoint).ok());
@@ -371,7 +383,10 @@ TEST_F(SparseAutoEncoderDataSetTest,
   ASSERT_TRUE(foreign.ok()) << foreign.status();
   auto data = MakeData();
   ASSERT_TRUE(data.ok()) << data.status();
-  RecordingActivationGenerator generator({data->inputs});
+  RecordingActivationGenerator generator(
+      {data->inputs},
+      {{DataType::INT32, {ActivationType::kBatchDimension, kSequenceLength}}},
+      {{DataType::INT32, {ActivationType::kBatchDimension, kSequenceLength}}});
   const std::filesystem::path checkpoint =
       std::filesystem::path(testing::TempDir()) /
       "sae-source-executor-checkpoint";
@@ -396,7 +411,10 @@ TEST_F(SparseAutoEncoderDataSetTest,
        RejectsInvalidSourceDimensionsBeforeForward) {
   auto data = MakeData();
   ASSERT_TRUE(data.ok()) << data.status();
-  RecordingActivationGenerator generator({data->inputs});
+  RecordingActivationGenerator generator(
+      {data->inputs},
+      {{DataType::INT32, {ActivationType::kBatchDimension, kSequenceLength}}},
+      {{DataType::INT32, {ActivationType::kBatchDimension, kSequenceLength}}});
   const std::filesystem::path checkpoint =
       std::filesystem::path(testing::TempDir()) / "sae-source-shape-checkpoint";
   ASSERT_TRUE(WriteToDirectory(*executor_, generator, checkpoint).ok());
@@ -431,9 +449,174 @@ TEST_F(SparseAutoEncoderDataSetTest, RequiresExactlyOneGeneratorOutput) {
     ASSERT_TRUE(dataset.ok()) << dataset.status();
     auto result = (*dataset)->Next();
     EXPECT_EQ(result.status().code(), absl::StatusCode::kInvalidArgument);
-    EXPECT_EQ(generator.forward_calls(), 1);
+    EXPECT_EQ(generator.forward_calls(), 0);
     EXPECT_EQ(generator.backward_calls(), 0);
   }
+}
+
+TEST_F(SparseAutoEncoderDataSetTest,
+       RejectsDeclaredInputTypeMismatchBeforeForward) {
+  auto data = MakeData();
+  ASSERT_TRUE(data.ok()) << data.status();
+  auto activations = Buffer::Allocate(
+      *executor_, kTokenCount * kEmbeddingDimension * sizeof(float));
+  ASSERT_TRUE(activations.ok()) << activations.status();
+  constexpr int64_t kBatch = ActivationType::kBatchDimension;
+  const ActivationType tokens(DataType::INT32, {kBatch, kSequenceLength});
+  const std::vector<std::vector<ActivationType>> invalid_inputs = {
+      {},
+      {tokens, tokens},
+      {{DataType::FP32, {kBatch, kSequenceLength}}},
+      {{DataType::INT32, {kBatch, kSequenceLength / 2}}},
+      {{DataType::INT32, {kBatchSize, kSequenceLength}}},
+      {{DataType::INT32, {kBatch, kSequenceLength, 1}}},
+  };
+  for (size_t index = 0; index < invalid_inputs.size(); ++index) {
+    SCOPED_TRACE(index);
+    RecordingActivationGenerator generator(
+        {*activations}, invalid_inputs[index],
+        {{DataType::FP32, {kBatch, kSequenceLength, kEmbeddingDimension}}});
+    FixedTokenDataSetIterator source(*data);
+    const std::filesystem::path checkpoint =
+        std::filesystem::path(testing::TempDir()) /
+        ("sae-declared-input-" + std::to_string(index));
+    ASSERT_TRUE(WriteToDirectory(*executor_, generator, checkpoint).ok());
+    auto dataset = SparseAutoEncoderDataSetIterator::Create(
+        *executor_, generator, source, checkpoint);
+    ASSERT_TRUE(dataset.ok()) << dataset.status();
+    EXPECT_EQ((*dataset)->Next().status().code(),
+              absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ(generator.forward_calls(), 0);
+  }
+}
+
+TEST_F(SparseAutoEncoderDataSetTest, RejectsDeclaredOutputShapeBeforeForward) {
+  auto data = MakeData();
+  ASSERT_TRUE(data.ok()) << data.status();
+  auto activations = Buffer::Allocate(
+      *executor_, kTokenCount * kEmbeddingDimension * sizeof(float));
+  ASSERT_TRUE(activations.ok()) << activations.status();
+  constexpr int64_t kBatch = ActivationType::kBatchDimension;
+  const std::vector<ActivationType> invalid_outputs = {
+      {DataType::FP32, {kTokenCount, kEmbeddingDimension}},  // Unbatched.
+      {DataType::FP32, {kBatchSize, kSequenceLength, kEmbeddingDimension}},
+      {DataType::FP32, {kBatch, kTokenCount, kEmbeddingDimension}},
+      {DataType::FP32, {kBatch}},  // No sequence axis.
+      {DataType::FP32, {kBatch, kSequenceLength, -1}},
+      {DataType::FP32,
+       {kBatch, kSequenceLength, std::numeric_limits<int64_t>::max()}},
+      {static_cast<DataType>(-1),
+       {kBatch, kSequenceLength, kEmbeddingDimension}},
+  };
+  for (size_t index = 0; index < invalid_outputs.size(); ++index) {
+    SCOPED_TRACE(index);
+    RecordingActivationGenerator generator(
+        {*activations}, {{DataType::INT32, {kBatch, kSequenceLength}}},
+        {invalid_outputs[index]});
+    FixedTokenDataSetIterator source(*data);
+    const std::filesystem::path checkpoint =
+        std::filesystem::path(testing::TempDir()) /
+        ("sae-declared-output-" + std::to_string(index));
+    ASSERT_TRUE(WriteToDirectory(*executor_, generator, checkpoint).ok());
+    auto dataset = SparseAutoEncoderDataSetIterator::Create(
+        *executor_, generator, source, checkpoint);
+    ASSERT_TRUE(dataset.ok()) << dataset.status();
+    EXPECT_FALSE((*dataset)->Next().ok());
+    EXPECT_EQ(generator.forward_calls(), 0);
+  }
+}
+
+TEST_F(SparseAutoEncoderDataSetTest,
+       RejectsReturnedBufferSizesThatDisagreeWithDeclaredType) {
+  auto data = MakeData();
+  ASSERT_TRUE(data.ok()) << data.status();
+  constexpr int64_t kBatch = ActivationType::kBatchDimension;
+  constexpr size_t kBytes = kTokenCount * kEmbeddingDimension * sizeof(float);
+  const ActivationType correct(DataType::FP32,
+                               {kBatch, kSequenceLength, kEmbeddingDimension});
+  const std::vector<std::pair<ActivationType, size_t>> mismatches = {
+      {correct, 0},
+      {correct, kBytes - sizeof(float)},
+      {correct, kBytes + sizeof(float)},
+      {{DataType::FP32, {kBatch, kSequenceLength, 2 * kEmbeddingDimension}},
+       kBytes},
+      {{DataType::BF16, {kBatch, kSequenceLength, kEmbeddingDimension}},
+       kBytes},
+  };
+  for (size_t index = 0; index < mismatches.size(); ++index) {
+    SCOPED_TRACE(index);
+    auto activations = Buffer::Allocate(*executor_, mismatches[index].second);
+    ASSERT_TRUE(activations.ok()) << activations.status();
+    RecordingActivationGenerator generator(
+        {*activations}, {{DataType::INT32, {kBatch, kSequenceLength}}},
+        {mismatches[index].first});
+    FixedTokenDataSetIterator source(*data);
+    const std::filesystem::path checkpoint =
+        std::filesystem::path(testing::TempDir()) /
+        ("sae-returned-size-" + std::to_string(index));
+    ASSERT_TRUE(WriteToDirectory(*executor_, generator, checkpoint).ok());
+    auto dataset = SparseAutoEncoderDataSetIterator::Create(
+        *executor_, generator, source, checkpoint);
+    ASSERT_TRUE(dataset.ok()) << dataset.status();
+    EXPECT_EQ((*dataset)->Next().status().code(),
+              absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ(generator.forward_calls(), 1);
+  }
+}
+
+TEST_F(SparseAutoEncoderDataSetTest,
+       RejectsReturnedOutputCountDifferentFromSignature) {
+  auto data = MakeData();
+  ASSERT_TRUE(data.ok()) << data.status();
+  auto activations = Buffer::Allocate(
+      *executor_, kTokenCount * kEmbeddingDimension * sizeof(float));
+  ASSERT_TRUE(activations.ok()) << activations.status();
+  constexpr int64_t kBatch = ActivationType::kBatchDimension;
+  for (int count : {0, 2}) {
+    SCOPED_TRACE(count);
+    RecordingActivationGenerator generator(
+        BufferVec(count, *activations),
+        {{DataType::INT32, {kBatch, kSequenceLength}}},
+        {{DataType::FP32, {kBatch, kSequenceLength, kEmbeddingDimension}}});
+    FixedTokenDataSetIterator source(*data);
+    const std::filesystem::path checkpoint =
+        std::filesystem::path(testing::TempDir()) /
+        ("sae-returned-count-" + std::to_string(count));
+    ASSERT_TRUE(WriteToDirectory(*executor_, generator, checkpoint).ok());
+    auto dataset = SparseAutoEncoderDataSetIterator::Create(
+        *executor_, generator, source, checkpoint);
+    ASSERT_TRUE(dataset.ok()) << dataset.status();
+    EXPECT_EQ((*dataset)->Next().status().code(),
+              absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ(generator.forward_calls(), 1);
+  }
+}
+
+TEST_F(SparseAutoEncoderDataSetTest,
+       AcceptsBF16OutputWithMatchingDeclaredStorage) {
+  auto data = MakeData();
+  ASSERT_TRUE(data.ok()) << data.status();
+  auto activations = Buffer::Allocate(
+      *executor_, kTokenCount * kEmbeddingDimension * sizeof(uint16_t));
+  ASSERT_TRUE(activations.ok()) << activations.status();
+  constexpr int64_t kBatch = ActivationType::kBatchDimension;
+  RecordingActivationGenerator generator(
+      {*activations}, {{DataType::INT32, {kBatch, kSequenceLength}}},
+      {{DataType::BF16, {kBatch, kSequenceLength, kEmbeddingDimension}}});
+  FixedTokenDataSetIterator source(*data);
+  const std::filesystem::path checkpoint =
+      std::filesystem::path(testing::TempDir()) / "sae-bf16-output";
+  ASSERT_TRUE(WriteToDirectory(*executor_, generator, checkpoint).ok());
+  auto dataset = SparseAutoEncoderDataSetIterator::Create(*executor_, generator,
+                                                          source, checkpoint);
+  ASSERT_TRUE(dataset.ok()) << dataset.status();
+  auto batch = (*dataset)->Next();
+  ASSERT_TRUE(batch.ok()) << batch.status();
+  EXPECT_EQ(batch->inputs.data(), activations->data());
+  EXPECT_EQ(batch->targets.data(), activations->data());
+  EXPECT_EQ(batch->batch_size, kBatchSize);
+  EXPECT_EQ(batch->sequence_length, kSequenceLength);
+  EXPECT_EQ(generator.forward_calls(), 1);
 }
 
 TEST_F(SparseAutoEncoderDataSetTest,

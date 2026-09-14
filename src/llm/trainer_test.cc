@@ -38,27 +38,37 @@ namespace {
 static_assert(!std::is_default_constructible_v<EvaluationOptions>);
 static_assert(!std::is_default_constructible_v<TrainingOptions>);
 
+const ActivationType kTokenType{DataType::INT32,
+                                {ActivationType::kBatchDimension, 4}};
+const ActivationType kFloatType{DataType::FP32,
+                                {ActivationType::kBatchDimension, 4}};
+
 class FakeModel final : public Layer {
  public:
+  explicit FakeModel(DataType dtype = DataType::INT32, int sequence_length = 4,
+                     size_t input_count = 1)
+      : output_type_(dtype, {ActivationType::kBatchDimension, sequence_length}),
+        input_types_(input_count, output_type_) {}
+
   absl::string_view name() const override { return "FakeModel"; }
 
   absl::Span<const ActivationType> input_types() const override {
-    return types_;
+    return input_types_;
   }
   absl::Span<const ActivationType> output_types() const override {
-    return types_;
+    return {&output_type_, 1};
   }
 
   absl::Span<Buffer> weights() override { return {}; }
   DataType output_type() const override { return DataType::FP16; }
 
-  const ActivationType types_[1] = {
-      {DataType::FP32, {ActivationType::kBatchDimension, 4}}};
-
   mutable int forward_calls = 0;
   int backward_calls = 0;
 
  private:
+  const ActivationType output_type_;
+  const std::vector<ActivationType> input_types_;
+
   absl::StatusOr<FwdResult> fwd_impl(
       cuda::Executor& executor,
       absl::Span<const Buffer> inputs) const override {
@@ -80,7 +90,11 @@ class FakeLoss final : public Layer {
   absl::string_view name() const override { return "FakeLoss"; }
 
   static absl::StatusOr<std::unique_ptr<FakeLoss>> Create(
-      cuda::Executor& executor, absl::Span<const float> losses) {
+      cuda::Executor& executor, absl::Span<const float> losses,
+      ActivationType model_output = {DataType::INT32,
+                                     {ActivationType::kBatchDimension, 4}},
+      ActivationType target = {DataType::INT32,
+                               {ActivationType::kBatchDimension, 4}}) {
     auto device_losses =
         Buffer::Allocate(executor, losses.size() * sizeof(float));
     if (!device_losses.ok())
@@ -98,7 +112,8 @@ class FakeLoss final : public Layer {
     if (!synchronized.ok())
       return synchronized;
     return absl::WrapUnique(
-        new FakeLoss(std::move(*device_losses), std::move(*gradient)));
+        new FakeLoss(std::move(*device_losses), std::move(*gradient),
+                     std::move(model_output), std::move(target)));
   }
 
   absl::Span<const ActivationType> input_types() const override {
@@ -129,14 +144,17 @@ class FakeLoss final : public Layer {
     return BufferVec{gradient_};
   }
 
-  FakeLoss(Buffer losses, Buffer gradient)
-      : losses_(std::move(losses)), gradient_(std::move(gradient)) {}
+  FakeLoss(Buffer losses, Buffer gradient, ActivationType model_output,
+           ActivationType target)
+      : input_types_{std::move(model_output), target},
+        output_types_{
+            {DataType::FP32,
+             {ActivationType::kBatchDimension, target.dimensions()[1]}}},
+        losses_(std::move(losses)),
+        gradient_(std::move(gradient)) {}
 
-  const ActivationType input_types_[2] = {
-      {DataType::FP32, {ActivationType::kBatchDimension, 4}},
-      {DataType::FP32, {ActivationType::kBatchDimension, 4}}};
-  const ActivationType output_types_[1] = {
-      {DataType::FP32, {ActivationType::kBatchDimension, 4}}};
+  const ActivationType input_types_[2];
+  const ActivationType output_types_[1];
   Buffer losses_;
   Buffer gradient_;
 };
@@ -147,14 +165,15 @@ class RoutingLayer final : public Layer {
  public:
   absl::string_view name() const override { return "RoutingLayer"; }
 
-  RoutingLayer(BufferVec outputs, BufferVec gradients)
-      : outputs_(std::move(outputs)), gradients_(std::move(gradients)) {
-    // These tests deliberately return arbitrary buffers; the declared signature
-    // tracks arity while runtime failure cases exercise the trainer's checks.
-    const ActivationType type(DataType::FP32,
-                              {ActivationType::kBatchDimension, 4});
-    input_types_.assign(gradients_.empty() ? 1 : gradients_.size() + 1, type);
-    output_types_.assign(outputs_.size(), type);
+  RoutingLayer(BufferVec outputs, BufferVec gradients,
+               std::vector<ActivationType> input_types,
+               std::vector<ActivationType> output_types)
+      : input_types_(std::move(input_types)),
+        output_types_(std::move(output_types)),
+        outputs_(std::move(outputs)),
+        gradients_(std::move(gradients)) {
+    // Signatures are independent of returned buffers/gradients, so malformed
+    // output fixtures still exercise runtime validation, not just preflight.
   }
 
   absl::Span<const ActivationType> input_types() const override {
@@ -166,6 +185,7 @@ class RoutingLayer final : public Layer {
   absl::Span<Buffer> weights() override { return {}; }
   DataType output_type() const override { return DataType::FP16; }
 
+  mutable int forward_calls = 0;
   mutable BufferVec observed_inputs;
   BufferVec observed_gradients;
   int backward_calls = 0;
@@ -173,6 +193,7 @@ class RoutingLayer final : public Layer {
  private:
   absl::StatusOr<FwdResult> fwd_impl(
       cuda::Executor&, absl::Span<const Buffer> inputs) const override {
+    ++forward_calls;
     observed_inputs.assign(inputs.begin(), inputs.end());
     return FwdResult{outputs_, {}};
   }
@@ -320,12 +341,15 @@ class TrainerTest : public testing::Test {
         });
   }
 
-  absl::StatusOr<std::unique_ptr<FakeLoss>> MakeLoss() {
+  absl::StatusOr<std::unique_ptr<FakeLoss>> MakeLoss(
+      ActivationType model_output = {DataType::INT32,
+                                     {ActivationType::kBatchDimension, 4}}) {
     auto losses = cuda::PageLockedHostArray<float>::Allocate(*executor_, 4);
     if (!losses.ok())
       return losses.status();
     std::iota(losses->begin(), losses->end(), 1.0f);
-    return FakeLoss::Create(*executor_, losses->span());
+    return FakeLoss::Create(*executor_, losses->span(),
+                            std::move(model_output));
   }
 
   std::unique_ptr<cuda::Executor> executor_;
@@ -410,8 +434,8 @@ TEST_F(TrainerTest, LanguageModelingNormalizesByTokensNotSequences) {
   EXPECT_EQ(*batch->token_count(), 4);
   EXPECT_EQ(pass->size_bytes(), sizeof(float));
 
-  // Inconsistent metadata is detected by the per-row loss contract. Invalid
-  // or overflowing dimensions can be rejected before calling the model.
+  // Inconsistent or overflowing metadata is rejected before model execution,
+  // even when the underlying allocation is large enough for some other shape.
   batch->sequence_length = 3;
   EXPECT_FALSE(EvaluateBatch(*executor_, model, **loss, *batch).ok());
   batch->sequence_length = std::numeric_limits<int>::max();
@@ -419,7 +443,7 @@ TEST_F(TrainerTest, LanguageModelingNormalizesByTokensNotSequences) {
   EXPECT_FALSE(EvaluateBatch(*executor_, model, **loss, *batch).ok());
   batch->batch_size = 0;
   EXPECT_FALSE(EvaluateBatch(*executor_, model, **loss, *batch).ok());
-  EXPECT_EQ(model.forward_calls, 2);
+  EXPECT_EQ(model.forward_calls, 1);
 }
 
 TEST_F(TrainerTest,
@@ -435,7 +459,8 @@ TEST_F(TrainerTest,
   ASSERT_TRUE(builder.add(ResidualLayer::Create(std::move(*positions))).ok());
   auto model = builder.create();
   auto data = MakeData();
-  auto loss = MakeLoss();
+  auto loss =
+      MakeLoss({DataType::FP32, {ActivationType::kBatchDimension, 4, 16}});
   ASSERT_TRUE(model.ok()) << model.status();
   ASSERT_TRUE(data.ok()) << data.status();
   ASSERT_TRUE(loss.ok()) << loss.status();
@@ -459,21 +484,10 @@ TEST_F(TrainerTest,
 }
 
 TEST_F(TrainerTest, SequenceValidationChecksNestedAttentionAndPerTokenLayers) {
-  FakeModel per_token;
-  EXPECT_TRUE(per_token.ValidateSequenceLength(1).ok());
-  EXPECT_TRUE(per_token.ValidateSequenceLength(1024).ok());
-  EXPECT_FALSE(per_token.ValidateSequenceLength(0).ok());
-  EXPECT_FALSE(per_token.ValidateSequenceLength(-1).ok());
-
   auto attention = AttentionLayer::Create(*executor_, 4, 1, 16, DataType::FP16);
   ASSERT_TRUE(attention.ok()) << attention.status();
-  EXPECT_TRUE((*attention)->ValidateSequenceLength(4).ok());
-  EXPECT_FALSE((*attention)->ValidateSequenceLength(2).ok());
-  EXPECT_FALSE((*attention)->ValidateSequenceLength(8).ok());
-  EXPECT_FALSE((*attention)->ValidateSequenceLength(0).ok());
-
-  // Validation must reach a stateful descendant even through both sequential
-  // and residual wrappers; checking only a composition's outer type misses it.
+  // A composition preserves the exact declared sample shape through both
+  // sequential and residual wrappers, without a separate virtual validator.
   // Attention consumes packed QKV, so its projection must live inside the
   // residual branch for both ends of the branch to have model width 16.
   ComposedLayerBuilder branch;
@@ -489,10 +503,34 @@ TEST_F(TrainerTest, SequenceValidationChecksNestedAttentionAndPerTokenLayers) {
       builder.add(ResidualLayer::Create(std::move(*attention_branch))).ok());
   auto model = builder.create();
   ASSERT_TRUE(model.ok()) << model.status();
-  EXPECT_TRUE((*model)->ValidateSequenceLength(4).ok());
-  EXPECT_FALSE((*model)->ValidateSequenceLength(2).ok());
-  EXPECT_FALSE((*model)->ValidateSequenceLength(8).ok());
-  EXPECT_FALSE((*model)->ValidateSequenceLength(-1).ok());
+  // Dense projections require a full 16-row tile: four four-token samples.
+  auto input = Buffer::Allocate(*executor_, 16 * 16 * sizeof(float));
+  auto target = Buffer::Allocate(*executor_, 16 * sizeof(int));
+  auto host_losses = cuda::PageLockedHostArray<float>::Allocate(*executor_, 16);
+  ASSERT_TRUE(input.ok()) << input.status();
+  ASSERT_TRUE(target.ok()) << target.status();
+  ASSERT_TRUE(host_losses.ok()) << host_losses.status();
+  std::iota(host_losses->begin(), host_losses->end(), 1.0f);
+  ASSERT_EQ(cudaMemsetAsync(input->data(), 0, input->size_bytes(),
+                            executor_->stream()),
+            cudaSuccess);
+  auto loss = FakeLoss::Create(
+      *executor_, host_losses->span(),
+      {DataType::FP32, {ActivationType::kBatchDimension, 4, 16}});
+  ASSERT_TRUE(loss.ok()) << loss.status();
+  DataBatch batch{.inputs = *input,
+                  .targets = *target,
+                  .batch_size = 4,
+                  .sequence_length = 4};
+  ASSERT_TRUE(EvaluateBatch(*executor_, **model, **loss, batch).ok());
+  EXPECT_EQ((*loss)->forward_calls, 1);
+  for (int sequence_length : {2, 8, 0, -1}) {
+    batch.sequence_length = sequence_length;
+    batch.batch_size = sequence_length > 0 ? 16 / sequence_length : 4;
+    const auto invalid = EvaluateBatch(*executor_, **model, **loss, batch);
+    EXPECT_EQ(invalid.status().code(), absl::StatusCode::kInvalidArgument);
+  }
+  EXPECT_EQ((*loss)->forward_calls, 1);
 }
 
 TEST_F(TrainerTest, EvaluateWeightsUnequalBatchesByTheirTokenCounts) {
@@ -520,17 +558,17 @@ TEST_F(TrainerTest, EvaluateWeightsUnequalBatchesByTheirTokenCounts) {
                                      .sequence_length = 2},
                                     {.inputs = *second,
                                      .targets = *second,
-                                     .batch_size = 2,
-                                     .sequence_length = 3}});
-  FakeModel model;
-  FakeModel loss;
+                                     .batch_size = 3,
+                                     .sequence_length = 2}});
+  FakeModel model(DataType::FP32, 2);
+  FakeModel loss(DataType::FP32, 2, 2);
   auto mean = Evaluate(
       *executor_, model,
       EvaluationOptions{.loss_layer = loss, .eval_data = data, .batches = 2});
   ASSERT_TRUE(mean.ok()) << mean.status();
   auto host_mean = ReadEvaluationLoss(*executor_, *mean);
   ASSERT_TRUE(host_mean.ok()) << host_mean.status();
-  // Sum the eight token losses, not the two batch means or three samples.
+  // Sum the eight token losses, not the two batch means or four samples.
   EXPECT_FLOAT_EQ(*host_mean, 1.5f);
 }
 
@@ -621,9 +659,12 @@ TEST_F(TrainerTest, RoutesExactlyOneGradientPerModelOutput) {
     gradients.push_back(*buffer);
     outputs.push_back(*buffer);
   }
-  RoutingLayer model(outputs, {});
+  RoutingLayer model(outputs, {}, {kTokenType},
+                     {kFloatType, kFloatType, kFloatType});
   // Targets remain a forward input, but have no corresponding gradient.
-  RoutingLayer loss({gradients[0]}, gradients);
+  RoutingLayer loss({gradients[0]}, gradients,
+                    {kFloatType, kFloatType, kFloatType, kTokenType},
+                    {kFloatType});
   FakeOptimizer optimizer;
   auto result = Train(*executor_, model,
                       TrainingOptions{.loss_layer = loss,
@@ -650,8 +691,11 @@ TEST_F(TrainerTest, RejectsLossGradientsThatDoNotMatchModelOutputs) {
   ASSERT_TRUE(buffer.ok()) << buffer.status();
   // In particular, the old extra target gradient is now rejected.
   for (size_t count : {size_t{0}, size_t{1}, size_t{2}, size_t{4}, size_t{5}}) {
-    RoutingLayer model({*buffer, *buffer, *buffer}, {});
-    RoutingLayer loss({*buffer}, BufferVec(count, *buffer));
+    RoutingLayer model({*buffer, *buffer, *buffer}, {}, {kTokenType},
+                       {kFloatType, kFloatType, kFloatType});
+    RoutingLayer loss({*buffer}, BufferVec(count, *buffer),
+                      {kFloatType, kFloatType, kFloatType, kTokenType},
+                      {kFloatType});
     FakeOptimizer optimizer;
     auto result = Train(*executor_, model,
                         TrainingOptions{.loss_layer = loss,
@@ -659,6 +703,7 @@ TEST_F(TrainerTest, RejectsLossGradientsThatDoNotMatchModelOutputs) {
                                         .training_data = **data,
                                         .max_steps = 1});
     EXPECT_EQ(result.status().code(), absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ(loss.backward_calls, 1);
     EXPECT_EQ(model.backward_calls, 0);
     EXPECT_EQ(optimizer.steps, 0);
   }
@@ -671,18 +716,19 @@ TEST_F(TrainerTest, RejectsMissingModelOutputsAndInvalidLossOutputs) {
   ASSERT_TRUE(data.ok()) << data.status();
   ASSERT_TRUE(buffer.ok()) << buffer.status();
   ASSERT_TRUE(short_loss.ok()) << short_loss.status();
-  RoutingLayer no_outputs({}, {});
-  RoutingLayer loss({*buffer}, {});
+  RoutingLayer no_outputs({}, {}, {kTokenType}, {kFloatType});
+  RoutingLayer loss({*buffer}, {}, {kFloatType, kTokenType}, {kFloatType});
   auto invalid_model =
       Evaluate(*executor_, no_outputs,
                EvaluationOptions{.loss_layer = loss, .eval_data = **data});
   EXPECT_EQ(invalid_model.status().code(), absl::StatusCode::kInvalidArgument);
   EXPECT_TRUE(loss.observed_inputs.empty());
 
-  RoutingLayer model({*buffer}, {});
+  RoutingLayer model({*buffer}, {}, {kTokenType}, {kFloatType});
   for (const BufferVec& outputs :
        {BufferVec{}, BufferVec{*buffer, *buffer}, BufferVec{*short_loss}}) {
-    RoutingLayer invalid_loss(outputs, {});
+    RoutingLayer invalid_loss(outputs, {}, {kFloatType, kTokenType},
+                              {kFloatType});
     auto result = Evaluate(
         *executor_, model,
         EvaluationOptions{.loss_layer = invalid_loss, .eval_data = **data});
@@ -706,6 +752,130 @@ TEST_F(TrainerTest, RejectsTargetsFromAnotherExecutorBeforeForward) {
   auto result = EvaluateBatch(*executor_, model, **loss, *batch);
   EXPECT_EQ(result.status().code(), absl::StatusCode::kInvalidArgument);
   EXPECT_EQ(model.forward_calls, 0);
+}
+
+TEST_F(TrainerTest, RejectsIncompatibleSignaturesBeforeEitherForward) {
+  auto data = MakeData();
+  auto buffer = Buffer::Allocate(*executor_, 4 * sizeof(float));
+  ASSERT_TRUE(data.ok()) << data.status();
+  ASSERT_TRUE(buffer.ok()) << buffer.status();
+  auto batch = (*data)->Next();
+  ASSERT_TRUE(batch.ok()) << batch.status();
+
+  struct Signatures {
+    std::vector<ActivationType> model_inputs;
+    std::vector<ActivationType> model_outputs;
+    std::vector<ActivationType> loss_inputs;
+    std::vector<ActivationType> loss_outputs;
+  };
+  const ActivationType bf16(DataType::BF16,
+                            {ActivationType::kBatchDimension, 4});
+  const ActivationType two_features(DataType::FP32,
+                                    {ActivationType::kBatchDimension, 4, 2});
+  const std::vector<Signatures> invalid_signatures = {
+      // Models consume one dataset input and must produce at least one output.
+      {{}, {kFloatType}, {kFloatType, kTokenType}, {kFloatType}},
+      {{kTokenType, kTokenType},
+       {kFloatType},
+       {kFloatType, kTokenType},
+       {kFloatType}},
+      {{kTokenType}, {}, {kTokenType}, {kFloatType}},
+      // Producer/consumer equality checks dtype and shape, not just byte count.
+      {{kTokenType}, {kFloatType}, {bf16, kTokenType}, {kFloatType}},
+      {{kTokenType}, {kFloatType}, {two_features, kTokenType}, {kFloatType}},
+      // The final loss input is exactly one dataset target.
+      {{kTokenType}, {kFloatType}, {kFloatType}, {kFloatType}},
+      {{kTokenType},
+       {kFloatType},
+       {kFloatType, kTokenType, kTokenType},
+       {kFloatType}},
+      {{kTokenType}, {kFloatType}, {kFloatType, kTokenType}, {}},
+      {{kTokenType},
+       {kFloatType},
+       {kFloatType, kTokenType},
+       {kFloatType, kFloatType}},
+      {{kTokenType}, {kFloatType}, {kFloatType, kTokenType}, {bf16}},
+      {{kTokenType}, {kFloatType}, {kFloatType, kTokenType}, {two_features}},
+  };
+  for (size_t i = 0; i < invalid_signatures.size(); ++i) {
+    SCOPED_TRACE(i);
+    const auto& signatures = invalid_signatures[i];
+    RoutingLayer model({*buffer}, {}, signatures.model_inputs,
+                       signatures.model_outputs);
+    RoutingLayer loss({*buffer}, {}, signatures.loss_inputs,
+                      signatures.loss_outputs);
+    const auto result = EvaluateBatch(*executor_, model, loss, *batch);
+    EXPECT_EQ(result.status().code(), absl::StatusCode::kInvalidArgument);
+    EXPECT_NE(result.status().message().find("RoutingLayer"),
+              absl::string_view::npos);
+    EXPECT_EQ(model.forward_calls, 0);
+    EXPECT_EQ(loss.forward_calls, 0);
+  }
+}
+
+TEST_F(TrainerTest, RejectsInputTargetAndBatchSizeMismatchBeforeForward) {
+  auto data = MakeData();
+  auto short_buffer = Buffer::Allocate(*executor_, 3 * sizeof(int));
+  auto wide_buffer = Buffer::Allocate(*executor_, 8 * sizeof(int));
+  ASSERT_TRUE(data.ok()) << data.status();
+  ASSERT_TRUE(short_buffer.ok()) << short_buffer.status();
+  ASSERT_TRUE(wide_buffer.ok()) << wide_buffer.status();
+  auto batch = (*data)->Next();
+  auto loss = MakeLoss();
+  ASSERT_TRUE(batch.ok()) << batch.status();
+  ASSERT_TRUE(loss.ok()) << loss.status();
+  FakeModel model;
+
+  auto invalid = *batch;
+  invalid.inputs = *short_buffer;
+  EXPECT_EQ(EvaluateBatch(*executor_, model, **loss, invalid).status().code(),
+            absl::StatusCode::kInvalidArgument);
+  invalid = *batch;
+  invalid.targets = *short_buffer;
+  EXPECT_EQ(EvaluateBatch(*executor_, model, **loss, invalid).status().code(),
+            absl::StatusCode::kInvalidArgument);
+  // Inputs bind -2 to batch_size=1; targets cannot independently choose 2.
+  invalid = *batch;
+  invalid.targets = *wide_buffer;
+  EXPECT_EQ(EvaluateBatch(*executor_, model, **loss, invalid).status().code(),
+            absl::StatusCode::kInvalidArgument);
+  // The same bytes cannot be reinterpreted as two shorter samples.
+  invalid = *batch;
+  invalid.batch_size = 2;
+  invalid.sequence_length = 2;
+  EXPECT_EQ(EvaluateBatch(*executor_, model, **loss, invalid).status().code(),
+            absl::StatusCode::kInvalidArgument);
+  EXPECT_EQ(model.forward_calls, 0);
+  EXPECT_EQ((*loss)->forward_calls, 0);
+}
+
+TEST_F(TrainerTest, RejectsReturnedModelBuffersBeforeLossForward) {
+  auto data = MakeData();
+  auto short_buffer = Buffer::Allocate(*executor_, 3 * sizeof(float));
+  auto wide_buffer = Buffer::Allocate(*executor_, 8 * sizeof(float));
+  auto valid_buffer = Buffer::Allocate(*executor_, 4 * sizeof(float));
+  auto other_executor = cuda::Executor::Create();
+  ASSERT_TRUE(data.ok()) << data.status();
+  ASSERT_TRUE(short_buffer.ok()) << short_buffer.status();
+  ASSERT_TRUE(wide_buffer.ok()) << wide_buffer.status();
+  ASSERT_TRUE(valid_buffer.ok()) << valid_buffer.status();
+  ASSERT_TRUE(other_executor.ok()) << other_executor.status();
+  auto foreign_buffer = Buffer::Allocate(**other_executor, 4 * sizeof(float));
+  ASSERT_TRUE(foreign_buffer.ok()) << foreign_buffer.status();
+  auto batch = (*data)->Next();
+  ASSERT_TRUE(batch.ok()) << batch.status();
+  for (const BufferVec& outputs :
+       {BufferVec{}, BufferVec{*valid_buffer, *valid_buffer},
+        BufferVec{*short_buffer}, BufferVec{*wide_buffer},
+        BufferVec{*foreign_buffer}}) {
+    RoutingLayer model(outputs, {}, {kTokenType}, {kFloatType});
+    RoutingLayer loss({*valid_buffer}, {}, {kFloatType, kTokenType},
+                      {kFloatType});
+    const auto result = EvaluateBatch(*executor_, model, loss, *batch);
+    EXPECT_EQ(result.status().code(), absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ(model.forward_calls, 1);
+    EXPECT_EQ(loss.forward_calls, 0);
+  }
 }
 
 TEST_F(TrainerTest, GenericTrainingMatchesExplicitSparseAutoEncoderUpdate) {

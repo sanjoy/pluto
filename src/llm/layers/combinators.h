@@ -21,8 +21,6 @@ class ResidualLayer final : public Layer {
   static absl::StatusOr<std::unique_ptr<ResidualLayer>> Create(
       std::unique_ptr<Layer> layer);
 
-  absl::Status ValidateSequenceLength(int sequence_length) const override;
-
   absl::Span<Buffer> weights() override { return absl::MakeSpan(weights_); }
   absl::Span<Buffer> gradients() override { return absl::MakeSpan(gradients_); }
   DataType output_type() const override { return layer_->output_type(); }
@@ -58,8 +56,6 @@ class ComposedLayer final : public Layer {
   // Requires at least one non-null child and exact adjacent signatures.
   static absl::StatusOr<std::unique_ptr<ComposedLayer>> Create(
       std::vector<std::unique_ptr<Layer>> layers);
-
-  absl::Status ValidateSequenceLength(int sequence_length) const override;
 
   absl::Span<Buffer> weights() override { return absl::MakeSpan(weights_); }
   absl::Span<Buffer> gradients() override { return absl::MakeSpan(gradients_); }

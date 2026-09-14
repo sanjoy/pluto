@@ -235,8 +235,6 @@ TEST_F(LayerReferenceTest, DenseSignaturesRetainRectangularDimensions) {
     EXPECT_EQ((*reference)->input_types()[0], input);
     EXPECT_EQ((*device)->output_types()[0], output);
     EXPECT_EQ((*reference)->output_types()[0], output);
-    EXPECT_TRUE((*device)->ValidateSequenceLength(7).ok());
-    EXPECT_FALSE((*device)->ValidateSequenceLength(1).ok());
 
     // The square convenience overload must forward the configured sample size.
     auto square = FullyConnectedLayer::Create(*executor_, 32, compute, 7);

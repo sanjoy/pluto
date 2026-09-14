@@ -123,15 +123,6 @@ CrossEntropyLossLayer::Create(cuda::Executor& executor, int vocabulary_size,
       data_type, sequence_length));
 }
 
-absl::Status CrossEntropyLossLayer::ValidateSequenceLength(
-    int sequence_length) const {
-  if (sequence_length != sequence_length_)
-    return absl::InvalidArgumentError(
-        "CrossEntropyLossLayer sequence length does not match its activation "
-        "type");
-  return absl::OkStatus();
-}
-
 absl::StatusOr<FwdResult> CrossEntropyLossLayer::fwd_impl(
     cuda::Executor& executor, absl::Span<const Buffer> inputs) const {
   BackwardState state;

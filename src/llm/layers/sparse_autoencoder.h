@@ -57,8 +57,6 @@ class SparseAutoEncoderLayer final : public Layer {
   // Both biases remain zero.
   absl::Status InitializeNormal(float standard_deviation, uint64_t seed);
 
-  absl::Status ValidateSequenceLength(int sequence_length) const override;
-
   // Parameter order follows the table in the class comment:
   // W_enc, b_enc, D, b_dec.
   absl::Span<Buffer> weights() override { return absl::MakeSpan(weights_); }
@@ -161,8 +159,6 @@ class SparseAutoEncoderLossLayer final : public Layer {
   static absl::StatusOr<std::unique_ptr<SparseAutoEncoderLossLayer>> Create(
       cuda::Executor& executor, int input_dim, int feature_dim,
       float sparsity_penalty, DataType data_type, int sequence_length = 1);
-
-  absl::Status ValidateSequenceLength(int sequence_length) const override;
 
   absl::Span<Buffer> weights() override { return {}; }
   DataType output_type() const override { return output_type_; }

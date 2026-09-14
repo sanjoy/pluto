@@ -30,10 +30,12 @@ namespace pluto::llm {
 // rows. The handles keep that allocation alive, but a generator that reuses
 // storage may overwrite its contents on the next call. Both sample dimensions
 // are preserved from the source; row width and element type are defined by
-// activation_generator. Its sequence-width contract
-// is checked before running it; fixed-context attention/position generators
-// reject shorter samples even when their total row count is divisible by the
-// configured context width.
+// activation_generator. Its declared input and output ActivationTypes must
+// preserve [batch, sequence_length] axes; signatures are checked before fwd
+// and returned buffer sizes/executors afterward. In particular, matching total
+// row counts cannot disguise different sample boundaries. Because raw Buffer
+// bytes have no dtype tag, the source and generator must honor their declared
+// element types.
 class SparseAutoEncoderDataSetIterator final : public DataSetIterator {
  public:
   static absl::StatusOr<std::unique_ptr<SparseAutoEncoderDataSetIterator>>

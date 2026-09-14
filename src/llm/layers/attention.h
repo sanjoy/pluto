@@ -22,12 +22,10 @@ class AttentionLayer final : public Layer {
  public:
   absl::string_view name() const override { return "AttentionLayer"; }
 
+  // These kernels reset attention at the configured fixed-width boundaries.
   static absl::StatusOr<std::unique_ptr<AttentionLayer>> Create(
       cuda::Executor& executor, int context_length, int num_heads,
       int embedding_dim, DataType data_type);
-
-  // These kernels reset attention at the configured fixed-width boundaries.
-  absl::Status ValidateSequenceLength(int sequence_length) const override;
 
   absl::Span<Buffer> weights() override { return {}; }
   DataType output_type() const override { return output_type_; }

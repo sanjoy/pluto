@@ -27,8 +27,6 @@ class CrossEntropyLossLayer final : public Layer {
       cuda::Executor& executor, int vocabulary_size, DataType data_type,
       int sequence_length = 1);
 
-  absl::Status ValidateSequenceLength(int sequence_length) const override;
-
   absl::Span<Buffer> weights() override { return {}; }
   DataType output_type() const override { return output_type_; }
   absl::Span<const ActivationType> input_types() const override {
