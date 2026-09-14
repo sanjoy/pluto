@@ -123,6 +123,22 @@ Path WalkUnchecked(const Graph& graph, const std::vector<int>& successors,
   }
 }
 
+std::string DecodedBytes(const Graph& graph, const Path& path) {
+  std::string bytes;
+  for (int token : path.tokens)
+    bytes += graph.token_bytes[token];
+  return bytes;
+}
+
+void SortCombinedPaths(std::vector<CombinedPath>& paths) {
+  for (auto& path : paths)
+    std::sort(path.mlp_blocks.begin(), path.mlp_blocks.end());
+  std::sort(paths.begin(), paths.end(),
+            [](const CombinedPath& a, const CombinedPath& b) {
+              return a.bytes < b.bytes;
+            });
+}
+
 // Rejection sampling removes modulo bias without depending on the
 // implementation-specific mapping of std::uniform_int_distribution.
 uint64_t UniformBelow(std::mt19937_64& random, uint64_t bound) {
@@ -275,9 +291,7 @@ absl::StatusOr<std::vector<CombinedPath>> CombinePaths(
           path.termination != expected.termination)
         return absl::InvalidArgumentError(
             "Combined candidates must be full walks under max_tokens");
-      std::string bytes;
-      for (int token : path.tokens)
-        bytes += block.graph.token_bytes[token];
+      std::string bytes = DecodedBytes(block.graph, path);
       if (!bytes.empty() && index.emplace(bytes, combined.size()).second)
         combined.push_back({std::move(bytes), {}});
     }
@@ -296,9 +310,7 @@ absl::StatusOr<std::vector<CombinedPath>> CombinePaths(
       const Path path =
           WalkUnchecked(block.graph, successors, static_cast<int>(start),
                         max_tokens, start + 1, visited);
-      std::string bytes;
-      for (int token : path.tokens)
-        bytes += block.graph.token_bytes[token];
+      std::string bytes = DecodedBytes(block.graph, path);
       const auto entry = index.find(bytes);
       if (entry == index.end() || found[entry->second])
         continue;
@@ -306,12 +318,46 @@ absl::StatusOr<std::vector<CombinedPath>> CombinePaths(
       combined[entry->second].mlp_blocks.push_back(block.mlp_block);
     }
   }
-  for (auto& path : combined)
-    std::sort(path.mlp_blocks.begin(), path.mlp_blocks.end());
-  std::sort(combined.begin(), combined.end(),
-            [](const CombinedPath& a, const CombinedPath& b) {
-              return a.bytes < b.bytes;
-            });
+  SortCombinedPaths(combined);
+  return combined;
+}
+
+absl::StatusOr<std::vector<CombinedPath>> CollectAllPaths(
+    absl::Span<const BlockPaths> blocks, size_t max_tokens) {
+  if (max_tokens == 0)
+    return absl::InvalidArgumentError("max_tokens must be positive");
+  absl::flat_hash_set<int> block_ids;
+  absl::flat_hash_map<std::string, size_t> index;
+  std::vector<CombinedPath> combined;
+  for (const BlockPaths& block : blocks) {
+    if (block.mlp_block < 0 || !block_ids.insert(block.mlp_block).second)
+      return absl::InvalidArgumentError(
+          "MLP block IDs must be nonnegative and unique");
+    RETURN_IF_ERROR(ValidateGraph(block.graph));
+    const auto successors = Successors(block.graph);
+    std::vector<size_t> visited(block.graph.token_bytes.size(), 0);
+    // Reuse one successor table and generation-stamped visited array per
+    // block. Calling public Walk for every token would rebuild and clear
+    // vocabulary-sized scratch for every (usually very short) walk.
+    for (size_t start = 0; start < successors.size(); ++start) {
+      const Path path =
+          WalkUnchecked(block.graph, successors, static_cast<int>(start),
+                        max_tokens, start + 1, visited);
+      std::string bytes = DecodedBytes(block.graph, path);
+      if (bytes.empty())
+        continue;
+      auto [entry, inserted] = index.emplace(bytes, combined.size());
+      if (inserted)
+        combined.push_back({std::move(bytes), {}});
+      auto& ids = combined[entry->second].mlp_blocks;
+      // All walks from a block are contiguous, and block IDs are unique.
+      // Different starts/tokenizations can spell the same text within a
+      // block; only the first such walk adds membership.
+      if (ids.empty() || ids.back() != block.mlp_block)
+        ids.push_back(block.mlp_block);
+    }
+  }
+  SortCombinedPaths(combined);
   return combined;
 }
 

@@ -8,6 +8,7 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -489,6 +490,196 @@ TEST(MlpAutomatonGraphTest, CombinedJsonIsLosslessAndChecksProvenance) {
   broken.setstate(std::ios::badbit);
   EXPECT_EQ(WriteCombinedPathsJson(broken, paths).code(),
             absl::StatusCode::kDataLoss);
+}
+
+// Deliberately use the public, fresh-scratch Walk once per token and an ordered
+// set of (bytes, block) pairs as an oracle. This does not share the collector's
+// hash index, generation stamps, or deduplication bookkeeping.
+void ExpectAllWalks(absl::Span<const BlockPaths> blocks, size_t max_tokens) {
+  SCOPED_TRACE(max_tokens);
+  std::set<std::pair<std::string, int>> expected_pairs;
+  for (const auto& block : blocks) {
+    for (size_t start = 0; start < block.graph.token_bytes.size(); ++start) {
+      auto path = Walk(block.graph, static_cast<int>(start), max_tokens);
+      ASSERT_TRUE(path.ok()) << path.status();
+      std::string bytes;
+      for (int token : path->tokens)
+        bytes += block.graph.token_bytes[token];
+      if (!bytes.empty())
+        expected_pairs.emplace(bytes, block.mlp_block);
+    }
+  }
+  std::vector<CombinedPath> expected;
+  for (const auto& [bytes, block] : expected_pairs) {
+    if (expected.empty() || expected.back().bytes != bytes)
+      expected.push_back({bytes, {}});
+    expected.back().mlp_blocks.push_back(block);
+  }
+  auto actual = CollectAllPaths(blocks, max_tokens);
+  ASSERT_TRUE(actual.ok()) << actual.status();
+  ASSERT_EQ(actual->size(), expected.size());
+  for (size_t i = 0; i < expected.size(); ++i) {
+    EXPECT_EQ((*actual)[i].bytes, expected[i].bytes);
+    EXPECT_EQ((*actual)[i].mlp_blocks, expected[i].mlp_blocks);
+  }
+}
+
+TEST(MlpAutomatonGraphTest,
+     CollectAllWalksMergesTokenizationsAndIgnoresSamplesAndOrdering) {
+  Graph first;
+  first.token_bytes = {
+      " Ex",      "eunt", " all", "", " Word", "Word", std::string("\0\xff", 2),
+      "eunt all", "<eos>"};
+  first.edges = {
+      {0, 1, 0.9}, {1, 2, 0.9}, {3, 4, 0.9}, {5, 4, 0.9}, {8, 0, 0.9}};
+  first.eos_token_id = 8;
+  Graph second;
+  second.token_bytes = {" Exeunt", " all",     "Word", std::string("\0\xff", 2),
+                        "",        "eunt all", "<eos>"};
+  second.edges = {{0, 1, 0.9}, {4, 5, 0.9}};
+  second.eos_token_id = 6;
+  // Even malformed samples are ignored; collection is about the full graph,
+  // not whether a random sampler happened to visit a spelling in this block.
+  std::vector<BlockPaths> blocks{
+      {7, first, {{{-1}, Termination::kCycle}, {{}, Termination::kNoEdge}}},
+      {2, second, {}}};
+  ExpectAllWalks(blocks, 16);
+  auto collected = CollectAllPaths(blocks, 16);
+  ASSERT_TRUE(collected.ok()) << collected.status();
+  auto find = [&](absl::string_view text) {
+    return std::find_if(collected->begin(), collected->end(),
+                        [&](const auto& path) { return path.bytes == text; });
+  };
+  auto exeunt = find(" Exeunt all");
+  ASSERT_NE(exeunt, collected->end());
+  EXPECT_EQ(exeunt->mlp_blocks, (std::vector<int>{2, 7}));
+  auto suffix = find("eunt all");
+  ASSERT_NE(suffix, collected->end());
+  EXPECT_EQ(suffix->mlp_blocks, (std::vector<int>{2, 7}));
+  auto eos = find("<eos>");
+  ASSERT_NE(eos, collected->end());
+  EXPECT_EQ(eos->mlp_blocks, (std::vector<int>{2, 7}));
+  auto word = find("Word");
+  ASSERT_NE(word, collected->end());
+  EXPECT_EQ(word->mlp_blocks, (std::vector<int>{2}));
+
+  std::ostringstream original;
+  ASSERT_TRUE(WriteCombinedPathsJson(original, *collected).ok());
+  std::reverse(blocks.begin(), blocks.end());
+  for (auto& block : blocks) {
+    std::reverse(block.graph.edges.begin(), block.graph.edges.end());
+    std::reverse(block.paths.begin(), block.paths.end());
+  }
+  ExpectAllWalks(blocks, 16);
+  auto reordered = CollectAllPaths(blocks, 16);
+  ASSERT_TRUE(reordered.ok()) << reordered.status();
+  std::ostringstream output;
+  ASSERT_TRUE(WriteCombinedPathsJson(output, *reordered).ok());
+  EXPECT_EQ(output.str(), original.str());
+}
+
+TEST(MlpAutomatonGraphTest, CollectAllWalksMatchesExhaustiveSmallGraphs) {
+  // All 4^3 successor assignments on three nodes exercise merging branches,
+  // self-loops, longer cycles, isolated nodes, empty pieces, and duplicate
+  // decoded pieces. Repeating with EOS and short limits stresses the stopping
+  // rules and reuse of visited stamps between different starting tokens.
+  for (int assignment = 0; assignment < 64; ++assignment) {
+    for (int eos : {-1, 0, 2}) {
+      Graph graph;
+      graph.token_bytes = {"", "a", "a"};
+      graph.eos_token_id = eos;
+      int choices = assignment;
+      for (int start = 0; start < 3; ++start) {
+        const int successor = choices % 4 - 1;
+        choices /= 4;
+        if (successor >= 0)
+          graph.edges.push_back({start, successor, 0.9});
+      }
+      const BlockPaths block{3, graph, {}};
+      for (size_t limit : {1, 2, 3, 5}) {
+        SCOPED_TRACE(assignment);
+        SCOPED_TRACE(eos);
+        ExpectAllWalks({&block, 1}, limit);
+      }
+    }
+  }
+}
+
+TEST(MlpAutomatonGraphTest, CollectAllWalksNeverStitchesBlocksOrKeepsPrefixes) {
+  Graph first;
+  first.token_bytes = {"a", "b", "c"};
+  first.edges = {{0, 1, 0.9}};
+  Graph second = first;
+  second.edges = {{1, 2, 0.9}};
+  const std::vector<BlockPaths> blocks{{5, first, {}}, {0, second, {}}};
+  ExpectAllWalks(blocks, 16);
+  auto paths = CollectAllPaths(blocks, 16);
+  ASSERT_TRUE(paths.ok()) << paths.status();
+  ASSERT_EQ(paths->size(), 5u);
+  EXPECT_EQ((*paths)[0].bytes, "a");
+  EXPECT_EQ((*paths)[0].mlp_blocks, (std::vector<int>{0}));
+  EXPECT_EQ((*paths)[1].bytes, "ab");
+  EXPECT_EQ((*paths)[1].mlp_blocks, (std::vector<int>{5}));
+  EXPECT_EQ((*paths)[2].bytes, "b");
+  EXPECT_EQ((*paths)[2].mlp_blocks, (std::vector<int>{5}));
+  EXPECT_EQ((*paths)[3].bytes, "bc");
+  EXPECT_EQ((*paths)[3].mlp_blocks, (std::vector<int>{0}));
+  EXPECT_EQ((*paths)[4].bytes, "c");
+  EXPECT_EQ((*paths)[4].mlp_blocks, (std::vector<int>{0, 5}));
+  // The union of graph edges would invent "abc"; prefixes would incorrectly
+  // attribute "a" to B5 or "b" to B0.
+}
+
+TEST(MlpAutomatonGraphTest, CollectAllWalksPreservesBytesAndSkipsEmptyText) {
+  Graph graph;
+  graph.token_bytes = {"", "", "a", "a", std::string("\0\xff", 2), " A", "A"};
+  graph.edges = {{0, 1, 0.9}, {2, 3, 0.9}};
+  const BlockPaths block{0, graph, {}};
+  ExpectAllWalks({&block, 1}, 16);
+  auto paths = CollectAllPaths({&block, 1}, 16);
+  ASSERT_TRUE(paths.ok()) << paths.status();
+  ASSERT_EQ(paths->size(), 5u);
+  EXPECT_EQ((*paths)[0].bytes, std::string("\0\xff", 2));
+  EXPECT_EQ((*paths)[1].bytes, " A");
+  EXPECT_EQ((*paths)[2].bytes, "A");
+  EXPECT_EQ((*paths)[3].bytes, "a");
+  EXPECT_EQ((*paths)[4].bytes, "aa");
+  graph.token_bytes = {"", ""};
+  graph.edges = {{0, 1, 0.9}, {1, 0, 0.9}};
+  const BlockPaths empty{7, graph, {}};
+  paths = CollectAllPaths({&empty, 1}, std::numeric_limits<size_t>::max());
+  ASSERT_TRUE(paths.ok()) << paths.status();
+  EXPECT_TRUE(paths->empty());
+}
+
+TEST(MlpAutomatonGraphTest, CollectAllWalksValidatesGraphsAndBlockIds) {
+  auto empty = CollectAllPaths({}, 16);
+  ASSERT_TRUE(empty.ok()) << empty.status();
+  EXPECT_TRUE(empty->empty());
+  EXPECT_EQ(CollectAllPaths({}, 0).status().code(),
+            absl::StatusCode::kInvalidArgument);
+
+  std::vector<BlockPaths> blocks{{1, ExampleGraph(), {}}};
+  blocks.push_back(blocks.front());
+  EXPECT_EQ(CollectAllPaths(blocks, 16).status().code(),
+            absl::StatusCode::kInvalidArgument);
+  blocks.pop_back();
+  blocks.front().mlp_block = -1;
+  EXPECT_EQ(CollectAllPaths(blocks, 16).status().code(),
+            absl::StatusCode::kInvalidArgument);
+  blocks.front().mlp_block = 0;
+  // Validation must still happen when all decoded strings would be empty.
+  blocks.front().graph.token_bytes.assign(7, "");
+  blocks.front().graph.edges.push_back({0, 1, 0.9});
+  EXPECT_EQ(CollectAllPaths(blocks, 16).status().code(),
+            absl::StatusCode::kInvalidArgument);
+  blocks.front().graph = ExampleGraph();
+  blocks.front().graph.edges[0].target = 99;
+  EXPECT_EQ(CollectAllPaths(blocks, 16).status().code(),
+            absl::StatusCode::kInvalidArgument);
+  blocks.front().graph = Graph{};
+  EXPECT_EQ(CollectAllPaths(blocks, 16).status().code(),
+            absl::StatusCode::kInvalidArgument);
 }
 
 }  // namespace

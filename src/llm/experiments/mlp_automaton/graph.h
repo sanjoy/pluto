@@ -89,6 +89,18 @@ absl::StatusOr<std::vector<Path>> FilterPathsInCorpus(
 absl::StatusOr<std::vector<CombinedPath>> CombinePaths(
     absl::Span<const BlockPaths> blocks, size_t max_tokens);
 
+// Collects full Walks from every starting token in every supplied graph,
+// including isolated tokens and EOS. Unlike CombinePaths, this does not select
+// candidates from BlockPaths::paths; that field is ignored. Empty decoded
+// strings are omitted, but empty token pieces within a nonempty walk are kept.
+// Membership and sorting use exact decoded bytes, not a particular
+// tokenization. Block IDs must be nonnegative and unique, and max_tokens must
+// be positive. No corpus filtering or cross-block edge stitching is performed.
+// Complete membership is useful for checkpoint histories: an unsampled path
+// must not look like a path that disappeared during training.
+absl::StatusOr<std::vector<CombinedPath>> CollectAllPaths(
+    absl::Span<const BlockPaths> blocks, size_t max_tokens);
+
 // Writes a lossless bytes_hex, ASCII bytes_escaped, and mlp_blocks array for
 // each combined path. No single tokenization represents all possible blocks.
 absl::Status WriteCombinedPathsJson(std::ostream& output,

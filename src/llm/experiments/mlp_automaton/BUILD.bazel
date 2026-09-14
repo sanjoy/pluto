@@ -18,6 +18,22 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "history",
+    srcs = ["history.cc"],
+    hdrs = ["history.h"],
+    deps = [
+        ":graph",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
 cuda_library(
     name = "top_transitions",
     srcs = ["top_transitions.cc"],
@@ -64,6 +80,7 @@ cc_binary(
     srcs = ["mlp_automaton.cc"],
     deps = [
         ":graph",
+        ":history",
         ":model",
         "//src/dataset:dataset",
         "//src/dataset:gpt2_detokenizer",
@@ -123,6 +140,19 @@ cc_test(
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/types:span",
         "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "history_test",
+    size = "small",
+    srcs = ["history_test.cc"],
+    deps = [
+        ":graph",
+        ":history",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/types:span",
         "@googletest//:gtest_main",
     ],
 )

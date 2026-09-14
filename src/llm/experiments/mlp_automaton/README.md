@@ -68,10 +68,86 @@ uploaded. Extra files are ignored. No checkpoint file is modified. Output must
 be a **new** directory, preventing accidental replacement of a previous graph;
 a failed run can leave partial output there.
 
+## Checkpoint histories
+
+Pass a parent directory instead of one checkpoint to analyze every direct
+`step_N` subdirectory, once each, in increasing **numeric** step order:
+
+```sh
+bazel-bin/src/llm/experiments/mlp_automaton/mlp_automaton \
+  --checkpoint=/home/ubuntu/checkpoints/shakespeare_0 \
+  --tokenizer=/home/ubuntu/datasets/tokenizer/gpt2 \
+  --corpus=testdata/shakespeare.txt \
+  --test_fraction=0.1 \
+  --output_dir=/tmp/mlp-history \
+  --samples=50 \
+  --start_tokens=1475,3109,68
+```
+
+Omit `--mlp_block` to inspect all eight blocks at each checkpoint; supplying
+it still selects just that block. A directory containing `weight_0.bin`
+is treated as a single checkpoint, preserving the existing behavior and
+output layout even if its directory name is not `step_N`.
+
+The combined history is printed on stdout and saved to
+`combined_history.txt`. For example, this illustrates the output format:
+
+```text
+" Exeunt all":
+  Chkpt 100 - 300 — block 3,5,6
+  Chkpt 400 - 500 — block 3,5,7
+```
+
+Each text appears once, sorted by its exact decoded bytes. A range combines
+consecutive **analyzed checkpoints** with exactly the same sorted block set.
+A missing text or a changed block set breaks the range. Singletons print
+`Chkpt 100 — block 3,5,6`. Thus, if the saved steps are 100, 200, and 400,
+`Chkpt 100 - 400` covers those three snapshots only; it makes no claim
+about unsaved training iterations. Absence at step 200 would split that
+range even if steps 100 and 400 have identical block sets.
+
+`--samples` is the candidate count **per block, per checkpoint**. The report
+includes the union of corpus-matching sampled texts from the entire run,
+including explicit starting tokens. For every reported text, membership is
+checked against complete walks in **all** scanned graphs, not just the
+checkpoints/blocks that happened to sample it. This recovers earlier matches
+for a text first sampled at a later checkpoint and avoids treating sampling
+variation as a disappearance. Paths still obey `--max_tokens`; prefixes of
+longer complete walks do not qualify, and edges from different checkpoints
+or blocks are never joined.
+
+The root output directory contains:
+
+- `combined_history.txt`: the human-readable ranges shown above.
+- `combined_history.json`: format `pluto.mlp_automaton.history.v1`, an
+  explicit `analyzed_steps` list, and each text's lossless `bytes_hex`,
+  escaped display text, and `ranges` with `first_step`, `last_step`,
+  and `mlp_blocks`.
+- `metadata.txt`: shared input paths, steps, scan settings, and merge rules.
+- `step_N/`: that checkpoint's original graph, samples, combined paths,
+  and metadata. In all-block mode it also contains `block_0/` through
+  `block_7/`, just like a single-checkpoint scan.
+
+Discovery snapshots the available directory list at startup and does not
+recurse or follow newly arriving checkpoints. Non-step entries, regular
+files, and compressed archives such as `step_100.tar.gz` are ignored;
+archives must be extracted before analysis. Duplicate numeric aliases
+(`step_1` and `step_01`), overflowing step IDs, and an empty checkpoint
+parent are errors. A malformed selected checkpoint fails the run rather
+than silently bridging a gap; already-written per-checkpoint outputs may
+remain, but no completed combined history is written.
+
+GPU inference is performed once per selected block/checkpoint, reusing the
+readout and decoded vocabulary. Only one checkpoint's full graphs are held
+at a time; the accumulator retains compact text/block membership ranges.
+All per-checkpoint graphs are still saved, so disk use grows with the number
+of checkpoints and selected blocks.
+
 ## Training-text filter
 
 Only paths whose complete concatenated bytes occur verbatim in the training
-text appear on stdout, in `samples.json`, or in `combined_paths.json`. Matching is case-sensitive,
+text appear on stdout, in `samples.json`, in `combined_paths.json`, or in
+checkpoint histories. Matching is case-sensitive,
 includes leading whitespace and arbitrary bytes, and imposes no word
 boundaries. The full graph in `graph.json` still records every qualifying
 model transition.
@@ -87,6 +163,7 @@ or split, so these flags must match the run.
 Filtering happens after sampling and applies to explicit starts as well.
 `--samples` counts candidate random starts per block, so fewer paths (possibly
 zero) may be emitted; rejected paths are not shortened to a matching prefix.
+In history mode this candidate count applies separately to each checkpoint.
 Metadata records the corpus, split, training byte count, and candidate and
 retained path counts.
 
@@ -113,7 +190,7 @@ from a CPU readout or between GPU implementations are possible near a threshold.
 
 ## Output and sampling
 
-With no block flag, the output directory contains `block_0/` through
+For a single checkpoint with no block flag, the output directory contains `block_0/` through
 `block_7/`, each with its own `graph.json`, `samples.json`, and `metadata.txt`.
 The root holds `combined_paths.json` and shared `metadata.txt`. With an explicit
 block flag (including `--mlp_block=0`), its graph, samples, metadata, and the
@@ -189,7 +266,10 @@ boundaries), combined attribution (including unsampled blocks and differing
 tokenizations), arbitrary-byte JSON, isolated nodes and I/O failures. GPU
 top-transition tests compare against a stable CPU reference across the full
 vocabulary, padding, ties, extreme finite logits, nonfinite rows and invalid
-inputs. Model
+inputs. CPU history tests cover numeric checkpoint discovery, invalid names,
+duplicate/overflowing step IDs, membership changes and absence boundaries,
+late-sampled texts, arbitrary bytes, and text/JSON output. Full-path
+enumeration is checked against exhaustive small-graph traversal oracles. Model
 tests compare the composed readout to independently assembled scalar reference
 layers for all eight block selections, check sparse checkpoint loading,
 invalid block indices, missing selected weights and atomic validation failures,
