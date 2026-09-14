@@ -12,6 +12,7 @@
 
 #include "absl/status/status.h"
 #include "gtest/gtest.h"
+#include "src/llm/experiments/mlp_automaton/graph.h"
 
 namespace pluto::llm::mlp_automaton {
 namespace {
@@ -365,6 +366,71 @@ TEST(HistoryOutputTest, RejectsInvalidStepListsAndUnanalyzedEndpoints) {
     EXPECT_FALSE(WriteHistoryJson(output, paths, steps).ok());
     EXPECT_TRUE(output.str().empty());
   }
+}
+
+TEST(HistoryAccumulatorTest, WwHistoryRequiresRealEdgesAtEachCheckpoint) {
+  // The tokenizer knows "ww" before training. Only w -> w is evidence that a
+  // block learned a continuation, even if another checkpoint first samples
+  // that continuation much later.
+  Graph untrained;
+  untrained.token_bytes = {"w", "ww"};
+  Graph learned = untrained;
+  learned.edges = {{0, 0, 0.9}};
+  auto diagnostic = Walk(untrained, 1, 16);
+  auto continuation = Walk(learned, 0, 16);
+  ASSERT_TRUE(diagnostic.ok()) << diagnostic.status();
+  ASSERT_TRUE(continuation.ok()) << continuation.status();
+
+  for (bool earlier_edge : {false, true}) {
+    SCOPED_TRACE(earlier_edge);
+    const std::vector<BlockPaths> early_blocks{
+        {0, untrained, {*diagnostic}},
+        {5, earlier_edge ? learned : untrained, {}}};
+    auto early_complete = CollectAllPaths(early_blocks, 16);
+    auto early_sampled = CombinePaths(early_blocks, 16);
+    ASSERT_TRUE(early_complete.ok()) << early_complete.status();
+    ASSERT_TRUE(early_sampled.ok()) << early_sampled.status();
+    // Even an explicit singleton start does not become a sampled candidate.
+    EXPECT_TRUE(early_sampled->empty());
+    EXPECT_EQ(early_complete->size(), earlier_edge ? 1u : 0u);
+    HistoryAccumulator history;
+    ASSERT_TRUE(history.AddCheckpoint(0, *early_complete, *early_sampled).ok());
+    EXPECT_TRUE(history.Finish().empty());
+
+    const std::vector<BlockPaths> late_blocks{{0, untrained, {}},
+                                              {5, learned, {*continuation}}};
+    auto late_complete = CollectAllPaths(late_blocks, 16);
+    auto late_sampled = CombinePaths(late_blocks, 16);
+    ASSERT_TRUE(late_complete.ok()) << late_complete.status();
+    ASSERT_TRUE(late_sampled.ok()) << late_sampled.status();
+    ASSERT_EQ(late_complete->size(), 1u);
+    ASSERT_EQ(late_sampled->size(), 1u);
+    EXPECT_EQ(late_sampled->front().mlp_blocks, (std::vector<int>{5}));
+    ASSERT_TRUE(history.AddCheckpoint(100, *late_complete, *late_sampled).ok());
+    EXPECT_EQ(HistoryText(history), earlier_edge
+                                        ? "\"ww\":\n  Chkpt 0 - 100 — block 5\n"
+                                        : "\"ww\":\n  Chkpt 100 — block 5\n");
+  }
+}
+
+TEST(HistoryAccumulatorTest, TokenLimitOneCannotCreateContinuationHistory) {
+  Graph learned;
+  learned.token_bytes = {"w", "ww"};
+  learned.edges = {{0, 0, 0.9}};
+  auto samples = SamplePaths(learned, 10, 1, 17);
+  ASSERT_TRUE(samples.ok()) << samples.status();
+  ASSERT_EQ(samples->size(), 1u);
+  const BlockPaths block{0, learned, *samples};
+  auto complete = CollectAllPaths({&block, 1}, 1);
+  auto combined = CombinePaths({&block, 1}, 1);
+  ASSERT_TRUE(complete.ok()) << complete.status();
+  ASSERT_TRUE(combined.ok()) << combined.status();
+  EXPECT_TRUE(complete->empty());
+  EXPECT_TRUE(combined->empty());
+  HistoryAccumulator history;
+  ASSERT_TRUE(history.AddCheckpoint(0, *complete, *combined).ok());
+  ASSERT_TRUE(history.AddCheckpoint(100, *complete, *combined).ok());
+  EXPECT_TRUE(history.Finish().empty());
 }
 
 }  // namespace

@@ -109,12 +109,13 @@ range even if steps 100 and 400 have identical block sets.
 `--samples` is the candidate count **per block, per checkpoint**. The report
 includes the union of corpus-matching sampled texts from the entire run,
 including explicit starting tokens. For every reported text, membership is
-checked against complete walks in **all** scanned graphs, not just the
-checkpoints/blocks that happened to sample it. This recovers earlier matches
-for a text first sampled at a later checkpoint and avoids treating sampling
-variation as a disappearance. Paths still obey `--max_tokens`; prefixes of
-longer complete walks do not qualify, and edges from different checkpoints
-or blocks are never joined.
+checked against complete walks that **traverse at least one edge** in **all**
+scanned graphs, not just the checkpoints/blocks that happened to sample it.
+This recovers earlier matches for a text first sampled at a later checkpoint
+and avoids treating sampling variation as a disappearance. Paths still obey
+`--max_tokens`; prefixes of longer complete walks and zero-edge vocabulary
+lookups do not qualify, and edges from different checkpoints or blocks are
+never joined.
 
 The root output directory contains:
 
@@ -167,6 +168,37 @@ In history mode this candidate count applies separately to each checkpoint.
 Metadata records the corpus, split, training byte count, and candidate and
 retained path counts.
 
+## What counts as a continuation
+
+Every reported candidate and every attributed checkpoint/block must have a
+complete walk that **actually traverses at least one qualifying edge** (at
+least two token IDs). Merely finding the same bytes in the tokenizer's
+vocabulary is not evidence that the MLP completes those bytes.
+
+For example, GPT-2 contains a single `ww` token (1383). An isolated node
+for that token does **not** qualify as a `ww` continuation. A high-confidence
+self-loop `w (86) -> w (86)` does qualify: its two-token cycle decodes to
+`ww`. As with other graph paths, a cycle is not proof of a memorized word
+or a full-model completion.
+
+The same rule is used for single-checkpoint candidates, cross-block
+attribution, and checkpoint histories. History can still report a genuine
+earlier continuation that was not randomly sampled in a standalone run,
+because it uses the union of candidates across checkpoints. It cannot
+backfill membership based solely on an isolated vocabulary token.
+
+Explicit zero-edge starts (including EOS starts) remain diagnostic entries
+in `samples.json` when they pass the corpus filter; they are excluded from
+combined output and histories. `--max_tokens=1` likewise yields no reported
+continuations, even if a starting node has an outgoing edge: the walk has
+not traversed it. A walk that reaches EOS through an edge does qualify.
+Different tokenizations may still spell the same text, but **each** block's
+matching walk must traverse an edge.
+
+Older reports used `block_membership=complete_walk_from_any_start` and could
+incorrectly attribute isolated vocabulary tokens. Regenerate those reports;
+new metadata records `complete_walk_with_at_least_one_edge`.
+
 ## Performance and numerical conventions
 
 The existing production layers perform BF16 activation/matrix math on the GPU
@@ -196,8 +228,9 @@ The root holds `combined_paths.json` and shared `metadata.txt`. With an explicit
 block flag (including `--mlp_block=0`), its graph, samples, metadata, and the
 combined file are all at the root.
 
-The combined list merges the corpus-matching sampled paths from all scanned
-blocks by their **exact decoded bytes**, even when tokenizations differ.
+The combined list merges the corpus-matching sampled continuation paths from
+all scanned blocks by their **exact decoded bytes**, even when tokenizations
+differ. Zero-edge sampled walks do not become combined candidates.
 Leading spaces and case stay significant. Entries are sorted by bytes; each
 has a sorted, unique `mlp_blocks` array. For example:
 
@@ -207,8 +240,10 @@ has a sorted, unique `mlp_blocks` array. For example:
 
 That line is an illustration of the format. To determine the block list,
 the tool checks complete walks from **every starting token** in every scanned
-graph, using the same `--max_tokens`. A block need not have randomly sampled a
-text to receive attribution. A prefix of a longer walk does not qualify.
+graph, using the same `--max_tokens`. Every attribution requires at least one
+traversed edge. A block need not have randomly sampled a text to receive
+attribution; a singleton vocabulary lookup or prefix of a longer walk does
+not qualify.
 This extra check does not add unsampled texts to the combined list and never
 joins edges from different blocks. Explicit single-block mode only reports
 membership in that selected block.
@@ -231,7 +266,9 @@ not interpret the display string as the original text.
 
 Sampling uniformly selects distinct starting nodes with outgoing edges (except
 EOS), then follows the unique successor. `--samples=0` skips random starts;
-`--start_tokens` adds explicit starts, including nodes with no outgoing edge.
+`--start_tokens` adds explicit starts, including nodes with no outgoing edge
+for diagnostic purposes. Those zero-edge walks are saved only in
+`samples.json`, not the combined reports.
 The same seed is used separately for each block. It fixes each sampling
 order independently of edge-list order.
 
@@ -268,7 +305,9 @@ top-transition tests compare against a stable CPU reference across the full
 vocabulary, padding, ties, extreme finite logits, nonfinite rows and invalid
 inputs. CPU history tests cover numeric checkpoint discovery, invalid names,
 duplicate/overflowing step IDs, membership changes and absence boundaries,
-late-sampled texts, arbitrary bytes, and text/JSON output. Full-path
+late-sampled texts, the isolated-`ww` regression, arbitrary bytes, and text/JSON
+output. Both candidate selection and membership exclude singleton lookups,
+while preserving real self-loops and edges reaching EOS. Full-path
 enumeration is checked against exhaustive small-graph traversal oracles. Model
 tests compare the composed readout to independently assembled scalar reference
 layers for all eight block selections, check sparse checkpoint loading,

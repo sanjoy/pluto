@@ -162,6 +162,7 @@ absl::StatusOr<CheckpointResult> ScanCheckpoint(
         << "\ntest_fraction=" << test_fraction
         << "\ntraining_bytes=" << training.size()
         << "\npath_filter=exact_training_substring"
+        << "\nblock_membership=complete_walk_with_at_least_one_edge"
         << "\nmlp_block=" << mlp_block
         << "\nmlp_checkpoint_indices=" << 8 + 12 * mlp_block << ".."
         << 13 + 12 * mlp_block << "\nformula=x=E[token]; h=x+FC2_B" << mlp_block
@@ -209,8 +210,8 @@ absl::StatusOr<CheckpointResult> ScanCheckpoint(
              << "\ntraining_bytes=" << training.size()
              << "\nmlp_blocks=" << absl::StrJoin(block_ids, ",")
              << "\npath_filter=exact_training_substring"
+             << "\nblock_membership=complete_walk_with_at_least_one_edge"
              << "\npath_identity=exact_decoded_bytes"
-             << "\nblock_membership=complete_walk_from_any_start"
              << "\nthreshold_strictly_greater_than=" << threshold
              << "\nbatch_size=" << batch_size
              << "\nrandom_samples_per_block=" << sample_count
@@ -363,8 +364,8 @@ absl::Status Run() {
            << "\ntraining_bytes=" << training.size() << "\nmlp_blocks="
            << (all_blocks ? "all" : std::to_string(requested_block))
            << "\npath_filter=exact_training_substring"
+           << "\nblock_membership=complete_walk_with_at_least_one_edge"
            << "\npath_identity=exact_decoded_bytes"
-           << "\nblock_membership=complete_walk_from_any_start"
            << "\ncandidates=union_of_per_checkpoint_samples"
            << "\nrange_semantics=consecutive_analyzed_checkpoints"
            << "\nthreshold_strictly_greater_than=" << threshold

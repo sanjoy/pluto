@@ -123,6 +123,12 @@ Path WalkUnchecked(const Graph& graph, const std::vector<int>& successors,
   }
 }
 
+// A validated Walk records its starting token followed by each traversed
+// edge's target. A singleton is only a vocabulary lookup, not evidence of a
+// learned continuation. Checking path length (not just outgoing degree) also
+// excludes EOS starts and walks stopped before an edge by max_tokens=1.
+bool HasTransition(const Path& path) { return path.tokens.size() >= 2; }
+
 std::string DecodedBytes(const Graph& graph, const Path& path) {
   std::string bytes;
   for (int token : path.tokens)
@@ -272,6 +278,7 @@ absl::StatusOr<std::vector<CombinedPath>> CombinePaths(
   std::vector<CombinedPath> combined;
   // Gather candidate strings from the caller's filtered samples. Validate
   // full walks here so malformed paths cannot invent a combined candidate.
+  // Explicit zero-edge samples remain diagnostics, not continuation candidates.
   for (const BlockPaths& block : blocks) {
     if (block.mlp_block < 0 || !block_ids.insert(block.mlp_block).second)
       return absl::InvalidArgumentError(
@@ -291,6 +298,8 @@ absl::StatusOr<std::vector<CombinedPath>> CombinePaths(
           path.termination != expected.termination)
         return absl::InvalidArgumentError(
             "Combined candidates must be full walks under max_tokens");
+      if (!HasTransition(path))
+        continue;
       std::string bytes = DecodedBytes(block.graph, path);
       if (!bytes.empty() && index.emplace(bytes, combined.size()).second)
         combined.push_back({std::move(bytes), {}});
@@ -310,6 +319,8 @@ absl::StatusOr<std::vector<CombinedPath>> CombinePaths(
       const Path path =
           WalkUnchecked(block.graph, successors, static_cast<int>(start),
                         max_tokens, start + 1, visited);
+      if (!HasTransition(path))
+        continue;
       std::string bytes = DecodedBytes(block.graph, path);
       const auto entry = index.find(bytes);
       if (entry == index.end() || found[entry->second])
@@ -343,6 +354,8 @@ absl::StatusOr<std::vector<CombinedPath>> CollectAllPaths(
       const Path path =
           WalkUnchecked(block.graph, successors, static_cast<int>(start),
                         max_tokens, start + 1, visited);
+      if (!HasTransition(path))
+        continue;
       std::string bytes = DecodedBytes(block.graph, path);
       if (bytes.empty())
         continue;

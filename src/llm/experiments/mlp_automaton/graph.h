@@ -47,7 +47,9 @@ struct BlockPaths {
   std::vector<Path> paths;
 };
 
-// One exact decoded byte string, deduplicated across paths/tokenizations.
+// One exact decoded byte string, deduplicated across continuation paths.
+// Each attributed block must have a complete walk traversing at least one
+// edge; a same-spelling isolated vocabulary token does not qualify.
 // Block IDs are unique, sorted and zero-based. Whitespace remains significant.
 struct CombinedPath {
   std::string bytes;
@@ -79,25 +81,30 @@ absl::StatusOr<std::vector<Path>> FilterPathsInCorpus(
     const Graph& graph, absl::Span<const Path> paths,
     absl::string_view training_text);
 
-// Combines the sampled texts, then checks every starting token in every
-// supplied graph for each text's membership. Thus block attribution does not
-// depend on that block also having sampled the text. Membership means a full
-// Walk ending under the same max_tokens limit (not just a prefix of one).
+// Combines sampled continuation texts, then checks every starting token in
+// every supplied graph for each text's membership. Every candidate and each
+// attribution must be a full Walk under max_tokens that traverses at least
+// one edge (at least two token IDs), not a singleton or prefix of a longer
+// walk. Thus attribution does not depend on randomly sampling the same path
+// elsewhere, but never confuses vocabulary membership with a continuation.
 // Results are sorted by exact bytes, independently of block/sample order.
-// Input paths must be full walks in their block under that same token limit;
-// block IDs must be nonnegative and unique. An empty input returns no results.
+// All input paths are validated before ignoring zero-edge samples. Block IDs
+// must be nonnegative and unique. Empty input or max_tokens=1 yields no paths.
 absl::StatusOr<std::vector<CombinedPath>> CombinePaths(
     absl::Span<const BlockPaths> blocks, size_t max_tokens);
 
-// Collects full Walks from every starting token in every supplied graph,
-// including isolated tokens and EOS. Unlike CombinePaths, this does not select
-// candidates from BlockPaths::paths; that field is ignored. Empty decoded
-// strings are omitted, but empty token pieces within a nonempty walk are kept.
-// Membership and sorting use exact decoded bytes, not a particular
-// tokenization. Block IDs must be nonnegative and unique, and max_tokens must
-// be positive. No corpus filtering or cross-block edge stitching is performed.
-// Complete membership is useful for checkpoint histories: an unsampled path
-// must not look like a path that disappeared during training.
+// Enumerates every nonempty decoded continuation from every starting token
+// in the supplied block graphs. Walks must traverse at least one edge:
+// isolates, EOS starts, and walks stopped at max_tokens=1 do not qualify.
+// Edges ending at EOS, self-loops, and alternative multi-token spellings do.
+// Unlike CombinePaths, this does not select candidates from BlockPaths.paths;
+// those sampled paths are ignored. Uses the same full-Walk stopping rules.
+// Duplicate decoded texts (including different tokenizations) are merged,
+// with sorted unique block IDs; results are sorted by exact bytes.
+// Validates the graphs and nonnegative unique block IDs; max_tokens must be
+// positive. Empty input returns no paths. Never joins edges between blocks.
+// Complete membership lets history recover an earlier unsampled continuation
+// once it is sampled later, without rerunning GPU inference.
 absl::StatusOr<std::vector<CombinedPath>> CollectAllPaths(
     absl::Span<const BlockPaths> blocks, size_t max_tokens);
 
