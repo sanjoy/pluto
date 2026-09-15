@@ -37,11 +37,12 @@ class AttentionLayer final : public Layer {
   }
 
  private:
-  absl::StatusOr<FwdResult> fwd_impl(
-      cuda::Executor& executor, absl::Span<const Buffer> inputs) const override;
+  absl::StatusOr<FwdResult> fwd_impl(cuda::Executor& executor,
+                                     absl::Span<const Buffer> inputs,
+                                     LayerHooks*) const override;
   absl::StatusOr<BufferVec> bwd_impl(cuda::Executor& executor,
                                      absl::Span<const Buffer> output_gradients,
-                                     BackwardState state) override;
+                                     BackwardState state, LayerHooks*) override;
 
   AttentionLayer(cuda::Executor& executor, int context_length, int num_heads,
                  int embedding_dim, DataType data_type)

@@ -77,8 +77,9 @@ absl::StatusOr<std::unique_ptr<GeluLayer>> GeluLayer::Create(
       new GeluLayer(executor, embedding_dim, data_type, sequence_length));
 }
 
-absl::StatusOr<FwdResult> GeluLayer::fwd_impl(
-    cuda::Executor& executor, absl::Span<const Buffer> inputs) const {
+absl::StatusOr<FwdResult> GeluLayer::fwd_impl(cuda::Executor& executor,
+                                              absl::Span<const Buffer> inputs,
+                                              LayerHooks*) const {
   BackwardState state;
   RETURN_IF_ERROR(internal::ValidateExecutor(executor_, executor, "GeluLayer"));
   if (inputs.size() != 1)
@@ -112,7 +113,7 @@ absl::StatusOr<FwdResult> GeluLayer::fwd_impl(
 
 absl::StatusOr<BufferVec> GeluLayer::bwd_impl(
     cuda::Executor& executor, absl::Span<const Buffer> output_gradients,
-    BackwardState state) {
+    BackwardState state, LayerHooks*) {
   RETURN_IF_ERROR(internal::ValidateExecutor(executor_, executor, "GeluLayer"));
   if (output_gradients.size() != 1 || state.intermediates.size() != 1) {
     return absl::InvalidArgumentError(

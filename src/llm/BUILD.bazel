@@ -286,7 +286,6 @@ layer_library("attention")
 layer_library("combinators", [
     ":layer_hooks",
     ":layer_type_check",
-    "@abseil-cpp//absl/cleanup",
 ])
 layer_library("cross_entropy_loss")
 layer_library("embedding", ["@cuda//:cub"])

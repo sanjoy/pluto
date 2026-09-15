@@ -52,11 +52,12 @@ class FullyConnectedLayer final : public Layer {
   int output_dim() const { return output_dim_; }
 
  private:
-  absl::StatusOr<FwdResult> fwd_impl(
-      cuda::Executor& executor, absl::Span<const Buffer> inputs) const override;
+  absl::StatusOr<FwdResult> fwd_impl(cuda::Executor& executor,
+                                     absl::Span<const Buffer> inputs,
+                                     LayerHooks*) const override;
   absl::StatusOr<BufferVec> bwd_impl(cuda::Executor& executor,
                                      absl::Span<const Buffer> output_gradients,
-                                     BackwardState state) override;
+                                     BackwardState state, LayerHooks*) override;
 
   FullyConnectedLayer(cuda::Executor& executor, int input_dim, int output_dim,
                       DataType data_type, Buffer matrix, Buffer bias,

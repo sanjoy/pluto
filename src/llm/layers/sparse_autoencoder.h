@@ -86,8 +86,9 @@ class SparseAutoEncoderLayer final : public Layer {
       int valid_rows = 0) const;
 
  private:
-  absl::StatusOr<FwdResult> fwd_impl(
-      cuda::Executor& executor, absl::Span<const Buffer> inputs) const override;
+  absl::StatusOr<FwdResult> fwd_impl(cuda::Executor& executor,
+                                     absl::Span<const Buffer> inputs,
+                                     LayerHooks*) const override;
 
   // The first gradient is dL/dx1. Auxiliary sparse losses may additionally
   // supply dL/dz and a direct dL/dD as the second and third buffers. The
@@ -95,7 +96,7 @@ class SparseAutoEncoderLayer final : public Layer {
   // as well as indirectly through x1.
   absl::StatusOr<BufferVec> bwd_impl(cuda::Executor& executor,
                                      absl::Span<const Buffer> output_gradients,
-                                     BackwardState state) override;
+                                     BackwardState state, LayerHooks*) override;
 
   SparseAutoEncoderLayer(cuda::Executor& executor, int input_dim,
                          int feature_dim, DataType data_type, Mode mode,
@@ -172,11 +173,12 @@ class SparseAutoEncoderLossLayer final : public Layer {
   float sparsity_penalty() const { return sparsity_penalty_; }
 
  private:
-  absl::StatusOr<FwdResult> fwd_impl(
-      cuda::Executor& executor, absl::Span<const Buffer> inputs) const override;
+  absl::StatusOr<FwdResult> fwd_impl(cuda::Executor& executor,
+                                     absl::Span<const Buffer> inputs,
+                                     LayerHooks*) const override;
   absl::StatusOr<BufferVec> bwd_impl(cuda::Executor& executor,
                                      absl::Span<const Buffer> output_gradients,
-                                     BackwardState state) override;
+                                     BackwardState state, LayerHooks*) override;
 
   SparseAutoEncoderLossLayer(cuda::Executor& executor, int input_dim,
                              int feature_dim, float sparsity_penalty,

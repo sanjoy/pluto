@@ -40,11 +40,12 @@ class CrossEntropyLossLayer final : public Layer {
   int padded_vocab_size() const { return padded_vocab_size_; }
 
  private:
-  absl::StatusOr<FwdResult> fwd_impl(
-      cuda::Executor& executor, absl::Span<const Buffer> inputs) const override;
+  absl::StatusOr<FwdResult> fwd_impl(cuda::Executor& executor,
+                                     absl::Span<const Buffer> inputs,
+                                     LayerHooks*) const override;
   absl::StatusOr<BufferVec> bwd_impl(cuda::Executor& executor,
                                      absl::Span<const Buffer> output_gradients,
-                                     BackwardState state) override;
+                                     BackwardState state, LayerHooks*) override;
 
   CrossEntropyLossLayer(cuda::Executor& executor, int vocab_size,
                         int padded_vocab_size, DataType data_type,

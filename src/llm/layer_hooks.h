@@ -11,11 +11,12 @@ namespace pluto::llm {
 class ActivationType;
 
 // Optional synchronous host callbacks around asynchronous GPU layer work.
-// Attach a non-owning instance to an Executor to instrument every GPU layer
-// using it, including nested combinators and training/evaluation calls. The
-// LayerHooks instance must outlive its attachment and must not be changed
-// during a layer call. Independent executors may use independent hooks;
-// sharing one instance across threads requires synchronization in the hooks.
+// Pass a non-owning instance explicitly to Layer::fwd/bwd; combinators forward
+// it to their children. The instance only needs to outlive that call and is
+// never stored on the Executor, layer, or saved backward state. Passing nullptr
+// disables instrumentation. Every callback defaults to a no-op, so subclasses
+// need only override the hooks they use. Sharing one instance across threads
+// requires synchronization in the hooks.
 //
 // Callbacks may read buffers or replace their handles with initialized buffers
 // of the SAME byte size, physical dtype, logical shape, and Executor. Do not
@@ -45,7 +46,9 @@ class LayerHooks {
   virtual absl::Status ActivationHook(
       cuda::Executor& executor, absl::string_view layer_name,
       absl::Span<const ActivationType> activation_types,
-      absl::Span<cuda::Buffer> activations) = 0;
+      absl::Span<cuda::Buffer> activations) {
+    return absl::OkStatus();
+  }
 
   // Called after saved-state identity validation and BEFORE bwd_impl, so an
   // intervention affects parameter gradients as well as input gradients.
@@ -56,7 +59,9 @@ class LayerHooks {
   virtual absl::Status GradientHook(
       cuda::Executor& executor, absl::string_view layer_name,
       absl::Span<const ActivationType> activation_types,
-      absl::Span<cuda::Buffer> gradients) = 0;
+      absl::Span<cuda::Buffer> gradients) {
+    return absl::OkStatus();
+  }
 
   // Bracket a combinator's implementation, in both forward and backward.
   // A successful Enter gets exactly one Exit, even if a child fails. A failed

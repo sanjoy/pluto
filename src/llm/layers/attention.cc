@@ -321,7 +321,8 @@ absl::StatusOr<std::unique_ptr<AttentionLayer>> AttentionLayer::Create(
 }
 
 absl::StatusOr<FwdResult> AttentionLayer::fwd_impl(
-    cuda::Executor& executor, absl::Span<const Buffer> inputs) const {
+    cuda::Executor& executor, absl::Span<const Buffer> inputs,
+    LayerHooks*) const {
   RETURN_IF_ERROR(
       internal::ValidateExecutor(executor_, executor, "AttentionLayer"));
   if (inputs.size() != 1)
@@ -376,7 +377,7 @@ absl::StatusOr<FwdResult> AttentionLayer::fwd_impl(
 
 absl::StatusOr<BufferVec> AttentionLayer::bwd_impl(
     cuda::Executor& executor, absl::Span<const Buffer> output_gradients,
-    BackwardState state) {
+    BackwardState state, LayerHooks*) {
   RETURN_IF_ERROR(
       internal::ValidateExecutor(executor_, executor, "AttentionLayer"));
   if (output_gradients.size() != 1 || state.intermediates.size() != 4)

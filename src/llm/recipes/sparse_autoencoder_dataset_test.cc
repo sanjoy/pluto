@@ -101,8 +101,9 @@ class RecordingActivationGenerator final : public Layer {
   int backward_calls() const { return backward_calls_; }
 
  private:
-  absl::StatusOr<FwdResult> fwd_impl(
-      cuda::Executor&, absl::Span<const Buffer> inputs) const override {
+  absl::StatusOr<FwdResult> fwd_impl(cuda::Executor&,
+                                     absl::Span<const Buffer> inputs,
+                                     LayerHooks*) const override {
     ++forward_calls_;
     if (inputs.size() != 1)
       return absl::InvalidArgumentError("expected one generator input");
@@ -114,7 +115,7 @@ class RecordingActivationGenerator final : public Layer {
   }
 
   absl::StatusOr<BufferVec> bwd_impl(cuda::Executor&, absl::Span<const Buffer>,
-                                     BackwardState) override {
+                                     BackwardState, LayerHooks*) override {
     ++backward_calls_;
     return absl::InternalError("frozen generator must not run backward");
   }

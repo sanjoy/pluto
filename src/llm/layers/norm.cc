@@ -373,7 +373,8 @@ absl::StatusOr<std::unique_ptr<LayerNormLayer>> LayerNormLayer::Create(
 }
 
 absl::StatusOr<FwdResult> LayerNormLayer::fwd_impl(
-    cuda::Executor& executor, absl::Span<const Buffer> inputs) const {
+    cuda::Executor& executor, absl::Span<const Buffer> inputs,
+    LayerHooks*) const {
   RETURN_IF_ERROR(
       internal::ValidateExecutor(executor_, executor, "LayerNormLayer"));
   if (inputs.size() != 1)
@@ -404,7 +405,7 @@ absl::StatusOr<FwdResult> LayerNormLayer::fwd_impl(
 
 absl::StatusOr<BufferVec> LayerNormLayer::bwd_impl(
     cuda::Executor& executor, absl::Span<const Buffer> output_gradients,
-    BackwardState state) {
+    BackwardState state, LayerHooks*) {
   RETURN_IF_ERROR(
       internal::ValidateExecutor(executor_, executor, "LayerNormLayer"));
   if (output_gradients.size() != 1 || state.intermediates.size() != 3 ||

@@ -33,9 +33,10 @@ absl::Status ValidateReplacements(cuda::Executor& executor,
 }  // namespace
 
 absl::StatusOr<FwdResult> Layer::fwd(cuda::Executor& executor,
-                                     absl::Span<const Buffer> inputs) const {
-  ASSIGN_OR_RETURN(auto result, fwd_impl(executor, inputs));
-  if (auto* hooks = executor.layer_hooks()) {
+                                     absl::Span<const Buffer> inputs,
+                                     LayerHooks* hooks) const {
+  ASSIGN_OR_RETURN(auto result, fwd_impl(executor, inputs, hooks));
+  if (hooks != nullptr) {
     const auto types = output_types();
     if (result.outputs.size() != types.size())
       return absl::InvalidArgumentError(
@@ -54,13 +55,12 @@ absl::StatusOr<FwdResult> Layer::fwd(cuda::Executor& executor,
 
 absl::StatusOr<BufferVec> Layer::bwd(cuda::Executor& executor,
                                      absl::Span<const Buffer> output_gradients,
-                                     BackwardState state) {
+                                     BackwardState state, LayerHooks* hooks) {
   if (state.layer != this)
     return absl::InvalidArgumentError(
         "bwd requires a state from this layer's successful fwd");
-  auto* hooks = executor.layer_hooks();
   if (hooks == nullptr)
-    return bwd_impl(executor, output_gradients, std::move(state));
+    return bwd_impl(executor, output_gradients, std::move(state), hooks);
 
   const auto types = output_types();
   if (output_gradients.size() > types.size())
@@ -80,7 +80,7 @@ absl::StatusOr<BufferVec> Layer::bwd(cuda::Executor& executor,
   RETURN_IF_ERROR(hooks->GradientHook(executor, name(), gradient_types,
                                       absl::MakeSpan(gradients)));
   RETURN_IF_ERROR(ValidateReplacements(executor, output_gradients, gradients));
-  return bwd_impl(executor, gradients, std::move(state));
+  return bwd_impl(executor, gradients, std::move(state), hooks);
 }
 
 }  // namespace pluto::llm

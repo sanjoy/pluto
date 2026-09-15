@@ -38,13 +38,13 @@ class CheckpointLayer final : public Layer {
   absl::Span<const ActivationType> output_types() const override { return {}; }
 
  private:
-  absl::StatusOr<FwdResult> fwd_impl(cuda::Executor&,
-                                     absl::Span<const Buffer>) const override {
+  absl::StatusOr<FwdResult> fwd_impl(cuda::Executor&, absl::Span<const Buffer>,
+                                     LayerHooks*) const override {
     return absl::UnimplementedError("CheckpointLayer has no data path");
   }
 
   absl::StatusOr<BufferVec> bwd_impl(cuda::Executor&, absl::Span<const Buffer>,
-                                     BackwardState) override {
+                                     BackwardState, LayerHooks*) override {
     return absl::UnimplementedError("CheckpointLayer has no data path");
   }
 

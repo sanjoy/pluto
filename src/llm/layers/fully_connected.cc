@@ -266,7 +266,8 @@ absl::Status FullyConnectedLayer::InitializeNormal(float standard_deviation,
 }
 
 absl::StatusOr<FwdResult> FullyConnectedLayer::fwd_impl(
-    cuda::Executor& executor, absl::Span<const Buffer> inputs) const {
+    cuda::Executor& executor, absl::Span<const Buffer> inputs,
+    LayerHooks*) const {
   BackwardState state;
   RETURN_IF_ERROR(
       internal::ValidateExecutor(executor_, executor, "FullyConnectedLayer"));
@@ -306,7 +307,7 @@ absl::StatusOr<FwdResult> FullyConnectedLayer::fwd_impl(
 
 absl::StatusOr<BufferVec> FullyConnectedLayer::bwd_impl(
     cuda::Executor& executor, absl::Span<const Buffer> output_gradients,
-    BackwardState state) {
+    BackwardState state, LayerHooks*) {
   RETURN_IF_ERROR(
       internal::ValidateExecutor(executor_, executor, "FullyConnectedLayer"));
   if (output_gradients.size() != 1 || state.intermediates.size() != 1) {

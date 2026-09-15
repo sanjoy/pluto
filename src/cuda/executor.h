@@ -7,10 +7,6 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 
-namespace pluto::llm {
-class LayerHooks;
-}
-
 namespace pluto::cuda {
 
 // Converts a CUDA runtime result into an Abseil status. Successful results map
@@ -54,22 +50,12 @@ class Executor final {
   // change its access/reuse policy.
   cudaMemPool_t host_memory_pool() const { return host_memory_pool_; }
 
-  // Optional, non-owning layer instrumentation, propagated by using this
-  // Executor throughout a model. nullptr disables callbacks. The LayerHooks
-  // instance must outlive its attachment; detach it before destroying it. Do
-  // not change it during a layer call or concurrently with execution on this
-  // Executor.
-  // CUDA only carries the pointer; it does not invoke or depend on LLM code.
-  llm::LayerHooks* layer_hooks() const { return layer_hooks_; }
-  void set_layer_hooks(llm::LayerHooks* hooks) { layer_hooks_ = hooks; }
-
  private:
   Executor() = default;
 
   cudaStream_t stream_ = nullptr;
   cudaStream_t immediate_stream_ = nullptr;
   cudaMemPool_t host_memory_pool_ = nullptr;
-  llm::LayerHooks* layer_hooks_ = nullptr;
 };
 
 }  // namespace pluto::cuda

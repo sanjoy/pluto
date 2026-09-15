@@ -88,6 +88,7 @@ inline DataType ActivationDataType(DataType compute_type) {
 }
 
 class Layer;
+class LayerHooks;
 
 // Saved forward state. A tree, rather than one flat vector, lets composed
 // layers keep each child's private intermediates without imposing a
@@ -131,11 +132,13 @@ class Layer {
   virtual absl::Span<const ActivationType> output_types() const = 0;
 
   // State is published only with a successful output. Failed calls cannot
-  // overwrite state retained from an earlier forward pass. If this Executor
-  // has LayerHooks attached, ActivationHook processes successful outputs before
-  // they are published. See layer_hooks.h for replacement/aliasing rules.
+  // overwrite state retained from an earlier forward pass. Optional hooks are
+  // borrowed only for this call and passed to all nested layers; nullptr skips
+  // instrumentation. ActivationHook processes successful outputs before they
+  // are published. See layer_hooks.h for replacement/aliasing rules.
   absl::StatusOr<FwdResult> fwd(cuda::Executor& executor,
-                                absl::Span<const Buffer> inputs) const;
+                                absl::Span<const Buffer> inputs,
+                                LayerHooks* hooks = nullptr) const;
 
   // Output gradients follow the forward outputs' order; returned gradients
   // follow the forward inputs' order. Layer-specific exceptions are documented
@@ -143,12 +146,14 @@ class Layer {
   // consuming nondifferentiable integer inputs may return no input gradients.
   // Check instance identity before dispatching any backward work. Matching
   // shapes or layer types alone do not make another layer's saved state valid.
-  // An attached GradientHook processes incoming output gradients (FP32) before
+  // The supplied GradientHook processes incoming output gradients (FP32) before
   // bwd_impl computes parameter/input gradients. Its handle replacements do
-  // not alter the caller's gradient handles.
+  // not alter the caller's gradient handles. Hooks are selected independently
+  // for each call, never recovered from the forward state or Executor.
   absl::StatusOr<BufferVec> bwd(cuda::Executor& executor,
                                 absl::Span<const Buffer> output_gradients,
-                                BackwardState state);
+                                BackwardState state,
+                                LayerHooks* hooks = nullptr);
   virtual absl::Span<Buffer> weights() = 0;
   // Read-only access for serialization and inspection. Implementations expose
   // the same handles as weights(); callers must not mutate their device bytes.
@@ -165,11 +170,12 @@ class Layer {
 
  private:
   // Implementations cannot bypass the public entry points' state checks.
-  virtual absl::StatusOr<FwdResult> fwd_impl(
-      cuda::Executor& executor, absl::Span<const Buffer> inputs) const = 0;
+  virtual absl::StatusOr<FwdResult> fwd_impl(cuda::Executor& executor,
+                                             absl::Span<const Buffer> inputs,
+                                             LayerHooks* hooks) const = 0;
   virtual absl::StatusOr<BufferVec> bwd_impl(
       cuda::Executor& executor, absl::Span<const Buffer> output_gradients,
-      BackwardState state) = 0;
+      BackwardState state, LayerHooks* hooks) = 0;
 };
 
 class LayerReference;

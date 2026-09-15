@@ -37,8 +37,9 @@ class IdentityLayer final : public Layer {
   const ActivationType input_types_[1] = {{DataType::FP32, {}}};
   const ActivationType output_types_[1] = {{DataType::FP32, {}}};
 
-  absl::StatusOr<FwdResult> fwd_impl(
-      cuda::Executor&, absl::Span<const Buffer> inputs) const override {
+  absl::StatusOr<FwdResult> fwd_impl(cuda::Executor&,
+                                     absl::Span<const Buffer> inputs,
+                                     LayerHooks*) const override {
     BackwardState state;
     ++forward_calls;
     EXPECT_EQ(state.layer, nullptr);
@@ -52,7 +53,8 @@ class IdentityLayer final : public Layer {
   }
 
   absl::StatusOr<BufferVec> bwd_impl(cuda::Executor&, absl::Span<const Buffer>,
-                                     BackwardState state) override {
+                                     BackwardState state,
+                                     LayerHooks*) override {
     ++backward_calls;
     EXPECT_EQ(state.layer, this);
     if (fail_backward)
@@ -86,8 +88,9 @@ class ParameterOutputLayer final : public Layer {
   const ActivationType output_types_[2] = {{DataType::FP32, {}},
                                            {DataType::FP32, {}}};
 
-  absl::StatusOr<FwdResult> fwd_impl(
-      cuda::Executor&, absl::Span<const Buffer> inputs) const override {
+  absl::StatusOr<FwdResult> fwd_impl(cuda::Executor&,
+                                     absl::Span<const Buffer> inputs,
+                                     LayerHooks*) const override {
     if (inputs.size() != 1)
       return absl::InvalidArgumentError("expected one input");
     BackwardState state;
@@ -96,7 +99,8 @@ class ParameterOutputLayer final : public Layer {
   }
   absl::StatusOr<BufferVec> bwd_impl(cuda::Executor&,
                                      absl::Span<const Buffer> gradients,
-                                     BackwardState state) override {
+                                     BackwardState state,
+                                     LayerHooks*) override {
     if (gradients.size() != 2)
       return absl::InvalidArgumentError("expected two gradients");
     received_gradients.assign(gradients.begin(), gradients.end());
@@ -126,15 +130,16 @@ class SwapOutputsLayer final : public Layer {
   const ActivationType output_types_[2] = {{DataType::FP32, {}},
                                            {DataType::FP32, {}}};
 
-  absl::StatusOr<FwdResult> fwd_impl(
-      cuda::Executor&, absl::Span<const Buffer> inputs) const override {
+  absl::StatusOr<FwdResult> fwd_impl(cuda::Executor&,
+                                     absl::Span<const Buffer> inputs,
+                                     LayerHooks*) const override {
     if (inputs.size() != 2)
       return absl::InvalidArgumentError("expected two inputs");
     return FwdResult{{inputs[1], inputs[0]}, {}};
   }
   absl::StatusOr<BufferVec> bwd_impl(cuda::Executor&,
                                      absl::Span<const Buffer> gradients,
-                                     BackwardState) override {
+                                     BackwardState, LayerHooks*) override {
     if (gradients.size() != 2)
       return absl::InvalidArgumentError("expected two gradients");
     return BufferVec{gradients[1], gradients[0]};
@@ -181,10 +186,11 @@ TEST_F(LayerTest, ResultContainsOutputAndStateWithMatchingOwner) {
 }
 
 TEST(LayerApiTest, ForwardReturnsResultWithoutStateArgument) {
-  static_assert(std::is_same_v<
-                std::invoke_result_t<decltype(&Layer::fwd), const Layer&,
-                                     cuda::Executor&, absl::Span<const Buffer>>,
-                absl::StatusOr<FwdResult>>);
+  static_assert(
+      std::is_same_v<std::invoke_result_t<
+                         decltype(&Layer::fwd), const Layer&, cuda::Executor&,
+                         absl::Span<const Buffer>, LayerHooks*>,
+                     absl::StatusOr<FwdResult>>);
   static_assert(
       !std::is_invocable_v<decltype(&Layer::fwd), const Layer&, cuda::Executor&,
                            absl::Span<const Buffer>, BackwardState&>);

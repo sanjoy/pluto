@@ -679,7 +679,8 @@ absl::Status SparseAutoEncoderLayer::InitializeNormal(float standard_deviation,
 }
 
 absl::StatusOr<FwdResult> SparseAutoEncoderLayer::fwd_impl(
-    cuda::Executor& executor, absl::Span<const Buffer> inputs) const {
+    cuda::Executor& executor, absl::Span<const Buffer> inputs,
+    LayerHooks*) const {
   BackwardState state;
   RETURN_IF_ERROR(internal::ValidateExecutor(executor_, executor,
                                              "SparseAutoEncoderLayer"));
@@ -822,7 +823,7 @@ SparseAutoEncoderLayer::ReadZStatistics(cuda::Executor& executor,
 
 absl::StatusOr<BufferVec> SparseAutoEncoderLayer::bwd_impl(
     cuda::Executor& executor, absl::Span<const Buffer> output_gradients,
-    BackwardState state) {
+    BackwardState state, LayerHooks*) {
   RETURN_IF_ERROR(internal::ValidateExecutor(executor_, executor,
                                              "SparseAutoEncoderLayer"));
   if ((output_gradients.size() != 1 && output_gradients.size() != 3) ||
@@ -981,7 +982,8 @@ SparseAutoEncoderLossLayer::Create(cuda::Executor& executor, int input_dim,
 }
 
 absl::StatusOr<FwdResult> SparseAutoEncoderLossLayer::fwd_impl(
-    cuda::Executor& executor, absl::Span<const Buffer> inputs) const {
+    cuda::Executor& executor, absl::Span<const Buffer> inputs,
+    LayerHooks*) const {
   BackwardState state;
   RETURN_IF_ERROR(internal::ValidateExecutor(executor_, executor,
                                              "SparseAutoEncoderLossLayer"));
@@ -1024,7 +1026,7 @@ absl::StatusOr<FwdResult> SparseAutoEncoderLossLayer::fwd_impl(
 
 absl::StatusOr<BufferVec> SparseAutoEncoderLossLayer::bwd_impl(
     cuda::Executor& executor, absl::Span<const Buffer> output_gradients,
-    BackwardState state) {
+    BackwardState state, LayerHooks*) {
   RETURN_IF_ERROR(internal::ValidateExecutor(executor_, executor,
                                              "SparseAutoEncoderLossLayer"));
   if (!output_gradients.empty()) {

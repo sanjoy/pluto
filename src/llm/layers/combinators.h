@@ -35,11 +35,21 @@ class ResidualLayer final : public Layer {
  private:
   explicit ResidualLayer(std::unique_ptr<Layer> layer);
 
-  absl::StatusOr<FwdResult> fwd_impl(
-      cuda::Executor& executor, absl::Span<const Buffer> inputs) const override;
+  absl::StatusOr<FwdResult> fwd_impl(cuda::Executor& executor,
+                                     absl::Span<const Buffer> inputs,
+                                     LayerHooks* hooks) const override;
   absl::StatusOr<BufferVec> bwd_impl(cuda::Executor& executor,
                                      absl::Span<const Buffer> output_gradients,
-                                     BackwardState state) override;
+                                     BackwardState state,
+                                     LayerHooks* hooks) override;
+
+  // Work inside this layer's hook scope; the impl wrappers bracket these calls.
+  absl::StatusOr<FwdResult> fwd_body(cuda::Executor& executor,
+                                     absl::Span<const Buffer> inputs,
+                                     LayerHooks* hooks) const;
+  absl::StatusOr<BufferVec> bwd_body(cuda::Executor& executor,
+                                     absl::Span<const Buffer> output_gradients,
+                                     BackwardState state, LayerHooks* hooks);
 
   std::unique_ptr<Layer> layer_;
   std::vector<Buffer> weights_;
@@ -71,11 +81,21 @@ class ComposedLayer final : public Layer {
  private:
   explicit ComposedLayer(std::vector<std::unique_ptr<Layer>> layers);
 
-  absl::StatusOr<FwdResult> fwd_impl(
-      cuda::Executor& executor, absl::Span<const Buffer> inputs) const override;
+  absl::StatusOr<FwdResult> fwd_impl(cuda::Executor& executor,
+                                     absl::Span<const Buffer> inputs,
+                                     LayerHooks* hooks) const override;
   absl::StatusOr<BufferVec> bwd_impl(cuda::Executor& executor,
                                      absl::Span<const Buffer> output_gradients,
-                                     BackwardState state) override;
+                                     BackwardState state,
+                                     LayerHooks* hooks) override;
+
+  // Work inside this layer's hook scope; the impl wrappers bracket these calls.
+  absl::StatusOr<FwdResult> fwd_body(cuda::Executor& executor,
+                                     absl::Span<const Buffer> inputs,
+                                     LayerHooks* hooks) const;
+  absl::StatusOr<BufferVec> bwd_body(cuda::Executor& executor,
+                                     absl::Span<const Buffer> output_gradients,
+                                     BackwardState state, LayerHooks* hooks);
 
   DataType output_type_;
   std::vector<std::unique_ptr<Layer>> layers_;

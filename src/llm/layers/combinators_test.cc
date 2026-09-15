@@ -54,12 +54,12 @@ class TestLayer final : public Layer {
   DataType output_type() const override { return output_type_; }
 
  private:
-  absl::StatusOr<FwdResult> fwd_impl(cuda::Executor&,
-                                     absl::Span<const Buffer>) const override {
+  absl::StatusOr<FwdResult> fwd_impl(cuda::Executor&, absl::Span<const Buffer>,
+                                     LayerHooks*) const override {
     return absl::UnimplementedError("TestLayer has no data path");
   }
   absl::StatusOr<BufferVec> bwd_impl(cuda::Executor&, absl::Span<const Buffer>,
-                                     BackwardState) override {
+                                     BackwardState, LayerHooks*) override {
     return absl::UnimplementedError("TestLayer has no data path");
   }
 

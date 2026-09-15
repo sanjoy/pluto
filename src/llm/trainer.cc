@@ -57,19 +57,19 @@ struct ForwardPass {
 
 absl::StatusOr<ForwardPass> Forward(cuda::Executor& executor,
                                     const Layer& model, const Layer& loss_layer,
-                                    const DataBatch& batch) {
+                                    const DataBatch& batch, LayerHooks* hooks) {
   // Bind every symbolic batch axis to this batch before launching any model
   // work. Exact sample shapes preserve sequence boundaries even though kernels
   // consume flat, untyped allocations.
   RETURN_IF_ERROR(ValidateTrainingBatch(executor, model, loss_layer, batch));
   ASSIGN_OR_RETURN(const int rows, batch.token_count());
-  ASSIGN_OR_RETURN(auto model_fwd, model.fwd(executor, {batch.inputs}));
+  ASSIGN_OR_RETURN(auto model_fwd, model.fwd(executor, {batch.inputs}, hooks));
   RETURN_IF_ERROR(ValidateBatchBuffers(executor, batch, model_fwd.outputs,
                                        model.output_types(), model.name()));
   const size_t model_output_count = model_fwd.outputs.size();
   BufferVec loss_inputs = std::move(model_fwd.outputs);
   loss_inputs.push_back(batch.targets);
-  ASSIGN_OR_RETURN(auto loss_fwd, loss_layer.fwd(executor, loss_inputs));
+  ASSIGN_OR_RETURN(auto loss_fwd, loss_layer.fwd(executor, loss_inputs, hooks));
   RETURN_IF_ERROR(ValidateBatchBuffers(executor, batch, loss_fwd.outputs,
                                        loss_layer.output_types(),
                                        loss_layer.name()));
@@ -81,9 +81,10 @@ absl::StatusOr<ForwardPass> Forward(cuda::Executor& executor,
 }
 
 absl::Status Backward(cuda::Executor& executor, Layer& model, Layer& loss_layer,
-                      ForwardPass pass) {
-  ASSIGN_OR_RETURN(auto gradients,
-                   loss_layer.bwd(executor, {}, std::move(pass.loss_state)));
+                      ForwardPass pass, LayerHooks* hooks) {
+  ASSIGN_OR_RETURN(
+      auto gradients,
+      loss_layer.bwd(executor, {}, std::move(pass.loss_state), hooks));
   if (gradients.size() != pass.model_output_count)
     return absl::InvalidArgumentError(
         "loss must return exactly one gradient per model output");
@@ -91,8 +92,9 @@ absl::Status Backward(cuda::Executor& executor, Layer& model, Layer& loss_layer,
     if (&gradient.executor() != &executor)
       return absl::InvalidArgumentError(
           "loss gradient belongs to a different CUDA Executor");
-  ASSIGN_OR_RETURN(auto input_gradients,
-                   model.bwd(executor, gradients, std::move(pass.model_state)));
+  ASSIGN_OR_RETURN(
+      auto input_gradients,
+      model.bwd(executor, gradients, std::move(pass.model_state), hooks));
   (void)input_gradients;
   return absl::OkStatus();
 }
@@ -167,7 +169,8 @@ absl::StatusOr<Buffer> Evaluate(cuda::Executor& executor, const Layer& model,
   int64_t normalization_count = 0;
   for (int index = 0; index < options.batches; ++index) {
     ASSIGN_OR_RETURN(DataBatch batch, eval_data.Next());
-    ASSIGN_OR_RETURN(auto pass, Forward(executor, model, loss_layer, batch));
+    ASSIGN_OR_RETURN(auto pass, Forward(executor, model, loss_layer, batch,
+                                        options.layer_hooks));
     if (normalization_count >
         std::numeric_limits<int64_t>::max() - pass.row_count) {
       return absl::OutOfRangeError("evaluation normalization count overflowed");
@@ -197,7 +200,8 @@ absl::StatusOr<TrainingResult> Train(cuda::Executor& executor, Layer& model,
   const EvaluationOptions evaluation_options{
       .loss_layer = loss_layer,
       .eval_data = evaluation_data,
-      .batches = options.evaluation_batches};
+      .batches = options.evaluation_batches,
+      .layer_hooks = options.layer_hooks};
 
   if (options.stop_loss >= 0.0) {
     double initial_loss;
@@ -238,8 +242,10 @@ absl::StatusOr<TrainingResult> Train(cuda::Executor& executor, Layer& model,
     if (steps_completed == std::numeric_limits<int>::max())
       return absl::OutOfRangeError("training step number overflowed");
     ASSIGN_OR_RETURN(DataBatch batch, training_data.Next());
-    ASSIGN_OR_RETURN(auto pass, Forward(executor, model, loss_layer, batch));
-    RETURN_IF_ERROR(Backward(executor, model, loss_layer, std::move(pass)));
+    ASSIGN_OR_RETURN(auto pass, Forward(executor, model, loss_layer, batch,
+                                        options.layer_hooks));
+    RETURN_IF_ERROR(Backward(executor, model, loss_layer, std::move(pass),
+                             options.layer_hooks));
     RETURN_IF_ERROR(optimizer.ApplyStep());
     if (options.training_seconds.has_value()) {
       // CUDA launches are asynchronous. The clock must measure completed

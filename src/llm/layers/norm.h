@@ -38,11 +38,12 @@ class LayerNormLayer final : public Layer {
   }
 
  private:
-  absl::StatusOr<FwdResult> fwd_impl(
-      cuda::Executor& executor, absl::Span<const Buffer> inputs) const override;
+  absl::StatusOr<FwdResult> fwd_impl(cuda::Executor& executor,
+                                     absl::Span<const Buffer> inputs,
+                                     LayerHooks*) const override;
   absl::StatusOr<BufferVec> bwd_impl(cuda::Executor& executor,
                                      absl::Span<const Buffer> output_gradients,
-                                     BackwardState state) override;
+                                     BackwardState state, LayerHooks*) override;
 
   LayerNormLayer(cuda::Executor& executor, int embedding_dim, float epsilon,
                  DataType data_type, Buffer gamma, Buffer beta,

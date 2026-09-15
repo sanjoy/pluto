@@ -24,6 +24,11 @@ struct EvaluationOptions {
 
   // Evaluate exactly this many batches after resetting the iterator.
   int batches = 1;
+
+  // Optional, non-owning hooks for the model and loss forward passes. The
+  // instance must outlive Evaluate(); nullptr leaves calls uninstrumented.
+  // These hooks are not passed to dataset transforms.
+  LayerHooks* layer_hooks = nullptr;
 };
 
 struct TrainingOptions {
@@ -86,6 +91,11 @@ struct TrainingOptions {
   // propagates that error to the caller. This is suitable for periodic work
   // such as checkpointing that must not depend on the evaluation cadence.
   std::function<absl::Status(int)> step_callback;
+
+  // Optional, non-owning hooks for model/loss forward and backward, including
+  // evaluations performed by Train(). Must outlive Train(). These hooks are
+  // not passed to dataset transforms or attached to the Executor.
+  LayerHooks* layer_hooks = nullptr;
 };
 
 struct TrainingResult {

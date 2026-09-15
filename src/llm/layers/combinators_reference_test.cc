@@ -74,14 +74,15 @@ class SignatureIdentity final : public Layer {
   DataType output_type() const override { return policy_; }
 
  private:
-  absl::StatusOr<FwdResult> fwd_impl(
-      cuda::Executor& executor,
-      absl::Span<const Buffer> inputs) const override {
+  absl::StatusOr<FwdResult> fwd_impl(cuda::Executor& executor,
+                                     absl::Span<const Buffer> inputs,
+                                     LayerHooks*) const override {
     return FwdResult{BufferVec(inputs.begin(), inputs.end()), {}};
   }
   absl::StatusOr<BufferVec> bwd_impl(cuda::Executor& executor,
                                      absl::Span<const Buffer> gradients,
-                                     BackwardState state) override {
+                                     BackwardState state,
+                                     LayerHooks*) override {
     return BufferVec(gradients.begin(), gradients.end());
   }
 
