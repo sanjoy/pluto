@@ -54,3 +54,29 @@ bazel-bin/src/llm/recipes/gpt2_shakespeare_llm \
 
 Omit `--prompt` for an interactive prompt loop. `--temperature=0` uses greedy
 decoding; a positive temperature enables sampling.
+
+Inspect the prompt's activations at every layer without generating a completion:
+
+```sh
+bazel-bin/src/llm/recipes/gpt2_shakespeare_llm \
+  --mode=infer_model \
+  --inference_from=/path/to/checkpoints/shakespeare/step_200 \
+  --prompt='To be, or not to be' \
+  --generation_tokens=0 \
+  --inspect_activations='neighboring_vocab(min_prob=0.01)'
+```
+
+Each heading includes the zero-based position and original input token, such as
+`Position 6 (" be"):` (including the token's leading space). Under each heading,
+this prints up to three tokens per layer
+under `softmax(activation * token_embedding^T)`; the LM head uses its existing
+logits. Probabilities are normalized over the whole vocabulary, independently
+of sampling temperature. Intermediate readouts are diagnostics, not the model's
+final next-token predictions. Tokens with probability below `min_prob` are
+omitted, without renormalizing the survivors. The default is `0.01` (1%);
+bare `neighboring_vocab` uses that default, and `min_prob=0` shows all three.
+Quote the argument when including parentheses. Incompatible outputs (such as
+the wider MLP expansion), layers with no surviving tokens, and empty position
+sections are omitted. Hierarchical layer names distinguish repeated blocks.
+Only the prompt is inspected, once; prompts longer than the context limit use
+their last 1,024 tokens, retaining the original position numbers.

@@ -9,6 +9,7 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <random>
 #include <string>
@@ -33,8 +34,10 @@
 #include "src/llm/adamw_optimizer.h"
 #include "src/llm/checkpoint.h"
 #include "src/llm/layer.h"
+#include "src/llm/layer_hooks.h"
 #include "src/llm/layers/cross_entropy_loss.h"
 #include "src/llm/layers/sparse_autoencoder.h"
+#include "src/llm/recipes/activation_inspection.h"
 #include "src/llm/recipes/gpt2.h"
 #include "src/llm/recipes/gpt2_shakespeare_cli.h"
 #include "src/llm/recipes/sparse_autoencoder_dataset.h"
@@ -96,6 +99,11 @@ ABSL_FLAG(std::string, prompt, "",
 ABSL_FLAG(int, generation_tokens, 300, "Tokens generated after each prompt");
 ABSL_FLAG(double, temperature, 0.8,
           "Sampling temperature; zero uses deterministic greedy decoding");
+ABSL_FLAG(
+    std::string, inspect_activations, "",
+    "infer_model only: neighboring_vocab(min_prob=0.01) prints up to three "
+    "vocabulary projections per layer and prompt position; min_prob is "
+    "a probability in [0,1], defaults to 0.01, and can be omitted");
 ABSL_FLAG(int, batch_size, 1,
           "Number of context-length sequences per training/evaluation batch");
 ABSL_FLAG(std::string, log_file, "/tmp/train.log",
@@ -147,11 +155,15 @@ absl::StatusOr<Gpt2ShakespeareMode> ParseAndValidateRunMode() {
   AddIfExplicitlySet(FLAGS_prompt, &explicitly_set);
   AddIfExplicitlySet(FLAGS_generation_tokens, &explicitly_set);
   AddIfExplicitlySet(FLAGS_temperature, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_inspect_activations, &explicitly_set);
   AddIfExplicitlySet(FLAGS_batch_size, &explicitly_set);
   AddIfExplicitlySet(FLAGS_log_file, &explicitly_set);
   RETURN_IF_ERROR(ValidateGpt2ShakespeareModeFlags(
       mode, explicitly_set, absl::GetFlag(FLAGS_inference_from),
       absl::GetFlag(FLAGS_sparse_autoencoder_from)));
+  RETURN_IF_ERROR(
+      ParseActivationInspectionMode(absl::GetFlag(FLAGS_inspect_activations))
+          .status());
   if (FLAGS_training_seconds.IsSpecifiedOnCommandLine()) {
     RETURN_IF_ERROR(ValidateGpt2ShakespeareTrainingSeconds(
         absl::GetFlag(FLAGS_training_seconds)));
@@ -251,7 +263,8 @@ absl::StatusOr<double> ReadEvaluationLoss(cuda::Executor& executor,
 
 absl::StatusOr<cuda::PageLockedHostArray<float>> Predict(
     cuda::Executor& executor, const ModelConfig& config, const Layer& model,
-    const std::vector<int>& context, const Buffer& token_buffer) {
+    const std::vector<int>& context, const Buffer& token_buffer,
+    LayerHooks* hooks = nullptr) {
   if (&token_buffer.executor() != &executor) {
     return absl::InvalidArgumentError(
         "prediction requires its token buffer's CUDA Executor");
@@ -283,7 +296,7 @@ absl::StatusOr<cuda::PageLockedHostArray<float>> Predict(
       "cudaMemcpyAsync(prompt context)"));
 
   BufferVec inputs = {token_buffer};
-  ASSIGN_OR_RETURN(auto logits_fwd, model.fwd(executor, inputs));
+  ASSIGN_OR_RETURN(auto logits_fwd, model.fwd(executor, inputs, hooks));
   if (logits_fwd.outputs.size() != 1)
     return absl::FailedPreconditionError("model must return one logits tensor");
   auto logits = std::move(logits_fwd.outputs[0]);
@@ -302,25 +315,61 @@ absl::StatusOr<cuda::PageLockedHostArray<float>> Predict(
   return host_logits;
 }
 
-absl::StatusOr<std::string> Generate(cuda::Executor& executor,
-                                     const ModelConfig& config,
-                                     const Layer& model,
-                                     const tokenizer::Tokenizer& tokenizer,
-                                     const tokenizer::Detokenizer& detokenizer,
-                                     std::string prompt, int generation_tokens,
-                                     double temperature, std::mt19937& random,
-                                     const Buffer& token_buffer) {
+absl::StatusOr<std::string> Generate(
+    cuda::Executor& executor, const ModelConfig& config, const Layer& model,
+    const tokenizer::Tokenizer& tokenizer,
+    const tokenizer::Detokenizer& detokenizer, std::string prompt,
+    int generation_tokens, double temperature, std::mt19937& random,
+    const Buffer& token_buffer,
+    const ActivationInspectionOptions& inspection_options) {
   RETURN_IF_ERROR(ValidateGenerationOptions(generation_tokens, temperature));
   if (prompt.empty())
     prompt = "\n";
   ASSIGN_OR_RETURN(auto encoded_prompt, tokenizer.Encode(executor, prompt));
+  // Keep the same final context window used by Predict. These original IDs
+  // label inspection positions without another device-to-host copy.
+  const auto inspected_prompt = encoded_prompt.span().subspan(
+      encoded_prompt.size() -
+      std::min(encoded_prompt.size(), static_cast<size_t>(kGpt2ContextLength)));
   std::vector<int> context(encoded_prompt.begin(), encoded_prompt.end());
   std::vector<int> generated;
   generated.reserve(generation_tokens);
 
-  for (int index = 0; index < generation_tokens; ++index) {
-    ASSIGN_OR_RETURN(auto logits,
-                     Predict(executor, config, model, context, token_buffer));
+  std::unique_ptr<NeighboringVocabInspector> inspection;
+  if (inspection_options.mode == ActivationInspectionMode::kNeighboringVocab) {
+    if (context.size() > static_cast<size_t>(std::numeric_limits<int>::max()))
+      return absl::InvalidArgumentError("prompt has too many token positions");
+    const int positions = static_cast<int>(inspected_prompt.size());
+    const int offset = static_cast<int>(context.size()) - positions;
+    // CreateGpt2 places the token embedding first in the flattened weight list.
+    // Its FP32 table is also the tied language-modeling head's weight matrix.
+    if (model.weights().empty())
+      return absl::FailedPreconditionError("model has no token embedding");
+    ASSIGN_OR_RETURN(
+        inspection,
+        NeighboringVocabInspector::Create(
+            executor, model.weights()[0], kGpt2VocabularySize, kGpt2ModelWidth,
+            positions, offset, inspection_options.min_prob));
+    if (offset != 0)
+      std::cout << "Inspecting the last " << positions << " prompt tokens "
+                << "(the GPT-2 context limit).\n";
+  }
+
+  // Inspect only the supplied prompt, reusing the first generation forward.
+  // With zero generated tokens, still run that forward for inspection. Later
+  // decoding steps are uninstrumented, avoiding repeated prompt-sized reports.
+  const int predictions = std::max(generation_tokens, inspection ? 1 : 0);
+  for (int index = 0; index < predictions; ++index) {
+    LayerHooks* hooks = inspection ? &inspection->layer_hooks() : nullptr;
+    ASSIGN_OR_RETURN(auto logits, Predict(executor, config, model, context,
+                                          token_buffer, hooks));
+    if (inspection) {
+      RETURN_IF_ERROR(inspection->Print(executor, detokenizer, inspected_prompt,
+                                        std::cout));
+      inspection.reset();
+    }
+    if (index >= generation_tokens)
+      break;
     ASSIGN_OR_RETURN(const int next,
                      SelectNextToken(logits.span(), temperature, random));
     context.push_back(next);
@@ -715,6 +764,9 @@ absl::Status RunSparseAutoEncoderTraining(
 
 absl::Status RunInference(cuda::Executor& executor,
                           const std::filesystem::path& checkpoint_path) {
+  ASSIGN_OR_RETURN(
+      auto inspection_options,
+      ParseActivationInspectionMode(absl::GetFlag(FLAGS_inspect_activations)));
   ASSIGN_OR_RETURN(const CheckpointInfo checkpoint,
                    InspectCheckpointDirectory(checkpoint_path));
   ASSIGN_OR_RETURN(auto tokenizer_directory, TokenizerDirectory());
@@ -749,10 +801,11 @@ absl::Status RunInference(cuda::Executor& executor,
       static_cast<std::mt19937::result_type>(absl::GetFlag(FLAGS_seed)) + 1);
   const std::string one_shot_prompt = absl::GetFlag(FLAGS_prompt);
   if (!one_shot_prompt.empty()) {
-    ASSIGN_OR_RETURN(auto completion,
-                     Generate(executor, config, *model, *tokenizer,
-                              *detokenizer, one_shot_prompt, generation_tokens,
-                              temperature, random, token_buffer));
+    ASSIGN_OR_RETURN(
+        auto completion,
+        Generate(executor, config, *model, *tokenizer, *detokenizer,
+                 one_shot_prompt, generation_tokens, temperature, random,
+                 token_buffer, inspection_options));
     std::cout << one_shot_prompt << completion << '\n';
     return absl::OkStatus();
   }
@@ -766,7 +819,8 @@ absl::Status RunInference(cuda::Executor& executor,
     ASSIGN_OR_RETURN(
         auto completion,
         Generate(executor, config, *model, *tokenizer, *detokenizer, prompt,
-                 generation_tokens, temperature, random, token_buffer));
+                 generation_tokens, temperature, random, token_buffer,
+                 inspection_options));
     std::cout << prompt << completion << '\n';
   }
   return absl::OkStatus();

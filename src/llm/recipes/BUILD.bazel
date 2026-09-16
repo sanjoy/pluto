@@ -63,11 +63,59 @@ cc_test(
     ],
 )
 
+cc_library(
+    name = "activation_inspection",
+    srcs = ["activation_inspection.cc"],
+    hdrs = ["activation_inspection.h"],
+    deps = [
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset:detokenizer",
+        "//src/llm:layer",
+        "//src/llm:layer_hooks",
+        "//src/llm:vocabulary_readout",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/memory",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/strings:str_format",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_test(
+    name = "activation_inspection_test",
+    srcs = ["activation_inspection_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":activation_inspection",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset:detokenizer",
+        "//src/llm:combinators",
+        "//src/llm:layer",
+        "//src/llm:layer_hooks",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/memory",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
 cc_binary(
     name = "gpt2_shakespeare_llm",
     srcs = ["gpt2_shakespeare_llm.cc"],
     data = ["//testdata:shakespeare.txt"],
     deps = [
+        ":activation_inspection",
         ":gpt2",
         ":gpt2_shakespeare_cli",
         ":sparse_autoencoder_dataset",
@@ -81,6 +129,8 @@ cc_binary(
         "//src/dataset:tokenizer",
         "//src/llm:checkpoint",
         "//src/llm:cross_entropy_loss",
+        "//src/llm:layer",
+        "//src/llm:layer_hooks",
         "//src/llm:optimizer",
         "//src/llm:sampling",
         "//src/llm:sparse_autoencoder",
@@ -114,6 +164,7 @@ cc_test(
         "requires-tokenizer",
     ],
     deps = [
+        ":activation_inspection",
         ":gpt2",
         ":gpt2_shakespeare_cli",
         ":sparse_autoencoder_dataset",
@@ -127,6 +178,8 @@ cc_test(
         "//src/dataset:tokenizer",
         "//src/llm:checkpoint",
         "//src/llm:cross_entropy_loss",
+        "//src/llm:layer",
+        "//src/llm:layer_hooks",
         "//src/llm:optimizer",
         "//src/llm:sampling",
         "//src/llm:sparse_autoencoder",
@@ -162,6 +215,7 @@ cc_test(
         "requires-tokenizer",
     ],
     deps = [
+        ":activation_inspection",
         ":gpt2",
         ":gpt2_shakespeare_cli",
         ":sparse_autoencoder_dataset",
@@ -175,6 +229,8 @@ cc_test(
         "//src/dataset:tokenizer",
         "//src/llm:checkpoint",
         "//src/llm:cross_entropy_loss",
+        "//src/llm:layer",
+        "//src/llm:layer_hooks",
         "//src/llm:optimizer",
         "//src/llm:sampling",
         "//src/llm:sparse_autoencoder",

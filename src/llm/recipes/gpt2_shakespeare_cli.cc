@@ -1,10 +1,13 @@
 #include "src/llm/recipes/gpt2_shakespeare_cli.h"
 
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/ascii.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -46,6 +49,7 @@ constexpr FlagRule kFlagRules[] = {
     {"prompt", kInferModel | kInferSparseAutoEncoder},
     {"generation_tokens", kInferModel},
     {"temperature", kInferModel},
+    {"inspect_activations", kInferModel},
     {"batch_size", kTrain},
     {"log_file", kTrain},
 };
@@ -71,6 +75,13 @@ const FlagRule* FindRule(absl::string_view name) {
   return nullptr;
 }
 
+absl::Status InspectionSettingError(absl::string_view reason) {
+  return absl::InvalidArgumentError(absl::StrCat(
+      "--inspect_activations: ", reason,
+      "; expected empty (disabled), neighboring_vocab, or "
+      "neighboring_vocab(min_prob=0.05) with a probability in [0, 1]"));
+}
+
 }  // namespace
 
 absl::Status ValidateGpt2ShakespeareTrainingSeconds(double training_seconds) {
@@ -93,6 +104,68 @@ absl::StatusOr<Gpt2ShakespeareMode> ParseGpt2ShakespeareMode(
     return Gpt2ShakespeareMode::kInferSparseAutoEncoder;
   return absl::InvalidArgumentError(
       "--mode must be one of: train_model, infer_model, train_sae, infer_SAE");
+}
+
+absl::StatusOr<ActivationInspectionOptions> ParseActivationInspectionMode(
+    absl::string_view mode) {
+  ActivationInspectionOptions options;
+  mode = absl::StripAsciiWhitespace(mode);
+  if (mode.empty())
+    return options;
+
+  const size_t open = mode.find('(');
+  const absl::string_view name =
+      absl::StripAsciiWhitespace(mode.substr(0, open));
+  if (name != "neighboring_vocab")
+    return InspectionSettingError("unknown inspection mode; select one mode");
+  options.mode = ActivationInspectionMode::kNeighboringVocab;
+  if (open == absl::string_view::npos)
+    return options;
+
+  // A setting value cannot contain nested calls, and the matching close must
+  // end the expression. This also rejects multiple parenthesized modes.
+  if (mode.back() != ')' || mode.find(')', open + 1) != mode.size() - 1 ||
+      mode.find('(', open + 1) != absl::string_view::npos)
+    return InspectionSettingError("malformed or nested mode parentheses");
+  absl::string_view settings =
+      absl::StripAsciiWhitespace(mode.substr(open + 1, mode.size() - open - 2));
+  if (settings.empty())
+    return options;
+
+  bool saw_min_prob = false;
+  while (true) {
+    const size_t comma = settings.find(',');
+    const absl::string_view setting =
+        absl::StripAsciiWhitespace(settings.substr(0, comma));
+    const size_t equals = setting.find('=');
+    if (setting.empty() || equals == absl::string_view::npos ||
+        setting.find('=', equals + 1) != absl::string_view::npos)
+      return InspectionSettingError(
+          "each setting must be a nonempty key=value");
+    const absl::string_view key =
+        absl::StripAsciiWhitespace(setting.substr(0, equals));
+    const absl::string_view value =
+        absl::StripAsciiWhitespace(setting.substr(equals + 1));
+    if (key.empty() || value.empty())
+      return InspectionSettingError(
+          "setting keys and values must not be empty");
+    if (key != "min_prob")
+      return InspectionSettingError(
+          absl::StrCat("unknown setting '", key, "'; supported key: min_prob"));
+    if (saw_min_prob)
+      return InspectionSettingError("duplicate min_prob setting");
+    saw_min_prob = true;
+    if (!absl::SimpleAtod(value, &options.min_prob) ||
+        !std::isfinite(options.min_prob) || options.min_prob < 0.0 ||
+        options.min_prob > 1.0)
+      return InspectionSettingError("min_prob must be finite and in [0, 1]");
+
+    if (comma == absl::string_view::npos)
+      return options;
+    // Do not skip empty fields: leading, trailing, or repeated commas are
+    // malformed settings rather than an opportunity to silently use defaults.
+    settings.remove_prefix(comma + 1);
+  }
 }
 
 absl::string_view Gpt2ShakespeareModeName(Gpt2ShakespeareMode mode) {

@@ -60,80 +60,6 @@ __global__ void UnembedKernel(const float* embedding, const float* projected,
     logits[row * vocab_size + token] = sum;
 }
 
-// Three fixed-order argmax reductions select distinct IDs, then a fourth pass
-// computes the full softmax denominator. This deliberately favors obvious
-// tie/normalization semantics over a more intricate top-k merge algorithm.
-__global__ void TopThreeKernel(const float* logits, int vocab_size,
-                               TopThree* output) {
-  __shared__ float values[kThreads];
-  __shared__ int ids[kThreads];
-  __shared__ float winners[3];
-  __shared__ int chosen[3];
-  const int lane = threadIdx.x;
-  const float* row = logits + static_cast<size_t>(blockIdx.x) * vocab_size;
-  for (int rank = 0; rank < 3; ++rank) {
-    float best = -CUDART_INF_F;
-    int id = 0x7fffffff;
-    int invalid = 0;
-    for (size_t token = lane; token < static_cast<size_t>(vocab_size);
-         token += kThreads) {
-      const float value = row[token];
-      invalid |= !isfinite(value);
-      bool used = false;
-      for (int previous = 0; previous < rank; ++previous)
-        used |= static_cast<int>(token) == chosen[previous];
-      if (!used &&
-          (value > best || (value == best && static_cast<int>(token) < id))) {
-        best = value;
-        id = token;
-      }
-    }
-    if (__syncthreads_or(invalid)) {
-      if (lane == 0)
-        for (int i = 0; i < 3; ++i) {
-          output[blockIdx.x].tokens[i] = -1;
-          output[blockIdx.x].probabilities[i] = CUDART_NAN_F;
-        }
-      return;
-    }
-    values[lane] = best;
-    ids[lane] = id;
-    __syncthreads();
-    for (int offset = kThreads / 2; offset > 0; offset /= 2) {
-      if (lane < offset && (values[lane + offset] > values[lane] ||
-                            (values[lane + offset] == values[lane] &&
-                             ids[lane + offset] < ids[lane]))) {
-        values[lane] = values[lane + offset];
-        ids[lane] = ids[lane + offset];
-      }
-      __syncthreads();
-    }
-    if (lane == 0) {
-      winners[rank] = values[0];
-      chosen[rank] = ids[0];
-    }
-    // All threads finish reading reduction scratch before the next rank.
-    __syncthreads();
-  }
-  float sum = 0;
-  for (size_t token = lane; token < static_cast<size_t>(vocab_size);
-       token += kThreads)
-    sum += expf(row[token] - winners[0]);
-  values[lane] = sum;
-  __syncthreads();
-  for (int offset = kThreads / 2; offset > 0; offset /= 2) {
-    if (lane < offset)
-      values[lane] += values[lane + offset];
-    __syncthreads();
-  }
-  if (lane == 0)
-    for (int rank = 0; rank < 3; ++rank) {
-      output[blockIdx.x].tokens[rank] = chosen[rank];
-      output[blockIdx.x].probabilities[rank] =
-          expf(winners[rank] - winners[0]) / values[0];
-    }
-}
-
 absl::StatusOr<size_t> FloatBytes(size_t rows, size_t columns) {
   if (columns > std::numeric_limits<size_t>::max() / sizeof(float) ||
       rows > std::numeric_limits<size_t>::max() / sizeof(float) / columns)
@@ -183,15 +109,7 @@ absl::StatusOr<cuda::Buffer> ReadTopThree(cuda::Executor& executor,
   ASSIGN_OR_RETURN(const size_t bytes, FloatBytes(rows, vocab_size));
   if (logits.size_bytes() != bytes || &logits.executor() != &executor)
     return absl::InvalidArgumentError("logits shape or executor mismatch");
-  ASSIGN_OR_RETURN(auto output,
-                   cuda::Buffer::Allocate(
-                       executor, static_cast<size_t>(rows) * sizeof(TopThree)));
-  TopThreeKernel<<<rows, kThreads, 0, executor.stream()>>>(
-      static_cast<const float*>(logits.data()), vocab_size,
-      static_cast<TopThree*>(output.data()));
-  RETURN_IF_ERROR(
-      cuda::CudaStatus(cudaGetLastError(), "TopThreeKernel launch"));
-  return output;
+  return ReadTopThreeTokens(executor, logits, rows, vocab_size, vocab_size);
 }
 
 absl::StatusOr<std::unique_ptr<Readout>> Readout::Load(

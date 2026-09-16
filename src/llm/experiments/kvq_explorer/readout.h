@@ -2,7 +2,6 @@
 
 #include <filesystem>
 #include <memory>
-#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -11,6 +10,7 @@
 #include "src/cuda/executor.h"
 #include "src/cuda/page_locked_host_array.h"
 #include "src/llm/recipes/gpt2.h"
+#include "src/llm/vocabulary_readout.h"
 
 namespace pluto::llm::kvq_explorer {
 
@@ -18,12 +18,7 @@ namespace pluto::llm::kvq_explorer {
 // The CLI deliberately labels/reorders them as K, V, Q for display.
 enum Projection { kQuery = 0, kKey = 1, kValue = 2 };
 
-struct TopThree {
-  int tokens[3];
-  float probabilities[3];
-};
-static_assert(std::is_trivially_copyable_v<TopThree>);
-static_assert(sizeof(TopThree) == 24);
+using TopThree = TopThreeTokens;
 
 // Stable temperature-one softmax over all vocabulary entries, returning only
 // the top three distinct IDs per row. Ties prefer lower IDs. Any nonfinite

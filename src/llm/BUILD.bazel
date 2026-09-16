@@ -43,6 +43,44 @@ cc_library(
     ],
 )
 
+cuda_library(
+    name = "vocabulary_readout",
+    srcs = ["vocabulary_readout.cc"],
+    hdrs = ["vocabulary_readout.h"],
+    copts = ["-std=c++20"],
+    host_copts = ["-std=c++20"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":layer",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_test(
+    name = "vocabulary_readout_test",
+    srcs = ["vocabulary_readout_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":layer",
+        ":vocabulary_readout",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
 cc_test(
     name = "layer_hooks_test",
     srcs = ["layer_hooks_test.cc"],

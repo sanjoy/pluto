@@ -12,6 +12,7 @@ cuda_library(
         "//src/cuda:buffer",
         "//src/cuda:executor",
         "//src/cuda:page_locked_host_array",
+        "//src/llm:vocabulary_readout",
         "//src/llm/recipes:gpt2",
         "//src/util:status_macros",
         "@abseil-cpp//absl/memory",
