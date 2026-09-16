@@ -81,7 +81,7 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> BuildTestComposition(
   *first = builder.back();
   RETURN_IF_ERROR(builder.add(MakeTestLayer(DataType::FP8, evaluations)));
   *last = builder.back();
-  return builder.create();
+  return builder.create("MixedPrecisionTestComposition");
 }
 
 absl::Status BuildWithFactoryError(int* evaluations, bool* reached_end) {
@@ -110,7 +110,71 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> BuildDenseComposition(
       FullyConnectedLayer::Create(executor, kTestModelWidth, DataType::FP16)));
   RETURN_IF_ERROR(builder.add(
       FullyConnectedLayer::Create(executor, kTestModelWidth, DataType::FP16)));
-  return builder.create();
+  return builder.create("TwoDenseLayers");
+}
+
+TEST(ComposedLayerTest, OwnsNamesBeyondCallerStringLifetime) {
+  std::string source = "transformer block zero / attention and MLP";
+  const std::string expected = source;
+  std::vector<std::unique_ptr<Layer>> first_children;
+  first_children.push_back(absl::make_unique<TestLayer>(DataType::FP16));
+  auto first = ComposedLayer::Create(source, std::move(first_children));
+  ASSERT_TRUE(first.ok()) << first.status();
+  const absl::string_view retained_name = (*first)->name();
+  source.assign(512, 'x');
+  EXPECT_EQ((*first)->name(), expected);
+  EXPECT_EQ(retained_name, expected);
+
+  std::vector<std::unique_ptr<Layer>> second_children;
+  second_children.push_back(absl::make_unique<TestLayer>(DataType::FP16));
+  auto second = ComposedLayer::Create(
+      std::string("transformer block one / ") + "attention and MLP",
+      std::move(second_children));
+  ASSERT_TRUE(second.ok()) << second.status();
+  EXPECT_EQ((*second)->name(), "transformer block one / attention and MLP");
+  EXPECT_NE((*first)->name(), (*second)->name());
+  EXPECT_EQ(retained_name, expected);
+}
+
+TEST(ComposedLayerTest, DirectFactoryRejectsEmptyName) {
+  std::vector<std::unique_ptr<Layer>> children;
+  children.push_back(absl::make_unique<TestLayer>(DataType::FP16));
+  EXPECT_EQ(ComposedLayer::Create("", std::move(children)).status().code(),
+            absl::StatusCode::kInvalidArgument);
+  EXPECT_EQ(ComposedLayer::Create("", {}).status().code(),
+            absl::StatusCode::kInvalidArgument);
+}
+
+TEST(ComposedLayerBuilderTest, InvalidNamePreservesChildrenForRetryAndReuse) {
+  ComposedLayerBuilder builder;
+  EXPECT_EQ(builder.create("").status().code(),
+            absl::StatusCode::kInvalidArgument);
+  EXPECT_EQ(builder.back(), nullptr);
+  ASSERT_TRUE(builder.add(absl::make_unique<TestLayer>(DataType::FP16)).ok());
+  const Layer* first = builder.back();
+  ASSERT_TRUE(builder.add(absl::make_unique<TestLayer>(DataType::FP8)).ok());
+  const Layer* last = builder.back();
+  EXPECT_EQ(builder.create("").status().code(),
+            absl::StatusCode::kInvalidArgument);
+  EXPECT_EQ(builder.back(), last);
+  const ComposedLayerBuilder& const_builder = builder;
+  EXPECT_EQ(const_builder.back(), last);
+
+  std::string name = "RetriedNamedComposition";
+  auto graph = builder.create(name);
+  ASSERT_TRUE(graph.ok()) << graph.status();
+  name.assign(512, 'x');
+  EXPECT_EQ((*graph)->name(), "RetriedNamedComposition");
+  EXPECT_EQ((*graph)->input_types().data(), first->input_types().data());
+  EXPECT_EQ((*graph)->output_types().data(), last->output_types().data());
+  EXPECT_EQ((*graph)->output_type(), DataType::FP8);
+  EXPECT_EQ(builder.back(), nullptr);
+
+  ASSERT_TRUE(builder.add(absl::make_unique<TestLayer>(DataType::FP16)).ok());
+  auto reused = builder.create("ReusedNamedComposition");
+  ASSERT_TRUE(reused.ok()) << reused.status();
+  EXPECT_EQ((*reused)->name(), "ReusedNamedComposition");
+  EXPECT_EQ((*graph)->name(), "RetriedNamedComposition");
 }
 
 TEST(ComposedLayerBuilderTest, BackIsStableAndCreateInfersFinalOutputType) {
@@ -145,7 +209,7 @@ TEST(ComposedLayerBuilderTest, RejectsEmptyAndNullLayers) {
   const ComposedLayerBuilder& const_builder = builder;
   EXPECT_EQ(const_builder.back(), nullptr);
 
-  const auto empty = builder.create();
+  const auto empty = builder.create("EmptyComposition");
   EXPECT_EQ(empty.status().code(), absl::StatusCode::kFailedPrecondition);
   EXPECT_EQ(BuildWithNullLayer().code(), absl::StatusCode::kInvalidArgument);
 }
@@ -195,7 +259,7 @@ TEST(ComposedLayerBuilderTest, RejectsArityMismatch) {
   // A rejected addition leaves the producer available for a compatible retry.
   EXPECT_TRUE(
       builder.add(SignatureLayer({activation, activation}, {activation})).ok());
-  EXPECT_TRUE(builder.create().ok());
+  EXPECT_TRUE(builder.create("RetriedArityConnection").ok());
 }
 
 TEST(ComposedLayerBuilderTest, RejectsInvalidDimensionsInEitherSignature) {
@@ -234,7 +298,7 @@ TEST(ComposedLayerBuilderTest, FailedAddPreservesChildrenAndCanRetry) {
   const Layer* second_pointer = second.get();
   ASSERT_TRUE(builder.add(std::move(second)).ok());
   EXPECT_EQ(builder.back(), second_pointer);
-  auto composed = builder.create();
+  auto composed = builder.create("RetriedWidthConnection");
   ASSERT_TRUE(composed.ok()) << composed.status();
   EXPECT_EQ(builder.back(), nullptr);
   EXPECT_EQ((*composed)->input_types().data(),
@@ -246,7 +310,7 @@ TEST(ComposedLayerBuilderTest, FailedAddPreservesChildrenAndCanRetry) {
 
   // create() consumes the successful graph; the same builder can be reused.
   EXPECT_TRUE(builder.add(SignatureLayer({wide}, {wide})).ok());
-  EXPECT_TRUE(builder.create().ok());
+  EXPECT_TRUE(builder.create("ReusedBuilder").ok());
 }
 
 TEST(ComposedLayerTest, DirectFactoryCannotBypassConnectionValidation) {
@@ -256,21 +320,27 @@ TEST(ComposedLayerTest, DirectFactoryCannotBypassConnectionValidation) {
   children.push_back(SignatureLayer({narrow}, {narrow}));
   children.push_back(SignatureLayer({narrow}, {narrow}));
   children.push_back(SignatureLayer({wide}, {wide}));
-  const auto composed = ComposedLayer::Create(std::move(children));
+  const auto composed =
+      ComposedLayer::Create("InvalidConnection", std::move(children));
   EXPECT_EQ(composed.status().code(), absl::StatusCode::kInvalidArgument);
   EXPECT_NE(composed.status().message().find("child 2"), std::string::npos);
 
-  EXPECT_EQ(ComposedLayer::Create({}).status().code(),
+  EXPECT_EQ(ComposedLayer::Create("EmptyComposition", {}).status().code(),
             absl::StatusCode::kFailedPrecondition);
   std::vector<std::unique_ptr<Layer>> null_children;
   null_children.push_back(nullptr);
-  EXPECT_EQ(ComposedLayer::Create(std::move(null_children)).status().code(),
+  EXPECT_EQ(ComposedLayer::Create("NullChild", std::move(null_children))
+                .status()
+                .code(),
             absl::StatusCode::kInvalidArgument);
 
   const ActivationType invalid(DataType::FP32, {-1, 7, 32});
   std::vector<std::unique_ptr<Layer>> invalid_children;
   invalid_children.push_back(SignatureLayer({narrow}, {invalid}));
-  EXPECT_EQ(ComposedLayer::Create(std::move(invalid_children)).status().code(),
+  EXPECT_EQ(ComposedLayer::Create("InvalidChildSignature",
+                                  std::move(invalid_children))
+                .status()
+                .code(),
             absl::StatusCode::kInvalidArgument);
 }
 
@@ -283,10 +353,10 @@ TEST(ComposedLayerTest, NestedGraphsExposeFirstInputAndLastOutputs) {
   ASSERT_TRUE(inner.add(SignatureLayer({tokens}, {activation})).ok());
   ASSERT_TRUE(inner.add(SignatureLayer({activation}, {activation})).ok());
   ComposedLayerBuilder outer;
-  ASSERT_TRUE(outer.add(inner.create()).ok());
+  ASSERT_TRUE(outer.add(inner.create("TokenEmbeddingPipeline")).ok());
   ASSERT_TRUE(
       outer.add(SignatureLayer({activation}, {logits, statistics})).ok());
-  auto model = outer.create();
+  auto model = outer.create("LogitsAndStatisticsPipeline");
   ASSERT_TRUE(model.ok()) << model.status();
   ASSERT_EQ((*model)->input_types().size(), 1);
   ASSERT_EQ((*model)->output_types().size(), 2);
@@ -371,7 +441,7 @@ TEST_F(LayersTest, GeluCannotHideADenseWidthMismatch) {
                   .add(FullyConnectedLayer::Create(*executor_, 32, 64,
                                                    DataType::FP16, 7))
                   .ok());
-  EXPECT_TRUE(builder.create().ok());
+  EXPECT_TRUE(builder.create("DenseGeluProjection").ok());
 }
 
 }  // namespace

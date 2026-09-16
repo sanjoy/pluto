@@ -238,12 +238,12 @@ absl::StatusOr<NestedModel> MakeNested(RecordingLayerHooks& hooks) {
   ComposedLayerBuilder inner;
   RETURN_IF_ERROR(inner.add(std::move(first)));
   RETURN_IF_ERROR(inner.add(std::move(second)));
-  ASSIGN_OR_RETURN(auto inside, inner.create());
+  ASSIGN_OR_RETURN(auto inside, inner.create("inner_pipeline"));
   ASSIGN_OR_RETURN(auto residual, ResidualLayer::Create(std::move(inside)));
   ComposedLayerBuilder outer;
   RETURN_IF_ERROR(outer.add(std::move(residual)));
   RETURN_IF_ERROR(outer.add(std::move(last)));
-  ASSIGN_OR_RETURN(auto model, outer.create());
+  ASSIGN_OR_RETURN(auto model, outer.create("outer_pipeline"));
   return NestedModel{std::move(model), first_pointer, second_pointer,
                      last_pointer};
 }
@@ -572,11 +572,11 @@ TEST_F(LayerHooksTest, NestedScopesBracketChildrenInBothDirections) {
   EXPECT_EQ(
       hooks.events,
       (std::vector<std::string>{
-          "enter:ComposedLayer", "enter:ResidualLayer", "enter:ComposedLayer",
+          "enter:outer_pipeline", "enter:ResidualLayer", "enter:inner_pipeline",
           "fwd:A", "activation:A", "fwd:B", "activation:B",
-          "exit:ComposedLayer", "activation:ComposedLayer",
+          "exit:inner_pipeline", "activation:inner_pipeline",
           "exit:ResidualLayer", "activation:ResidualLayer", "fwd:C",
-          "activation:C", "exit:ComposedLayer", "activation:ComposedLayer"}));
+          "activation:C", "exit:outer_pipeline", "activation:outer_pipeline"}));
   EXPECT_TRUE(hooks.scopes.empty());
   hooks.events.clear();
   auto backward = nested->model->bwd(*executor_, {*input},
@@ -584,11 +584,11 @@ TEST_F(LayerHooksTest, NestedScopesBracketChildrenInBothDirections) {
   ASSERT_TRUE(backward.ok()) << backward.status();
   EXPECT_EQ(hooks.events,
             (std::vector<std::string>{
-                "gradient:ComposedLayer", "enter:ComposedLayer", "gradient:C",
+                "gradient:outer_pipeline", "enter:outer_pipeline", "gradient:C",
                 "bwd:C", "gradient:ResidualLayer", "enter:ResidualLayer",
-                "gradient:ComposedLayer", "enter:ComposedLayer", "gradient:B",
-                "bwd:B", "gradient:A", "bwd:A", "exit:ComposedLayer",
-                "exit:ResidualLayer", "exit:ComposedLayer"}));
+                "gradient:inner_pipeline", "enter:inner_pipeline", "gradient:B",
+                "bwd:B", "gradient:A", "bwd:A", "exit:inner_pipeline",
+                "exit:ResidualLayer", "exit:outer_pipeline"}));
   EXPECT_TRUE(hooks.scopes.empty());
   for (const auto* executor : hooks.scope_executors)
     EXPECT_EQ(executor, executor_.get());
@@ -604,10 +604,10 @@ TEST_F(LayerHooksTest, NestedForwardFailureUnwindsEveryEnteredScope) {
   auto forward = nested->model->fwd(*executor_, {*input}, &hooks);
   EXPECT_EQ(forward.status().code(), absl::StatusCode::kNotFound);
   EXPECT_EQ(hooks.events, (std::vector<std::string>{
-                              "enter:ComposedLayer", "enter:ResidualLayer",
-                              "enter:ComposedLayer", "fwd:A", "activation:A",
-                              "fwd:B", "exit:ComposedLayer",
-                              "exit:ResidualLayer", "exit:ComposedLayer"}));
+                              "enter:outer_pipeline", "enter:ResidualLayer",
+                              "enter:inner_pipeline", "fwd:A", "activation:A",
+                              "fwd:B", "exit:inner_pipeline",
+                              "exit:ResidualLayer", "exit:outer_pipeline"}));
   EXPECT_TRUE(hooks.scopes.empty());
   EXPECT_EQ(nested->last->forward_calls, 0);
 }
@@ -628,11 +628,11 @@ TEST_F(LayerHooksTest, NestedBackwardFailureUnwindsEveryEnteredScope) {
   EXPECT_EQ(backward.status().code(), absl::StatusCode::kNotFound);
   EXPECT_EQ(hooks.events,
             (std::vector<std::string>{
-                "gradient:ComposedLayer", "enter:ComposedLayer", "gradient:C",
+                "gradient:outer_pipeline", "enter:outer_pipeline", "gradient:C",
                 "bwd:C", "gradient:ResidualLayer", "enter:ResidualLayer",
-                "gradient:ComposedLayer", "enter:ComposedLayer", "gradient:B",
-                "bwd:B", "exit:ComposedLayer", "exit:ResidualLayer",
-                "exit:ComposedLayer"}));
+                "gradient:inner_pipeline", "enter:inner_pipeline", "gradient:B",
+                "bwd:B", "exit:inner_pipeline", "exit:ResidualLayer",
+                "exit:outer_pipeline"}));
   EXPECT_TRUE(hooks.scopes.empty());
   EXPECT_EQ(nested->first->backward_calls, 0);
 }
@@ -649,9 +649,9 @@ TEST_F(LayerHooksTest, FailedEnterIsNotExitedButParentStillIs) {
   ASSERT_TRUE(input.ok()) << input.status();
   auto forward = nested->model->fwd(*executor_, {*input}, &hooks);
   EXPECT_EQ(forward.status().code(), absl::StatusCode::kUnavailable);
-  EXPECT_EQ(hooks.events, (std::vector<std::string>{"enter:ComposedLayer",
+  EXPECT_EQ(hooks.events, (std::vector<std::string>{"enter:outer_pipeline",
                                                     "enter:ResidualLayer",
-                                                    "exit:ComposedLayer"}));
+                                                    "exit:outer_pipeline"}));
   EXPECT_TRUE(hooks.scopes.empty());
   EXPECT_EQ(nested->first->forward_calls, 0);
 }
@@ -678,7 +678,7 @@ TEST_F(LayerHooksTest, ExitFailurePropagatesAndCombinesWithBodyError) {
       EXPECT_NE(forward.status().message().find("body marker"),
                 absl::string_view::npos);
     EXPECT_TRUE(hooks.scopes.empty());
-    EXPECT_EQ(hooks.events.back(), "exit:ComposedLayer");
+    EXPECT_EQ(hooks.events.back(), "exit:outer_pipeline");
     EXPECT_EQ(nested->last->forward_calls, 0);
   }
 }
@@ -696,7 +696,7 @@ TEST_F(LayerHooksTest, CallbackFailureStillExitsNestedScopes) {
   auto failed = nested->model->fwd(*executor_, {*input}, &hooks);
   EXPECT_EQ(failed.status().code(), absl::StatusCode::kCancelled);
   EXPECT_TRUE(hooks.scopes.empty());
-  EXPECT_EQ(hooks.events.back(), "exit:ComposedLayer");
+  EXPECT_EQ(hooks.events.back(), "exit:outer_pipeline");
   hooks.activation_hook = {};
   auto forward = nested->model->fwd(*executor_, {*input}, &hooks);
   ASSERT_TRUE(forward.ok()) << forward.status();
@@ -708,7 +708,7 @@ TEST_F(LayerHooksTest, CallbackFailureStillExitsNestedScopes) {
                                      std::move(forward->state), &hooks);
   EXPECT_EQ(backward.status().code(), absl::StatusCode::kCancelled);
   EXPECT_TRUE(hooks.scopes.empty());
-  EXPECT_EQ(hooks.events.back(), "exit:ComposedLayer");
+  EXPECT_EQ(hooks.events.back(), "exit:outer_pipeline");
   EXPECT_EQ(nested->second->backward_calls, 0);
 }
 

@@ -71,7 +71,7 @@ class LayerHooks {
   //
   // Thus forward order is Enter, children, Exit, own activation callback;
   // backward order is own gradient callback, Enter, children, Exit. Names are
-  // diagnostic class names, not unique IDs: use nesting/order to distinguish
+  // diagnostic labels, not unique IDs: use nesting/order to distinguish
   // repeated blocks. These callbacks do not wait for GPU work to complete.
   virtual absl::Status EnterCombinator(
       cuda::Executor& executor, absl::string_view combinator_layer_name) {

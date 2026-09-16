@@ -75,7 +75,9 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> MakeLanguageModel(
         FullyConnectedLayer::Create(executor, kWidth, kWidth, type, kContext)));
     RETURN_IF_ERROR(static_cast<FullyConnectedLayer*>(attention.back())
                         ->InitializeNormal(0.03f, block_seed + 1));
-    ASSIGN_OR_RETURN(auto attention_branch, attention.create());
+    ASSIGN_OR_RETURN(
+        auto attention_branch,
+        attention.create("block_" + std::to_string(block) + "_attention"));
     RETURN_IF_ERROR(
         model.add(ResidualLayer::Create(std::move(attention_branch))));
 
@@ -92,13 +94,14 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> MakeLanguageModel(
         executor, 2 * kWidth, kWidth, type, kContext)));
     RETURN_IF_ERROR(static_cast<FullyConnectedLayer*>(mlp.back())
                         ->InitializeNormal(0.03f, block_seed + 3));
-    ASSIGN_OR_RETURN(auto mlp_branch, mlp.create());
+    ASSIGN_OR_RETURN(auto mlp_branch,
+                     mlp.create("block_" + std::to_string(block) + "_mlp"));
     RETURN_IF_ERROR(model.add(ResidualLayer::Create(std::move(mlp_branch))));
   }
   RETURN_IF_ERROR(model.add(
       LayerNormLayer::Create(executor, kWidth, 1e-5f, type, kContext)));
   RETURN_IF_ERROR(model.add(LanguageModelingHeadLayer::Create(embedding)));
-  return model.create();
+  return model.create("deterministic_language_model");
 }
 
 // All CUDA transfers use pinned staging. Compare raw bytes rather than floats:

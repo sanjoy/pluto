@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -61,11 +62,12 @@ class ResidualLayer final : public Layer {
 // rank, and dimensions. No broadcasting or flattening is implicit.
 class ComposedLayer final : public Layer {
  public:
-  absl::string_view name() const override { return "ComposedLayer"; }
+  absl::string_view name() const override { return name_; }
 
-  // Requires at least one non-null child and exact adjacent signatures.
+  // Owns the supplied nonempty diagnostic name. Requires at least one non-null
+  // child and exact adjacent signatures. Names need not be globally unique.
   static absl::StatusOr<std::unique_ptr<ComposedLayer>> Create(
-      std::vector<std::unique_ptr<Layer>> layers);
+      std::string name, std::vector<std::unique_ptr<Layer>> layers);
 
   absl::Span<Buffer> weights() override { return absl::MakeSpan(weights_); }
   absl::Span<Buffer> gradients() override { return absl::MakeSpan(gradients_); }
@@ -79,7 +81,7 @@ class ComposedLayer final : public Layer {
   }
 
  private:
-  explicit ComposedLayer(std::vector<std::unique_ptr<Layer>> layers);
+  ComposedLayer(std::string name, std::vector<std::unique_ptr<Layer>> layers);
 
   absl::StatusOr<FwdResult> fwd_impl(cuda::Executor& executor,
                                      absl::Span<const Buffer> inputs,
@@ -97,6 +99,7 @@ class ComposedLayer final : public Layer {
                                      absl::Span<const Buffer> output_gradients,
                                      BackwardState state, LayerHooks* hooks);
 
+  std::string name_;
   DataType output_type_;
   std::vector<std::unique_ptr<Layer>> layers_;
   std::vector<Buffer> weights_;
@@ -130,9 +133,10 @@ class ComposedLayerBuilder final {
   Layer* back();
   const Layer* back() const;
 
-  // Consumes the accumulated children. The composed output type is inferred
-  // from the final child. Building an empty composition is an error.
-  absl::StatusOr<std::unique_ptr<ComposedLayer>> create();
+  // Consumes the accumulated children and owns the nonempty name. The composed
+  // output type is inferred from the final child. An empty name is rejected
+  // without consuming any children; building an empty composition is an error.
+  absl::StatusOr<std::unique_ptr<ComposedLayer>> create(std::string name);
 
  private:
   std::vector<std::unique_ptr<Layer>> layers_;
@@ -180,11 +184,12 @@ class ResidualLayerReference final : public LayerReference {
 // exactly.
 class ComposedLayerReference final : public LayerReference {
  public:
-  absl::string_view name() const override { return "ComposedLayerReference"; }
+  absl::string_view name() const override { return name_; }
 
-  // Requires at least one non-null child and exact adjacent signatures.
+  // Owns the supplied nonempty diagnostic name. Requires at least one non-null
+  // child and exact adjacent signatures, just like the GPU composition.
   static absl::StatusOr<std::unique_ptr<ComposedLayerReference>> Create(
-      std::vector<std::unique_ptr<LayerReference>> layers);
+      std::string name, std::vector<std::unique_ptr<LayerReference>> layers);
 
   absl::Span<HostBuffer> weights() override { return absl::MakeSpan(weights_); }
   absl::Span<HostBuffer> gradients() override {
@@ -200,8 +205,8 @@ class ComposedLayerReference final : public LayerReference {
   }
 
  private:
-  explicit ComposedLayerReference(
-      std::vector<std::unique_ptr<LayerReference>> layers);
+  ComposedLayerReference(std::string name,
+                         std::vector<std::unique_ptr<LayerReference>> layers);
 
   absl::StatusOr<ReferenceFwdResult> fwd_impl(
       absl::Span<const HostBuffer> inputs) const override;
@@ -209,6 +214,7 @@ class ComposedLayerReference final : public LayerReference {
       absl::Span<const HostBuffer> output_gradients,
       ReferenceBackwardState state) override;
 
+  std::string name_;
   DataType output_type_;
   std::vector<std::unique_ptr<LayerReference>> layers_;
   std::vector<HostBuffer> weights_;
@@ -228,7 +234,10 @@ class ComposedLayerReferenceBuilder final {
   }
   LayerReference* back();
   const LayerReference* back() const;
-  absl::StatusOr<std::unique_ptr<ComposedLayerReference>> create();
+  // Same ownership/error rules as ComposedLayerBuilder::create: an empty name
+  // leaves all children in this builder so the caller can retry.
+  absl::StatusOr<std::unique_ptr<ComposedLayerReference>> create(
+      std::string name);
 
  private:
   std::vector<std::unique_ptr<LayerReference>> layers_;

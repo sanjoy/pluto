@@ -277,7 +277,7 @@ TEST_F(SparseAutoEncoderDataSetTest,
   ComposedLayerBuilder builder;
   ASSERT_TRUE(builder.add(std::move(*embedding)).ok());
   ASSERT_TRUE(builder.add(std::move(*positions)).ok());
-  auto generator = builder.create();
+  auto generator = builder.create("position_activation_generator");
   ASSERT_TRUE(generator.ok()) << generator.status();
   const std::filesystem::path checkpoint =
       std::filesystem::path(testing::TempDir()) / "sae-sequence-checkpoint";

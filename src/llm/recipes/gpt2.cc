@@ -7,6 +7,7 @@
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "src/cuda/executor.h"
 #include "src/llm/layer.h"
 #include "src/llm/layers/attention.h"
@@ -83,13 +84,13 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateTransformerBlock(
   RETURN_IF_ERROR(
       mlp_output->InitializeNormal(residual_standard_deviation, seed_base + 4));
 
-  ASSIGN_OR_RETURN(auto attention, attention_builder.create());
-  ASSIGN_OR_RETURN(auto mlp, mlp_builder.create());
+  ASSIGN_OR_RETURN(auto attention, attention_builder.create("attention"));
+  ASSIGN_OR_RETURN(auto mlp, mlp_builder.create("mlp"));
   ComposedLayerBuilder block_builder;
   RETURN_IF_ERROR(
       block_builder.add(ResidualLayer::Create(std::move(attention))));
   RETURN_IF_ERROR(block_builder.add(ResidualLayer::Create(std::move(mlp))));
-  return block_builder.create();
+  return block_builder.create(absl::StrCat("transformer_block_", block_index));
 }
 
 // Adds the shared token-to-residual-stream prefix to builder and returns the
@@ -137,7 +138,9 @@ absl::StatusOr<std::unique_ptr<Layer>> CreateActivationGenerator(
       AddActivationGeneratorLayers(executor, builder, transformer_block_count,
                                    output_type, seed));
   (void)embedding;
-  ASSIGN_OR_RETURN(auto generator, builder.create());
+  ASSIGN_OR_RETURN(auto generator, builder.create(absl::StrCat(
+                                       "gpt2_activation_generator_",
+                                       transformer_block_count, "_blocks")));
   return std::unique_ptr<Layer>(std::move(generator));
 }
 
@@ -153,7 +156,7 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateGpt2(
       LayerNormLayer::Create(executor, kGpt2ModelWidth, kLayerNormEpsilon,
                              output_type, kGpt2ContextLength)));
   RETURN_IF_ERROR(builder.add(LanguageModelingHeadLayer::Create(embedding)));
-  return builder.create();
+  return builder.create("gpt2");
 }
 
 }  // namespace pluto::llm

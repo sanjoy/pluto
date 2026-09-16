@@ -191,7 +191,9 @@ absl::StatusOr<BufferVec> ResidualLayer::bwd_body(
 }
 
 absl::StatusOr<std::unique_ptr<ComposedLayer>> ComposedLayer::Create(
-    std::vector<std::unique_ptr<Layer>> layers) {
+    std::string name, std::vector<std::unique_ptr<Layer>> layers) {
+  if (name.empty())
+    return absl::InvalidArgumentError("composed layer name must not be empty");
   if (layers.empty())
     return absl::FailedPreconditionError(
         "cannot create an empty ComposedLayer");
@@ -208,11 +210,15 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> ComposedLayer::Create(
             absl::StrCat("composed child ", i, ": ", status.message()));
     }
   }
-  return absl::WrapUnique(new ComposedLayer(std::move(layers)));
+  return absl::WrapUnique(
+      new ComposedLayer(std::move(name), std::move(layers)));
 }
 
-ComposedLayer::ComposedLayer(std::vector<std::unique_ptr<Layer>> layers)
-    : output_type_(layers.back()->output_type()), layers_(std::move(layers)) {
+ComposedLayer::ComposedLayer(std::string name,
+                             std::vector<std::unique_ptr<Layer>> layers)
+    : name_(std::move(name)),
+      output_type_(layers.back()->output_type()),
+      layers_(std::move(layers)) {
   for (const auto& layer : layers_) {
     for (const Buffer& weight : layer->weights())
       weights_.push_back(weight);
@@ -287,14 +293,17 @@ const Layer* ComposedLayerBuilder::back() const {
   return layers_.empty() ? nullptr : layers_.back().get();
 }
 
-absl::StatusOr<std::unique_ptr<ComposedLayer>> ComposedLayerBuilder::create() {
+absl::StatusOr<std::unique_ptr<ComposedLayer>> ComposedLayerBuilder::create(
+    std::string name) {
+  if (name.empty())
+    return absl::InvalidArgumentError("composed layer name must not be empty");
   if (layers_.empty()) {
     return absl::FailedPreconditionError(
         "cannot create an empty ComposedLayer");
   }
   std::vector<std::unique_ptr<Layer>> layers;
   layers.swap(layers_);
-  return ComposedLayer::Create(std::move(layers));
+  return ComposedLayer::Create(std::move(name), std::move(layers));
 }
 
 }  // namespace pluto::llm

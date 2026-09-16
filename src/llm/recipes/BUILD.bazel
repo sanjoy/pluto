@@ -20,6 +20,7 @@ cc_library(
         "//src/util:status_macros",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
     ],
 )
 
@@ -33,7 +34,10 @@ cc_test(
         "//src/cuda:buffer",
         "//src/cuda:executor",
         "//src/llm:layer",
+        "//src/llm:layer_hooks",
         "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
         "@cuda//:cuda_runtime",
         "@googletest//:gtest_main",
     ],

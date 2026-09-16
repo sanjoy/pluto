@@ -73,7 +73,7 @@ absl::StatusOr<std::unique_ptr<LayerReference>> CreateReference() {
   RETURN_IF_ERROR(mlp.add(FullyConnectedLayerReference::Create(
       kDimensions.feed_forward_width, kDimensions.model_width,
       DataType::BF16)));
-  ASSIGN_OR_RETURN(auto branch, mlp.create());
+  ASSIGN_OR_RETURN(auto branch, mlp.create("mlp"));
 
   ComposedLayerReferenceBuilder readout;
   RETURN_IF_ERROR(readout.add(EmbeddingLookupLayerReference::Create(
@@ -85,7 +85,7 @@ absl::StatusOr<std::unique_ptr<LayerReference>> CreateReference() {
       kDimensions.model_width, 1e-5f, DataType::BF16)));
   RETURN_IF_ERROR(
       readout.add(LanguageModelingHeadLayerReference::Create(embedding)));
-  ASSIGN_OR_RETURN(auto model, readout.create());
+  ASSIGN_OR_RETURN(auto model, readout.create("vocabulary_readout"));
   return std::unique_ptr<LayerReference>(std::move(model));
 }
 

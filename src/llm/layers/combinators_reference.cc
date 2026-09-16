@@ -1,5 +1,6 @@
 #include <cstddef>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -102,7 +103,9 @@ absl::StatusOr<HostBufferVec> ResidualLayerReference::bwd_impl(
 
 absl::StatusOr<std::unique_ptr<ComposedLayerReference>>
 ComposedLayerReference::Create(
-    std::vector<std::unique_ptr<LayerReference>> layers) {
+    std::string name, std::vector<std::unique_ptr<LayerReference>> layers) {
+  if (name.empty())
+    return absl::InvalidArgumentError("composed layer name must not be empty");
   if (layers.empty())
     return absl::FailedPreconditionError(
         "cannot create an empty ComposedLayerReference");
@@ -119,12 +122,15 @@ ComposedLayerReference::Create(
             absl::StrCat("composed child ", i, ": ", status.message()));
     }
   }
-  return absl::WrapUnique(new ComposedLayerReference(std::move(layers)));
+  return absl::WrapUnique(
+      new ComposedLayerReference(std::move(name), std::move(layers)));
 }
 
 ComposedLayerReference::ComposedLayerReference(
-    std::vector<std::unique_ptr<LayerReference>> layers)
-    : output_type_(layers.back()->output_type()), layers_(std::move(layers)) {
+    std::string name, std::vector<std::unique_ptr<LayerReference>> layers)
+    : name_(std::move(name)),
+      output_type_(layers.back()->output_type()),
+      layers_(std::move(layers)) {
   for (const auto& layer : layers_) {
     for (const HostBuffer& weight : layer->weights())
       weights_.push_back(weight);
@@ -186,14 +192,16 @@ const LayerReference* ComposedLayerReferenceBuilder::back() const {
 }
 
 absl::StatusOr<std::unique_ptr<ComposedLayerReference>>
-ComposedLayerReferenceBuilder::create() {
+ComposedLayerReferenceBuilder::create(std::string name) {
+  if (name.empty())
+    return absl::InvalidArgumentError("composed layer name must not be empty");
   if (layers_.empty()) {
     return absl::FailedPreconditionError(
         "cannot create an empty ComposedLayerReference");
   }
   std::vector<std::unique_ptr<LayerReference>> layers;
   layers.swap(layers_);
-  return ComposedLayerReference::Create(std::move(layers));
+  return ComposedLayerReference::Create(std::move(name), std::move(layers));
 }
 
 }  // namespace pluto::llm

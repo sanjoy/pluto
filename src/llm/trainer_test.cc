@@ -700,7 +700,7 @@ TEST_F(TrainerTest,
   ComposedLayerBuilder builder;
   ASSERT_TRUE(builder.add(std::move(*embedding)).ok());
   ASSERT_TRUE(builder.add(ResidualLayer::Create(std::move(*positions))).ok());
-  auto model = builder.create();
+  auto model = builder.create("position_model");
   auto data = MakeData();
   auto loss =
       MakeLoss({DataType::FP32, {ActivationType::kBatchDimension, 4, 16}});
@@ -739,12 +739,12 @@ TEST_F(TrainerTest, SequenceValidationChecksNestedAttentionAndPerTokenLayers) {
                                                    DataType::FP16, 4))
                   .ok());
   ASSERT_TRUE(branch.add(std::move(*attention)).ok());
-  auto attention_branch = branch.create();
+  auto attention_branch = branch.create("attention_branch");
   ASSERT_TRUE(attention_branch.ok()) << attention_branch.status();
   ComposedLayerBuilder builder;
   ASSERT_TRUE(
       builder.add(ResidualLayer::Create(std::move(*attention_branch))).ok());
-  auto model = builder.create();
+  auto model = builder.create("attention_model");
   ASSERT_TRUE(model.ok()) << model.status();
   // Dense projections require a full 16-row tile: four four-token samples.
   auto input = Buffer::Allocate(*executor_, 16 * 16 * sizeof(float));

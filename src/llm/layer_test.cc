@@ -263,13 +263,15 @@ TEST_F(LayerTest, NestedCompositionChecksIndividualChildIdentity) {
   std::vector<std::unique_ptr<Layer>> children;
   children.push_back(std::move(first));
   children.push_back(std::move(second));
-  auto inner_result = ComposedLayer::Create(std::move(children));
+  auto inner_result =
+      ComposedLayer::Create("inner_identity", std::move(children));
   ASSERT_TRUE(inner_result.ok()) << inner_result.status();
   auto inner = std::move(*inner_result);
   const auto* inner_ptr = inner.get();
   std::vector<std::unique_ptr<Layer>> outer_children;
   outer_children.push_back(std::move(inner));
-  auto outer_result = ComposedLayer::Create(std::move(outer_children));
+  auto outer_result =
+      ComposedLayer::Create("outer_identity", std::move(outer_children));
   ASSERT_TRUE(outer_result.ok()) << outer_result.status();
   auto& outer = **outer_result;
 
@@ -304,7 +306,8 @@ TEST_F(LayerTest, CompositionRoutesMultipleOutputsAndInterleavedStates) {
   std::vector<std::unique_ptr<Layer>> children;
   children.push_back(std::move(source));
   children.push_back(std::make_unique<SwapOutputsLayer>());
-  auto model_result = ComposedLayer::Create(std::move(children));
+  auto model_result =
+      ComposedLayer::Create("parameter_routing", std::move(children));
   ASSERT_TRUE(model_result.ok()) << model_result.status();
   auto& model = **model_result;
 
@@ -341,7 +344,8 @@ TEST_F(LayerTest, CompositionAcceptsAndReturnsMultipleInputsAndGradients) {
   ASSERT_TRUE(second.ok()) << second.status();
   std::vector<std::unique_ptr<Layer>> children;
   children.push_back(std::make_unique<SwapOutputsLayer>());
-  auto model_result = ComposedLayer::Create(std::move(children));
+  auto model_result =
+      ComposedLayer::Create("swap_outputs", std::move(children));
   ASSERT_TRUE(model_result.ok()) << model_result.status();
   auto& model = **model_result;
   BufferVec inputs{inputs_[0], *second};

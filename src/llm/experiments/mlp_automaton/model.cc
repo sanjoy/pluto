@@ -94,12 +94,12 @@ absl::StatusOr<std::unique_ptr<Layer>> CreateReadout(
       GeluLayer::Create(executor, dimensions.feed_forward_width, kType)));
   RETURN_IF_ERROR(mlp.add(FullyConnectedLayer::Create(
       executor, dimensions.feed_forward_width, dimensions.model_width, kType)));
-  ASSIGN_OR_RETURN(auto branch, mlp.create());
+  ASSIGN_OR_RETURN(auto branch, mlp.create("mlp"));
   RETURN_IF_ERROR(builder.add(ResidualLayer::Create(std::move(branch))));
   RETURN_IF_ERROR(builder.add(LayerNormLayer::Create(
       executor, dimensions.model_width, kEpsilon, kType)));
   RETURN_IF_ERROR(builder.add(LanguageModelingHeadLayer::Create(embedding)));
-  ASSIGN_OR_RETURN(auto result, builder.create());
+  ASSIGN_OR_RETURN(auto result, builder.create("mlp_automaton_readout"));
   return std::unique_ptr<Layer>(std::move(result));
 }
 

@@ -1,6 +1,7 @@
 #include <cmath>
 #include <cstddef>
 #include <memory>
+#include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -90,6 +91,88 @@ class SignatureIdentity final : public Layer {
   const DataType policy_;
 };
 
+TEST(ReferenceCombinatorNamesTest, OwnsNamesBeyondCallerStringLifetime) {
+  const ActivationType type(DataType::FP32, {-2, 1, 16});
+  const auto identity = [&]() {
+    return absl::make_unique<SignatureReference>(
+        std::vector<ActivationType>{type}, std::vector<ActivationType>{type});
+  };
+  std::string source = "reference transformer block zero / attention and MLP";
+  const std::string expected = source;
+  std::vector<std::unique_ptr<LayerReference>> first_children;
+  first_children.push_back(identity());
+  auto first =
+      ComposedLayerReference::Create(source, std::move(first_children));
+  ASSERT_TRUE(first.ok()) << first.status();
+  const absl::string_view retained_name = (*first)->name();
+  source.assign(512, 'x');
+  EXPECT_EQ((*first)->name(), expected);
+  EXPECT_EQ(retained_name, expected);
+
+  std::vector<std::unique_ptr<LayerReference>> second_children;
+  second_children.push_back(identity());
+  auto second = ComposedLayerReference::Create(
+      std::string("reference transformer block one / ") + "attention and MLP",
+      std::move(second_children));
+  ASSERT_TRUE(second.ok()) << second.status();
+  EXPECT_EQ((*second)->name(),
+            "reference transformer block one / attention and MLP");
+  EXPECT_NE((*first)->name(), (*second)->name());
+  EXPECT_EQ(retained_name, expected);
+}
+
+TEST(ReferenceCombinatorNamesTest, DirectFactoryRejectsEmptyName) {
+  const ActivationType type(DataType::FP32, {-2, 1, 16});
+  std::vector<std::unique_ptr<LayerReference>> children;
+  children.push_back(absl::make_unique<SignatureReference>(
+      std::vector<ActivationType>{type}, std::vector<ActivationType>{type}));
+  EXPECT_EQ(
+      ComposedLayerReference::Create("", std::move(children)).status().code(),
+      absl::StatusCode::kInvalidArgument);
+  EXPECT_EQ(ComposedLayerReference::Create("", {}).status().code(),
+            absl::StatusCode::kInvalidArgument);
+  EXPECT_EQ(
+      ComposedLayerReference::Create("EmptyReference", {}).status().code(),
+      absl::StatusCode::kFailedPrecondition);
+}
+
+TEST(ReferenceCombinatorNamesTest,
+     InvalidNamePreservesChildrenForRetryAndReuse) {
+  const ActivationType type(DataType::FP32, {-2, 1, 16});
+  const auto identity = [&]() {
+    return absl::make_unique<SignatureReference>(
+        std::vector<ActivationType>{type}, std::vector<ActivationType>{type});
+  };
+  ComposedLayerReferenceBuilder builder;
+  EXPECT_EQ(builder.create("").status().code(),
+            absl::StatusCode::kInvalidArgument);
+  EXPECT_EQ(builder.back(), nullptr);
+  ASSERT_TRUE(builder.add(identity()).ok());
+  const LayerReference* first = builder.back();
+  ASSERT_TRUE(builder.add(identity()).ok());
+  const LayerReference* last = builder.back();
+  EXPECT_EQ(builder.create("").status().code(),
+            absl::StatusCode::kInvalidArgument);
+  EXPECT_EQ(builder.back(), last);
+  const ComposedLayerReferenceBuilder& const_builder = builder;
+  EXPECT_EQ(const_builder.back(), last);
+
+  std::string name = "RetriedNamedReferenceComposition";
+  auto graph = builder.create(name);
+  ASSERT_TRUE(graph.ok()) << graph.status();
+  name.assign(512, 'x');
+  EXPECT_EQ((*graph)->name(), "RetriedNamedReferenceComposition");
+  EXPECT_EQ((*graph)->input_types().data(), first->input_types().data());
+  EXPECT_EQ((*graph)->output_types().data(), last->output_types().data());
+  EXPECT_EQ(builder.back(), nullptr);
+
+  ASSERT_TRUE(builder.add(identity()).ok());
+  auto reused = builder.create("ReusedNamedReferenceComposition");
+  ASSERT_TRUE(reused.ok()) << reused.status();
+  EXPECT_EQ((*reused)->name(), "ReusedNamedReferenceComposition");
+  EXPECT_EQ((*graph)->name(), "RetriedNamedReferenceComposition");
+}
+
 TEST_F(LayerReferenceTest, ResidualStorageFollowsSignatureNotComputePolicy) {
   for (DataType storage : {DataType::FP32, DataType::BF16}) {
     // Deliberately disagree in both directions. Counting FP32 bytes as BF16
@@ -167,16 +250,18 @@ TEST(ReferenceCombinatorTypesTest, ConnectionsRequireExactSignatures) {
                         std::vector<ActivationType>{base},
                         std::vector<ActivationType>{base}))
                     .ok());
-    EXPECT_TRUE(builder.create().ok());
+    EXPECT_TRUE(builder.create("RetriedReferenceConnection").ok());
 
     std::vector<std::unique_ptr<LayerReference>> children;
     children.push_back(absl::make_unique<SignatureReference>(
         std::vector<ActivationType>{base}, std::vector<ActivationType>{base}));
     children.push_back(absl::make_unique<SignatureReference>(
         mismatch, std::vector<ActivationType>{base}));
-    EXPECT_EQ(
-        ComposedLayerReference::Create(std::move(children)).status().code(),
-        absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ(ComposedLayerReference::Create("InvalidReferenceConnection",
+                                             std::move(children))
+                  .status()
+                  .code(),
+              absl::StatusCode::kInvalidArgument);
     EXPECT_EQ(ResidualLayerReference::Create(
                   absl::make_unique<SignatureReference>(
                       std::vector<ActivationType>{base}, mismatch))
@@ -233,7 +318,7 @@ TEST(ReferenceCombinatorTypesTest, NestedSignaturesPropagateWithoutFlattening) {
                           std::vector<ActivationType>{hidden},
                           std::vector<ActivationType>{hidden}, DataType::BF16)))
                   .ok());
-  auto nested = inside.create();
+  auto nested = inside.create("ReferenceEmbeddingPipeline");
   ASSERT_TRUE(nested.ok()) << nested.status();
   EXPECT_EQ((*nested)->input_types()[0], tokens);
   EXPECT_EQ((*nested)->output_types()[0], hidden);
@@ -245,7 +330,7 @@ TEST(ReferenceCombinatorTypesTest, NestedSignaturesPropagateWithoutFlattening) {
                       std::vector<ActivationType>{hidden},
                       std::vector<ActivationType>{logits}))
                   .ok());
-  auto model = outside.create();
+  auto model = outside.create("ReferenceLogitsPipeline");
   ASSERT_TRUE(model.ok()) << model.status();
   EXPECT_EQ((*model)->input_types()[0], tokens);
   EXPECT_EQ((*model)->output_types()[0], logits);
@@ -293,10 +378,12 @@ TEST_F(LayerReferenceTest, ResidualCompositionAndBuildersMatchBothPasses) {
           device_builder.add(GeluLayer::Create(*executor_, width, type)).ok());
       ASSERT_TRUE(
           reference_builder.add(GeluLayerReference::Create(width, type)).ok());
-      auto device_model = device_builder.create();
-      auto reference_model = reference_builder.create();
+      auto device_model = device_builder.create("ResidualDenseGelu");
+      auto reference_model = reference_builder.create("ResidualDenseGelu");
       ASSERT_TRUE(device_model.ok()) << device_model.status();
       ASSERT_TRUE(reference_model.ok()) << reference_model.status();
+      EXPECT_EQ((*device_model)->name(), "ResidualDenseGelu");
+      EXPECT_EQ((*reference_model)->name(), (*device_model)->name());
       EXPECT_EQ(device_builder.back(), nullptr);
       EXPECT_EQ(reference_builder.back(), nullptr);
 

@@ -256,13 +256,15 @@ TEST_F(LayerReferenceStateTest,
   std::vector<std::unique_ptr<LayerReference>> children;
   children.push_back(std::move(first));
   children.push_back(std::move(second));
-  auto inner_result = ComposedLayerReference::Create(std::move(children));
+  auto inner_result =
+      ComposedLayerReference::Create("inner_identity", std::move(children));
   ASSERT_TRUE(inner_result.ok()) << inner_result.status();
   auto inner = std::move(*inner_result);
   const auto* inner_ptr = inner.get();
   std::vector<std::unique_ptr<LayerReference>> outer_children;
   outer_children.push_back(std::move(inner));
-  auto outer_result = ComposedLayerReference::Create(std::move(outer_children));
+  auto outer_result = ComposedLayerReference::Create("outer_identity",
+                                                     std::move(outer_children));
   ASSERT_TRUE(outer_result.ok()) << outer_result.status();
   auto& outer = **outer_result;
 
@@ -298,7 +300,8 @@ TEST_F(LayerReferenceStateTest,
   std::vector<std::unique_ptr<LayerReference>> children;
   children.push_back(std::move(source));
   children.push_back(std::make_unique<SwapOutputsLayer>());
-  auto model_result = ComposedLayerReference::Create(std::move(children));
+  auto model_result =
+      ComposedLayerReference::Create("parameter_routing", std::move(children));
   ASSERT_TRUE(model_result.ok()) << model_result.status();
   auto& model = **model_result;
 
@@ -334,7 +337,8 @@ TEST_F(LayerReferenceStateTest,
   ASSERT_TRUE(second.ok()) << second.status();
   std::vector<std::unique_ptr<LayerReference>> children;
   children.push_back(std::make_unique<SwapOutputsLayer>());
-  auto model_result = ComposedLayerReference::Create(std::move(children));
+  auto model_result =
+      ComposedLayerReference::Create("swap_outputs", std::move(children));
   ASSERT_TRUE(model_result.ok()) << model_result.status();
   auto& model = **model_result;
   HostBufferVec inputs{inputs_[0], *second};

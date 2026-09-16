@@ -78,5 +78,8 @@ bare `neighboring_vocab` uses that default, and `min_prob=0` shows all three.
 Quote the argument when including parentheses. Incompatible outputs (such as
 the wider MLP expansion), layers with no surviving tokens, and empty position
 sections are omitted. Hierarchical layer names distinguish repeated blocks.
+The model is named `gpt2`, its blocks are `transformer_block_0` through
+`transformer_block_7`, and each block's composed branches are `attention` and
+`mlp`.
 Only the prompt is inspected, once; prompts longer than the context limit use
 their last 1,024 tokens, retaining the original position numbers.

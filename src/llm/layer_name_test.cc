@@ -38,7 +38,7 @@ void ExpectName(const absl::StatusOr<std::unique_ptr<Concrete>>& result,
   EXPECT_EQ(layer.name().data(), name.data());
 }
 
-TEST_F(LayersTest, EveryGpuLayerReportsItsClassName) {
+TEST_F(LayersTest, EveryGpuLayerReportsItsDiagnosticName) {
   for (DataType type : {DataType::FP16, DataType::BF16}) {
     SCOPED_TRACE(static_cast<int>(type));
     auto embedding = EmbeddingLookupLayer::Create(*executor_, 33, 16, type);
@@ -72,11 +72,12 @@ TEST_F(LayersTest, EveryGpuLayerReportsItsClassName) {
                       "ResidualLayer");
     ComposedLayerBuilder builder;
     ASSERT_TRUE(builder.add(GeluLayer::Create(*executor_, 16, type)).ok());
-    ExpectName<Layer>(builder.create(), "ComposedLayer");
+    ExpectName<Layer>(builder.create("activation_pipeline"),
+                      "activation_pipeline");
   }
 }
 
-TEST(LayerNameTest, EveryReferenceLayerReportsItsClassName) {
+TEST(LayerNameTest, EveryReferenceLayerReportsItsDiagnosticName) {
   for (DataType type : {DataType::FP16, DataType::BF16}) {
     SCOPED_TRACE(static_cast<int>(type));
     auto embedding = EmbeddingLookupLayerReference::Create(33, 16, type);
@@ -113,7 +114,8 @@ TEST(LayerNameTest, EveryReferenceLayerReportsItsClassName) {
         "ResidualLayerReference");
     ComposedLayerReferenceBuilder builder;
     ASSERT_TRUE(builder.add(GeluLayerReference::Create(16, type)).ok());
-    ExpectName<LayerReference>(builder.create(), "ComposedLayerReference");
+    ExpectName<LayerReference>(builder.create("activation_pipeline_reference"),
+                               "activation_pipeline_reference");
   }
 }
 

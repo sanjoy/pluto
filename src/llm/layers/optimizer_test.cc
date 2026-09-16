@@ -78,7 +78,7 @@ TEST_F(LayersTest, DeduplicatesTiedEmbeddingWeights) {
   ASSERT_TRUE(builder.add(std::move(*embedding)).ok());
   ASSERT_TRUE(
       builder.add(LanguageModelingHeadLayer::Create(embedding_pointer)).ok());
-  auto model = builder.create();
+  auto model = builder.create("tied_embedding_model");
   ASSERT_TRUE(model.ok()) << model.status();
   ASSERT_EQ((*model)->weights().size(), 2u);
 

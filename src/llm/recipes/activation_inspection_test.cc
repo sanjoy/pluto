@@ -522,9 +522,9 @@ TEST_F(ActivationInspectionTest, NestedCombinatorsRetainTheirAssignedPaths) {
   ASSERT_TRUE(inner.add(absl::make_unique<IdentityLayer>()).ok());
   ComposedLayerBuilder outer;
   ASSERT_TRUE(outer.add(absl::make_unique<IdentityLayer>()).ok());
-  ASSERT_TRUE(outer.add(inner.create()).ok());
+  ASSERT_TRUE(outer.add(inner.create("inner_pipeline")).ok());
   ASSERT_TRUE(outer.add(absl::make_unique<IdentityLayer>()).ok());
-  auto graph = outer.create();
+  auto graph = outer.create("outer_pipeline");
   ASSERT_TRUE(graph.ok()) << graph.status();
   auto forward =
       (*graph)->fwd(*executor_, {*input}, &(*inspector)->layer_hooks());
@@ -533,12 +533,12 @@ TEST_F(ActivationInspectionTest, NestedCombinatorsRetainTheirAssignedPaths) {
   ASSERT_TRUE((*inspector)->Print(*executor_, detokenizer_, {0}, output).ok());
   const std::string text = output.str();
   const std::vector<std::string> labels = {
-      "  ComposedLayer[0]/IdentityLayer[0]:",
-      "  ComposedLayer[0]/ComposedLayer[1]/IdentityLayer[0]:",
-      "  ComposedLayer[0]/ComposedLayer[1]/IdentityLayer[1]:",
-      "  ComposedLayer[0]/ComposedLayer[1]:",
-      "  ComposedLayer[0]/IdentityLayer[2]:",
-      "  ComposedLayer[0]:"};
+      "  outer_pipeline[0]/IdentityLayer[0]:",
+      "  outer_pipeline[0]/inner_pipeline[1]/IdentityLayer[0]:",
+      "  outer_pipeline[0]/inner_pipeline[1]/IdentityLayer[1]:",
+      "  outer_pipeline[0]/inner_pipeline[1]:",
+      "  outer_pipeline[0]/IdentityLayer[2]:",
+      "  outer_pipeline[0]:"};
   size_t previous = 0;
   for (const auto& label : labels) {
     const size_t found = text.find(label, previous);

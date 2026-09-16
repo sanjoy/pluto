@@ -118,9 +118,10 @@ class Layer {
  public:
   virtual ~Layer() = default;
 
-  // Diagnostic class name, not a unique instance identifier. The returned
-  // non-owning view remains valid for the layer's lifetime. Built-in layers
-  // return string literals, so inspecting a name never allocates memory.
+  // Diagnostic name, not necessarily a unique instance identifier. Primitive
+  // layers use class names; compositions own caller-supplied names describing
+  // their role. The non-owning view remains valid for the layer's lifetime,
+  // and inspecting a name never allocates memory.
   virtual absl::string_view name() const = 0;
 
   // Ordered forward signatures, immutable for the layer's lifetime. Batch is
@@ -203,8 +204,8 @@ class LayerReference {
  public:
   virtual ~LayerReference() = default;
 
-  // Same contract as Layer::name(); reference names include the "Reference"
-  // suffix so diagnostics distinguish CPU and GPU implementations.
+  // Same contract as Layer::name(). Primitive reference names include the
+  // "Reference" suffix; compositions return their caller-supplied names.
   virtual absl::string_view name() const = 0;
 
   // Same physical dtypes and logical shapes as the corresponding GPU layer.
