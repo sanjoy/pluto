@@ -23,6 +23,7 @@ cuda_library(
     hdrs = ["gram_kernel.h"],
     copts = ["-std=c++20"],
     host_copts = ["-std=c++20"],
+    visibility = ["//src/llm/experiments/path_kernel:__pkg__"],
     deps = [
         ":kernel_regression",
         "//src/cuda:buffer",
@@ -62,6 +63,7 @@ cc_library(
     name = "experiment",
     srcs = ["experiment.cc"],
     hdrs = ["experiment.h"],
+    visibility = ["//src/llm/experiments/path_kernel:__pkg__"],
     deps = [
         ":kernel_regression",
         "//src/util:status_macros",
@@ -186,6 +188,26 @@ cc_test(
         "//src/cuda:buffer",
         "//src/cuda:executor",
         "//src/cuda:page_locked_host_array",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "jacobian_test",
+    srcs = ["jacobian_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":empirical_ntk",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/llm:fully_connected",
+        "//src/llm:layer",
         "//src/util:status_macros",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",

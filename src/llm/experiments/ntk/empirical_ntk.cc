@@ -91,21 +91,17 @@ absl::Status CopyGradients(cuda::Executor& executor, Layer& model,
   return status;
 }
 
-absl::StatusOr<KernelResult> Compute(cuda::Executor& executor, Layer& model,
-                                     absl::Span<const Sample> samples,
-                                     const KernelOptions& options,
-                                     std::vector<ParameterBlock> parameters,
-                                     size_t row_count, size_t parameter_count,
-                                     size_t jacobian_bytes) {
+absl::StatusOr<JacobianResult> Compute(
+    cuda::Executor& executor, Layer& model,
+    absl::Span<const DifferentiationSample> samples,
+    const KernelOptions& options, std::vector<ParameterBlock> parameters,
+    size_t row_count, size_t parameter_count, size_t jacobian_bytes) {
   ASSIGN_OR_RETURN(auto jacobian, Buffer::Allocate(executor, jacobian_bytes));
-  ASSIGN_OR_RETURN(auto values, cuda::PageLockedHostArray<float>::Allocate(
-                                    executor, row_count));
-  ASSIGN_OR_RETURN(auto one,
-                   cuda::PageLockedHostArray<float>::Allocate(executor, 1));
-  one[0] = 1;
+  std::vector<double> values;
+  values.reserve(row_count);
   size_t row = 0;
-  for (const Sample& sample : samples) {
-    for (const OutputCoordinate& coordinate : sample.coordinates) {
+  for (const DifferentiationSample& sample : samples) {
+    for (const ScalarFunction& function : sample.outputs) {
       for (const auto& block : parameters) {
         const Buffer& gradient = model.gradients()[block.weight_index];
         RETURN_IF_ERROR(cuda::CudaStatus(
@@ -116,42 +112,26 @@ absl::StatusOr<KernelResult> Compute(cuda::Executor& executor, Layer& model,
       ASSIGN_OR_RETURN(auto forward, model.fwd(executor, sample.inputs));
       if (forward.outputs.size() != model.output_types().size())
         return absl::InvalidArgumentError("NTK forward output count mismatch");
-      BufferVec seeds;
-      for (size_t i = 0; i < forward.outputs.size(); ++i) {
-        const Buffer& output = forward.outputs[i];
+      for (const Buffer& output : forward.outputs)
         if (&output.executor() != &executor ||
             output.size_bytes() % sizeof(float) != 0)
           return absl::InvalidArgumentError("NTK needs FP32 forward outputs");
-        ASSIGN_OR_RETURN(auto seed,
-                         Buffer::Allocate(executor, output.size_bytes()));
-        RETURN_IF_ERROR(
-            cuda::CudaStatus(cudaMemsetAsync(seed.data(), 0, seed.size_bytes(),
-                                             executor.stream()),
-                             "zero NTK output seed"));
-        seeds.push_back(std::move(seed));
-      }
-      const Buffer& output = forward.outputs[coordinate.output_index];
-      if (coordinate.element >= output.size_bytes() / sizeof(float))
+      ASSIGN_OR_RETURN(auto scalar, function(executor, forward.outputs));
+      if (!std::isfinite(scalar.value))
+        return absl::FailedPreconditionError(
+            "Jacobian scalar callback returned a nonfinite value");
+      if (scalar.gradients.size() != forward.outputs.size())
         return absl::InvalidArgumentError(
-            "NTK output coordinate out of bounds");
-      RETURN_IF_ERROR(cuda::CudaStatus(
-          cudaMemcpyAsync(
-              values.data() + row,
-              static_cast<const float*>(output.data()) + coordinate.element,
-              sizeof(float), cudaMemcpyDeviceToHost, executor.stream()),
-          "read NTK initial output"));
-      RETURN_IF_ERROR(cuda::CudaStatus(
-          cudaMemcpyAsync(
-              static_cast<float*>(seeds[coordinate.output_index].data()) +
-                  coordinate.element,
-              one.data(), sizeof(float), cudaMemcpyHostToDevice,
-              executor.stream()),
-          "seed NTK scalar output"));
-      // Seeding df/df = 1 measures a row of the OUTPUT Jacobian.
-      // Backpropagating cross-entropy instead would produce a different,
-      // loss-weighted kernel.
-      ASSIGN_OR_RETURN(auto input_gradients,
-                       model.bwd(executor, seeds, std::move(forward.state)));
+            "Jacobian callback must return one gradient per model output");
+      for (size_t i = 0; i < scalar.gradients.size(); ++i)
+        if (&scalar.gradients[i].executor() != &executor ||
+            scalar.gradients[i].size_bytes() != forward.outputs[i].size_bytes())
+          return absl::InvalidArgumentError(
+              "Jacobian callback gradients must match FP32 output sizes and "
+              "belong to the supplied executor");
+      ASSIGN_OR_RETURN(
+          auto input_gradients,
+          model.bwd(executor, scalar.gradients, std::move(forward.state)));
       (void)input_gradients;
       for (const auto& block : parameters)
         RETURN_IF_ERROR(cuda::CudaStatus(
@@ -161,6 +141,7 @@ absl::StatusOr<KernelResult> Compute(cuda::Executor& executor, Layer& model,
                             block.elements * sizeof(float),
                             cudaMemcpyDeviceToDevice, executor.stream()),
             "copy NTK Jacobian row"));
+      values.push_back(scalar.value);
       ++row;
       if (options.progress) {
         RETURN_IF_ERROR(executor.Synchronize());
@@ -168,27 +149,56 @@ absl::StatusOr<KernelResult> Compute(cuda::Executor& executor, Layer& model,
       }
     }
   }
-  ASSIGN_OR_RETURN(auto gram, internal::ComputeGram(executor, jacobian,
-                                                    row_count, parameter_count));
-  // ComputeGram synchronizes this executor, including the earlier output
-  // transfers into values. No additional synchronization is needed here.
-  KernelResult result;
-  result.gram = std::move(gram);
-  result.initial_values.assign(values.begin(), values.end());
-  result.parameters = std::move(parameters);
-  result.parameter_count = parameter_count;
-  RETURN_IF_ERROR(ValidateMatrix(result.gram));
-  for (double value : result.initial_values)
-    if (!std::isfinite(value))
-      return absl::FailedPreconditionError(
-          "NTK output contains nonfinite values");
-  return result;
+  return JacobianResult{std::move(jacobian), std::move(values),
+                        std::move(parameters), parameter_count};
 }
 
 }  // namespace
 
-absl::StatusOr<KernelResult> ComputeEmpiricalKernel(
-    cuda::Executor& executor, Layer& model, absl::Span<const Sample> samples,
+ScalarFunction MakeOutputCoordinate(OutputCoordinate coordinate) {
+  return [coordinate](
+             cuda::Executor& executor,
+             absl::Span<const Buffer> outputs) -> absl::StatusOr<ScalarOutput> {
+    if (coordinate.output_index >= outputs.size())
+      return absl::InvalidArgumentError("NTK output index out of bounds");
+    const Buffer& selected = outputs[coordinate.output_index];
+    if (coordinate.element >= selected.size_bytes() / sizeof(float))
+      return absl::InvalidArgumentError("NTK output coordinate out of bounds");
+    BufferVec gradients;
+    for (const Buffer& output : outputs) {
+      if (&output.executor() != &executor ||
+          output.size_bytes() % sizeof(float) != 0)
+        return absl::InvalidArgumentError("NTK needs FP32 forward outputs");
+    ASSIGN_OR_RETURN(auto seed, Buffer::Allocate(executor, output.size_bytes()));
+      RETURN_IF_ERROR(cuda::CudaStatus(
+          cudaMemsetAsync(seed.data(), 0, seed.size_bytes(), executor.stream()),
+          "zero NTK output seed"));
+      gradients.push_back(std::move(seed));
+    }
+    ASSIGN_OR_RETURN(auto host,
+                     cuda::PageLockedHostArray<float>::Allocate(executor, 2));
+    host[0] = 1;
+    RETURN_IF_ERROR(cuda::CudaStatus(
+        cudaMemcpyAsync(
+            static_cast<float*>(gradients[coordinate.output_index].data()) +
+                coordinate.element,
+            host.data(), sizeof(float), cudaMemcpyHostToDevice,
+            executor.stream()),
+        "seed NTK scalar output"));
+    RETURN_IF_ERROR(cuda::CudaStatus(
+        cudaMemcpyAsync(
+            host.data() + 1,
+            static_cast<const float*>(selected.data()) + coordinate.element,
+            sizeof(float), cudaMemcpyDeviceToHost, executor.stream()),
+        "read NTK initial output"));
+    RETURN_IF_ERROR(executor.Synchronize());
+    return ScalarOutput{host[1], std::move(gradients)};
+  };
+}
+
+absl::StatusOr<JacobianResult> ComputeJacobian(
+    cuda::Executor& executor, Layer& model,
+    absl::Span<const DifferentiationSample> samples,
     const KernelOptions& options) {
   if (samples.empty())
     return absl::InvalidArgumentError("NTK requires at least one sample");
@@ -197,22 +207,22 @@ absl::StatusOr<KernelResult> ComputeEmpiricalKernel(
       return absl::InvalidArgumentError(
           "NTK requires physical FP32 output signatures");
   size_t row_count = 0;
-  for (const Sample& sample : samples) {
+  for (const DifferentiationSample& sample : samples) {
     if (sample.inputs.size() != model.input_types().size() ||
-        sample.coordinates.empty())
+        sample.outputs.empty())
       return absl::InvalidArgumentError(
           "NTK sample needs matching inputs and nonempty output coordinates");
     for (const Buffer& input : sample.inputs)
       if (&input.executor() != &executor)
         return absl::InvalidArgumentError(
             "NTK input belongs to another executor");
-    for (const auto& coordinate : sample.coordinates)
-      if (coordinate.output_index >= model.output_types().size())
-        return absl::InvalidArgumentError("NTK output index out of bounds");
-    if (sample.coordinates.size() > 65535 - row_count)
+    for (const ScalarFunction& function : sample.outputs)
+      if (!function)
+        return absl::InvalidArgumentError("Jacobian scalar callback is empty");
+    if (sample.outputs.size() > 65535 - row_count)
       return absl::ResourceExhaustedError(
           "NTK row count exceeds CUDA grid limit");
-    row_count += sample.coordinates.size();
+    row_count += sample.outputs.size();
   }
   ASSIGN_OR_RETURN(auto parameters, Parameters(executor, model));
   const size_t count = parameters.back().offset + parameters.back().elements;
@@ -240,6 +250,32 @@ absl::StatusOr<KernelResult> ComputeEmpiricalKernel(
                       absl::StrCat(result.status().message(),
                                    "; restoring NTK gradients also failed: ",
                                    restore.message()));
+}
+
+absl::StatusOr<KernelResult> ComputeEmpiricalKernel(
+    cuda::Executor& executor, Layer& model, absl::Span<const Sample> samples,
+    const KernelOptions& options) {
+  std::vector<DifferentiationSample> differentiation_samples;
+  differentiation_samples.reserve(samples.size());
+  for (const Sample& sample : samples) {
+    DifferentiationSample converted{.inputs = sample.inputs};
+    for (const OutputCoordinate coordinate : sample.coordinates) {
+      if (coordinate.output_index >= model.output_types().size())
+        return absl::InvalidArgumentError("NTK output index out of bounds");
+      converted.outputs.push_back(MakeOutputCoordinate(coordinate));
+    }
+    differentiation_samples.push_back(std::move(converted));
+  }
+  ASSIGN_OR_RETURN(
+      auto jacobian,
+      ComputeJacobian(executor, model, differentiation_samples, options));
+  ASSIGN_OR_RETURN(
+      auto gram,
+      internal::ComputeGram(executor, jacobian.derivatives,
+                            jacobian.values.size(), jacobian.parameter_count));
+  RETURN_IF_ERROR(ValidateMatrix(gram));
+  return KernelResult{std::move(gram), std::move(jacobian.values),
+                      std::move(jacobian.parameters), jacobian.parameter_count};
 }
 
 }  // namespace pluto::llm::ntk

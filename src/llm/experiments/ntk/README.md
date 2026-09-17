@@ -12,6 +12,12 @@ limiting kernel at infinite width. This experiment measures a finite network
 at one parameter setting. Freezing that measured kernel is a separate modeling
 choice, not evidence that this finite GPT-2 model has reached the paper's limit.
 
+For kernels that evolve along actual gradient-descent updates and attribute
+output changes to training examples, see the
+[path-kernel experiment](../path_kernel/README.md). The shared `ComputeJacobian`
+API accepts arbitrary scalar functions of model outputs, including full-loss
+vector-Jacobian products; `ComputeEmpiricalKernel` still measures output logits.
+
 ## Run
 
 From the repository root, build and measure a small-data experiment with the

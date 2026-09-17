@@ -17,7 +17,8 @@ The repository includes:
   Shakespeare.
 - Standalone experimental tools in [`src/llm/experiments`](src/llm/experiments),
   including the MLP automaton readout and
-  [empirical neural tangent kernel experiments](src/llm/experiments/ntk).
+  [empirical neural tangent kernel experiments](src/llm/experiments/ntk), plus
+  [training-path kernel attribution](src/llm/experiments/path_kernel).
 - CUDA execution, device buffers, and page-locked host memory in
   [`src/cuda`](src/cuda), with CUDA/cuTile C++ kernels.
 - Tokenization, dataset iterators, and data-preparation utilities in

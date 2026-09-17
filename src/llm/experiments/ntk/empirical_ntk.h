@@ -59,6 +59,52 @@ struct KernelOptions {
   std::function<absl::Status(size_t completed, size_t total)> progress;
 };
 
+// A scalar function of the model's forward outputs and its derivatives with
+// respect to those outputs. For example, selecting one logit supplies a
+// one-hot seed, whereas a scalar loss supplies dLoss/dLogits. Each gradient
+// must be an FP32 buffer matching the corresponding output's size/executor.
+struct ScalarOutput {
+  double value;
+  BufferVec gradients;
+};
+
+// Callbacks must not mutate forward outputs, model weights, or parameter
+// gradients. Queue all device work on the supplied executor. Return a finite
+// host scalar and exactly one derivative buffer per forward output.
+using ScalarFunction = std::function<absl::StatusOr<ScalarOutput>(
+    cuda::Executor&, absl::Span<const Buffer>)>;
+
+struct DifferentiationSample {
+  // The same input ownership/immutability rules as Sample apply here.
+  BufferVec inputs;
+  std::vector<ScalarFunction> outputs;
+};
+
+struct JacobianResult {
+  // Row-major FP32 device matrix: values.size() rows, parameter_count columns.
+  // The executor must outlive this buffer. Parameter aliases are deduplicated
+  // only after their backward contributions have accumulated.
+  Buffer derivatives;
+  std::vector<double> values;
+  std::vector<ParameterBlock> parameters;
+  size_t parameter_count = 0;
+};
+
+// Constructs a scalar callback selecting one flattened forward output. It
+// reads the value through pinned memory and creates its one-hot derivative.
+ScalarFunction MakeOutputCoordinate(OutputCoordinate coordinate);
+
+// Computes parameter derivatives of arbitrary scalar functions of the model
+// outputs. Rows follow sample order, then scalar-function order. Each row gets
+// a fresh forward/backward pass; existing parameter gradients are restored
+// on both success and failure. Parameters and physical output signatures must
+// be FP32 (mixed-precision internal operations remain supported). The explicit
+// memory budget and progress callback are shared with ComputeEmpiricalKernel.
+absl::StatusOr<JacobianResult> ComputeJacobian(
+    cuda::Executor& executor, Layer& model,
+    absl::Span<const DifferentiationSample> samples,
+    const KernelOptions& options = {});
+
 // Measures the finite network's empirical NTK at its CURRENT weights:
 //   K[(sample, output), (other, output')] =
 //       sum over unique parameters p of df_output/dp * df_other_output'/dp.
