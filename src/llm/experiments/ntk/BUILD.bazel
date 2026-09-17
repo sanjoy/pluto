@@ -1,0 +1,196 @@
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+load("@rules_cuda//cuda:defs.bzl", "cuda_library")
+
+cc_library(
+    name = "kernel_regression",
+    srcs = ["kernel_regression.cc"],
+    hdrs = ["kernel_regression.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cuda_library(
+    name = "gram_kernel",
+    srcs = ["gram_kernel.cc"],
+    hdrs = ["gram_kernel.h"],
+    copts = ["-std=c++20"],
+    host_copts = ["-std=c++20"],
+    deps = [
+        ":kernel_regression",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_library(
+    name = "empirical_ntk",
+    srcs = ["empirical_ntk.cc"],
+    hdrs = ["empirical_ntk.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":gram_kernel",
+        ":kernel_regression",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/llm:layer",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_library(
+    name = "experiment",
+    srcs = ["experiment.cc"],
+    hdrs = ["experiment.h"],
+    deps = [
+        ":kernel_regression",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_binary(
+    name = "shakespeare_ntk",
+    srcs = ["shakespeare_ntk.cc"],
+    data = ["//testdata:shakespeare.txt"],
+    deps = [
+        ":empirical_ntk",
+        ":experiment",
+        ":kernel_regression",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset:dataset",
+        "//src/dataset:gpt2_detokenizer",
+        "//src/dataset:gpt2_tokenizer",
+        "//src/llm:checkpoint",
+        "//src/llm:layer",
+        "//src/llm/recipes:gpt2",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_test(
+    name = "kernel_regression_test",
+    srcs = ["kernel_regression_test.cc"],
+    deps = [
+        ":kernel_regression",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/types:span",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "experiment_test",
+    srcs = ["experiment_test.cc"],
+    deps = [
+        ":experiment",
+        ":kernel_regression",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "empirical_ntk_test",
+    size = "medium",
+    srcs = ["empirical_ntk_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":empirical_ntk",
+        ":kernel_regression",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/llm:combinators",
+        "//src/llm:embedding",
+        "//src/llm:fully_connected",
+        "//src/llm:gelu",
+        "//src/llm:layer",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/memory",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "gpt2_ntk_test",
+    size = "large",
+    timeout = "long",
+    srcs = ["gpt2_ntk_test.cc"],
+    data = ["//testdata:shakespeare.txt"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":empirical_ntk",
+        ":kernel_regression",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset:dataset",
+        "//src/dataset:gpt2_tokenizer",
+        "//src/llm:layer",
+        "//src/llm/recipes:gpt2",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "gram_kernel_test",
+    size = "medium",
+    srcs = ["gram_kernel_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":gram_kernel",
+        ":kernel_regression",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)

@@ -15,8 +15,9 @@ The repository includes:
 - GPT-2 and sparse-autoencoder experiments in
   [`src/llm/recipes`](src/llm/recipes), including training and inference on
   Shakespeare.
-- Standalone experimental tools in [`src/llm/experiments`](src/llm/experiments), including the
-  MLP automaton readout.
+- Standalone experimental tools in [`src/llm/experiments`](src/llm/experiments),
+  including the MLP automaton readout and
+  [empirical neural tangent kernel experiments](src/llm/experiments/ntk).
 - CUDA execution, device buffers, and page-locked host memory in
   [`src/cuda`](src/cuda), with CUDA/cuTile C++ kernels.
 - Tokenization, dataset iterators, and data-preparation utilities in
