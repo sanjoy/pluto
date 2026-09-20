@@ -54,6 +54,9 @@ Seven-block checkpoint:
 Training and checkpoint reload took about 45 minutes. Its fresh-process native
 verification and independent Python target audit both passed; their artifacts
 are in `runs/trial_0_remaining/layers_7/independent_verification/`.
+Repeating the entire seven-block evaluation with batch size 17, including a
+partial final batch, also gave zero errors and a byte-identical per-token TSV;
+that check is in `runs/verify_layers_7_batch_17/`.
 
 Evidence SHA-256 hashes:
 
