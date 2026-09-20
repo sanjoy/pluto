@@ -16,6 +16,54 @@ class PrefixAuditTest(unittest.TestCase):
         self.assertEqual(result.unavoidable_errors, 0)
         self.assertEqual(result.minimum_mean_cross_entropy, 0)
 
+    def test_zero_blocks_cannot_distinguish_different_prefixes_with_same_end(self):
+        rows = [[1, 2, 3, 4, 9, 10], [2, 3, 4, 5, 9, 11]]
+        options = {"prompt_tokens": 5, "eos_id": 0}
+        self.assertEqual(audit_prefixes(rows, **options).unavoidable_errors, 0)
+        result = audit_prefixes(rows, context_mode="token_position", **options)
+        self.assertEqual(result.targets, 4)
+        self.assertEqual(result.contexts, 3)
+        self.assertEqual(result.unavoidable_errors, 1)
+        self.assertEqual(result.conflicts, {(4, 9): {10: 1, 11: 1}})
+        self.assertAlmostEqual(result.minimum_mean_cross_entropy, math.log(2) / 2)
+        self.assertEqual(result.summary()["maximum_top1_accuracy"], 0.75)
+
+    def test_token_position_contexts_keep_different_positions_separate(self):
+        # Token 2 predicts 3 at position 1 and 5 at position 2. Learned absolute
+        # position embeddings can distinguish these; token-only keys could not.
+        result = audit_prefixes(
+            [[1, 2, 3], [4, 6, 2, 5]], context_mode="token_position"
+        )
+        self.assertEqual(result.targets, 5)
+        self.assertEqual(result.contexts, 5)
+        self.assertEqual(result.unavoidable_errors, 0)
+
+    def test_token_position_mode_scores_bos_and_shifts_sentence_positions(self):
+        first_tokens = audit_prefixes(
+            [[1], [2]],
+            prompt_tokens=0,
+            bos_id=0,
+            eos_id=0,
+            context_mode="token_position",
+        )
+        self.assertEqual(first_tokens.targets, 4)
+        self.assertEqual(first_tokens.conflicts, {(0, 0): {1: 1, 2: 1}})
+        shifted = audit_prefixes(
+            [[1, 2, 3], [4, 2, 5]],
+            prompt_tokens=2,
+            bos_id=0,
+            eos_id=0,
+            context_mode="token_position",
+        )
+        self.assertEqual(shifted.targets, 4)
+        self.assertEqual(shifted.conflicts, {(2, 2): {3: 1, 5: 1}})
+
+    def test_unknown_context_modes_fail(self):
+        for mode in ("", "last_token", "PREFIX", None):
+            with self.subTest(mode=mode):
+                with self.assertRaisesRegex(ValueError, "context_mode"):
+                    audit_prefixes([[1, 2]], context_mode=mode)
+
     def test_majority_label_gives_exact_accuracy_and_entropy_bounds(self):
         result = audit_prefixes([[1, 2], [1, 2], [1, 3]])
         self.assertEqual(result.targets, 3)

@@ -42,6 +42,8 @@ ABSL_FLAG(std::string, corpus, "testdata/general_facts_dataset.txt",
 ABSL_FLAG(std::string, tokenizer, "",
           "Local GPT-2 tokenizer directory (required)");
 ABSL_FLAG(std::string, checkpoint_dir, "", "Checkpoint parent (required)");
+ABSL_FLAG(std::string, verify_checkpoint, "",
+          "Load one checkpoint and independently evaluate it without training");
 ABSL_FLAG(std::string, output_dir,
           "src/llm/experiments/memorize_general_facts/runs/baseline",
           "Experiment artifacts");
@@ -360,9 +362,72 @@ absl::StatusOr<bool> TrainDepth(cuda::Executor& executor,
   return metrics.errors == 0;
 }
 
+// Verification starts with a fresh model in a new process: no in-memory
+// weights, optimizer state, or training iterator can explain a successful
+// result. Use the training run's snapshots for --corpus and --tokenizer.
+absl::StatusOr<bool> VerifyCheckpoint(cuda::Executor& executor,
+                                      const tokenizer::Gpt2Tokenizer& tokenizer,
+                                      const TextCorpus& corpus) {
+  const std::filesystem::path output(absl::GetFlag(FLAGS_output_dir));
+  std::error_code error;
+  const bool exists = std::filesystem::exists(output, error);
+  if (error) return absl::InternalError(error.message());
+  if (exists)
+    return absl::AlreadyExistsError(
+        "verification output directory must be fresh");
+  std::filesystem::create_directories(output, error);
+  if (error) return absl::InternalError(error.message());
+  const PaddedLineDataSetOptions options{
+      .batch_size = absl::GetFlag(FLAGS_batch_size),
+      .context_length = kGpt2ContextLength,
+      .prompt_tokens = 5,
+      .eos_token = tokenizer.eos_token_id(),
+      .shuffle = false};
+  ASSIGN_OR_RETURN(auto data, PaddedLineDataSetIterator::Create(
+                                  executor, corpus.text(), tokenizer, options));
+  ASSIGN_OR_RETURN(auto model, CreateGpt2(executor, DataType::BF16,
+                                          absl::GetFlag(FLAGS_seed),
+                                          absl::GetFlag(FLAGS_layers)));
+  ASSIGN_OR_RETURN(auto loss, CrossEntropyLossLayer::Create(
+                                  executor, kGpt2VocabularySize, DataType::BF16,
+                                  kGpt2ContextLength));
+  RETURN_IF_ERROR(ReadFromDirectory(executor, *model,
+                                    absl::GetFlag(FLAGS_verify_checkpoint)));
+  std::ofstream details(output / "final_predictions.tsv");
+  if (!details)
+    return absl::InternalError("cannot write independent predictions");
+  details << "line_1based\ttarget_token_index_0based\ttarget_id\tpredicted_"
+             "id\tloss\n";
+  ASSIGN_OR_RETURN(auto metrics,
+                   EvaluateExact(executor, *model, *loss, *data, &details));
+  details.close();
+  if (!details)
+    return absl::InternalError("writing independent predictions failed");
+  std::ofstream result(output / "result.txt");
+  result << "checkpoint=" << absl::GetFlag(FLAGS_verify_checkpoint)
+         << "\ncorpus=" << absl::GetFlag(FLAGS_corpus)
+         << "\ntokenizer=" << absl::GetFlag(FLAGS_tokenizer)
+         << "\nlayers=" << absl::GetFlag(FLAGS_layers)
+         << "\nparameters=" << ParameterCount(*model)
+         << "\nerrors=" << metrics.errors << "\ntargets=" << metrics.targets
+         << "\nmean_loss=" << metrics.loss_sum / metrics.targets
+         << "\nexact_sentences=" << metrics.exact_sentences
+         << "\nsentences=" << metrics.sentences << '\n';
+  result.close();
+  if (!result) return absl::InternalError("writing verification result failed");
+  std::cout << "checkpoint_errors=" << metrics.errors << '/' << metrics.targets
+            << " exact_sentences=" << metrics.exact_sentences << '/'
+            << metrics.sentences
+            << " mean_loss=" << metrics.loss_sum / metrics.targets << std::endl;
+  return metrics.errors == 0;
+}
+
 absl::StatusOr<bool> Run() {
   if (absl::GetFlag(FLAGS_tokenizer).empty() ||
-      absl::GetFlag(FLAGS_checkpoint_dir).empty() ||
+      (absl::GetFlag(FLAGS_checkpoint_dir).empty() &&
+       absl::GetFlag(FLAGS_verify_checkpoint).empty()) ||
+      (!absl::GetFlag(FLAGS_verify_checkpoint).empty() &&
+       absl::GetFlag(FLAGS_search)) ||
       absl::GetFlag(FLAGS_layers) < 0 || absl::GetFlag(FLAGS_layers) > 8 ||
       absl::GetFlag(FLAGS_batch_size) <= 0 || absl::GetFlag(FLAGS_steps) < 0 ||
       absl::GetFlag(FLAGS_eval_every) <= 0 ||
@@ -381,6 +446,8 @@ absl::StatusOr<bool> Run() {
     return absl::InvalidArgumentError(
         "the experiment requires the full GPT-2 vocabulary");
   ASSIGN_OR_RETURN(auto corpus, LoadTextCorpus(absl::GetFlag(FLAGS_corpus)));
+  if (!absl::GetFlag(FLAGS_verify_checkpoint).empty())
+    return VerifyCheckpoint(*executor, *tokenizer, corpus);
   for (int layers = absl::GetFlag(FLAGS_layers); layers >= 0; --layers) {
     ASSIGN_OR_RETURN(bool success,
                      TrainDepth(*executor, *tokenizer, corpus, layers));

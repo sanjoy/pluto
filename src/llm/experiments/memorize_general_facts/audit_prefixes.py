@@ -4,6 +4,9 @@
 This is a model-independent feasibility check, not a training metric. Two
 independent samples with identical token prefixes give a causal model identical
 inputs. If their next tokens differ, at least one top-1 prediction must be wrong.
+For a zero-transformer-block model, only the current token and its position can
+influence the prediction; grouping by that reduced context gives a stricter
+bound. These are information bounds, not guarantees that a model attains them.
 The caller supplies unpadded, independently tokenized sentences; padding never
 contributes targets. The CLI does not train or select a revised objective.
 """
@@ -20,7 +23,7 @@ from typing import Sequence
 
 @dataclass
 class PrefixAudit:
-    """Counts under one explicit prompt/BOS/EOS scoring convention."""
+    """Counts under one explicit context and prompt/BOS/EOS convention."""
 
     targets: int
     contexts: int
@@ -45,19 +48,31 @@ def audit_prefixes(
     prompt_tokens: int = 1,
     eos_id: int | None = None,
     bos_id: int | None = None,
+    context_mode: str = "prefix",
 ) -> PrefixAudit:
-    """Group next-token targets by their entire causal input, not the last token.
+    """Group next-token targets by the information available to a predictor.
+
+    `context_mode="prefix"` (the default) uses the complete causal token prefix.
+    `context_mode="token_position"` uses only (absolute position, current token),
+    with zero-based positions. This is the information available to GPT-2 with
+    zero transformer blocks: embeddings, position embeddings, final rowwise
+    LayerNorm, and a tied LM head cannot inspect earlier token positions. The
+    prefix representation is still necessary for models with attention.
 
     `prompt_tokens` counts original sentence tokens provided without scoring.
     With BOS, zero prompt tokens also scores the first sentence token. EOS, when
     requested, is a real scored target, even when its ID is also used for PAD in
-    a future training implementation. A BOS ID is prepended to every context.
+    a training implementation. A BOS ID is prepended before forming context
+    keys, so BOS is position zero and shifts all sentence-token positions by
+    one in token_position mode. Padding never contributes targets or context.
 
     At a prefix with target counts c_y, any top-1 predictor can be right at most
     max(c_y) times. The best unrestricted probability distribution is the
     empirical distribution c_y / sum(c_y), whose entropy supplies an NLL lower
     bound. A particular neural network might not achieve either bound.
     """
+    if context_mode not in ("prefix", "token_position"):
+        raise ValueError("context_mode must be 'prefix' or 'token_position'")
     if prompt_tokens < 0 or (prompt_tokens == 0 and bos_id is None):
         raise ValueError("Provide at least one prompt token, or a BOS token")
     if not rows:
@@ -73,7 +88,10 @@ def audit_prefixes(
         beginning = [] if bos_id is None else [bos_id]
         for position in range(prompt_tokens, len(sentence)):
             prefix = tuple(beginning + sentence[:position])
-            counts[prefix][sentence[position]] += 1
+            context = (
+                prefix if context_mode == "prefix" else (len(prefix) - 1, prefix[-1])
+            )
+            counts[context][sentence[position]] += 1
 
     targets = sum(sum(histogram.values()) for histogram in counts.values())
     if targets == 0:
@@ -89,7 +107,7 @@ def audit_prefixes(
         contexts=len(counts),
         unavoidable_errors=targets - correct,
         minimum_mean_cross_entropy=minimum_nll / targets,
-        conflicts={prefix: h for prefix, h in counts.items() if len(h) > 1},
+        conflicts={context: h for context, h in counts.items() if len(h) > 1},
     )
 
 
@@ -133,6 +151,12 @@ def main() -> None:
     with_eos = audit_prefixes(rows, eos_id=eos)
     with_bos = audit_prefixes(rows, prompt_tokens=0, bos_id=eos, eos_id=eos)
     candidate = audit_prefixes(rows, prompt_tokens=args.prompt_tokens, eos_id=eos)
+    zero_block = audit_prefixes(
+        rows,
+        prompt_tokens=args.prompt_tokens,
+        eos_id=eos,
+        context_mode="token_position",
+    )
     examples = []
     for prefix, histogram in sorted(
         original.conflicts.items(), key=lambda item: (-sum(item[1].values()), item[0])
@@ -174,6 +198,11 @@ def main() -> None:
                         {tuple(row[: args.prompt_tokens]) for row in rows}
                     ),
                     **candidate.summary(),
+                },
+                "zero_block_prompt_completion_with_eos": {
+                    "prompt_tokens": args.prompt_tokens,
+                    "context_mode": "token_position",
+                    **zero_block.summary(),
                 },
                 "conflict_examples": examples,
             },

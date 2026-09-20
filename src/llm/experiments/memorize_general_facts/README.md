@@ -109,3 +109,37 @@ from disk before that final audit. Success requires zero errors across all
 10,002 targets and all 1,024 sentences, not a rounded accuracy or loss threshold.
 Because attention is causal, perfect teacher-forced top-1 predictions imply
 exact greedy suffix completion by induction, including termination at EOS.
+
+## Independent verification and the zero-block bound
+
+The audit also groups targets by `(current token, absolute position)`, the only
+information available to a zero-block model. There are 809 contradictory groups
+and at least 2,923 unavoidable errors: accuracy cannot exceed 70.7758%, even
+with perfect optimization. This rules out zero blocks. It does not establish
+whether one block can be trained successfully.
+
+For a finished run, independently retokenize the snapshots and verify every
+recorded target, including EOS and complete coverage of all 1,024 samples:
+
+```sh
+python src/llm/experiments/memorize_general_facts/verify_predictions.py \
+  --corpus=RUN/corpus.txt --tokenizer=RUN/tokenizer.json \
+  --predictions=RUN/final_predictions.tsv
+```
+
+This validates the artifact, not inference itself. To also load the saved
+weights into a fresh process and reevaluate the whole corpus, use:
+
+```sh
+bazel-bin/src/llm/experiments/memorize_general_facts/memorize_general_facts \
+  --verify_checkpoint=/path/to/layers_8/step_N \
+  --layers=8 --corpus=RUN/corpus.txt --tokenizer=RUN \
+  --output_dir=src/llm/experiments/memorize_general_facts/runs/verification
+```
+
+Use the checkpoint's actual depth and a fresh output directory. No optimizer or
+training updates run in verification mode. Feed its new `final_predictions.tsv`
+to the Python verifier with the original snapshots. The native binary exits 0
+for zero errors, 2 for a valid nonperfect model, and 1 for an execution error.
+The Python verifier exits 0 for perfection, 1 for prediction errors, and 2 for a
+malformed/incomplete report.
