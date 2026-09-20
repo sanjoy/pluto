@@ -1,0 +1,10 @@
+checkpoint=/home/ubuntu/checkpoints/memorize_general_facts/trial_0/layers_8/step_2560
+corpus=src/llm/experiments/memorize_general_facts/runs/trial_0/layers_8/corpus.txt
+tokenizer=src/llm/experiments/memorize_general_facts/runs/trial_0/layers_8
+layers=8
+parameters=51483648
+errors=17
+targets=10002
+mean_loss=0.0109852
+exact_sentences=1007
+sentences=1024

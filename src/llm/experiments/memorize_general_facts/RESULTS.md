@@ -43,6 +43,9 @@ coverage of all 1,024 sentences. Its input TSV is
 remaining layers make exact teacher-forced top-1 predictions imply exact
 greedy suffix generation by induction; this is not a separate free-running
 generation measurement.
+Earlier fresh-process checks reproduced 5,203 errors at step 512 and 17 errors
+at step 2,560; their complete prediction audits are preserved in
+`runs/verify_step_512/` and `runs/verify_step_2560/`.
 
 As an additional smoke check, the existing `gpt2_shakespeare_llm` inference
 binary greedily completed corpus lines 1, 2, and 985 from only their first five

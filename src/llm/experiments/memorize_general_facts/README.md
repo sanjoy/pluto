@@ -109,6 +109,9 @@ from disk before that final audit. Success requires zero errors across all
 10,002 targets and all 1,024 sentences, not a rounded accuracy or loss threshold.
 Because attention is causal, perfect teacher-forced top-1 predictions imply
 exact greedy suffix completion by induction, including termination at EOS.
+Tokenizer snapshots remain local and are ignored by Git; the audit records
+their SHA-256 identities. Completed metric/prediction artifacts and reports are
+committed, while checkpoints remain under `~/checkpoints/`.
 
 ## Independent verification and the zero-block bound
 
