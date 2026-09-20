@@ -74,8 +74,9 @@ bazel-bin/src/llm/experiments/memorize_general_facts/memorize_general_facts \
   --layers=8 --search --batch_size=16 --steps=5000
 ```
 
-Choose a new trial name for each run. Directories must be fresh; existing artifacts/checkpoints are not
-overwritten. `--search` starts at the requested depth, then independently trains
+Choose a new trial name for each run. Directories must be fresh; existing
+artifacts/checkpoints are not overwritten. `--search` starts at the requested
+depth, then independently trains
 each smaller depth until a bounded trial fails. Omit it to run one depth. No
 shallower model is tried if the eight-block model fails. A trial's failure is
 evidence about this optimization budget, not proof of insufficient capacity.
