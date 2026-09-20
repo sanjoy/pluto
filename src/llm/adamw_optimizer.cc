@@ -55,9 +55,10 @@ __tile_global__ void AdamWUpdateKernel(
 
 absl::StatusOr<std::unique_ptr<AdamWOptimizer>> AdamWOptimizer::Create(
     cuda::Executor& executor, Layer& model, AdamWConfig config) {
-  if (!(config.learning_rate > 0.0f) || config.beta1 < 0.0f ||
-      config.beta1 >= 1.0f || config.beta2 < 0.0f || config.beta2 >= 1.0f ||
-      !(config.epsilon > 0.0f) || config.weight_decay < 0.0f) {
+  if (!(config.learning_rate > 0.0f) || !std::isfinite(config.learning_rate) ||
+      config.beta1 < 0.0f || config.beta1 >= 1.0f || config.beta2 < 0.0f ||
+      config.beta2 >= 1.0f || !(config.epsilon > 0.0f) ||
+      config.weight_decay < 0.0f) {
     return absl::InvalidArgumentError("invalid AdamW hyperparameters");
   }
   absl::Span<Buffer> model_weights = model.weights();
@@ -108,6 +109,14 @@ absl::StatusOr<std::unique_ptr<AdamWOptimizer>> AdamWOptimizer::Create(
       std::move(first_moments), std::move(second_moments)));
   RETURN_IF_ERROR(optimizer->ZeroGrad());
   return optimizer;
+}
+
+absl::Status AdamWOptimizer::SetLearningRate(float learning_rate) {
+  if (!(learning_rate > 0.0f) || !std::isfinite(learning_rate))
+    return absl::InvalidArgumentError(
+        "AdamW learning rate must be finite and strictly positive");
+  config_.learning_rate = learning_rate;
+  return absl::OkStatus();
 }
 
 absl::Status AdamWOptimizer::ZeroGrad() {

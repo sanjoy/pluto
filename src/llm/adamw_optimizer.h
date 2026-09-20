@@ -32,6 +32,13 @@ class AdamWOptimizer final : public Optimizer {
   absl::Status ZeroGrad() override;
   absl::Status ApplyStep() override;
 
+  // Changes only the rate used by subsequent ApplyStep() calls. The optimizer
+  // step, accumulated gradients, and both moment estimates are preserved, so
+  // warmup/decay schedules do not restart Adam's running statistics. Requires
+  // a finite, strictly positive rate; failure leaves the optimizer unchanged.
+  // Like ApplyStep(), call from the owning training thread, not concurrently.
+  absl::Status SetLearningRate(float learning_rate);
+
   int step() const override { return step_; }
   size_t parameter_tensor_count() const override { return weights_.size(); }
 

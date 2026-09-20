@@ -41,13 +41,17 @@ absl::StatusOr<std::unique_ptr<Layer>> CreateActivationGenerator(
     cuda::Executor& executor, int transformer_block_count, DataType output_type,
     int seed);
 
-// Builds the fixed GPT-2-style architecture used by the training binaries:
-// learned token and position embeddings, eight pre-LayerNorm transformer
-// blocks, a final LayerNorm, and a tied language-modeling head. Every layer
+// Builds the GPT-2-style architecture used by the training binaries:
+// learned token and position embeddings, by default eight pre-LayerNorm
+// transformer blocks, a final LayerNorm, and a tied language-modeling head. Every layer
 // declares the fixed context length and symbolic batch dimension (-2). The
 // head returns FP32 [-2, kGpt2ContextLength, kGpt2PaddedVocabularySize] logits.
 // output_type selects the compute policy; parameters and gradients remain FP32.
+// transformer_block_count must be in [0, kGpt2TransformerBlockCount]. Reducing
+// it changes depth only; width, vocabulary, context, initialization, final norm,
+// and tied head stay fixed for controlled memorization experiments.
 absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateGpt2(
-    cuda::Executor& executor, DataType output_type, int seed);
+    cuda::Executor& executor, DataType output_type, int seed,
+    int transformer_block_count = kGpt2TransformerBlockCount);
 
 }  // namespace pluto::llm

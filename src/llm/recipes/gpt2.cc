@@ -145,12 +145,13 @@ absl::StatusOr<std::unique_ptr<Layer>> CreateActivationGenerator(
 }
 
 absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateGpt2(
-    cuda::Executor& executor, DataType output_type, int seed) {
+    cuda::Executor& executor, DataType output_type, int seed,
+    int transformer_block_count) {
   ComposedLayerBuilder builder;
   ASSIGN_OR_RETURN(
       auto* embedding,
       AddActivationGeneratorLayers(
-          executor, builder, kGpt2TransformerBlockCount, output_type, seed));
+          executor, builder, transformer_block_count, output_type, seed));
 
   RETURN_IF_ERROR(builder.add(
       LayerNormLayer::Create(executor, kGpt2ModelWidth, kLayerNormEpsilon,

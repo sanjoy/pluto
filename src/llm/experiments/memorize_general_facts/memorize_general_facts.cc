@@ -1,0 +1,403 @@
+// Controlled depth search for exact in-sample GPT-2 next-token memorization.
+// Each run uses a fresh initialization; smaller models never inherit a larger
+// model's weights. Success is an integer zero-error test, not a loss threshold.
+#include <cuda_runtime.h>
+
+#include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <cstdint>
+#include <filesystem>
+#include <fstream>
+#include <iomanip>
+#include <iostream>
+#include <string>
+#include <utility>
+
+#include "absl/container/flat_hash_set.h"
+#include "absl/flags/flag.h"
+#include "absl/flags/parse.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
+#include "src/cuda/executor.h"
+#include "src/cuda/page_locked_host_array.h"
+#include "src/dataset/dataset.h"
+#include "src/dataset/gpt2_tokenizer.h"
+#include "src/llm/adamw_optimizer.h"
+#include "src/llm/batch_validation.h"
+#include "src/llm/checkpoint.h"
+#include "src/llm/experiments/memorize_general_facts/dataset.h"
+#include "src/llm/experiments/memorize_general_facts/gradient_clipper.h"
+#include "src/llm/experiments/memorize_general_facts/predictions.h"
+#include "src/llm/layers/cross_entropy_loss.h"
+#include "src/llm/recipes/gpt2.h"
+#include "src/util/status_macros.h"
+#include "src/util/tee_stream.h"
+
+ABSL_FLAG(std::string, corpus, "testdata/general_facts_dataset.txt",
+          "One fact per line");
+ABSL_FLAG(std::string, tokenizer, "",
+          "Local GPT-2 tokenizer directory (required)");
+ABSL_FLAG(std::string, checkpoint_dir, "", "Checkpoint parent (required)");
+ABSL_FLAG(std::string, output_dir,
+          "src/llm/experiments/memorize_general_facts/runs/baseline",
+          "Experiment artifacts");
+ABSL_FLAG(int, layers, 8, "Initial transformer depth, 0..8");
+ABSL_FLAG(bool, search, false,
+          "After success, train successively shallower models from scratch");
+ABSL_FLAG(int, batch_size, 16, "Independent padded sentences per batch");
+ABSL_FLAG(int, steps, 5000, "Maximum optimizer steps per depth");
+ABSL_FLAG(int, eval_every, 128, "Full-corpus exact evaluation interval");
+ABSL_FLAG(int, checkpoint_every, 512, "Periodic checkpoint interval");
+ABSL_FLAG(int, seed, 1337, "Initialization and shuffle seed");
+ABSL_FLAG(double, learning_rate, 6e-4, "Peak AdamW learning rate");
+ABSL_FLAG(int, warmup_steps, 100,
+          "Linear learning-rate warmup, then cosine decay");
+ABSL_FLAG(double, training_seconds, 10800,
+          "Wall-clock budget per depth; zero disables");
+
+namespace pluto::llm::memorize_general_facts {
+namespace {
+
+struct Metrics {
+  int64_t targets = 0;
+  int64_t errors = 0;
+  int sentences = 0;
+  int exact_sentences = 0;
+  double loss_sum = 0;
+};
+
+// Reading small diagnostic arrays is intentional. The vocabulary-sized
+// logits stay on-device; all transfers use executor-owned pinned memory.
+template <class T>
+absl::StatusOr<cuda::PageLockedHostArray<T>> Download(cuda::Executor& executor,
+                                                      const Buffer& source) {
+  ASSIGN_OR_RETURN(auto host, cuda::PageLockedHostArray<T>::Allocate(
+                                  executor, source.size_bytes() / sizeof(T)));
+  RETURN_IF_ERROR(cuda::CudaStatus(
+      cudaMemcpyAsync(host.data(), source.data(), source.size_bytes(),
+                      cudaMemcpyDeviceToHost, executor.stream()),
+      "download metrics"));
+  return host;
+}
+
+absl::StatusOr<Metrics> EvaluateExact(cuda::Executor& executor,
+                                      const Layer& model, const Layer& loss,
+                                      PaddedLineDataSetIterator& data,
+                                      std::ostream* details = nullptr) {
+  RETURN_IF_ERROR(data.Reset());
+  Metrics metrics;
+  for (size_t batch_index = 0; batch_index < data.batches_per_epoch();
+       ++batch_index) {
+    ASSIGN_OR_RETURN(auto batch, data.Next());
+    RETURN_IF_ERROR(ValidateTrainingBatch(executor, model, loss, batch));
+    ASSIGN_OR_RETURN(auto forward, model.fwd(executor, {batch.inputs}));
+    ASSIGN_OR_RETURN(auto predictions,
+                     PredictMaskedTokens(executor, forward.outputs[0],
+                                         batch.targets, kGpt2VocabularySize));
+    ASSIGN_OR_RETURN(auto loss_forward,
+                     loss.fwd(executor, {forward.outputs[0], batch.targets}));
+    ASSIGN_OR_RETURN(auto ids, Download<int>(executor, predictions));
+    ASSIGN_OR_RETURN(auto targets, Download<int>(executor, batch.targets));
+    ASSIGN_OR_RETURN(auto losses,
+                     Download<float>(executor, loss_forward.outputs[0]));
+    RETURN_IF_ERROR(executor.Synchronize());
+    int counted = 0;
+    for (int sample = 0; sample < batch.batch_size; ++sample) {
+      bool exact = true;
+      for (int position = 0; position < batch.sequence_length; ++position) {
+        const int row = sample * batch.sequence_length + position;
+        if (targets[row] == -1) continue;
+        if (ids[row] < 0 || !std::isfinite(losses[row]))
+          return absl::DataLossError(
+              "nonfinite logits/loss in full-corpus evaluation");
+        ++counted;
+        ++metrics.targets;
+        const bool correct = ids[row] == targets[row];
+        metrics.errors += !correct;
+        metrics.loss_sum += losses[row];
+        exact &= correct;
+        if (details != nullptr)
+          *details << metrics.sentences + 1 << '\t' << position + 1 << '\t'
+                   << targets[row] << '\t' << ids[row] << '\t' << losses[row]
+                   << '\n';
+      }
+      ++metrics.sentences;
+      metrics.exact_sentences += exact;
+    }
+    if (counted != batch.supervised_row_count)
+      return absl::InternalError(
+          "dataset supervised count disagrees with target mask");
+  }
+  if (static_cast<size_t>(metrics.sentences) != data.sample_count() ||
+      metrics.targets != data.supervised_row_count())
+    return absl::InternalError(
+        "evaluation did not visit every corpus target exactly once");
+  return metrics;
+}
+
+int64_t ParameterCount(Layer& model) {
+  absl::flat_hash_set<void*> seen;
+  int64_t count = 0;
+  for (const auto& weight : model.weights())
+    if (seen.insert(weight.data()).second)
+      count += weight.size_bytes() / sizeof(float);
+  return count;
+}
+
+double Elapsed(std::chrono::steady_clock::time_point start) {
+  return std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
+      .count();
+}
+
+std::string Timestamp() {
+  return absl::FormatTime("%Y-%m-%d %H:%M:%S UTC", absl::Now(),
+                          absl::UTCTimeZone());
+}
+
+float LearningRate(int step) {
+  const double peak = absl::GetFlag(FLAGS_learning_rate);
+  const int warmup = absl::GetFlag(FLAGS_warmup_steps);
+  if (step <= warmup) return peak * step / warmup;
+  const double progress =
+      std::clamp(static_cast<double>(step - warmup) /
+                     std::max(1, absl::GetFlag(FLAGS_steps) - warmup),
+                 0.0, 1.0);
+  return peak *
+         (0.1 + 0.9 * (1 + std::cos(3.14159265358979323846 * progress)) / 2);
+}
+
+// Unlike Train's scalar loss threshold, this experiment stops on exact
+// top-1 accuracy over the entire finite corpus. The update itself uses the
+// same native forward/loss/backward/AdamW wiring as Train.
+absl::StatusOr<bool> TrainDepth(cuda::Executor& executor,
+                                const tokenizer::Gpt2Tokenizer& tokenizer,
+                                const TextCorpus& corpus, int layers) {
+  const auto output = std::filesystem::path(absl::GetFlag(FLAGS_output_dir)) /
+                      absl::StrCat("layers_", layers);
+  const auto checkpoints =
+      std::filesystem::path(absl::GetFlag(FLAGS_checkpoint_dir)) /
+      absl::StrCat("layers_", layers);
+  std::error_code error;
+  const bool output_exists = std::filesystem::exists(output, error);
+  if (error) return absl::InternalError(error.message());
+  if (output_exists)
+    return absl::AlreadyExistsError(
+        "refusing to overwrite an existing experiment run");
+  std::filesystem::create_directories(output, error);
+  if (error) return absl::InternalError(error.message());
+  const bool checkpoints_exist = std::filesystem::exists(checkpoints, error);
+  if (error) return absl::InternalError(error.message());
+  if (checkpoints_exist)
+    return absl::AlreadyExistsError(
+        "use a fresh checkpoint directory for each trial");
+  // Snapshot the exact text and tokenizer beside the metrics, so paths that
+  // later change cannot make the experiment's inputs ambiguous.
+  std::ofstream corpus_snapshot(output / "corpus.txt", std::ios::binary);
+  corpus_snapshot.write(corpus.text().data(), corpus.text().size());
+  corpus_snapshot.close();
+  if (!corpus_snapshot)
+    return absl::InternalError("cannot preserve the input corpus");
+  std::filesystem::copy_file(
+      std::filesystem::path(absl::GetFlag(FLAGS_tokenizer)) / "tokenizer.json",
+      output / "tokenizer.json", error);
+  if (error) return absl::InternalError(error.message());
+  std::ofstream log_file(output / "train.log");
+  std::ofstream table(output / "metrics.tsv");
+  std::ofstream manifest(output / "config.txt");
+  if (!log_file || !table || !manifest)
+    return absl::InternalError("cannot open experiment artifacts");
+  util::TeeStream log(std::cout, log_file);
+  table << "step\tseconds\tmean_loss\terrors\ttargets\texact_"
+           "sentences\tsentences\n";
+
+  PaddedLineDataSetOptions options{
+      .batch_size = absl::GetFlag(FLAGS_batch_size),
+      .context_length = kGpt2ContextLength,
+      .prompt_tokens = 5,
+      .eos_token = tokenizer.eos_token_id(),
+      .shuffle = true,
+      .seed = static_cast<uint64_t>(absl::GetFlag(FLAGS_seed))};
+  ASSIGN_OR_RETURN(auto training,
+                   PaddedLineDataSetIterator::Create(executor, corpus.text(),
+                                                     tokenizer, options));
+  options.shuffle = false;
+  ASSIGN_OR_RETURN(auto evaluation,
+                   PaddedLineDataSetIterator::Create(executor, corpus.text(),
+                                                     tokenizer, options));
+  ASSIGN_OR_RETURN(auto model, CreateGpt2(executor, DataType::BF16,
+                                          absl::GetFlag(FLAGS_seed), layers));
+  ASSIGN_OR_RETURN(auto loss, CrossEntropyLossLayer::Create(
+                                  executor, kGpt2VocabularySize, DataType::BF16,
+                                  kGpt2ContextLength));
+  const AdamWConfig config{.learning_rate = LearningRate(1),
+                           .beta1 = 0.9f,
+                           .beta2 = 0.99f,
+                           .epsilon = 1e-8f,
+                           .weight_decay = 0.0f};
+  ASSIGN_OR_RETURN(auto optimizer,
+                   AdamWOptimizer::Create(executor, *model, config));
+  ASSIGN_OR_RETURN(auto clipper,
+                   GradientClipper::Create(executor, *model, 1.0f));
+  const int64_t parameters = ParameterCount(*model);
+  manifest << "corpus=" << absl::GetFlag(FLAGS_corpus)
+           << "\ntokenizer=" << absl::GetFlag(FLAGS_tokenizer)
+           << "\nlayers=" << layers
+           << "\nwidth=512\nheads=8\ncontext_length=1024"
+           << "\nprompt_tokens=5\nvocabulary=50257\ncompute=BF16\nmaster_"
+              "weights=FP32"
+           << "\ngradient_clip_norm=1\nparameters=" << parameters
+           << "\nseed=" << absl::GetFlag(FLAGS_seed)
+           << "\nbatch_size=" << options.batch_size
+           << "\nmax_steps=" << absl::GetFlag(FLAGS_steps)
+           << "\npeak_learning_rate=" << absl::GetFlag(FLAGS_learning_rate)
+           << "\nwarmup_steps=" << absl::GetFlag(FLAGS_warmup_steps)
+           << "\neval_every=" << absl::GetFlag(FLAGS_eval_every)
+           << "\ncheckpoint_every=" << absl::GetFlag(FLAGS_checkpoint_every)
+           << "\nmin_learning_rate_fraction=0.1\nbeta1=0.9\nbeta2=0.99\nweight_"
+              "decay=0"
+           << "\ntraining_seconds=" << absl::GetFlag(FLAGS_training_seconds)
+           << "\nsamples=" << training->sample_count()
+           << "\nscored_targets=" << training->supervised_row_count() << '\n';
+  manifest.flush();
+  log << "layers=" << layers << " parameters=" << parameters
+      << " samples=" << training->sample_count()
+      << " scored_targets=" << training->supervised_row_count() << std::endl;
+  RETURN_IF_ERROR(WriteToDirectory(executor, *model, checkpoints / "step_0"));
+  RETURN_IF_ERROR(executor.Synchronize());
+  const auto start = std::chrono::steady_clock::now();
+  auto report = [&](int step, const Metrics& metrics) {
+    const double seconds = Elapsed(start);
+    log << Timestamp() << " step=" << step << " elapsed_seconds=" << seconds
+        << " mean_loss=" << metrics.loss_sum / metrics.targets
+        << " errors=" << metrics.errors << '/' << metrics.targets
+        << " exact_sentences=" << metrics.exact_sentences << '/'
+        << metrics.sentences << std::endl;
+    table << step << '\t' << seconds << '\t'
+          << metrics.loss_sum / metrics.targets << '\t' << metrics.errors
+          << '\t' << metrics.targets << '\t' << metrics.exact_sentences << '\t'
+          << metrics.sentences << std::endl;
+  };
+  ASSIGN_OR_RETURN(auto metrics,
+                   EvaluateExact(executor, *model, *loss, *evaluation));
+  report(0, metrics);
+  int completed = 0;
+  int64_t samples_seen = 0;
+  bool reached_time_limit = false;
+  for (int step = 1; step <= absl::GetFlag(FLAGS_steps) && metrics.errors != 0;
+       ++step) {
+    ASSIGN_OR_RETURN(auto batch, training->Next());
+    RETURN_IF_ERROR(ValidateTrainingBatch(executor, *model, *loss, batch));
+    ASSIGN_OR_RETURN(auto forward, model->fwd(executor, {batch.inputs}));
+    ASSIGN_OR_RETURN(auto loss_forward,
+                     loss->fwd(executor, {forward.outputs[0], batch.targets}));
+    ASSIGN_OR_RETURN(auto gradients,
+                     loss->bwd(executor, {}, std::move(loss_forward.state)));
+    ASSIGN_OR_RETURN(auto unused,
+                     model->bwd(executor, gradients, std::move(forward.state)));
+    (void)unused;
+    RETURN_IF_ERROR(clipper->Clip());
+    RETURN_IF_ERROR(optimizer->SetLearningRate(LearningRate(step)));
+    RETURN_IF_ERROR(optimizer->ApplyStep());
+    // Bound completed GPU work, not just host enqueue time. This also keeps
+    // stream-ordered allocations from accumulating thousands of queued steps.
+    RETURN_IF_ERROR(executor.Synchronize());
+    completed = step;
+    samples_seen += batch.batch_size;
+    if (step % 16 == 0)
+      log << Timestamp() << " completed_step=" << step
+          << " elapsed_seconds=" << Elapsed(start)
+          << " learning_rate=" << LearningRate(step) << std::endl;
+    const bool timeout =
+        absl::GetFlag(FLAGS_training_seconds) > 0 &&
+        Elapsed(start) >= absl::GetFlag(FLAGS_training_seconds);
+    if (step % absl::GetFlag(FLAGS_eval_every) == 0 ||
+        step == absl::GetFlag(FLAGS_steps) || timeout) {
+      ASSIGN_OR_RETURN(metrics,
+                       EvaluateExact(executor, *model, *loss, *evaluation));
+      report(step, metrics);
+    }
+    if (step % absl::GetFlag(FLAGS_checkpoint_every) == 0)
+      RETURN_IF_ERROR(WriteToDirectory(
+          executor, *model, checkpoints / absl::StrCat("step_", step)));
+    if (timeout) {
+      reached_time_limit = true;
+      break;
+    }
+  }
+  const auto final_checkpoint = checkpoints / absl::StrCat("step_", completed);
+  RETURN_IF_ERROR(WriteToDirectory(executor, *model, final_checkpoint));
+  // Reload the on-disk weights and repeat the full audit. This verifies that
+  // success belongs to a usable checkpoint, not just an in-memory model.
+  RETURN_IF_ERROR(ReadFromDirectory(executor, *model, final_checkpoint));
+  std::ofstream details(output / "final_predictions.tsv");
+  if (!details)
+    return absl::InternalError("cannot write final prediction audit");
+  details << "line_1based\ttarget_token_index_0based\ttarget_id\tpredicted_"
+             "id\tloss\n";
+  ASSIGN_OR_RETURN(
+      metrics, EvaluateExact(executor, *model, *loss, *evaluation, &details));
+  report(completed, metrics);
+  std::ofstream result(output / "result.txt");
+  result << "success=" << (metrics.errors == 0) << "\nlayers=" << layers
+         << "\nparameters=" << parameters << "\nstep=" << completed
+         << "\nerrors=" << metrics.errors << "\ntargets=" << metrics.targets
+         << "\nsamples_seen=" << samples_seen << "\nepochs="
+         << static_cast<double>(samples_seen) / training->sample_count()
+         << "\nreached_time_limit=" << reached_time_limit
+         << "\ncheckpoint=" << final_checkpoint.string() << '\n';
+  details.close();
+  table.close();
+  manifest.close();
+  result.close();
+  if (!details || !table || !manifest || !result)
+    return absl::InternalError("writing experiment artifacts failed");
+  log << (metrics.errors == 0 ? "MEMORIZED" : "BUDGET_EXHAUSTED")
+      << " checkpoint=" << final_checkpoint.string() << std::endl;
+  return metrics.errors == 0;
+}
+
+absl::StatusOr<bool> Run() {
+  if (absl::GetFlag(FLAGS_tokenizer).empty() ||
+      absl::GetFlag(FLAGS_checkpoint_dir).empty() ||
+      absl::GetFlag(FLAGS_layers) < 0 || absl::GetFlag(FLAGS_layers) > 8 ||
+      absl::GetFlag(FLAGS_batch_size) <= 0 || absl::GetFlag(FLAGS_steps) < 0 ||
+      absl::GetFlag(FLAGS_eval_every) <= 0 ||
+      absl::GetFlag(FLAGS_checkpoint_every) <= 0 ||
+      absl::GetFlag(FLAGS_warmup_steps) < 0 ||
+      !std::isfinite(absl::GetFlag(FLAGS_learning_rate)) ||
+      absl::GetFlag(FLAGS_learning_rate) <= 0 ||
+      !std::isfinite(absl::GetFlag(FLAGS_training_seconds)) ||
+      absl::GetFlag(FLAGS_training_seconds) < 0)
+    return absl::InvalidArgumentError(
+        "invalid experiment flags; tokenizer and checkpoint_dir are required");
+  ASSIGN_OR_RETURN(auto executor, cuda::Executor::Create());
+  ASSIGN_OR_RETURN(auto tokenizer, tokenizer::Gpt2Tokenizer::Load(
+                                       absl::GetFlag(FLAGS_tokenizer)));
+  if (tokenizer->vocab_size() != kGpt2VocabularySize)
+    return absl::InvalidArgumentError(
+        "the experiment requires the full GPT-2 vocabulary");
+  ASSIGN_OR_RETURN(auto corpus, LoadTextCorpus(absl::GetFlag(FLAGS_corpus)));
+  for (int layers = absl::GetFlag(FLAGS_layers); layers >= 0; --layers) {
+    ASSIGN_OR_RETURN(bool success,
+                     TrainDepth(*executor, *tokenizer, corpus, layers));
+    if (!success || !absl::GetFlag(FLAGS_search)) return success;
+  }
+  return true;
+}
+
+}  // namespace
+}  // namespace pluto::llm::memorize_general_facts
+
+int main(int argc, char** argv) {
+  absl::ParseCommandLine(argc, argv);
+  auto result = pluto::llm::memorize_general_facts::Run();
+  if (!result.ok()) {
+    std::cerr << result.status() << std::endl;
+    return 1;
+  }
+  return *result ? 0 : 2;
+}
