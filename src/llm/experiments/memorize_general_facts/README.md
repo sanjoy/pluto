@@ -143,3 +143,29 @@ to the Python verifier with the original snapshots. The native binary exits 0
 for zero errors, 2 for a valid nonperfect model, and 1 for an execution error.
 The Python verifier exits 0 for perfection, 1 for prediction errors, and 2 for a
 malformed/incomplete report.
+
+For a sequential search that runs both independent checks before moving to each
+shallower depth, use a Python environment containing `tokenizers`:
+
+```sh
+python src/llm/experiments/memorize_general_facts/run_depth_search.py \
+  --tokenizer=/home/ubuntu/datasets/tokenizer/gpt2 \
+  --checkpoint_dir=/home/ubuntu/checkpoints/memorize_general_facts/search \
+  --output_dir=src/llm/experiments/memorize_general_facts/runs/search
+```
+
+Both parent directories must be fresh. The driver defaults to depths eight
+through one and stops at the first exhausted budget or execution/verification
+failure, without retries or hyperparameter changes. Zero blocks are omitted
+because of the proven token/position ambiguity above. An explicit
+`--start_layers=7` continues after a separately verified eight-block run; it does
+not recheck or reuse that earlier run. `depth_search_summary.json` records the
+commands, completed verification phases, and smallest verified depth. Native
+output streams normally and each depth retains its own `train.log`. The driver
+checks that its native binary has not changed between phases, so finish any
+builds before launching it.
+
+Independent checkpoint verification requires exactly the model's unique weight
+files, rejecting a wrong depth rather than silently accepting a prefix
+checkpoint. This stricter experiment-only check does not change the framework's
+general-purpose prefix-loading support.

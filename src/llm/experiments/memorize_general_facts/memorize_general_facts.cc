@@ -29,6 +29,7 @@
 #include "src/llm/adamw_optimizer.h"
 #include "src/llm/batch_validation.h"
 #include "src/llm/checkpoint.h"
+#include "src/llm/experiments/memorize_general_facts/checkpoint_validation.h"
 #include "src/llm/experiments/memorize_general_facts/dataset.h"
 #include "src/llm/experiments/memorize_general_facts/gradient_clipper.h"
 #include "src/llm/experiments/memorize_general_facts/predictions.h"
@@ -391,6 +392,15 @@ absl::StatusOr<bool> VerifyCheckpoint(cuda::Executor& executor,
   ASSIGN_OR_RETURN(auto loss, CrossEntropyLossLayer::Create(
                                   executor, kGpt2VocabularySize, DataType::BF16,
                                   kGpt2ContextLength));
+  // Full-model verification must not use the generic reader's prefix-loading
+  // allowance: a smaller depth can otherwise mistake the next block's input
+  // norm for its final norm. Count real allocations, including a tied head
+  // only once, instead of trusting the requested depth or a filename label.
+  absl::flat_hash_set<const void*> unique_weights;
+  for (const auto& weight : model->weights())
+    unique_weights.insert(weight.data());
+  RETURN_IF_ERROR(ValidateExactCheckpointFiles(
+      absl::GetFlag(FLAGS_verify_checkpoint), unique_weights.size()));
   RETURN_IF_ERROR(ReadFromDirectory(executor, *model,
                                     absl::GetFlag(FLAGS_verify_checkpoint)));
   std::ofstream details(output / "final_predictions.tsv");
