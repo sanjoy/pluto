@@ -69,12 +69,12 @@ python -m unittest discover \
 bazel build -c opt //src/llm/experiments/memorize_general_facts:memorize_general_facts
 bazel-bin/src/llm/experiments/memorize_general_facts/memorize_general_facts \
   --tokenizer=/home/ubuntu/datasets/tokenizer/gpt2 \
-  --checkpoint_dir=/home/ubuntu/checkpoints/memorize_general_facts/trial_0 \
-  --output_dir=src/llm/experiments/memorize_general_facts/runs/trial_0 \
+  --checkpoint_dir=/home/ubuntu/checkpoints/memorize_general_facts/new_trial \
+  --output_dir=src/llm/experiments/memorize_general_facts/runs/new_trial \
   --layers=8 --search --batch_size=16 --steps=5000
 ```
 
-Run directories must be fresh; existing artifacts/checkpoints are not
+Choose a new trial name for each run. Directories must be fresh; existing artifacts/checkpoints are not
 overwritten. `--search` starts at the requested depth, then independently trains
 each smaller depth until a bounded trial fails. Omit it to run one depth. No
 shallower model is tried if the eight-block model fails. A trial's failure is
@@ -108,7 +108,8 @@ integer error counts, and a final per-token TSV. The final weights are reloaded
 from disk before that final audit. Success requires zero errors across all
 10,002 targets and all 1,024 sentences, not a rounded accuracy or loss threshold.
 Because attention is causal, perfect teacher-forced top-1 predictions imply
-exact greedy suffix completion by induction, including termination at EOS.
+exact greedy suffix completion by induction, with EOS predicted immediately
+after the suffix. A free-running decoder must separately stop when it emits EOS.
 Tokenizer snapshots remain local and are ignored by Git; the audit records
 their SHA-256 identities. Completed metric/prediction artifacts and reports are
 committed, while checkpoints remain under `~/checkpoints/`.
@@ -146,6 +147,18 @@ to the Python verifier with the original snapshots. The native binary exits 0
 for zero errors, 2 for a valid nonperfect model, and 1 for an execution error.
 The Python verifier exits 0 for perfection, 1 for prediction errors, and 2 for a
 malformed/incomplete report.
+
+Tokenizer snapshots are not committed. To verify the committed reports on
+another checkout, replace native `--tokenizer=RUN` with
+`--tokenizer=/path/to/gpt2`, and Python `--tokenizer=RUN/tokenizer.json` with
+`--tokenizer=/path/to/gpt2/tokenizer.json`. Use the tokenizer SHA-256 recorded in
+[RESULTS.md](RESULTS.md); corpus snapshots and prediction TSVs are committed.
+
+The experiment's `--verify_checkpoint` supports every tested depth via
+`--layers=N`. The existing `gpt2_shakespeare_llm --mode=infer_model` CLI instead
+constructs eight blocks: it can run the eight-block smoke checks in RESULTS.md,
+but cannot load a shallower experiment checkpoint. Its decoder also emits
+exactly `--generation_tokens` tokens rather than stopping automatically at EOS.
 
 For a sequential search that runs both independent checks before moving to each
 shallower depth, use a Python environment containing `tokenizers`:
