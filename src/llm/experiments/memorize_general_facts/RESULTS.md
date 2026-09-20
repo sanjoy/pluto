@@ -16,10 +16,14 @@ to text and retokenized, so these prompts can be supplied as ordinary text.
 | 8 | 51,483,648 | 3,840 | 60 | 0 / 10,002 | 1,024 / 1,024 | 0.000187040678 |
 | 7 | 48,331,264 | 3,584 | 56 | 0 / 10,002 | 1,024 / 1,024 | 0.000569335296 |
 | 6 | 45,178,880 | 3,712 | 58 | 0 / 10,002 | 1,024 / 1,024 | 0.000166443523 |
+| 5 | 42,026,496 | 3,200 | 50 | 0 / 10,002 | 1,024 / 1,024 | 0.000290182373 |
 
 Parameter counts include allocated vocabulary padding and count the tied
 embedding/LM-head weights once. A nonzero loss is consistent with perfect
 top-1 predictions; the criterion is zero errors, not a rounded loss of zero.
+Update counts are the first observed perfect full-corpus evaluations, checked
+every 128 updates and at the budget boundary, not a proof that an earlier
+unevaluated step could not have been perfect.
 The eight-block run took about 53 minutes, including its evaluations. All
 models start from fresh initialization with seed 1337 and the same training
 schedule; a shallower model does not inherit a deeper model's learned weights.
@@ -28,6 +32,7 @@ shared by the seven- and eight-block models are byte-identical, including the
 final LayerNorm tensors after accounting for their different file indices.
 The same comparison passes for all 76 shared tensors in the six-block model.
 It also passes for all 64 tensors in the five-block model's initial checkpoint.
+All 52 tensors in the four-block initialization pass the same comparison.
 
 Eight-block checkpoint:
 `/home/ubuntu/checkpoints/memorize_general_facts/trial_0/layers_8/step_3840`.
@@ -71,6 +76,12 @@ Training and checkpoint reload took about 42 minutes. Both independent checks
 passed, and their per-token TSV is byte-identical to the trainer's final TSV.
 The evidence is in `runs/trial_0_remaining/layers_6/independent_verification/`.
 
+Five-block checkpoint:
+`/home/ubuntu/checkpoints/memorize_general_facts/trial_0_remaining/layers_5/step_3200`.
+Training and checkpoint reload took about 33 minutes. Both independent checks
+passed, with a byte-identical final TSV; the evidence is in
+`runs/trial_0_remaining/layers_5/independent_verification/`.
+
 Evidence SHA-256 hashes:
 
 - Corpus: `814c062e7d7592fe4a4e5b158a37bd37da51700f817c19eb981c1e93d33f245c`.
@@ -78,10 +89,11 @@ Evidence SHA-256 hashes:
 - Final eight-block prediction TSV: `a2e645bd61caf9b132e8c1e62718393fd9bcb26b0231d01477a1d4a7f7d0fe89`.
 - Final seven-block independent prediction TSV: `b4782113e59c9d3ed8c3609ae6217dca27805426b247f2869869f52946cbd802`.
 - Final six-block independent prediction TSV: `ee26c5f5457d99a46c9fc86899a8eb3cbc6d42a7628161cb212412237c8f696a`.
+- Final five-block independent prediction TSV: `8cf6cfcafb9f83417f5fae2f8d82bd1101049193eb921d0c6a313872b71755da`.
 
 ## Remaining search
 
-Five-block training started on 2026-09-20 at 21:43:58 UTC, after the six-block
+Four-block training started on 2026-09-20 at 22:16:54 UTC, after the five-block
 checkpoint passed both independent checks. The sequential driver will
 independently verify every successful depth before trying the next
 smaller one. It stops at the first unsuccessful 5,000-update trial or execution
@@ -89,7 +101,7 @@ error. Live status is in
 `runs/trial_0_remaining/depth_search_summary.json`; checkpoints are under
 `/home/ubuntu/checkpoints/memorize_general_facts/trial_0_remaining/`.
 
-Six blocks are the smallest verified success so far; the minimum has not yet
+Five blocks are the smallest verified success so far; the minimum has not yet
 been established. Zero blocks are ruled
 out independently: identical current-token/position inputs have contradictory
 targets, forcing at least 2,923 errors (see the prefix audit in README.md).
