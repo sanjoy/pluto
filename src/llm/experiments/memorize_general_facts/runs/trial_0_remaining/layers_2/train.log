@@ -1,0 +1,229 @@
+layers=2 parameters=32569344 samples=1024 scored_targets=10002
+2026-09-20 23:18:36 UTC step=0 elapsed_seconds=8.18926 mean_loss=10.8942 errors=10002/10002 exact_sentences=0/1024
+2026-09-20 23:18:41 UTC completed_step=16 elapsed_seconds=13.8318 learning_rate=9.6e-05
+2026-09-20 23:18:47 UTC completed_step=32 elapsed_seconds=19.36 learning_rate=0.000192
+2026-09-20 23:18:52 UTC completed_step=48 elapsed_seconds=24.8915 learning_rate=0.000288
+2026-09-20 23:18:58 UTC completed_step=64 elapsed_seconds=30.4188 learning_rate=0.000384
+2026-09-20 23:19:03 UTC completed_step=80 elapsed_seconds=35.9459 learning_rate=0.00048
+2026-09-20 23:19:09 UTC completed_step=96 elapsed_seconds=41.4747 learning_rate=0.000576
+2026-09-20 23:19:14 UTC completed_step=112 elapsed_seconds=47.0023 learning_rate=0.000599992
+2026-09-20 23:19:20 UTC completed_step=128 elapsed_seconds=52.5334 learning_rate=0.000599956
+2026-09-20 23:19:28 UTC step=128 elapsed_seconds=60.7217 mean_loss=5.0421 errors=7140/10002 exact_sentences=1/1024
+2026-09-20 23:19:34 UTC completed_step=144 elapsed_seconds=66.2556 learning_rate=0.000599893
+2026-09-20 23:19:39 UTC completed_step=160 elapsed_seconds=71.7834 learning_rate=0.0005998
+2026-09-20 23:19:45 UTC completed_step=176 elapsed_seconds=77.3146 learning_rate=0.00059968
+2026-09-20 23:19:50 UTC completed_step=192 elapsed_seconds=82.8453 learning_rate=0.00059953
+2026-09-20 23:19:56 UTC completed_step=208 elapsed_seconds=88.3766 learning_rate=0.000599353
+2026-09-20 23:20:01 UTC completed_step=224 elapsed_seconds=93.9062 learning_rate=0.000599147
+2026-09-20 23:20:07 UTC completed_step=240 elapsed_seconds=99.4369 learning_rate=0.000598913
+2026-09-20 23:20:12 UTC completed_step=256 elapsed_seconds=104.966 learning_rate=0.000598651
+2026-09-20 23:20:21 UTC step=256 elapsed_seconds=113.158 mean_loss=2.97087 errors=5217/10002 exact_sentences=5/1024
+2026-09-20 23:20:26 UTC completed_step=272 elapsed_seconds=118.694 learning_rate=0.00059836
+2026-09-20 23:20:32 UTC completed_step=288 elapsed_seconds=124.225 learning_rate=0.000598041
+2026-09-20 23:20:37 UTC completed_step=304 elapsed_seconds=129.751 learning_rate=0.000597694
+2026-09-20 23:20:43 UTC completed_step=320 elapsed_seconds=135.278 learning_rate=0.000597319
+2026-09-20 23:20:48 UTC completed_step=336 elapsed_seconds=140.804 learning_rate=0.000596915
+2026-09-20 23:20:54 UTC completed_step=352 elapsed_seconds=146.332 learning_rate=0.000596484
+2026-09-20 23:20:59 UTC completed_step=368 elapsed_seconds=151.86 learning_rate=0.000596024
+2026-09-20 23:21:05 UTC completed_step=384 elapsed_seconds=157.389 learning_rate=0.000595536
+2026-09-20 23:21:13 UTC step=384 elapsed_seconds=165.564 mean_loss=1.07338 errors=1139/10002 exact_sentences=380/1024
+2026-09-20 23:21:19 UTC completed_step=400 elapsed_seconds=171.099 learning_rate=0.000595021
+2026-09-20 23:21:24 UTC completed_step=416 elapsed_seconds=176.628 learning_rate=0.000594478
+2026-09-20 23:21:30 UTC completed_step=432 elapsed_seconds=182.158 learning_rate=0.000593906
+2026-09-20 23:21:35 UTC completed_step=448 elapsed_seconds=187.686 learning_rate=0.000593307
+2026-09-20 23:21:41 UTC completed_step=464 elapsed_seconds=193.214 learning_rate=0.000592681
+2026-09-20 23:21:46 UTC completed_step=480 elapsed_seconds=198.743 learning_rate=0.000592026
+2026-09-20 23:21:52 UTC completed_step=496 elapsed_seconds=204.272 learning_rate=0.000591344
+2026-09-20 23:21:57 UTC completed_step=512 elapsed_seconds=209.799 learning_rate=0.000590635
+2026-09-20 23:22:05 UTC step=512 elapsed_seconds=217.981 mean_loss=0.152002 errors=80/10002 exact_sentences=951/1024
+2026-09-20 23:22:11 UTC completed_step=528 elapsed_seconds=223.543 learning_rate=0.000589898
+2026-09-20 23:22:17 UTC completed_step=544 elapsed_seconds=229.071 learning_rate=0.000589134
+2026-09-20 23:22:22 UTC completed_step=560 elapsed_seconds=234.597 learning_rate=0.000588342
+2026-09-20 23:22:28 UTC completed_step=576 elapsed_seconds=240.125 learning_rate=0.000587524
+2026-09-20 23:22:33 UTC completed_step=592 elapsed_seconds=245.652 learning_rate=0.000586678
+2026-09-20 23:22:39 UTC completed_step=608 elapsed_seconds=251.18 learning_rate=0.000585805
+2026-09-20 23:22:44 UTC completed_step=624 elapsed_seconds=256.71 learning_rate=0.000584906
+2026-09-20 23:22:50 UTC completed_step=640 elapsed_seconds=262.237 learning_rate=0.000583979
+2026-09-20 23:22:58 UTC step=640 elapsed_seconds=270.419 mean_loss=0.0821287 errors=115/10002 exact_sentences=918/1024
+2026-09-20 23:23:03 UTC completed_step=656 elapsed_seconds=275.952 learning_rate=0.000583026
+2026-09-20 23:23:09 UTC completed_step=672 elapsed_seconds=281.481 learning_rate=0.000582046
+2026-09-20 23:23:14 UTC completed_step=688 elapsed_seconds=287.007 learning_rate=0.00058104
+2026-09-20 23:23:20 UTC completed_step=704 elapsed_seconds=292.533 learning_rate=0.000580007
+2026-09-20 23:23:26 UTC completed_step=720 elapsed_seconds=298.059 learning_rate=0.000578948
+2026-09-20 23:23:31 UTC completed_step=736 elapsed_seconds=303.586 learning_rate=0.000577862
+2026-09-20 23:23:37 UTC completed_step=752 elapsed_seconds=309.112 learning_rate=0.000576751
+2026-09-20 23:23:42 UTC completed_step=768 elapsed_seconds=314.637 learning_rate=0.000575614
+2026-09-20 23:23:50 UTC step=768 elapsed_seconds=322.834 mean_loss=0.0671186 errors=96/10002 exact_sentences=944/1024
+2026-09-20 23:23:56 UTC completed_step=784 elapsed_seconds=328.367 learning_rate=0.000574451
+2026-09-20 23:24:01 UTC completed_step=800 elapsed_seconds=333.897 learning_rate=0.000573262
+2026-09-20 23:24:07 UTC completed_step=816 elapsed_seconds=339.422 learning_rate=0.000572047
+2026-09-20 23:24:12 UTC completed_step=832 elapsed_seconds=344.952 learning_rate=0.000570807
+2026-09-20 23:24:18 UTC completed_step=848 elapsed_seconds=350.477 learning_rate=0.000569542
+2026-09-20 23:24:23 UTC completed_step=864 elapsed_seconds=356.002 learning_rate=0.000568251
+2026-09-20 23:24:29 UTC completed_step=880 elapsed_seconds=361.528 learning_rate=0.000566936
+2026-09-20 23:24:35 UTC completed_step=896 elapsed_seconds=367.054 learning_rate=0.000565595
+2026-09-20 23:24:43 UTC step=896 elapsed_seconds=375.238 mean_loss=0.0446888 errors=79/10002 exact_sentences=958/1024
+2026-09-20 23:24:48 UTC completed_step=912 elapsed_seconds=380.773 learning_rate=0.00056423
+2026-09-20 23:24:54 UTC completed_step=928 elapsed_seconds=386.302 learning_rate=0.00056284
+2026-09-20 23:24:59 UTC completed_step=944 elapsed_seconds=391.83 learning_rate=0.000561425
+2026-09-20 23:25:05 UTC completed_step=960 elapsed_seconds=397.356 learning_rate=0.000559986
+2026-09-20 23:25:10 UTC completed_step=976 elapsed_seconds=402.882 learning_rate=0.000558523
+2026-09-20 23:25:16 UTC completed_step=992 elapsed_seconds=408.408 learning_rate=0.000557036
+2026-09-20 23:25:21 UTC completed_step=1008 elapsed_seconds=413.931 learning_rate=0.000555525
+2026-09-20 23:25:27 UTC completed_step=1024 elapsed_seconds=419.454 learning_rate=0.000553991
+2026-09-20 23:25:35 UTC step=1024 elapsed_seconds=427.633 mean_loss=0.0500582 errors=87/10002 exact_sentences=944/1024
+2026-09-20 23:25:41 UTC completed_step=1040 elapsed_seconds=433.189 learning_rate=0.000552432
+2026-09-20 23:25:46 UTC completed_step=1056 elapsed_seconds=438.714 learning_rate=0.000550851
+2026-09-20 23:25:52 UTC completed_step=1072 elapsed_seconds=444.239 learning_rate=0.000549246
+2026-09-20 23:25:57 UTC completed_step=1088 elapsed_seconds=449.766 learning_rate=0.000547618
+2026-09-20 23:26:03 UTC completed_step=1104 elapsed_seconds=455.291 learning_rate=0.000545967
+2026-09-20 23:26:08 UTC completed_step=1120 elapsed_seconds=460.814 learning_rate=0.000544293
+2026-09-20 23:26:14 UTC completed_step=1136 elapsed_seconds=466.337 learning_rate=0.000542597
+2026-09-20 23:26:19 UTC completed_step=1152 elapsed_seconds=471.86 learning_rate=0.000540878
+2026-09-20 23:26:28 UTC step=1152 elapsed_seconds=480.05 mean_loss=0.0486125 errors=85/10002 exact_sentences=951/1024
+2026-09-20 23:26:33 UTC completed_step=1168 elapsed_seconds=485.584 learning_rate=0.000539138
+2026-09-20 23:26:39 UTC completed_step=1184 elapsed_seconds=491.11 learning_rate=0.000537375
+2026-09-20 23:26:44 UTC completed_step=1200 elapsed_seconds=496.634 learning_rate=0.00053559
+2026-09-20 23:26:50 UTC completed_step=1216 elapsed_seconds=502.161 learning_rate=0.000533784
+2026-09-20 23:26:55 UTC completed_step=1232 elapsed_seconds=507.686 learning_rate=0.000531957
+2026-09-20 23:27:01 UTC completed_step=1248 elapsed_seconds=513.212 learning_rate=0.000530108
+2026-09-20 23:27:06 UTC completed_step=1264 elapsed_seconds=518.738 learning_rate=0.000528238
+2026-09-20 23:27:12 UTC completed_step=1280 elapsed_seconds=524.265 learning_rate=0.000526347
+2026-09-20 23:27:20 UTC step=1280 elapsed_seconds=532.462 mean_loss=0.0308398 errors=50/10002 exact_sentences=975/1024
+2026-09-20 23:27:25 UTC completed_step=1296 elapsed_seconds=537.993 learning_rate=0.000524435
+2026-09-20 23:27:31 UTC completed_step=1312 elapsed_seconds=543.521 learning_rate=0.000522503
+2026-09-20 23:27:37 UTC completed_step=1328 elapsed_seconds=549.048 learning_rate=0.000520551
+2026-09-20 23:27:42 UTC completed_step=1344 elapsed_seconds=554.576 learning_rate=0.000518579
+2026-09-20 23:27:48 UTC completed_step=1360 elapsed_seconds=560.102 learning_rate=0.000516587
+2026-09-20 23:27:53 UTC completed_step=1376 elapsed_seconds=565.628 learning_rate=0.000514575
+2026-09-20 23:27:59 UTC completed_step=1392 elapsed_seconds=571.153 learning_rate=0.000512544
+2026-09-20 23:28:04 UTC completed_step=1408 elapsed_seconds=576.679 learning_rate=0.000510494
+2026-09-20 23:28:12 UTC step=1408 elapsed_seconds=584.862 mean_loss=0.0265708 errors=45/10002 exact_sentences=986/1024
+2026-09-20 23:28:18 UTC completed_step=1424 elapsed_seconds=590.393 learning_rate=0.000508424
+2026-09-20 23:28:23 UTC completed_step=1440 elapsed_seconds=595.923 learning_rate=0.000506336
+2026-09-20 23:28:29 UTC completed_step=1456 elapsed_seconds=601.449 learning_rate=0.00050423
+2026-09-20 23:28:34 UTC completed_step=1472 elapsed_seconds=606.976 learning_rate=0.000502104
+2026-09-20 23:28:40 UTC completed_step=1488 elapsed_seconds=612.504 learning_rate=0.000499961
+2026-09-20 23:28:45 UTC completed_step=1504 elapsed_seconds=618.034 learning_rate=0.0004978
+2026-09-20 23:28:51 UTC completed_step=1520 elapsed_seconds=623.562 learning_rate=0.000495622
+2026-09-20 23:28:57 UTC completed_step=1536 elapsed_seconds=629.091 learning_rate=0.000493426
+2026-09-20 23:29:05 UTC step=1536 elapsed_seconds=637.276 mean_loss=0.0254299 errors=52/10002 exact_sentences=977/1024
+2026-09-20 23:29:10 UTC completed_step=1552 elapsed_seconds=642.841 learning_rate=0.000491212
+2026-09-20 23:29:16 UTC completed_step=1568 elapsed_seconds=648.371 learning_rate=0.000488982
+2026-09-20 23:29:21 UTC completed_step=1584 elapsed_seconds=653.9 learning_rate=0.000486735
+2026-09-20 23:29:27 UTC completed_step=1600 elapsed_seconds=659.43 learning_rate=0.000484472
+2026-09-20 23:29:32 UTC completed_step=1616 elapsed_seconds=664.959 learning_rate=0.000482192
+2026-09-20 23:29:38 UTC completed_step=1632 elapsed_seconds=670.488 learning_rate=0.000479896
+2026-09-20 23:29:43 UTC completed_step=1648 elapsed_seconds=676.016 learning_rate=0.000477584
+2026-09-20 23:29:49 UTC completed_step=1664 elapsed_seconds=681.544 learning_rate=0.000475257
+2026-09-20 23:29:57 UTC step=1664 elapsed_seconds=689.728 mean_loss=0.0194467 errors=35/10002 exact_sentences=994/1024
+2026-09-20 23:30:03 UTC completed_step=1680 elapsed_seconds=695.26 learning_rate=0.000472915
+2026-09-20 23:30:08 UTC completed_step=1696 elapsed_seconds=700.789 learning_rate=0.000470558
+2026-09-20 23:30:14 UTC completed_step=1712 elapsed_seconds=706.318 learning_rate=0.000468185
+2026-09-20 23:30:19 UTC completed_step=1728 elapsed_seconds=711.844 learning_rate=0.000465799
+2026-09-20 23:30:25 UTC completed_step=1744 elapsed_seconds=717.371 learning_rate=0.000463398
+2026-09-20 23:30:30 UTC completed_step=1760 elapsed_seconds=722.895 learning_rate=0.000460983
+2026-09-20 23:30:36 UTC completed_step=1776 elapsed_seconds=728.42 learning_rate=0.000458554
+2026-09-20 23:30:41 UTC completed_step=1792 elapsed_seconds=733.944 learning_rate=0.000456112
+2026-09-20 23:30:50 UTC step=1792 elapsed_seconds=742.139 mean_loss=0.0265285 errors=37/10002 exact_sentences=990/1024
+2026-09-20 23:30:55 UTC completed_step=1808 elapsed_seconds=747.673 learning_rate=0.000453656
+2026-09-20 23:31:01 UTC completed_step=1824 elapsed_seconds=753.2 learning_rate=0.000451187
+2026-09-20 23:31:06 UTC completed_step=1840 elapsed_seconds=758.727 learning_rate=0.000448706
+2026-09-20 23:31:12 UTC completed_step=1856 elapsed_seconds=764.253 learning_rate=0.000446212
+2026-09-20 23:31:17 UTC completed_step=1872 elapsed_seconds=769.779 learning_rate=0.000443706
+2026-09-20 23:31:23 UTC completed_step=1888 elapsed_seconds=775.304 learning_rate=0.000441188
+2026-09-20 23:31:28 UTC completed_step=1904 elapsed_seconds=780.83 learning_rate=0.000438658
+2026-09-20 23:31:34 UTC completed_step=1920 elapsed_seconds=786.356 learning_rate=0.000436117
+2026-09-20 23:31:42 UTC step=1920 elapsed_seconds=794.537 mean_loss=0.0116692 errors=25/10002 exact_sentences=1005/1024
+2026-09-20 23:31:48 UTC completed_step=1936 elapsed_seconds=800.07 learning_rate=0.000433564
+2026-09-20 23:31:53 UTC completed_step=1952 elapsed_seconds=805.601 learning_rate=0.000431001
+2026-09-20 23:31:59 UTC completed_step=1968 elapsed_seconds=811.127 learning_rate=0.000428427
+2026-09-20 23:32:04 UTC completed_step=1984 elapsed_seconds=816.651 learning_rate=0.000425843
+2026-09-20 23:32:10 UTC completed_step=2000 elapsed_seconds=822.178 learning_rate=0.000423249
+2026-09-20 23:32:15 UTC completed_step=2016 elapsed_seconds=827.705 learning_rate=0.000420644
+2026-09-20 23:32:21 UTC completed_step=2032 elapsed_seconds=833.233 learning_rate=0.000418031
+2026-09-20 23:32:26 UTC completed_step=2048 elapsed_seconds=838.759 learning_rate=0.000415408
+2026-09-20 23:32:34 UTC step=2048 elapsed_seconds=846.936 mean_loss=0.0134414 errors=27/10002 exact_sentences=997/1024
+2026-09-20 23:32:40 UTC completed_step=2064 elapsed_seconds=852.498 learning_rate=0.000412776
+2026-09-20 23:32:45 UTC completed_step=2080 elapsed_seconds=858.026 learning_rate=0.000410135
+2026-09-20 23:32:51 UTC completed_step=2096 elapsed_seconds=863.553 learning_rate=0.000407486
+2026-09-20 23:32:57 UTC completed_step=2112 elapsed_seconds=869.082 learning_rate=0.000404829
+2026-09-20 23:33:02 UTC completed_step=2128 elapsed_seconds=874.61 learning_rate=0.000402164
+2026-09-20 23:33:08 UTC completed_step=2144 elapsed_seconds=880.139 learning_rate=0.000399491
+2026-09-20 23:33:13 UTC completed_step=2160 elapsed_seconds=885.667 learning_rate=0.000396811
+2026-09-20 23:33:19 UTC completed_step=2176 elapsed_seconds=891.195 learning_rate=0.000394124
+2026-09-20 23:33:27 UTC step=2176 elapsed_seconds=899.384 mean_loss=0.00753559 errors=21/10002 exact_sentences=1004/1024
+2026-09-20 23:33:32 UTC completed_step=2192 elapsed_seconds=904.914 learning_rate=0.00039143
+2026-09-20 23:33:38 UTC completed_step=2208 elapsed_seconds=910.443 learning_rate=0.00038873
+2026-09-20 23:33:43 UTC completed_step=2224 elapsed_seconds=915.97 learning_rate=0.000386023
+2026-09-20 23:33:49 UTC completed_step=2240 elapsed_seconds=921.494 learning_rate=0.000383311
+2026-09-20 23:33:54 UTC completed_step=2256 elapsed_seconds=927.021 learning_rate=0.000380593
+2026-09-20 23:34:00 UTC completed_step=2272 elapsed_seconds=932.549 learning_rate=0.00037787
+2026-09-20 23:34:06 UTC completed_step=2288 elapsed_seconds=938.074 learning_rate=0.000375141
+2026-09-20 23:34:11 UTC completed_step=2304 elapsed_seconds=943.598 learning_rate=0.000372408
+2026-09-20 23:34:19 UTC step=2304 elapsed_seconds=951.798 mean_loss=0.0058037 errors=11/10002 exact_sentences=1014/1024
+2026-09-20 23:34:25 UTC completed_step=2320 elapsed_seconds=957.331 learning_rate=0.000369671
+2026-09-20 23:34:30 UTC completed_step=2336 elapsed_seconds=962.859 learning_rate=0.000366929
+2026-09-20 23:34:36 UTC completed_step=2352 elapsed_seconds=968.387 learning_rate=0.000364183
+2026-09-20 23:34:41 UTC completed_step=2368 elapsed_seconds=973.914 learning_rate=0.000361434
+2026-09-20 23:34:47 UTC completed_step=2384 elapsed_seconds=979.441 learning_rate=0.000358682
+2026-09-20 23:34:52 UTC completed_step=2400 elapsed_seconds=984.969 learning_rate=0.000355926
+2026-09-20 23:34:58 UTC completed_step=2416 elapsed_seconds=990.494 learning_rate=0.000353168
+2026-09-20 23:35:03 UTC completed_step=2432 elapsed_seconds=996.021 learning_rate=0.000350407
+2026-09-20 23:35:12 UTC step=2432 elapsed_seconds=1004.2 mean_loss=0.00668219 errors=10/10002 exact_sentences=1014/1024
+2026-09-20 23:35:17 UTC completed_step=2448 elapsed_seconds=1009.73 learning_rate=0.000347644
+2026-09-20 23:35:23 UTC completed_step=2464 elapsed_seconds=1015.26 learning_rate=0.00034488
+2026-09-20 23:35:28 UTC completed_step=2480 elapsed_seconds=1020.79 learning_rate=0.000342113
+2026-09-20 23:35:34 UTC completed_step=2496 elapsed_seconds=1026.31 learning_rate=0.000339346
+2026-09-20 23:35:39 UTC completed_step=2512 elapsed_seconds=1031.84 learning_rate=0.000336577
+2026-09-20 23:35:45 UTC completed_step=2528 elapsed_seconds=1037.37 learning_rate=0.000333808
+2026-09-20 23:35:50 UTC completed_step=2544 elapsed_seconds=1042.9 learning_rate=0.000331039
+2026-09-20 23:35:56 UTC completed_step=2560 elapsed_seconds=1048.43 learning_rate=0.000328269
+2026-09-20 23:36:04 UTC step=2560 elapsed_seconds=1056.63 mean_loss=0.0104015 errors=14/10002 exact_sentences=1010/1024
+2026-09-20 23:36:10 UTC completed_step=2576 elapsed_seconds=1062.2 learning_rate=0.000325499
+2026-09-20 23:36:15 UTC completed_step=2592 elapsed_seconds=1067.72 learning_rate=0.00032273
+2026-09-20 23:36:21 UTC completed_step=2608 elapsed_seconds=1073.25 learning_rate=0.000319962
+2026-09-20 23:36:26 UTC completed_step=2624 elapsed_seconds=1078.78 learning_rate=0.000317195
+2026-09-20 23:36:32 UTC completed_step=2640 elapsed_seconds=1084.31 learning_rate=0.000314429
+2026-09-20 23:36:37 UTC completed_step=2656 elapsed_seconds=1089.84 learning_rate=0.000311665
+2026-09-20 23:36:43 UTC completed_step=2672 elapsed_seconds=1095.37 learning_rate=0.000308902
+2026-09-20 23:36:48 UTC completed_step=2688 elapsed_seconds=1100.9 learning_rate=0.000306142
+2026-09-20 23:36:57 UTC step=2688 elapsed_seconds=1109.09 mean_loss=0.0108992 errors=14/10002 exact_sentences=1011/1024
+2026-09-20 23:37:02 UTC completed_step=2704 elapsed_seconds=1114.62 learning_rate=0.000303385
+2026-09-20 23:37:08 UTC completed_step=2720 elapsed_seconds=1120.14 learning_rate=0.00030063
+2026-09-20 23:37:13 UTC completed_step=2736 elapsed_seconds=1125.67 learning_rate=0.000297878
+2026-09-20 23:37:19 UTC completed_step=2752 elapsed_seconds=1131.2 learning_rate=0.00029513
+2026-09-20 23:37:24 UTC completed_step=2768 elapsed_seconds=1136.73 learning_rate=0.000292385
+2026-09-20 23:37:30 UTC completed_step=2784 elapsed_seconds=1142.26 learning_rate=0.000289644
+2026-09-20 23:37:35 UTC completed_step=2800 elapsed_seconds=1147.79 learning_rate=0.000286908
+2026-09-20 23:37:41 UTC completed_step=2816 elapsed_seconds=1153.32 learning_rate=0.000284176
+2026-09-20 23:37:49 UTC step=2816 elapsed_seconds=1161.53 mean_loss=0.00966169 errors=12/10002 exact_sentences=1014/1024
+2026-09-20 23:37:55 UTC completed_step=2832 elapsed_seconds=1167.06 learning_rate=0.000281449
+2026-09-20 23:38:00 UTC completed_step=2848 elapsed_seconds=1172.59 learning_rate=0.000278727
+2026-09-20 23:38:06 UTC completed_step=2864 elapsed_seconds=1178.11 learning_rate=0.00027601
+2026-09-20 23:38:11 UTC completed_step=2880 elapsed_seconds=1183.64 learning_rate=0.0002733
+2026-09-20 23:38:17 UTC completed_step=2896 elapsed_seconds=1189.16 learning_rate=0.000270595
+2026-09-20 23:38:22 UTC completed_step=2912 elapsed_seconds=1194.69 learning_rate=0.000267896
+2026-09-20 23:38:28 UTC completed_step=2928 elapsed_seconds=1200.21 learning_rate=0.000265204
+2026-09-20 23:38:33 UTC completed_step=2944 elapsed_seconds=1205.74 learning_rate=0.000262518
+2026-09-20 23:38:41 UTC step=2944 elapsed_seconds=1213.93 mean_loss=0.00344559 errors=8/10002 exact_sentences=1016/1024
+2026-09-20 23:38:47 UTC completed_step=2960 elapsed_seconds=1219.46 learning_rate=0.00025984
+2026-09-20 23:38:52 UTC completed_step=2976 elapsed_seconds=1224.99 learning_rate=0.000257169
+2026-09-20 23:38:58 UTC completed_step=2992 elapsed_seconds=1230.52 learning_rate=0.000254506
+2026-09-20 23:39:04 UTC completed_step=3008 elapsed_seconds=1236.05 learning_rate=0.000251851
+2026-09-20 23:39:09 UTC completed_step=3024 elapsed_seconds=1241.57 learning_rate=0.000249204
+2026-09-20 23:39:15 UTC completed_step=3040 elapsed_seconds=1247.1 learning_rate=0.000246565
+2026-09-20 23:39:20 UTC completed_step=3056 elapsed_seconds=1252.63 learning_rate=0.000243936
+2026-09-20 23:39:26 UTC completed_step=3072 elapsed_seconds=1258.16 learning_rate=0.000241315
+2026-09-20 23:39:34 UTC step=3072 elapsed_seconds=1266.34 mean_loss=0.00192196 errors=3/10002 exact_sentences=1021/1024
+2026-09-20 23:39:39 UTC completed_step=3088 elapsed_seconds=1271.91 learning_rate=0.000238704
+2026-09-20 23:39:45 UTC completed_step=3104 elapsed_seconds=1277.43 learning_rate=0.000236102
+2026-09-20 23:39:50 UTC completed_step=3120 elapsed_seconds=1282.96 learning_rate=0.00023351
+2026-09-20 23:39:56 UTC completed_step=3136 elapsed_seconds=1288.49 learning_rate=0.000230928
+2026-09-20 23:40:01 UTC completed_step=3152 elapsed_seconds=1294.01 learning_rate=0.000228357
+2026-09-20 23:40:07 UTC completed_step=3168 elapsed_seconds=1299.54 learning_rate=0.000225796
+2026-09-20 23:40:13 UTC completed_step=3184 elapsed_seconds=1305.07 learning_rate=0.000223247
+2026-09-20 23:40:18 UTC completed_step=3200 elapsed_seconds=1310.59 learning_rate=0.000220708
+2026-09-20 23:40:26 UTC step=3200 elapsed_seconds=1318.78 mean_loss=7.2874e-05 errors=0/10002 exact_sentences=1024/1024
+2026-09-20 23:40:34 UTC step=3200 elapsed_seconds=1327.02 mean_loss=7.2874e-05 errors=0/10002 exact_sentences=1024/1024
+MEMORIZED checkpoint=/home/ubuntu/checkpoints/memorize_general_facts/trial_0_remaining/layers_2/step_3200
