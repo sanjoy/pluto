@@ -1,0 +1,10 @@
+checkpoint=/home/ubuntu/checkpoints/memorize_general_facts/trial_0_remaining/layers_4/step_3456
+corpus=/home/ubuntu/code/pluto/src/llm/experiments/memorize_general_facts/runs/trial_0_remaining/layers_4/corpus.txt
+tokenizer=/home/ubuntu/code/pluto/src/llm/experiments/memorize_general_facts/runs/trial_0_remaining/layers_4
+layers=4
+parameters=38874112
+errors=0
+targets=10002
+mean_loss=0.000289197
+exact_sentences=1024
+sentences=1024

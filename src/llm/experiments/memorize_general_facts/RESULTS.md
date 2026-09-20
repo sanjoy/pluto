@@ -17,6 +17,7 @@ to text and retokenized, so these prompts can be supplied as ordinary text.
 | 7 | 48,331,264 | 3,584 | 56 | 0 / 10,002 | 1,024 / 1,024 | 0.000569335296 |
 | 6 | 45,178,880 | 3,712 | 58 | 0 / 10,002 | 1,024 / 1,024 | 0.000166443523 |
 | 5 | 42,026,496 | 3,200 | 50 | 0 / 10,002 | 1,024 / 1,024 | 0.000290182373 |
+| 4 | 38,874,112 | 3,456 | 54 | 0 / 10,002 | 1,024 / 1,024 | 0.000289197068 |
 
 Parameter counts include allocated vocabulary padding and count the tied
 embedding/LM-head weights once. A nonzero loss is consistent with perfect
@@ -33,6 +34,7 @@ final LayerNorm tensors after accounting for their different file indices.
 The same comparison passes for all 76 shared tensors in the six-block model.
 It also passes for all 64 tensors in the five-block model's initial checkpoint.
 All 52 tensors in the four-block initialization pass the same comparison.
+All 40 tensors in the three-block initialization also pass.
 
 Eight-block checkpoint:
 `/home/ubuntu/checkpoints/memorize_general_facts/trial_0/layers_8/step_3840`.
@@ -82,6 +84,12 @@ Training and checkpoint reload took about 33 minutes. Both independent checks
 passed, with a byte-identical final TSV; the evidence is in
 `runs/trial_0_remaining/layers_5/independent_verification/`.
 
+Four-block checkpoint:
+`/home/ubuntu/checkpoints/memorize_general_facts/trial_0_remaining/layers_4/step_3456`.
+Training and checkpoint reload took about 31 minutes. Both independent checks
+passed, with a byte-identical final TSV; the evidence is in
+`runs/trial_0_remaining/layers_4/independent_verification/`.
+
 Evidence SHA-256 hashes:
 
 - Corpus: `814c062e7d7592fe4a4e5b158a37bd37da51700f817c19eb981c1e93d33f245c`.
@@ -90,10 +98,11 @@ Evidence SHA-256 hashes:
 - Final seven-block independent prediction TSV: `b4782113e59c9d3ed8c3609ae6217dca27805426b247f2869869f52946cbd802`.
 - Final six-block independent prediction TSV: `ee26c5f5457d99a46c9fc86899a8eb3cbc6d42a7628161cb212412237c8f696a`.
 - Final five-block independent prediction TSV: `8cf6cfcafb9f83417f5fae2f8d82bd1101049193eb921d0c6a313872b71755da`.
+- Final four-block independent prediction TSV: `04dbb7b048c83b563c6b435e312e15306fc055696d3d52fe1db440d4c7c1e870`.
 
 ## Remaining search
 
-Four-block training started on 2026-09-20 at 22:16:54 UTC, after the five-block
+Three-block training started on 2026-09-20 at 22:48:34 UTC, after the four-block
 checkpoint passed both independent checks. The sequential driver will
 independently verify every successful depth before trying the next
 smaller one. It stops at the first unsuccessful 5,000-update trial or execution
@@ -101,7 +110,7 @@ error. Live status is in
 `runs/trial_0_remaining/depth_search_summary.json`; checkpoints are under
 `/home/ubuntu/checkpoints/memorize_general_facts/trial_0_remaining/`.
 
-Five blocks are the smallest verified success so far; the minimum has not yet
+Four blocks are the smallest verified success so far; the minimum has not yet
 been established. Zero blocks are ruled
 out independently: identical current-token/position inputs have contradictory
 targets, forcing at least 2,923 errors (see the prefix audit in README.md).
