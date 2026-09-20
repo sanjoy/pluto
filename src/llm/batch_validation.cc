@@ -64,7 +64,7 @@ absl::StatusOr<size_t> BatchBytes(const DataBatch& batch,
 absl::Status ValidateBatchTypes(const DataBatch& batch,
                                 absl::Span<const ActivationType> types,
                                 absl::string_view description) {
-  RETURN_IF_ERROR(batch.token_count().status());
+  RETURN_IF_ERROR(batch.loss_row_count().status());
   for (size_t i = 0; i < types.size(); ++i)
     RETURN_IF_ERROR(
         BatchBytes(batch, types[i], absl::StrCat(description, "[", i, "]"))
@@ -77,7 +77,7 @@ absl::Status ValidateBatchBuffers(cuda::Executor& executor,
                                   absl::Span<const Buffer> buffers,
                                   absl::Span<const ActivationType> types,
                                   absl::string_view description) {
-  RETURN_IF_ERROR(batch.token_count().status());
+  RETURN_IF_ERROR(batch.loss_row_count().status());
   if (buffers.size() != types.size())
     return Invalid(description,
                    absl::StrCat("received ", buffers.size(),
@@ -110,7 +110,7 @@ absl::Status ValidateBatchInput(cuda::Executor& executor,
 absl::Status ValidateTrainingBatch(cuda::Executor& executor, const Layer& model,
                                    const Layer& loss_layer,
                                    const DataBatch& batch) {
-  RETURN_IF_ERROR(batch.token_count().status());
+  RETURN_IF_ERROR(batch.loss_row_count().status());
   const auto inputs = model.input_types();
   const auto outputs = model.output_types();
   const auto loss_inputs = loss_layer.input_types();

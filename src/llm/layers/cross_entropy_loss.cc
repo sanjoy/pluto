@@ -46,6 +46,15 @@ __tile_global__ void CrossEntropyForwardKernel(
 
   const int row = ct::bid().x;
   const int target = static_cast<int>(target_view.load(row));
+  if (target == CrossEntropyLossLayer::kIgnoredTarget) {
+    // Do not read ignored logits. Besides saving a vocabulary scan, this keeps
+    // even NaNs in padding from leaking into a mathematically absent loss.
+    auto zero = ct::zeros<ct::tile<float, ct::shape<1>>>();
+    loss_view.store(zero, row);
+    maximum_view.store(zero, row);
+    denominator_view.store(zero + 1.0f, row);
+    return;
+  }
   const int vocabulary_tiles = padded_vocab_size / kDenseTile;
   auto maximum = ct::full<ct::tile<float, ct::shape<1, 1>>>(-3.402823466e+38f);
   for (int tile = 0; tile < vocabulary_tiles; ++tile)
@@ -67,10 +76,37 @@ __tile_global__ void CrossEntropyForwardKernel(
   denominator_view.store(ct::reshape(denominator, ct::shape{1_ic}), row);
 }
 
+// One tile program owns the integer count, so normalization needs neither an
+// unordered atomic reduction nor a device-to-host copy. Mask the final tile's
+// out-of-range lanes explicitly: load_masked fills them with token ID zero,
+// which is a valid target and must not be counted as padding.
+__tile_global__ void CountCrossEntropyTargetsKernel(
+    const int* __restrict__ targets, int rows,
+    int* __restrict__ valid_target_count) {
+  namespace ct = ::cuda::tiles;
+  using namespace ct::literals;
+
+  auto target_view = ct::partition_view{
+      ct::tensor_span{targets, ct::extents{rows}}, ct::shape{256_ic}};
+  auto count_view = ct::partition_view{
+      ct::tensor_span{valid_target_count, ct::extents{1}}, ct::shape{1_ic}};
+  auto count = ct::zeros<ct::tile<int, ct::shape<1>>>();
+  const int tiles = 1 + (rows - 1) / 256;
+  for (int tile = 0; tile < tiles; ++tile) {
+    auto row_ids = ct::iota<ct::tile<int, ct::shape<256>>>() + tile * 256;
+    auto target_ids = target_view.load_masked(tile);
+    auto valid = (row_ids < rows) &
+                 (target_ids != CrossEntropyLossLayer::kIgnoredTarget);
+    count = count + ct::sum(ct::element_cast<int>(valid), 0_ic);
+  }
+  count_view.store(count, 0);
+}
+
 __tile_global__ void CrossEntropyBackwardKernel(
     const float* __restrict__ logits, const int* __restrict__ targets,
     const float* __restrict__ maxima, const float* __restrict__ denominators,
-    int rows, int padded_vocab_size, float* __restrict__ logits_gradient) {
+    const int* __restrict__ valid_target_count, int rows, int padded_vocab_size,
+    float* __restrict__ logits_gradient) {
   namespace ct = ::cuda::tiles;
   using namespace ct::literals;
 
@@ -86,6 +122,8 @@ __tile_global__ void CrossEntropyBackwardKernel(
   auto gradient_view = ct::partition_view{
       ct::tensor_span{logits_gradient, ct::extents{rows, padded_vocab_size}},
       ct::shape{1_ic, 256_ic}};
+  auto count_view = ct::partition_view{
+      ct::tensor_span{valid_target_count, ct::extents{1}}, ct::shape{1_ic}};
 
   const int vocabulary_tiles =
       (padded_vocab_size + kBackwardVocabularyTile - 1) /
@@ -94,6 +132,11 @@ __tile_global__ void CrossEntropyBackwardKernel(
   const int row = block / vocabulary_tiles;
   const int output_tile = block % vocabulary_tiles;
   const int target = static_cast<int>(target_view.load(row));
+  if (target == CrossEntropyLossLayer::kIgnoredTarget) {
+    gradient_view.store_masked(ct::zeros<ct::tile<float, ct::shape<1, 256>>>(),
+                               row, output_tile);
+    return;
+  }
   auto maximum = ct::reshape(maximum_view.load(row), ct::shape{1_ic, 1_ic});
   auto denominator =
       ct::reshape(denominator_view.load(row), ct::shape{1_ic, 1_ic});
@@ -103,9 +146,12 @@ __tile_global__ void CrossEntropyBackwardKernel(
   auto token_ids = ct::iota<ct::tile<int, ct::shape<1, 256>>>() +
                    output_tile * kBackwardVocabularyTile;
   auto one_hot = ct::element_cast<float>(token_ids == target);
+  // A nonignored row guarantees a positive count. Entirely ignored batches
+  // return above without reading logits or dividing by zero.
+  const int valid_rows = static_cast<int>(count_view.load(0));
   gradient_view.store_masked(
-      (exponentials / denominator - one_hot) / static_cast<float>(rows), row,
-      output_tile);
+      (exponentials / denominator - one_hot) / static_cast<float>(valid_rows),
+      row, output_tile);
 }
 
 }  // namespace
@@ -149,7 +195,7 @@ absl::StatusOr<FwdResult> CrossEntropyLossLayer::fwd_impl(
       Buffer::Allocate(executor, static_cast<size_t>(rows) * sizeof(float)));
   // Reuse the forward reduction results without repeating a vocabulary scan
   // for each output tile. Keep both values in FP32 and preserve the existing
-  // reduction order and mean-loss gradient scaling.
+  // reduction order. The valid-row mean-loss scaling is computed in backward.
   state.intermediates = {inputs[0], inputs[1], maxima, denominators};
   state.children.clear();
   CrossEntropyForwardKernel<<<rows, 1, 0, executor.stream()>>>(
@@ -186,6 +232,13 @@ absl::StatusOr<BufferVec> CrossEntropyLossLayer::bwd_impl(
   ASSIGN_OR_RETURN(
       auto logits_gradient,
       Buffer::Allocate(executor, state.intermediates[0].size_bytes()));
+  ASSIGN_OR_RETURN(auto valid_target_count,
+                   Buffer::Allocate(executor, sizeof(int)));
+  CountCrossEntropyTargetsKernel<<<1, 1, 0, executor.stream()>>>(
+      static_cast<const int*>(state.intermediates[1].data()), rows,
+      static_cast<int*>(valid_target_count.data()));
+  RETURN_IF_ERROR(
+      CudaStatus(cudaGetLastError(), "CountCrossEntropyTargetsKernel launch"));
   const int vocabulary_tiles =
       (padded_vocab_size_ + kBackwardVocabularyTile - 1) /
       kBackwardVocabularyTile;
@@ -194,7 +247,8 @@ absl::StatusOr<BufferVec> CrossEntropyLossLayer::bwd_impl(
       static_cast<const float*>(state.intermediates[0].data()),
       static_cast<const int*>(state.intermediates[1].data()),
       static_cast<const float*>(state.intermediates[2].data()),
-      static_cast<const float*>(state.intermediates[3].data()), rows,
+      static_cast<const float*>(state.intermediates[3].data()),
+      static_cast<const int*>(valid_target_count.data()), rows,
       padded_vocab_size_, static_cast<float*>(logits_gradient.data()));
   RETURN_IF_ERROR(
       CudaStatus(cudaGetLastError(), "CrossEntropyBackwardKernel launch"));

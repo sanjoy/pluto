@@ -108,7 +108,11 @@ struct TrainingResult {
   double elapsed_training_seconds = 0.0;
 };
 
-// Computes mean loss over all token/activation rows in the requested batches.
+// Computes mean loss over supervised token/activation rows in the requested
+// batches. DataBatch::supervised_row_count excludes padding or prompt rows
+// from the denominator; the loss must emit zero for those excluded rows. A
+// zero-supervision batch is allowed, but the full evaluation must have at
+// least one supervised row. Without explicit counts, every row contributes.
 // The model consumes {batch.inputs}; the loss consumes model outputs followed
 // by batch.targets and must return one buffer of per-row FP32 loss values.
 //
@@ -127,7 +131,8 @@ absl::StatusOr<Buffer> Evaluate(cuda::Executor& executor, const Layer& model,
 // target aliases an input. Dataset transforms (such as an activation generator)
 // are not trained.
 //
-// Both losses expose per-row values for evaluation. Backward scaling belongs
+// Training batches must contain at least one supervised row. Both losses
+// expose per-row values for evaluation. Backward scaling belongs
 // to the loss: cross-entropy currently differentiates the mean, while SAE
 // differentiates the sum. Train does not rescale either gradient.
 //

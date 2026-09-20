@@ -356,6 +356,19 @@ class TrainerTest : public testing::Test {
                             std::move(model_output));
   }
 
+  absl::StatusOr<Buffer> UploadLosses(absl::Span<const float> values) {
+    auto host = cuda::PageLockedHostArray<float>::CopyFrom(*executor_, values);
+    if (!host.ok()) return host.status();
+    auto device = Buffer::Allocate(*executor_, host->size_bytes());
+    if (!device.ok()) return device.status();
+    const auto copied = cuda::CudaStatus(
+        cudaMemcpyAsync(device->data(), host->data(), host->size_bytes(),
+                        cudaMemcpyHostToDevice, executor_->stream()),
+        "cudaMemcpyAsync(test losses)");
+    if (!copied.ok()) return copied;
+    return std::move(*device);
+  }
+
   std::unique_ptr<cuda::Executor> executor_;
   cuda::PageLockedHostArray<int> corpus_;
 };
@@ -813,6 +826,142 @@ TEST_F(TrainerTest, EvaluateWeightsUnequalBatchesByTheirTokenCounts) {
   ASSERT_TRUE(host_mean.ok()) << host_mean.status();
   // Sum the eight token losses, not the two batch means or four samples.
   EXPECT_FLOAT_EQ(*host_mean, 1.5f);
+}
+
+TEST_F(TrainerTest, EvaluateWeightsUnequalSupervisedCountsAndIgnoresZeroRows) {
+  // Identity model/loss layers let the inputs stand for arbitrary per-row
+  // losses. Excluded rows contain zero, as required of a masking loss layer.
+  auto first = UploadLosses({2.0f, 0.0f, 0.0f, 0.0f});
+  auto second = UploadLosses({1.0f, 2.0f, 3.0f, 0.0f, 4.0f, 0.0f, 0.0f, 0.0f});
+  auto ignored = UploadLosses({0.0f, 0.0f, 0.0f, 0.0f});
+  ASSERT_TRUE(first.ok()) << first.status();
+  ASSERT_TRUE(second.ok()) << second.status();
+  ASSERT_TRUE(ignored.ok()) << ignored.status();
+  const DataBatch first_batch{.inputs = *first,
+                              .targets = *first,
+                              .batch_size = 1,
+                              .sequence_length = 4,
+                              .supervised_row_count = 1};
+  const DataBatch second_batch{.inputs = *second,
+                               .targets = *second,
+                               .batch_size = 2,
+                               .sequence_length = 4,
+                               .supervised_row_count = 4};
+  const DataBatch ignored_batch{.inputs = *ignored,
+                                .targets = *ignored,
+                                .batch_size = 1,
+                                .sequence_length = 4,
+                                .supervised_row_count = 0};
+  FakeModel model(DataType::FP32, 4);
+  FakeModel loss(DataType::FP32, 4, 2);
+  for (int ignored_position : {0, 1, 2}) {
+    SCOPED_TRACE(ignored_position);
+    std::vector<DataBatch> batches{first_batch, second_batch};
+    batches.insert(batches.begin() + ignored_position, ignored_batch);
+    VaryingBatchDataSetIterator data(std::move(batches));
+    auto mean = Evaluate(*executor_, model,
+                         {.loss_layer = loss, .eval_data = data, .batches = 3});
+    ASSERT_TRUE(mean.ok()) << mean.status();
+    const auto host_mean = ReadEvaluationLoss(*executor_, *mean);
+    ASSERT_TRUE(host_mean.ok()) << host_mean.status();
+    // Twelve units of loss over five targets, not sixteen physical rows,
+    // four samples, or an average of the two nonempty batch means.
+    EXPECT_FLOAT_EQ(*host_mean, 12.0f / 5.0f);
+  }
+}
+
+TEST_F(TrainerTest, EvaluateRejectsNoSupervisedRowsInsteadOfProducingNan) {
+  auto ignored = UploadLosses({0.0f, 0.0f, 0.0f, 0.0f});
+  ASSERT_TRUE(ignored.ok()) << ignored.status();
+  VaryingBatchDataSetIterator data({{.inputs = *ignored,
+                                     .targets = *ignored,
+                                     .batch_size = 1,
+                                     .sequence_length = 4,
+                                     .supervised_row_count = 0}});
+  FakeModel model(DataType::FP32, 4);
+  FakeModel loss(DataType::FP32, 4, 2);
+  const auto mean = Evaluate(
+      *executor_, model, {.loss_layer = loss, .eval_data = data, .batches = 2});
+  EXPECT_EQ(mean.status().code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_NE(mean.status().message().find("at least one supervised row"),
+            absl::string_view::npos);
+}
+
+TEST_F(TrainerTest, RejectsInvalidSupervisionMetadataBeforeForward) {
+  auto data = MakeData();
+  auto loss = MakeLoss();
+  ASSERT_TRUE(data.ok()) << data.status();
+  ASSERT_TRUE(loss.ok()) << loss.status();
+  auto batch = (*data)->Next();
+  ASSERT_TRUE(batch.ok()) << batch.status();
+  FakeModel model;
+  FakeOptimizer optimizer;
+  for (int invalid_count : {-2, 5}) {
+    SCOPED_TRACE(invalid_count);
+    batch->supervised_row_count = invalid_count;
+    EXPECT_EQ(EvaluateBatch(*executor_, model, **loss, *batch).status().code(),
+              absl::StatusCode::kInvalidArgument);
+    VaryingBatchDataSetIterator training_data({*batch});
+    auto trained = Train(*executor_, model,
+                         {.loss_layer = **loss,
+                          .optimizer = optimizer,
+                          .training_data = training_data,
+                          .max_steps = 1});
+    EXPECT_EQ(trained.status().code(), absl::StatusCode::kInvalidArgument);
+  }
+  EXPECT_EQ(model.forward_calls, 0);
+  EXPECT_EQ((*loss)->forward_calls, 0);
+  EXPECT_EQ(optimizer.steps, 0);
+}
+
+TEST_F(TrainerTest, TrainRejectsZeroSupervisionBeforeForwardOrOptimizerUpdate) {
+  auto data = MakeData();
+  auto loss = MakeLoss();
+  ASSERT_TRUE(data.ok()) << data.status();
+  ASSERT_TRUE(loss.ok()) << loss.status();
+  auto batch = (*data)->Next();
+  ASSERT_TRUE(batch.ok()) << batch.status();
+  batch->supervised_row_count = 0;
+  VaryingBatchDataSetIterator training_data({*batch});
+  FakeModel model;
+  FakeOptimizer optimizer;
+  auto trained = Train(*executor_, model,
+                       {.loss_layer = **loss,
+                        .optimizer = optimizer,
+                        .training_data = training_data,
+                        .max_steps = 1});
+  EXPECT_EQ(trained.status().code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_NE(trained.status().message().find("at least one supervised row"),
+            absl::string_view::npos);
+  EXPECT_EQ(model.forward_calls, 0);
+  EXPECT_EQ((*loss)->forward_calls, 0);
+  EXPECT_EQ(model.backward_calls, 0);
+  EXPECT_EQ(optimizer.steps, 0);
+}
+
+TEST_F(TrainerTest, TrainAcceptsAnExplicitSupervisedRowCount) {
+  auto data = MakeData();
+  ASSERT_TRUE(data.ok()) << data.status();
+  auto batch = (*data)->Next();
+  ASSERT_TRUE(batch.ok()) << batch.status();
+  auto host_losses = cuda::PageLockedHostArray<float>::CopyFrom(
+      *executor_, std::vector<float>{0.0f, 1.0f, 2.0f, 0.0f});
+  ASSERT_TRUE(host_losses.ok()) << host_losses.status();
+  auto loss = FakeLoss::Create(*executor_, host_losses->span());
+  ASSERT_TRUE(loss.ok()) << loss.status();
+  batch->supervised_row_count = 2;
+  VaryingBatchDataSetIterator training_data({*batch});
+  FakeModel model;
+  FakeOptimizer optimizer;
+  auto trained = Train(*executor_, model,
+                       {.loss_layer = **loss,
+                        .optimizer = optimizer,
+                        .training_data = training_data,
+                        .max_steps = 2});
+  ASSERT_TRUE(trained.ok()) << trained.status();
+  EXPECT_EQ(trained->steps_completed, 2);
+  EXPECT_EQ(model.backward_calls, 2);
+  EXPECT_EQ(optimizer.steps, 2);
 }
 
 TEST_F(TrainerTest, EvaluateRejectsADatasetFromAnotherExecutor) {

@@ -171,5 +171,32 @@ TEST_F(BatchValidationTest, RejectsInvalidMetadataAndShapeOverflow) {
         absl::StatusCode::kInvalidArgument);
 }
 
+TEST_F(BatchValidationTest,
+       SupervisedRowsDefaultToAllAndValidateExplicitCounts) {
+  ASSERT_TRUE(batch_->loss_row_count().ok());
+  EXPECT_EQ(*batch_->loss_row_count(), 8);
+  for (int count : {0, 3, 8}) {
+    batch_->supervised_row_count = count;
+    ASSERT_TRUE(batch_->loss_row_count().ok());
+    EXPECT_EQ(*batch_->loss_row_count(), count);
+  }
+  const ActivationType type(DataType::FP32, {kBatch, 4, 3});
+  for (int count : {-2, 9, std::numeric_limits<int32_t>::max()}) {
+    batch_->supervised_row_count = count;
+    EXPECT_EQ(batch_->loss_row_count().status().code(),
+              absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ(ValidateBatchTypes(*batch_, {type}, "input").code(),
+              absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ(
+        ValidateBatchInput(*executor_, *batch_, batch_->inputs, type, "input")
+            .code(),
+        absl::StatusCode::kInvalidArgument);
+  }
+  batch_->supervised_row_count = -1;
+  batch_->batch_size = 0;
+  EXPECT_EQ(batch_->loss_row_count().status().code(),
+            absl::StatusCode::kInvalidArgument);
+}
+
 }  // namespace
 }  // namespace pluto::llm

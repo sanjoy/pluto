@@ -19,8 +19,15 @@ namespace pluto::llm {
 // useful. sequence_length fixes the token dimension; only the leading batch
 // dimension is symbolic. Logits and losses are FP32 even with BF16 model
 // activations.
+// A target equal to kIgnoredTarget omits that row from the objective: its loss
+// and logit gradient are zero, and backward averages only the remaining rows.
+// This supports both prompt masking and right-padded independent sequences.
+// An entirely ignored batch has zero loss and gradient. Other target IDs must
+// belong to [0, vocab_size()); callers provide valid targets on the GPU.
 class CrossEntropyLossLayer final : public Layer {
  public:
+  static constexpr int kIgnoredTarget = -1;
+
   absl::string_view name() const override { return "CrossEntropyLossLayer"; }
 
   static absl::StatusOr<std::unique_ptr<CrossEntropyLossLayer>> Create(
@@ -69,7 +76,8 @@ class CrossEntropyLossLayer final : public Layer {
       {DataType::FP32, {ActivationType::kBatchDimension, sequence_length_}}};
 };
 
-// Scalar log-sum-exp reference for the terminal cross-entropy operation.
+// Scalar log-sum-exp reference for the terminal cross-entropy operation,
+// including CrossEntropyLossLayer::kIgnoredTarget masking and normalization.
 class CrossEntropyLossLayerReference final : public LayerReference {
  public:
   absl::string_view name() const override {

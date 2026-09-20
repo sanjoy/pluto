@@ -51,6 +51,12 @@ absl::StatusOr<ReferenceFwdResult> CrossEntropyLossLayerReference::fwd_impl(
   // log-sum-exp formula. Padded lanes are included, just as in the CUDA
   // kernel; the LM head guarantees that they contain negative infinity.
   for (int row = 0; row < rows; ++row) {
+    // Prompt/padding rows are absent from the objective, not merely multiplied
+    // by zero after a softmax. In particular their logits may safely be NaN.
+    if (targets[row] == CrossEntropyLossLayer::kIgnoredTarget) {
+      loss[row] = 0.0f;
+      continue;
+    }
     if (targets[row] < 0 || targets[row] >= vocab_size_)
       return absl::InvalidArgumentError("target token is outside vocabulary");
     const float* row_logits =
@@ -86,7 +92,17 @@ absl::StatusOr<HostBufferVec> CrossEntropyLossLayerReference::bwd_impl(
   const auto* logits = static_cast<const float*>(state.intermediates[0].data());
   const auto* targets = static_cast<const int*>(state.intermediates[1].data());
   auto* d_logits = static_cast<float*>(gradient.data());
+  // Average over actual supervised targets, not sequence storage. Adding any
+  // number of padding rows must leave every real token's gradient unchanged.
+  int valid_rows = 0;
+  for (int row = 0; row < rows; ++row)
+    if (targets[row] != CrossEntropyLossLayer::kIgnoredTarget) ++valid_rows;
   for (int row = 0; row < rows; ++row) {
+    if (targets[row] == CrossEntropyLossLayer::kIgnoredTarget) {
+      std::fill_n(d_logits + static_cast<size_t>(row) * padded_vocab_size_,
+                  padded_vocab_size_, 0.0f);
+      continue;
+    }
     const float* row_logits =
         logits + static_cast<size_t>(row) * padded_vocab_size_;
     float maximum = -std::numeric_limits<float>::infinity();
@@ -99,7 +115,7 @@ absl::StatusOr<HostBufferVec> CrossEntropyLossLayerReference::bwd_impl(
       const float one_hot = token == targets[row] ? 1.0f : 0.0f;
       d_logits[static_cast<size_t>(row) * padded_vocab_size_ + token] =
           (std::exp(row_logits[token] - maximum) / denominator - one_hot) /
-          static_cast<float>(rows);
+          static_cast<float>(valid_rows);
     }
   }
   return HostBufferVec{std::move(gradient)};

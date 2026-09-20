@@ -50,6 +50,7 @@ __tile_global__ void AddLossKernel(const float* __restrict__ losses,
 struct ForwardPass {
   Buffer loss;
   int row_count;
+  int loss_row_count;
   size_t model_output_count;
   BackwardState model_state;
   BackwardState loss_state;
@@ -63,6 +64,7 @@ absl::StatusOr<ForwardPass> Forward(cuda::Executor& executor,
   // consume flat, untyped allocations.
   RETURN_IF_ERROR(ValidateTrainingBatch(executor, model, loss_layer, batch));
   ASSIGN_OR_RETURN(const int rows, batch.token_count());
+  ASSIGN_OR_RETURN(const int loss_rows, batch.loss_row_count());
   ASSIGN_OR_RETURN(auto model_fwd, model.fwd(executor, {batch.inputs}, hooks));
   RETURN_IF_ERROR(ValidateBatchBuffers(executor, batch, model_fwd.outputs,
                                        model.output_types(), model.name()));
@@ -76,8 +78,12 @@ absl::StatusOr<ForwardPass> Forward(cuda::Executor& executor,
   // Preflight established one FP32 value per token/activation row; the
   // returned-buffer validation above confirms that the implementation agrees.
   Buffer loss = std::move(loss_fwd.outputs[0]);
-  return ForwardPass{std::move(loss), rows, model_output_count,
-                     std::move(model_fwd.state), std::move(loss_fwd.state)};
+  return ForwardPass{std::move(loss),
+                     rows,
+                     loss_rows,
+                     model_output_count,
+                     std::move(model_fwd.state),
+                     std::move(loss_fwd.state)};
 }
 
 absl::Status Backward(cuda::Executor& executor, Layer& model, Layer& loss_layer,
@@ -172,11 +178,17 @@ absl::StatusOr<Buffer> Evaluate(cuda::Executor& executor, const Layer& model,
     ASSIGN_OR_RETURN(auto pass, Forward(executor, model, loss_layer, batch,
                                         options.layer_hooks));
     if (normalization_count >
-        std::numeric_limits<int64_t>::max() - pass.row_count) {
+        std::numeric_limits<int64_t>::max() - pass.loss_row_count) {
       return absl::OutOfRangeError("evaluation normalization count overflowed");
     }
-    normalization_count += pass.row_count;
+    normalization_count += pass.loss_row_count;
     const bool final_batch = index + 1 == options.batches;
+    if (final_batch && normalization_count == 0)
+      return absl::InvalidArgumentError(
+          "evaluation requires at least one supervised row");
+    // Excluded rows still occupy the loss vector, but the loss layer writes
+    // zero there. Sum all physical rows and divide only by supervised rows,
+    // weighting differently padded batches by their target counts.
     const float output_scale =
         final_batch ? 1.0f / static_cast<float>(normalization_count) : 1.0f;
     AddLossKernel<<<1, 1, 0, executor.stream()>>>(
@@ -242,6 +254,10 @@ absl::StatusOr<TrainingResult> Train(cuda::Executor& executor, Layer& model,
     if (steps_completed == std::numeric_limits<int>::max())
       return absl::OutOfRangeError("training step number overflowed");
     ASSIGN_OR_RETURN(DataBatch batch, training_data.Next());
+    ASSIGN_OR_RETURN(const int loss_rows, batch.loss_row_count());
+    if (loss_rows == 0)
+      return absl::InvalidArgumentError(
+          "training batch requires at least one supervised row");
     ASSIGN_OR_RETURN(auto pass, Forward(executor, model, loss_layer, batch,
                                         options.layer_hooks));
     RETURN_IF_ERROR(Backward(executor, model, loss_layer, std::move(pass),

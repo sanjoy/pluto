@@ -78,6 +78,13 @@ struct DataBatch {
   int32_t batch_size;
   int32_t sequence_length = 1;
 
+  // Number of rows that contribute targets to the loss. -1 means every row,
+  // preserving the unmasked language-model and autoencoder contracts. A
+  // padded/prompt-masked iterator supplies the actual supervised row count;
+  // its loss layer must emit zero for excluded rows. This is normalization
+  // metadata, not an attention mask, and does not identify the excluded rows.
+  int32_t supervised_row_count = -1;
+
   // The kernels index flattened token/activation rows using int. Check before
   // allocating or launching so invalid dimensions cannot overflow that index.
   absl::StatusOr<int> token_count() const {
@@ -87,6 +94,18 @@ struct DataBatch {
     if (count > std::numeric_limits<int>::max())
       return absl::InvalidArgumentError("batch token count exceeds int range");
     return static_cast<int>(count);
+  }
+
+  // Checks dimensions and loss metadata without reading device targets. Zero
+  // is legal for an evaluation batch, but an entire evaluation with no
+  // supervised rows (or a training update with none) has no defined mean loss.
+  absl::StatusOr<int> loss_row_count() const {
+    const auto rows = token_count();
+    if (!rows.ok()) return rows.status();
+    if (supervised_row_count < -1 || supervised_row_count > *rows)
+      return absl::InvalidArgumentError(
+          "supervised_row_count must be -1 or between zero and token_count");
+    return supervised_row_count == -1 ? *rows : supervised_row_count;
   }
 };
 
