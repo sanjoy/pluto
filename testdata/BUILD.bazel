@@ -1,1 +1,4 @@
-exports_files(["shakespeare.txt"])
+exports_files([
+    "general_facts_dataset.txt",
+    "shakespeare.txt",
+])
