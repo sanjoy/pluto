@@ -1,0 +1,156 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+load("@rules_cuda//cuda:defs.bzl", "cuda_test")
+
+cc_library(
+    name = "executor",
+    srcs = ["executor.cc"],
+    hdrs = ["executor.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@abseil-cpp//absl/memory",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_library(
+    name = "buffer",
+    srcs = ["buffer.cc"],
+    hdrs = ["buffer.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":executor",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_library(
+    name = "page_locked_host_buffer",
+    srcs = ["page_locked_host_buffer.cc"],
+    hdrs = ["page_locked_host_buffer.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":executor",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_library(
+    name = "page_locked_host_array",
+    hdrs = ["page_locked_host_array.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":page_locked_host_buffer",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cuda_test(
+    name = "executor_test",
+    size = "small",
+    srcs = ["executor_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":executor",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cuda_test(
+    name = "buffer_test",
+    size = "small",
+    srcs = ["buffer_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":buffer",
+        ":executor",
+        ":page_locked_host_array",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cuda_test(
+    name = "page_locked_host_buffer_test",
+    size = "small",
+    srcs = ["page_locked_host_buffer_test.cc"],
+    copts = ["-std=c++20"],
+    host_copts = ["-std=c++20"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":buffer",
+        ":executor",
+        ":page_locked_host_array",
+        ":page_locked_host_buffer",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cuda_test(
+    name = "cutile_test",
+    size = "small",
+    srcs = ["cutile_test.cc"],
+    # CUDA Tile C++ is a C++20 extension and is opt-in in NVCC 13.3.
+    copts = [
+        "--enable-tile",
+        "-std=c++20",
+    ],
+    host_copts = ["-std=c++20"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":buffer",
+        ":executor",
+        ":page_locked_host_array",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "thread_pool",
+    srcs = ["thread_pool.cc"],
+    hdrs = ["thread_pool.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":executor",
+        "//src/util:combine_statuses",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/functional:function_ref",
+        "@abseil-cpp//absl/memory",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_test(
+    name = "thread_pool_test",
+    size = "medium",
+    srcs = ["thread_pool_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":buffer",
+        ":executor",
+        ":page_locked_host_array",
+        ":thread_pool",
+        "@abseil-cpp//absl/status",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)

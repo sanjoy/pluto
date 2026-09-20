@@ -1,0 +1,96 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+load("@rules_cuda//cuda:defs.bzl", "cuda_test")
+
+cc_library(
+    name = "combine_statuses",
+    srcs = ["combine_statuses.cc"],
+    hdrs = ["combine_statuses.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "combine_statuses_test",
+    size = "small",
+    srcs = ["combine_statuses_test.cc"],
+    deps = [
+        ":combine_statuses",
+        "@abseil-cpp//absl/status",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "status_macros",
+    hdrs = ["status_macros.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@abseil-cpp//absl/base:core_headers",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+    ],
+)
+
+cc_library(
+    name = "tee_stream",
+    hdrs = ["tee_stream.h"],
+    visibility = ["//visibility:public"],
+)
+
+cc_test(
+    name = "status_macros_test",
+    size = "small",
+    srcs = ["status_macros_test.cc"],
+    deps = [
+        ":status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@googletest//:gtest_main",
+    ],
+)
+
+# Status macros are also expanded in CUDA sources. Run the same success,
+# failure, single-evaluation and move-only checks through NVCC.
+cuda_test(
+    name = "nvcc_status_macros_test",
+    size = "small",
+    srcs = ["status_macros_test.cc"],
+    copts = ["-std=c++20"],
+    host_copts = ["-std=c++20"],
+    deps = [
+        ":status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "tee_stream_test",
+    size = "small",
+    srcs = ["tee_stream_test.cc"],
+    deps = [
+        ":tee_stream",
+        "@googletest//:gtest_main",
+    ],
+)
+
+# Compile the same policy checks with both host C++ and NVCC.
+cc_test(
+    name = "no_exceptions_test",
+    size = "small",
+    srcs = ["no_exceptions_test.cc"],
+    deps = ["@googletest//:gtest_main"],
+)
+
+cuda_test(
+    name = "nvcc_no_exceptions_test",
+    size = "small",
+    srcs = ["no_exceptions_test.cc"],
+    deps = ["@googletest//:gtest_main"],
+)

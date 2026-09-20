@@ -1,0 +1,7 @@
+/bazel-*
+
+# Generated research evidence is retained locally.
+/ai-slop/research/weight_memorization/autoregressive_word_evidence.tar.gz
+/ai-slop/research/weight_memorization/delta_batch_four_evidence.tar.gz
+/ai-slop/research/weight_memorization/delta_text_extension_evidence.tar.gz
+/ai-slop/research/weight_memorization/phrase_forward_evidence.tar.gz

@@ -1,0 +1,250 @@
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+
+cc_library(
+    name = "dataset",
+    srcs = ["dataset.cc"],
+    hdrs = ["dataset.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":tokenizer",
+        "//src/util:status_macros",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "@abseil-cpp//absl/memory",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_test(
+    name = "dataset_test",
+    size = "small",
+    srcs = ["dataset_test.cc"],
+    tags = [
+        "requires-gpu",
+        "requires-tokenizer",
+    ],
+    deps = [
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/status",
+        ":detokenizer",
+        ":plain_text_tokenizer",
+        ":gpt2_tokenizer",
+        ":dataset",
+        ":tokenizer",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "gpt2_tokenizer_vocabulary",
+    srcs = ["gpt2_tokenizer_vocabulary.cc"],
+    hdrs = ["gpt2_tokenizer_vocabulary.h"],
+    visibility = ["//src/dataset:__pkg__"],
+    deps = [
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/synchronization",
+    ],
+)
+
+cc_library(
+    name = "tokenizer",
+    srcs = ["tokenizer.cc"],
+    hdrs = ["tokenizer.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "gpt2_tokenizer",
+    srcs = ["gpt2_tokenizer.cc"],
+    hdrs = ["gpt2_tokenizer.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":tokenizer",
+        "//src/cuda:executor",
+        ":gpt2_tokenizer_vocabulary",
+        "//src/util:status_macros",
+        "//src/cuda:page_locked_host_array",
+        "@abseil-cpp//absl/base:core_headers",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/memory",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/synchronization",
+        "@re2//:re2",
+    ],
+)
+
+cc_library(
+    name = "plain_text_tokenizer",
+    srcs = ["plain_text_tokenizer.cc"],
+    hdrs = ["plain_text_tokenizer.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/util:status_macros",
+        "//src/cuda:page_locked_host_array",
+        "//src/cuda:executor",
+        ":detokenizer",
+        ":tokenizer",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "plain_text_tokenizer_test",
+    size = "small",
+    srcs = ["plain_text_tokenizer_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        "@cuda//:cuda_runtime",
+        "//src/cuda:page_locked_host_array",
+        "//src/cuda:executor",
+        ":detokenizer",
+        ":tokenizer",
+        ":plain_text_tokenizer",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "detokenizer",
+    srcs = ["detokenizer.cc"],
+    hdrs = ["detokenizer.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "gpt2_detokenizer",
+    srcs = ["gpt2_detokenizer.cc"],
+    hdrs = ["gpt2_detokenizer.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":detokenizer",
+        ":gpt2_tokenizer_vocabulary",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/memory",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "tokenizer_test",
+    size = "small",
+    srcs = ["tokenizer_test.cc"],
+    tags = ["requires-gpu", "requires-tokenizer"],
+    deps = [
+        "@cuda//:cuda_runtime",
+        "//src/cuda:page_locked_host_array",
+        ":gpt2_detokenizer",
+        ":gpt2_tokenizer",
+        "//src/cuda:executor",
+        ":detokenizer",
+        ":tokenizer",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "document_file",
+    srcs = ["document_file.cc"],
+    hdrs = ["document_file.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/memory",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "document_file_test",
+    size = "small",
+    srcs = ["document_file_test.cc"],
+    deps = [
+        ":document_file",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "fineweb_converter",
+    srcs = ["fineweb_converter.cc"],
+    hdrs = ["fineweb_converter.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/cuda:executor",
+        ":document_file",
+        ":tokenizer",
+        "//src/util:status_macros",
+        "//src/parquet:fineweb_parquet_reader",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/strings",
+    ],
+)
+
+cc_test(
+    name = "fineweb_converter_test",
+    size = "small",
+    srcs = ["fineweb_converter_test.cc"],
+    data = ["//src/parquet:testdata/fineweb_sample.parquet"],
+    tags = ["requires-gpu", "requires-tokenizer"],
+    deps = [
+        ":plain_text_tokenizer",
+        ":gpt2_detokenizer",
+        ":gpt2_tokenizer",
+        "//src/cuda:executor",
+        ":detokenizer",
+        ":document_file",
+        ":fineweb_converter",
+        ":tokenizer",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "tokenize_fineweb",
+    srcs = ["tokenize_fineweb.cc"],
+    deps = [
+        ":gpt2_tokenizer",
+        "//src/cuda:executor",
+        ":fineweb_converter",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+    ],
+)

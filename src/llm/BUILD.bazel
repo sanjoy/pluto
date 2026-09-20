@@ -1,0 +1,567 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+load("@rules_cuda//cuda:defs.bzl", "cuda_library")
+load(
+    "//src/llm:layers/defs.bzl",
+    "layer_library",
+    "layer_reference_library",
+    "layer_reference_test",
+    "layer_test",
+)
+
+cc_library(
+    name = "layer",
+    srcs = ["layer.cc"],
+    hdrs = ["layer.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":layer_hooks",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/host:buffer",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/container:inlined_vector",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/strings:string_view",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_library(
+    name = "layer_hooks",
+    hdrs = ["layer_hooks.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/strings:string_view",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cuda_library(
+    name = "vocabulary_readout",
+    srcs = ["vocabulary_readout.cc"],
+    hdrs = ["vocabulary_readout.h"],
+    copts = ["-std=c++20"],
+    host_copts = ["-std=c++20"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":layer",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_test(
+    name = "vocabulary_readout_test",
+    srcs = ["vocabulary_readout_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":layer",
+        ":vocabulary_readout",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "layer_hooks_test",
+    srcs = ["layer_hooks_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":layer_hooks",
+        ":combinators",
+        ":fully_connected",
+        ":layer",
+        ":layer_test_util",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/memory",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "activation_type_test",
+    srcs = ["activation_type_test.cc"],
+    deps = [
+        ":layer",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/types:span",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "layer_name_test",
+    srcs = ["layer_name_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":layer",
+        ":layer_references",
+        ":layer_test_util",
+        ":layers",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings:string_view",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "layer_test",
+    srcs = ["layer_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":combinators",
+        ":layer",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "@abseil-cpp//absl/status",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "layer_reference_test",
+    srcs = ["layer_reference_test.cc"],
+    deps = [
+        ":combinators_reference",
+        ":layer",
+        "//src/host:buffer",
+        "@abseil-cpp//absl/status",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "batch_validation",
+    srcs = ["batch_validation.cc"],
+    hdrs = ["batch_validation.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":layer",
+        ":layer_type_check",
+        "//src/cuda:executor",
+        "//src/dataset",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "batch_validation_test",
+    srcs = ["batch_validation_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":batch_validation",
+        ":layer",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/dataset",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/strings:string_view",
+        "@abseil-cpp//absl/types:span",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "sampling",
+    srcs = ["sampling.cc"],
+    hdrs = ["sampling.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "sampling_test",
+    srcs = ["sampling_test.cc"],
+    deps = [
+        ":sampling",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "determinism_test",
+    size = "medium",
+    srcs = ["determinism_test.cc"],
+    copts = ["-std=c++20"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":layer",
+        ":layer_reference_test_util",
+        ":layers",
+        ":optimizer",
+        ":sampling",
+        ":trainer",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "checkpoint",
+    srcs = ["checkpoint.cc"],
+    hdrs = ["checkpoint.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":layer",
+        "//src/util:status_macros",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/functional:function_ref",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_test(
+    name = "checkpoint_test",
+    size = "small",
+    srcs = ["checkpoint_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":checkpoint",
+        ":layer",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "layer_util",
+    hdrs = ["layers/util.h"],
+    visibility = ["//src/llm:__subpackages__"],
+    deps = [
+        ":layer",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_library(
+    name = "layer_reference_internal",
+    hdrs = ["layers/reference_internal.h"],
+    visibility = ["//src/llm:__subpackages__"],
+    deps = [
+        ":layer",
+        "//src/util:status_macros",
+        "//src/host:buffer",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "layer_type_check",
+    hdrs = ["layers/util/type_check.h"],
+    deps = [
+        ":layer",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+layer_library("attention")
+layer_library("combinators", [
+    ":layer_hooks",
+    ":layer_type_check",
+])
+layer_library("cross_entropy_loss")
+layer_library("embedding", ["@cuda//:cub"])
+layer_library("fully_connected")
+layer_library("gelu")
+layer_library("norm")
+layer_library("sparse_autoencoder")
+
+layer_reference_library("attention")
+layer_reference_library("combinators", [":layer_type_check"])
+layer_reference_library("cross_entropy_loss")
+layer_reference_library("embedding")
+layer_reference_library("fully_connected")
+layer_reference_library("gelu")
+layer_reference_library("norm")
+layer_reference_library("sparse_autoencoder")
+
+cc_library(
+    name = "layer_references",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":attention_reference",
+        ":combinators_reference",
+        ":cross_entropy_loss_reference",
+        ":embedding_reference",
+        ":fully_connected_reference",
+        ":gelu_reference",
+        ":norm_reference",
+        ":sparse_autoencoder_reference",
+    ],
+)
+
+cuda_library(
+    name = "optimizer",
+    srcs = [
+        "adamw_optimizer.cc",
+        "optimizer.cc",
+    ],
+    hdrs = [
+        "adamw_optimizer.h",
+        "optimizer.h",
+    ],
+    copts = [
+        "--enable-tile",
+        "-std=c++20",
+    ],
+    host_copts = ["-std=c++20"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":layer",
+        ":layer_util",
+        "//src/util:status_macros",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/memory",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cuda_library(
+    name = "trainer",
+    srcs = ["trainer.cc"],
+    hdrs = ["trainer.h"],
+    copts = [
+        "--enable-tile",
+        "-std=c++20",
+    ],
+    host_copts = ["-std=c++20"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":batch_validation",
+        ":layer",
+        ":optimizer",
+        "//src/dataset",
+        "//src/util:status_macros",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_test(
+    name = "trainer_test",
+    size = "small",
+    srcs = ["trainer_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":layer_hooks",
+        ":attention",
+        ":combinators",
+        ":embedding",
+        ":fully_connected",
+        ":layer",
+        ":optimizer",
+        ":sparse_autoencoder",
+        ":trainer",
+        "//src/dataset",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "@abseil-cpp//absl/memory",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+# Compatibility aggregate for binaries that use several layer families.
+cc_library(
+    name = "layers",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":attention",
+        ":combinators",
+        ":cross_entropy_loss",
+        ":embedding",
+        ":fully_connected",
+        ":gelu",
+        ":norm",
+        ":optimizer",
+        ":sparse_autoencoder",
+    ],
+)
+
+cc_library(
+    name = "layer_test_util",
+    testonly = True,
+    hdrs = ["layers/test_util.h"],
+    deps = [
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest",
+    ],
+)
+
+cc_library(
+    name = "layer_reference_test_util",
+    testonly = True,
+    visibility = [
+        "//src/llm/experiments/mlp_automaton:__pkg__",
+        "//src/llm:__subpackages__",
+    ],
+    hdrs = ["layers/reference_test_util.h"],
+    deps = [
+        ":layer",
+        ":layer_reference_internal",
+        ":layer_test_util",
+        "//src/util:status_macros",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/cuda:page_locked_host_buffer",
+        "//src/host:buffer",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest",
+    ],
+)
+
+layer_test("attention", [
+    ":attention_reference",
+    ":layer_reference_test_util",
+])
+layer_test("combinators", [
+    ":fully_connected",
+    ":gelu",
+    "//src/util:status_macros",
+    "@abseil-cpp//absl/memory",
+    "@abseil-cpp//absl/status",
+    "@abseil-cpp//absl/status:statusor",
+    "@abseil-cpp//absl/types:span",
+])
+layer_test("cross_entropy_loss")
+layer_test("embedding")
+layer_test("fully_connected")
+layer_test("gelu")
+layer_test("norm")
+layer_test("sparse_autoencoder")
+layer_test("optimizer", [
+    ":combinators",
+    ":embedding",
+    ":fully_connected",
+])
+
+layer_reference_test("attention")
+layer_reference_test("combinators", [
+    ":fully_connected",
+    ":fully_connected_reference",
+    ":gelu",
+    ":gelu_reference",
+    "@abseil-cpp//absl/memory",
+])
+layer_reference_test("cross_entropy_loss")
+layer_reference_test("embedding")
+layer_reference_test("fully_connected")
+layer_reference_test("gelu")
+layer_reference_test("norm")
+layer_reference_test("sparse_autoencoder")
+
+test_suite(
+    name = "layers_test",
+    tests = [
+        ":attention_test",
+        ":combinators_test",
+        ":cross_entropy_loss_test",
+        ":embedding_test",
+        ":fully_connected_test",
+        ":gelu_test",
+        ":norm_test",
+        ":optimizer_test",
+        ":sparse_autoencoder_test",
+    ],
+)
+
+test_suite(
+    name = "layer_references_test",
+    tests = [
+        ":attention_reference_test",
+        ":combinators_reference_test",
+        ":cross_entropy_loss_reference_test",
+        ":embedding_reference_test",
+        ":fully_connected_reference_test",
+        ":gelu_reference_test",
+        ":norm_reference_test",
+        ":sparse_autoencoder_reference_test",
+    ],
+)

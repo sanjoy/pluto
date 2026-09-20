@@ -1,0 +1,209 @@
+#include "src/llm/experiments/mlp_automaton/model.h"
+
+#include <cuda_runtime_api.h>
+
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <cstdint>
+#include <fstream>
+#include <limits>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_cat.h"
+#include "src/llm/layers/combinators.h"
+#include "src/llm/layers/embedding.h"
+#include "src/llm/layers/fully_connected.h"
+#include "src/llm/layers/gelu.h"
+#include "src/llm/layers/norm.h"
+#include "src/util/status_macros.h"
+
+namespace pluto::llm::mlp_automaton {
+namespace {
+
+constexpr int kTile = 16;
+constexpr float kEpsilon = 1e-5f;
+// Checkpoint traversal writes E and position embeddings first, then twelve
+// tensors per block: six for attention (LN1, QKV, output projection) and six
+// for the MLP (LN2, input projection, output projection). Select only the MLP;
+// the shared embedding and final LayerNorm always come from the same files.
+std::array<int, 9> CheckpointIndices(int mlp_block) {
+  const int mlp_start = 2 + 12 * mlp_block + 6;
+  return {0,
+          mlp_start,
+          mlp_start + 1,
+          mlp_start + 2,
+          mlp_start + 3,
+          mlp_start + 4,
+          mlp_start + 5,
+          2 + 12 * kGpt2TransformerBlockCount,
+          3 + 12 * kGpt2TransformerBlockCount};
+}
+
+absl::StatusOr<cuda::PageLockedHostArray<float>> ReadWeight(
+    cuda::Executor& executor, const std::filesystem::path& path,
+    size_t expected_bytes) {
+  std::error_code error;
+  if (!std::filesystem::is_regular_file(path, error)) {
+    return absl::NotFoundError(
+        absl::StrCat("missing or unreadable weight: ", path.string()));
+  }
+  const uintmax_t size = std::filesystem::file_size(path, error);
+  if (error || size != expected_bytes || size % sizeof(float) != 0 ||
+      size >
+          static_cast<uintmax_t>(std::numeric_limits<std::streamsize>::max())) {
+    return absl::DataLossError(absl::StrCat(
+        "wrong weight size: ", path.string(), "; expected ", expected_bytes));
+  }
+  ASSIGN_OR_RETURN(auto values, cuda::PageLockedHostArray<float>::Allocate(
+                                    executor, expected_bytes / sizeof(float)));
+  std::ifstream input(path, std::ios::binary);
+  if (!input.read(reinterpret_cast<char*>(values.data()), expected_bytes) ||
+      input.peek() != std::ifstream::traits_type::eof()) {
+    return absl::DataLossError(
+        absl::StrCat("cannot read complete weight: ", path.string()));
+  }
+  for (float value : values) {
+    if (!std::isfinite(value)) {
+      return absl::DataLossError(
+          absl::StrCat("nonfinite weight in ", path.string()));
+    }
+  }
+  return values;
+}
+
+}  // namespace
+
+absl::StatusOr<std::unique_ptr<Layer>> CreateReadout(
+    cuda::Executor& executor, const Dimensions& dimensions) {
+  constexpr DataType kType = DataType::BF16;
+  ComposedLayerBuilder builder;
+  RETURN_IF_ERROR(builder.add(EmbeddingLookupLayer::Create(
+      executor, dimensions.vocab_size, dimensions.model_width, kType)));
+  auto* embedding = static_cast<EmbeddingLookupLayer*>(builder.back());
+
+  ComposedLayerBuilder mlp;
+  RETURN_IF_ERROR(mlp.add(LayerNormLayer::Create(
+      executor, dimensions.model_width, kEpsilon, kType)));
+  RETURN_IF_ERROR(mlp.add(FullyConnectedLayer::Create(
+      executor, dimensions.model_width, dimensions.feed_forward_width, kType)));
+  RETURN_IF_ERROR(mlp.add(
+      GeluLayer::Create(executor, dimensions.feed_forward_width, kType)));
+  RETURN_IF_ERROR(mlp.add(FullyConnectedLayer::Create(
+      executor, dimensions.feed_forward_width, dimensions.model_width, kType)));
+  ASSIGN_OR_RETURN(auto branch, mlp.create("mlp"));
+  RETURN_IF_ERROR(builder.add(ResidualLayer::Create(std::move(branch))));
+  RETURN_IF_ERROR(builder.add(LayerNormLayer::Create(
+      executor, dimensions.model_width, kEpsilon, kType)));
+  RETURN_IF_ERROR(builder.add(LanguageModelingHeadLayer::Create(embedding)));
+  ASSIGN_OR_RETURN(auto result, builder.create("mlp_automaton_readout"));
+  return std::unique_ptr<Layer>(std::move(result));
+}
+
+absl::Status LoadMlpWeights(cuda::Executor& executor, Layer& readout,
+                            const std::filesystem::path& directory,
+                            int mlp_block) {
+  // Check before filename arithmetic or any device mutation.
+  if (mlp_block < 0 || mlp_block >= kGpt2TransformerBlockCount)
+    return absl::InvalidArgumentError(absl::StrCat(
+        "mlp_block must be in [0, ", kGpt2TransformerBlockCount, ")"));
+  const auto checkpoint_indices = CheckpointIndices(mlp_block);
+  if (directory.empty())
+    return absl::InvalidArgumentError("checkpoint directory must not be empty");
+  std::vector<Buffer*> weights;
+  absl::flat_hash_set<const void*> seen;
+  for (Buffer& weight : readout.weights()) {
+    if (&weight.executor() != &executor)
+      return absl::InvalidArgumentError("weight belongs to another executor");
+    if (seen.insert(weight.data()).second)
+      weights.push_back(&weight);
+  }
+  if (weights.size() != checkpoint_indices.size()) {
+    return absl::InvalidArgumentError(
+        "MLP loader requires the nine unique CreateReadout weights");
+  }
+  std::vector<cuda::PageLockedHostArray<float>> staging;
+  for (size_t index = 0; index < weights.size(); ++index) {
+    const auto path =
+        directory / absl::StrCat("weight_", checkpoint_indices[index], ".bin");
+    ASSIGN_OR_RETURN(auto values,
+                     ReadWeight(executor, path, weights[index]->size_bytes()));
+    staging.push_back(std::move(values));
+  }
+  // No device bytes change until the last required file has passed validation.
+  // Staging releases remain ordered after all previously queued uploads.
+  for (size_t index = 0; index < weights.size(); ++index) {
+    const auto status = cuda::CudaStatus(
+        cudaMemcpyAsync(weights[index]->data(), staging[index].data(),
+                        staging[index].size_bytes(), cudaMemcpyHostToDevice,
+                        executor.stream()),
+        "upload isolated MLP weight");
+    if (!status.ok())
+      return status;
+  }
+  return absl::OkStatus();
+}
+
+absl::StatusOr<cuda::PageLockedHostArray<TopTransition>> ScanVocabulary(
+    cuda::Executor& executor, const Layer& readout, int vocab_size,
+    int batch_size, absl::FunctionRef<void(int)> progress) {
+  if (vocab_size <= 0 || vocab_size > std::numeric_limits<int>::max() - kTile ||
+      batch_size <= 0 || batch_size % kTile != 0) {
+    return absl::InvalidArgumentError(
+        "vocabulary must be positive; batch_size must be a positive multiple "
+        "of 16");
+  }
+  const int padded_vocab = (vocab_size + kTile - 1) / kTile * kTile;
+  // Do not allocate a huge unused batch when scanning a tiny test vocabulary.
+  batch_size = std::min(batch_size, padded_vocab);
+  ASSIGN_OR_RETURN(auto ids, cuda::PageLockedHostArray<int32_t>::Allocate(
+                                 executor, batch_size));
+  ASSIGN_OR_RETURN(
+      auto result,
+      cuda::PageLockedHostArray<TopTransition>::Allocate(executor, vocab_size));
+  for (int start = 0; start < vocab_size;) {
+    const int count = std::min(batch_size, vocab_size - start);
+    const int rows = (count + kTile - 1) / kTile * kTile;
+    for (int row = 0; row < rows; ++row)
+      ids[row] = row < count ? start + row : 0;
+    ASSIGN_OR_RETURN(auto tokens,
+                     Buffer::Allocate(executor, rows * sizeof(int32_t)));
+    RETURN_IF_ERROR(cuda::CudaStatus(
+        cudaMemcpyAsync(tokens.data(), ids.data(), tokens.size_bytes(),
+                        cudaMemcpyHostToDevice, executor.stream()),
+        "upload vocabulary token IDs"));
+    // Destruction on an error path queues staging frees behind queued DMA.
+    // The explicit synchronization below is still needed for CPU reads/reuse.
+
+    ASSIGN_OR_RETURN(auto logits_fwd, readout.fwd(executor, {tokens}));
+    if (logits_fwd.outputs.size() != 1) {
+      return absl::FailedPreconditionError(
+          "readout must return one logits tensor");
+    }
+    auto logits = std::move(logits_fwd.outputs[0]);
+
+    ASSIGN_OR_RETURN(auto top, ReadTopTransitions(executor, logits, rows,
+                                                  vocab_size, padded_vocab));
+    RETURN_IF_ERROR(cuda::CudaStatus(
+        cudaMemcpyAsync(result.data() + start, top.data(),
+                        count * sizeof(TopTransition), cudaMemcpyDeviceToHost,
+                        executor.stream()),
+        "download compact vocabulary transitions"));
+    RETURN_IF_ERROR(executor.Synchronize());
+    for (int row = start; row < start + count; ++row) {
+      if (result[row].token < 0 || result[row].token >= vocab_size ||
+          !std::isfinite(result[row].probability)) {
+        return absl::DataLossError(
+            absl::StrCat("nonfinite logits at source token ", row));
+      }
+    }
+    start += count;
+    progress(start);
+  }
+  return result;
+}
+
+}  // namespace pluto::llm::mlp_automaton
