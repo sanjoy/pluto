@@ -44,6 +44,41 @@ cc_library(
 )
 
 cuda_library(
+    name = "extract_top1_ids",
+    srcs = ["extract_top1_ids.cc"],
+    hdrs = ["extract_top1_ids.h"],
+    copts = ["--enable-tile", "-std=c++20"],
+    host_copts = ["-std=c++20"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_test(
+    name = "extract_top1_ids_test",
+    srcs = ["extract_top1_ids_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":extract_top1_ids",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cuda_library(
     name = "gradient_clipper",
     srcs = ["gradient_clipper.cc"],
     hdrs = ["gradient_clipper.h"],

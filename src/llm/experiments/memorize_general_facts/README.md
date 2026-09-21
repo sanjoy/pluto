@@ -12,8 +12,9 @@ per-depth evidence, smallest checkpoint, and exact verification command.
 
 ## Code and experiment utilities
 
-This directory contains the native C++ training/evaluation binary, its supporting
-libraries, and their Bazel tests. Python sweep drivers, Pareto reporting,
+This directory contains the native C++ training/evaluation binary and its model
+test. Reusable components live in `src/dataset/` and `src/llm/`.
+Python sweep drivers, Pareto reporting,
 checkpoint conversion, corpus/prediction audits, and their tests live separately
 in [`scripts/memorize_general_facts`](../../../../scripts/memorize_general_facts).
 The native implementation does not depend on those scripts; the drivers invoke
@@ -22,6 +23,8 @@ the built binary.
 The shared line-based iterator is `src/dataset/padded_line_dataset.h`; it
 provides per-sentence padding, prompt masking, and reproducible epoch shuffling.
 Optional global gradient clipping uses `src/llm/gradient_clipper.h`.
+Exact masked top-1 predictions use `ExtractTop1Ids` in
+`src/llm/extract_top1_ids.h`, implemented with a deterministic cuTile kernel.
 
 Existing reports and `runs/` evidence remain here unchanged. Recorded commands
 in historical manifests may name the old script locations; those are provenance,

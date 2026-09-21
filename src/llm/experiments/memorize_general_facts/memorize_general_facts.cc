@@ -33,7 +33,7 @@
 #include "src/llm/adamw_optimizer.h"
 #include "src/llm/batch_validation.h"
 #include "src/llm/checkpoint.h"
-#include "src/llm/experiments/memorize_general_facts/predictions.h"
+#include "src/llm/extract_top1_ids.h"
 #include "src/llm/gradient_clipper.h"
 #include "src/llm/layers/cross_entropy_loss.h"
 #include "src/llm/recipes/gpt2.h"
@@ -137,7 +137,7 @@ absl::StatusOr<Metrics> EvaluateExact(
     RETURN_IF_ERROR(ValidateTrainingBatch(executor, model, loss, batch));
     ASSIGN_OR_RETURN(auto forward, model.fwd(executor, {batch.inputs}));
     ASSIGN_OR_RETURN(auto predictions,
-                     PredictMaskedTokens(executor, forward.outputs[0],
+                     ExtractTop1Ids(executor, forward.outputs[0],
                                          batch.targets, vocabulary_size));
     ASSIGN_OR_RETURN(auto loss_forward,
                      loss.fwd(executor, {forward.outputs[0], batch.targets}));
