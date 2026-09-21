@@ -216,6 +216,7 @@ configurations, and matched-budget versus pooled frontiers distinct.
 | Coarse | 8 | 32 | 1,743,168 | 5,000 | 2,777 / 10,002 | 2,777 at step 5,000 | 1.897634668045 |
 | Longer budget, narrow | 1 | 16 | 824,048 | 20,000 | 1,833 / 10,002 | 1,814 at step 19,840 | 1.020205828413 |
 | Longer budget, narrow | 2 | 16 | 827,328 | 20,000 | 454 / 10,002 | 454 at step 20,000 | 0.411472814485 |
+| Longer budget, narrow | 4 | 16 | 833,888 | 20,000 | 485 / 10,002 | 474 at step 19,968 | 0.463739087712 |
 | Midpoint refinement | 1 | 24 | 1,238,376 | 20,000 | 3 / 10,002 | 2 at step 16,768 | 0.004384264733 |
 
 One block at width 24 completed all 20,000 updates (312.5 epochs) without
@@ -273,6 +274,30 @@ TSV SHA-256: `d0b544fa2cf83d0ef3668ad31e7b41c2732132289d2594ec652df95652195b0f`.
 Its coordinator started the trial at 03:00:20 UTC; it was paused during the
 width-24 refinement, resumed at 03:19:22, and finished verification at 03:39:37.
 See `runs/GPU_SCHEDULING.md` before comparing elapsed times.
+
+Four blocks at width 16 reached 20,000 updates without hitting the time cap,
+with 485 errors, 675 exact sentences, and mean loss 0.463739087712. Fresh native
+checkpoint inference and independent retokenization reproduce this result;
+the prediction TSVs match byte-for-byte. All 52 final FP32 weight files have
+the recipe-derived sizes and finite values, totaling 833,888 parameters
+(3,335,552 bytes). Its errors comprise 57 first-suffix targets and 428 later
+content targets; all 1,024 EOS targets are correct.
+
+Adding two more blocks does not improve the final total under this seed and
+budget: four blocks correct 294 of the two-block model's errors but introduce
+325 new ones, leaving 160 shared erroneous target positions. The final error
+count therefore increases from 454 to 485. Only 12 of those shared errors
+choose the same wrong token. This is not evidence that additional depth can
+never help, nor that either trial has reached an optimization limit. The
+four-block model's best logged count, 474 errors at step 19,968, is not the
+independently verified final checkpoint result.
+
+Checkpoint:
+`/home/ubuntu/checkpoints/memorize_general_facts/width_depth_long_1/width_16/layers_4/step_20000`.
+Artifacts: `runs/width_depth_long_1/width_16/layers_4/`. Independent prediction
+TSV SHA-256: `d8bc59b93f308c43abfe47873cf1d66bfc0a4bb1d1b5362e99629008191df311`.
+This trial ran from 03:39:37 to completion of both independent checks at
+04:06:23 UTC. No competing GPU experiment or test was launched during it.
 
 The width-64, one-block trial reached its full update cap, not its time cap.
 Its final checkpoint reloaded with the same two errors and passed the independent
@@ -434,7 +459,7 @@ widths 32, 16, and 8 at depths 1, 2, 4, and 8, with an explicitly fixed single
 attention head and the same 20,000-update schedule and native binary as
 `width_depth_long_0`. One block at width 32 passed both independent checks at
 step 9,984, moving the measured longer-budget and pooled frontiers to `(1,32)`.
-One and two blocks at width 16 have now completed and independently verified
+One, two, and four blocks at width 16 have now completed and independently verified
 their 20,000-update budget failures above. Their completed artifacts are committed;
 the changing search manifest and future/live trials are not. The fixed-head driver and
 backward-compatible reporter pass all 119 Python experiment tests.
@@ -449,8 +474,11 @@ resumed at 03:19:22 UTC. Scheduling details and the elapsed-time caveat are in
 `runs/GPU_SCHEDULING.md`. Two-block width 16 completed both independent checks
 at 03:39:37 UTC, and the existing driver then started four-block width 16.
 All 28 shared initial tensors between those two/four-block trials match
-byte-for-byte, with the final norm indices remapped. Four-block width 16 is
-still running and has no final outcome yet.
+byte-for-byte, with the final norm indices remapped. Four-block width 16 then
+completed both checks at 04:06:23 UTC with the budget result above, and the
+existing driver started eight-block width 16. All 52 shared initial tensors
+between four/eight blocks match byte-for-byte, including the relocated final
+norm. Eight-block width 16 is still running and has no final outcome yet.
 Added tests specifically cover one 24-wide BF16 head
 at context 1,024 with CPU/GPU forward/backward agreement and three bitwise
 GPU repeats, plus complete one-head width-24 GPT-2 forward/backward and tied
@@ -460,6 +488,13 @@ executed), and the experiment binary hash remained unchanged. The reporter now
 computes matched-protocol frontiers using the binary hash and all eight training
 controls, separately from pooled existence evidence; all 127 Python experiment
 tests pass. The current 20,000-update and pooled frontier remains `(1,32)`.
+
+The fresh 40,000-update one-block width-24 refinement was queued at 03:59:36
+UTC, but has not started training. Its CPU-only coordinator waits for the
+entire current search to finish and verifies its evidence and pinned input
+hashes before launching. See `runs/GPU_SCHEDULING.md` for the serialization
+details. The queued trial keeps the peak learning rate, seed, and head count
+fixed; its longer cosine schedule remains a separately reported protocol.
 
 After the active pass, refine observed width gaps with a small, bounded set of
 midpoints (such as 24 between 32 and 16, or 12 between 16 and 8). Fill omitted

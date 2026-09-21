@@ -50,8 +50,11 @@ with `SIGCONT`. They continue the existing `width_depth_long_1` search; no new
 instance was launched and the pinned binary hash is unchanged. Two-block
 width 16 subsequently reached 20,000 updates with 454 errors and
 `reached_time_limit=0`; both independent checks completed at **03:39:37 UTC**.
-The same coordinator then started four-block width 16 normally. No process
-remains deliberately paused.
+The same coordinator then started four-block width 16 normally. That trial
+completed all 20,000 updates with 485 errors and `reached_time_limit=0`, and
+finished both independent checks at **04:06:23 UTC**. No competing GPU trial
+or test was launched during it. The same coordinator then started eight-block
+width 16 normally. No process remains deliberately paused.
 
 Pausing the coordinator alone did not pause the earlier one-block child or
 alter that child's update schedule. None of these processes has been restarted.
@@ -63,3 +66,22 @@ failure. The overlap/pause does not change a step-based learning rate, but
 elapsed durations from these trials are not isolated performance measurements.
 Implementation inspection and existing repeatability tests support independent
 per-update trajectories; no concurrent-versus-isolated replay was performed.
+
+## Queued width-24 longer-budget refinement
+
+At **03:59:36 UTC**, a CPU-only coordinator (PID 3290991) was queued for the
+planned fresh one-block width-24, one-head, 40,000-update trial. It waits on a
+Linux process handle for the existing `width_depth_long_1` coordinator (PID
+3264113), not a reused numeric PID or an estimated completion time. It launches
+no GPU work until that entire search exits, including all native checkpoint
+reloads and independent prediction audits.
+
+Before launching, the coordinator requires the predecessor's final manifest to
+say `completed`, runs the evidence-checking reporter on it, and checks the pinned
+binary, corpus, and tokenizer hashes again. An interrupted/failed predecessor
+or changed input aborts the queued trial. The existing driver also refuses
+preexisting output/checkpoint destinations. The new artifact root is
+`runs/width_depth_refine_24_long_0/`; its checkpoints will be under
+`/home/ubuntu/checkpoints/memorize_general_facts/width_depth_refine_24_long_0/`.
+This is a fresh initialization with a longer cosine schedule, not a checkpoint
+resume. The actual start and final result will be recorded by its own manifest.

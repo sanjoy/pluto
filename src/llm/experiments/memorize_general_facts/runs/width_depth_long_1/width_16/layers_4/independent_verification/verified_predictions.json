@@ -1,0 +1,67 @@
+{
+  "success": false,
+  "sentences": 1024,
+  "exact_sentences": 675,
+  "targets": 10002,
+  "errors": 485,
+  "accuracy": 0.9515096980603879,
+  "mean_loss_nats": 0.4637390877123395,
+  "corpus": "/home/ubuntu/code/pluto/src/llm/experiments/memorize_general_facts/runs/width_depth_long_1/width_16/layers_4/corpus.txt",
+  "corpus_sha256": "814c062e7d7592fe4a4e5b158a37bd37da51700f817c19eb981c1e93d33f245c",
+  "tokenizer": "/home/ubuntu/code/pluto/src/llm/experiments/memorize_general_facts/runs/width_depth_long_1/width_16/layers_4/tokenizer.json",
+  "tokenizer_sha256": "1fe93b6152957cf9cfd6d89002467f789ce8b3f3e000b3a2edf27c808ddd0b9e",
+  "predictions": "/home/ubuntu/code/pluto/src/llm/experiments/memorize_general_facts/runs/width_depth_long_1/width_16/layers_4/independent_verification/final_predictions.tsv",
+  "predictions_sha256": "d8bc59b93f308c43abfe47873cf1d66bfc0a4bb1d1b5362e99629008191df311",
+  "prompt_tokens": 5,
+  "eos_scored": true,
+  "padding_scored": false,
+  "context_length": 1024,
+  "evidence_scope": "validated teacher-forced prediction artifact, not independent checkpoint inference",
+  "error_examples": [
+    {
+      "line_1based": 2,
+      "target_token_index_0based": 8,
+      "causal_prefix": "In English, the plural of mouse is",
+      "target_id": 3221,
+      "target_text": " usually",
+      "predicted_id": 1487,
+      "predicted_text": " change"
+    },
+    {
+      "line_1based": 7,
+      "target_token_index_0based": 12,
+      "causal_prefix": "Tiny pores called stomata allow gases to move through",
+      "target_id": 12835,
+      "target_text": " leaf",
+      "predicted_id": 28431,
+      "predicted_text": " openings"
+    },
+    {
+      "line_1based": 10,
+      "target_token_index_0based": 8,
+      "causal_prefix": "Raising an object against gravity increases its",
+      "target_id": 29973,
+      "target_text": " gravitational",
+      "predicted_id": 7346,
+      "predicted_text": " surrounding"
+    },
+    {
+      "line_1based": 22,
+      "target_token_index_0based": 5,
+      "causal_prefix": "Every water molecule contains two",
+      "target_id": 17669,
+      "target_text": " hydrogen",
+      "predicted_id": 8122,
+      "predicted_text": " liquid"
+    },
+    {
+      "line_1based": 25,
+      "target_token_index_0based": 6,
+      "causal_prefix": "A homophone sounds the same",
+      "target_id": 355,
+      "target_text": " as",
+      "predicted_id": 326,
+      "predicted_text": " that"
+    }
+  ]
+}
