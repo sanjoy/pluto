@@ -86,3 +86,33 @@ then passed the 65 queried test labels to `bazel test -c opt` with
 were supplied through `PLUTO_GPT2_TOKENIZER_DIR` and
 `PLUTO_FINEWEB_PARQUET_DIR`. The training executable will only be rebuilt after
 the coarse driver finishes; later trials will record the new binary hash.
+
+## Post-coarse end-to-end checks
+
+After the coarse driver completed, the rebuilt native binary had SHA-256
+`411377b44fd936a2072c96aafa144f38a4da3e63cbfad559c22a6e98f3b9904c`.
+The following full-corpus, two-update driver runs all passed their expected
+nonperfect checkpoint reload and independent prediction audits:
+
+| Artifact run | Blocks | Width | Heads | FF width | Physical parameters |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `../compact_width_compatibility_16/` | 1 | 16 | 1 | 64 | 824,048 |
+| `../compact_width_smoke_8/` | 2 | 8 | 1 | 32 | 412,128 |
+| `../compact_width_smoke_24/` | 2 | 24 | 3 | 96 | 1,245,600 |
+
+Each run's manifest records the complete commands and binary/input hashes.
+These short runs intentionally do not establish memorization ability. For both
+compact models, comparing steps 0 and 2 confirms updates to token/position
+embeddings, QKV and input-MLP matrices in both blocks, and final norm beta
+(weight indices 0, 1, 4, 10, 16, 22, 27).
+
+The width-16 run used exactly the same configuration as the earlier
+`../width_driver_smoke/`. All 16 unique weights at both steps 0 and 2 match that
+old-binary run byte-for-byte, as does its entire final prediction TSV.
+
+The new binary also loaded the successful two-block width-64 step-4352 checkpoint
+from `../width_depth_coarse_0/`, producing zero errors and all 1,024 exact
+sentences. Every prediction/loss TSV byte matches the independently audited
+coarse-run TSV; the fresh native result is saved in
+`../compact_width_success_compatibility_64/`. This checks a trained model as well
+as the short initialization/update trajectory.

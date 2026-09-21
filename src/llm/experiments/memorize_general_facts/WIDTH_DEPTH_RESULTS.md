@@ -275,8 +275,8 @@ checkpoints are under
 One block at widths 256 and 128 and two blocks at width 64 passed both independent
 checks. All 16 tensors shared between the one-/two-block width-64 initializations
 match byte-for-byte, including final LayerNorm after accounting for file indices.
-Two through eight blocks at width 32 exhausted the update budget. The 28 shared initial tensors for depths
-two/three, 40 for depths three/four, 52 for depths four/five, and 64 for depths
+Two through eight blocks at width 32 exhausted the update budget. The 28 shared
+initial tensors for depths two/three, 40 for depths three/four, 52 for depths four/five, and 64 for depths
 five/six match byte-for-byte, including the relocated final norms. The 76 shared
 initial tensors for depths six/seven and 88 for depths seven/eight also match
 exactly.
@@ -285,6 +285,18 @@ physical parameters; the width/depth frontier is not complete yet.
 
 The coarse pass has 11 verified trials: three successes and eight budget
 failures. Its measured frontier is `(1,128), (2,64)`; no untested narrower point
-is called a failure. The search now moves to post-rebuild compatibility/smoke
-checks, then longer budgets and width refinement. All 107 Python experiment
-tests pass after adding compact-width driver/report support.
+is called a failure. Post-rebuild compatibility/smoke checks passed: two-block
+widths 8 and 24 train and reload after two updates, while the width-16 two-update
+trajectory and successful two-block width-64 checkpoint reproduce their
+old-binary weights or predictions byte-for-byte. Details are in
+`runs/compact_width_validation_0/README.md`. All 107 Python experiment tests pass
+after adding compact-width driver/report support.
+
+A fresh one-block width-64 longer-budget trial started at 02:17:57 UTC in
+`runs/width_depth_long_0/`, with checkpoints under
+`/home/ubuntu/checkpoints/memorize_general_facts/width_depth_long_0/`. It keeps
+batch 16, seed 1337, peak LR 0.0006, warmup 100, evaluation every 128 updates,
+and checkpointing every 512. The cap and cosine schedule extend to 20,000
+updates. All 16 initial weight tensors match the corresponding coarse trial
+exactly. The new binary hash is
+`411377b44fd936a2072c96aafa144f38a4da3e63cbfad559c22a6e98f3b9904c`.

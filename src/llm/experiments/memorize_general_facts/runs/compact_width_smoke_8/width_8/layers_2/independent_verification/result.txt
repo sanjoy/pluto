@@ -1,0 +1,13 @@
+checkpoint=/home/ubuntu/checkpoints/memorize_general_facts/compact_width_smoke_8/width_8/layers_2/step_2
+corpus=/home/ubuntu/code/pluto/src/llm/experiments/memorize_general_facts/runs/compact_width_smoke_8/width_8/layers_2/corpus.txt
+tokenizer=/home/ubuntu/code/pluto/src/llm/experiments/memorize_general_facts/runs/compact_width_smoke_8/width_8/layers_2
+layers=2
+width=8
+heads=1
+feed_forward_width=32
+parameters=412128
+errors=10002
+targets=10002
+mean_loss=10.8299
+exact_sentences=0
+sentences=1024
