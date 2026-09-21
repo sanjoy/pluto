@@ -73,11 +73,11 @@ tests; shape validity is not task capacity.
 
 ## Follow-up search plan
 
-The coarse search is not the endpoint. The one-block width-64 longer-budget
-trial succeeded, so widths 96 and 80 cannot improve the pooled frontier and
+The coarse search is not the endpoint. The one-block width-32 longer-budget
+trial succeeded, so widths 96, 80, and 48 cannot improve the pooled frontier and
 need not be trained just to reconfirm dominated points. Next test narrower
 widths with the longer budget, then refine measured gaps (for example with
-widths 48 or 24). Keep one attention head for these narrow-width trials. Use separate
+widths 24 or 12). Keep one attention head for these narrow-width trials. Use separate
 named runs so their evidence does not alter the coarse manifest. In particular,
 a failure at a wider width must not be used as evidence for an untested narrower
 width; targeted single-width runs can bypass that coarse traversal heuristic.
@@ -91,9 +91,10 @@ It is therefore a separately named protocol, not a continuation of the old
 checkpoint or a controlled comparison at the old step count.
 
 Report the common-5,000-update frontier separately from the pooled frontier of
-all verified successes. The one-block width-64 success now dominates the
-two-block width-64 point in the pooled depth/width frontier without
-invalidating the original short-budget result. Continue refinement based on
+all verified successes. The one-block width-64 success first dominated the
+two-block width-64 point in the pooled depth/width frontier, then the one-block
+width-32 success dominated both, without invalidating the original short-budget
+results. Continue refinement based on
 measured outcomes; neither a finite trial budget nor the backend's alignment
 requirement proves a lower bound on model capacity.
 
@@ -247,7 +248,7 @@ TSV SHA-256: `fb5b60e767d688974c6e633f14778d6b8212505cc49ca3b351131be051e0bde4`.
 Eight blocks at width 32 reached 5,000 updates in about 11.0 minutes, with
 58 exact sentences and 2,777 errors. Its saved checkpoint and prediction TSV
 passed both independent checks. This is the lowest final error count among the
-tested width-32 depths, but still far from exact memorization.
+coarse 5,000-update width-32 trials, but still far from exact memorization.
 Checkpoint:
 `/home/ubuntu/checkpoints/memorize_general_facts/width_depth_coarse_0/width_32/layers_8/step_5000`.
 Artifacts: `runs/width_depth_coarse_0/width_32/layers_8/`. Independent prediction
@@ -340,6 +341,13 @@ step 9,984, moving the measured longer-budget and pooled frontiers to `(1,32)`.
 Width 16 is now training; its live artifacts and the changing search manifest
 are not part of this completed-trial commit. The tested fixed-head driver and
 backward-compatible reporter pass all 119 Python experiment tests.
+
+A one-block width-24 midpoint trial, `runs/width_depth_refine_24`, started at
+02:44:58 UTC with the same longer-budget protocol and one head. GPU contention
+made simultaneous training inefficient, so it was paused at 02:47:21 UTC with
+its in-memory optimizer state retained while width 16 continues. Scheduling
+details and the elapsed-time caveat are in `runs/GPU_SCHEDULING.md`; neither
+the paused trial nor the active width-16 trial has a final outcome yet.
 
 After the active pass, refine observed width gaps with a small, bounded set of
 midpoints (such as 24 between 32 and 16, or 12 between 16 and 8). Fill omitted
