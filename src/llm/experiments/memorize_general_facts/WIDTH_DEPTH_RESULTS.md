@@ -78,6 +78,13 @@ pass. Its end-to-end two-update width-16 trial correctly preserves and
 independently verifies an expected budget failure, then completes normally;
 that control-flow smoke test is in `runs/width_driver_smoke/`.
 
-The coarse search is ready to launch. No new memorization result has been
-claimed yet. The independently verified starting point remains one block at
-width 512, with 29,416,960 physical parameters.
+The read-only evidence reporter adds 23 tests; all 103 Python experiment tests
+pass. It can combine named coarse/refinement/longer-budget runs while preserving
+their separate protocols and rechecking saved evidence.
+
+The coarse search started on 2026-09-21 at 00:46:16 UTC with one block at width
+256. Its live record is `runs/width_depth_coarse_0/width_depth_search_summary.json`;
+checkpoints are under
+`/home/ubuntu/checkpoints/memorize_general_facts/width_depth_coarse_0/`.
+No new memorization result has been claimed yet. The independently verified
+starting point remains one block at width 512, with 29,416,960 physical parameters.

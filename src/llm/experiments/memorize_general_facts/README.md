@@ -232,3 +232,17 @@ minimum-parameter successful model. A budget failure advances to the next
 depth; an execution or evidence-validation error stops the search. The native
 binary and input hashes are pinned, so do not rebuild that executable or edit
 the inputs while a search is active.
+
+To inspect one or several searches without touching the GPU or changing
+artifacts, use the read-only evidence reporter:
+
+```sh
+python -B src/llm/experiments/memorize_general_facts/summarize_width_depth.py \
+  RUN/width_depth_search_summary.json
+```
+
+Additional summary paths and optional `--labels=coarse,refinement` combine
+runs while keeping their budgets, seeds, and head dimensions explicit. The
+reporter rechecks saved evidence before recomputing the pooled measured
+frontier; running and untested configurations are never counted as failures.
+Tokenizer snapshots must remain available locally for their SHA-256 check.
