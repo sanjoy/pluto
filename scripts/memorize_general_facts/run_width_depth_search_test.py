@@ -181,19 +181,17 @@ class WidthDepthSearchTest(unittest.TestCase):
         self.assertEqual(summary["verified_success_frontier"], [])
         self.assertIsNone(summary["minimum_parameter_success"])
 
-    def test_historical_training_explicitly_keeps_norm_one_clipping(self):
+    def test_native_commands_omit_removed_gradient_clipping_flag(self):
         self.assertEqual(self.run_driver(), 0)
-        training = [command for command in self.calls
-                    if Path(command[0]) == self.binary
-                    and not any(flag.startswith("--verify_checkpoint=")
-                                for flag in command)]
-        self.assertEqual(len(training), len(self.summary()["trials"]))
-        for command in training:
-            clipping = [flag for flag in command
-                        if flag.startswith("--gradient_clip_norm=")]
-            self.assertEqual(clipping, ["--gradient_clip_norm=1"])
+        native = [command for command in self.calls if Path(command[0]) == self.binary]
+        self.assertEqual(len(native), 2 * len(self.summary()["trials"]))
+        for command in native:
+            self.assertFalse(any(flag.startswith("--gradient_clip_norm")
+                                 for flag in command))
         for trial in self.summary()["trials"]:
-            self.assertIn("--gradient_clip_norm=1", trial["commands"][0])
+            for command in trial["commands"]:
+                self.assertFalse(any(flag.startswith("--gradient_clip_norm")
+                                     for flag in command))
 
     def test_training_execution_failure_stops_without_verification(self):
         self.statuses["train", (1, 128)] = 1

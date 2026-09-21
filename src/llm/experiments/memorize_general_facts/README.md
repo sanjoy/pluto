@@ -23,7 +23,6 @@ the built binary.
 
 The shared line-based iterator is `src/dataset/padded_line_dataset.h`; it
 provides per-sentence padding, prompt masking, and reproducible epoch shuffling.
-Optional global gradient clipping uses `src/llm/gradient_clipper.h`.
 Exact masked top-1 predictions use `ExtractTop1Ids` in
 `src/llm/extract_top1_ids.h`, implemented with a deterministic cuTile kernel.
 
@@ -134,16 +133,13 @@ bazel-bin/src/llm/experiments/memorize_general_facts/memorize_general_facts \
 
 Use fresh output/checkpoint directories. For old full-vocabulary checkpoints,
 pass **`--compact_vocabulary=false`** explicitly. The historical depth/width
-search drivers pass this flag themselves, preserving their original protocol.
+search drivers pass this flag themselves, preserving their full vocabulary.
 The general GPT-2 recipe also retains its original default vocabulary; this
 experiment opts into its new configurable exact-row embedding storage.
 
-Direct training leaves gradient clipping disabled by default
-(`--gradient_clip_norm=0`). Supply a positive finite threshold, such as
-`--gradient_clip_norm=1`, only when clipping is wanted. Zero skips both clipper
-setup and its per-update kernels; it does not zero the gradients. The selected
-threshold is recorded in `config.txt`. Historical depth/width sweep drivers
-explicitly pass `--gradient_clip_norm=1` to preserve their original protocol.
+Training does not support gradient clipping: gradients go directly from
+backward to AdamW. The depth/width sweep drivers also train without clipping;
+new sweeps therefore do not exactly reproduce the historical clipped protocol.
 
 ### Compact an existing successful checkpoint
 
@@ -268,9 +264,9 @@ depth. The original eight-block residual initialization scale is held fixed.
 
 The initial budget is 5,000 updates (78.125 corpus epochs at batch size 16),
 with complete evaluations every 128 updates. AdamW uses beta1=0.9, beta2=0.99,
-100-step warmup to 6e-4 and cosine decay to 6e-5. The joint gradient norm is
-clipped to 1.0 using deterministic GPU reductions, counting tied weights only
-once. Dropout and weight decay are
+100-step warmup to 6e-4 and cosine decay to 6e-5. Historical runs clipped the
+joint gradient norm to 1.0; current training no longer clips gradients.
+Dropout and weight decay are
 zero because the goal is memorization, not generalization. The schedule and
 small-token-batch beta2 choice follow the patterns in
 [nanoGPT's training loop](https://github.com/karpathy/nanoGPT/blob/master/train.py)

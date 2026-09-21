@@ -40,11 +40,12 @@ python -B scripts/memorize_general_facts/summarize_width_depth.py \
   /tmp/pluto-facts-new-width-search/width_depth_search_summary.json
 ```
 
-The historical sweep drivers deliberately use the full GPT-2 vocabulary,
-passing `--compact_vocabulary=false` and `--gradient_clip_norm=1` to preserve
-their original training protocol. The native binary supports compact-vocabulary
-training separately and defaults to no gradient clipping
-(`--gradient_clip_norm=0`).
+The sweep drivers use the full GPT-2 vocabulary, passing
+`--compact_vocabulary=false`. The native binary supports compact-vocabulary
+training separately. Gradient clipping support has been removed, so all new
+runs train without clipping. Historical sweeps used norm-one gradient clipping;
+these commands no longer reproduce that training protocol. Historical results
+remain evidence for the protocol recorded in their original manifests.
 Successful frontier points require zero errors, while exhausting a trial budget
 does not prove that its architecture cannot memorize the corpus.
 

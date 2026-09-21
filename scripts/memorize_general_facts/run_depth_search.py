@@ -2,9 +2,9 @@
 """Train successively shallower GPT-2 models, verifying each before continuing.
 
 Run with a Python environment containing tokenizers and a prebuilt native
-memorize_general_facts binary. Defaults match the controlled eight-block trial.
-This historical search protocol explicitly keeps gradient clipping at norm 1;
-the native binary's default for new standalone runs is unclipped training.
+memorize_general_facts binary. Defaults retain the controlled eight-block trial's
+settings except that training no longer clips gradients. New runs do not
+reproduce the historical norm-one-clipped training protocol.
 Every depth starts from scratch, and both output/checkpoint parents must be
 fresh. --start_layers=7 is an explicit continuation after separately verifying
 the eight-block run; this script neither reuses nor claims to verify skipped
@@ -222,8 +222,7 @@ def run_search(args, *, run_process=subprocess.run):
                         "training_seconds",
                     )
                 ]
-                + [f"--layers={layers}", "--search=false", "--compact_vocabulary=false",
-                   "--gradient_clip_norm=1"]
+                + [f"--layers={layers}", "--search=false", "--compact_vocabulary=false"]
             )
             status = execute(training)
             if status != 0:

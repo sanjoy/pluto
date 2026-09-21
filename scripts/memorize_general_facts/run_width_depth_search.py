@@ -8,8 +8,8 @@ a shallower verified model are skipped because they cannot improve the measured
 depth/width frontier. Skipped configurations are NOT declared failures: training
 need not behave monotonically with width, and this is a bounded empirical search,
 not a proof that all smaller networks are inadequate.
-This historical search protocol explicitly keeps gradient clipping at norm 1;
-the native binary's default for new standalone runs is unclipped training.
+Training no longer clips gradients. New runs do not reproduce the historical
+norm-one-clipped training protocol.
 
 Both successful and budget-exhausted trials are reloaded in a fresh native
 process and independently audited by retokenizing the corpus in Python. An
@@ -252,7 +252,7 @@ def run_search(args, *, run_process=subprocess.run):
                     ("corpus", "tokenizer", "batch_size", "steps", "eval_every",
                      "checkpoint_every", "seed", "learning_rate", "warmup_steps", "training_seconds")
                 ] + [f"--output_dir={output_parent}", f"--checkpoint_dir={checkpoint_parent}",
-                     "--search=false", "--gradient_clip_norm=1"])
+                     "--search=false"])
                 status = execute(training)
                 if status not in (0, 2):
                     raise ValueError(f"Training execution failed with return code {status}")

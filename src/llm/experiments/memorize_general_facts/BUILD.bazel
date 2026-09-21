@@ -58,7 +58,6 @@ cc_binary(
         "//src/llm:checkpoint",
         "//src/llm:cross_entropy_loss",
         "//src/llm:extract_top1_ids",
-        "//src/llm:gradient_clipper",
         "//src/llm:layer",
         "//src/llm/experiments/shakespeare:gpt2",
         "//src/util:status_macros",

@@ -170,19 +170,17 @@ class DepthSearchTest(unittest.TestCase):
         self.assertEqual(len(self.calls), 4)
         self.assertEqual(self.summary()["smallest_verified_layers"], 2)
 
-    def test_historical_training_explicitly_keeps_norm_one_clipping(self):
+    def test_native_commands_omit_removed_gradient_clipping_flag(self):
         self.assertEqual(self.run_driver(), 0)
-        training = [command for command in self.calls
-                    if Path(command[0]) == self.binary
-                    and not any(flag.startswith("--verify_checkpoint=")
-                                for flag in command)]
-        self.assertEqual(len(training), 2)
-        for command in training:
-            clipping = [flag for flag in command
-                        if flag.startswith("--gradient_clip_norm=")]
-            self.assertEqual(clipping, ["--gradient_clip_norm=1"])
+        native = [command for command in self.calls if Path(command[0]) == self.binary]
+        self.assertEqual(len(native), 4)
+        for command in native:
+            self.assertFalse(any(flag.startswith("--gradient_clip_norm")
+                                 for flag in command))
         for depth in self.summary()["depths"]:
-            self.assertIn("--gradient_clip_norm=1", depth["commands"][0])
+            for command in depth["commands"]:
+                self.assertFalse(any(flag.startswith("--gradient_clip_norm")
+                                     for flag in command))
 
     def test_training_execution_error_does_not_start_another_child(self):
         self.statuses["train", 2] = 1
