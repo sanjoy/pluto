@@ -165,6 +165,43 @@ attributing improvements over the coarse protocol solely to additional
 updates. These are frontiers over measured outcomes, not
 capacity impossibility claims.
 
+### Bounded next refinement round
+
+Finish the already-running one-head width-16 depth sweep without changing its
+20,000-update schedule. Any width-8 trials that its adaptive traversal launches
+remain part of that same pass; configurations it skips remain untested.
+Then serialize the following decision tree rather than run competing GPU jobs:
+
+1. Repeat one block at width 24 with one head, fresh initialization, and a
+   **40,000-update cap**, keeping the other controls fixed. Its three-error
+   near miss and still-decreasing late loss justify this budget check. Use
+   a fresh named run, `width_depth_refine_24_long_0`. This stretches the cosine
+   schedule and does not resume optimizer state from the 20,000-update model.
+2. If the current depth sweep establishes a narrower successful width, use
+   the remaining slots first to test missing shallower depths in increasing
+   order. For example, a four-block width-16 success makes depth 3 relevant;
+   a shallower success makes deeper trials at the same width dominated.
+   Otherwise, if the longer one-block width-24 trial succeeds, test one block
+   at width 20 with the same 40,000-update protocol. Two blocks at width 24
+   and one block at width 28 would then be
+   dominated in the pooled frontier, so omit them from this refinement round.
+   If width 24 instead exhausts the longer budget, test two blocks at width 24
+   under the existing 20,000-update protocol: that provides a controlled depth
+   comparison with the original one-block width-24 failure.
+3. Choose at most one further width refinement from those outcomes. For example,
+   follow a two-block width-24 success with two-block width 20 at 20,000 updates;
+   if two-block width 24 also fails, test one-block width 28 at 20,000 updates
+   to narrow the original one-block width-24/32 gap. Keep any 40,000-update
+   continuation of the first branch in its own matched-protocol group.
+
+This round has at most three new architecture/budget trials; it is not an
+unlimited optimizer or head-count sweep. A three-head width-24 variant is
+supported and has the same parameter count, but changes the architecture, so
+defer it while testing the requested width/depth trade-off. Afterwards, use
+measured success transitions to decide whether an omitted depth or a midpoint
+such as width 12 needs a direct trial. Keep finite-budget failures, untested
+configurations, and matched-budget versus pooled frontiers distinct.
+
 ## Verified budget failures
 
 | Run | Blocks | Width | Parameters | Updates | Final errors | Best observed errors | Final mean loss (nats) |
