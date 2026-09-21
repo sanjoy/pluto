@@ -59,7 +59,7 @@ cc_binary(
         "//src/llm:cross_entropy_loss",
         "//src/llm:extract_top1_ids",
         "//src/llm:layer",
-        "//src/llm/experiments/shakespeare:gpt2",
+        "//src/llm/experiments/gpt2_shakespeare:gpt2",
         "//src/util:status_macros",
         "//src/util:tee_stream",
         "@abseil-cpp//absl/time",

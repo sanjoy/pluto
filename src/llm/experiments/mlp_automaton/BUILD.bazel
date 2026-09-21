@@ -64,7 +64,7 @@ cc_library(
         "//src/llm:gelu",
         "//src/llm:layer",
         "//src/llm:norm",
-        "//src/llm/experiments/shakespeare:gpt2",
+        "//src/llm/experiments/gpt2_shakespeare:gpt2",
         "//src/util:status_macros",
         "@abseil-cpp//absl/container:flat_hash_set",
         "@abseil-cpp//absl/functional:function_ref",

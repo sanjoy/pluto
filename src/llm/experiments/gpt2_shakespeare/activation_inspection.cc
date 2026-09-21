@@ -1,4 +1,4 @@
-#include "src/llm/experiments/shakespeare/activation_inspection.h"
+#include "src/llm/experiments/gpt2_shakespeare/activation_inspection.h"
 
 #include <cuda_runtime_api.h>
 

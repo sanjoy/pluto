@@ -13,7 +13,7 @@ cuda_library(
         "//src/cuda:executor",
         "//src/cuda:page_locked_host_array",
         "//src/llm:vocabulary_readout",
-        "//src/llm/experiments/shakespeare:gpt2",
+        "//src/llm/experiments/gpt2_shakespeare:gpt2",
         "//src/util:status_macros",
         "@abseil-cpp//absl/memory",
         "@abseil-cpp//absl/status",

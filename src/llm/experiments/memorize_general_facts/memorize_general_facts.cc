@@ -35,7 +35,7 @@
 #include "src/llm/batch_validation.h"
 #include "src/llm/checkpoint.h"
 #include "src/llm/experiments/memorize_general_facts/generation.h"
-#include "src/llm/experiments/shakespeare/gpt2.h"
+#include "src/llm/experiments/gpt2_shakespeare/gpt2.h"
 #include "src/llm/extract_top1_ids.h"
 #include "src/llm/layers/cross_entropy_loss.h"
 #include "src/util/status_macros.h"

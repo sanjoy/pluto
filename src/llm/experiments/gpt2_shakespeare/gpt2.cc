@@ -1,4 +1,4 @@
-#include "src/llm/experiments/shakespeare/gpt2.h"
+#include "src/llm/experiments/gpt2_shakespeare/gpt2.h"
 
 #include <cmath>
 #include <cstdint>

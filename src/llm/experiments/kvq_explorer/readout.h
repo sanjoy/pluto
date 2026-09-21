@@ -9,7 +9,7 @@
 #include "src/cuda/buffer.h"
 #include "src/cuda/executor.h"
 #include "src/cuda/page_locked_host_array.h"
-#include "src/llm/experiments/shakespeare/gpt2.h"
+#include "src/llm/experiments/gpt2_shakespeare/gpt2.h"
 #include "src/llm/vocabulary_readout.h"
 
 namespace pluto::llm::kvq_explorer {
