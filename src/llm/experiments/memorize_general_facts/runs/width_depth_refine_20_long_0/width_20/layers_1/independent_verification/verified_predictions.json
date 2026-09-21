@@ -1,0 +1,67 @@
+{
+  "success": false,
+  "sentences": 1024,
+  "exact_sentences": 1016,
+  "targets": 10002,
+  "errors": 8,
+  "accuracy": 0.9992001599680064,
+  "mean_loss_nats": 0.004257193750268946,
+  "corpus": "/home/ubuntu/code/pluto/src/llm/experiments/memorize_general_facts/runs/width_depth_refine_20_long_0/width_20/layers_1/corpus.txt",
+  "corpus_sha256": "814c062e7d7592fe4a4e5b158a37bd37da51700f817c19eb981c1e93d33f245c",
+  "tokenizer": "/home/ubuntu/code/pluto/src/llm/experiments/memorize_general_facts/runs/width_depth_refine_20_long_0/width_20/layers_1/tokenizer.json",
+  "tokenizer_sha256": "1fe93b6152957cf9cfd6d89002467f789ce8b3f3e000b3a2edf27c808ddd0b9e",
+  "predictions": "/home/ubuntu/code/pluto/src/llm/experiments/memorize_general_facts/runs/width_depth_refine_20_long_0/width_20/layers_1/independent_verification/final_predictions.tsv",
+  "predictions_sha256": "b8f2d97c072c8d24ab166c2f46db411e0a03199f3cc403879ffdf761879a3219",
+  "prompt_tokens": 5,
+  "eos_scored": true,
+  "padding_scored": false,
+  "context_length": 1024,
+  "evidence_scope": "validated teacher-forced prediction artifact, not independent checkpoint inference",
+  "error_examples": [
+    {
+      "line_1based": 176,
+      "target_token_index_0based": 6,
+      "causal_prefix": "In a woodcut, the",
+      "target_id": 4376,
+      "target_text": " raised",
+      "predicted_id": 44345,
+      "predicted_text": " squared"
+    },
+    {
+      "line_1based": 269,
+      "target_token_index_0based": 5,
+      "causal_prefix": "Bamboo belongs to the",
+      "target_id": 8701,
+      "target_text": " grass",
+      "predicted_id": 9151,
+      "predicted_text": " ocean"
+    },
+    {
+      "line_1based": 408,
+      "target_token_index_0based": 5,
+      "causal_prefix": "An IPv6 address contains",
+      "target_id": 13108,
+      "target_text": " 128",
+      "predicted_id": 12277,
+      "predicted_text": " thirty"
+    },
+    {
+      "line_1based": 411,
+      "target_token_index_0based": 5,
+      "causal_prefix": "The capital of Peru is",
+      "target_id": 41578,
+      "target_text": " Lima",
+      "predicted_id": 6342,
+      "predicted_text": " Paris"
+    },
+    {
+      "line_1based": 680,
+      "target_token_index_0based": 5,
+      "causal_prefix": "Bogota is the",
+      "target_id": 3139,
+      "target_text": " capital",
+      "predicted_id": 3597,
+      "predicted_text": " writing"
+    }
+  ]
+}

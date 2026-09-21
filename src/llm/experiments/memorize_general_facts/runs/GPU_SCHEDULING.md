@@ -106,10 +106,12 @@ It uses the same training controls as the completed width-24 run and no learned
 weights are transferred. Artifacts are in `runs/width_depth_refine_20_long_0/`
 and checkpoints in
 `/home/ubuntu/checkpoints/memorize_general_facts/width_depth_refine_20_long_0/`.
-This trial is currently running. No other GPU experiment or test is scheduled
-to overlap it.
+It completed all 40,000 updates with eight errors, without reaching the time
+cap, and finished both independent checks at **05:46:43 UTC**. Its coordinator
+exited normally with a `verified_budget_failure` manifest. No competing GPU
+experiment or test was launched during the trial.
 
-## Queued deeper width-16 budget check
+## Serialized deeper width-16 budget check
 
 At **05:18:04 UTC**, CPU-only coordinator PID 3307211 queued the planned third
 trial, eight blocks at width 16 with one head, FF width 64, and a 40,000-update
@@ -122,9 +124,14 @@ output/checkpoint directories before launch. It copies all eight training
 controls from the width-20 manifest, and aborts on failed verification or changed
 inputs rather than silently changing the protocol.
 
-The new run will start from scratch, not from the earlier eight-block model's
+The new run starts from scratch, not from the earlier eight-block model's
 learned weights. Its output root is `runs/width_depth_refine_16_deep_long_0/`,
 with checkpoints under
 `/home/ubuntu/checkpoints/memorize_general_facts/width_depth_refine_16_deep_long_0/`.
-The queued process currently performs no GPU work. This is the third trial in
-the recorded bounded refinement round, not an additional optimizer sweep.
+At **05:46:43 UTC**, the predecessor exited, all guards passed, and the new
+search launched (driver PID 3309328, native trainer PID 3309340). All 100
+initial weight arrays match the prior eight-block width-16 trial byte-for-byte
+and contain finite FP32 values. The queued process performed no GPU work before
+this launch. This is the third trial in the recorded bounded refinement round,
+not an additional optimizer sweep. It is currently running with no other GPU
+experiment or test scheduled to overlap it.

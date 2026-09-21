@@ -256,6 +256,41 @@ configurations, and matched-budget versus pooled frontiers distinct.
 | Longer budget, narrow | 4 | 16 | 833,888 | 20,000 | 485 / 10,002 | 474 at step 19,968 | 0.463739087712 |
 | Longer budget, narrow | 8 | 16 | 847,008 | 20,000 | 106 / 10,002 | 97 at step 19,584 | 0.247292333787 |
 | Midpoint refinement | 1 | 24 | 1,238,376 | 20,000 | 3 / 10,002 | 2 at step 16,768 | 0.004384264733 |
+| 40k-cap midpoint refinement | 1 | 20 | 1,031,020 | 40,000 | 8 / 10,002 | 8 at step 37,376 | 0.004257193750 |
+
+One block at width 20 completed all 40,000 updates (625 epochs) without
+reaching the time cap. Fresh native checkpoint inference and independent
+retokenization confirm eight errors, 1,016 exact sentences, and mean loss
+0.004257193750268946 nats. Both prediction TSVs match byte-for-byte. All
+16 final FP32 arrays have the recipe-derived sizes and finite values, totaling
+1,031,020 parameters (4,124,080 bytes). Its best logged error count was also
+eight, first observed at step 37,376. Its final errors are:
+
+| Corpus line | Target token index | Causal prefix | Expected token | Predicted token |
+| ---: | ---: | --- | --- | --- |
+| 176 | 6 | `In a woodcut, the` | ` raised` | ` squared` |
+| 269 | 5 | `Bamboo belongs to the` | ` grass` | ` ocean` |
+| 408 | 5 | `An IPv6 address contains` | ` 128` | ` thirty` |
+| 411 | 5 | `The capital of Peru is` | ` Lima` | ` Paris` |
+| 680 | 5 | `Bogota is the` | ` capital` | ` writing` |
+| 723 | 5 | `Baking soda is the` | ` common` | ` writing` |
+| 763 | 5 | `A caterpillar is the` | ` lar` | ` writing` |
+| 771 | 5 | `Captain Nemo commands the` | ` submarine` | ` opening` |
+
+Token indices are zero-based, so seven errors are on the first suffix token
+and one is on a later content token. All 1,024 EOS targets are correct. The
+successful width-24 checkpoint gets all eight positions right. These are
+individual GPT-2 tokens, which may be word fragments (` lar`), not necessarily
+whole words. This remains a strict memorization failure despite 99.92% target
+accuracy. It does not rule out width 20 with another schedule, depth, or seed.
+Checkpoint:
+`/home/ubuntu/checkpoints/memorize_general_facts/width_depth_refine_20_long_0/width_20/layers_1/step_40000`.
+Artifacts: `runs/width_depth_refine_20_long_0/width_20/layers_1/`. Independent
+prediction TSV SHA-256:
+`b8f2d97c072c8d24ab166c2f46db411e0a03199f3cc403879ffdf761879a3219`.
+The trial and both independent checks ran from 05:13:11 to 05:46:43 UTC,
+without a competing GPU experiment or test. The measured 40,000-update and
+pooled frontier remains `(1,24)`.
 
 One block at width 24 completed all 20,000 updates (312.5 epochs) without
 reaching its time limit. It has 1,021 exact sentences and three remaining
@@ -567,7 +602,7 @@ remain fixed, but the stretched cosine schedule is a separate protocol.
 The trial completed both independent checks at 05:11:23 UTC with zero errors
 at step 29,824; its completed artifacts and manifest are committed. The reporter
 checks 11 completed 5,000-update trials, seven completed 20,000-update trials,
-and one verified 40,000-update success.
+and two verified 40,000-update trials (one success and one budget failure).
 
 After both targeted optimized GPU tests passed, the fresh one-block width-20,
 one-head, FF-80, 40,000-update trial started at 05:13:11 UTC. It has 1,031,020
@@ -578,12 +613,22 @@ and complete FP16/BF16 GPT-2 forward/backward and tied parameter counts.
 The experiment executable's hash is unchanged. Its artifact root is
 `runs/width_depth_refine_20_long_0/`, with checkpoints under
 `/home/ubuntu/checkpoints/memorize_general_facts/width_depth_refine_20_long_0/`.
+The trial completed both checks at 05:46:43 UTC with the eight-error result
+above. Its completed artifacts and manifest are committed, and all 127 Python
+experiment tests pass.
+
+The third trial, fresh eight-block width 16 at the same 40,000-update cap,
+was queued at 05:18:04 UTC and started at 05:46:43 UTC, after the width-20
+coordinator exited and its evidence and input hashes passed verification.
+All 100 initial weight arrays match the prior eight-block, width-16,
+20,000-update trial byte-for-byte and contain finite FP32 values. The new
+run has 847,008 parameters, one head, FF width 64, and unchanged seed, batch,
+peak learning rate, and optimizer settings. Its stretched cosine schedule
+changes the protocol; it is not an optimizer resume. Artifacts are in
+`runs/width_depth_refine_16_deep_long_0/`, with checkpoints under
+`/home/ubuntu/checkpoints/memorize_general_facts/width_depth_refine_16_deep_long_0/`.
 This trial is running; its changing artifacts are not committed and it is not
-yet a memorization result. The third trial, fresh eight-block width 16 at the
-same 40,000-update cap, was queued at 05:18:04 UTC to launch only after this
-run exits and its evidence and input hashes pass verification. Its future
-artifact root is `runs/width_depth_refine_16_deep_long_0/`; the queue does no
-GPU work while waiting. See `runs/GPU_SCHEDULING.md` for serialization details.
+yet a memorization result. See `runs/GPU_SCHEDULING.md` for serialization details.
 
 After the active pass, refine observed width gaps with a small, bounded set of
 midpoints (such as 24 between 32 and 16, or 12 between 16 and 8). Fill omitted

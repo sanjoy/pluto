@@ -1,0 +1,13 @@
+checkpoint=/home/ubuntu/checkpoints/memorize_general_facts/width_depth_refine_20_long_0/width_20/layers_1/step_40000
+corpus=/home/ubuntu/code/pluto/src/llm/experiments/memorize_general_facts/runs/width_depth_refine_20_long_0/width_20/layers_1/corpus.txt
+tokenizer=/home/ubuntu/code/pluto/src/llm/experiments/memorize_general_facts/runs/width_depth_refine_20_long_0/width_20/layers_1
+layers=1
+width=20
+heads=1
+feed_forward_width=80
+parameters=1031020
+errors=8
+targets=10002
+mean_loss=0.00425719
+exact_sentences=1016
+sentences=1024
