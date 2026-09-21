@@ -66,6 +66,8 @@ ABSL_FLAG(int, eval_every, 128, "Full-corpus exact evaluation interval");
 ABSL_FLAG(int, checkpoint_every, 512, "Periodic checkpoint interval");
 ABSL_FLAG(int, seed, 1337, "Initialization and shuffle seed");
 ABSL_FLAG(double, learning_rate, 6e-4, "Peak AdamW learning rate");
+ABSL_FLAG(float, gradient_clip_norm, 0.0f,
+          "Maximum global gradient L2 norm; zero disables clipping");
 ABSL_FLAG(int, warmup_steps, 100,
           "Linear learning-rate warmup, then cosine decay");
 ABSL_FLAG(double, training_seconds, 10800,
@@ -296,8 +298,13 @@ absl::StatusOr<bool> TrainDepth(cuda::Executor& executor,
                            .weight_decay = 0.0f};
   ASSIGN_OR_RETURN(auto optimizer,
                    AdamWOptimizer::Create(executor, *model, config));
-  ASSIGN_OR_RETURN(auto clipper,
-                   GradientClipper::Create(executor, *model, 1.0f));
+  // Disabled clipping should add neither scratch allocations nor GPU work.
+  std::unique_ptr<GradientClipper> clipper;
+  const float gradient_clip_norm = absl::GetFlag(FLAGS_gradient_clip_norm);
+  if (gradient_clip_norm > 0) {
+    ASSIGN_OR_RETURN(
+        clipper, GradientClipper::Create(executor, *model, gradient_clip_norm));
+  }
   const int64_t parameters = ParameterCount(*model);
   manifest << "corpus=" << absl::GetFlag(FLAGS_corpus)
            << "\ntokenizer=" << absl::GetFlag(FLAGS_tokenizer)
@@ -310,7 +317,8 @@ absl::StatusOr<bool> TrainDepth(cuda::Executor& executor,
            << "\ncompact_vocabulary=" << absl::GetFlag(FLAGS_compact_vocabulary)
            << "\ncompute=BF16\nmaster_"
               "weights=FP32"
-           << "\ngradient_clip_norm=1\nparameters=" << parameters
+           << "\ngradient_clip_norm=" << gradient_clip_norm
+           << "\nparameters=" << parameters
            << "\nseed=" << absl::GetFlag(FLAGS_seed)
            << "\nbatch_size=" << options.batch_size
            << "\nmax_steps=" << absl::GetFlag(FLAGS_steps)
@@ -365,7 +373,8 @@ absl::StatusOr<bool> TrainDepth(cuda::Executor& executor,
     ASSIGN_OR_RETURN(auto unused,
                      model->bwd(executor, gradients, std::move(forward.state)));
     (void)unused;
-    RETURN_IF_ERROR(clipper->Clip());
+    if (clipper != nullptr)
+      RETURN_IF_ERROR(clipper->Clip());
     RETURN_IF_ERROR(optimizer->SetLearningRate(LearningRate(step)));
     RETURN_IF_ERROR(optimizer->ApplyStep());
     // Bound completed GPU work, not just host enqueue time. This also keeps
@@ -527,6 +536,8 @@ absl::StatusOr<bool> Run() {
       absl::GetFlag(FLAGS_warmup_steps) < 0 ||
       !std::isfinite(absl::GetFlag(FLAGS_learning_rate)) ||
       absl::GetFlag(FLAGS_learning_rate) <= 0 ||
+      !std::isfinite(absl::GetFlag(FLAGS_gradient_clip_norm)) ||
+      absl::GetFlag(FLAGS_gradient_clip_norm) < 0 ||
       !std::isfinite(absl::GetFlag(FLAGS_training_seconds)) ||
       absl::GetFlag(FLAGS_training_seconds) < 0)
     return absl::InvalidArgumentError(

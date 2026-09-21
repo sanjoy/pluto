@@ -72,6 +72,13 @@ search drivers pass this flag themselves, preserving their original protocol.
 The general GPT-2 recipe also retains its original default vocabulary; this
 experiment opts into its new configurable exact-row embedding storage.
 
+Direct training leaves gradient clipping disabled by default
+(`--gradient_clip_norm=0`). Supply a positive finite threshold, such as
+`--gradient_clip_norm=1`, only when clipping is wanted. Zero skips both clipper
+setup and its per-update kernels; it does not zero the gradients. The selected
+threshold is recorded in `config.txt`. Historical depth/width sweep drivers
+explicitly pass `--gradient_clip_norm=1` to preserve their original protocol.
+
 ### Compact an existing successful checkpoint
 
 The converted eight-block, width-16 checkpoint is available at:

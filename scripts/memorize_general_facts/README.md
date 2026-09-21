@@ -41,8 +41,10 @@ python -B scripts/memorize_general_facts/summarize_width_depth.py \
 ```
 
 The historical sweep drivers deliberately use the full GPT-2 vocabulary,
-passing `--compact_vocabulary=false`; moving them does not change their training
-protocol. The native binary supports compact-vocabulary training separately.
+passing `--compact_vocabulary=false` and `--gradient_clip_norm=1` to preserve
+their original training protocol. The native binary supports compact-vocabulary
+training separately and defaults to no gradient clipping
+(`--gradient_clip_norm=0`).
 Successful frontier points require zero errors, while exhausting a trial budget
 does not prove that its architecture cannot memorize the corpus.
 

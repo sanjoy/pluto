@@ -3,6 +3,8 @@
 
 Run with a Python environment containing tokenizers and a prebuilt native
 memorize_general_facts binary. Defaults match the controlled eight-block trial.
+This historical search protocol explicitly keeps gradient clipping at norm 1;
+the native binary's default for new standalone runs is unclipped training.
 Every depth starts from scratch, and both output/checkpoint parents must be
 fresh. --start_layers=7 is an explicit continuation after separately verifying
 the eight-block run; this script neither reuses nor claims to verify skipped
@@ -220,7 +222,8 @@ def run_search(args, *, run_process=subprocess.run):
                         "training_seconds",
                     )
                 ]
-                + [f"--layers={layers}", "--search=false", "--compact_vocabulary=false"]
+                + [f"--layers={layers}", "--search=false", "--compact_vocabulary=false",
+                   "--gradient_clip_norm=1"]
             )
             status = execute(training)
             if status != 0:
