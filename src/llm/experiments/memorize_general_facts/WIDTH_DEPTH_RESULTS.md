@@ -579,7 +579,11 @@ The experiment executable's hash is unchanged. Its artifact root is
 `runs/width_depth_refine_20_long_0/`, with checkpoints under
 `/home/ubuntu/checkpoints/memorize_general_facts/width_depth_refine_20_long_0/`.
 This trial is running; its changing artifacts are not committed and it is not
-yet a memorization result. See `runs/GPU_SCHEDULING.md` for serialization details.
+yet a memorization result. The third trial, fresh eight-block width 16 at the
+same 40,000-update cap, was queued at 05:18:04 UTC to launch only after this
+run exits and its evidence and input hashes pass verification. Its future
+artifact root is `runs/width_depth_refine_16_deep_long_0/`; the queue does no
+GPU work while waiting. See `runs/GPU_SCHEDULING.md` for serialization details.
 
 After the active pass, refine observed width gaps with a small, bounded set of
 midpoints (such as 24 between 32 and 16, or 12 between 16 and 8). Fill omitted

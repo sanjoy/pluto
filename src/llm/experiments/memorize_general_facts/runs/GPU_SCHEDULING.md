@@ -108,3 +108,23 @@ and checkpoints in
 `/home/ubuntu/checkpoints/memorize_general_facts/width_depth_refine_20_long_0/`.
 This trial is currently running. No other GPU experiment or test is scheduled
 to overlap it.
+
+## Queued deeper width-16 budget check
+
+At **05:18:04 UTC**, CPU-only coordinator PID 3307211 queued the planned third
+trial, eight blocks at width 16 with one head, FF width 64, and a 40,000-update
+cap. It waits on a Linux process handle for the width-20 coordinator (PID
+3306105), including that run's final native reload and independent audit.
+Only a completed predecessor manifest with a verified success or verified
+budget failure permits the next run. The queue reruns the evidence validator,
+checks the actual pinned executable/corpus/tokenizer hashes, and requires fresh
+output/checkpoint directories before launch. It copies all eight training
+controls from the width-20 manifest, and aborts on failed verification or changed
+inputs rather than silently changing the protocol.
+
+The new run will start from scratch, not from the earlier eight-block model's
+learned weights. Its output root is `runs/width_depth_refine_16_deep_long_0/`,
+with checkpoints under
+`/home/ubuntu/checkpoints/memorize_general_facts/width_depth_refine_16_deep_long_0/`.
+The queued process currently performs no GPU work. This is the third trial in
+the recorded bounded refinement round, not an additional optimizer sweep.
