@@ -142,19 +142,30 @@ TEST(Gpt2ConfigTest, DefaultsAndSupportedWidths) {
     EXPECT_TRUE(config.Validate().ok()) << width;
     config.transformer_block_count = 8;
     EXPECT_TRUE(config.Validate().ok()) << width;
+    config.transformer_block_count = 16;
+    EXPECT_TRUE(config.Validate().ok()) << width;
   }
   // Feed-forward width is deliberately independent of the residual width.
   EXPECT_TRUE((Gpt2Config{2, 32, 1, 80}.Validate().ok()));
-  for (int width : {1, 2, 3, 7, 8, 15, 24, 33}) {
+  for (int width : {1, 2, 3, 7, 8, 12, 15, 24, 33}) {
     EXPECT_TRUE((Gpt2Config{1, width, 1, 4 * width + 1}.Validate().ok()));
     EXPECT_TRUE((Gpt2Config{1, width, width, 4 * width}.Validate().ok()));
+  }
+  // Shape validation does not allocate a model or promise enough device memory
+  // for very large depths; it must not confuse the default with a hard ceiling.
+  for (int depth : {0, 1, 8, 9, 16, std::numeric_limits<int>::max()}) {
+    for (int width : {8, 12}) {
+      EXPECT_TRUE((Gpt2Config{depth, width, 1, 4 * width}.Validate().ok()))
+          << depth << "/" << width;
+    }
   }
 }
 
 TEST(Gpt2ConfigTest, RejectsInvalidAndOverflowingShapesBeforeAllocating) {
   const int largest_multiple = std::numeric_limits<int>::max() - 15;
   for (const Gpt2Config& config :
-       {Gpt2Config{-1, 32, 1, 128}, Gpt2Config{9, 32, 1, 128},
+       {Gpt2Config{-1, 32, 1, 128},
+        Gpt2Config{std::numeric_limits<int>::min(), 32, 1, 128},
         Gpt2Config{1, 0, 1, 128}, Gpt2Config{1, -16, 1, 128},
         Gpt2Config{1, 32, 0, 128}, Gpt2Config{1, 32, -1, 128},
         Gpt2Config{1, 32, 3, 128}, Gpt2Config{1, 32, 64, 128},
@@ -224,14 +235,55 @@ TEST_F(Gpt2Test, NarrowModelsKeepSeedReproducibilityAndPrefixInitialization) {
                                             kGpt2ContextLength, 32}));
 }
 
+TEST_F(Gpt2Test, SixteenBlocksPreserveEightBlockPrefixInitialization) {
+  for (int width : {8, 12}) {
+    SCOPED_TRACE(width);
+    const Gpt2Config shallow_config{8, width, 1, 4 * width};
+    const Gpt2Config deep_config{16, width, 1, 4 * width};
+    auto shallow = CreateGpt2(*executor_, DataType::BF16, 123, shallow_config);
+    auto deep = CreateGpt2(*executor_, DataType::BF16, 123, deep_config);
+    auto prefix =
+        CreateActivationGenerator(*executor_, deep_config, DataType::BF16, 123);
+    ASSERT_TRUE(shallow.ok()) << shallow.status();
+    ASSERT_TRUE(deep.ok()) << deep.status();
+    ASSERT_TRUE(prefix.ok()) << prefix.status();
+    ASSERT_EQ((*shallow)->weights().size(), 101u);
+    ASSERT_EQ((*deep)->weights().size(), 197u);
+    ASSERT_EQ((*prefix)->weights().size(), 194u);
+    EXPECT_EQ((*prefix)->name(), "gpt2_activation_generator_16_blocks");
+    EXPECT_EQ((*prefix)->output_types()[0],
+              ActivationType(DataType::BF16, {ActivationType::kBatchDimension,
+                                              kGpt2ContextLength, width}));
+
+    // The original eight blocks, including their residual projections, must
+    // initialize identically when another eight blocks are appended.
+    for (size_t index = 0; index < 98; ++index) {
+      SCOPED_TRACE(index);
+      ExpectBuffersEqual((*shallow)->weights()[index],
+                         (*deep)->weights()[index]);
+    }
+    for (size_t index = 0; index < 194; ++index) {
+      SCOPED_TRACE(index);
+      ExpectBuffersEqual((*deep)->weights()[index],
+                         (*prefix)->weights()[index]);
+    }
+    // The final norm moves past the added blocks; it is not part of the
+    // matching prefix above. The last exposed buffer is the tied embedding.
+    ExpectBuffersEqual((*shallow)->weights()[98], (*deep)->weights()[194]);
+    ExpectBuffersEqual((*shallow)->weights()[99], (*deep)->weights()[195]);
+  }
+}
+
 TEST_F(Gpt2Test, NarrowConfigurationsHaveExpectedUniqueParametersAndTiedHead) {
   for (const Gpt2Config& config :
        {Gpt2Config{1, 3, 1, 13}, Gpt2Config{2, 8, 1, 32},
-        Gpt2Config{1, 20, 1, 80},
-        Gpt2Config{1, 24, 1, 96}, Gpt2Config{1, 24, 3, 96},
-        Gpt2Config{0, 16, 1, 64}, Gpt2Config{1, 32, 2, 80},
-        Gpt2Config{2, 64, 2, 256}, Gpt2Config{1, 96, 3, 384},
-        Gpt2Config{1, 128, 8, 512}, Gpt2Config{1, 256, 4, 1024}}) {
+        Gpt2Config{1, 20, 1, 80}, Gpt2Config{1, 24, 1, 96},
+        Gpt2Config{1, 24, 3, 96}, Gpt2Config{0, 16, 1, 64},
+        Gpt2Config{1, 32, 2, 80}, Gpt2Config{2, 64, 2, 256},
+        Gpt2Config{1, 96, 3, 384}, Gpt2Config{16, 8, 1, 32},
+        Gpt2Config{16, 12, 1, 48}, Gpt2Config{1, 128, 8, 512},
+        Gpt2Config{1, 256, 4, 1024}}) {
+    SCOPED_TRACE(config.transformer_block_count);
     SCOPED_TRACE(config.model_width);
     SCOPED_TRACE(config.attention_heads);
     auto model = CreateGpt2(*executor_, DataType::BF16, 123, config);
@@ -354,14 +406,113 @@ TEST_F(Gpt2Test, SmallAndPartialTileModelsRunForwardAndBackward) {
   }
 }
 
-TEST_F(Gpt2Test, ActivationGeneratorRejectsInvalidBlockCounts) {
+TEST_F(Gpt2Test, SixteenBlockNarrowModelsRunFullContextForwardAndBackward) {
+  for (int width : {8, 12}) {
+    SCOPED_TRACE(width);
+    const Gpt2Config config{16, width, 1, 4 * width};
+    auto model = CreateGpt2(*executor_, DataType::BF16, 123, config);
+    ASSERT_TRUE(model.ok()) << model.status();
+    auto host_tokens = cuda::PageLockedHostArray<int32_t>::Allocate(
+        *executor_, kGpt2ContextLength);
+    ASSERT_TRUE(host_tokens.ok()) << host_tokens.status();
+    for (int position = 0; position < kGpt2ContextLength; ++position)
+      (*host_tokens)[position] = (17 * position + position / 11) % 97;
+    auto tokens = Buffer::Allocate(*executor_, host_tokens->size_bytes());
+    ASSERT_TRUE(tokens.ok()) << tokens.status();
+    ASSERT_EQ(cudaMemcpyAsync(tokens->data(), host_tokens->data(),
+                              tokens->size_bytes(), cudaMemcpyHostToDevice,
+                              executor_->stream()),
+              cudaSuccess);
+    RecipeNameHooks hooks;
+    auto forward = (*model)->fwd(*executor_, {*tokens}, &hooks);
+    ASSERT_TRUE(forward.ok()) << forward.status();
+    ASSERT_EQ(forward->outputs.size(), 1u);
+    ASSERT_EQ(forward->outputs[0].size_bytes(),
+              static_cast<size_t>(kGpt2ContextLength) *
+                  kGpt2PaddedVocabularySize * sizeof(float));
+    ExpectRecipeScopeNames(hooks, "gpt2", 16);
+
+    // A derivative at the last input position traverses every causal key
+    // tile, while the early derivative also exercises a partial causal tile.
+    auto output_gradient =
+        Buffer::Allocate(*executor_, forward->outputs[0].size_bytes());
+    auto one = cuda::PageLockedHostArray<float>::Allocate(*executor_, 1);
+    ASSERT_TRUE(output_gradient.ok()) << output_gradient.status();
+    ASSERT_TRUE(one.ok()) << one.status();
+    (*one)[0] = 1.0f;
+    ASSERT_EQ(
+        cudaMemsetAsync(output_gradient->data(), 0,
+                        output_gradient->size_bytes(), executor_->stream()),
+        cudaSuccess);
+    for (int position : {5, kGpt2ContextLength - 1}) {
+      ASSERT_EQ(
+          cudaMemcpyAsync(
+              static_cast<float*>(output_gradient->data()) +
+                  static_cast<size_t>(position) * kGpt2PaddedVocabularySize + 1,
+              one->data(), sizeof(float), cudaMemcpyHostToDevice,
+              executor_->stream()),
+          cudaSuccess);
+    }
+    auto backward = (*model)->bwd(*executor_, {*output_gradient},
+                                  std::move(forward->state));
+    ASSERT_TRUE(backward.ok()) << backward.status();
+    EXPECT_TRUE(backward->empty());
+
+    auto logits = cuda::PageLockedHostArray<float>::Allocate(
+        *executor_, forward->outputs[0].size_bytes() / sizeof(float));
+    ASSERT_TRUE(logits.ok()) << logits.status();
+    ASSERT_EQ(cudaMemcpyAsync(logits->data(), forward->outputs[0].data(),
+                              logits->size_bytes(), cudaMemcpyDeviceToHost,
+                              executor_->stream()),
+              cudaSuccess);
+    ASSERT_TRUE(executor_->Synchronize().ok());
+    for (int position = 0; position < kGpt2ContextLength; ++position) {
+      SCOPED_TRACE(position);
+      const float* row = logits->data() + static_cast<size_t>(position) *
+                                              kGpt2PaddedVocabularySize;
+      EXPECT_TRUE(std::all_of(row, row + kGpt2VocabularySize, [](float value) {
+        return std::isfinite(value);
+      }));
+      EXPECT_TRUE(std::all_of(row + kGpt2VocabularySize,
+                              row + kGpt2PaddedVocabularySize, [](float value) {
+                                return value ==
+                                       -std::numeric_limits<float>::max();
+                              }));
+    }
+
+    const auto gradients = (*model)->gradients();
+    ASSERT_EQ(gradients.size(), 197u);
+    EXPECT_EQ(gradients.front().data(), gradients.back().data());
+    for (size_t index = 0; index + 1 < gradients.size(); ++index) {
+      SCOPED_TRACE(index);
+      const Buffer& gradient = gradients[index];
+      auto values = cuda::PageLockedHostArray<float>::Allocate(
+          *executor_, gradient.size_bytes() / sizeof(float));
+      ASSERT_TRUE(values.ok()) << values.status();
+      ASSERT_EQ(cudaMemcpyAsync(values->data(), gradient.data(),
+                                gradient.size_bytes(), cudaMemcpyDeviceToHost,
+                                executor_->stream()),
+                cudaSuccess);
+      ASSERT_TRUE(executor_->Synchronize().ok());
+      EXPECT_TRUE(std::all_of(values->begin(), values->end(), [](float value) {
+        return std::isfinite(value);
+      }));
+      // Every block's QKV matrix must participate, not merely the tied head.
+      // Individual biases may correctly have zero derivatives.
+      const bool is_qkv_matrix =
+          index >= 4 && index < 194 && (index - 4) % 12 == 0;
+      if (index == 0 || is_qkv_matrix) {
+        EXPECT_TRUE(std::any_of(values->begin(), values->end(),
+                                [](float value) { return value != 0.0f; }));
+      }
+    }
+  }
+}
+
+TEST_F(Gpt2Test, ActivationGeneratorRejectsNegativeBlockCounts) {
   auto negative =
       CreateActivationGenerator(*executor_, -1, DataType::BF16, 123);
   EXPECT_EQ(negative.status().code(), absl::StatusCode::kInvalidArgument);
-
-  auto too_many = CreateActivationGenerator(
-      *executor_, kGpt2TransformerBlockCount + 1, DataType::BF16, 123);
-  EXPECT_EQ(too_many.status().code(), absl::StatusCode::kInvalidArgument);
 }
 
 TEST_F(Gpt2Test, ZeroBlocksTapsEmbeddingActivations) {

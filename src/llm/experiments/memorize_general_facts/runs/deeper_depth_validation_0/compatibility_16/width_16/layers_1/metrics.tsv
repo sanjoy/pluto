@@ -1,0 +1,4 @@
+step	seconds	mean_loss	errors	targets	exact_sentences	sentences
+0	1.24746	10.8224	10002	10002	0	1024
+2	2.78223	10.8223	10002	10002	0	1024
+2	4.04665	10.8223	10002	10002	0	1024

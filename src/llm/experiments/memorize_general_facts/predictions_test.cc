@@ -65,7 +65,8 @@ TEST(PredictionsTest, ExactArgmaxMasksPromptsAndVocabularyPadding) {
 TEST(ExperimentModelTest, DepthChangesOnlyBlockCountAndKeepsTiedHead) {
   auto executor = cuda::Executor::Create();
   ASSERT_TRUE(executor.ok()) << executor.status();
-  for (int depth : {0, 1, 8}) {
+  for (int depth : {0, 1, 8, 16}) {
+    SCOPED_TRACE(depth);
     auto model = CreateGpt2(**executor, DataType::BF16, 1337, depth);
     ASSERT_TRUE(model.ok()) << model.status();
     absl::flat_hash_set<void*> weights;
@@ -80,7 +81,6 @@ TEST(ExperimentModelTest, DepthChangesOnlyBlockCountAndKeepsTiedHead) {
     EXPECT_EQ((*model)->output_types()[0].dimensions()[2], 50272);
   }
   EXPECT_FALSE(CreateGpt2(**executor, DataType::BF16, 1337, -1).ok());
-  EXPECT_FALSE(CreateGpt2(**executor, DataType::BF16, 1337, 9).ok());
   EXPECT_TRUE((*executor)->Synchronize().ok());
 }
 

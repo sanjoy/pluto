@@ -48,7 +48,7 @@ ABSL_FLAG(std::string, verify_checkpoint, "",
 ABSL_FLAG(std::string, output_dir,
           "src/llm/experiments/memorize_general_facts/runs/baseline",
           "Experiment artifacts");
-ABSL_FLAG(int, layers, 8, "Initial transformer depth, 0..8");
+ABSL_FLAG(int, layers, 8, "Initial transformer depth (nonnegative; default 8)");
 ABSL_FLAG(int, model_width, 512, "Residual-stream and embedding width");
 ABSL_FLAG(int, attention_heads, 8, "Number of attention heads per block");
 ABSL_FLAG(int, feed_forward_width, 2048, "Inner GELU MLP width");
@@ -465,7 +465,6 @@ absl::StatusOr<bool> Run() {
        absl::GetFlag(FLAGS_verify_checkpoint).empty()) ||
       (!absl::GetFlag(FLAGS_verify_checkpoint).empty() &&
        absl::GetFlag(FLAGS_search)) ||
-      absl::GetFlag(FLAGS_layers) < 0 || absl::GetFlag(FLAGS_layers) > 8 ||
       absl::GetFlag(FLAGS_batch_size) <= 0 || absl::GetFlag(FLAGS_steps) < 0 ||
       absl::GetFlag(FLAGS_eval_every) <= 0 ||
       absl::GetFlag(FLAGS_checkpoint_every) <= 0 ||

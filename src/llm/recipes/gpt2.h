@@ -11,11 +11,13 @@
 namespace pluto::llm {
 
 // Default dimensions of the GPT-2 recipe. Vocabulary and context remain fixed
-// even when Gpt2Config selects a narrower or shallower model. Existing dataset,
+// even when Gpt2Config selects a different width or depth. Existing dataset,
 // loss, and inference callers can continue to use these default dimensions.
 inline constexpr int kGpt2VocabularySize = 50'257;
 inline constexpr int kGpt2PaddedVocabularySize = 50'272;
 inline constexpr int kGpt2ContextLength = 1'024;
+// The historical default also anchors residual initialization. It is not a
+// ceiling on explicitly configured depth; keep it fixed in depth comparisons.
 inline constexpr int kGpt2TransformerBlockCount = 8;
 inline constexpr int kGpt2ModelWidth = 512;
 inline constexpr int kGpt2AttentionHeads = 8;
@@ -39,8 +41,9 @@ struct Gpt2Config {
   int feed_forward_width = kGpt2FeedForwardWidth;
 
   // Checks shape and current CUDA-kernel limits without allocating memory.
-  // Depth is in [0, 8]; model/MLP/head widths must be positive. Compute-tile
-  // padding never adds stored parameters or contributes to model statistics.
+  // Depth may be any nonnegative int; construction time and memory grow with
+  // depth. Model/MLP/head widths must be positive. Compute-tile padding never
+  // adds stored parameters or contributes to model statistics.
   // Parameter tensors and single-sample intermediate tensors must fit the
   // backend's 32-bit element counts. Larger batches still need to respect
   // the per-layer runtime buffer/grid limits.
@@ -56,9 +59,9 @@ struct Gpt2Config {
 // flattened into token rows by kernels. Passing zero taps the summed token and
 // position embeddings.
 //
-// transformer_block_count must be in [0, kGpt2TransformerBlockCount]. The seed
-// and initialization scheme match CreateGpt2(), so the returned layer has the
-// same parameter prefix as a complete model created with the same arguments.
+// transformer_block_count must be nonnegative. The seed and initialization
+// scheme match CreateGpt2(), so the returned layer shares the parameter prefix
+// of a complete model created with the same arguments.
 absl::StatusOr<std::unique_ptr<Layer>> CreateActivationGenerator(
     cuda::Executor& executor, int transformer_block_count, DataType output_type,
     int seed);
@@ -77,10 +80,10 @@ absl::StatusOr<std::unique_ptr<Layer>> CreateActivationGenerator(
 // Every layer declares the fixed context length and symbolic batch dimension
 // (-2). The head returns FP32 [-2, kGpt2ContextLength,
 // kGpt2PaddedVocabularySize] logits. output_type selects the compute policy;
-// parameters and gradients remain FP32. transformer_block_count must be in [0,
-// kGpt2TransformerBlockCount]. Reducing it changes depth only; width,
-// vocabulary, context, initialization, final norm, and tied head stay fixed for
-// controlled memorization experiments.
+// parameters and gradients remain FP32. transformer_block_count must be
+// nonnegative; the default of eight is not a maximum. Changing it affects depth
+// only: width, vocabulary, context, initialization, final norm, and tied head
+// stay fixed for controlled memorization experiments.
 absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateGpt2(
     cuda::Executor& executor, DataType output_type, int seed,
     int transformer_block_count = kGpt2TransformerBlockCount);

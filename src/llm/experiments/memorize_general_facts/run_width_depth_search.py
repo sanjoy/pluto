@@ -55,7 +55,10 @@ def parse_args(argv=None):
     parser.add_argument("--tokenizer", type=Path, required=True, help="GPT-2 tokenizer directory")
     parser.add_argument("--checkpoint_dir", type=Path, required=True)
     parser.add_argument("--output_dir", type=Path, required=True)
-    parser.add_argument("--depths", type=_integer_list, default=list(range(1, 9)))
+    parser.add_argument(
+        "--depths", type=_integer_list, default=list(range(1, 9)),
+        help="Explicit positive int32 depths; the default search remains 1 through 8",
+    )
     parser.add_argument("--widths", type=_integer_list, default=[256, 128, 64, 32, 16])
     parser.add_argument(
         "--attention_heads", type=int, default=0,
@@ -70,8 +73,8 @@ def parse_args(argv=None):
     parser.add_argument("--warmup_steps", type=int, default=100)
     parser.add_argument("--training_seconds", type=float, default=10800)
     args = parser.parse_args(argv)
-    if any(not 1 <= value <= 8 for value in args.depths):
-        parser.error("depths must be between 1 and 8")
+    if any(not 0 < value < 2**31 for value in args.depths):
+        parser.error("depths must be positive int32 values")
     if any(value <= 0 or value * 4 >= 2**31 for value in args.widths):
         parser.error("widths must be positive with 4 * width < INT_MAX")
     try:
@@ -112,6 +115,8 @@ def model_dimensions(layers, width, attention_heads=0):
     The parameter count includes the fixed GPT-2 vocabulary's padded rows and
     learned absolute positions, and counts tied embedding/LM-head storage once.
     """
+    if type(layers) is not int or not 0 < layers < 2**31:
+        raise ValueError("layers must be a positive int32 value")
     if type(attention_heads) is not int or not 0 <= attention_heads < 2**31:
         raise ValueError("attention_heads must be a nonnegative int32 value")
     if attention_heads and width % attention_heads:

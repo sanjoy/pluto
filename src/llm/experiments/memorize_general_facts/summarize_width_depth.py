@@ -85,7 +85,7 @@ def _validate_trial(trial, run):
     width = _integer(trial["width"], "width", 1)
     heads = _integer(trial["heads"], "heads", 1)
     head_dim = _integer(trial["head_dim"], "head_dim", 1)
-    if not 1 <= layers <= 8 or width % heads:
+    if layers >= 2**31 or width % heads:
         raise ValueError("Invalid recorded GPT-2 architecture")
     if head_dim != width // heads:
         raise ValueError("Recorded head dimension is inconsistent")

@@ -74,6 +74,27 @@ TEST_F(CheckpointValidationTest, RejectsMissingTrailingWeight) {
             absl::StatusCode::kDataLoss);
 }
 
+TEST_F(CheckpointValidationTest,
+       SixteenBlockCheckpointCannotCertifyEightBlocks) {
+  // Sixteen blocks have 196 unique tensors, versus 100 for eight blocks.
+  // The generic prefix loader could mistake the ninth block's input norm for
+  // the shallower final norm, so certification must enforce the full file set.
+  for (size_t index = 0; index < 196; ++index)
+    Weight(index);
+  EXPECT_TRUE(ValidateExactCheckpointFiles(directory_, 196).ok());
+  EXPECT_EQ(ValidateExactCheckpointFiles(directory_, 100).code(),
+            absl::StatusCode::kDataLoss);
+}
+
+TEST_F(CheckpointValidationTest, SixteenBlockCheckpointRequiresFinalNormBias) {
+  for (size_t index = 0; index < 195; ++index)
+    Weight(index);
+  EXPECT_EQ(ValidateExactCheckpointFiles(directory_, 196).code(),
+            absl::StatusCode::kDataLoss);
+  Weight(195);
+  EXPECT_TRUE(ValidateExactCheckpointFiles(directory_, 196).ok());
+}
+
 TEST_F(CheckpointValidationTest, RejectsHoleDespiteMatchingFileCount) {
   Weight(0);
   Weight(2);

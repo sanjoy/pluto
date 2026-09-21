@@ -129,11 +129,9 @@ absl::StatusOr<EmbeddingLookupLayer*> AddActivationGeneratorLayers(
 }  // namespace
 
 absl::Status Gpt2Config::Validate() const {
-  if (transformer_block_count < 0 ||
-      transformer_block_count > kGpt2TransformerBlockCount)
+  if (transformer_block_count < 0)
     return absl::InvalidArgumentError(
-        "transformer_block_count must be between zero and "
-        "kGpt2TransformerBlockCount");
+        "transformer_block_count must be nonnegative");
   // Compute tiles are masked independently of logical channel widths. In
   // particular, a narrow model has no extra trainable padding channels and
   // LayerNorm/attention statistics use only its actual dimensions.

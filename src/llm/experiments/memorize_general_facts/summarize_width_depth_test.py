@@ -320,6 +320,47 @@ class SummarizeWidthDepthTest(unittest.TestCase):
         self.assertIn("| compact | 1 | 24 | 3 × 8 | 96 | 1,238,376 |", report)
         self.assertIn("| compact | 3 | 3 | 3 × 1 | 12 | 154,335 |", report)
 
+    def test_deep_narrow_successes_join_the_measured_frontier(self):
+        path = self.make_run(depths=[1, 16], widths=[24, 12, 8],
+                             failures={(1, 12)}, steps=40000, attention_heads=1)
+        runs = load_runs([path], ["deep"])
+        points = frontier(runs[0]["trials"])
+        self.assertEqual([(trial["layers"], trial["width"]) for trial in points],
+                         [(1, 24), (16, 8)])
+        report = render_markdown(runs)
+        self.assertIn("| deep | 16 | 12 | 1 × 12 | 48 | 645,720 |", report)
+        self.assertIn("| deep | 16 | 8 | 1 × 8 | 32 | 424,336 |", report)
+        group = protocol_groups(runs)[0]
+        self.assertEqual([(trial["layers"], trial["width"])
+                          for trial in frontier(group["trials"])],
+                         [(1, 24), (16, 8)])
+
+    def test_deep_narrow_budget_failure_does_not_displace_success(self):
+        path = self.make_run(depths=[16], widths=[12, 8],
+                             failures={(16, 8)}, steps=40000, attention_heads=1)
+        runs = load_runs([path], ["deep"])
+        self.assertEqual([trial["status"] for trial in runs[0]["trials"]],
+                         ["verified_success", "verified_budget_failure"])
+        self.assertEqual([(trial["layers"], trial["width"])
+                          for trial in frontier(runs[0]["trials"])], [(16, 12)])
+        self.assertIn("budget exhausted", render_markdown(runs))
+
+    def test_recorded_depth_accepts_int32_maximum_without_allocating_a_model(self):
+        path = self.make_run(depths=[2**31 - 1], widths=[8], failures=set(),
+                             attention_heads=1)
+        runs = load_runs([path])
+        self.assertEqual(runs[0]["trials"][0]["layers"], 2**31 - 1)
+
+    def test_recorded_depth_requires_a_positive_native_int32_integer(self):
+        for invalid in (0, -1, True, 16.0, "16", None, 2**31):
+            with self.subTest(invalid=invalid):
+                path = self.make_run(depths=[16], widths=[8], failures=set(),
+                                     attention_heads=1)
+                self.mutate_manifest(path, lambda manifest:
+                                     manifest["trials"][0].update(layers=invalid))
+                with self.assertRaises(ValueError):
+                    load_runs([path])
+
     def test_compact_head_dimension_still_requires_positive_matching_integer(self):
         for invalid in (0, -1, True, 7, 8.0):
             with self.subTest(invalid=invalid):

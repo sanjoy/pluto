@@ -1,0 +1,5 @@
+layers=16 width=12 heads=1 feed_forward_width=48 parameters=645720 samples=1024 scored_targets=10002
+2026-09-21 06:40:01 UTC step=0 elapsed_seconds=2.18086 mean_loss=10.8355 errors=10002/10002 exact_sentences=0/1024
+2026-09-21 06:40:04 UTC step=2 elapsed_seconds=4.91175 mean_loss=10.8349 errors=10002/10002 exact_sentences=0/1024
+2026-09-21 06:40:06 UTC step=2 elapsed_seconds=7.13227 mean_loss=10.8349 errors=10002/10002 exact_sentences=0/1024
+BUDGET_EXHAUSTED checkpoint=/home/ubuntu/checkpoints/memorize_general_facts/deeper_depth_validation_0/sixteen_blocks_width_12_repeat/width_12/layers_16/step_2

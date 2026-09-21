@@ -233,6 +233,29 @@ depth; an execution or evidence-validation error stops the search. The native
 binary and input hashes are pinned, so do not rebuild that executable or edit
 the inputs while a search is active.
 
+The default depth grid is not an architectural maximum. After rebuilding with
+configurable deeper-depth support, an explicit option such as
+`--depths=16 --widths=12,8 --attention_heads=1` selects deeper, narrower trials.
+The width/depth driver accepts positive signed-int32 depths; the native recipe
+also permits zero for the separate zero-block control. Available memory and
+per-tensor backend limits still apply. The ordinary recipe default remains
+eight blocks, and residual projections keep the original initialization scale
+`0.02 / sqrt(2 * 8)` at every configured depth, preserving shared initialization
+in depth comparisons. Construction order and per-block seeds are unchanged.
+
+A model with `L` blocks has `4 + 12*L` unique checkpoint files; sixteen blocks
+therefore use 196 files, not 100. Verify such checkpoints with this experiment's
+native runner and their recorded depth, widths, and head count. The default
+Shakespeare/SAE recipes and the original fixed-shape inspectors still describe
+the original eight-block model, not arbitrary deeper checkpoints. The older
+`run_depth_search.py` intentionally retains its historical depth-eight starting
+limit; use `run_width_depth_search.py` for these configurable searches. Supporting
+a shape or validating it with a smoke test does not establish memorization, and
+does not automatically expand any already-running experiment grid.
+The full-context tests, real optimizer/checkpoint roundtrips, deterministic
+repeat, and historical compatibility checks for sixteen-block models are
+documented in [deeper-depth validation](runs/deeper_depth_validation_0/README.md).
+
 After rebuilding a binary with compact-width support, `--widths=48,32,24,16,8`
 can refine the narrower region. Positive odd widths are also supported. The
 driver defaults to `--attention_heads=0`, keeping head dimension

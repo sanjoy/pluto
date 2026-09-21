@@ -454,8 +454,62 @@ class WidthDepthSearchTest(unittest.TestCase):
                          [(1, 24), (2, 8), (3, 3)])
         self.assertEqual(summary["minimum_parameter_success"]["parameters"], 154335)
 
+    def test_explicit_deep_narrow_trials_preserve_all_verification_phases(self):
+        for fail_width_eight in (False, True):
+            with self.subTest(fail_width_eight=fail_width_eight):
+                label = "failure" if fail_width_eight else "success"
+                self.args = parse_args(self.arguments + [
+                    "--depths=16", "--widths=12,8", "--attention_heads=1",
+                    "--steps=40000",
+                    f"--output_dir={self.root / ('artifacts_' + label)}",
+                    f"--checkpoint_dir={self.root / ('checkpoints_' + label)}",
+                ])
+                self.failures = {(16, 8)} if fail_width_eight else set()
+                self.calls.clear()
+                self.assertEqual(self.run_driver(), 0)
+                summary = self.summary()
+                self.assertEqual(len(self.calls), 6)
+                self.assertEqual([(trial["layers"], trial["width"], trial["parameters"])
+                                  for trial in summary["trials"]],
+                                 [(16, 12, 645720), (16, 8, 424336)])
+                for trial in summary["trials"]:
+                    self.assertEqual(trial["phase"], "verified")
+                    self.assertEqual(len(trial["commands"]), 3)
+                    for command in trial["commands"][:2]:
+                        self.assertIn("--layers=16", command)
+                        self.assertIn("--attention_heads=1", command)
+                    self.assertIn(f"--verify_checkpoint={trial['checkpoint']}",
+                                  trial["commands"][1])
+                    self.assertTrue(Path(trial["prediction_artifact_verification"]).is_file())
+                self.assertEqual(summary["trials"][1]["status"],
+                                 "verified_budget_failure" if fail_width_eight
+                                 else "verified_success")
+                expected_width = 12 if fail_width_eight else 8
+                self.assertEqual([(point["layers"], point["width"])
+                                  for point in summary["verified_success_frontier"]],
+                                 [(16, expected_width)])
+                self.assertEqual(summary["minimum_parameter_success"]["width"], expected_width)
+
+    def test_explicit_depths_accept_the_positive_native_int32_range(self):
+        args = parse_args(self.arguments + ["--depths=2147483647,16,9,8,1"])
+        self.assertEqual(args.depths, [1, 8, 9, 16, 2**31 - 1])
+        self.assertEqual(model_dimensions(2**31 - 1, 8, 1)["layers"], 2**31 - 1)
+        self.assertFalse(args.output_dir.exists())
+        self.assertFalse(args.checkpoint_dir.exists())
+
+    def test_invalid_depth_is_rejected_by_runner_before_creating_directories(self):
+        for depth in (0, -1, True, 16.0, "16", None, 2**31):
+            with self.subTest(depth=depth):
+                self.args.depths = [depth]
+                with self.assertRaisesRegex(ValueError, "positive int32"):
+                    self.run_driver()
+                self.assertEqual(self.calls, [])
+                self.assertFalse(self.args.output_dir.exists())
+                self.assertFalse(self.args.checkpoint_dir.exists())
+
     def test_invalid_flags_are_rejected_without_filesystem_mutation(self):
-        for flag in ("--depths=0", "--depths=9", "--depths=1,1", "--depths=",
+        for flag in ("--depths=0", "--depths=-1", "--depths=1.5", "--depths=2147483648",
+                     "--depths=1,1", "--depths=",
                      "--widths=0", "--widths=-1", "--widths=16,16", "--widths=x",
                      "--widths=536870912", "--batch_size=0", "--batch_size=2097152",
                      "--steps=-1", "--steps=2147483647", "--eval_every=0",
