@@ -1,7 +1,8 @@
 # Width/depth memorization search
 
-Paths under `runs/` below refer to local, generated artifacts. They are ignored
-by Git and are not included in a fresh clone; this report retains their provenance.
+Paths under `runs/` below are relative to the parent experiment directory and
+refer to local, generated artifacts. They are ignored by Git and are not included
+in a fresh clone; this report retains their provenance.
 
 This extends the completed width-512 depth search in [RESULTS.md](RESULTS.md).
 The target remains exact top-1 prediction of every suffix token and EOS after

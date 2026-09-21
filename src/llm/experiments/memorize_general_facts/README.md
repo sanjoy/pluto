@@ -7,7 +7,7 @@ Padding must never contribute to loss or accuracy. Checkpoints belong outside
 the repository under `~/checkpoints/`.
 
 The completed search found that one block suffices for the approved task;
-all depths from eight through one passed. See [RESULTS.md](RESULTS.md) for the
+all depths from eight through one passed. See [RESULTS.md](ai_slop/RESULTS.md) for the
 per-depth evidence, smallest checkpoint, and exact verification command.
 
 ## Code and experiment utilities
@@ -26,7 +26,8 @@ Optional global gradient clipping uses `src/llm/gradient_clipper.h`.
 Exact masked top-1 predictions use `ExtractTop1Ids` in
 `src/llm/extract_top1_ids.h`, implemented with a deterministic cuTile kernel.
 
-The reports summarize past experiments, but generated `runs/` artifacts are
+Reports and analysis notes live in `ai_slop/`. They summarize past experiments,
+but generated `runs/` artifacts are
 local-only and ignored by Git. They are not required to build or test the code.
 Recorded commands in historical manifests may name old script locations; those
 are provenance, not current entry points. Use the commands below for new runs.
@@ -249,7 +250,8 @@ information available to a zero-block model. There are 809 contradictory groups
 and at least 2,923 unavoidable errors: accuracy cannot exceed 70.7758%, even
 with perfect optimization. This rules out zero blocks. It does not establish
 whether one block can be trained successfully by itself; the completed training
-and independent verification in RESULTS.md provide that constructive result.
+and independent verification in [RESULTS.md](ai_slop/RESULTS.md) provide that
+constructive result.
 
 For a finished run, independently retokenize the snapshots and verify every
 recorded target, including EOS and complete coverage of all 1,024 samples:
@@ -281,11 +283,13 @@ Tokenizer snapshots are not committed. To verify the committed reports on
 another checkout, replace native `--tokenizer=RUN` with
 `--tokenizer=/path/to/gpt2`, and Python `--tokenizer=RUN/tokenizer.json` with
 `--tokenizer=/path/to/gpt2/tokenizer.json`. Use the tokenizer SHA-256 recorded in
-[RESULTS.md](RESULTS.md); corpus snapshots and prediction TSVs are committed.
+[RESULTS.md](ai_slop/RESULTS.md). Corpus snapshots and prediction TSVs are local
+artifacts; copy them from the original run or generate them with a new run.
 
 The experiment's `--verify_checkpoint` supports every tested depth via
 `--layers=N`. The existing `gpt2_shakespeare_llm --mode=infer_model` CLI instead
-constructs eight blocks: it can run the eight-block smoke checks in RESULTS.md,
+constructs eight blocks: it can run the eight-block smoke checks in
+[RESULTS.md](ai_slop/RESULTS.md),
 but cannot load a shallower experiment checkpoint. Its decoder also emits
 exactly `--generation_tokens` tokens rather than stopping automatically at EOS.
 
@@ -335,7 +339,7 @@ bazel-bin/src/llm/experiments/memorize_general_facts/memorize_general_facts \
 
 Unlike tensor widths, the number of attention heads cannot be recovered from
 raw checkpoint file sizes, so preserve the run's configuration. See
-[WIDTH_DEPTH_RESULTS.md](WIDTH_DEPTH_RESULTS.md) for the search protocol,
+[WIDTH_DEPTH_RESULTS.md](ai_slop/WIDTH_DEPTH_RESULTS.md) for the search protocol,
 empirical frontier, and distinction between a training-budget failure and a
 capacity lower bound.
 

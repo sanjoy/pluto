@@ -1,5 +1,9 @@
 /bazel-*
 
+# General-facts experiment Python caches and generated training/sweep artifacts.
+/src/llm/experiments/memorize_general_facts/**/__pycache__/
+/src/llm/experiments/memorize_general_facts/runs/
+
 # Generated research evidence is retained locally.
 /ai-slop/research/weight_memorization/autoregressive_word_evidence.tar.gz
 /ai-slop/research/weight_memorization/delta_batch_four_evidence.tar.gz
