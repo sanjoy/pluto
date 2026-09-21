@@ -1,5 +1,6 @@
 #include <cmath>
 #include <cstddef>
+#include <limits>
 #include <tuple>
 #include <vector>
 
@@ -14,26 +15,34 @@ namespace {
 
 TEST_F(LayerReferenceTest, LookupAndTiedHeadMatchAcrossShapesAndTypes) {
   for (DataType type : {DataType::FP16, DataType::BF16}) {
-    for (const auto [vocab, width, rows] :
-         {std::tuple{17, 1, 16}, std::tuple{17, 3, 16}, std::tuple{17, 7, 32},
-          std::tuple{17, 8, 16}, std::tuple{17, 15, 32}, std::tuple{17, 24, 16},
-          std::tuple{17, 33, 32}, std::tuple{17, 16, 16},
-          std::tuple{32, 32, 32}, std::tuple{17, 48, 48},
-          std::tuple{65, 80, 80}, std::tuple{257, 48, 16},
-          std::tuple{257, 80, 48}, std::tuple{50257, 16, 16}}) {
+    for (const auto [vocab, width, rows, pad_vocabulary] :
+         {std::tuple{17, 1, 16, true}, std::tuple{17, 3, 16, true},
+          std::tuple{17, 7, 32, true}, std::tuple{17, 8, 16, true},
+          std::tuple{17, 15, 32, true}, std::tuple{17, 24, 16, true},
+          std::tuple{17, 33, 32, true}, std::tuple{17, 16, 16, true},
+          std::tuple{32, 32, 32, true}, std::tuple{17, 48, 48, true},
+          std::tuple{65, 80, 80, true}, std::tuple{257, 48, 16, true},
+          std::tuple{257, 80, 48, true}, std::tuple{50257, 16, 16, true},
+          std::tuple{17, 3, 16, false}, std::tuple{4475, 16, 16, false}}) {
       SCOPED_TRACE(testing::Message()
                    << "type=" << static_cast<int>(type) << " vocab=" << vocab
-                   << " width=" << width << " rows=" << rows);
-      auto device_embedding =
-          EmbeddingLookupLayer::Create(*executor_, vocab, width, type);
-      auto reference_embedding =
-          EmbeddingLookupLayerReference::Create(vocab, width, type);
+                   << " width=" << width << " rows=" << rows
+                   << " pad_vocabulary=" << pad_vocabulary);
+      auto device_embedding = EmbeddingLookupLayer::Create(
+          *executor_, vocab, width, type, 1, pad_vocabulary);
+      auto reference_embedding = EmbeddingLookupLayerReference::Create(
+          vocab, width, type, 1, pad_vocabulary);
       ASSERT_TRUE(device_embedding.ok()) << device_embedding.status();
       ASSERT_TRUE(reference_embedding.ok()) << reference_embedding.status();
       const int padded = (*device_embedding)->padded_vocab_size();
       EXPECT_EQ(padded, ((vocab + 15) / 16) * 16);
       EXPECT_EQ((*reference_embedding)->padded_vocab_size(), padded);
-      std::vector<float> table(static_cast<size_t>(padded) * width);
+      const int stored = pad_vocabulary ? padded : vocab;
+      EXPECT_EQ((*device_embedding)->stored_vocab_size(), stored);
+      EXPECT_EQ((*reference_embedding)->stored_vocab_size(), stored);
+      EXPECT_EQ((*device_embedding)->weight().size_bytes(),
+                static_cast<size_t>(stored) * width * sizeof(float));
+      std::vector<float> table(static_cast<size_t>(stored) * width);
       for (size_t index = 0; index < table.size(); ++index)
         table[index] = 0.12f * std::sin(static_cast<float>(index) * 0.091f);
       auto device_weights = (*device_embedding)->weights();
@@ -57,6 +66,9 @@ TEST_F(LayerReferenceTest, LookupAndTiedHeadMatchAcrossShapesAndTypes) {
       std::vector<float> lookup_gradient(static_cast<size_t>(rows) * width);
       for (int row = 0; row < rows; ++row)
         tokens[row] = (row * 5 + row / 3) % vocab;
+      // Exercise the actual allocation boundary, including token 4474 when
+      // only 4475 rows exist rather than a rounded-up 4480-row table.
+      tokens.back() = vocab - 1;
       for (size_t index = 0; index < lookup_gradient.size(); ++index) {
         lookup_gradient[index] =
             0.15f * std::cos(static_cast<float>(index) * 0.17f);
@@ -95,13 +107,20 @@ TEST_F(LayerReferenceTest, LookupAndTiedHeadMatchAcrossShapesAndTypes) {
                                    reference_table_gradients[0], 2e-6f, 2e-5f));
 
       // The head must add to both the initial accumulator and the lookup's
-      // contribution, including physical vocabulary lanes beyond vocab.
+      // contribution. Logit padding has nonzero upstream values below: it
+      // must not affect the compact table or its hidden-state derivative.
       auto device_head =
           LanguageModelingHeadLayer::Create(device_embedding->get());
       auto reference_head = LanguageModelingHeadLayerReference::Create(
           reference_embedding->get());
       ASSERT_TRUE(device_head.ok()) << device_head.status();
       ASSERT_TRUE(reference_head.ok()) << reference_head.status();
+      EXPECT_EQ((*device_head)->weights()[0].data(),
+                (*device_embedding)->weight().data());
+      EXPECT_EQ((*reference_head)->weights()[0].data(),
+                (*reference_embedding)->weight().data());
+      EXPECT_EQ((*device_head)->output_types()[0],
+                ActivationType(DataType::FP32, {-2, 1, padded}));
       std::vector<float> hidden(static_cast<size_t>(rows) * width);
       std::vector<float> logits_gradient(static_cast<size_t>(rows) * padded);
       for (size_t index = 0; index < hidden.size(); ++index)
@@ -297,6 +316,25 @@ TEST_F(LayerReferenceTest, EmbeddingRejectsNonpositiveSequenceLength) {
             .status()
             .code(),
         absl::StatusCode::kInvalidArgument);
+  }
+}
+
+TEST_F(LayerReferenceTest, EmbeddingRejectsOverflowBeforeAllocation) {
+  for (bool pad_vocabulary : {false, true}) {
+    for (const auto [vocab, width] :
+         {std::tuple{std::numeric_limits<int>::max(), 1},
+          std::tuple{4475, std::numeric_limits<int>::max()}}) {
+      EXPECT_EQ(EmbeddingLookupLayer::Create(*executor_, vocab, width,
+                                             DataType::BF16, 1, pad_vocabulary)
+                    .status()
+                    .code(),
+                absl::StatusCode::kInvalidArgument);
+      EXPECT_EQ(EmbeddingLookupLayerReference::Create(
+                    vocab, width, DataType::BF16, 1, pad_vocabulary)
+                    .status()
+                    .code(),
+                absl::StatusCode::kInvalidArgument);
+    }
   }
 }
 

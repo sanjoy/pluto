@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 // We use CUB directly, not Thrust algorithms. Its iterator traits otherwise
 // pull in Thrust's CUDA execution policy, which contains unconditional C++
 // exception handlers. Select the CPP policy for those unused Thrust facilities;
@@ -102,7 +103,8 @@ __tile_global__ void EmbeddingBackwardKernel(
   const int width_tile = block % width_tiles;
   const uint64_t key = static_cast<uint64_t>(key_view.load(start));
   const uint64_t token = key >> 32;
-  if (token >= static_cast<uint64_t>(padded_vocab_size)) return;
+  if (token >= static_cast<uint64_t>(padded_vocab_size))
+    return;
   if (start > 0 &&
       (static_cast<uint64_t>(key_view.load(start - 1)) >> 32) == token)
     return;
@@ -115,7 +117,8 @@ __tile_global__ void EmbeddingBackwardKernel(
       table_view.load_masked(static_cast<int>(token), width_tile);
   for (int index = start; index < rows; ++index) {
     const uint64_t next = static_cast<uint64_t>(key_view.load(index));
-    if ((next >> 32) != token) break;
+    if ((next >> 32) != token)
+      break;
     const int row = static_cast<int>(next & 0xffffffffULL);
     accumulator = accumulator + gradient_view.load_masked(row, width_tile);
   }
@@ -132,7 +135,7 @@ constexpr int kLmHeadTile = 64;
 template <class Activation>
 __tile_global__ void LanguageModelingHeadForwardKernel(
     const Activation* __restrict__ input, const float* __restrict__ table,
-    int rows, int padded_vocab_size, int embedding_dim,
+    int rows, int padded_vocab_size, int stored_vocab_size, int embedding_dim,
     float* __restrict__ output) {
   namespace ct = ::cuda::tiles;
   using namespace ct::literals;
@@ -140,14 +143,15 @@ __tile_global__ void LanguageModelingHeadForwardKernel(
       ct::tensor_span{input, ct::extents{rows, embedding_dim}},
       ct::shape{64_ic, 64_ic}};
   auto table_view = ct::partition_view{
-      ct::tensor_span{table, ct::extents{padded_vocab_size, embedding_dim}},
+      ct::tensor_span{table, ct::extents{stored_vocab_size, embedding_dim}},
       ct::shape{64_ic, 64_ic}};
+  // Output padding is independent of table storage. Masked table loads supply
+  // zero for nonexistent rows without creating trainable padding parameters.
   auto output_view = ct::partition_view{
       ct::tensor_span{output, ct::extents{rows, padded_vocab_size}},
       ct::shape{64_ic, 64_ic}};
-  const int vocabulary_tiles =
-      (padded_vocab_size + kLmHeadTile - 1) / kLmHeadTile;
-  const int width_tiles = (embedding_dim + kLmHeadTile - 1) / kLmHeadTile;
+  const int vocabulary_tiles = (padded_vocab_size - 1) / kLmHeadTile + 1;
+  const int width_tiles = (embedding_dim - 1) / kLmHeadTile + 1;
   const int block = ct::bid().x;
   const int row_tile = block / vocabulary_tiles;
   const int vocabulary_tile = block % vocabulary_tiles;
@@ -186,7 +190,7 @@ __tile_global__ void MaskPaddedLogitsKernel(float* __restrict__ logits,
 template <class Activation>
 __tile_global__ void LanguageModelingHeadInputGradientKernel(
     const float* __restrict__ output_gradient, const float* __restrict__ table,
-    int rows, int padded_vocab_size, int embedding_dim,
+    int rows, int padded_vocab_size, int stored_vocab_size, int embedding_dim,
     float* __restrict__ input_gradient) {
   namespace ct = ::cuda::tiles;
   using namespace ct::literals;
@@ -194,14 +198,13 @@ __tile_global__ void LanguageModelingHeadInputGradientKernel(
       ct::tensor_span{output_gradient, ct::extents{rows, padded_vocab_size}},
       ct::shape{64_ic, 64_ic}};
   auto table_view = ct::partition_view{
-      ct::tensor_span{table, ct::extents{padded_vocab_size, embedding_dim}},
+      ct::tensor_span{table, ct::extents{stored_vocab_size, embedding_dim}},
       ct::shape{64_ic, 64_ic}};
   auto input_gradient_view = ct::partition_view{
       ct::tensor_span{input_gradient, ct::extents{rows, embedding_dim}},
       ct::shape{64_ic, 64_ic}};
-  const int width_tiles = (embedding_dim + kLmHeadTile - 1) / kLmHeadTile;
-  const int vocabulary_tiles =
-      (padded_vocab_size + kLmHeadTile - 1) / kLmHeadTile;
+  const int width_tiles = (embedding_dim - 1) / kLmHeadTile + 1;
+  const int vocabulary_tiles = (padded_vocab_size - 1) / kLmHeadTile + 1;
   const int block = ct::bid().x;
   const int row_tile = block / width_tiles;
   const int dimension_tile = block % width_tiles;
@@ -221,7 +224,8 @@ template <class Activation>
 __tile_global__ void LanguageModelingHeadWeightGradientKernel(
     const Activation* __restrict__ input,
     const float* __restrict__ output_gradient, int rows, int padded_vocab_size,
-    int embedding_dim, float* __restrict__ table_gradient) {
+    int stored_vocab_size, int embedding_dim,
+    float* __restrict__ table_gradient) {
   namespace ct = ::cuda::tiles;
   using namespace ct::literals;
   auto input_view = ct::partition_view{
@@ -232,10 +236,10 @@ __tile_global__ void LanguageModelingHeadWeightGradientKernel(
       ct::shape{64_ic, 64_ic}};
   auto table_gradient_view = ct::partition_view{
       ct::tensor_span{table_gradient,
-                      ct::extents{padded_vocab_size, embedding_dim}},
+                      ct::extents{stored_vocab_size, embedding_dim}},
       ct::shape{64_ic, 64_ic}};
-  const int width_tiles = (embedding_dim + kLmHeadTile - 1) / kLmHeadTile;
-  const int row_tiles = (rows + kLmHeadTile - 1) / kLmHeadTile;
+  const int width_tiles = (embedding_dim - 1) / kLmHeadTile + 1;
+  const int row_tiles = (rows - 1) / kLmHeadTile + 1;
   const int block = ct::bid().x;
   const int vocabulary_tile = block / width_tiles;
   const int dimension_tile = block % width_tiles;
@@ -319,7 +323,8 @@ absl::Status CopyNormalInitialization(cuda::Executor& executor, Buffer& weight,
   ASSIGN_OR_RETURN(auto values,
                    cuda::PageLockedHostArray<float>::Allocate(
                        executor, weight.size_bytes() / sizeof(float)));
-  for (float& value : values) value = distribution(random);
+  for (float& value : values)
+    value = distribution(random);
   RETURN_IF_ERROR(cuda::CudaStatus(
       cudaMemcpyAsync(weight.data(), values.data(), weight.size_bytes(),
                       cudaMemcpyHostToDevice, executor.stream()),
@@ -330,14 +335,13 @@ absl::Status CopyNormalInitialization(cuda::Executor& executor, Buffer& weight,
 
 }  // namespace
 
-EmbeddingLookupLayer::EmbeddingLookupLayer(cuda::Executor& executor,
-                                           int vocab_size,
-                                           int padded_vocab_size,
-                                           int embedding_dim,
-                                           DataType data_type, Buffer weight,
-                                           Buffer gradient, int sequence_length)
+EmbeddingLookupLayer::EmbeddingLookupLayer(
+    cuda::Executor& executor, int vocab_size, int padded_vocab_size,
+    int stored_vocab_size, int embedding_dim, DataType data_type, Buffer weight,
+    Buffer gradient, int sequence_length)
     : vocab_size_(vocab_size),
       padded_vocab_size_(padded_vocab_size),
+      stored_vocab_size_(stored_vocab_size),
       embedding_dim_(embedding_dim),
       sequence_length_(sequence_length),
       output_type_(data_type),
@@ -348,7 +352,7 @@ EmbeddingLookupLayer::EmbeddingLookupLayer(cuda::Executor& executor,
 absl::StatusOr<std::unique_ptr<EmbeddingLookupLayer>>
 EmbeddingLookupLayer::Create(cuda::Executor& executor, int vocab_size,
                              int embedding_dim, DataType data_type,
-                             int sequence_length) {
+                             int sequence_length, bool pad_vocabulary) {
   RETURN_IF_ERROR(internal::ValidateComputeType(data_type));
   if (sequence_length <= 0)
     return absl::InvalidArgumentError("sequence_length must be positive");
@@ -356,9 +360,17 @@ EmbeddingLookupLayer::Create(cuda::Executor& executor, int vocab_size,
     return absl::InvalidArgumentError("vocab_size must be positive");
   RETURN_IF_ERROR(
       internal::ValidatePositiveExtent(embedding_dim, "embedding_dim"));
-  const int padded_vocab_size = internal::RoundUpToTile(vocab_size);
+  const int64_t padded_extent = (int64_t{vocab_size} + 15) / 16 * 16;
+  if (padded_extent > std::numeric_limits<int>::max())
+    return absl::InvalidArgumentError("padded vocabulary exceeds int range");
+  const int padded_vocab_size = static_cast<int>(padded_extent);
+  const int stored_vocab_size = pad_vocabulary ? padded_vocab_size : vocab_size;
+  if (int64_t{stored_vocab_size} * embedding_dim >
+      std::numeric_limits<int>::max())
+    return absl::InvalidArgumentError(
+        "embedding exceeds the backend's 32-bit element-count limit");
   const size_t bytes =
-      static_cast<size_t>(padded_vocab_size) * embedding_dim * sizeof(float);
+      static_cast<size_t>(stored_vocab_size) * embedding_dim * sizeof(float);
   ASSIGN_OR_RETURN(auto weight, Buffer::Allocate(executor, bytes));
   ASSIGN_OR_RETURN(auto gradient, Buffer::Allocate(executor, bytes));
   for (Buffer* buffer : {&weight, &gradient}) {
@@ -368,15 +380,15 @@ EmbeddingLookupLayer::Create(cuda::Executor& executor, int vocab_size,
         "cudaMemsetAsync(embedding parameter)"));
   }
   return absl::WrapUnique(new EmbeddingLookupLayer(
-      executor, vocab_size, padded_vocab_size, embedding_dim, data_type,
-      std::move(weight), std::move(gradient), sequence_length));
+      executor, vocab_size, padded_vocab_size, stored_vocab_size, embedding_dim,
+      data_type, std::move(weight), std::move(gradient), sequence_length));
 }
 
 absl::Status EmbeddingLookupLayer::InitializeIdentity(float scale) {
   ASSIGN_OR_RETURN(
       auto values,
       cuda::PageLockedHostArray<float>::Allocate(
-          executor_, static_cast<size_t>(padded_vocab_size_) * embedding_dim_));
+          executor_, static_cast<size_t>(stored_vocab_size_) * embedding_dim_));
   std::fill(values.begin(), values.end(), 0.0f);
   for (int index = 0; index < std::min(vocab_size_, embedding_dim_); ++index)
     values[static_cast<size_t>(index) * embedding_dim_ + index] = scale;
@@ -415,12 +427,12 @@ absl::StatusOr<FwdResult> EmbeddingLookupLayer::fwd_impl(
   if (output_type_ == DataType::BF16) {
     EmbeddingForwardKernel<__nv_bfloat16><<<blocks, 1, 0, executor.stream()>>>(
         static_cast<const int*>(inputs[0].data()),
-        static_cast<const float*>(weight_.data()), rows, padded_vocab_size_,
+        static_cast<const float*>(weight_.data()), rows, stored_vocab_size_,
         embedding_dim_, static_cast<__nv_bfloat16*>(output.data()));
   } else {
     EmbeddingForwardKernel<float><<<blocks, 1, 0, executor.stream()>>>(
         static_cast<const int*>(inputs[0].data()),
-        static_cast<const float*>(weight_.data()), rows, padded_vocab_size_,
+        static_cast<const float*>(weight_.data()), rows, stored_vocab_size_,
         embedding_dim_, static_cast<float*>(output.data()));
   }
   RETURN_IF_ERROR(
@@ -439,9 +451,9 @@ absl::StatusOr<BufferVec> EmbeddingLookupLayer::bwd_impl(
     return absl::InvalidArgumentError(
         "EmbeddingLookupLayer bwd received an incompatible gradient or state");
   }
-  ASSIGN_OR_RETURN(
-      int rows, internal::ElementCount(executor, state.intermediates[0],
-                                       sizeof(int), "embedding token input"));
+  ASSIGN_OR_RETURN(int rows,
+                   internal::ElementCount(executor, state.intermediates[0],
+                                          sizeof(int), "embedding token input"));
   RETURN_IF_ERROR(internal::ValidateBuffer(
       executor, output_gradients[0],
       static_cast<size_t>(rows) * embedding_dim_ * sizeof(float),
@@ -475,7 +487,7 @@ absl::StatusOr<BufferVec> EmbeddingLookupLayer::bwd_impl(
   EmbeddingBackwardKernel<<<rows * internal::MaskedTileCount(embedding_dim_), 1,
                             0, executor.stream()>>>(
       sorted_ptr, static_cast<const float*>(output_gradients[0].data()), rows,
-      padded_vocab_size_, embedding_dim_,
+      stored_vocab_size_, embedding_dim_,
       static_cast<float*>(gradient_.data()));
   RETURN_IF_ERROR(
       cuda::CudaStatus(cudaGetLastError(), "EmbeddingBackwardKernel launch"));
@@ -512,23 +524,22 @@ absl::StatusOr<FwdResult> LanguageModelingHeadLayer::fwd_impl(
       Buffer::Allocate(executor, static_cast<size_t>(rows) *
                                      embedding_->padded_vocab_size_ *
                                      sizeof(float)));
-  const int blocks =
-      ((rows + kLmHeadTile - 1) / kLmHeadTile) *
-      ((embedding_->padded_vocab_size_ + kLmHeadTile - 1) / kLmHeadTile);
+  const int blocks = ((rows - 1) / kLmHeadTile + 1) *
+                     ((embedding_->padded_vocab_size_ - 1) / kLmHeadTile + 1);
   if (embedding_->output_type_ == DataType::BF16) {
     LanguageModelingHeadForwardKernel<__nv_bfloat16>
         <<<blocks, 1, 0, executor.stream()>>>(
             static_cast<const __nv_bfloat16*>(inputs[0].data()),
             static_cast<const float*>(embedding_->weight_.data()), rows,
-            embedding_->padded_vocab_size_, embedding_->embedding_dim_,
-            static_cast<float*>(output.data()));
+            embedding_->padded_vocab_size_, embedding_->stored_vocab_size_,
+            embedding_->embedding_dim_, static_cast<float*>(output.data()));
   } else {
     LanguageModelingHeadForwardKernel<float>
         <<<blocks, 1, 0, executor.stream()>>>(
             static_cast<const float*>(inputs[0].data()),
             static_cast<const float*>(embedding_->weight_.data()), rows,
-            embedding_->padded_vocab_size_, embedding_->embedding_dim_,
-            static_cast<float*>(output.data()));
+            embedding_->padded_vocab_size_, embedding_->stored_vocab_size_,
+            embedding_->embedding_dim_, static_cast<float*>(output.data()));
   }
   MaskPaddedLogitsKernel<<<rows, 1, 0, executor.stream()>>>(
       static_cast<float*>(output.data()), rows, embedding_->vocab_size_,
@@ -563,38 +574,39 @@ absl::StatusOr<BufferVec> LanguageModelingHeadLayer::bwd_impl(
                    Buffer::Allocate(executor, static_cast<size_t>(rows) *
                                                   embedding_->embedding_dim_ *
                                                   sizeof(float)));
-  const int width_tiles =
-      (embedding_->embedding_dim_ + kLmHeadTile - 1) / kLmHeadTile;
-  const int input_blocks =
-      ((rows + kLmHeadTile - 1) / kLmHeadTile) * width_tiles;
+  const int width_tiles = (embedding_->embedding_dim_ - 1) / kLmHeadTile + 1;
+  const int input_blocks = ((rows - 1) / kLmHeadTile + 1) * width_tiles;
   const int weight_blocks =
-      ((embedding_->padded_vocab_size_ + kLmHeadTile - 1) / kLmHeadTile) *
-      width_tiles;
+      ((embedding_->stored_vocab_size_ - 1) / kLmHeadTile + 1) * width_tiles;
   if (embedding_->output_type_ == DataType::BF16) {
     LanguageModelingHeadInputGradientKernel<__nv_bfloat16>
         <<<input_blocks, 1, 0, executor.stream()>>>(
             static_cast<const float*>(output_gradients[0].data()),
             static_cast<const float*>(embedding_->weight_.data()), rows,
-            embedding_->padded_vocab_size_, embedding_->embedding_dim_,
+            embedding_->padded_vocab_size_, embedding_->stored_vocab_size_,
+            embedding_->embedding_dim_,
             static_cast<float*>(input_gradient.data()));
     LanguageModelingHeadWeightGradientKernel<__nv_bfloat16>
         <<<weight_blocks, 1, 0, executor.stream()>>>(
             static_cast<const __nv_bfloat16*>(state.intermediates[0].data()),
             static_cast<const float*>(output_gradients[0].data()), rows,
-            embedding_->padded_vocab_size_, embedding_->embedding_dim_,
+            embedding_->padded_vocab_size_, embedding_->stored_vocab_size_,
+            embedding_->embedding_dim_,
             static_cast<float*>(embedding_->gradient_.data()));
   } else {
     LanguageModelingHeadInputGradientKernel<float>
         <<<input_blocks, 1, 0, executor.stream()>>>(
             static_cast<const float*>(output_gradients[0].data()),
             static_cast<const float*>(embedding_->weight_.data()), rows,
-            embedding_->padded_vocab_size_, embedding_->embedding_dim_,
+            embedding_->padded_vocab_size_, embedding_->stored_vocab_size_,
+            embedding_->embedding_dim_,
             static_cast<float*>(input_gradient.data()));
     LanguageModelingHeadWeightGradientKernel<float>
         <<<weight_blocks, 1, 0, executor.stream()>>>(
             static_cast<const float*>(state.intermediates[0].data()),
             static_cast<const float*>(output_gradients[0].data()), rows,
-            embedding_->padded_vocab_size_, embedding_->embedding_dim_,
+            embedding_->padded_vocab_size_, embedding_->stored_vocab_size_,
+            embedding_->embedding_dim_,
             static_cast<float*>(embedding_->gradient_.data()));
   }
   RETURN_IF_ERROR(cuda::CudaStatus(cudaGetLastError(),

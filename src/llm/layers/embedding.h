@@ -12,8 +12,9 @@
 namespace pluto::llm {
 
 // Token embedding with an FP32 master table and FP32 accumulated gradient.
-// The physical vocabulary is padded for 16-wide MMA, while vocab_size() stays
-// the exact logical vocabulary accepted by the tokenizer.
+// By default the table includes padding rows for checkpoint compatibility.
+// With pad_vocabulary=false it stores exactly vocab_size() trainable rows;
+// masked compute tiles and padded LM-head outputs add no parameters.
 class EmbeddingLookupLayer final : public Layer {
  public:
   absl::string_view name() const override { return "EmbeddingLookupLayer"; }
@@ -21,10 +22,11 @@ class EmbeddingLookupLayer final : public Layer {
   // sequence_length is tokens per sample, not batch size. The default treats
   // each token as a separate one-token sample; larger values preserve a
   // [-2, sequence_length] input and [-2, sequence_length, embedding_dim]
-  // output.
+  // output. pad_vocabulary affects table storage only: the tied head always
+  // pads its logits to 16 columns for cross-entropy compatibility.
   static absl::StatusOr<std::unique_ptr<EmbeddingLookupLayer>> Create(
       cuda::Executor& executor, int vocab_size, int embedding_dim,
-      DataType data_type, int sequence_length = 1);
+      DataType data_type, int sequence_length = 1, bool pad_vocabulary = true);
 
   absl::Status InitializeIdentity(float scale = 1.0f);
   absl::Status InitializeNormal(float standard_deviation, uint64_t seed);
@@ -43,7 +45,9 @@ class EmbeddingLookupLayer final : public Layer {
   }
 
   int vocab_size() const { return vocab_size_; }
+  // Logit row stride; it need not equal the number of stored table rows.
   int padded_vocab_size() const { return padded_vocab_size_; }
+  int stored_vocab_size() const { return stored_vocab_size_; }
   int embedding_dim() const { return embedding_dim_; }
   int sequence_length() const { return sequence_length_; }
   const Buffer& weight() const { return weight_; }
@@ -57,14 +61,15 @@ class EmbeddingLookupLayer final : public Layer {
                                      BackwardState state, LayerHooks*) override;
 
   EmbeddingLookupLayer(cuda::Executor& executor, int vocab_size,
-                       int padded_vocab_size, int embedding_dim,
-                       DataType data_type, Buffer weight, Buffer gradient,
-                       int sequence_length);
+                       int padded_vocab_size, int stored_vocab_size,
+                       int embedding_dim, DataType data_type, Buffer weight,
+                       Buffer gradient, int sequence_length);
 
   friend class LanguageModelingHeadLayer;
 
   int vocab_size_;
   int padded_vocab_size_;
+  int stored_vocab_size_;
   int embedding_dim_;
   int sequence_length_;
   DataType output_type_;
@@ -80,8 +85,9 @@ class EmbeddingLookupLayer final : public Layer {
 };
 
 // Tied output projection. Logits use FP32 and have padded_vocab_size columns;
-// lanes beyond vocab_size are -infinity and therefore receive zero probability
-// and gradient. The embedding owns the shared master weight and gradient.
+// lanes beyond vocab_size are masked and therefore receive zero probability
+// and loss gradient. They need not have corresponding stored embedding rows.
+// The embedding owns the shared master weight and gradient.
 class LanguageModelingHeadLayer final : public Layer {
  public:
   absl::string_view name() const override {
@@ -185,10 +191,11 @@ class EmbeddingLookupLayerReference final : public LayerReference {
   // sequence_length is tokens per sample, not batch size. The default treats
   // each token as a separate one-token sample; larger values preserve a
   // [-2, sequence_length] input and [-2, sequence_length, embedding_dim]
-  // output.
+  // output. As on the GPU, pad_vocabulary controls trainable table rows, not
+  // the tied head's always-padded logit stride.
   static absl::StatusOr<std::unique_ptr<EmbeddingLookupLayerReference>> Create(
       int vocab_size, int embedding_dim, DataType data_type,
-      int sequence_length = 1);
+      int sequence_length = 1, bool pad_vocabulary = true);
 
   absl::Status InitializeIdentity(float scale = 1.0f);
   absl::Status InitializeNormal(float standard_deviation, uint64_t seed);
@@ -210,6 +217,7 @@ class EmbeddingLookupLayerReference final : public LayerReference {
 
   int vocab_size() const { return vocab_size_; }
   int padded_vocab_size() const { return padded_vocab_size_; }
+  int stored_vocab_size() const { return stored_vocab_size_; }
   int embedding_dim() const { return embedding_dim_; }
   int sequence_length() const { return sequence_length_; }
   const HostBuffer& weight() const { return weight_; }
@@ -222,11 +230,12 @@ class EmbeddingLookupLayerReference final : public LayerReference {
       ReferenceBackwardState state) override;
 
   EmbeddingLookupLayerReference(int vocab_size, int padded_vocab_size,
-                                int embedding_dim, DataType data_type,
-                                HostBuffer weight, HostBuffer gradient,
-                                int sequence_length)
+                                int stored_vocab_size, int embedding_dim,
+                                DataType data_type, HostBuffer weight,
+                                HostBuffer gradient, int sequence_length)
       : vocab_size_(vocab_size),
         padded_vocab_size_(padded_vocab_size),
+        stored_vocab_size_(stored_vocab_size),
         embedding_dim_(embedding_dim),
         sequence_length_(sequence_length),
         output_type_(data_type),
@@ -236,6 +245,7 @@ class EmbeddingLookupLayerReference final : public LayerReference {
   friend class LanguageModelingHeadLayerReference;
   int vocab_size_;
   int padded_vocab_size_;
+  int stored_vocab_size_;
   int embedding_dim_;
   int sequence_length_;
   DataType output_type_;

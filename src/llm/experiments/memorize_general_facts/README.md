@@ -10,6 +10,92 @@ The completed search found that one block suffices for the approved task;
 all depths from eight through one passed. See [RESULTS.md](RESULTS.md) for the
 per-depth evidence, smallest checkpoint, and exact verification command.
 
+## Compact active vocabulary
+
+New direct invocations use `--compact_vocabulary=true` by default. GPT-2 still
+does the text segmentation, but the experiment sorts all original token IDs
+present in the corpus (including prompt tokens), adds EOS, and remaps them to
+contiguous IDs. For this dataset, the resulting vocabulary has **4,475 IDs,
+0 through 4,474**, including EOS. Unknown/inactive tokens are rejected rather
+than silently mapped to a different token.
+
+The embedding stores exactly one FP32 row per compact ID, with no trainable
+padding rows. The tied output head reuses that same matrix. Temporary logits
+remain padded to the kernel's tile size, with padding excluded from softmax;
+those slots do not add parameters. The mapping is saved as
+`compact_vocabulary.tsv` beside every checkpoint and checked against the
+current corpus/tokenizer before loading. Prediction audit TSVs use original
+GPT-2 IDs so the independent text verifier continues to work unchanged.
+
+For **8 blocks, width 16, one head, and FF width 64**, this changes the parameter
+count from **847,008 to 114,256**:
+
+| Component | Parameters |
+| --- | ---: |
+| Tied token embedding, 4,475 × 16 | 71,600 |
+| Learned positions, 1,024 × 16 | 16,384 |
+| Eight transformer blocks, 3,280 each | 26,240 |
+| Final LayerNorm scale and bias | 32 |
+| Total | 114,256 |
+
+The counts include each tied weight once. This is an **86.5% reduction** in
+stored model parameters. It changes the softmax vocabulary and hence the
+training objective; compact-vocabulary runs must not be pooled into the old
+full-vocabulary search as if the protocol were unchanged.
+
+```sh
+bazel build -c opt //src/llm/experiments/memorize_general_facts:memorize_general_facts
+bazel-bin/src/llm/experiments/memorize_general_facts/memorize_general_facts \
+  --tokenizer=/home/ubuntu/datasets/tokenizer/gpt2 \
+  --checkpoint_dir=/home/ubuntu/checkpoints/memorize_general_facts/compact_new_trial \
+  --output_dir=src/llm/experiments/memorize_general_facts/runs/compact_new_trial \
+  --layers=8 --model_width=16 --attention_heads=1 --feed_forward_width=64 \
+  --compact_vocabulary=true --batch_size=16 --steps=40000
+```
+
+Use fresh output/checkpoint directories. For old full-vocabulary checkpoints,
+pass **`--compact_vocabulary=false`** explicitly. The historical depth/width
+search drivers pass this flag themselves, preserving their original protocol.
+The general GPT-2 recipe also retains its original default vocabulary; this
+experiment opts into its new configurable exact-row embedding storage.
+
+### Compact an existing successful checkpoint
+
+The converted eight-block, width-16 checkpoint is available at:
+
+`/home/ubuntu/checkpoints/memorize_general_facts/compact_width_16_layers_8/step_25472`.
+
+Fresh native evaluation and independent retokenization still give **zero
+errors over all 10,002 targets and 1,024 exact sentences**, without retraining.
+The original checkpoint is unchanged. See
+[validation evidence](runs/compact_vocabulary_validation_0/README.md).
+
+`compact_checkpoint.py` selects the original embedding rows byte-for-byte and
+copies every other unique weight unchanged. It requires a canonical mapping,
+checks all source tensor sizes, and refuses to overwrite any destination.
+The destination's parent must already exist. For another destination:
+
+```sh
+python src/llm/experiments/memorize_general_facts/compact_checkpoint.py \
+  --source=/home/ubuntu/checkpoints/memorize_general_facts/width_depth_refine_16_deep_long_0/width_16/layers_8/step_25472 \
+  --destination=/path/to/existing_parent/new_compact_checkpoint \
+  --mapping=src/llm/experiments/memorize_general_facts/runs/compact_vocabulary_validation_0/fresh_training/layers_8/compact_vocabulary.tsv \
+  --layers=8 --model_width=16 --feed_forward_width=64
+
+bazel-bin/src/llm/experiments/memorize_general_facts/memorize_general_facts \
+  --verify_checkpoint=/path/to/existing_parent/new_compact_checkpoint \
+  --tokenizer=/home/ubuntu/datasets/tokenizer/gpt2 \
+  --corpus=testdata/general_facts_dataset.txt \
+  --layers=8 --model_width=16 --attention_heads=1 --feed_forward_width=64 \
+  --compact_vocabulary=true --batch_size=16 \
+  --output_dir=/path/to/new_verification_output
+```
+
+This is a weights-only conversion, not an optimizer-state resume or evidence
+of fresh compact-vocabulary training to convergence. Removing output classes
+renormalizes softmax probabilities and changes the loss even when top-1
+predictions are preserved.
+
 ## Preflight: the literal objective has contradictory targets
 
 The user approved supplying each sentence's first five GPT-2 tokens as a prompt
@@ -75,7 +161,7 @@ bazel-bin/src/llm/experiments/memorize_general_facts/memorize_general_facts \
   --tokenizer=/home/ubuntu/datasets/tokenizer/gpt2 \
   --checkpoint_dir=/home/ubuntu/checkpoints/memorize_general_facts/new_trial \
   --output_dir=src/llm/experiments/memorize_general_facts/runs/new_trial \
-  --layers=8 --search --batch_size=16 --steps=5000
+  --layers=8 --search --batch_size=16 --steps=5000 --compact_vocabulary=false
 ```
 
 Choose a new trial name for each run. Directories must be fresh; existing
@@ -86,7 +172,8 @@ shallower model is tried if the eight-block model fails. A trial's failure is
 evidence about this optimization budget, not proof of insufficient capacity.
 “Smallest” here means shallowest within this fixed-width GPT-2 family.
 
-All models retain width 512, eight heads, 2,048-wide GELU MLPs, learned absolute
+The original depth-search models retain width 512, eight heads, 2,048-wide GELU
+MLPs, learned absolute
 positions, pre-LayerNorm, causal attention, and the full 50,257-token GPT-2
 vocabulary with a tied LM head. Activations use BF16; master weights and AdamW
 state use FP32. Shared layers get identical seeded initial values at every
@@ -143,7 +230,7 @@ weights into a fresh process and reevaluate the whole corpus, use:
 ```sh
 bazel-bin/src/llm/experiments/memorize_general_facts/memorize_general_facts \
   --verify_checkpoint=/path/to/layers_8/step_N \
-  --layers=8 --corpus=RUN/corpus.txt --tokenizer=RUN \
+  --layers=8 --corpus=RUN/corpus.txt --tokenizer=RUN --compact_vocabulary=false \
   --output_dir=src/llm/experiments/memorize_general_facts/runs/verification
 ```
 
@@ -203,6 +290,7 @@ four-times-expanded MLP uses:
 ```sh
 bazel-bin/src/llm/experiments/memorize_general_facts/memorize_general_facts \
   --layers=1 --model_width=64 --attention_heads=1 --feed_forward_width=256 \
+  --compact_vocabulary=false \
   --tokenizer=/home/ubuntu/datasets/tokenizer/gpt2 \
   --checkpoint_dir=/home/ubuntu/checkpoints/memorize_general_facts/new_width_trial \
   --output_dir=src/llm/experiments/memorize_general_facts/runs/new_width_trial

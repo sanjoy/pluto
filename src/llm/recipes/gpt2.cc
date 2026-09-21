@@ -107,8 +107,8 @@ absl::StatusOr<EmbeddingLookupLayer*> AddActivationGeneratorLayers(
   RETURN_IF_ERROR(config.Validate());
 
   RETURN_IF_ERROR(builder.add(EmbeddingLookupLayer::Create(
-      executor, kGpt2VocabularySize, config.model_width, output_type,
-      kGpt2ContextLength)));
+      executor, config.vocabulary_size, config.model_width, output_type,
+      kGpt2ContextLength, config.pad_vocabulary)));
   auto* embedding = static_cast<EmbeddingLookupLayer*>(builder.back());
   RETURN_IF_ERROR(embedding->InitializeNormal(kInitializationStandardDeviation,
                                               static_cast<uint64_t>(seed)));
@@ -142,16 +142,23 @@ absl::Status Gpt2Config::Validate() const {
     return absl::InvalidArgumentError(
         "attention_heads must be positive and divide model_width");
 
-  // Check the embedding first: besides the optimizer's element-count limit,
-  // this bounds width enough that 3 * width and all following int64 products
-  // are safe. Do not let an oversized configuration wrap before validation.
+  if (vocabulary_size <= 0)
+    return absl::InvalidArgumentError("vocabulary_size must be positive");
+
+  // Widen before padding or multiplying. A tiny configured vocabulary no
+  // longer bounds the width, so test the QKV product by division instead of
+  // forming 3 * width * width (which can overflow even int64_t).
   constexpr int64_t kMaxElements = std::numeric_limits<int>::max();
   const int64_t width = model_width;
   const int64_t ff_width = feed_forward_width;
-  if (kGpt2PaddedVocabularySize * width > kMaxElements)
+  const int64_t logit_stride = (int64_t{vocabulary_size} + 15) / 16 * 16;
+  const int64_t stored_vocabulary =
+      pad_vocabulary ? logit_stride : vocabulary_size;
+  if (stored_vocabulary * width > kMaxElements)
     return absl::InvalidArgumentError(
         "token embedding exceeds the backend's 32-bit element-count limit");
-  if (3 * width * width > kMaxElements || width * ff_width > kMaxElements ||
+  if (width > kMaxElements / 3 / width || width * ff_width > kMaxElements ||
+      kGpt2ContextLength * logit_stride > kMaxElements ||
       kGpt2ContextLength * 3 * width > kMaxElements ||
       kGpt2ContextLength * ff_width > kMaxElements)
     return absl::InvalidArgumentError(

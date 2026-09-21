@@ -38,27 +38,36 @@ absl::Status InitializeBufferNormal(HostBuffer* buffer,
 
 absl::StatusOr<std::unique_ptr<EmbeddingLookupLayerReference>>
 EmbeddingLookupLayerReference::Create(int vocab_size, int embedding_dim,
-                                      DataType data_type, int sequence_length) {
+                                      DataType data_type, int sequence_length,
+                                      bool pad_vocabulary) {
   RETURN_IF_ERROR(ri::ValidateComputeType(data_type));
   if (sequence_length <= 0)
     return absl::InvalidArgumentError("sequence_length must be positive");
   if (vocab_size <= 0)
     return absl::InvalidArgumentError("vocab_size must be positive");
   RETURN_IF_ERROR(ri::ValidatePositiveExtent(embedding_dim, "embedding_dim"));
-  const int padded_vocab_size = ri::RoundUpToTile(vocab_size);
+  const int64_t padded_extent = (int64_t{vocab_size} + 15) / 16 * 16;
+  if (padded_extent > std::numeric_limits<int>::max())
+    return absl::InvalidArgumentError("padded vocabulary exceeds int range");
+  const int padded_vocab_size = static_cast<int>(padded_extent);
+  const int stored_vocab_size = pad_vocabulary ? padded_vocab_size : vocab_size;
+  if (int64_t{stored_vocab_size} * embedding_dim >
+      std::numeric_limits<int>::max())
+    return absl::InvalidArgumentError(
+        "embedding exceeds the backend's 32-bit element-count limit");
   const size_t elements =
-      static_cast<size_t>(padded_vocab_size) * embedding_dim;
+      static_cast<size_t>(stored_vocab_size) * embedding_dim;
   ASSIGN_OR_RETURN(auto weight, ri::AllocateFloats(elements, true));
   ASSIGN_OR_RETURN(auto gradient, ri::AllocateFloats(elements, true));
   return absl::WrapUnique(new EmbeddingLookupLayerReference(
-      vocab_size, padded_vocab_size, embedding_dim, data_type,
-      std::move(weight), std::move(gradient), sequence_length));
+      vocab_size, padded_vocab_size, stored_vocab_size, embedding_dim,
+      data_type, std::move(weight), std::move(gradient), sequence_length));
 }
 
 absl::Status EmbeddingLookupLayerReference::InitializeIdentity(float scale) {
   auto* table = static_cast<float*>(weight_.data());
   std::fill(table,
-            table + static_cast<size_t>(padded_vocab_size_) * embedding_dim_,
+            table + static_cast<size_t>(stored_vocab_size_) * embedding_dim_,
             0.0f);
   for (int index = 0; index < std::min(vocab_size_, embedding_dim_); ++index)
     table[static_cast<size_t>(index) * embedding_dim_ + index] = scale;
@@ -77,8 +86,8 @@ absl::StatusOr<ReferenceFwdResult> EmbeddingLookupLayerReference::fwd_impl(
     return absl::InvalidArgumentError(
         "EmbeddingLookupLayerReference fwd expects token IDs");
   }
-  ASSIGN_OR_RETURN(
-      int rows, ri::ElementCount(inputs[0], sizeof(int), "embedding tokens"));
+  ASSIGN_OR_RETURN(int rows,
+                   ri::ElementCount(inputs[0], sizeof(int), "embedding tokens"));
   ASSIGN_OR_RETURN(auto output, ri::AllocateActivation(
                                     static_cast<size_t>(rows) * embedding_dim_,
                                     output_type_));
@@ -161,6 +170,13 @@ absl::StatusOr<ReferenceFwdResult> LanguageModelingHeadLayerReference::fwd_impl(
   // operands are rounded to FP16/BF16 before each product and sums stay FP32.
   for (int row = 0; row < rows; ++row) {
     for (int token = 0; token < embedding_->padded_vocab_size_; ++token) {
+      // Logit padding exists even when no corresponding trainable table row
+      // exists. Never read beyond an exact-size embedding allocation.
+      if (token >= embedding_->vocab_size_) {
+        output[static_cast<size_t>(row) * embedding_->padded_vocab_size_ +
+               token] = -std::numeric_limits<float>::max();
+        continue;
+      }
       float sum = 0.0f;
       for (int column = 0; column < embedding_->embedding_dim_; ++column) {
         sum +=
@@ -177,9 +193,7 @@ absl::StatusOr<ReferenceFwdResult> LanguageModelingHeadLayerReference::fwd_impl(
                 embedding_->output_type_);
       }
       output[static_cast<size_t>(row) * embedding_->padded_vocab_size_ +
-             token] = token < embedding_->vocab_size_
-                          ? sum
-                          : -std::numeric_limits<float>::max();
+             token] = sum;
     }
   }
   state.intermediates = {inputs[0]};
@@ -215,7 +229,7 @@ absl::StatusOr<HostBufferVec> LanguageModelingHeadLayerReference::bwd_impl(
   for (int row = 0; row < rows; ++row) {
     for (int column = 0; column < embedding_->embedding_dim_; ++column) {
       float sum = 0.0f;
-      for (int token = 0; token < embedding_->padded_vocab_size_; ++token) {
+      for (int token = 0; token < embedding_->stored_vocab_size_; ++token) {
         sum +=
             ri::QuantizeMmaOperand(d_output[static_cast<size_t>(row) *
                                                 embedding_->padded_vocab_size_ +
@@ -230,7 +244,7 @@ absl::StatusOr<HostBufferVec> LanguageModelingHeadLayerReference::bwd_impl(
           sum;
     }
   }
-  for (int token = 0; token < embedding_->padded_vocab_size_; ++token) {
+  for (int token = 0; token < embedding_->stored_vocab_size_; ++token) {
     for (int column = 0; column < embedding_->embedding_dim_; ++column) {
       float sum = 0.0f;
       for (int row = 0; row < rows; ++row) {

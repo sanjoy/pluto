@@ -149,6 +149,15 @@ class DepthSearchTest(unittest.TestCase):
         self.assertEqual(self.summary()["status"], "budget_exhausted")
         self.assertIsNone(self.summary()["smallest_verified_layers"])
 
+    def test_historical_full_vocabulary_is_explicit_in_both_native_phases(self):
+        self.assertEqual(self.run_driver(), 0)
+        native = [command for command in self.calls if Path(command[0]) == self.binary]
+        self.assertEqual(len(native), 4)
+        for command in native:
+            self.assertEqual(command.count("--compact_vocabulary=false"), 1)
+        self.assertEqual(sum(any(flag.startswith("--verify_checkpoint=") for flag in command)
+                             for command in native), 2)
+
     def test_later_failure_preserves_preceding_verified_minimum(self):
         self.statuses["train", 1] = 2
         self.assertEqual(self.run_driver(), 2)

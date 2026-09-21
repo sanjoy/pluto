@@ -167,6 +167,7 @@ bazel build -c opt //src/llm/experiments/memorize_general_facts:memorize_general
 bazel-bin/src/llm/experiments/memorize_general_facts/memorize_general_facts \
   --layers=1 --batch_size=1 \
   --verify_checkpoint=/home/ubuntu/checkpoints/memorize_general_facts/trial_0_remaining/layers_1/step_2944 \
+  --compact_vocabulary=false \
   --corpus=testdata/general_facts_dataset.txt \
   --tokenizer=/home/ubuntu/datasets/tokenizer/gpt2 \
   --output_dir=src/llm/experiments/memorize_general_facts/runs/new_verification

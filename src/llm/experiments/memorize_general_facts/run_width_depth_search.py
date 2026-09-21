@@ -243,7 +243,8 @@ def run_search(args, *, run_process=subprocess.run):
 
                 shape_flags = [f"--layers={layers}", f"--model_width={width}",
                                f"--attention_heads={dimensions['heads']}",
-                               f"--feed_forward_width={dimensions['feed_forward_width']}"]
+                               f"--feed_forward_width={dimensions['feed_forward_width']}",
+                               "--compact_vocabulary=false"]
                 training = ([str(args.binary)] + shape_flags + [
                     f"--{key}={getattr(args, key)}" for key in
                     ("corpus", "tokenizer", "batch_size", "steps", "eval_every",

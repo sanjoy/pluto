@@ -27,6 +27,41 @@ cc_test(
 )
 
 cc_library(
+    name = "compact_vocabulary",
+    srcs = ["compact_vocabulary.cc"],
+    hdrs = ["compact_vocabulary.h"],
+    deps = [
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset:tokenizer",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/memory",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "compact_vocabulary_test",
+    srcs = ["compact_vocabulary_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":compact_vocabulary",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset:plain_text_tokenizer",
+        "//src/dataset:tokenizer",
+        "@abseil-cpp//absl/memory",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "dataset",
     srcs = ["dataset.cc"],
     hdrs = ["dataset.h"],
@@ -109,6 +144,7 @@ cc_binary(
     srcs = ["memorize_general_facts.cc"],
     deps = [
         ":checkpoint_validation",
+        ":compact_vocabulary",
         ":dataset",
         ":gradient_clipper",
         ":predictions",
@@ -117,6 +153,7 @@ cc_binary(
         "//src/cuda:page_locked_host_array",
         "//src/dataset",
         "//src/dataset:gpt2_tokenizer",
+        "//src/dataset:tokenizer",
         "//src/llm:optimizer",
         "//src/llm:batch_validation",
         "//src/llm:checkpoint",

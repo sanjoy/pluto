@@ -220,7 +220,7 @@ def run_search(args, *, run_process=subprocess.run):
                         "training_seconds",
                     )
                 ]
-                + [f"--layers={layers}", "--search=false"]
+                + [f"--layers={layers}", "--search=false", "--compact_vocabulary=false"]
             )
             status = execute(training)
             if status != 0:
@@ -262,6 +262,7 @@ def run_search(args, *, run_process=subprocess.run):
             independent = [
                 str(args.binary),
                 f"--layers={layers}",
+                "--compact_vocabulary=false",
                 f"--verify_checkpoint={checkpoint}",
                 f"--output_dir={verification}",
                 f"--corpus={output / 'corpus.txt'}",

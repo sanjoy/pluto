@@ -23,6 +23,7 @@
 #include "src/cuda/page_locked_host_array.h"
 #include "src/llm/layer.h"
 #include "src/llm/layer_hooks.h"
+#include "src/llm/layers/cross_entropy_loss.h"
 
 namespace pluto::llm {
 namespace {
@@ -99,7 +100,8 @@ class Gpt2Test : public testing::Test {
   }
 
   void TearDown() override {
-    if (executor_ == nullptr) return;
+    if (executor_ == nullptr)
+      return;
     EXPECT_TRUE(executor_->Synchronize().ok());
     executor_.reset();
   }
@@ -135,6 +137,8 @@ TEST(Gpt2ConfigTest, DefaultsAndSupportedWidths) {
   EXPECT_EQ(defaults.model_width, 512);
   EXPECT_EQ(defaults.attention_heads, 8);
   EXPECT_EQ(defaults.feed_forward_width, 2048);
+  EXPECT_EQ(defaults.vocabulary_size, 50257);
+  EXPECT_TRUE(defaults.pad_vocabulary);
   EXPECT_TRUE(defaults.Validate().ok());
 
   for (int width : {16, 32, 48, 64, 96, 128, 256, 512}) {
@@ -191,6 +195,120 @@ TEST_F(Gpt2Test, ConfiguredFactoriesPropagateValidationErrors) {
   auto generator =
       CreateActivationGenerator(*executor_, config, DataType::BF16, 123);
   EXPECT_EQ(generator.status().code(), absl::StatusCode::kInvalidArgument);
+}
+
+TEST(Gpt2ConfigTest, RejectsInvalidVocabularyAndCompactShapeOverflow) {
+  for (bool pad_vocabulary : {false, true}) {
+    for (int vocabulary : {0, -1, std::numeric_limits<int>::max(), 2'097'152}) {
+      Gpt2Config config{8, 16, 1, 64, vocabulary, pad_vocabulary};
+      EXPECT_EQ(config.Validate().code(), absl::StatusCode::kInvalidArgument);
+    }
+    // A one-token vocabulary no longer limits the model width, so this must
+    // reject without overflowing the quadratic QKV parameter calculation.
+    Gpt2Config config{
+        1, std::numeric_limits<int>::max(), 1, 1, 1, pad_vocabulary};
+    EXPECT_EQ(config.Validate().code(), absl::StatusCode::kInvalidArgument);
+  }
+}
+
+TEST_F(Gpt2Test, ExactVocabularyHas114256ParametersAndTrainsWithPaddedLogits) {
+  const Gpt2Config config{8, 16, 1, 64, 4475, false};
+  auto model = CreateGpt2(*executor_, DataType::BF16, 123, config);
+  ASSERT_TRUE(model.ok()) << model.status();
+  const auto weights = (*model)->weights();
+  const auto gradients = (*model)->gradients();
+  ASSERT_EQ(weights.size(), 101u);
+  ASSERT_EQ(gradients.size(), weights.size());
+  EXPECT_EQ(weights.front().data(), weights.back().data());
+  EXPECT_EQ(gradients.front().data(), gradients.back().data());
+  EXPECT_EQ(weights.front().size_bytes(), 4475u * 16 * sizeof(float));
+  size_t parameters = 0;
+  for (size_t index = 0; index + 1 < weights.size(); ++index) {
+    EXPECT_EQ(weights[index].size_bytes(), gradients[index].size_bytes());
+    parameters += weights[index].size_bytes() / sizeof(float);
+  }
+  EXPECT_EQ(parameters, 114256u);
+
+  auto loss = CrossEntropyLossLayer::Create(*executor_, config.vocabulary_size,
+                                            DataType::BF16, kGpt2ContextLength);
+  ASSERT_TRUE(loss.ok()) << loss.status();
+  EXPECT_EQ((*model)->output_types()[0], (*loss)->input_types()[0]);
+  EXPECT_EQ((*model)->output_types()[0],
+            ActivationType(DataType::FP32, {-2, kGpt2ContextLength, 4480}));
+  auto host_tokens = cuda::PageLockedHostArray<int32_t>::Allocate(
+      *executor_, kGpt2ContextLength);
+  ASSERT_TRUE(host_tokens.ok()) << host_tokens.status();
+  for (int row = 0; row < kGpt2ContextLength; ++row)
+    (*host_tokens)[row] = row % 2 ? 4474 : 0;
+  auto tokens = Buffer::Allocate(*executor_, host_tokens->size_bytes());
+  ASSERT_TRUE(tokens.ok()) << tokens.status();
+  ASSERT_EQ(
+      cudaMemcpyAsync(tokens->data(), host_tokens->data(), tokens->size_bytes(),
+                      cudaMemcpyHostToDevice, executor_->stream()),
+      cudaSuccess);
+  auto forward = (*model)->fwd(*executor_, {*tokens});
+  ASSERT_TRUE(forward.ok()) << forward.status();
+  ASSERT_EQ(forward->outputs[0].size_bytes(),
+            size_t{kGpt2ContextLength} * 4480 * sizeof(float));
+  auto loss_forward = (*loss)->fwd(*executor_, {forward->outputs[0], *tokens});
+  ASSERT_TRUE(loss_forward.ok()) << loss_forward.status();
+  auto loss_backward =
+      (*loss)->bwd(*executor_, {}, std::move(loss_forward->state));
+  ASSERT_TRUE(loss_backward.ok()) << loss_backward.status();
+  auto backward =
+      (*model)->bwd(*executor_, *loss_backward, std::move(forward->state));
+  ASSERT_TRUE(backward.ok()) << backward.status();
+  EXPECT_TRUE(backward->empty());
+
+  auto losses = cuda::PageLockedHostArray<float>::Allocate(*executor_,
+                                                           kGpt2ContextLength);
+  auto logits = cuda::PageLockedHostArray<float>::Allocate(*executor_, 4480);
+  ASSERT_TRUE(losses.ok()) << losses.status();
+  ASSERT_TRUE(logits.ok()) << logits.status();
+  ASSERT_EQ(cudaMemcpyAsync(losses->data(), loss_forward->outputs[0].data(),
+                            losses->size_bytes(), cudaMemcpyDeviceToHost,
+                            executor_->stream()),
+            cudaSuccess);
+  ASSERT_EQ(cudaMemcpyAsync(logits->data(), forward->outputs[0].data(),
+                            logits->size_bytes(), cudaMemcpyDeviceToHost,
+                            executor_->stream()),
+            cudaSuccess);
+  ASSERT_TRUE(executor_->Synchronize().ok());
+  for (float value : *losses) {
+    EXPECT_TRUE(std::isfinite(value));
+    EXPECT_GT(value, 0.0f);
+  }
+  for (int token = 0; token < 4475; ++token)
+    EXPECT_TRUE(std::isfinite((*logits)[token]));
+  for (int token = 4475; token < 4480; ++token)
+    EXPECT_EQ((*logits)[token], -std::numeric_limits<float>::max());
+
+  for (size_t index = 0; index + 1 < gradients.size(); ++index) {
+    SCOPED_TRACE(index);
+    auto values = cuda::PageLockedHostArray<float>::Allocate(
+        *executor_, gradients[index].size_bytes() / sizeof(float));
+    ASSERT_TRUE(values.ok()) << values.status();
+    ASSERT_EQ(cudaMemcpyAsync(values->data(), gradients[index].data(),
+                              values->size_bytes(), cudaMemcpyDeviceToHost,
+                              executor_->stream()),
+              cudaSuccess);
+    ASSERT_TRUE(executor_->Synchronize().ok());
+    EXPECT_TRUE(std::all_of(values->begin(), values->end(),
+                            [](float value) { return std::isfinite(value); }));
+    // Every block's QKV and both uses of the tied embedding participate.
+    if (index == 0 || (index >= 4 && index < 98 && (index - 4) % 12 == 0)) {
+      EXPECT_TRUE(std::any_of(values->begin(), values->end(),
+                              [](float value) { return value != 0.0f; }));
+    }
+  }
+
+  auto padded_config = config;
+  padded_config.pad_vocabulary = true;
+  auto padded = CreateGpt2(*executor_, DataType::BF16, 123, padded_config);
+  ASSERT_TRUE(padded.ok()) << padded.status();
+  EXPECT_EQ((*padded)->weights().front().size_bytes(),
+            4480u * 16 * sizeof(float));
+  EXPECT_EQ((*padded)->output_types()[0], (*model)->output_types()[0]);
 }
 
 TEST_F(Gpt2Test, ExplicitDefaultsMatchLegacyInitialization) {
@@ -318,10 +436,9 @@ TEST_F(Gpt2Test, SmallAndPartialTileModelsRunForwardAndBackward) {
   for (DataType type : {DataType::FP16, DataType::BF16}) {
     for (const Gpt2Config& config :
          {Gpt2Config{1, 3, 1, 13}, Gpt2Config{2, 8, 1, 32},
-          Gpt2Config{1, 20, 1, 80},
-          Gpt2Config{1, 24, 1, 96}, Gpt2Config{1, 24, 3, 96},
-          Gpt2Config{1, 16, 1, 64}, Gpt2Config{2, 32, 2, 80},
-          Gpt2Config{1, 96, 3, 384}}) {
+          Gpt2Config{1, 20, 1, 80}, Gpt2Config{1, 24, 1, 96},
+          Gpt2Config{1, 24, 3, 96}, Gpt2Config{1, 16, 1, 64},
+          Gpt2Config{2, 32, 2, 80}, Gpt2Config{1, 96, 3, 384}}) {
       SCOPED_TRACE(config.model_width);
       SCOPED_TRACE(config.attention_heads);
       SCOPED_TRACE(static_cast<int>(type));

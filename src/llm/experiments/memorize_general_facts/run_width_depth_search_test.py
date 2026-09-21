@@ -154,6 +154,17 @@ class WidthDepthSearchTest(unittest.TestCase):
         self.assertEqual(summary["minimum_parameter_success"]["width"], 32)
         self.assertEqual(len(summary["skipped_configurations"]), 6)
 
+    def test_historical_full_vocabulary_is_explicit_for_training_and_verification(self):
+        # The default fixture includes successes and verified budget failures.
+        self.assertEqual(self.run_driver(), 0)
+        native = [command for command in self.calls if Path(command[0]) == self.binary]
+        self.assertEqual(len(native), 2 * len(self.summary()["trials"]))
+        for command in native:
+            self.assertEqual(command.count("--compact_vocabulary=false"), 1)
+        for trial in self.summary()["trials"]:
+            self.assertIn("--compact_vocabulary=false", trial["commands"][0])
+            self.assertIn("--compact_vocabulary=false", trial["commands"][1])
+
     def test_all_failures_are_a_completed_empirical_search_not_an_execution_error(self):
         self.failures = {(layers, width) for layers in (1, 2, 3) for width in (128, 64, 32)}
         self.assertEqual(self.run_driver(), 0)

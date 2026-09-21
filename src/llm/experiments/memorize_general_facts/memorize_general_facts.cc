@@ -11,6 +11,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -26,10 +27,12 @@
 #include "src/cuda/page_locked_host_array.h"
 #include "src/dataset/dataset.h"
 #include "src/dataset/gpt2_tokenizer.h"
+#include "src/dataset/tokenizer.h"
 #include "src/llm/adamw_optimizer.h"
 #include "src/llm/batch_validation.h"
 #include "src/llm/checkpoint.h"
 #include "src/llm/experiments/memorize_general_facts/checkpoint_validation.h"
+#include "src/llm/experiments/memorize_general_facts/compact_vocabulary.h"
 #include "src/llm/experiments/memorize_general_facts/dataset.h"
 #include "src/llm/experiments/memorize_general_facts/gradient_clipper.h"
 #include "src/llm/experiments/memorize_general_facts/predictions.h"
@@ -52,6 +55,9 @@ ABSL_FLAG(int, layers, 8, "Initial transformer depth (nonnegative; default 8)");
 ABSL_FLAG(int, model_width, 512, "Residual-stream and embedding width");
 ABSL_FLAG(int, attention_heads, 8, "Number of attention heads per block");
 ABSL_FLAG(int, feed_forward_width, 2048, "Inner GELU MLP width");
+ABSL_FLAG(bool, compact_vocabulary, true,
+          "Remap corpus tokens plus EOS to a compact vocabulary; disable for "
+          "historical full-vocabulary checkpoints and searches");
 ABSL_FLAG(bool, search, false,
           "After success, train successively shallower models from scratch");
 ABSL_FLAG(int, batch_size, 16, "Independent padded sentences per batch");
@@ -71,11 +77,26 @@ namespace {
 // Record and reconstruct the full shape explicitly. A checkpoint's raw tensor
 // files cannot identify its head count: changing the partition into heads does
 // not change the Q/K/V matrix shapes, but does change the model's computation.
-Gpt2Config ModelConfiguration(int layers) {
+Gpt2Config ModelConfiguration(int layers, int vocabulary_size) {
   return {.transformer_block_count = layers,
           .model_width = absl::GetFlag(FLAGS_model_width),
           .attention_heads = absl::GetFlag(FLAGS_attention_heads),
-          .feed_forward_width = absl::GetFlag(FLAGS_feed_forward_width)};
+          .feed_forward_width = absl::GetFlag(FLAGS_feed_forward_width),
+          .vocabulary_size = vocabulary_size,
+          .pad_vocabulary = !absl::GetFlag(FLAGS_compact_vocabulary)};
+}
+
+// The mapping is part of a compact checkpoint's meaning, not merely a training
+// diagnostic. Save it beside every checkpoint so a different same-sized corpus
+// cannot silently reinterpret the embedding rows on reload.
+absl::Status SaveCheckpoint(cuda::Executor& executor, const Layer& model,
+                            const std::filesystem::path& directory,
+                            const CompactVocabularyTokenizer* vocabulary) {
+  RETURN_IF_ERROR(WriteToDirectory(executor, model, directory));
+  if (vocabulary != nullptr)
+    RETURN_IF_ERROR(
+        vocabulary->SaveToFile(directory / "compact_vocabulary.tsv"));
+  return absl::OkStatus();
 }
 
 struct Metrics {
@@ -100,10 +121,11 @@ absl::StatusOr<cuda::PageLockedHostArray<T>> Download(cuda::Executor& executor,
   return host;
 }
 
-absl::StatusOr<Metrics> EvaluateExact(cuda::Executor& executor,
-                                      const Layer& model, const Layer& loss,
-                                      PaddedLineDataSetIterator& data,
-                                      std::ostream* details = nullptr) {
+absl::StatusOr<Metrics> EvaluateExact(
+    cuda::Executor& executor, const Layer& model, const Layer& loss,
+    PaddedLineDataSetIterator& data, int vocabulary_size,
+    const CompactVocabularyTokenizer* vocabulary,
+    std::ostream* details = nullptr) {
   RETURN_IF_ERROR(data.Reset());
   Metrics metrics;
   for (size_t batch_index = 0; batch_index < data.batches_per_epoch();
@@ -113,7 +135,7 @@ absl::StatusOr<Metrics> EvaluateExact(cuda::Executor& executor,
     ASSIGN_OR_RETURN(auto forward, model.fwd(executor, {batch.inputs}));
     ASSIGN_OR_RETURN(auto predictions,
                      PredictMaskedTokens(executor, forward.outputs[0],
-                                         batch.targets, kGpt2VocabularySize));
+                                         batch.targets, vocabulary_size));
     ASSIGN_OR_RETURN(auto loss_forward,
                      loss.fwd(executor, {forward.outputs[0], batch.targets}));
     ASSIGN_OR_RETURN(auto ids, Download<int>(executor, predictions));
@@ -136,10 +158,22 @@ absl::StatusOr<Metrics> EvaluateExact(cuda::Executor& executor,
         metrics.errors += !correct;
         metrics.loss_sum += losses[row];
         exact &= correct;
-        if (details != nullptr)
+        if (details != nullptr) {
+          // Audit files retain original GPT-2 IDs, allowing the existing
+          // independent tokenizer verifier to check text without trusting the
+          // compact-ID implementation. Loss/accuracy use compact IDs above.
+          int original_target = targets[row];
+          int original_prediction = ids[row];
+          if (vocabulary != nullptr) {
+            ASSIGN_OR_RETURN(original_target,
+                             vocabulary->OriginalId(targets[row]));
+            ASSIGN_OR_RETURN(original_prediction,
+                             vocabulary->OriginalId(ids[row]));
+          }
           *details << metrics.sentences + 1 << '\t' << position + 1 << '\t'
-                   << targets[row] << '\t' << ids[row] << '\t' << losses[row]
-                   << '\n';
+                   << original_target << '\t' << original_prediction << '\t'
+                   << losses[row] << '\n';
+        }
       }
       ++metrics.sentences;
       metrics.exact_sentences += exact;
@@ -190,8 +224,10 @@ float LearningRate(int step) {
 // top-1 accuracy over the entire finite corpus. The update itself uses the
 // same native forward/loss/backward/AdamW wiring as Train.
 absl::StatusOr<bool> TrainDepth(cuda::Executor& executor,
-                                const tokenizer::Gpt2Tokenizer& tokenizer,
-                                const TextCorpus& corpus, int layers) {
+                                const tokenizer::Tokenizer& tokenizer,
+                                int eos_token, const TextCorpus& corpus,
+                                int layers,
+                                const CompactVocabularyTokenizer* vocabulary) {
   const auto output = std::filesystem::path(absl::GetFlag(FLAGS_output_dir)) /
                       absl::StrCat("layers_", layers);
   const auto checkpoints =
@@ -221,6 +257,8 @@ absl::StatusOr<bool> TrainDepth(cuda::Executor& executor,
       std::filesystem::path(absl::GetFlag(FLAGS_tokenizer)) / "tokenizer.json",
       output / "tokenizer.json", error);
   if (error) return absl::InternalError(error.message());
+  if (vocabulary != nullptr)
+    RETURN_IF_ERROR(vocabulary->SaveToFile(output / "compact_vocabulary.tsv"));
   std::ofstream log_file(output / "train.log");
   std::ofstream table(output / "metrics.tsv");
   std::ofstream manifest(output / "config.txt");
@@ -234,7 +272,7 @@ absl::StatusOr<bool> TrainDepth(cuda::Executor& executor,
       .batch_size = absl::GetFlag(FLAGS_batch_size),
       .context_length = kGpt2ContextLength,
       .prompt_tokens = 5,
-      .eos_token = tokenizer.eos_token_id(),
+      .eos_token = eos_token,
       .shuffle = true,
       .seed = static_cast<uint64_t>(absl::GetFlag(FLAGS_seed))};
   ASSIGN_OR_RETURN(auto training,
@@ -244,13 +282,13 @@ absl::StatusOr<bool> TrainDepth(cuda::Executor& executor,
   ASSIGN_OR_RETURN(auto evaluation,
                    PaddedLineDataSetIterator::Create(executor, corpus.text(),
                                                      tokenizer, options));
-  const auto model_config = ModelConfiguration(layers);
+  const auto model_config = ModelConfiguration(layers, tokenizer.vocab_size());
   ASSIGN_OR_RETURN(auto model,
                    CreateGpt2(executor, DataType::BF16,
                               absl::GetFlag(FLAGS_seed), model_config));
   ASSIGN_OR_RETURN(auto loss, CrossEntropyLossLayer::Create(
-                                  executor, kGpt2VocabularySize, DataType::BF16,
-                                  kGpt2ContextLength));
+                                  executor, tokenizer.vocab_size(),
+                                  DataType::BF16, kGpt2ContextLength));
   const AdamWConfig config{.learning_rate = LearningRate(1),
                            .beta1 = 0.9f,
                            .beta2 = 0.99f,
@@ -268,7 +306,9 @@ absl::StatusOr<bool> TrainDepth(cuda::Executor& executor,
            << model_config.model_width / model_config.attention_heads
            << "\nfeed_forward_width=" << model_config.feed_forward_width
            << "\ncontext_length=1024"
-           << "\nprompt_tokens=5\nvocabulary=50257\ncompute=BF16\nmaster_"
+           << "\nprompt_tokens=5\nvocabulary=" << tokenizer.vocab_size()
+           << "\ncompact_vocabulary=" << absl::GetFlag(FLAGS_compact_vocabulary)
+           << "\ncompute=BF16\nmaster_"
               "weights=FP32"
            << "\ngradient_clip_norm=1\nparameters=" << parameters
            << "\nseed=" << absl::GetFlag(FLAGS_seed)
@@ -286,10 +326,12 @@ absl::StatusOr<bool> TrainDepth(cuda::Executor& executor,
   manifest.flush();
   log << "layers=" << layers << " width=" << model_config.model_width
       << " heads=" << model_config.attention_heads
+      << " vocabulary=" << tokenizer.vocab_size()
       << " feed_forward_width=" << model_config.feed_forward_width
       << " parameters=" << parameters << " samples=" << training->sample_count()
       << " scored_targets=" << training->supervised_row_count() << std::endl;
-  RETURN_IF_ERROR(WriteToDirectory(executor, *model, checkpoints / "step_0"));
+  RETURN_IF_ERROR(
+      SaveCheckpoint(executor, *model, checkpoints / "step_0", vocabulary));
   RETURN_IF_ERROR(executor.Synchronize());
   const auto start = std::chrono::steady_clock::now();
   auto report = [&](int step, const Metrics& metrics) {
@@ -305,7 +347,8 @@ absl::StatusOr<bool> TrainDepth(cuda::Executor& executor,
           << metrics.sentences << std::endl;
   };
   ASSIGN_OR_RETURN(auto metrics,
-                   EvaluateExact(executor, *model, *loss, *evaluation));
+                   EvaluateExact(executor, *model, *loss, *evaluation,
+                                 tokenizer.vocab_size(), vocabulary));
   report(0, metrics);
   int completed = 0;
   int64_t samples_seen = 0;
@@ -340,19 +383,22 @@ absl::StatusOr<bool> TrainDepth(cuda::Executor& executor,
     if (step % absl::GetFlag(FLAGS_eval_every) == 0 ||
         step == absl::GetFlag(FLAGS_steps) || timeout) {
       ASSIGN_OR_RETURN(metrics,
-                       EvaluateExact(executor, *model, *loss, *evaluation));
+                       EvaluateExact(executor, *model, *loss, *evaluation,
+                                     tokenizer.vocab_size(), vocabulary));
       report(step, metrics);
     }
     if (step % absl::GetFlag(FLAGS_checkpoint_every) == 0)
-      RETURN_IF_ERROR(WriteToDirectory(
-          executor, *model, checkpoints / absl::StrCat("step_", step)));
+      RETURN_IF_ERROR(SaveCheckpoint(executor, *model,
+                                     checkpoints / absl::StrCat("step_", step),
+                                     vocabulary));
     if (timeout) {
       reached_time_limit = true;
       break;
     }
   }
   const auto final_checkpoint = checkpoints / absl::StrCat("step_", completed);
-  RETURN_IF_ERROR(WriteToDirectory(executor, *model, final_checkpoint));
+  RETURN_IF_ERROR(
+      SaveCheckpoint(executor, *model, final_checkpoint, vocabulary));
   // Reload the on-disk weights and repeat the full audit. This verifies that
   // success belongs to a usable checkpoint, not just an in-memory model.
   RETURN_IF_ERROR(ReadFromDirectory(executor, *model, final_checkpoint));
@@ -361,14 +407,16 @@ absl::StatusOr<bool> TrainDepth(cuda::Executor& executor,
     return absl::InternalError("cannot write final prediction audit");
   details << "line_1based\ttarget_token_index_0based\ttarget_id\tpredicted_"
              "id\tloss\n";
-  ASSIGN_OR_RETURN(
-      metrics, EvaluateExact(executor, *model, *loss, *evaluation, &details));
+  ASSIGN_OR_RETURN(metrics,
+                   EvaluateExact(executor, *model, *loss, *evaluation,
+                                 tokenizer.vocab_size(), vocabulary, &details));
   report(completed, metrics);
   std::ofstream result(output / "result.txt");
   result << "success=" << (metrics.errors == 0) << "\nlayers=" << layers
          << "\nwidth=" << model_config.model_width
          << "\nheads=" << model_config.attention_heads
          << "\nfeed_forward_width=" << model_config.feed_forward_width
+         << "\nvocabulary=" << tokenizer.vocab_size()
          << "\nparameters=" << parameters << "\nstep=" << completed
          << "\nerrors=" << metrics.errors << "\ntargets=" << metrics.targets
          << "\nsamples_seen=" << samples_seen << "\nepochs="
@@ -389,9 +437,14 @@ absl::StatusOr<bool> TrainDepth(cuda::Executor& executor,
 // Verification starts with a fresh model in a new process: no in-memory
 // weights, optimizer state, or training iterator can explain a successful
 // result. Use the training run's snapshots for --corpus and --tokenizer.
-absl::StatusOr<bool> VerifyCheckpoint(cuda::Executor& executor,
-                                      const tokenizer::Gpt2Tokenizer& tokenizer,
-                                      const TextCorpus& corpus) {
+absl::StatusOr<bool> VerifyCheckpoint(
+    cuda::Executor& executor, const tokenizer::Tokenizer& tokenizer,
+    int eos_token, const TextCorpus& corpus,
+    const CompactVocabularyTokenizer* vocabulary) {
+  if (vocabulary != nullptr)
+    RETURN_IF_ERROR(vocabulary->ValidateFile(
+        std::filesystem::path(absl::GetFlag(FLAGS_verify_checkpoint)) /
+        "compact_vocabulary.tsv"));
   const std::filesystem::path output(absl::GetFlag(FLAGS_output_dir));
   std::error_code error;
   const bool exists = std::filesystem::exists(output, error);
@@ -405,17 +458,18 @@ absl::StatusOr<bool> VerifyCheckpoint(cuda::Executor& executor,
       .batch_size = absl::GetFlag(FLAGS_batch_size),
       .context_length = kGpt2ContextLength,
       .prompt_tokens = 5,
-      .eos_token = tokenizer.eos_token_id(),
+      .eos_token = eos_token,
       .shuffle = false};
   ASSIGN_OR_RETURN(auto data, PaddedLineDataSetIterator::Create(
                                   executor, corpus.text(), tokenizer, options));
-  const auto model_config = ModelConfiguration(absl::GetFlag(FLAGS_layers));
+  const auto model_config =
+      ModelConfiguration(absl::GetFlag(FLAGS_layers), tokenizer.vocab_size());
   ASSIGN_OR_RETURN(auto model,
                    CreateGpt2(executor, DataType::BF16,
                               absl::GetFlag(FLAGS_seed), model_config));
   ASSIGN_OR_RETURN(auto loss, CrossEntropyLossLayer::Create(
-                                  executor, kGpt2VocabularySize, DataType::BF16,
-                                  kGpt2ContextLength));
+                                  executor, tokenizer.vocab_size(),
+                                  DataType::BF16, kGpt2ContextLength));
   // Full-model verification must not use the generic reader's prefix-loading
   // allowance: a smaller depth can otherwise mistake the next block's input
   // norm for its final norm. Count real allocations, including a tied head
@@ -433,7 +487,8 @@ absl::StatusOr<bool> VerifyCheckpoint(cuda::Executor& executor,
   details << "line_1based\ttarget_token_index_0based\ttarget_id\tpredicted_"
              "id\tloss\n";
   ASSIGN_OR_RETURN(auto metrics,
-                   EvaluateExact(executor, *model, *loss, *data, &details));
+                   EvaluateExact(executor, *model, *loss, *data,
+                                 tokenizer.vocab_size(), vocabulary, &details));
   details.close();
   if (!details)
     return absl::InternalError("writing independent predictions failed");
@@ -445,6 +500,7 @@ absl::StatusOr<bool> VerifyCheckpoint(cuda::Executor& executor,
          << "\nwidth=" << model_config.model_width
          << "\nheads=" << model_config.attention_heads
          << "\nfeed_forward_width=" << model_config.feed_forward_width
+         << "\nvocabulary=" << tokenizer.vocab_size()
          << "\nparameters=" << ParameterCount(*model)
          << "\nerrors=" << metrics.errors << "\ntargets=" << metrics.targets
          << "\nmean_loss=" << metrics.loss_sum / metrics.targets
@@ -475,7 +531,6 @@ absl::StatusOr<bool> Run() {
       absl::GetFlag(FLAGS_training_seconds) < 0)
     return absl::InvalidArgumentError(
         "invalid experiment flags; tokenizer and checkpoint_dir are required");
-  RETURN_IF_ERROR(ModelConfiguration(absl::GetFlag(FLAGS_layers)).Validate());
   ASSIGN_OR_RETURN(auto executor, cuda::Executor::Create());
   ASSIGN_OR_RETURN(auto tokenizer, tokenizer::Gpt2Tokenizer::Load(
                                        absl::GetFlag(FLAGS_tokenizer)));
@@ -483,11 +538,26 @@ absl::StatusOr<bool> Run() {
     return absl::InvalidArgumentError(
         "the experiment requires the full GPT-2 vocabulary");
   ASSIGN_OR_RETURN(auto corpus, LoadTextCorpus(absl::GetFlag(FLAGS_corpus)));
+  std::unique_ptr<CompactVocabularyTokenizer> vocabulary;
+  const tokenizer::Tokenizer* model_tokenizer = tokenizer.get();
+  int eos_token = tokenizer->eos_token_id();
+  if (absl::GetFlag(FLAGS_compact_vocabulary)) {
+    ASSIGN_OR_RETURN(vocabulary,
+                     CompactVocabularyTokenizer::Create(
+                         *executor, *tokenizer, corpus.text(), eos_token));
+    model_tokenizer = vocabulary.get();
+    eos_token = vocabulary->eos_token_id();
+  }
+  RETURN_IF_ERROR(ModelConfiguration(absl::GetFlag(FLAGS_layers),
+                                     model_tokenizer->vocab_size())
+                      .Validate());
   if (!absl::GetFlag(FLAGS_verify_checkpoint).empty())
-    return VerifyCheckpoint(*executor, *tokenizer, corpus);
+    return VerifyCheckpoint(*executor, *model_tokenizer, eos_token, corpus,
+                            vocabulary.get());
   for (int layers = absl::GetFlag(FLAGS_layers); layers >= 0; --layers) {
     ASSIGN_OR_RETURN(bool success,
-                     TrainDepth(*executor, *tokenizer, corpus, layers));
+                     TrainDepth(*executor, *model_tokenizer, eos_token, corpus,
+                                layers, vocabulary.get()));
     if (!success || !absl::GetFlag(FLAGS_search)) return success;
   }
   return true;
