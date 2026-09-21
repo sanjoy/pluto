@@ -9,6 +9,12 @@ targets and padding are excluded from training loss and evaluation.
 All 1,024 five-token prefixes also preserve their exact token IDs when decoded
 to text and retokenized, so these prompts can be supplied as ordinary text.
 
+**One transformer block suffices.** Every tested depth from eight through one
+achieved exact memorization and passed independent checkpoint verification.
+One block is the minimum depth in this fixed-width family: a zero-block model
+has an unavoidable ambiguity bound, described below. Width and vocabulary size
+were not reduced, so this is not a globally minimum-parameter model.
+
 ## Verified results
 
 | Transformer blocks | Physical parameters | Updates | Corpus epochs | Incorrect targets | Exact sentences | Mean loss (nats) |
@@ -20,6 +26,7 @@ to text and retokenized, so these prompts can be supplied as ordinary text.
 | 4 | 38,874,112 | 3,456 | 54 | 0 / 10,002 | 1,024 / 1,024 | 0.000289197068 |
 | 3 | 35,721,728 | 3,712 | 58 | 0 / 10,002 | 1,024 / 1,024 | 0.000043708074 |
 | 2 | 32,569,344 | 3,200 | 50 | 0 / 10,002 | 1,024 / 1,024 | 0.000072873985 |
+| 1 | 29,416,960 | 2,944 | 46 | 0 / 10,002 | 1,024 / 1,024 | 0.000131258831 |
 
 Parameter counts include allocated vocabulary padding and count the tied
 embedding/LM-head weights once. A nonzero loss is consistent with perfect
@@ -106,6 +113,16 @@ Training and checkpoint reload took about 22 minutes. Both independent checks
 passed, with a byte-identical final TSV; the evidence is in
 `runs/trial_0_remaining/layers_2/independent_verification/`.
 
+One-block checkpoint:
+`/home/ubuntu/checkpoints/memorize_general_facts/trial_0_remaining/layers_1/step_2944`.
+Training and checkpoint reload took about 17 minutes. Both independent checks
+passed, with a byte-identical final TSV; the evidence is in
+`runs/trial_0_remaining/layers_1/independent_verification/`.
+An additional fresh-process evaluation with batch size one, processing each
+sentence individually, also gave zero errors and a byte-identical per-token
+TSV, independently retokenized and audited. Its artifacts are in
+`runs/verify_layers_1_batch_1/`.
+
 Evidence SHA-256 hashes:
 
 - Corpus: `814c062e7d7592fe4a4e5b158a37bd37da51700f817c19eb981c1e93d33f245c`.
@@ -117,18 +134,42 @@ Evidence SHA-256 hashes:
 - Final four-block independent prediction TSV: `04dbb7b048c83b563c6b435e312e15306fc055696d3d52fe1db440d4c7c1e870`.
 - Final three-block independent prediction TSV: `c30c1fa5cff363c58142a3e45e7f4183225fb82d286d3d7b4ed4f551afb09eff`.
 - Final two-block independent prediction TSV: `ad890fab231c8d5dc6a7171a3f8c4c4eba8f75aee9dc0e105ad62840ca45094c`.
+- Final one-block independent prediction TSV: `08fe662b4151c030ac67e230e10f6f7aff755d25156328801262418d1410329a`.
 
-## Remaining search
+## Completed search and interpretation
 
 One-block training started on 2026-09-20 at 23:40:44 UTC, after the two-block
-checkpoint passed both independent checks. The sequential driver will
-independently verify every successful depth before trying the next
-smaller one. It stops at the first unsuccessful 5,000-update trial or execution
-error. Live status is in
-`runs/trial_0_remaining/depth_search_summary.json`; checkpoints are under
-`/home/ubuntu/checkpoints/memorize_general_facts/trial_0_remaining/`.
+checkpoint passed both independent checks. Its final independent verification
+finished at 23:58:00 UTC. The driver completed successfully with
+`smallest_verified_layers=1`; its complete command/result history is in
+`runs/trial_0_remaining/depth_search_summary.json`. The eight-block baseline was
+run and independently verified separately before starting this driver.
+No depth required retries, extra training budget, or hyperparameter changes.
 
-Two blocks are the smallest verified success so far; the minimum has not yet
-been established. Zero blocks are ruled
-out independently: identical current-token/position inputs have contradictory
-targets, forcing at least 2,923 errors (see the prefix audit in README.md).
+Zero blocks are ruled out independently: without attention, the model can use
+only the current token and its absolute position. The corpus contains 809 such
+contexts with contradictory targets, forcing at least 2,923 errors out of
+10,002, even with ideal optimization (see the prefix audit in README.md).
+The one-block construction plus this zero-block lower bound establish minimum
+depth for the tested family, not for arbitrary architectures. No held-out
+generalization claim is made; prompt-token prediction is not scored.
+
+All 65 optimized native test targets pass, including padding, CPU/GPU loss
+agreement, determinism, gradient clipping, dataset batching, and checkpoint
+validation. All 47 Python audit/verifier/driver tests pass. The final full native
+suite check reused passing cached results; Python tests were rerun.
+
+To reevaluate the smallest checkpoint on each sentence individually (use a
+fresh output directory):
+
+```sh
+bazel build -c opt //src/llm/experiments/memorize_general_facts:memorize_general_facts
+bazel-bin/src/llm/experiments/memorize_general_facts/memorize_general_facts \
+  --layers=1 --batch_size=1 \
+  --verify_checkpoint=/home/ubuntu/checkpoints/memorize_general_facts/trial_0_remaining/layers_1/step_2944 \
+  --corpus=testdata/general_facts_dataset.txt \
+  --tokenizer=/home/ubuntu/datasets/tokenizer/gpt2 \
+  --output_dir=src/llm/experiments/memorize_general_facts/runs/new_verification
+```
+
+This is full-corpus checkpoint evaluation, not an interactive generation CLI.

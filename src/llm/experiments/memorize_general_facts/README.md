@@ -6,6 +6,10 @@ training-set completions, and reduce depth until memorization fails. Each of the
 Padding must never contribute to loss or accuracy. Checkpoints belong outside
 the repository under `~/checkpoints/`.
 
+The completed search found that one block suffices for the approved task;
+all depths from eight through one passed. See [RESULTS.md](RESULTS.md) for the
+per-depth evidence, smallest checkpoint, and exact verification command.
+
 ## Preflight: the literal objective has contradictory targets
 
 The user approved supplying each sentence's first five GPT-2 tokens as a prompt
@@ -121,7 +125,8 @@ The audit also groups targets by `(current token, absolute position)`, the only
 information available to a zero-block model. There are 809 contradictory groups
 and at least 2,923 unavoidable errors: accuracy cannot exceed 70.7758%, even
 with perfect optimization. This rules out zero blocks. It does not establish
-whether one block can be trained successfully.
+whether one block can be trained successfully by itself; the completed training
+and independent verification in RESULTS.md provide that constructive result.
 
 For a finished run, independently retokenize the snapshots and verify every
 recorded target, including EOS and complete coverage of all 1,024 samples:
