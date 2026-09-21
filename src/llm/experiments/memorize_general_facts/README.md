@@ -10,6 +10,19 @@ The completed search found that one block suffices for the approved task;
 all depths from eight through one passed. See [RESULTS.md](RESULTS.md) for the
 per-depth evidence, smallest checkpoint, and exact verification command.
 
+## Code and experiment utilities
+
+This directory contains the native C++ training/evaluation binary, its supporting
+libraries, and their Bazel tests. Python sweep drivers, Pareto reporting,
+checkpoint conversion, corpus/prediction audits, and their tests live separately
+in [`scripts/memorize_general_facts`](../../../../scripts/memorize_general_facts).
+The native implementation does not depend on those scripts; the drivers invoke
+the built binary.
+
+Existing reports and `runs/` evidence remain here unchanged. Recorded commands
+in historical manifests may name the old script locations; those are provenance,
+not current entry points. Use the script paths in the commands below for new runs.
+
 ## Compact active vocabulary
 
 New direct invocations use `--compact_vocabulary=true` by default. GPT-2 still
@@ -76,7 +89,7 @@ checks all source tensor sizes, and refuses to overwrite any destination.
 The destination's parent must already exist. For another destination:
 
 ```sh
-python src/llm/experiments/memorize_general_facts/compact_checkpoint.py \
+python scripts/memorize_general_facts/compact_checkpoint.py \
   --source=/home/ubuntu/checkpoints/memorize_general_facts/width_depth_refine_16_deep_long_0/width_16/layers_8/step_25472 \
   --destination=/path/to/existing_parent/new_compact_checkpoint \
   --mapping=src/llm/experiments/memorize_general_facts/runs/compact_vocabulary_validation_0/fresh_training/layers_8/compact_vocabulary.tsv \
@@ -135,7 +148,7 @@ Run from the repository root, using a Python environment with the `tokenizers`
 package installed. The tokenizer is read locally; nothing is downloaded.
 
 ```sh
-python src/llm/experiments/memorize_general_facts/audit_prefixes.py \
+python scripts/memorize_general_facts/audit_prefixes.py \
   --dataset=testdata/general_facts_dataset.txt \
   --tokenizer=/path/to/gpt2/tokenizer.json
 ```
@@ -149,8 +162,8 @@ BOS/EOS conventions are explicit.
 Run the counting tests with standard-library Python (no GPU or tokenizer needed):
 
 ```sh
-python -m unittest discover \
-  -s src/llm/experiments/memorize_general_facts -p '*_test.py' -v
+python -B -m unittest discover \
+  -s scripts/memorize_general_facts -p '*_test.py' -v
 ```
 
 ## Native training and depth search
@@ -219,7 +232,7 @@ For a finished run, independently retokenize the snapshots and verify every
 recorded target, including EOS and complete coverage of all 1,024 samples:
 
 ```sh
-python src/llm/experiments/memorize_general_facts/verify_predictions.py \
+python scripts/memorize_general_facts/verify_predictions.py \
   --corpus=RUN/corpus.txt --tokenizer=RUN/tokenizer.json \
   --predictions=RUN/final_predictions.tsv
 ```
@@ -257,7 +270,7 @@ For a sequential search that runs both independent checks before moving to each
 shallower depth, use a Python environment containing `tokenizers`:
 
 ```sh
-python src/llm/experiments/memorize_general_facts/run_depth_search.py \
+python scripts/memorize_general_facts/run_depth_search.py \
   --tokenizer=/home/ubuntu/datasets/tokenizer/gpt2 \
   --checkpoint_dir=/home/ubuntu/checkpoints/memorize_general_facts/search \
   --output_dir=src/llm/experiments/memorize_general_facts/runs/search
@@ -306,7 +319,7 @@ The verified sequential driver explores the coarse grid without rerunning
 already dominated widths at greater depths. Use fresh parent directories:
 
 ```sh
-python src/llm/experiments/memorize_general_facts/run_width_depth_search.py \
+python scripts/memorize_general_facts/run_width_depth_search.py \
   --tokenizer=/home/ubuntu/datasets/tokenizer/gpt2 \
   --checkpoint_dir=/home/ubuntu/checkpoints/memorize_general_facts/new_width_search \
   --output_dir=src/llm/experiments/memorize_general_facts/runs/new_width_search
@@ -363,7 +376,7 @@ To inspect one or several searches without touching the GPU or changing
 artifacts, use the read-only evidence reporter:
 
 ```sh
-python -B src/llm/experiments/memorize_general_facts/summarize_width_depth.py \
+python -B scripts/memorize_general_facts/summarize_width_depth.py \
   RUN/width_depth_search_summary.json
 ```
 

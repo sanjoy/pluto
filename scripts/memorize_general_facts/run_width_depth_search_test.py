@@ -56,6 +56,9 @@ class WidthDepthSearchTest(unittest.TestCase):
             self.assertEqual(int(flags["feed_forward_width"]), 4 * width)
         else:
             phase = "audit"
+            verifier = Path(__file__).resolve().with_name("verify_predictions.py")
+            self.assertEqual(Path(command[1]), verifier)
+            self.assertTrue(verifier.is_file())
             directory = Path(flags["predictions"]).parent
             layers = int(directory.parent.name.split("_")[1])
             width = int(directory.parent.parent.name.split("_")[1])
@@ -130,6 +133,9 @@ class WidthDepthSearchTest(unittest.TestCase):
                          ["verified_success", "verified_budget_failure", "verified_success",
                           "verified_budget_failure", "verified_success"])
         self.assertEqual(len(self.calls), 15)
+        verifier = Path(__file__).resolve().with_name("verify_predictions.py")
+        for command in self.calls[2::3]:
+            self.assertEqual(Path(command[1]), verifier)
         for trial in summary["trials"]:
             self.assertEqual(trial["phase"], "verified")
             self.assertEqual(len(trial["commands"]), 3)

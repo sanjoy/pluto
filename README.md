@@ -17,6 +17,10 @@ The repository includes:
   Shakespeare.
 - Standalone experimental tools in [`src/llm/experiments`](src/llm/experiments), including the
   MLP automaton readout.
+- Benchmark/sweep drivers and operational utilities in [`scripts`](scripts),
+  separate from the model implementations. The general-facts width/depth search
+  and Pareto reporting tools live in
+  [`scripts/memorize_general_facts`](scripts/memorize_general_facts).
 - CUDA execution, device buffers, and page-locked host memory in
   [`src/cuda`](src/cuda), with CUDA/cuTile C++ kernels.
 - Tokenization, dataset iterators, and data-preparation utilities in

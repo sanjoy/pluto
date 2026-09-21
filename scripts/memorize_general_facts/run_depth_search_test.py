@@ -56,6 +56,9 @@ class DepthSearchTest(unittest.TestCase):
             self.assertIsNone(stdout)
         else:
             phase = "audit"
+            verifier = Path(__file__).resolve().with_name("verify_predictions.py")
+            self.assertEqual(Path(command[1]), verifier)
+            self.assertTrue(verifier.is_file())
             layers = int(Path(flags["predictions"]).parent.parent.name.split("_")[1])
             self.assertIsNotNone(stdout)
         code = self.statuses.get((phase, layers), 0)
@@ -130,7 +133,10 @@ class DepthSearchTest(unittest.TestCase):
         self.assertEqual(len(self.calls), 6)
         self.assertIn("--layers=2", self.calls[0])
         self.assertIn("--layers=2", self.calls[1])
-        self.assertTrue(self.calls[2][1].endswith("verify_predictions.py"))
+        self.assertEqual(
+            Path(self.calls[2][1]),
+            Path(__file__).resolve().with_name("verify_predictions.py"),
+        )
         self.assertIn("--layers=1", self.calls[3])
         self.assertIn("--layers=1", self.calls[4])
         self.assertFalse(any("--layers=0" in command for command in self.calls))
