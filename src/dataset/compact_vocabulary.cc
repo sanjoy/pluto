@@ -221,7 +221,12 @@ CompactVocabularyTokenizer::LoadFromFile(const Tokenizer& original,
 
 CompactVocabularyTokenizer::CompactVocabularyTokenizer(
     const Tokenizer& original, CompactVocabularyMapping mapping)
-    : original_(original), mapping_(std::move(mapping)) {}
+    : original_(original),
+      mapping_(std::move(mapping)),
+      token_is_allowed_(mapping_.original_to_compact.size(), 0) {
+  for (int original_id : mapping_.compact_to_original)
+    token_is_allowed_[original_id] = 1;
+}
 
 absl::StatusOr<int> CompactVocabularyTokenizer::OriginalId(
     int compact_id) const {
@@ -247,7 +252,8 @@ absl::StatusOr<int> CompactVocabularyTokenizer::CompactId(
 absl::StatusOr<cuda::PageLockedHostArray<int>>
 CompactVocabularyTokenizer::Encode(cuda::Executor& executor,
                                    absl::string_view text) const {
-  ASSIGN_OR_RETURN(auto original_tokens, original_.Encode(executor, text));
+  ASSIGN_OR_RETURN(auto original_tokens, original_.EncodeWithVocabulary(
+                                             executor, text, token_is_allowed_));
   ASSIGN_OR_RETURN(auto compact_tokens,
                    cuda::PageLockedHostArray<int>::Allocate(
                        executor, original_tokens.size()));

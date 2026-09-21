@@ -585,6 +585,56 @@ TEST_F(CompactVocabularyTest, RejectsInactiveAndOutOfRangeTokenIds) {
   }
 }
 
+TEST_F(CompactVocabularyTest, IdentifiesTheUnencodableByteAndItsOffset) {
+  auto compact = CreateFromCorpus(*executor_, tokenizer_, "ab", 255);
+  ASSERT_TRUE(compact.ok()) << compact.status();
+  const auto missing = (*compact)->Encode(*executor_, "aabcba");
+  EXPECT_EQ(missing.status().code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_EQ(missing.status().message(),
+            "substring \"c\" could not be encoded using the compact vocabulary "
+            "at byte 3");
+  const auto control = (*compact)->Encode(*executor_, std::string{"a\0b", 3});
+  EXPECT_EQ(control.status().code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_NE(control.status().message().find("substring \"\\000\""),
+            absl::string_view::npos);
+  EXPECT_NE(control.status().message().find("at byte 1"),
+            absl::string_view::npos);
+}
+
+TEST_F(CompactVocabularyTest, DefaultVocabularyHookReportsTextWithoutMutation) {
+  RecordingTokenizer original;
+  auto compact = CreateFromCorpus(*executor_, original, "ab", 255);
+  ASSERT_TRUE(compact.ok()) << compact.status();
+  const auto missing = (*compact)->Encode(*executor_, "ac");
+  EXPECT_EQ(missing.status().code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_EQ(
+      missing.status().message(),
+      "substring \"ac\" could not be encoded using the compact vocabulary");
+  auto ordinary = original.Encode(*executor_, "ac");
+  ASSERT_TRUE(ordinary.ok()) << ordinary.status();
+  EXPECT_EQ(ordinary->span(), absl::Span<const int>({'a', 'c'}));
+}
+
+TEST_F(CompactVocabularyTest, VocabularyHooksRejectInvalidMasksBeforeEncoding) {
+  RecordingTokenizer original;
+  for (size_t size : {0u, 255u, 257u}) {
+    const std::vector<uint8_t> invalid(size, 1);
+    EXPECT_EQ(original.EncodeWithVocabulary(*executor_, "ab", invalid)
+                  .status()
+                  .code(),
+              absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ(tokenizer_.EncodeWithVocabulary(*executor_, "ab", invalid)
+                  .status()
+                  .code(),
+              absl::StatusCode::kInvalidArgument);
+  }
+  EXPECT_TRUE(original.encoded_text.empty());
+  const std::vector<uint8_t> all_allowed(256, 2);
+  auto bytes = tokenizer_.EncodeWithVocabulary(*executor_, "ab", all_allowed);
+  ASSERT_TRUE(bytes.ok()) << bytes.status();
+  EXPECT_EQ(bytes->span(), absl::Span<const int>({'a', 'b'}));
+}
+
 TEST_F(CompactVocabularyTest, RejectsInvalidCorporaAndOriginalEos) {
   for (const char* corpus : {"", "\n", "a\n\n", "a\n \t\nb", "a\r\n\r\nb"}) {
     SCOPED_TRACE(corpus);

@@ -4,6 +4,7 @@
 #include <string>
 
 #include "absl/status/status.h"
+#include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "src/util/status_macros.h"
 
@@ -18,6 +19,21 @@ absl::StatusOr<cuda::PageLockedHostArray<int>> PlainTextTokenizer::Encode(
   for (size_t index = 0; index < text.size(); ++index)
     tokens[index] = static_cast<unsigned char>(text[index]);
   return tokens;
+}
+
+absl::StatusOr<cuda::PageLockedHostArray<int>>
+PlainTextTokenizer::EncodeWithVocabulary(
+    cuda::Executor& executor, absl::string_view text,
+    absl::Span<const uint8_t> token_is_allowed) const {
+  if (token_is_allowed.size() != kVocabSize)
+    return absl::InvalidArgumentError("vocabulary mask has an invalid size");
+  for (size_t offset = 0; offset < text.size(); ++offset)
+    if (!token_is_allowed[static_cast<unsigned char>(text[offset])])
+      return absl::InvalidArgumentError(absl::StrCat(
+          "substring \"", absl::CEscape(text.substr(offset, 1)),
+          "\" could not be encoded using the compact vocabulary at byte ",
+          offset));
+  return Encode(executor, text);
 }
 
 absl::StatusOr<std::string> PlainTextTokenizer::Decode(

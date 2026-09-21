@@ -10,9 +10,11 @@
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "re2/re2.h"
 #include "re2/stringpiece.h"
 #include "src/cuda/page_locked_host_array.h"
@@ -97,13 +99,77 @@ absl::StatusOr<std::vector<std::string>> SplitUtf8(absl::string_view text) {
   return symbols;
 }
 
+absl::Status UnencodableSubstring(absl::string_view piece, size_t byte_offset) {
+  return absl::InvalidArgumentError(absl::StrCat(
+      "substring \"", absl::Utf8SafeCEscape(piece),
+      "\" could not be encoded using the compact vocabulary at byte ",
+      byte_offset));
+}
+
+absl::Status AppendVocabularySegmentation(
+    absl::string_view piece, size_t byte_offset,
+    absl::Span<const uint8_t> token_is_allowed,
+    const internal::Gpt2TokenizerVocabulary& model,
+    size_t maximum_encoded_token_length, std::vector<int>* output) {
+  struct Suffix {
+    size_t token_count = std::numeric_limits<size_t>::max();
+    size_t next = 0;
+    int token_id = -1;
+  };
+  std::vector<Suffix> suffixes(piece.size() + 1);
+  suffixes.back().token_count = 0;
+  std::string candidate;
+  candidate.reserve(maximum_encoded_token_length);
+  for (size_t begin = piece.size(); begin > 0;) {
+    --begin;
+    candidate.clear();
+    // Each raw byte expands to at least one encoded byte, so this bound keeps
+    // candidate enumeration linear in input length for a fixed vocabulary.
+    const size_t limit =
+        begin + std::min(piece.size() - begin, maximum_encoded_token_length);
+    for (size_t end = begin; end < limit; ++end) {
+      candidate.append(
+          model.byte_encoder()[static_cast<unsigned char>(piece[end])]);
+      if (candidate.size() > maximum_encoded_token_length)
+        break;
+      const Suffix& following = suffixes[end + 1];
+      if (following.token_id < 0 && end + 1 != piece.size())
+        continue;
+      const auto token = model.encoder().find(candidate);
+      if (token == model.encoder().end() || !token_is_allowed[token->second])
+        continue;
+      const size_t count = following.token_count + 1;
+      Suffix& best = suffixes[begin];
+      // Minimize token count; equal-cost paths prefer a longer first token,
+      // then a lower vocabulary ID. The suffix has already made the same
+      // deterministic choice, so unordered-map iteration cannot affect output.
+      if (count < best.token_count ||
+          (count == best.token_count &&
+           (end + 1 > best.next ||
+            (end + 1 == best.next && token->second < best.token_id)))) {
+        best = {count, end + 1, token->second};
+      }
+    }
+  }
+  if (suffixes.front().token_id < 0)
+    return UnencodableSubstring(piece, byte_offset);
+  for (size_t begin = 0; begin < piece.size(); begin = suffixes[begin].next)
+    output->push_back(suffixes[begin].token_id);
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<Gpt2Tokenizer>> Gpt2Tokenizer::Load(
     const std::filesystem::path& directory) {
   ASSIGN_OR_RETURN(auto model,
                    internal::Gpt2TokenizerVocabulary::Load(directory));
-  return absl::WrapUnique(new Gpt2Tokenizer(std::move(model)));
+  size_t maximum_encoded_token_length = 0;
+  for (const auto& token : model->decoder())
+    maximum_encoded_token_length =
+        std::max(maximum_encoded_token_length, token.size());
+  return absl::WrapUnique(
+      new Gpt2Tokenizer(std::move(model), maximum_encoded_token_length));
 }
 
 absl::StatusOr<std::vector<int>> Gpt2Tokenizer::ApplyBpe(
@@ -176,6 +242,32 @@ absl::Status Gpt2Tokenizer::EncodeOrdinary(absl::string_view text,
   return absl::OkStatus();
 }
 
+absl::Status Gpt2Tokenizer::EncodeOrdinaryWithVocabulary(
+    absl::string_view text, size_t byte_offset,
+    absl::Span<const uint8_t> token_is_allowed,
+    std::vector<int>* output) const {
+  ASSIGN_OR_RETURN(auto pieces, PreTokenize(text));
+  for (absl::string_view piece : pieces) {
+    ASSIGN_OR_RETURN(auto ids, ApplyBpe(ByteEncode(piece, *model_)));
+    if (std::all_of(ids.begin(), ids.end(), [token_is_allowed](int id) {
+          return token_is_allowed[id];
+        })) {
+      // Training-corpus tokens must retain their exact original segmentation
+      // so existing compact corpora and checkpoint IDs remain compatible.
+      output->insert(output->end(), ids.begin(), ids.end());
+      continue;
+    }
+    // Search the whole pretoken, including across original BPE boundaries.
+    // Only terminal vocabulary entries must be allowed: their intermediate
+    // BPE merges and individual UTF-8 bytes need not be retained. Unlike the
+    // unrestricted BPE result, this mask-dependent result is never cached.
+    RETURN_IF_ERROR(AppendVocabularySegmentation(
+        piece, byte_offset + static_cast<size_t>(piece.data() - text.data()),
+        token_is_allowed, *model_, maximum_encoded_token_length_, output));
+  }
+  return absl::OkStatus();
+}
+
 absl::StatusOr<cuda::PageLockedHostArray<int>> Gpt2Tokenizer::Encode(
     cuda::Executor& executor, absl::string_view text) const {
   std::vector<int> output;
@@ -187,6 +279,33 @@ absl::StatusOr<cuda::PageLockedHostArray<int>> Gpt2Tokenizer::Encode(
     RETURN_IF_ERROR(EncodeOrdinary(text.substr(begin, end - begin), &output));
     if (special == absl::string_view::npos)
       break;
+    output.push_back(model_->eos_token_id());
+    begin = special + model_->eos_token().size();
+  }
+  return cuda::PageLockedHostArray<int>::CopyFrom(executor, output);
+}
+
+absl::StatusOr<cuda::PageLockedHostArray<int>>
+Gpt2Tokenizer::EncodeWithVocabulary(
+    cuda::Executor& executor, absl::string_view text,
+    absl::Span<const uint8_t> token_is_allowed) const {
+  if (token_is_allowed.size() != static_cast<size_t>(vocab_size())) {
+    return absl::InvalidArgumentError(
+        "allowed-token mask size must equal the tokenizer vocabulary size");
+  }
+  std::vector<int> output;
+  size_t begin = 0;
+  while (begin < text.size()) {
+    const size_t special = text.find(model_->eos_token(), begin);
+    const size_t end =
+        special == absl::string_view::npos ? text.size() : special;
+    RETURN_IF_ERROR(EncodeOrdinaryWithVocabulary(
+        text.substr(begin, end - begin), begin, token_is_allowed, &output));
+    if (special == absl::string_view::npos)
+      break;
+    // EOS is atomic even when its literal text could be split into byte tokens.
+    if (!token_is_allowed[model_->eos_token_id()])
+      return UnencodableSubstring(model_->eos_token(), special);
     output.push_back(model_->eos_token_id());
     begin = special + model_->eos_token().size();
   }

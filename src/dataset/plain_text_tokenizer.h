@@ -24,6 +24,9 @@ class PlainTextTokenizer final : public Tokenizer, public Detokenizer {
 
   absl::StatusOr<cuda::PageLockedHostArray<int>> Encode(
       cuda::Executor& executor, absl::string_view text) const override;
+  absl::StatusOr<cuda::PageLockedHostArray<int>> EncodeWithVocabulary(
+      cuda::Executor& executor, absl::string_view text,
+      absl::Span<const uint8_t> token_is_allowed) const override;
   absl::StatusOr<std::string> Decode(
       absl::Span<const int> tokens) const override;
 

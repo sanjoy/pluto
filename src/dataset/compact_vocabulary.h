@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -34,7 +35,9 @@ absl::StatusOr<CompactVocabularyMapping> BuildCompactVocabularyMapping(
     cuda::Executor& executor, const Tokenizer& original,
     absl::string_view corpus_text, int original_eos_id);
 
-// Remaps token IDs without changing the original tokenization.
+// Encodes with the retained vocabulary, then remaps to contiguous compact IDs.
+// GPT-2 preserves the original tokenization when all its tokens are retained;
+// otherwise it finds an exact alternative using retained smaller token pieces.
 // The referenced original tokenizer must outlive this wrapper. Encoded arrays
 // retain the usual executor lifetime requirements of Tokenizer.
 class CompactVocabularyTokenizer final : public Tokenizer {
@@ -52,8 +55,9 @@ class CompactVocabularyTokenizer final : public Tokenizer {
   static absl::StatusOr<std::unique_ptr<CompactVocabularyTokenizer>>
   LoadFromFile(const Tokenizer& original, const std::filesystem::path& path);
 
-  // Rejects tokens absent from the discovered vocabulary. Returns fresh
-  // storage, leaving any shared/cached original-tokenizer arrays untouched.
+  // Delegates vocabulary-aware encoding to the original tokenizer. Substrings
+  // without a permitted encoding are reported as text, not just numeric IDs.
+  // Returns fresh storage, leaving shared/cached source arrays untouched.
   absl::StatusOr<cuda::PageLockedHostArray<int>> Encode(
       cuda::Executor& executor, absl::string_view text) const override;
 
@@ -94,6 +98,8 @@ class CompactVocabularyTokenizer final : public Tokenizer {
 
   const Tokenizer& original_;
   CompactVocabularyMapping mapping_;
+  // Immutable membership mask in the original ID space, reused on every call.
+  std::vector<uint8_t> token_is_allowed_;
 };
 
 }  // namespace pluto::tokenizer

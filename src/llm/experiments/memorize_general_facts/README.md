@@ -65,9 +65,10 @@ continuation reaches 1,024 tokens. Longer prompts are rejected, not silently
 truncated. There is no KV cache: each new token recomputes the model forward.
 
 `--generation_tokens=0` echoes a valid prompt without generating. An explicitly
-empty `--prompt` is rejected; blank interactive lines are skipped. Inactive
-compact-vocabulary tokens are rejected rather than mapped to unrelated IDs;
-the interactive loop reports the error and accepts another prompt. This is a
+empty `--prompt` is rejected; blank interactive lines are skipped. If a preferred
+GPT-2 token is absent, the compact tokenizer tries an exact encoding with retained
+smaller pieces. If no encoding exists, the error names the unencodable substring
+and its byte offset; the interactive loop accepts another prompt. This is a
 memorization model, not an instruction-following assistant: prompts outside the
 training facts need not give sensible answers. To reproduce the memorization
 task, supply the first five GPT-2 tokens of a fact.
@@ -79,12 +80,17 @@ inference-only. For older full-vocabulary checkpoints, use
 
 ## Compact active vocabulary
 
-New direct invocations use `--compact_vocabulary=true` by default. GPT-2 still
-does the text segmentation, but the experiment sorts all original token IDs
+New direct invocations use `--compact_vocabulary=true` by default. The experiment
+sorts all original GPT-2 token IDs
 present in the corpus (including prompt tokens), adds EOS, and remaps them to
 contiguous IDs. For this dataset, the resulting vocabulary has **4,475 IDs,
-0 through 4,474**, including EOS. Unknown/inactive tokens are rejected rather
-than silently mapped to a different token.
+0 through 4,474**, including EOS. GPT-2's ordinary encoding is preserved whenever
+all its tokens are retained, so the training corpus and existing checkpoints keep
+the same IDs. Otherwise, within each GPT-2 pretoken, a bounded dynamic-programming
+search finds a complete encoding using retained tokens, preferring fewer tokens
+and then a longer next piece. It never emits an inactive ID or silently changes
+text bytes. Unrepresentable substrings produce a readable error. This fallback
+does not imply the model learned facts containing the newly encodable text.
 
 The reusable implementation lives in `src/dataset/compact_vocabulary.h`.
 `BuildCompactVocabularyMapping(executor, base_tokenizer, corpus_text, eos_id)`

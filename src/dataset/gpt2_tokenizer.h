@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -11,6 +13,7 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "src/cuda/page_locked_host_array.h"
 #include "src/dataset/gpt2_tokenizer_vocabulary.h"
 #include "src/dataset/tokenizer.h"
@@ -36,20 +39,34 @@ class Gpt2Tokenizer final : public Tokenizer {
   absl::StatusOr<cuda::PageLockedHostArray<int>> Encode(
       cuda::Executor& executor, absl::string_view text) const override;
 
+  // Preserves ordinary BPE output whenever every token is allowed. Otherwise
+  // segments the complete pre-tokenized piece using only allowed vocabulary
+  // entries, retaining their original IDs for the caller to remap.
+  absl::StatusOr<cuda::PageLockedHostArray<int>> EncodeWithVocabulary(
+      cuda::Executor& executor, absl::string_view text,
+      absl::Span<const uint8_t> token_is_allowed) const override;
+
   int vocab_size() const override { return model_->vocab_size(); }
   int eos_token_id() const { return model_->eos_token_id(); }
   absl::string_view eos_token() const { return model_->eos_token(); }
 
  private:
   explicit Gpt2Tokenizer(
-      std::shared_ptr<const internal::Gpt2TokenizerVocabulary> model)
-      : model_(std::move(model)) {}
+      std::shared_ptr<const internal::Gpt2TokenizerVocabulary> model,
+      size_t maximum_encoded_token_length)
+      : model_(std::move(model)),
+        maximum_encoded_token_length_(maximum_encoded_token_length) {}
 
   absl::Status EncodeOrdinary(absl::string_view text,
                               std::vector<int>* output) const;
+  absl::Status EncodeOrdinaryWithVocabulary(
+      absl::string_view text, size_t byte_offset,
+      absl::Span<const uint8_t> token_is_allowed,
+      std::vector<int>* output) const;
   absl::StatusOr<std::vector<int>> ApplyBpe(std::string token) const;
 
   std::shared_ptr<const internal::Gpt2TokenizerVocabulary> model_;
+  const size_t maximum_encoded_token_length_;
   mutable absl::Mutex cache_mutex_;
   mutable absl::flat_hash_map<std::string, std::vector<int>> cache_
       ABSL_GUARDED_BY(cache_mutex_);

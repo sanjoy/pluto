@@ -113,8 +113,11 @@ cc_library(
     deps = [
         "//src/cuda:executor",
         "//src/cuda:page_locked_host_array",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
     ],
 )
 
@@ -172,7 +175,28 @@ cc_library(
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings",
         "@abseil-cpp//absl/synchronization",
+        "@abseil-cpp//absl/types:span",
         "@re2//:re2",
+    ],
+)
+
+cc_test(
+    name = "compact_vocabulary_gpt2_test",
+    srcs = ["compact_vocabulary_gpt2_test.cc"],
+    data = ["//testdata:general_facts_dataset.txt"],
+    tags = ["requires-gpu", "requires-tokenizer"],
+    deps = [
+        ":compact_vocabulary",
+        ":gpt2_detokenizer",
+        ":gpt2_tokenizer",
+        ":tokenizer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@googletest//:gtest_main",
     ],
 )
 
