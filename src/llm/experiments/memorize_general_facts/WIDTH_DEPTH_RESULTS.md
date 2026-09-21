@@ -130,6 +130,7 @@ particular, the near-perfect one-block width-64 trial needs a longer-budget chec
 | Coarse | 2 | 32 | 1,666,944 | 5,000 | 2,884 / 10,002 | 2,884 at step 5,000 | 1.908862034386 |
 | Coarse | 3 | 32 | 1,679,648 | 5,000 | 2,854 / 10,002 | 2,841 at step 4,992 | 1.868303412209 |
 | Coarse | 4 | 32 | 1,692,352 | 5,000 | 2,894 / 10,002 | 2,894 at step 5,000 | 1.922002390574 |
+| Coarse | 5 | 32 | 1,705,056 | 5,000 | 2,841 / 10,002 | 2,840 at step 4,992 | 1.873806013764 |
 
 The width-64, one-block trial reached its full update cap, not its time cap.
 Its final checkpoint reloaded with the same two errors and passed the independent
@@ -170,6 +171,30 @@ Checkpoint:
 Artifacts: `runs/width_depth_coarse_0/width_32/layers_4/`. Independent prediction
 TSV SHA-256: `8e50f59b8a36459b7b65af4eb35bfc923fbf1a760d63a4f5b1219a70c3eee0e5`.
 
+Five blocks at width 32 reached the full update cap in about 8.3 minutes, with
+50 exact sentences and 2,841 errors. Both independent checks reproduce the
+saved final predictions. Across depths two through five, the observed final
+error counts stay in a narrow range under this protocol; these are still
+budget-limited experiments, not width-32 impossibility results.
+Checkpoint:
+`/home/ubuntu/checkpoints/memorize_general_facts/width_depth_coarse_0/width_32/layers_5/step_5000`.
+Artifacts: `runs/width_depth_coarse_0/width_32/layers_5/`. Independent prediction
+TSV SHA-256: `aa1ab4227d972b117a71d91090c06011d9255b016c59f644fd929113dadb91c4`.
+
+These narrow models learned the end-of-sentence target before memorizing the
+contents. Directly counting the independently checked prediction TSVs gives:
+
+| Width-32 blocks | First suffix-token errors / 1,024 | Later content errors / 7,954 | EOS errors / 1,024 |
+| --- | ---: | ---: | ---: |
+| 2 | 325 | 2,559 | 0 |
+| 3 | 327 | 2,527 | 0 |
+| 4 | 356 | 2,538 | 0 |
+| 5 | 326 | 2,515 | 0 |
+
+Here the first suffix target has token index 5, EOS has token ID 50,256, and the
+remaining scored targets are later content. This describes the error locations,
+not their causal mechanism or an impossibility of fitting them with more work.
+
 ## Validation and current status
 
 The configurable recipe and native shape flags pass all 65 optimized native
@@ -202,9 +227,9 @@ checkpoints are under
 One block at widths 256 and 128 and two blocks at width 64 passed both independent
 checks. All 16 tensors shared between the one-/two-block width-64 initializations
 match byte-for-byte, including final LayerNorm after accounting for file indices.
-Two through four blocks at width 32 exhausted the update budget. Five-block
+Two through five blocks at width 32 exhausted the update budget. Six-block
 width-32 training is now underway. The 28 shared initial tensors for depths
-two/three, 40 for depths three/four, and 52 for depths four/five match
-byte-for-byte, including the relocated final norms.
+two/three, 40 for depths three/four, 52 for depths four/five, and 64 for depths
+five/six match byte-for-byte, including the relocated final norms.
 The smallest verified success so far is two blocks at width 64, with 3,383,040
 physical parameters; the width/depth frontier is not complete yet.
