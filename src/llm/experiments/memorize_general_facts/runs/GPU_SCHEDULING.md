@@ -41,8 +41,14 @@ paused. At **03:00:50 UTC**, the original width-24 process was resumed with
 `SIGCONT`, after a roughly 13-minute-29-second pause. Its existing optimizer
 state and update schedule were preserved; no checkpoint restart occurred.
 
-Width 24 is now the only active training process. The paused coordinator and
-two-block width-16 child will be resumed after that midpoint trial finishes.
+Width 24 completed all 20,000 updates with three errors and
+`reached_time_limit=0`; its coordinator finished both independent checks at
+03:17:32 UTC. All 65 optimized native test targets then passed (63 cached,
+the two updated targets executed). At **03:19:22 UTC**, the original two-block
+width-16 child (PID 3275073) and coordinator (PID 3264113) were both resumed
+with `SIGCONT`. They continue the existing `width_depth_long_1` search; no new
+instance was launched and the pinned binary hash is unchanged.
+
 Pausing the coordinator alone did not pause the earlier one-block child or
 alter that child's update schedule. None of these processes has been restarted.
 

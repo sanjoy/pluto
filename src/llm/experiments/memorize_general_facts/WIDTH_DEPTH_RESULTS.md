@@ -178,6 +178,30 @@ capacity impossibility claims.
 | Coarse | 7 | 32 | 1,730,464 | 5,000 | 2,891 / 10,002 | 2,879 at step 4,992 | 1.913807373659 |
 | Coarse | 8 | 32 | 1,743,168 | 5,000 | 2,777 / 10,002 | 2,777 at step 5,000 | 1.897634668045 |
 | Longer budget, narrow | 1 | 16 | 824,048 | 20,000 | 1,833 / 10,002 | 1,814 at step 19,840 | 1.020205828413 |
+| Midpoint refinement | 1 | 24 | 1,238,376 | 20,000 | 3 / 10,002 | 2 at step 16,768 | 0.004384264733 |
+
+One block at width 24 completed all 20,000 updates (312.5 epochs) without
+reaching its time limit. It has 1,021 exact sentences and three remaining
+errors, confirmed by fresh checkpoint inference and independent retokenization;
+the two prediction TSVs match byte-for-byte. This remains a failure of the
+strict all-correct criterion despite 99.97% target accuracy and low mean loss.
+The final errors are:
+
+- Line 629: after `Thermal radiation can transfer energy through`, predicts
+  ` interactions` instead of ` empty`.
+- Line 701: after `For small swings at fixed gravity,`, predicts ` the`
+  instead of ` a`.
+- Line 991: after the five-token prompt `For a finite list of`, predicts
+  ` ideal` instead of ` numbers`.
+
+All EOS targets are correct. This near miss justifies a separately named
+longer-budget check; it does not establish insufficient width-24 capacity.
+Checkpoint:
+`/home/ubuntu/checkpoints/memorize_general_facts/width_depth_refine_24/width_24/layers_1/step_20000`.
+Artifacts: `runs/width_depth_refine_24/width_24/layers_1/`. Independent prediction
+TSV SHA-256: `949b762a40cc02494ace1aca872903eba087a1694b71ecacdccbdbd68c26ac2c`.
+Elapsed time includes overlap and a pause, as recorded in
+`runs/GPU_SCHEDULING.md`; it is not a throughput benchmark.
 
 One block at width 16 reached the full 20,000-update cap (312.5 epochs), not
 its time cap, with 151 exact sentences and 1,833 errors. The fresh native
@@ -362,13 +386,19 @@ A one-block width-24 midpoint trial, `runs/width_depth_refine_24`, started at
 02:44:58 UTC with the same longer-budget protocol and one head. GPU contention
 made simultaneous training inefficient, so it was paused at 02:47:21 UTC with
 its in-memory optimizer state retained while one-block width 16 finished.
-Width 24 resumed at 03:00:50 UTC; the next two-block width-16 trial and search
-coordinator are paused until it finishes. Scheduling details and the elapsed-time
-caveat are in `runs/GPU_SCHEDULING.md`. Width 24 and two-block width 16 do not
-have final outcomes yet. Added tests specifically cover one 24-wide BF16 head
+Width 24 resumed at 03:00:50 UTC and finished with the verified three-error
+budget result above. The next two-block width-16 trial and search coordinator
+resumed at 03:19:22 UTC. Scheduling details and the elapsed-time caveat are in
+`runs/GPU_SCHEDULING.md`. Two-block width 16 has no final outcome yet.
+Added tests specifically cover one 24-wide BF16 head
 at context 1,024 with CPU/GPU forward/backward agreement and three bitwise
 GPU repeats, plus complete one-head width-24 GPT-2 forward/backward and tied
-parameter counts; both optimized test targets pass.
+parameter counts; both optimized test targets pass. After the midpoint trial,
+all 65 optimized native test targets passed (63 cached, the two updated targets
+executed), and the experiment binary hash remained unchanged. The reporter now
+computes matched-protocol frontiers using the binary hash and all eight training
+controls, separately from pooled existence evidence; all 127 Python experiment
+tests pass. The current 20,000-update and pooled frontier remains `(1,32)`.
 
 After the active pass, refine observed width gaps with a small, bounded set of
 midpoints (such as 24 between 32 and 16, or 12 between 16 and 8). Fill omitted
