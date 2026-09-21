@@ -237,11 +237,40 @@ attention head, seed 1337, batch size 16, and the same 40,000-update protocol:
    at 25,472 updates. The third slot tested the still-improving deeper model
    from the 20,000-update pass and added a distinct depth/width Pareto point.
 
-No fourth trial is part of this round. The next architecture/budget choice
-remains undecided. Unmeasured shallower depths at width 16 under the longer
-protocol, intermediate widths, and narrower/deeper configurations remain
-untested, not failures. Keep finite-budget failures, untested configurations,
-and matched-budget versus pooled frontiers distinct.
+No fourth trial is part of that round. Unmeasured shallower depths at width 16
+under the longer protocol, intermediate widths, and narrower/deeper
+configurations remain untested, not failures. Keep finite-budget failures,
+untested configurations, and matched-budget versus pooled frontiers distinct.
+
+### Next narrower/deeper trial
+
+The next separately named trial is `width_depth_refine_12_deep_long_0`:
+**16 blocks, width 12, one head, FF width 48, and 645,720 parameters**. This
+would reduce the parameter count by 23.8% relative to the verified eight-block
+width-16 model if it succeeds. It directly probes the requested deeper/narrower
+trade-off; supporting its shape or passing two-update tests is not evidence
+that it can memorize the corpus.
+
+Use fresh initialization with seed 1337, batch 16, a 40,000-update cap,
+10,800-second cap, LR 0.0006, warmup 100, evaluation every 128 updates, and
+checkpointing every 512, retaining the same optimizer, initialization, full
+vocabulary, and five-token-prompt criterion. Do not resume the mechanical smoke
+checkpoint. The original three-trial round is unchanged and complete; this is
+one new bounded trial, not an automatic grid expansion. No subsequent full
+trial is queued. Its outcome will inform whether to prioritize a shallower
+width-16 model under the longer budget or an intermediate point such as two
+blocks at width 20. Depth is not assumed monotone.
+
+This trial uses the deeper-capable binary SHA-256
+`e4b8d8b951f3b6dbfb76c5b4c0e63e03cc5d65861e175caff2430a1d8d9299c0`.
+The historical binary cannot construct sixteen blocks. All 65 native test
+targets and 134 Python tests passed, and real two-update roundtrips, a bitwise
+repeat, and historical weight/prediction comparisons passed; see
+[deeper-depth validation](runs/deeper_depth_validation_0/README.md).
+Despite those compatibility checks, the evidence reporter keeps the new binary
+hash in a separate matched-protocol group. Any cross-binary frontier remains
+pooled existence evidence. Only independently verified completed results enter
+the measured frontier; live training artifacts stay uncommitted.
 
 ## Verified budget failures
 
@@ -606,8 +635,9 @@ all 65 optimized native test targets passed (63 cached, the two updated targets
 executed), and the experiment binary hash remained unchanged. The reporter now
 computes matched-protocol frontiers using the binary hash and all eight training
 controls, separately from pooled existence evidence; all 127 Python experiment
-tests pass. The current 20,000-update frontier remains `(1,32)`; the pooled
-frontier is now `(1,24)` after the separately scheduled result below.
+tests passed at that stage. The 20,000-update frontier remains `(1,32)`; the
+pooled frontier subsequently became `(1,24)` and then `(1,24), (8,16)` after
+the separately scheduled results below.
 
 The fresh 40,000-update one-block width-24 refinement was queued at 03:59:36
 UTC and started at 04:46:00 UTC, after the completed search exited and its
@@ -619,8 +649,9 @@ byte-for-byte. The peak learning rate, seed, head count, batch, and optimizer
 remain fixed, but the stretched cosine schedule is a separate protocol.
 The trial completed both independent checks at 05:11:23 UTC with zero errors
 at step 29,824; its completed artifacts and manifest are committed. The reporter
-checks 11 completed 5,000-update trials, seven completed 20,000-update trials,
-and two verified 40,000-update trials (one success and one budget failure).
+now checks 11 completed 5,000-update trials, seven completed 20,000-update
+trials, and three verified 40,000-update trials (two successes and one budget
+failure), excluding the separate two-update mechanical checks.
 
 After both targeted optimized GPU tests passed, the fresh one-block width-20,
 one-head, FF-80, 40,000-update trial started at 05:13:11 UTC. It has 1,031,020
@@ -645,10 +676,13 @@ peak learning rate, and optimizer settings. Its stretched cosine schedule
 changes the protocol; it is not an optimizer resume. Artifacts are in
 `runs/width_depth_refine_16_deep_long_0/`, with checkpoints under
 `/home/ubuntu/checkpoints/memorize_general_facts/width_depth_refine_16_deep_long_0/`.
-This trial is running; its changing artifacts are not committed and it is not
-yet a memorization result. See `runs/GPU_SCHEDULING.md` for serialization details.
+This trial and both independent checks completed at 06:37:08 UTC with zero
+errors at step 25,472. Its completed artifacts are committed. The next full
+test suite and binary rebuild started only after the driver exited; no GPU
+tests competed with this trial. See `runs/GPU_SCHEDULING.md` for serialization
+details.
 
-After the active pass, refine observed width gaps with a small, bounded set of
+After each completed pass, refine observed width gaps with a small, bounded set of
 midpoints (such as 24 between 32 and 16, or 12 between 16 and 8). Fill omitted
 depths where a measured success transition makes them relevant, for example
 depth 3 between a depth-2 failure and depth-4 success. If the adaptive driver
