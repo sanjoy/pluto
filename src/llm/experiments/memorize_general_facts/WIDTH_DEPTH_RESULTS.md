@@ -63,6 +63,7 @@ tested family, grid, and training budgets, not a globally smallest architecture.
 | --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | Previous depth search | 1 | 512 | 8 × 64 | 2,048 | 29,416,960 | 2,944 | 46 | 0 / 10,002 | 0.000131258831 |
 | Coarse | 1 | 256 | 4 × 64 | 1,024 | 13,922,048 | 3,456 | 54 | 0 / 10,002 | 0.000256836483 |
+| Coarse | 1 | 128 | 2 × 64 | 512 | 6,764,416 | 2,944 | 46 | 0 / 10,002 | 0.001181248501 |
 
 All successful rows complete all 1,024 sentences exactly under the approved
 five-token-prompt rule. Their fresh-process checkpoint predictions match the
@@ -75,6 +76,13 @@ checkpoint reload. Its checkpoint is
 artifacts are in `runs/width_depth_coarse_0/width_256/layers_1/`. The independent
 prediction TSV SHA-256 is
 `9bbc4356aa389b45be53568f5a94a7e1740656fcd6345cd70093074d49ab947d`.
+
+The width-128 trial took about 5.2 minutes including evaluation and trainer
+reload. Its checkpoint is
+`/home/ubuntu/checkpoints/memorize_general_facts/width_depth_coarse_0/width_128/layers_1/step_2944`;
+artifacts are in `runs/width_depth_coarse_0/width_128/layers_1/`. The independent
+prediction TSV SHA-256 is
+`06ee2f122ccac53cabca3d81a29c82b946fec0f3a72e945a54b58fd1e79364ae`.
 
 ## Validation and current status
 
@@ -105,7 +113,7 @@ The coarse search started on 2026-09-21 at 00:46:16 UTC with one block at width
 256. Its live record is `runs/width_depth_coarse_0/width_depth_search_summary.json`;
 checkpoints are under
 `/home/ubuntu/checkpoints/memorize_general_facts/width_depth_coarse_0/`.
-Width 256 passed and its independent verification completed before width-128
-training started at approximately 00:56:56 UTC. The smallest verified success
-so far is one block at width 256, with 13,922,048 physical parameters; the
-width/depth frontier is not complete yet.
+Widths 256 and 128 passed both independent checks. Width-64 training was
+underway by 01:02:14 UTC. The smallest verified success so far is one block at
+width 128, with 6,764,416 physical parameters; the width/depth frontier is not
+complete yet.
