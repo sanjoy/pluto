@@ -3,7 +3,11 @@
 #include <cuda_runtime.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -16,6 +20,7 @@
 #include "gtest/gtest.h"
 #include "src/cuda/buffer.h"
 #include "src/cuda/executor.h"
+#include "src/cuda/page_locked_host_array.h"
 #include "src/llm/layer.h"
 #include "src/llm/layer_hooks.h"
 
@@ -100,8 +105,245 @@ class Gpt2Test : public testing::Test {
     executor_.reset();
   }
 
+  void ExpectBuffersEqual(const Buffer& first, const Buffer& second) {
+    ASSERT_EQ(first.size_bytes(), second.size_bytes());
+    auto first_host = cuda::PageLockedHostArray<uint8_t>::Allocate(
+        *executor_, first.size_bytes());
+    auto second_host = cuda::PageLockedHostArray<uint8_t>::Allocate(
+        *executor_, second.size_bytes());
+    ASSERT_TRUE(first_host.ok()) << first_host.status();
+    ASSERT_TRUE(second_host.ok()) << second_host.status();
+    ASSERT_EQ(
+        cudaMemcpyAsync(first_host->data(), first.data(), first.size_bytes(),
+                        cudaMemcpyDeviceToHost, executor_->stream()),
+        cudaSuccess);
+    ASSERT_EQ(
+        cudaMemcpyAsync(second_host->data(), second.data(), second.size_bytes(),
+                        cudaMemcpyDeviceToHost, executor_->stream()),
+        cudaSuccess);
+    ASSERT_TRUE(executor_->Synchronize().ok());
+    EXPECT_EQ(std::memcmp(first_host->data(), second_host->data(),
+                          first.size_bytes()),
+              0);
+  }
+
   std::unique_ptr<cuda::Executor> executor_;
 };
+
+TEST(Gpt2ConfigTest, DefaultsAndSupportedWidths) {
+  Gpt2Config defaults;
+  EXPECT_EQ(defaults.transformer_block_count, 8);
+  EXPECT_EQ(defaults.model_width, 512);
+  EXPECT_EQ(defaults.attention_heads, 8);
+  EXPECT_EQ(defaults.feed_forward_width, 2048);
+  EXPECT_TRUE(defaults.Validate().ok());
+
+  for (int width : {16, 32, 48, 64, 96, 128, 256, 512}) {
+    Gpt2Config config{1, width, width / 16, 4 * width};
+    EXPECT_TRUE(config.Validate().ok()) << width;
+    config.transformer_block_count = 8;
+    EXPECT_TRUE(config.Validate().ok()) << width;
+  }
+  // Feed-forward width is deliberately independent of the residual width.
+  EXPECT_TRUE((Gpt2Config{2, 32, 1, 80}.Validate().ok()));
+}
+
+TEST(Gpt2ConfigTest, RejectsInvalidAndOverflowingShapesBeforeAllocating) {
+  const int largest_multiple = std::numeric_limits<int>::max() - 15;
+  for (const Gpt2Config& config :
+       {Gpt2Config{-1, 32, 1, 128}, Gpt2Config{9, 32, 1, 128},
+        Gpt2Config{1, 0, 1, 128}, Gpt2Config{1, -16, 1, 128},
+        Gpt2Config{1, 8, 1, 128}, Gpt2Config{1, 33, 1, 128},
+        Gpt2Config{1, 32, 0, 128}, Gpt2Config{1, 32, -1, 128},
+        Gpt2Config{1, 32, 3, 128}, Gpt2Config{1, 32, 4, 128},
+        Gpt2Config{1, 32, 1, 0}, Gpt2Config{1, 32, 1, -16},
+        Gpt2Config{1, 32, 1, 8}, Gpt2Config{1, 32, 1, 129},
+        Gpt2Config{1, largest_multiple, 1, 128},
+        Gpt2Config{1, 32, 1, largest_multiple},
+        // Embedding fits, but the packed QKV matrix does not.
+        Gpt2Config{1, 32768, 512, 16},
+        // Matrices fit, but one 1024-token MLP activation does not.
+        Gpt2Config{1, 16, 1, 2'097'152},
+        // Activations fit, but the rectangular MLP matrix does not.
+        Gpt2Config{1, 16384, 256, 262144}}) {
+    EXPECT_EQ(config.Validate().code(), absl::StatusCode::kInvalidArgument)
+        << config.model_width << "/" << config.attention_heads << "/"
+        << config.feed_forward_width;
+  }
+}
+
+TEST_F(Gpt2Test, ConfiguredFactoriesPropagateValidationErrors) {
+  const Gpt2Config config{1, 32, 4, 128};  // Eight-wide heads are unsupported.
+  auto model = CreateGpt2(*executor_, DataType::BF16, 123, config);
+  EXPECT_EQ(model.status().code(), absl::StatusCode::kInvalidArgument);
+  auto generator =
+      CreateActivationGenerator(*executor_, config, DataType::BF16, 123);
+  EXPECT_EQ(generator.status().code(), absl::StatusCode::kInvalidArgument);
+}
+
+TEST_F(Gpt2Test, ExplicitDefaultsMatchLegacyInitialization) {
+  auto legacy = CreateGpt2(*executor_, DataType::BF16, 123);
+  auto configured = CreateGpt2(*executor_, DataType::BF16, 123, Gpt2Config{});
+  ASSERT_TRUE(legacy.ok()) << legacy.status();
+  ASSERT_TRUE(configured.ok()) << configured.status();
+  ASSERT_EQ((*legacy)->weights().size(), (*configured)->weights().size());
+  EXPECT_EQ((*legacy)->input_types()[0], (*configured)->input_types()[0]);
+  EXPECT_EQ((*legacy)->output_types()[0], (*configured)->output_types()[0]);
+  for (size_t index = 0; index < (*legacy)->weights().size(); ++index) {
+    SCOPED_TRACE(index);
+    ExpectBuffersEqual((*legacy)->weights()[index],
+                       (*configured)->weights()[index]);
+  }
+}
+
+TEST_F(Gpt2Test, NarrowModelsKeepSeedReproducibilityAndPrefixInitialization) {
+  Gpt2Config config{1, 32, 2, 80};
+  auto first = CreateGpt2(*executor_, DataType::BF16, 123, config);
+  auto repeated = CreateGpt2(*executor_, DataType::BF16, 123, config);
+  auto prefix =
+      CreateActivationGenerator(*executor_, config, DataType::BF16, 123);
+  ASSERT_TRUE(first.ok()) << first.status();
+  ASSERT_TRUE(repeated.ok()) << repeated.status();
+  ASSERT_TRUE(prefix.ok()) << prefix.status();
+  config.transformer_block_count = 2;
+  auto deeper = CreateGpt2(*executor_, DataType::BF16, 123, config);
+  ASSERT_TRUE(deeper.ok()) << deeper.status();
+  ASSERT_EQ((*prefix)->weights().size(), 14);
+  for (size_t index = 0; index < (*first)->weights().size(); ++index)
+    ExpectBuffersEqual((*first)->weights()[index],
+                       (*repeated)->weights()[index]);
+  // The first block's residual-projection scaling must not change with depth.
+  for (size_t index = 0; index < (*prefix)->weights().size(); ++index) {
+    SCOPED_TRACE(index);
+    ExpectBuffersEqual((*first)->weights()[index], (*prefix)->weights()[index]);
+    ExpectBuffersEqual((*first)->weights()[index], (*deeper)->weights()[index]);
+  }
+  EXPECT_EQ((*prefix)->output_types()[0],
+            ActivationType(DataType::BF16, {ActivationType::kBatchDimension,
+                                            kGpt2ContextLength, 32}));
+}
+
+TEST_F(Gpt2Test, NarrowConfigurationsHaveExpectedUniqueParametersAndTiedHead) {
+  for (const Gpt2Config& config :
+       {Gpt2Config{0, 16, 1, 64}, Gpt2Config{1, 32, 2, 80},
+        Gpt2Config{2, 64, 2, 256}, Gpt2Config{1, 96, 3, 384},
+        Gpt2Config{1, 128, 8, 512}, Gpt2Config{1, 256, 4, 1024}}) {
+    SCOPED_TRACE(config.model_width);
+    auto model = CreateGpt2(*executor_, DataType::BF16, 123, config);
+    ASSERT_TRUE(model.ok()) << model.status();
+    const auto weights = (*model)->weights();
+    const auto gradients = (*model)->gradients();
+    ASSERT_EQ(weights.size(), 5 + 12 * config.transformer_block_count);
+    ASSERT_EQ(gradients.size(), weights.size());
+    // Composition exposes both embedding and LM-head handles. Only these
+    // first/last aliases should be excluded from the physical parameter count.
+    EXPECT_EQ(weights.front().data(), weights.back().data());
+    EXPECT_EQ(gradients.front().data(), gradients.back().data());
+    size_t unique_parameters = 0;
+    for (size_t index = 0; index + 1 < weights.size(); ++index) {
+      EXPECT_EQ(weights[index].size_bytes(), gradients[index].size_bytes());
+      unique_parameters += weights[index].size_bytes() / sizeof(float);
+      for (size_t other = 0; other < index; ++other)
+        EXPECT_NE(weights[index].data(), weights[other].data());
+    }
+    const int64_t width = config.model_width;
+    const int64_t ff = config.feed_forward_width;
+    // Per block: QKV/projection/MLP matrices plus their biases and two norms.
+    const int64_t per_block =
+        4 * width * width + 2 * width * ff + 9 * width + ff;
+    EXPECT_EQ(unique_parameters,
+              (kGpt2PaddedVocabularySize + kGpt2ContextLength + 2) * width +
+                  config.transformer_block_count * per_block);
+  }
+}
+
+TEST_F(Gpt2Test, SmallAndPartialTileModelsRunForwardAndBackward) {
+  for (DataType type : {DataType::FP16, DataType::BF16}) {
+    for (const Gpt2Config& config :
+         {Gpt2Config{1, 16, 1, 64}, Gpt2Config{2, 32, 2, 80},
+          Gpt2Config{1, 96, 3, 384}}) {
+      SCOPED_TRACE(config.model_width);
+      SCOPED_TRACE(static_cast<int>(type));
+      auto model = CreateGpt2(*executor_, type, 123, config);
+      ASSERT_TRUE(model.ok()) << model.status();
+      EXPECT_EQ(
+          (*model)->input_types()[0],
+          ActivationType(DataType::INT32, {ActivationType::kBatchDimension,
+                                           kGpt2ContextLength}));
+      EXPECT_EQ((*model)->output_types()[0],
+                ActivationType(DataType::FP32, {ActivationType::kBatchDimension,
+                                                kGpt2ContextLength,
+                                                kGpt2PaddedVocabularySize}));
+      auto tokens =
+          Buffer::Allocate(*executor_, kGpt2ContextLength * sizeof(int32_t));
+      ASSERT_TRUE(tokens.ok()) << tokens.status();
+      ASSERT_EQ(cudaMemsetAsync(tokens->data(), 0, tokens->size_bytes(),
+                                executor_->stream()),
+                cudaSuccess);
+      auto forward = (*model)->fwd(*executor_, {*tokens});
+      ASSERT_TRUE(forward.ok()) << forward.status();
+      ASSERT_EQ(forward->outputs.size(), 1);
+      EXPECT_EQ(forward->outputs[0].size_bytes(),
+                static_cast<size_t>(kGpt2ContextLength) *
+                    kGpt2PaddedVocabularySize * sizeof(float));
+
+      // A nonzero derivative on one vocabulary logit exercises the whole
+      // backward chain, including the shared embedding accumulator. Zeroing
+      // everything would hide width/indexing bugs behind zero gradients.
+      auto output_gradient =
+          Buffer::Allocate(*executor_, forward->outputs[0].size_bytes());
+      auto one = cuda::PageLockedHostArray<float>::Allocate(*executor_, 1);
+      ASSERT_TRUE(output_gradient.ok()) << output_gradient.status();
+      ASSERT_TRUE(one.ok()) << one.status();
+      (*one)[0] = 1.0f;
+      ASSERT_EQ(
+          cudaMemsetAsync(output_gradient->data(), 0,
+                          output_gradient->size_bytes(), executor_->stream()),
+          cudaSuccess);
+      ASSERT_EQ(cudaMemcpyAsync(static_cast<float*>(output_gradient->data()) +
+                                    5 * kGpt2PaddedVocabularySize + 1,
+                                one->data(), sizeof(float),
+                                cudaMemcpyHostToDevice, executor_->stream()),
+                cudaSuccess);
+      auto backward = (*model)->bwd(*executor_, {*output_gradient},
+                                    std::move(forward->state));
+      ASSERT_TRUE(backward.ok()) << backward.status();
+      EXPECT_TRUE(
+          backward->empty());  // Integer token IDs are not differentiable.
+
+      auto logits = cuda::PageLockedHostArray<float>::Allocate(
+          *executor_, kGpt2PaddedVocabularySize);
+      ASSERT_TRUE(logits.ok()) << logits.status();
+      ASSERT_EQ(cudaMemcpyAsync(logits->data(), forward->outputs[0].data(),
+                                logits->size_bytes(), cudaMemcpyDeviceToHost,
+                                executor_->stream()),
+                cudaSuccess);
+      ASSERT_TRUE(executor_->Synchronize().ok());
+      for (int token = 0; token < kGpt2VocabularySize; ++token)
+        ASSERT_TRUE(std::isfinite((*logits)[token]));
+      for (int token = kGpt2VocabularySize; token < kGpt2PaddedVocabularySize;
+           ++token)
+        EXPECT_EQ((*logits)[token], -std::numeric_limits<float>::max());
+
+      bool has_nonzero_gradient = false;
+      for (const Buffer& gradient : (*model)->gradients()) {
+        auto host_gradient = cuda::PageLockedHostArray<float>::Allocate(
+            *executor_, gradient.size_bytes() / sizeof(float));
+        ASSERT_TRUE(host_gradient.ok()) << host_gradient.status();
+        ASSERT_EQ(cudaMemcpyAsync(host_gradient->data(), gradient.data(),
+                                  gradient.size_bytes(), cudaMemcpyDeviceToHost,
+                                  executor_->stream()),
+                  cudaSuccess);
+        ASSERT_TRUE(executor_->Synchronize().ok());
+        for (float value : *host_gradient) {
+          ASSERT_TRUE(std::isfinite(value));
+          has_nonzero_gradient = has_nonzero_gradient || value != 0.0f;
+        }
+      }
+      EXPECT_TRUE(has_nonzero_gradient);
+    }
+  }
+}
 
 TEST_F(Gpt2Test, ActivationGeneratorRejectsInvalidBlockCounts) {
   auto negative =

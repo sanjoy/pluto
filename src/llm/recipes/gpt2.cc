@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <utility>
 
@@ -30,12 +31,15 @@ constexpr float kInitializationStandardDeviation = 0.02f;
 //   x = x + W_2 GELU(W_1 LayerNorm(x))
 //
 // W_qkv maps the model width to three independent Q/K/V tensors. CausalMHA
-// uses online FP32 softmax statistics. The MLP expands the representation by
-// four. Dropout and attention dropout are exactly zero, so no dropout layers
-// appear. Every block receives independently initialized parameters.
+// uses online FP32 softmax statistics. The MLP expands the representation to
+// config.feed_forward_width. Dropout and attention dropout are exactly zero.
+// Every block receives independently initialized parameters.
 absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateTransformerBlock(
     cuda::Executor& executor, DataType output_type, int initialization_seed,
-    int block_index) {
+    int block_index, const Gpt2Config& config) {
+  // Intentionally use the original eight-block scaling at every depth. Shared
+  // blocks therefore initialize identically in depth comparisons, and adding
+  // this configuration API does not change existing checkpoint trajectories.
   const float residual_standard_deviation =
       kInitializationStandardDeviation /
       std::sqrt(2.0f * kGpt2TransformerBlockCount);
@@ -45,21 +49,21 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateTransformerBlock(
 
   ComposedLayerBuilder attention_builder;
   RETURN_IF_ERROR(attention_builder.add(
-      LayerNormLayer::Create(executor, kGpt2ModelWidth, kLayerNormEpsilon,
+      LayerNormLayer::Create(executor, config.model_width, kLayerNormEpsilon,
                              output_type, kGpt2ContextLength)));
   RETURN_IF_ERROR(attention_builder.add(FullyConnectedLayer::Create(
-      executor, kGpt2ModelWidth, 3 * kGpt2ModelWidth, output_type,
+      executor, config.model_width, 3 * config.model_width, output_type,
       kGpt2ContextLength)));
   auto* qkv_projection =
       static_cast<FullyConnectedLayer*>(attention_builder.back());
   RETURN_IF_ERROR(qkv_projection->InitializeNormal(
       kInitializationStandardDeviation, seed_base + 1));
-  RETURN_IF_ERROR(attention_builder.add(
-      AttentionLayer::Create(executor, kGpt2ContextLength, kGpt2AttentionHeads,
-                             kGpt2ModelWidth, output_type)));
-  RETURN_IF_ERROR(attention_builder.add(
-      FullyConnectedLayer::Create(executor, kGpt2ModelWidth, kGpt2ModelWidth,
-                                  output_type, kGpt2ContextLength)));
+  RETURN_IF_ERROR(attention_builder.add(AttentionLayer::Create(
+      executor, kGpt2ContextLength, config.attention_heads, config.model_width,
+      output_type)));
+  RETURN_IF_ERROR(attention_builder.add(FullyConnectedLayer::Create(
+      executor, config.model_width, config.model_width, output_type,
+      kGpt2ContextLength)));
   auto* attention_projection =
       static_cast<FullyConnectedLayer*>(attention_builder.back());
   RETURN_IF_ERROR(attention_projection->InitializeNormal(
@@ -67,18 +71,18 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateTransformerBlock(
 
   ComposedLayerBuilder mlp_builder;
   RETURN_IF_ERROR(mlp_builder.add(
-      LayerNormLayer::Create(executor, kGpt2ModelWidth, kLayerNormEpsilon,
+      LayerNormLayer::Create(executor, config.model_width, kLayerNormEpsilon,
                              output_type, kGpt2ContextLength)));
   RETURN_IF_ERROR(mlp_builder.add(FullyConnectedLayer::Create(
-      executor, kGpt2ModelWidth, kGpt2FeedForwardWidth, output_type,
+      executor, config.model_width, config.feed_forward_width, output_type,
       kGpt2ContextLength)));
   auto* mlp_input = static_cast<FullyConnectedLayer*>(mlp_builder.back());
   RETURN_IF_ERROR(mlp_input->InitializeNormal(kInitializationStandardDeviation,
                                               seed_base + 3));
   RETURN_IF_ERROR(mlp_builder.add(GeluLayer::Create(
-      executor, kGpt2FeedForwardWidth, output_type, kGpt2ContextLength)));
+      executor, config.feed_forward_width, output_type, kGpt2ContextLength)));
   RETURN_IF_ERROR(mlp_builder.add(FullyConnectedLayer::Create(
-      executor, kGpt2FeedForwardWidth, kGpt2ModelWidth, output_type,
+      executor, config.feed_forward_width, config.model_width, output_type,
       kGpt2ContextLength)));
   auto* mlp_output = static_cast<FullyConnectedLayer*>(mlp_builder.back());
   RETURN_IF_ERROR(
@@ -99,62 +103,109 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateTransformerBlock(
 // silently drifting away from the model recipe they are meant to inspect.
 absl::StatusOr<EmbeddingLookupLayer*> AddActivationGeneratorLayers(
     cuda::Executor& executor, ComposedLayerBuilder& builder,
-    int transformer_block_count, DataType output_type, int seed) {
-  if (transformer_block_count < 0 ||
-      transformer_block_count > kGpt2TransformerBlockCount) {
-    return absl::InvalidArgumentError(
-        "transformer_block_count must be between zero and "
-        "kGpt2TransformerBlockCount");
-  }
+    const Gpt2Config& config, DataType output_type, int seed) {
+  RETURN_IF_ERROR(config.Validate());
 
   RETURN_IF_ERROR(builder.add(EmbeddingLookupLayer::Create(
-      executor, kGpt2VocabularySize, kGpt2ModelWidth, output_type,
+      executor, kGpt2VocabularySize, config.model_width, output_type,
       kGpt2ContextLength)));
   auto* embedding = static_cast<EmbeddingLookupLayer*>(builder.back());
   RETURN_IF_ERROR(embedding->InitializeNormal(kInitializationStandardDeviation,
                                               static_cast<uint64_t>(seed)));
 
   RETURN_IF_ERROR(builder.add(PositionEmbeddingLayer::Create(
-      executor, kGpt2ContextLength, kGpt2ModelWidth, output_type)));
+      executor, kGpt2ContextLength, config.model_width, output_type)));
   auto* positions = static_cast<PositionEmbeddingLayer*>(builder.back());
   RETURN_IF_ERROR(positions->InitializeNormal(kInitializationStandardDeviation,
                                               static_cast<uint64_t>(seed) + 1));
 
-  for (int index = 0; index < transformer_block_count; ++index) {
+  for (int index = 0; index < config.transformer_block_count; ++index) {
     RETURN_IF_ERROR(builder.add(
-        CreateTransformerBlock(executor, output_type, seed, index)));
+        CreateTransformerBlock(executor, output_type, seed, index, config)));
   }
   return embedding;
 }
 
 }  // namespace
 
+absl::Status Gpt2Config::Validate() const {
+  if (transformer_block_count < 0 ||
+      transformer_block_count > kGpt2TransformerBlockCount)
+    return absl::InvalidArgumentError(
+        "transformer_block_count must be between zero and "
+        "kGpt2TransformerBlockCount");
+  // These are the shared ValidateTiledExtent constraints of the embedding,
+  // dense, normalization, and attention kernels, not a 64-channel tile floor:
+  // partial 64-wide tiles are masked, so 16-wide models/heads are supported.
+  if (model_width <= 0 || model_width % 16 != 0 || feed_forward_width <= 0 ||
+      feed_forward_width % 16 != 0)
+    return absl::InvalidArgumentError(
+        "model_width and feed_forward_width must be positive multiples of 16");
+  if (attention_heads <= 0 || model_width % attention_heads != 0 ||
+      (model_width / attention_heads) % 16 != 0)
+    return absl::InvalidArgumentError(
+        "attention_heads must divide model_width into positive multiples of "
+        "16 channels");
+
+  // Check the embedding first: besides the optimizer's element-count limit,
+  // this bounds width enough that 3 * width and all following int64 products
+  // are safe. Do not let an oversized configuration wrap before validation.
+  constexpr int64_t kMaxElements = std::numeric_limits<int>::max();
+  const int64_t width = model_width;
+  const int64_t ff_width = feed_forward_width;
+  if (kGpt2PaddedVocabularySize * width > kMaxElements)
+    return absl::InvalidArgumentError(
+        "token embedding exceeds the backend's 32-bit element-count limit");
+  if (3 * width * width > kMaxElements || width * ff_width > kMaxElements ||
+      kGpt2ContextLength * 3 * width > kMaxElements ||
+      kGpt2ContextLength * ff_width > kMaxElements)
+    return absl::InvalidArgumentError(
+        "GPT-2 parameter or activation tensor exceeds the backend's 32-bit "
+        "element-count limit");
+  return absl::OkStatus();
+}
+
 absl::StatusOr<std::unique_ptr<Layer>> CreateActivationGenerator(
     cuda::Executor& executor, int transformer_block_count, DataType output_type,
     int seed) {
+  Gpt2Config config;
+  config.transformer_block_count = transformer_block_count;
+  return CreateActivationGenerator(executor, config, output_type, seed);
+}
+
+absl::StatusOr<std::unique_ptr<Layer>> CreateActivationGenerator(
+    cuda::Executor& executor, const Gpt2Config& config, DataType output_type,
+    int seed) {
   ComposedLayerBuilder builder;
-  ASSIGN_OR_RETURN(
-      auto* embedding,
-      AddActivationGeneratorLayers(executor, builder, transformer_block_count,
-                                   output_type, seed));
+  ASSIGN_OR_RETURN(auto* embedding,
+                   AddActivationGeneratorLayers(executor, builder, config,
+                                                output_type, seed));
   (void)embedding;
-  ASSIGN_OR_RETURN(auto generator, builder.create(absl::StrCat(
-                                       "gpt2_activation_generator_",
-                                       transformer_block_count, "_blocks")));
+  ASSIGN_OR_RETURN(
+      auto generator,
+      builder.create(absl::StrCat("gpt2_activation_generator_",
+                                  config.transformer_block_count, "_blocks")));
   return std::unique_ptr<Layer>(std::move(generator));
 }
 
 absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateGpt2(
     cuda::Executor& executor, DataType output_type, int seed,
     int transformer_block_count) {
+  Gpt2Config config;
+  config.transformer_block_count = transformer_block_count;
+  return CreateGpt2(executor, output_type, seed, config);
+}
+
+absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateGpt2(
+    cuda::Executor& executor, DataType output_type, int seed,
+    const Gpt2Config& config) {
   ComposedLayerBuilder builder;
-  ASSIGN_OR_RETURN(
-      auto* embedding,
-      AddActivationGeneratorLayers(
-          executor, builder, transformer_block_count, output_type, seed));
+  ASSIGN_OR_RETURN(auto* embedding,
+                   AddActivationGeneratorLayers(executor, builder, config,
+                                                output_type, seed));
 
   RETURN_IF_ERROR(builder.add(
-      LayerNormLayer::Create(executor, kGpt2ModelWidth, kLayerNormEpsilon,
+      LayerNormLayer::Create(executor, config.model_width, kLayerNormEpsilon,
                              output_type, kGpt2ContextLength)));
   RETURN_IF_ERROR(builder.add(LanguageModelingHeadLayer::Create(embedding)));
   return builder.create("gpt2");

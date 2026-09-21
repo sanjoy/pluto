@@ -1,0 +1,5 @@
+layers=1 width=16 heads=1 feed_forward_width=64 parameters=824048 samples=1024 scored_targets=10002
+2026-09-21 00:41:40 UTC step=0 elapsed_seconds=2.52129 mean_loss=10.8224 errors=10002/10002 exact_sentences=0/1024
+2026-09-21 00:41:43 UTC step=2 elapsed_seconds=5.63872 mean_loss=10.8223 errors=10002/10002 exact_sentences=0/1024
+2026-09-21 00:41:46 UTC step=2 elapsed_seconds=8.20903 mean_loss=10.8223 errors=10002/10002 exact_sentences=0/1024
+BUDGET_EXHAUSTED checkpoint=/home/ubuntu/checkpoints/memorize_general_facts/width_config_smoke/layers_1/step_2

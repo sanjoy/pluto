@@ -191,3 +191,25 @@ Independent checkpoint verification requires exactly the model's unique weight
 files, rejecting a wrong depth rather than silently accepting a prefix
 checkpoint. This stricter experiment-only check does not change the framework's
 general-purpose prefix-loading support.
+
+## Width/depth experiments
+
+The native runner also takes explicit `--model_width`, `--attention_heads`,
+and `--feed_forward_width` flags. Defaults remain 512, 8, and 2,048; changing
+one does not implicitly change the others. Supply all three when training or
+verifying a narrower checkpoint. For example, one 64-wide block with a
+four-times-expanded MLP uses:
+
+```sh
+bazel-bin/src/llm/experiments/memorize_general_facts/memorize_general_facts \
+  --layers=1 --model_width=64 --attention_heads=1 --feed_forward_width=256 \
+  --tokenizer=/home/ubuntu/datasets/tokenizer/gpt2 \
+  --checkpoint_dir=/home/ubuntu/checkpoints/memorize_general_facts/new_width_trial \
+  --output_dir=src/llm/experiments/memorize_general_facts/runs/new_width_trial
+```
+
+Unlike tensor widths, the number of attention heads cannot be recovered from
+raw checkpoint file sizes, so preserve the run's configuration. See
+[WIDTH_DEPTH_RESULTS.md](WIDTH_DEPTH_RESULTS.md) for the search protocol,
+empirical frontier, and distinction between a training-budget failure and a
+capacity lower bound.

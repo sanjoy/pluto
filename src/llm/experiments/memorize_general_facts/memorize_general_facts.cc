@@ -1,4 +1,4 @@
-// Controlled depth search for exact in-sample GPT-2 next-token memorization.
+// Controlled width/depth search for exact in-sample next-token memorization.
 // Each run uses a fresh initialization; smaller models never inherit a larger
 // model's weights. Success is an integer zero-error test, not a loss threshold.
 #include <cuda_runtime.h>
@@ -49,6 +49,9 @@ ABSL_FLAG(std::string, output_dir,
           "src/llm/experiments/memorize_general_facts/runs/baseline",
           "Experiment artifacts");
 ABSL_FLAG(int, layers, 8, "Initial transformer depth, 0..8");
+ABSL_FLAG(int, model_width, 512, "Residual-stream and embedding width");
+ABSL_FLAG(int, attention_heads, 8, "Number of attention heads per block");
+ABSL_FLAG(int, feed_forward_width, 2048, "Inner GELU MLP width");
 ABSL_FLAG(bool, search, false,
           "After success, train successively shallower models from scratch");
 ABSL_FLAG(int, batch_size, 16, "Independent padded sentences per batch");
@@ -64,6 +67,16 @@ ABSL_FLAG(double, training_seconds, 10800,
 
 namespace pluto::llm::memorize_general_facts {
 namespace {
+
+// Record and reconstruct the full shape explicitly. A checkpoint's raw tensor
+// files cannot identify its head count: changing the partition into heads does
+// not change the Q/K/V matrix shapes, but does change the model's computation.
+Gpt2Config ModelConfiguration(int layers) {
+  return {.transformer_block_count = layers,
+          .model_width = absl::GetFlag(FLAGS_model_width),
+          .attention_heads = absl::GetFlag(FLAGS_attention_heads),
+          .feed_forward_width = absl::GetFlag(FLAGS_feed_forward_width)};
+}
 
 struct Metrics {
   int64_t targets = 0;
@@ -231,8 +244,10 @@ absl::StatusOr<bool> TrainDepth(cuda::Executor& executor,
   ASSIGN_OR_RETURN(auto evaluation,
                    PaddedLineDataSetIterator::Create(executor, corpus.text(),
                                                      tokenizer, options));
-  ASSIGN_OR_RETURN(auto model, CreateGpt2(executor, DataType::BF16,
-                                          absl::GetFlag(FLAGS_seed), layers));
+  const auto model_config = ModelConfiguration(layers);
+  ASSIGN_OR_RETURN(auto model,
+                   CreateGpt2(executor, DataType::BF16,
+                              absl::GetFlag(FLAGS_seed), model_config));
   ASSIGN_OR_RETURN(auto loss, CrossEntropyLossLayer::Create(
                                   executor, kGpt2VocabularySize, DataType::BF16,
                                   kGpt2ContextLength));
@@ -248,8 +263,11 @@ absl::StatusOr<bool> TrainDepth(cuda::Executor& executor,
   const int64_t parameters = ParameterCount(*model);
   manifest << "corpus=" << absl::GetFlag(FLAGS_corpus)
            << "\ntokenizer=" << absl::GetFlag(FLAGS_tokenizer)
-           << "\nlayers=" << layers
-           << "\nwidth=512\nheads=8\ncontext_length=1024"
+           << "\nlayers=" << layers << "\nwidth=" << model_config.model_width
+           << "\nheads=" << model_config.attention_heads << "\nhead_dimension="
+           << model_config.model_width / model_config.attention_heads
+           << "\nfeed_forward_width=" << model_config.feed_forward_width
+           << "\ncontext_length=1024"
            << "\nprompt_tokens=5\nvocabulary=50257\ncompute=BF16\nmaster_"
               "weights=FP32"
            << "\ngradient_clip_norm=1\nparameters=" << parameters
@@ -266,8 +284,10 @@ absl::StatusOr<bool> TrainDepth(cuda::Executor& executor,
            << "\nsamples=" << training->sample_count()
            << "\nscored_targets=" << training->supervised_row_count() << '\n';
   manifest.flush();
-  log << "layers=" << layers << " parameters=" << parameters
-      << " samples=" << training->sample_count()
+  log << "layers=" << layers << " width=" << model_config.model_width
+      << " heads=" << model_config.attention_heads
+      << " feed_forward_width=" << model_config.feed_forward_width
+      << " parameters=" << parameters << " samples=" << training->sample_count()
       << " scored_targets=" << training->supervised_row_count() << std::endl;
   RETURN_IF_ERROR(WriteToDirectory(executor, *model, checkpoints / "step_0"));
   RETURN_IF_ERROR(executor.Synchronize());
@@ -346,6 +366,9 @@ absl::StatusOr<bool> TrainDepth(cuda::Executor& executor,
   report(completed, metrics);
   std::ofstream result(output / "result.txt");
   result << "success=" << (metrics.errors == 0) << "\nlayers=" << layers
+         << "\nwidth=" << model_config.model_width
+         << "\nheads=" << model_config.attention_heads
+         << "\nfeed_forward_width=" << model_config.feed_forward_width
          << "\nparameters=" << parameters << "\nstep=" << completed
          << "\nerrors=" << metrics.errors << "\ntargets=" << metrics.targets
          << "\nsamples_seen=" << samples_seen << "\nepochs="
@@ -386,9 +409,10 @@ absl::StatusOr<bool> VerifyCheckpoint(cuda::Executor& executor,
       .shuffle = false};
   ASSIGN_OR_RETURN(auto data, PaddedLineDataSetIterator::Create(
                                   executor, corpus.text(), tokenizer, options));
-  ASSIGN_OR_RETURN(auto model, CreateGpt2(executor, DataType::BF16,
-                                          absl::GetFlag(FLAGS_seed),
-                                          absl::GetFlag(FLAGS_layers)));
+  const auto model_config = ModelConfiguration(absl::GetFlag(FLAGS_layers));
+  ASSIGN_OR_RETURN(auto model,
+                   CreateGpt2(executor, DataType::BF16,
+                              absl::GetFlag(FLAGS_seed), model_config));
   ASSIGN_OR_RETURN(auto loss, CrossEntropyLossLayer::Create(
                                   executor, kGpt2VocabularySize, DataType::BF16,
                                   kGpt2ContextLength));
@@ -418,6 +442,9 @@ absl::StatusOr<bool> VerifyCheckpoint(cuda::Executor& executor,
          << "\ncorpus=" << absl::GetFlag(FLAGS_corpus)
          << "\ntokenizer=" << absl::GetFlag(FLAGS_tokenizer)
          << "\nlayers=" << absl::GetFlag(FLAGS_layers)
+         << "\nwidth=" << model_config.model_width
+         << "\nheads=" << model_config.attention_heads
+         << "\nfeed_forward_width=" << model_config.feed_forward_width
          << "\nparameters=" << ParameterCount(*model)
          << "\nerrors=" << metrics.errors << "\ntargets=" << metrics.targets
          << "\nmean_loss=" << metrics.loss_sum / metrics.targets
@@ -449,6 +476,7 @@ absl::StatusOr<bool> Run() {
       absl::GetFlag(FLAGS_training_seconds) < 0)
     return absl::InvalidArgumentError(
         "invalid experiment flags; tokenizer and checkpoint_dir are required");
+  RETURN_IF_ERROR(ModelConfiguration(absl::GetFlag(FLAGS_layers)).Validate());
   ASSIGN_OR_RETURN(auto executor, cuda::Executor::Create());
   ASSIGN_OR_RETURN(auto tokenizer, tokenizer::Gpt2Tokenizer::Load(
                                        absl::GetFlag(FLAGS_tokenizer)));

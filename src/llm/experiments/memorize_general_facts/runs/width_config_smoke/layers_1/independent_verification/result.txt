@@ -1,0 +1,13 @@
+checkpoint=/home/ubuntu/checkpoints/memorize_general_facts/width_config_smoke/layers_1/step_2
+corpus=testdata/general_facts_dataset.txt
+tokenizer=/home/ubuntu/datasets/tokenizer/gpt2
+layers=1
+width=16
+heads=1
+feed_forward_width=64
+parameters=824048
+errors=10002
+targets=10002
+mean_loss=10.8223
+exact_sentences=0
+sentences=1024

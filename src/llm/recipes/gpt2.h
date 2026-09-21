@@ -2,6 +2,7 @@
 
 #include <memory>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "src/cuda/executor.h"
 #include "src/llm/layer.h"
@@ -9,9 +10,9 @@
 
 namespace pluto::llm {
 
-// Public dimensions of the GPT-2 recipe. Keeping these beside CreateGpt2()
-// gives dataset, loss, and inference code one source of truth for tensor
-// shapes without coupling those callers to the recipe implementation.
+// Default dimensions of the GPT-2 recipe. Vocabulary and context remain fixed
+// even when Gpt2Config selects a narrower or shallower model. Existing dataset,
+// loss, and inference callers can continue to use these default dimensions.
 inline constexpr int kGpt2VocabularySize = 50'257;
 inline constexpr int kGpt2PaddedVocabularySize = 50'272;
 inline constexpr int kGpt2ContextLength = 1'024;
@@ -24,6 +25,26 @@ inline constexpr int kGpt2FeedForwardWidth = 2'048;
 static_assert(kGpt2ModelWidth ==
               kGpt2AttentionHeads * kGpt2AttentionHeadDimension);
 static_assert(kGpt2FeedForwardWidth == 4 * kGpt2ModelWidth);
+
+// Shape choices for controlled depth/width experiments. The MLP width is
+// explicit rather than implicitly four times model_width, so changing one
+// dimension never silently changes another. Every attention head has width
+// model_width / attention_heads. All other architectural and initialization
+// choices, including the tied head and eight-block residual initialization
+// scaling, remain the same as the default recipe.
+struct Gpt2Config {
+  int transformer_block_count = kGpt2TransformerBlockCount;
+  int model_width = kGpt2ModelWidth;
+  int attention_heads = kGpt2AttentionHeads;
+  int feed_forward_width = kGpt2FeedForwardWidth;
+
+  // Checks shape and current CUDA-kernel limits without allocating memory.
+  // Depth is in [0, 8]; model/MLP/head widths must be positive multiples of 16.
+  // Parameter tensors and single-sample intermediate tensors must fit the
+  // backend's 32-bit element counts. Larger batches still need to respect
+  // the per-layer runtime buffer/grid limits.
+  absl::Status Validate() const;
+};
 
 // Builds the token-to-activation prefix of the GPT-2 recipe. The returned
 // layer applies the token and learned position embeddings followed by exactly
@@ -41,17 +62,33 @@ absl::StatusOr<std::unique_ptr<Layer>> CreateActivationGenerator(
     cuda::Executor& executor, int transformer_block_count, DataType output_type,
     int seed);
 
+// Configurable counterpart. The output width is config.model_width and the
+// prefix includes config.transformer_block_count blocks. Its weights match
+// the corresponding prefix of CreateGpt2() with the same widths and seed,
+// even if that full model has more blocks.
+absl::StatusOr<std::unique_ptr<Layer>> CreateActivationGenerator(
+    cuda::Executor& executor, const Gpt2Config& config, DataType output_type,
+    int seed);
+
 // Builds the GPT-2-style architecture used by the training binaries:
 // learned token and position embeddings, by default eight pre-LayerNorm
-// transformer blocks, a final LayerNorm, and a tied language-modeling head. Every layer
-// declares the fixed context length and symbolic batch dimension (-2). The
-// head returns FP32 [-2, kGpt2ContextLength, kGpt2PaddedVocabularySize] logits.
-// output_type selects the compute policy; parameters and gradients remain FP32.
-// transformer_block_count must be in [0, kGpt2TransformerBlockCount]. Reducing
-// it changes depth only; width, vocabulary, context, initialization, final norm,
-// and tied head stay fixed for controlled memorization experiments.
+// transformer blocks, a final LayerNorm, and a tied language-modeling head.
+// Every layer declares the fixed context length and symbolic batch dimension
+// (-2). The head returns FP32 [-2, kGpt2ContextLength,
+// kGpt2PaddedVocabularySize] logits. output_type selects the compute policy;
+// parameters and gradients remain FP32. transformer_block_count must be in [0,
+// kGpt2TransformerBlockCount]. Reducing it changes depth only; width,
+// vocabulary, context, initialization, final norm, and tied head stay fixed for
+// controlled memorization experiments.
 absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateGpt2(
     cuda::Executor& executor, DataType output_type, int seed,
     int transformer_block_count = kGpt2TransformerBlockCount);
+
+// Configurable counterpart; the legacy overload above delegates here with
+// the default widths. The logits' vocabulary dimension does not change when
+// narrowing the residual stream.
+absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateGpt2(
+    cuda::Executor& executor, DataType output_type, int seed,
+    const Gpt2Config& config);
 
 }  // namespace pluto::llm

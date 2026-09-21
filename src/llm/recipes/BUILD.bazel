@@ -33,6 +33,7 @@ cc_test(
         ":gpt2",
         "//src/cuda:buffer",
         "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
         "//src/llm:layer",
         "//src/llm:layer_hooks",
         "@abseil-cpp//absl/status",

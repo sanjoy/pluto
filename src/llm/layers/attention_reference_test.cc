@@ -1,5 +1,6 @@
 #include <cmath>
 #include <cstddef>
+#include <cstring>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -16,7 +17,8 @@ namespace {
 class AttentionReferenceTest : public LayerReferenceTest {
  protected:
   void CheckConfiguration(DataType type, int context, int heads, int width,
-                          int sequences, float score_scale = 1.0f) {
+                          int sequences, float score_scale = 1.0f,
+                          int repetitions = 1) {
     SCOPED_TRACE(testing::Message()
                  << "type=" << static_cast<int>(type) << " context=" << context
                  << " heads=" << heads << " width=" << width << " sequences="
@@ -69,6 +71,53 @@ class AttentionReferenceTest : public LayerReferenceTest {
     ASSERT_EQ(reference_input->size(), 1u);
     EXPECT_TRUE(FloatBuffersNear(device_input->front(),
                                  reference_input->front(), 3e-3f, 3e-3f));
+
+    // Repeat only the selected configurations: the scalar quadratic reference
+    // is evaluated once, while fresh device layers and buffers must reproduce
+    // both the BF16 forward bytes and every FP32 dQ/dK/dV bit. Retaining the
+    // first buffers also prevents accidentally comparing a buffer with itself
+    // after an allocator reuses its address.
+    for (int repeat = 1; repeat < repetitions; ++repeat) {
+      SCOPED_TRACE(testing::Message() << "repeat=" << repeat);
+      auto repeated_layer =
+          AttentionLayer::Create(*executor_, context, heads, width, type);
+      ASSERT_TRUE(repeated_layer.ok()) << repeated_layer.status();
+      auto repeated_output = (*repeated_layer)->fwd(*executor_, device_inputs);
+      ASSERT_TRUE(repeated_output.ok()) << repeated_output.status();
+      auto repeated_input = (*repeated_layer)
+                                ->bwd(*executor_, device_gradients,
+                                      std::move(repeated_output->state));
+      ASSERT_TRUE(repeated_input.ok()) << repeated_input.status();
+      ASSERT_EQ(repeated_input->size(), 1u);
+      {
+        SCOPED_TRACE("forward output");
+        ExpectSameBytes(device_output->outputs[0], repeated_output->outputs[0]);
+      }
+      {
+        SCOPED_TRACE("packed dQ/dK/dV");
+        ExpectSameBytes(device_input->front(), repeated_input->front());
+      }
+    }
+  }
+
+  void ExpectSameBytes(const Buffer& expected, const Buffer& actual) {
+    ASSERT_EQ(expected.size_bytes(), actual.size_bytes());
+    auto expected_bytes = AllocatePageLockedHostArray<unsigned char>(
+        *executor_, expected.size_bytes());
+    auto actual_bytes = AllocatePageLockedHostArray<unsigned char>(
+        *executor_, actual.size_bytes());
+    ASSERT_EQ(cudaMemcpyAsync(expected_bytes.data(), expected.data(),
+                              expected.size_bytes(), cudaMemcpyDeviceToHost,
+                              executor_->stream()),
+              cudaSuccess);
+    ASSERT_EQ(
+        cudaMemcpyAsync(actual_bytes.data(), actual.data(), actual.size_bytes(),
+                        cudaMemcpyDeviceToHost, executor_->stream()),
+        cudaSuccess);
+    ASSERT_TRUE(executor_->Synchronize().ok());
+    EXPECT_EQ(std::memcmp(expected_bytes.data(), actual_bytes.data(),
+                          expected.size_bytes()),
+              0);
   }
 };
 
@@ -124,6 +173,24 @@ TEST_F(AttentionReferenceTest, ProductionContextForwardAndBackwardMatch) {
   // while exercising the full production-length softmax and gradient sums.
   for (DataType type : {DataType::FP16, DataType::BF16})
     CheckConfiguration(type, 1024, 1, 64, 1);
+}
+
+TEST_F(AttentionReferenceTest,
+       NarrowBf16HeadsAtProductionContextMatchAndRepeat) {
+  // The width search uses heads smaller than the kernel's 64-channel tile.
+  // Full 1024-token sequences exercise all 32 causal key/query tiles, including
+  // the long backward reductions that short partial-tile tests do not cover.
+  // Nontrivial Q/K scaling keeps the attention probabilities nonuniform.
+  for (int head_dimension : {16, 32})
+    CheckConfiguration(DataType::BF16, 1024, 1, head_dimension, 1, 4.0f, 3);
+}
+
+TEST_F(AttentionReferenceTest, ThreeNarrowBf16HeadsMatchAndRepeat) {
+  // Three 32-channel heads make a 96-wide model: neither head count nor model
+  // width is a power of two, and every head is a partial 64-channel tile. Two
+  // sequences with partial final row tiles check the explicit per-head and
+  // per-sequence strides without repeating an expensive 1024-token reference.
+  CheckConfiguration(DataType::BF16, 65, 3, 96, 2, 4.0f, 3);
 }
 
 TEST_F(LayerReferenceTest, FutureTokensAndOtherSequencesCannotAffectGradients) {
