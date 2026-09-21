@@ -1,5 +1,8 @@
 # General-facts memorization results
 
+Paths under `runs/` below refer to local, generated artifacts. They are ignored
+by Git and are not included in a fresh clone; this report retains their provenance.
+
 This is a depth search within the fixed-width GPT-2 family described in
 [README.md](README.md), not a claim about the smallest possible language model.
 The approved task supplies the first five GPT-2 tokens of each sentence and

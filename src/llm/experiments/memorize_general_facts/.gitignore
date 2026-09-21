@@ -1,3 +1,3 @@
 __pycache__/
-# Keep local copies of the externally supplied tokenizer out of Git.
-runs/**/tokenizer.json
+# Generated training/sweep artifacts, including input and tokenizer snapshots.
+/runs/

@@ -1,5 +1,8 @@
 # Width/depth memorization search
 
+Paths under `runs/` below refer to local, generated artifacts. They are ignored
+by Git and are not included in a fresh clone; this report retains their provenance.
+
 This extends the completed width-512 depth search in [RESULTS.md](RESULTS.md).
 The target remains exact top-1 prediction of every suffix token and EOS after
 each fact's first five GPT-2 tokens: 10,002 targets across all 1,024 sentences.
@@ -309,7 +312,7 @@ This trial uses the deeper-capable binary SHA-256
 The historical binary cannot construct sixteen blocks. All 65 native test
 targets and 134 Python tests passed, and real two-update roundtrips, a bitwise
 repeat, and historical weight/prediction comparisons passed; see
-[deeper-depth validation](runs/deeper_depth_validation_0/README.md).
+the local-only `runs/deeper_depth_validation_0/README.md`.
 Despite those compatibility checks, the evidence reporter keeps the new binary
 hash in a separate matched-protocol group. Any cross-binary frontier remains
 pooled existence evidence. Only independently verified successful results enter

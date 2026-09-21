@@ -1,6 +1,0 @@
-layers=8 width=16 heads=1 vocabulary=4475 feed_forward_width=64 parameters=114256 samples=1024 scored_targets=10002
-2026-09-21 12:40:32 UTC step=0 elapsed_seconds=0.631231 mean_loss=8.4016 errors=10002/10002 exact_sentences=0/1024
-2026-09-21 12:40:33 UTC step=1 elapsed_seconds=1.34848 mean_loss=8.40134 errors=10002/10002 exact_sentences=0/1024
-2026-09-21 12:40:33 UTC step=2 elapsed_seconds=2.05936 mean_loss=8.40082 errors=10002/10002 exact_sentences=0/1024
-2026-09-21 12:40:34 UTC step=2 elapsed_seconds=2.70246 mean_loss=8.40082 errors=10002/10002 exact_sentences=0/1024
-BUDGET_EXHAUSTED checkpoint=/home/ubuntu/checkpoints/memorize_general_facts/compact_vocabulary_validation_0/fresh_training/layers_8/step_2

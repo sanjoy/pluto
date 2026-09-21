@@ -26,9 +26,10 @@ Optional global gradient clipping uses `src/llm/gradient_clipper.h`.
 Exact masked top-1 predictions use `ExtractTop1Ids` in
 `src/llm/extract_top1_ids.h`, implemented with a deterministic cuTile kernel.
 
-Existing reports and `runs/` evidence remain here unchanged. Recorded commands
-in historical manifests may name the old script locations; those are provenance,
-not current entry points. Use the script paths in the commands below for new runs.
+The reports summarize past experiments, but generated `runs/` artifacts are
+local-only and ignored by Git. They are not required to build or test the code.
+Recorded commands in historical manifests may name old script locations; those
+are provenance, not current entry points. Use the commands below for new runs.
 
 ## Compact active vocabulary
 
@@ -100,19 +101,20 @@ The converted eight-block, width-16 checkpoint is available at:
 
 Fresh native evaluation and independent retokenization still give **zero
 errors over all 10,002 targets and 1,024 exact sentences**, without retraining.
-The original checkpoint is unchanged. See
-[validation evidence](runs/compact_vocabulary_validation_0/README.md).
+The original checkpoint is unchanged. The validation record is local-only at
+`runs/compact_vocabulary_validation_0/README.md`, not included in a fresh clone.
 
 `compact_checkpoint.py` selects the original embedding rows byte-for-byte and
 copies every other unique weight unchanged. It requires a canonical mapping,
 checks all source tensor sizes, and refuses to overwrite any destination.
-The destination's parent must already exist. For another destination:
+The destination's parent must already exist. Supply the mapping saved by a
+compact-vocabulary training run on the same corpus. For another destination:
 
 ```sh
 python scripts/memorize_general_facts/compact_checkpoint.py \
   --source=/home/ubuntu/checkpoints/memorize_general_facts/width_depth_refine_16_deep_long_0/width_16/layers_8/step_25472 \
   --destination=/path/to/existing_parent/new_compact_checkpoint \
-  --mapping=src/llm/experiments/memorize_general_facts/runs/compact_vocabulary_validation_0/fresh_training/layers_8/compact_vocabulary.tsv \
+  --mapping=/path/to/compact_training_run/layers_8/compact_vocabulary.tsv \
   --layers=8 --model_width=16 --feed_forward_width=64
 
 bazel-bin/src/llm/experiments/memorize_general_facts/memorize_general_facts \
@@ -235,9 +237,10 @@ from disk before that final audit. Success requires zero errors across all
 Because attention is causal, perfect teacher-forced top-1 predictions imply
 exact greedy suffix completion by induction, with EOS predicted immediately
 after the suffix. A free-running decoder must separately stop when it emits EOS.
-Tokenizer snapshots remain local and are ignored by Git; the audit records
-their SHA-256 identities. Completed metric/prediction artifacts and reports are
-committed, while checkpoints remain under `~/checkpoints/`.
+All generated run outputs remain local and are ignored by Git, including
+tokenizer/input snapshots, metrics, predictions, logs, and per-run reports.
+The audit records input SHA-256 identities. Checkpoints remain under
+`~/checkpoints/`.
 
 ## Independent verification and the zero-block bound
 
@@ -376,7 +379,7 @@ a shape or validating it with a smoke test does not establish memorization, and
 does not automatically expand any already-running experiment grid.
 The full-context tests, real optimizer/checkpoint roundtrips, deterministic
 repeat, and historical compatibility checks for sixteen-block models are
-documented in [deeper-depth validation](runs/deeper_depth_validation_0/README.md).
+documented in the local-only `runs/deeper_depth_validation_0/README.md`.
 
 After rebuilding a binary with compact-width support, `--widths=48,32,24,16,8`
 can refine the narrower region. Positive odd widths are also supported. The
@@ -391,7 +394,7 @@ Invalid overrides are rejected before creating run directories. The manifest
 records the override and each trial's resolved head count and dimension;
 training and checkpoint verification use the same resolved shape. Channel tails
 are masked in compute tiles, not stored as extra trainable parameters. Kernel validation is
-documented in `runs/compact_width_validation_0/README.md`.
+documented in the local-only `runs/compact_width_validation_0/README.md`.
 
 To inspect one or several searches without touching the GPU or changing
 artifacts, use the read-only evidence reporter:

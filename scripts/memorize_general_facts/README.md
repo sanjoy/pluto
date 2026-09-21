@@ -50,10 +50,11 @@ does not prove that its architecture cannot memorize the corpus.
 
 The reporter takes explicit manifest paths; it does not discover or start runs.
 Multiple paths can be supplied to compare searches while keeping different
-training protocols separate. Historical evidence remains in
-[`src/llm/experiments/memorize_general_facts/runs`](../../src/llm/experiments/memorize_general_facts/runs).
-Its manifests retain the commands and absolute paths used at the time, including
-old script paths. Do not rewrite those records just to reflect this relocation.
+training protocols separate. Generated evidence is not checked in. The optional
+local directory `src/llm/experiments/memorize_general_facts/runs/` is ignored by
+Git; output directories elsewhere should also stay out of version control.
+Historical manifests retain the commands and absolute paths used at the time,
+including old script paths. Do not rewrite those provenance records.
 
 ## Audit a finished run
 

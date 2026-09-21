@@ -1,5 +1,0 @@
-layers=2 width=8 heads=1 feed_forward_width=32 parameters=412128 samples=1024 scored_targets=10002
-2026-09-21 02:15:14 UTC step=0 elapsed_seconds=1.29311 mean_loss=10.83 errors=10002/10002 exact_sentences=0/1024
-2026-09-21 02:15:16 UTC step=2 elapsed_seconds=2.8923 mean_loss=10.8299 errors=10002/10002 exact_sentences=0/1024
-2026-09-21 02:15:17 UTC step=2 elapsed_seconds=4.20079 mean_loss=10.8299 errors=10002/10002 exact_sentences=0/1024
-BUDGET_EXHAUSTED checkpoint=/home/ubuntu/checkpoints/memorize_general_facts/compact_width_smoke_8/width_8/layers_2/step_2
