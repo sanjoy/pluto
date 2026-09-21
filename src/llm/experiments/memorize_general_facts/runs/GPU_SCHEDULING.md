@@ -133,5 +133,26 @@ search launched (driver PID 3309328, native trainer PID 3309340). All 100
 initial weight arrays match the prior eight-block width-16 trial byte-for-byte
 and contain finite FP32 values. The queued process performed no GPU work before
 this launch. This is the third trial in the recorded bounded refinement round,
-not an additional optimizer sweep. It is currently running with no other GPU
-experiment or test scheduled to overlap it.
+not an additional optimizer sweep. It reached zero errors at step 25,472 and
+completed both independent checks at **06:37:08 UTC**. No GPU experiment or
+test overlapped it. The full test suite and deeper-capable binary rebuild
+started only after its coordinator exited.
+
+## Serialized sixteen-block width-12 probe
+
+After all 65 native test targets, 134 Python tests, and the deeper-shape
+mechanical/compatibility checks passed, the separately named fresh trial
+`width_depth_refine_12_deep_long_0` started at **06:45:11 UTC** (driver PID
+3333845, native trainer PID 3333846). It uses 16 blocks, width 12, one head,
+FF width 48, and a 40,000-update cap with the documented fixed controls.
+All 196 initial arrays match the fresh sixteen-block width-12 smoke's step-0
+arrays; no trained weights were transferred.
+
+The executable remained pinned at SHA-256
+`e4b8d8b951f3b6dbfb76c5b4c0e63e03cc5d65861e175caff2430a1d8d9299c0`.
+No competing GPU training, GPU tests, or executable rebuilds occurred during
+this run. It reached 40,000 updates with 69 errors, without reaching its time
+cap, and completed fresh-process checkpoint inference and independent
+retokenization/audit at **08:49:39 UTC**. Both processes exited normally and
+the manifest records `verified_budget_failure`. No subsequent trial is queued,
+and no experiment remains deliberately paused.

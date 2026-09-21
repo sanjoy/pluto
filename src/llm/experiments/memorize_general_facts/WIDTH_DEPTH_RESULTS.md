@@ -6,6 +6,31 @@ each fact's first five GPT-2 tokens: 10,002 targets across all 1,024 sentences.
 There is no held-out objective. Every sentence is still independently padded
 to 1,024 positions; prompt targets and padding do not contribute to loss.
 
+## Completed empirical search: summary
+
+The smallest verified model found is **8 blocks at width 16**, with **847,008
+parameters**: all 10,002 suffix/EOS targets are correct, covering all 1,024
+facts exactly. The pooled measured depth/width frontier is **(1 block, width
+24)** and **(8 blocks, width 16)**. The former has 1,238,376 parameters; the
+latter uses 31.6% fewer. Both succeeded from scratch under the same recorded
+40,000-update protocol, at steps 29,824 and 25,472 respectively.
+
+The final narrower/deeper probe, **16 blocks at width 12**, has 645,720
+parameters but exhausted 40,000 updates with **69 errors and 963 exact
+facts**. Independent checkpoint inference and prediction auditing confirm
+that result. It is not a successful frontier point or a width-12 capacity
+lower bound. Across the width/depth search, 22 real trials completed: seven
+successes and 15 budget failures, excluding the earlier width-512 baseline
+and two-update mechanical checks. No training or follow-up trial remains
+running or queued.
+
+This completes an empirical search for smaller models and several depth/width
+trade-offs, not a proof of the globally smallest network. Important remaining
+gaps include width 14, shallower width-16 models under the 40k schedule, other
+seeds, and longer training. These are possible follow-up experiments, not
+failed configurations or automatically queued work. See the detailed budgets,
+protocol separation, checkpoints, and evidence below.
+
 ## Protocol
 
 The first pass tests widths 256, 128, 64, 32, and 16, with depths one through
@@ -242,24 +267,42 @@ under the longer protocol, intermediate widths, and narrower/deeper
 configurations remain untested, not failures. Keep finite-budget failures,
 untested configurations, and matched-budget versus pooled frontiers distinct.
 
-### Next narrower/deeper trial
+### Completed narrower/deeper trial
 
-The next separately named trial is `width_depth_refine_12_deep_long_0`:
+The separately named trial `width_depth_refine_12_deep_long_0` tested
 **16 blocks, width 12, one head, FF width 48, and 645,720 parameters**. This
-would reduce the parameter count by 23.8% relative to the verified eight-block
-width-16 model if it succeeds. It directly probes the requested deeper/narrower
-trade-off; supporting its shape or passing two-update tests is not evidence
-that it can memorize the corpus.
+is 23.8% fewer parameters than the verified eight-block width-16 model. It
+directly probes the requested deeper/narrower trade-off, but did not reach
+perfect memorization under its tested budget.
 
-Use fresh initialization with seed 1337, batch 16, a 40,000-update cap,
+It used fresh initialization with seed 1337, batch 16, a 40,000-update cap,
 10,800-second cap, LR 0.0006, warmup 100, evaluation every 128 updates, and
 checkpointing every 512, retaining the same optimizer, initialization, full
-vocabulary, and five-token-prompt criterion. Do not resume the mechanical smoke
-checkpoint. The original three-trial round is unchanged and complete; this is
-one new bounded trial, not an automatic grid expansion. No subsequent full
-trial is queued. Its outcome will inform whether to prioritize a shallower
-width-16 model under the longer budget or an intermediate point such as two
-blocks at width 20. Depth is not assumed monotone.
+vocabulary, and five-token-prompt criterion. It did not resume the mechanical
+smoke checkpoint. The run and both independent checks finished at 08:49:39
+UTC after starting at 06:45:11 UTC, reaching the update cap but not the time
+cap. Final loss is 0.19024481884585082 nats, with 69 errors across 61 sentences
+(963 exact sentences). The best logged evaluation had 64 errors at step
+39,808; that intermediate score is not the independently verified final
+checkpoint result. The original three-trial round is unchanged; this was one
+additional bounded trial, not an automatic grid expansion. No subsequent full
+trial is queued. Depth is not assumed monotone.
+
+Checkpoint:
+`/home/ubuntu/checkpoints/memorize_general_facts/width_depth_refine_12_deep_long_0/width_12/layers_16/step_40000`.
+Artifacts: `runs/width_depth_refine_12_deep_long_0/width_12/layers_16/`.
+Trainer and fresh-process prediction TSVs match byte-for-byte; independent
+prediction TSV SHA-256:
+`52c58f7ac7a4969c42e25c257604eed99c944205c1ca29daa586e6a0314e0220`.
+The errors comprise 15 first-suffix targets and 54 later content targets;
+all 1,024 EOS targets are correct. All 196 final FP32 arrays have the
+recipe-derived sizes and finite values, totaling 645,720 parameters and
+2,582,880 bytes. Concatenating `weight_0.bin` through `weight_195.bin` in
+numerical order gives SHA-256
+`bad6cd11a17f6a68e0f42c3f1e0553d961c899552b18bab0de27e4e7d0348601`.
+All 196 initial arrays byte-match the fresh sixteen-block width-12 smoke's
+step-0 arrays; their concatenated SHA-256 is
+`8e87d757e997ff2c4df9449cc8639b19d2df3ce4ca869efbb5abc3d6019aab4b`.
 
 This trial uses the deeper-capable binary SHA-256
 `e4b8d8b951f3b6dbfb76c5b4c0e63e03cc5d65861e175caff2430a1d8d9299c0`.
@@ -269,8 +312,8 @@ repeat, and historical weight/prediction comparisons passed; see
 [deeper-depth validation](runs/deeper_depth_validation_0/README.md).
 Despite those compatibility checks, the evidence reporter keeps the new binary
 hash in a separate matched-protocol group. Any cross-binary frontier remains
-pooled existence evidence. Only independently verified completed results enter
-the measured frontier; live training artifacts stay uncommitted.
+pooled existence evidence. Only independently verified successful results enter
+the measured frontier; this verified budget failure does not change it.
 
 ## Verified budget failures
 
@@ -290,6 +333,7 @@ the measured frontier; live training artifacts stay uncommitted.
 | Longer budget, narrow | 8 | 16 | 847,008 | 20,000 | 106 / 10,002 | 97 at step 19,584 | 0.247292333787 |
 | Midpoint refinement | 1 | 24 | 1,238,376 | 20,000 | 3 / 10,002 | 2 at step 16,768 | 0.004384264733 |
 | 40k-cap midpoint refinement | 1 | 20 | 1,031,020 | 40,000 | 8 / 10,002 | 8 at step 37,376 | 0.004257193750 |
+| 40k-cap narrower/deeper probe | 16 | 12 | 645,720 | 40,000 | 69 / 10,002 | 64 at step 39,808 | 0.190244818846 |
 
 One block at width 20 completed all 40,000 updates (625 epochs) without
 reaching the time cap. Fresh native checkpoint inference and independent
@@ -650,8 +694,9 @@ remain fixed, but the stretched cosine schedule is a separate protocol.
 The trial completed both independent checks at 05:11:23 UTC with zero errors
 at step 29,824; its completed artifacts and manifest are committed. The reporter
 now checks 11 completed 5,000-update trials, seven completed 20,000-update
-trials, and three verified 40,000-update trials (two successes and one budget
-failure), excluding the separate two-update mechanical checks.
+trials, and four verified 40,000-update trials (two successes and two budget
+failures), excluding the separate two-update mechanical checks. The last 40k
+trial uses the deeper-capable binary and is kept in its own protocol group.
 
 After both targeted optimized GPU tests passed, the fresh one-block width-20,
 one-head, FF-80, 40,000-update trial started at 05:13:11 UTC. It has 1,031,020
@@ -682,10 +727,18 @@ test suite and binary rebuild started only after the driver exited; no GPU
 tests competed with this trial. See `runs/GPU_SCHEDULING.md` for serialization
 details.
 
-After each completed pass, refine observed width gaps with a small, bounded set of
-midpoints (such as 24 between 32 and 16, or 12 between 16 and 8). Fill omitted
-depths where a measured success transition makes them relevant, for example
-depth 3 between a depth-2 failure and depth-4 success. If the adaptive driver
-skips a narrower width after a failure, that width remains untested; a direct
-single-width run can check it without the traversal heuristic. This is an
-empirical search, not an exhaustive capacity proof or an unlimited budget sweep.
+After the deeper-depth implementation passed all 65 optimized native test
+targets (uncached) and 134 Python experiment tests, the fresh sixteen-block
+width-12 trial ran alone from 06:45:11 until both independent checks finished
+at 08:49:39 UTC. It exhausted all 40,000 updates with the verified result
+above. The pinned binary did not change during training, and no GPU tests or
+other training runs overlapped it. All 134 Python experiment tests and the
+cross-run evidence reporter were rerun for the completed results.
+
+The search is now complete at the empirical scope summarized above. An
+optional further bounded round could test eight blocks at width 14 (738,444
+parameters) for parameter reduction, or two blocks at width 16 (827,328
+parameters) under the 40k schedule for a shallower frontier point. Neither has
+been run under that schedule. More depth is not assumed to help monotonically,
+and no finite-budget failure establishes insufficient capacity. No additional
+trial is queued.

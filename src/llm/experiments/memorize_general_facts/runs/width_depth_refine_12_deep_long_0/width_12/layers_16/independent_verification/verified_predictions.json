@@ -1,0 +1,67 @@
+{
+  "success": false,
+  "sentences": 1024,
+  "exact_sentences": 963,
+  "targets": 10002,
+  "errors": 69,
+  "accuracy": 0.9931013797240552,
+  "mean_loss_nats": 0.19024481884585082,
+  "corpus": "/home/ubuntu/code/pluto/src/llm/experiments/memorize_general_facts/runs/width_depth_refine_12_deep_long_0/width_12/layers_16/corpus.txt",
+  "corpus_sha256": "814c062e7d7592fe4a4e5b158a37bd37da51700f817c19eb981c1e93d33f245c",
+  "tokenizer": "/home/ubuntu/code/pluto/src/llm/experiments/memorize_general_facts/runs/width_depth_refine_12_deep_long_0/width_12/layers_16/tokenizer.json",
+  "tokenizer_sha256": "1fe93b6152957cf9cfd6d89002467f789ce8b3f3e000b3a2edf27c808ddd0b9e",
+  "predictions": "/home/ubuntu/code/pluto/src/llm/experiments/memorize_general_facts/runs/width_depth_refine_12_deep_long_0/width_12/layers_16/independent_verification/final_predictions.tsv",
+  "predictions_sha256": "52c58f7ac7a4969c42e25c257604eed99c944205c1ca29daa586e6a0314e0220",
+  "prompt_tokens": 5,
+  "eos_scored": true,
+  "padding_scored": false,
+  "context_length": 1024,
+  "evidence_scope": "validated teacher-forced prediction artifact, not independent checkpoint inference",
+  "error_examples": [
+    {
+      "line_1based": 25,
+      "target_token_index_0based": 6,
+      "causal_prefix": "A homophone sounds the same",
+      "target_id": 355,
+      "target_text": " as",
+      "predicted_id": 1440,
+      "predicted_text": " four"
+    },
+    {
+      "line_1based": 25,
+      "target_token_index_0based": 8,
+      "causal_prefix": "A homophone sounds the same as another",
+      "target_id": 1573,
+      "target_text": " word",
+      "predicted_id": 21126,
+      "predicted_text": " develops"
+    },
+    {
+      "line_1based": 25,
+      "target_token_index_0based": 9,
+      "causal_prefix": "A homophone sounds the same as another word",
+      "target_id": 475,
+      "target_text": " but",
+      "predicted_id": 389,
+      "predicted_text": " are"
+    },
+    {
+      "line_1based": 43,
+      "target_token_index_0based": 9,
+      "causal_prefix": "The visible surface of the Sun is called the",
+      "target_id": 2825,
+      "target_text": " phot",
+      "predicted_id": 3825,
+      "predicted_text": " Sun"
+    },
+    {
+      "line_1based": 54,
+      "target_token_index_0based": 10,
+      "causal_prefix": "Polymers contain long chains or networks built from repeated",
+      "target_id": 18955,
+      "target_text": " molecular",
+      "predicted_id": 3668,
+      "predicted_text": " Earth"
+    }
+  ]
+}
