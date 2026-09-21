@@ -283,6 +283,20 @@ successful width-24 checkpoint gets all eight positions right. These are
 individual GPT-2 tokens, which may be word fragments (` lar`), not necessarily
 whole words. This remains a strict memorization failure despite 99.92% target
 accuracy. It does not rule out width 20 with another schedule, depth, or seed.
+
+All 1,024 five-token prompt ID sequences are unique, including these eight;
+identical supplied prompts demanding different continuations do not explain
+the misses. Four missed target IDs are predicted correctly elsewhere among
+the scored targets: ` raised` at 2/3 occurrences, ` grass` at 4/5, ` capital`
+at 18/19, and ` common` at 1/2. The other four (` 128`, ` Lima`, ` lar`, and
+` submarine`) each occur only once among scored targets and are missed there.
+This distinguishes context-specific errors from tokens with no demonstrated
+correct scored occurrence; it does not establish a cause or an inability to
+learn the singleton tokens. The repeated wrong token ` writing` is correct at
+both of its true target occurrences and incorrectly predicted three additional
+times, after `Bogota is the`, `Baking soda is the`, and `A caterpillar is the`.
+Their shared ending is an observed pattern, not a demonstrated mechanism.
+
 Checkpoint:
 `/home/ubuntu/checkpoints/memorize_general_facts/width_depth_refine_20_long_0/width_20/layers_1/step_40000`.
 Artifacts: `runs/width_depth_refine_20_long_0/width_20/layers_1/`. Independent
