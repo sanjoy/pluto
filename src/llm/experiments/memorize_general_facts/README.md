@@ -12,8 +12,9 @@ per-depth evidence, smallest checkpoint, and exact verification command.
 
 ## Code and experiment utilities
 
-This directory contains the native C++ training/evaluation binary and its model
-test. Reusable components live in `src/dataset/` and `src/llm/`.
+This directory contains the native C++ training/evaluation/inference binary,
+its generation helper, and tests. Reusable components live in `src/dataset/`
+and `src/llm/`.
 Python sweep drivers, Pareto reporting,
 checkpoint conversion, corpus/prediction audits, and their tests live separately
 in [`scripts/memorize_general_facts`](../../../../scripts/memorize_general_facts).
@@ -31,6 +32,50 @@ but generated `runs/` artifacts are
 local-only and ignored by Git. They are not required to build or test the code.
 Recorded commands in historical manifests may name old script locations; those
 are provenance, not current entry points. Use the commands below for new runs.
+
+## Prompt inference
+
+Load an exact checkpoint directory with `--infer_checkpoint`. The shape flags
+must match training: raw checkpoint weights do not encode the attention head
+count. Inference neither reads the corpus nor creates training/evaluation
+artifacts. Compact inference loads `compact_vocabulary.tsv` directly from the
+checkpoint and translates generated IDs back to the original GPT-2 vocabulary
+for decoding. Use the same base tokenizer as training.
+
+For the 114,256-parameter model:
+
+```sh
+bazel build -c opt //src/llm/experiments/memorize_general_facts:memorize_general_facts
+
+facts_run=/home/ubuntu/checkpoints/memorize_general_facts/compact_batch_32_no_clip_0
+bazel-bin/src/llm/experiments/memorize_general_facts/memorize_general_facts \
+  --infer_checkpoint="$facts_run/layers_8/step_16128" \
+  --tokenizer="$facts_run/inputs/tokenizer" \
+  --layers=8 --model_width=16 --attention_heads=1 --feed_forward_width=64 \
+  --compact_vocabulary=true --generation_tokens=64 \
+  --prompt="The capital of France is"
+```
+
+Omit `--prompt` for an interactive loop; each input line starts an independent
+completion. Ctrl-D or Ctrl-C exits. The output includes the original prompt
+followed by its continuation. Decoding is deterministic greedy top-1, not
+sampling, and feeds each generated token back into the model. It stops before
+printing EOS, after `--generation_tokens` new tokens, or when prompt plus
+continuation reaches 1,024 tokens. Longer prompts are rejected, not silently
+truncated. There is no KV cache: each new token recomputes the model forward.
+
+`--generation_tokens=0` echoes a valid prompt without generating. An explicitly
+empty `--prompt` is rejected; blank interactive lines are skipped. Inactive
+compact-vocabulary tokens are rejected rather than mapped to unrelated IDs;
+the interactive loop reports the error and accepts another prompt. This is a
+memorization model, not an instruction-following assistant: prompts outside the
+training facts need not give sensible answers. To reproduce the memorization
+task, supply the first five GPT-2 tokens of a fact.
+
+`--infer_checkpoint` cannot be combined with `--verify_checkpoint`,
+`--checkpoint_dir`, or `--search`. `--prompt` and `--generation_tokens` are
+inference-only. For older full-vocabulary checkpoints, use
+`--compact_vocabulary=false` and their original shape flags.
 
 ## Compact active vocabulary
 

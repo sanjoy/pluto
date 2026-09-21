@@ -46,6 +46,12 @@ class CompactVocabularyTokenizer final : public Tokenizer {
   static absl::StatusOr<std::unique_ptr<CompactVocabularyTokenizer>> Create(
       const Tokenizer& original, CompactVocabularyMapping mapping);
 
+  // Restores a canonical saved mapping without encoding text or allocating
+  // CUDA memory. Rejects malformed files and a different original vocabulary
+  // size. The caller must still verify the original tokenizer's identity.
+  static absl::StatusOr<std::unique_ptr<CompactVocabularyTokenizer>>
+  LoadFromFile(const Tokenizer& original, const std::filesystem::path& path);
+
   // Rejects tokens absent from the discovered vocabulary. Returns fresh
   // storage, leaving any shared/cached original-tokenizer arrays untouched.
   absl::StatusOr<cuda::PageLockedHostArray<int>> Encode(

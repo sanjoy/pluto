@@ -211,6 +211,217 @@ TEST(CompactVocabularyConstructionTest,
   }
 }
 
+class CompactVocabularyLoadingTest : public testing::Test {
+ protected:
+  void SetUp() override {
+    const std::string pattern =
+        (std::filesystem::path(testing::TempDir()) / "compact_load.XXXXXX")
+            .string();
+    std::vector<char> writable(pattern.begin(), pattern.end());
+    writable.push_back('\0');
+    const char* created = mkdtemp(writable.data());
+    ASSERT_NE(created, nullptr);
+    directory_ = created;
+    path_ = directory_ / "mapping.tsv";
+  }
+
+  void TearDown() override {
+    EXPECT_EQ(original_.encode_calls, 0);
+    if (!directory_.empty()) {
+      // Only the unique directory successfully created by this fixture.
+      std::error_code error;
+      std::filesystem::remove_all(directory_, error);
+      EXPECT_FALSE(error) << error.message();
+    }
+  }
+
+  void Write(const std::string& text) {
+    std::ofstream output(path_, std::ios::binary);
+    output << text;
+    output.close();
+    ASSERT_TRUE(output);
+  }
+
+  const std::string canonical_ =
+      "compact_vocabulary_v1\noriginal_vocab_size\t8\n"
+      "original_eos_token\t3\ncompact_vocab_size\t3\n"
+      "compact_id\toriginal_id\n0\t1\n1\t3\n2\t7\n";
+  NoEncodeTokenizer original_;
+  std::filesystem::path directory_;
+  std::filesystem::path path_;
+};
+
+TEST_F(CompactVocabularyLoadingTest, RoundTripsWithoutCorpusOrExecutor) {
+  auto saved = CompactVocabularyTokenizer::Create(original_, ExampleMapping());
+  ASSERT_TRUE(saved.ok()) << saved.status();
+  ASSERT_TRUE((*saved)->SaveToFile(path_).ok());
+  auto loaded = CompactVocabularyTokenizer::LoadFromFile(original_, path_);
+  ASSERT_TRUE(loaded.ok()) << loaded.status();
+  EXPECT_EQ((*loaded)->vocab_size(), 3);
+  EXPECT_EQ((*loaded)->original_vocab_size(), 8);
+  EXPECT_EQ((*loaded)->eos_token_id(), 1);
+  EXPECT_EQ((*loaded)->original_eos_token_id(), 3);
+  const auto ids = (*loaded)->original_token_ids();
+  EXPECT_EQ(std::vector<int>(ids.begin(), ids.end()),
+            (std::vector<int>{1, 3, 7}));
+  for (int compact_id = 0; compact_id < (*loaded)->vocab_size(); ++compact_id) {
+    auto original_id = (*loaded)->OriginalId(compact_id);
+    ASSERT_TRUE(original_id.ok()) << original_id.status();
+    auto roundtrip = (*loaded)->CompactId(*original_id);
+    ASSERT_TRUE(roundtrip.ok()) << roundtrip.status();
+    EXPECT_EQ(*roundtrip, compact_id);
+  }
+  for (int original_id : {-1, 0, 2, 4, 5, 6, 8})
+    EXPECT_EQ((*loaded)->CompactId(original_id).status().code(),
+              absl::StatusCode::kInvalidArgument);
+  for (int compact_id : {-1, 3})
+    EXPECT_EQ((*loaded)->OriginalId(compact_id).status().code(),
+              absl::StatusCode::kInvalidArgument);
+  EXPECT_TRUE((*loaded)->ValidateFile(path_).ok());
+  const auto roundtrip_path = directory_ / "roundtrip.tsv";
+  ASSERT_TRUE((*loaded)->SaveToFile(roundtrip_path).ok());
+  EXPECT_TRUE((*saved)->ValidateFile(roundtrip_path).ok());
+}
+
+TEST_F(CompactVocabularyLoadingTest, LoadsEosOnlyAndZeroOriginalId) {
+  Write(
+      "compact_vocabulary_v1\noriginal_vocab_size\t8\n"
+      "original_eos_token\t0\ncompact_vocab_size\t1\n"
+      "compact_id\toriginal_id\n0\t0\n");
+  auto loaded = CompactVocabularyTokenizer::LoadFromFile(original_, path_);
+  ASSERT_TRUE(loaded.ok()) << loaded.status();
+  EXPECT_EQ((*loaded)->vocab_size(), 1);
+  EXPECT_EQ((*loaded)->eos_token_id(), 0);
+  EXPECT_EQ((*loaded)->original_eos_token_id(), 0);
+  ASSERT_TRUE((*loaded)->OriginalId(0).ok());
+  EXPECT_EQ(*(*loaded)->OriginalId(0), 0);
+  ASSERT_TRUE((*loaded)->CompactId(0).ok());
+  EXPECT_EQ(*(*loaded)->CompactId(0), 0);
+  EXPECT_FALSE((*loaded)->CompactId(1).ok());
+  EXPECT_TRUE((*loaded)->ValidateFile(path_).ok());
+}
+
+TEST_F(CompactVocabularyLoadingTest, RejectsMalformedMappingContents) {
+  const std::vector<std::pair<std::string, std::string>> changes{
+      {"v1", "v2"},
+      {"original_vocab_size", "vocabulary_size"},
+      {"original_vocab_size\t8", "original_vocab_size\t0"},
+      {"original_vocab_size\t8", "original_vocab_size\t-1"},
+      {"original_vocab_size\t8", "original_vocab_size\t2147483648"},
+      {"original_vocab_size\t8", "original_vocab_size\t08"},
+      {"original_vocab_size\t8", "original_vocab_size\t8 "},
+      {"original_eos_token\t3", "original_eos_token\t-1"},
+      {"original_eos_token\t3", "original_eos_token\t8"},
+      {"original_eos_token\t3", "original_eos_token\t2"},
+      {"original_eos_token\t3\n", ""},
+      {"compact_vocab_size\t3", "compact_vocab_size\t0"},
+      {"compact_vocab_size\t3", "compact_vocab_size\t9"},
+      {"compact_vocab_size\t3", "compact_vocab_size\t2"},
+      {"compact_vocab_size\t3", "compact_vocab_size\t4"},
+      {"compact_vocab_size\t3", "compact_vocab_size\t2147483648"},
+      {"compact_id\toriginal_id", "original_id\tcompact_id"},
+      {"0\t1", "1\t1"},
+      {"1\t3", "0\t3"},
+      {"1\t3", "2\t3"},
+      {"0\t1", "-1\t1"},
+      {"0\t1", "+0\t1"},
+      {"0\t1", "00\t1"},
+      {"0\t1", "2147483648\t1"},
+      {"0\t1", "0\t3"},
+      {"0\t1\n1\t3", "0\t3\n1\t1"},
+      {"0\t1", "0\t-1"},
+      {"0\t1", "0\t-0"},
+      {"0\t1", "0\t8"},
+      {"0\t1", "0\t2147483648"},
+      {"0\t1", "0\t"},
+      {"0\t1", "0\t01"},
+      {"0\t1", "0\tone"},
+      {"0\t1", "0\t1x"},
+      {"0\t1", "0 1"},
+      {"0\t1", "0\t\t1"},
+      {"0\t1", "0\t1\t1"},
+      {"0\t1", "0\t" + std::string(4096, '9')},
+  };
+  for (const auto& [old_text, new_text] : changes) {
+    SCOPED_TRACE(new_text);
+    std::string invalid = canonical_;
+    const size_t position = invalid.find(old_text);
+    ASSERT_NE(position, std::string::npos);
+    invalid.replace(position, old_text.size(), new_text);
+    Write(invalid);
+    EXPECT_EQ(CompactVocabularyTokenizer::LoadFromFile(original_, path_)
+                  .status()
+                  .code(),
+              absl::StatusCode::kDataLoss);
+  }
+}
+
+TEST_F(CompactVocabularyLoadingTest, RejectsTruncationAndTrailingData) {
+  for (size_t length = 0; length < canonical_.size(); ++length) {
+    SCOPED_TRACE(length);
+    Write(canonical_.substr(0, length));
+    EXPECT_EQ(CompactVocabularyTokenizer::LoadFromFile(original_, path_)
+                  .status()
+                  .code(),
+              absl::StatusCode::kDataLoss);
+  }
+  for (const std::string& suffix :
+       {std::string("\n"), std::string("extra"), std::string("3\t0\n"),
+        std::string(1, '\0')}) {
+    SCOPED_TRACE(suffix);
+    Write(canonical_ + suffix);
+    EXPECT_EQ(CompactVocabularyTokenizer::LoadFromFile(original_, path_)
+                  .status()
+                  .code(),
+              absl::StatusCode::kDataLoss);
+  }
+  std::string crlf;
+  for (char character : canonical_) {
+    if (character == '\n')
+      crlf.push_back('\r');
+    crlf.push_back(character);
+  }
+  Write(crlf);
+  EXPECT_EQ(CompactVocabularyTokenizer::LoadFromFile(original_, path_)
+                .status()
+                .code(),
+            absl::StatusCode::kDataLoss);
+}
+
+TEST_F(CompactVocabularyLoadingTest, RejectsIncompatibleOriginalVocabulary) {
+  Write(canonical_);
+  for (int original_size : {7, 9}) {
+    NoEncodeTokenizer incompatible(original_size);
+    EXPECT_EQ(CompactVocabularyTokenizer::LoadFromFile(incompatible, path_)
+                  .status()
+                  .code(),
+              absl::StatusCode::kFailedPrecondition);
+    EXPECT_EQ(incompatible.encode_calls, 0);
+  }
+  for (int original_size : {0, -1}) {
+    NoEncodeTokenizer invalid(original_size);
+    EXPECT_EQ(CompactVocabularyTokenizer::LoadFromFile(invalid, path_)
+                  .status()
+                  .code(),
+              absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ(invalid.encode_calls, 0);
+  }
+}
+
+TEST_F(CompactVocabularyLoadingTest, RejectsMissingEmptyAndNonFilePaths) {
+  EXPECT_EQ(CompactVocabularyTokenizer::LoadFromFile(original_, path_)
+                .status()
+                .code(),
+            absl::StatusCode::kNotFound);
+  EXPECT_EQ(
+      CompactVocabularyTokenizer::LoadFromFile(original_, {}).status().code(),
+      absl::StatusCode::kInvalidArgument);
+  EXPECT_EQ(CompactVocabularyTokenizer::LoadFromFile(original_, directory_)
+                .status()
+                .code(),
+            absl::StatusCode::kFailedPrecondition);
+}
+
 class CompactVocabularyTest : public testing::Test {
  protected:
   void SetUp() override {

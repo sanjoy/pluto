@@ -27,12 +27,14 @@
 #include "src/cuda/page_locked_host_array.h"
 #include "src/dataset/compact_vocabulary.h"
 #include "src/dataset/dataset.h"
+#include "src/dataset/gpt2_detokenizer.h"
 #include "src/dataset/gpt2_tokenizer.h"
 #include "src/dataset/padded_line_dataset.h"
 #include "src/dataset/tokenizer.h"
 #include "src/llm/adamw_optimizer.h"
 #include "src/llm/batch_validation.h"
 #include "src/llm/checkpoint.h"
+#include "src/llm/experiments/memorize_general_facts/generation.h"
 #include "src/llm/experiments/shakespeare/gpt2.h"
 #include "src/llm/extract_top1_ids.h"
 #include "src/llm/gradient_clipper.h"
@@ -47,6 +49,15 @@ ABSL_FLAG(std::string, tokenizer, "",
 ABSL_FLAG(std::string, checkpoint_dir, "", "Checkpoint parent (required)");
 ABSL_FLAG(std::string, verify_checkpoint, "",
           "Load one checkpoint and independently evaluate it without training");
+ABSL_FLAG(std::string, infer_checkpoint, "",
+          "Load one checkpoint for greedy prompt completion, without training "
+          "or reading a corpus");
+ABSL_FLAG(std::string, prompt, "",
+          "One nonempty prompt for infer_checkpoint; omit for an interactive "
+          "prompt loop");
+ABSL_FLAG(int, generation_tokens, 64,
+          "Maximum new tokens for infer_checkpoint; also stops at EOS or the "
+          "context limit");
 ABSL_FLAG(std::string, output_dir,
           "src/llm/experiments/memorize_general_facts/runs/baseline",
           "Experiment artifacts");
@@ -521,22 +532,112 @@ absl::StatusOr<bool> VerifyCheckpoint(
   return metrics.errors == 0;
 }
 
+// Inference loads the saved mapping rather than rediscovering it from a corpus.
+// Compact IDs are meaningful only with that exact mapping, and decoding must
+// translate them back to the base GPT-2 IDs before interpreting token bytes.
+absl::Status RunInference(cuda::Executor& executor,
+                          const tokenizer::Gpt2Tokenizer& original) {
+  const std::filesystem::path checkpoint(absl::GetFlag(FLAGS_infer_checkpoint));
+  std::unique_ptr<CompactVocabularyTokenizer> vocabulary;
+  const tokenizer::Tokenizer* model_tokenizer = &original;
+  int eos_token = original.eos_token_id();
+  if (absl::GetFlag(FLAGS_compact_vocabulary)) {
+    ASSIGN_OR_RETURN(vocabulary,
+                     CompactVocabularyTokenizer::LoadFromFile(
+                         original, checkpoint / "compact_vocabulary.tsv"));
+    if (vocabulary->original_eos_token_id() != original.eos_token_id())
+      return absl::FailedPreconditionError(
+          "checkpoint mapping EOS does not match the base tokenizer");
+    model_tokenizer = vocabulary.get();
+    eos_token = vocabulary->eos_token_id();
+  }
+  ASSIGN_OR_RETURN(auto detokenizer, tokenizer::Gpt2Detokenizer::Load(
+                                         absl::GetFlag(FLAGS_tokenizer)));
+  const auto config = ModelConfiguration(absl::GetFlag(FLAGS_layers),
+                                         model_tokenizer->vocab_size());
+  ASSIGN_OR_RETURN(auto model, CreateGpt2(executor, DataType::BF16,
+                                          absl::GetFlag(FLAGS_seed), config));
+  RETURN_IF_ERROR(ReadFromDirectory(executor, *model, checkpoint,
+                                    /*allow_prefix=*/false));
+
+  const auto complete = [&](const std::string& prompt) -> absl::Status {
+    ASSIGN_OR_RETURN(auto encoded, model_tokenizer->Encode(executor, prompt));
+    ASSIGN_OR_RETURN(
+        auto generated,
+        GenerateContinuation(executor, *model, encoded.span(),
+                             model_tokenizer->vocab_size(), eos_token,
+                             absl::GetFlag(FLAGS_generation_tokens)));
+    if (vocabulary != nullptr) {
+      for (int& token : generated) {
+        ASSIGN_OR_RETURN(token, vocabulary->OriginalId(token));
+      }
+    }
+    // Decode the whole continuation at once: individual GPT-2 tokens can split
+    // UTF-8 characters. GenerateContinuation omits EOS, so it is never printed.
+    ASSIGN_OR_RETURN(auto text, detokenizer->Decode(generated.span()));
+    std::cout << prompt << text << std::endl;
+    return absl::OkStatus();
+  };
+
+  if (FLAGS_prompt.IsSpecifiedOnCommandLine())
+    return complete(absl::GetFlag(FLAGS_prompt));
+  std::cout << "Enter a prompt (Ctrl-D or Ctrl-C to quit). Each line starts a "
+               "new completion.\n";
+  std::string prompt;
+  while (true) {
+    std::cout << "> " << std::flush;
+    if (!std::getline(std::cin, prompt))
+      break;
+    if (!prompt.empty() && prompt.back() == '\r')
+      prompt.pop_back();
+    if (prompt.empty())
+      continue;
+    auto status = complete(prompt);
+    if (absl::IsInvalidArgument(status)) {
+      // A bad prompt (e.g. an inactive compact token) must not end the session.
+      std::cerr << status << std::endl;
+    } else {
+      RETURN_IF_ERROR(status);
+    }
+  }
+  if (std::cin.bad())
+    return absl::InternalError("reading inference prompt failed");
+  return absl::OkStatus();
+}
+
 absl::StatusOr<bool> Run() {
-  if (absl::GetFlag(FLAGS_tokenizer).empty() ||
-      (absl::GetFlag(FLAGS_checkpoint_dir).empty() &&
-       absl::GetFlag(FLAGS_verify_checkpoint).empty()) ||
-      (!absl::GetFlag(FLAGS_verify_checkpoint).empty() &&
-       absl::GetFlag(FLAGS_search)) ||
-      absl::GetFlag(FLAGS_batch_size) <= 0 || absl::GetFlag(FLAGS_steps) < 0 ||
-      absl::GetFlag(FLAGS_eval_every) <= 0 ||
-      absl::GetFlag(FLAGS_checkpoint_every) <= 0 ||
-      absl::GetFlag(FLAGS_warmup_steps) < 0 ||
-      !std::isfinite(absl::GetFlag(FLAGS_learning_rate)) ||
-      absl::GetFlag(FLAGS_learning_rate) <= 0 ||
-      !std::isfinite(absl::GetFlag(FLAGS_gradient_clip_norm)) ||
-      absl::GetFlag(FLAGS_gradient_clip_norm) < 0 ||
-      !std::isfinite(absl::GetFlag(FLAGS_training_seconds)) ||
-      absl::GetFlag(FLAGS_training_seconds) < 0)
+  const bool inference = !absl::GetFlag(FLAGS_infer_checkpoint).empty();
+  if (inference && (absl::GetFlag(FLAGS_tokenizer).empty() ||
+                    !absl::GetFlag(FLAGS_verify_checkpoint).empty() ||
+                    !absl::GetFlag(FLAGS_checkpoint_dir).empty() ||
+                    absl::GetFlag(FLAGS_search) ||
+                    absl::GetFlag(FLAGS_generation_tokens) < 0 ||
+                    (FLAGS_prompt.IsSpecifiedOnCommandLine() &&
+                     absl::GetFlag(FLAGS_prompt).empty())))
+    return absl::InvalidArgumentError(
+        "infer_checkpoint requires tokenizer, nonnegative generation_tokens "
+        "and a nonempty prompt when supplied; it cannot be combined with "
+        "verify_checkpoint, checkpoint_dir or search");
+  if (!inference && (FLAGS_prompt.IsSpecifiedOnCommandLine() ||
+                     FLAGS_generation_tokens.IsSpecifiedOnCommandLine()))
+    return absl::InvalidArgumentError(
+        "prompt and generation_tokens require infer_checkpoint");
+  if (!inference &&
+      (absl::GetFlag(FLAGS_tokenizer).empty() ||
+       (absl::GetFlag(FLAGS_checkpoint_dir).empty() &&
+        absl::GetFlag(FLAGS_verify_checkpoint).empty()) ||
+       (!absl::GetFlag(FLAGS_verify_checkpoint).empty() &&
+        absl::GetFlag(FLAGS_search)) ||
+       absl::GetFlag(FLAGS_batch_size) <= 0 || absl::GetFlag(FLAGS_steps) < 0 ||
+       absl::GetFlag(FLAGS_eval_every) <= 0 ||
+       absl::GetFlag(FLAGS_checkpoint_every) <= 0 ||
+       absl::GetFlag(FLAGS_warmup_steps) < 0 ||
+       !std::isfinite(absl::GetFlag(FLAGS_learning_rate)) ||
+       absl::GetFlag(FLAGS_learning_rate) <= 0 ||
+       !std::isfinite(absl::GetFlag(FLAGS_gradient_clip_norm)) ||
+       absl::GetFlag(FLAGS_gradient_clip_norm) < 0 ||
+       !std::isfinite(absl::GetFlag(FLAGS_training_seconds)) ||
+       absl::GetFlag(FLAGS_training_seconds) < 0))
     return absl::InvalidArgumentError(
         "invalid experiment flags; tokenizer and checkpoint_dir are required");
   ASSIGN_OR_RETURN(auto executor, cuda::Executor::Create());
@@ -545,17 +646,20 @@ absl::StatusOr<bool> Run() {
   if (tokenizer->vocab_size() != kGpt2VocabularySize)
     return absl::InvalidArgumentError(
         "the experiment requires the full GPT-2 vocabulary");
+  if (inference) {
+    RETURN_IF_ERROR(RunInference(*executor, *tokenizer));
+    return true;
+  }
   ASSIGN_OR_RETURN(auto corpus, LoadTextCorpus(absl::GetFlag(FLAGS_corpus)));
   std::unique_ptr<CompactVocabularyTokenizer> vocabulary;
   const tokenizer::Tokenizer* model_tokenizer = tokenizer.get();
   int eos_token = tokenizer->eos_token_id();
   if (absl::GetFlag(FLAGS_compact_vocabulary)) {
-    ASSIGN_OR_RETURN(auto mapping, tokenizer::BuildCompactVocabularyMapping(
-                                       *executor, *tokenizer, corpus.text(),
-                                       eos_token));
-    ASSIGN_OR_RETURN(vocabulary,
-                     CompactVocabularyTokenizer::Create(*tokenizer,
-                                                        std::move(mapping)));
+    ASSIGN_OR_RETURN(auto mapping,
+                     tokenizer::BuildCompactVocabularyMapping(
+                         *executor, *tokenizer, corpus.text(), eos_token));
+    ASSIGN_OR_RETURN(vocabulary, CompactVocabularyTokenizer::Create(
+                                     *tokenizer, std::move(mapping)));
     model_tokenizer = vocabulary.get();
     eos_token = vocabulary->eos_token_id();
   }
@@ -569,7 +673,8 @@ absl::StatusOr<bool> Run() {
     ASSIGN_OR_RETURN(bool success,
                      TrainDepth(*executor, *model_tokenizer, eos_token, corpus,
                                 layers, vocabulary.get()));
-    if (!success || !absl::GetFlag(FLAGS_search)) return success;
+    if (!success || !absl::GetFlag(FLAGS_search))
+      return success;
   }
   return true;
 }
