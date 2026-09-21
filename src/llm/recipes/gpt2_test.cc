@@ -227,6 +227,7 @@ TEST_F(Gpt2Test, NarrowModelsKeepSeedReproducibilityAndPrefixInitialization) {
 TEST_F(Gpt2Test, NarrowConfigurationsHaveExpectedUniqueParametersAndTiedHead) {
   for (const Gpt2Config& config :
        {Gpt2Config{1, 3, 1, 13}, Gpt2Config{2, 8, 1, 32},
+        Gpt2Config{1, 20, 1, 80},
         Gpt2Config{1, 24, 1, 96}, Gpt2Config{1, 24, 3, 96},
         Gpt2Config{0, 16, 1, 64}, Gpt2Config{1, 32, 2, 80},
         Gpt2Config{2, 64, 2, 256}, Gpt2Config{1, 96, 3, 384},
@@ -265,6 +266,7 @@ TEST_F(Gpt2Test, SmallAndPartialTileModelsRunForwardAndBackward) {
   for (DataType type : {DataType::FP16, DataType::BF16}) {
     for (const Gpt2Config& config :
          {Gpt2Config{1, 3, 1, 13}, Gpt2Config{2, 8, 1, 32},
+          Gpt2Config{1, 20, 1, 80},
           Gpt2Config{1, 24, 1, 96}, Gpt2Config{1, 24, 3, 96},
           Gpt2Config{1, 16, 1, 64}, Gpt2Config{2, 32, 2, 80},
           Gpt2Config{1, 96, 3, 384}}) {
