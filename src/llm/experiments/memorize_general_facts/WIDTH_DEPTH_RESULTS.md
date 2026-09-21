@@ -61,6 +61,15 @@ does not shrink with residual width, so fewer parameters need not imply a
 proportional speedup. The result will be an empirical frontier within the
 tested family, grid, and training budgets, not a globally smallest architecture.
 
+Width 1 can be excluded analytically for this recipe, independently of training
+budget or depth. Its final LayerNorm takes a one-channel value `h`, whose mean
+is `h` and whose variance is zero, so the normalized result is exactly the
+learned scalar beta. The tied head then produces the same vocabulary logits
+for every prompt and position. The dataset requires distinct next-token labels,
+so a fixed top-1 prediction cannot satisfy it. This does not exclude width 2 or
+any larger width. Positive width 1 remains a valid layer shape for numerical
+tests; shape validity is not task capacity.
+
 ## Follow-up search plan
 
 The coarse search is not the endpoint. After it completes, test intermediate

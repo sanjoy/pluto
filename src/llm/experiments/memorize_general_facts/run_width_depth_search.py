@@ -68,8 +68,8 @@ def parse_args(argv=None):
     args = parser.parse_args(argv)
     if any(not 1 <= value <= 8 for value in args.depths):
         parser.error("depths must be between 1 and 8")
-    if any(value <= 0 or value % 16 or value * 4 >= 2**31 for value in args.widths):
-        parser.error("widths must be positive multiples of 16 with 4 * width < INT_MAX")
+    if any(value <= 0 or value * 4 >= 2**31 for value in args.widths):
+        parser.error("widths must be positive with 4 * width < INT_MAX")
     # Accept either ordering at the command line but record the actual traversal.
     args.depths.sort()
     args.widths.sort(reverse=True)
@@ -96,7 +96,10 @@ def parse_args(argv=None):
 def model_dimensions(layers, width):
     """Preserve head width 64 when possible, otherwise use a divisor of 64.
 
-    Multiples of 16 also cover intermediate refinements such as width 48 or 96.
+    The masked backend supports compact positive widths, including 8 and 24.
+    The gcd policy is unchanged from the coarse search: width 24 uses three
+    eight-wide heads; an odd width uses one-wide heads. These head changes are
+    explicit architectural choices, not inferred from checkpoint file sizes.
     The parameter count includes the fixed GPT-2 vocabulary's padded rows and
     learned absolute positions, and counts tied embedding/LM-head storage once.
     """

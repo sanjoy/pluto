@@ -376,9 +376,35 @@ class WidthDepthSearchTest(unittest.TestCase):
         self.assertEqual(model_dimensions(1, 512)["parameters"], 29416960)
         self.assertEqual(model_dimensions(8, 512)["parameters"], 51483648)
 
+    def test_compact_width_flags_preserve_logical_dimensions_and_parameter_counts(self):
+        args = parse_args(self.arguments + ["--widths=3,24,8"])
+        self.assertEqual(args.widths, [24, 8, 3])
+        for width, heads, head_dim, parameters in (
+            (3, 3, 1, 154041), (8, 1, 8, 411256), (24, 3, 8, 1238376)
+        ):
+            with self.subTest(width=width):
+                shape = model_dimensions(1, width)
+                self.assertEqual(shape["heads"], heads)
+                self.assertEqual(shape["head_dim"], head_dim)
+                self.assertEqual(shape["feed_forward_width"], 4 * width)
+                self.assertEqual(shape["parameters"], parameters)
+
+    def test_compact_width_search_verifies_success_and_failure_without_padding(self):
+        self.args.widths = [24, 8, 3]
+        self.failures = {(1, 8), (2, 3)}
+        self.assertEqual(self.run_driver(), 0)
+        summary = self.summary()
+        self.assertEqual([(trial["layers"], trial["width"]) for trial in summary["trials"]],
+                         [(1, 24), (1, 8), (2, 8), (2, 3), (3, 3)])
+        self.assertEqual(len(self.calls), 15)  # Train, fresh reload, independent audit.
+        self.assertEqual([(point["layers"], point["width"])
+                          for point in summary["verified_success_frontier"]],
+                         [(1, 24), (2, 8), (3, 3)])
+        self.assertEqual(summary["minimum_parameter_success"]["parameters"], 154335)
+
     def test_invalid_flags_are_rejected_without_filesystem_mutation(self):
         for flag in ("--depths=0", "--depths=9", "--depths=1,1", "--depths=",
-                     "--widths=0", "--widths=17", "--widths=16,16", "--widths=x",
+                     "--widths=0", "--widths=-1", "--widths=16,16", "--widths=x",
                      "--widths=536870912", "--batch_size=0", "--batch_size=2097152",
                      "--steps=-1", "--steps=2147483647", "--eval_every=0",
                      "--checkpoint_every=0", "--warmup_steps=-1", "--learning_rate=nan",

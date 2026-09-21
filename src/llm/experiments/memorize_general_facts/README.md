@@ -233,6 +233,16 @@ depth; an execution or evidence-validation error stops the search. The native
 binary and input hashes are pinned, so do not rebuild that executable or edit
 the inputs while a search is active.
 
+After rebuilding a binary with compact-width support, `--widths=48,32,24,16,8`
+can refine the narrower region. Positive odd widths are also supported. The
+driver keeps head dimension `gcd(width, 64)` and reports the resulting head
+count: width 24 uses three heads of dimension 8, while an odd width uses
+one-dimensional heads. This is an explicit head-partition policy, not a pure
+width-only intervention. The native runner accepts other valid head counts if
+you want a separately controlled comparison. Channel tails are masked in
+compute tiles, not stored as extra trainable parameters. Kernel validation is
+documented in `runs/compact_width_validation_0/README.md`.
+
 To inspect one or several searches without touching the GPU or changing
 artifacts, use the read-only evidence reporter:
 

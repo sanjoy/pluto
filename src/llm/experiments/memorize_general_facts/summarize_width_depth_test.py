@@ -134,6 +134,26 @@ class SummarizeWidthDepthTest(unittest.TestCase):
         self.assertIn("No verified success yet.", report)
         self.assertIn("Not yet established by the supplied runs.", report)
 
+    def test_compact_widths_keep_unpadded_parameters_and_head_partitions(self):
+        path = self.make_run(depths=[1, 2, 3], widths=[24, 8, 3],
+                             failures={(1, 8), (2, 3)})
+        runs = load_runs([path], ["compact"])
+        points = frontier(runs[0]["trials"])
+        self.assertEqual([(trial["layers"], trial["width"]) for trial in points],
+                         [(1, 24), (2, 8), (3, 3)])
+        report = render_markdown(runs)
+        self.assertIn("| compact | 1 | 24 | 3 × 8 | 96 | 1,238,376 |", report)
+        self.assertIn("| compact | 3 | 3 | 3 × 1 | 12 | 154,335 |", report)
+
+    def test_compact_head_dimension_still_requires_positive_matching_integer(self):
+        for invalid in (0, -1, True, 7, 8.0):
+            with self.subTest(invalid=invalid):
+                path = self.make_run(depths=[1], widths=[8], failures=set())
+                self.mutate_manifest(path, lambda manifest:
+                                     manifest["trials"][0].update(head_dim=invalid))
+                with self.assertRaises(ValueError):
+                    load_runs([path])
+
     def test_missing_training_result_fails_closed(self):
         path = self.make_run()
         trial = json.loads(path.read_text())["trials"][0]
