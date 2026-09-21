@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <type_traits>
 
 #include "absl/status/statusor.h"
@@ -17,6 +18,10 @@ struct TopTransition {
 
 static_assert(std::is_standard_layout_v<TopTransition>);
 static_assert(std::is_trivially_copyable_v<TopTransition>);
+// The cuTile writer uses separate strided views into these packed fields.
+static_assert(sizeof(int) == sizeof(float));
+static_assert(offsetof(TopTransition, token) == 0);
+static_assert(offsetof(TopTransition, probability) == sizeof(int));
 static_assert(sizeof(TopTransition) == 8);
 
 // Enqueues a read-only reduction of an exact [rows,padded_vocab] FP32 buffer.

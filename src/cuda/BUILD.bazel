@@ -72,6 +72,8 @@ cuda_test(
     name = "buffer_test",
     size = "small",
     srcs = ["buffer_test.cc"],
+    copts = ["--enable-tile", "-std=c++20"],
+    host_copts = ["-std=c++20"],
     tags = ["requires-gpu"],
     deps = [
         ":buffer",

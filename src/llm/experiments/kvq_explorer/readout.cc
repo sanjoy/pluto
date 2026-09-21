@@ -1,7 +1,7 @@
 #include "src/llm/experiments/kvq_explorer/readout.h"
 
 #include <cuda_runtime.h>
-#include <math_constants.h>
+#include <cuda_tile.h>
 
 #include <algorithm>
 #include <cmath>
@@ -18,46 +18,74 @@
 namespace pluto::llm::kvq_explorer {
 namespace {
 
-constexpr int kThreads = 256;
+constexpr int kProjectionColumns = 256;
+constexpr int kVocabularyRows = 8;
+constexpr int kEmbeddingColumns = 32;
 constexpr int kChunk = 16;
 
 // W is row-major [input_width, 3*width], with three contiguous output slices.
-// Adjacent threads read adjacent output columns. Each output has one writer
-// and a fixed FP32 accumulation order; no atomics or BF16 rounding are used.
-__global__ void ProjectKernel(const float* embedding, const float* matrix,
-                              const float* bias, const int* tokens, int width,
-                              float* projected) {
-  const int column = blockIdx.x * blockDim.x + threadIdx.x;
-  if (column >= 3 * width)
-    return;
-  const size_t row = blockIdx.y;
-  const float* x = embedding + static_cast<size_t>(tokens[row]) * width;
-  float sum = 0;
+// A program owns 256 adjacent output columns for one input token. Keep the
+// diagnostic's full FP32 precision and fixed accumulation order: converting
+// operands to tensor-core formats would erase low-order checkpoint bits.
+__tile_global__ void ProjectKernel(const float* embedding, const float* matrix,
+                                   const float* bias, const int* tokens,
+                                   int rows, int width, float* projected) {
+  namespace ct = ::cuda::tiles;
+  using namespace ct::literals;
+  const int row = ct::bid().y;
+  const int output_tile = ct::bid().x;
+  auto tokens_view = ct::partition_view{
+      ct::tensor_span{tokens, ct::extents{rows}}, ct::shape{1_ic}};
+  const int token = static_cast<int>(tokens_view.load(row));
+  auto input_view = ct::partition_view{
+      ct::tensor_span{embedding + static_cast<size_t>(token) * width,
+                      ct::extents{width}},
+      ct::shape{1_ic}};
+  auto matrix_view =
+      ct::partition_view{ct::tensor_span{matrix, ct::extents{width, 3 * width}},
+                         ct::shape{1_ic, 256_ic}};
+  auto bias_view = ct::partition_view{
+      ct::tensor_span{bias, ct::extents{3 * width}}, ct::shape{256_ic}};
+  auto output_view = ct::partition_view{
+      ct::tensor_span{projected, ct::extents{rows, 3 * width}},
+      ct::shape{1_ic, 256_ic}};
+  auto sum = ct::zeros<ct::tile<float, ct::shape<1, 256>>>();
   for (int input = 0; input < width; ++input)
-    sum = fmaf(x[input],
-               matrix[static_cast<size_t>(input) * 3 * width + column], sum);
-  projected[row * 3 * width + column] = sum + bias[column];
+    sum = ct::fma(input_view.load(input),
+                  matrix_view.load_masked(input, output_tile), sum);
+  output_view.store_masked(sum + bias_view.load_masked(output_tile), row,
+                           output_tile);
 }
 
-// A warp owns one vocabulary logit. Lanes span the embedding dimension, so
-// loads from E are coalesced. All three projections use the same E, and only
-// logical vocabulary rows are visited: checkpoint padding cannot win or
-// contribute to the softmax denominator.
-__global__ void UnembedKernel(const float* embedding, const float* projected,
-                              int width, int vocab_size, float* logits) {
-  const int token = blockIdx.x * (kThreads / 32) + threadIdx.x / 32;
-  const int lane = threadIdx.x % 32;
-  if (token >= vocab_size)
-    return;
-  const size_t row = blockIdx.y;  // Flattened [input token, Q/K/V].
-  float sum = 0;
-  for (int column = lane; column < width; column += 32)
-    sum = fmaf(embedding[static_cast<size_t>(token) * width + column],
-               projected[row * width + column], sum);
-  for (int offset = 16; offset > 0; offset /= 2)
-    sum += __shfl_down_sync(0xffffffff, sum, offset);
-  if (lane == 0)
-    logits[row * vocab_size + token] = sum;
+// A program computes eight vocabulary logits with 32 FP32 partial sums each,
+// then a deterministic reduction along the embedding dimension. All three
+// projections use the same E. Masking uses the logical vocabulary, so padding
+// embeddings cannot contribute to a logit or the softmax denominator.
+__tile_global__ void UnembedKernel(const float* embedding,
+                                   const float* projected, int rows, int width,
+                                   int vocab_size, float* logits) {
+  namespace ct = ::cuda::tiles;
+  using namespace ct::literals;
+  const int row = ct::bid().y;  // Flattened [input token, Q/K/V].
+  const int vocabulary_tile = ct::bid().x;
+  auto embedding_view = ct::partition_view{
+      ct::tensor_span{embedding, ct::extents{vocab_size, width}},
+      ct::shape{8_ic, 32_ic}};
+  auto projected_view = ct::partition_view{
+      ct::tensor_span{projected + static_cast<size_t>(row) * width,
+                      ct::extents{width}},
+      ct::shape{32_ic}};
+  auto logits_view =
+      ct::partition_view{ct::tensor_span{logits, ct::extents{rows, vocab_size}},
+                         ct::shape{1_ic, 8_ic}};
+  auto sum = ct::zeros<ct::tile<float, ct::shape<8, 32>>>();
+  const int column_tiles = (width + kEmbeddingColumns - 1) / kEmbeddingColumns;
+  for (int column_tile = 0; column_tile < column_tiles; ++column_tile)
+    sum = ct::fma(embedding_view.load_masked(vocabulary_tile, column_tile),
+                  projected_view.load_masked(column_tile), sum);
+  logits_view.store_masked(
+      ct::reshape(ct::sum(sum, 1_ic), ct::shape{1_ic, 8_ic}), row,
+      vocabulary_tile);
 }
 
 absl::StatusOr<size_t> FloatBytes(size_t rows, size_t columns) {
@@ -118,8 +146,8 @@ absl::StatusOr<std::unique_ptr<Readout>> Readout::Load(
   const auto [vocab, width, blocks] = dimensions;
   if (checkpoint.empty() || vocab < 3 ||
       vocab > std::numeric_limits<int>::max() - 15 || width <= 0 ||
-      width > (std::numeric_limits<int>::max() - kThreads) / 3 || blocks <= 0 ||
-      blocks > kGpt2TransformerBlockCount)
+      width > (std::numeric_limits<int>::max() - kProjectionColumns) / 3 ||
+      blocks <= 0 || blocks > kGpt2TransformerBlockCount)
     return absl::InvalidArgumentError(
         "invalid KVQ dimensions or empty checkpoint");
   const int padded_vocab = (vocab + 15) / 16 * 16;
@@ -182,19 +210,21 @@ absl::StatusOr<cuda::PageLockedHostArray<TopThree>> Readout::Explore(
         auto compact,
         cuda::PageLockedHostArray<TopThree>::Allocate(executor, 3 * rows));
     for (int block = 0; block < dimensions_.block_count; ++block) {
-      ProjectKernel<<<dim3((3 * width + kThreads - 1) / kThreads, rows),
-                      kThreads, 0, executor.stream()>>>(
+      ProjectKernel<<<
+          dim3((3 * width + kProjectionColumns - 1) / kProjectionColumns, rows),
+          1, 0, executor.stream()>>>(
           static_cast<const float*>(embedding_.data()),
           static_cast<const float*>(blocks_[block].matrix.data()),
           static_cast<const float*>(blocks_[block].bias.data()),
-          static_cast<const int*>(input.data()), width,
+          static_cast<const int*>(input.data()), rows, width,
           static_cast<float*>(projected.data()));
       RETURN_IF_ERROR(
           cuda::CudaStatus(cudaGetLastError(), "ProjectKernel launch"));
-      UnembedKernel<<<dim3((vocab + 7) / 8, 3 * rows), kThreads, 0,
-                      executor.stream()>>>(
+      UnembedKernel<<<dim3((vocab + kVocabularyRows - 1) / kVocabularyRows,
+                           3 * rows),
+                      1, 0, executor.stream()>>>(
           static_cast<const float*>(embedding_.data()),
-          static_cast<const float*>(projected.data()), width, vocab,
+          static_cast<const float*>(projected.data()), 3 * rows, width, vocab,
           static_cast<float*>(logits.data()));
       RETURN_IF_ERROR(
           cuda::CudaStatus(cudaGetLastError(), "UnembedKernel launch"));

@@ -38,7 +38,7 @@ cuda_library(
     name = "top_transitions",
     srcs = ["top_transitions.cc"],
     hdrs = ["top_transitions.h"],
-    copts = ["-std=c++20"],
+    copts = ["--enable-tile", "-std=c++20"],
     host_copts = ["-std=c++20"],
     deps = [
         "//src/cuda:buffer",

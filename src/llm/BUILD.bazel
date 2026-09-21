@@ -82,7 +82,7 @@ cuda_library(
     name = "gradient_clipper",
     srcs = ["gradient_clipper.cc"],
     hdrs = ["gradient_clipper.h"],
-    copts = ["-std=c++20"],
+    copts = ["--enable-tile", "-std=c++20"],
     host_copts = ["-std=c++20"],
     visibility = ["//visibility:public"],
     deps = [
@@ -123,7 +123,7 @@ cuda_library(
     name = "vocabulary_readout",
     srcs = ["vocabulary_readout.cc"],
     hdrs = ["vocabulary_readout.h"],
-    copts = ["-std=c++20"],
+    copts = ["--enable-tile", "-std=c++20"],
     host_copts = ["-std=c++20"],
     visibility = ["//visibility:public"],
     deps = [
@@ -402,7 +402,7 @@ layer_library("combinators", [
     ":layer_type_check",
 ])
 layer_library("cross_entropy_loss")
-layer_library("embedding", ["@cuda//:cub"])
+layer_library("embedding")
 layer_library("fully_connected")
 layer_library("gelu")
 layer_library("norm")

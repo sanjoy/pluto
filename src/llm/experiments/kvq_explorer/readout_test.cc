@@ -21,7 +21,7 @@
 namespace pluto::llm::kvq_explorer {
 namespace {
 
-// Non-tiled width exercises the warp tail; the physical vocabulary has 32
+// Non-tiled width exercises the tile tail; the physical vocabulary has 32
 // rows, so 13 large padding embeddings must never enter the readout softmax.
 constexpr Dimensions kDimensions{19, 33, 8};
 constexpr int kWidth = kDimensions.model_width;
@@ -213,6 +213,86 @@ TEST_F(KvqReadoutTest, BiasesMatterAndUnneededCheckpointFilesAreIgnored) {
       ExpectNear((*output)[(8 + block) * 3 + projection],
                  Reference(18, block, projection));
     }
+}
+
+TEST_F(KvqReadoutTest, ProjectionAndEmbeddingTileBoundariesMatchScalarCpu) {
+  constexpr int vocab = 17;
+  const std::array<int, 4> token_ids{0, 8, 16, 0};
+  auto tokens = cuda::PageLockedHostArray<int>::CopyFrom(*executor_, token_ids);
+  ASSERT_TRUE(tokens.ok()) << tokens.status();
+  for (int width : {1, 31, 32, 63, 65, 86, 129, 512}) {
+    SCOPED_TRACE(width);
+    // Exercise both full and partial embedding tiles, multiple QKV tiles,
+    // and the default model width. Large physical-padding rows are poison:
+    // none may enter the vocabulary reduction, even in a partial final tile.
+    std::vector<float> embedding(32 * width, 1000);
+    std::vector<float> matrix(width * 3 * width);
+    std::vector<float> bias(3 * width);
+    for (int token = 0; token < vocab; ++token)
+      for (int column = 0; column < width; ++column)
+        embedding[token * width + column] =
+            0.3f * std::sin(0.71f * token + 0.11f * column);
+    for (size_t i = 0; i < matrix.size(); ++i)
+      matrix[i] = 0.05f * std::cos(i * 0.317f) / std::sqrt(width);
+    for (size_t i = 0; i < bias.size(); ++i)
+      bias[i] = 0.03f * std::sin(i * 0.793f);
+    Write(0, embedding);
+    Write(4, matrix);
+    Write(5, bias);
+    auto model = Readout::Load(*executor_, directory_, {vocab, width, 1});
+    ASSERT_TRUE(model.ok()) << model.status();
+    auto output = (*model)->Explore(*executor_, *tokens);
+    ASSERT_TRUE(output.ok()) << output.status();
+    for (size_t row = 0; row < token_ids.size(); ++row)
+      for (int projection = 0; projection < 3; ++projection) {
+        SCOPED_TRACE(testing::Message() << row << '/' << projection);
+        std::vector<double> projected(width);
+        for (int column = 0; column < width; ++column) {
+          projected[column] = bias[projection * width + column];
+          for (int input = 0; input < width; ++input)
+            projected[column] +=
+                static_cast<double>(embedding[token_ids[row] * width + input]) *
+                matrix[(input * 3 + projection) * width + column];
+        }
+        std::vector<double> logits(vocab);
+        for (int token = 0; token < vocab; ++token)
+          for (int column = 0; column < width; ++column)
+            logits[token] +=
+                projected[column] * embedding[token * width + column];
+        ExpectNear((*output)[row * 3 + projection], ReferenceSoftmax(logits));
+      }
+    auto repeated = (*model)->Explore(*executor_, *tokens);
+    ASSERT_TRUE(repeated.ok()) << repeated.status();
+    EXPECT_EQ(
+        std::memcmp(output->data(), repeated->data(), output->size_bytes()), 0);
+  }
+}
+
+TEST_F(KvqReadoutTest, PreservesLowOrderFp32BitsInBothProjections) {
+  // These distinct embedding values round to the same TF32/BF16/FP16 value.
+  // The diagnostic must still distinguish them in the right rank order and
+  // probabilities; a tensor-core approximation would silently change both.
+  std::vector<float> embedding(16, 1000);
+  embedding[0] = 1.0001f;
+  embedding[1] = 1.0002f;
+  embedding[2] = 1.0003f;
+  const std::array<float, 3> matrix{1.0001f, 2.0001f, 3.0001f};
+  Write(0, embedding);
+  Write(4, matrix);
+  Write(5, {0, 0, 0});
+  auto model = Readout::Load(*executor_, directory_, {3, 1, 1});
+  ASSERT_TRUE(model.ok()) << model.status();
+  auto tokens = cuda::PageLockedHostArray<int>::CopyFrom(*executor_, {0});
+  ASSERT_TRUE(tokens.ok()) << tokens.status();
+  auto output = (*model)->Explore(*executor_, *tokens);
+  ASSERT_TRUE(output.ok()) << output.status();
+  for (int projection = 0; projection < 3; ++projection) {
+    std::vector<double> logits(3);
+    for (int token = 0; token < 3; ++token)
+      logits[token] = static_cast<double>(embedding[0]) * matrix[projection] *
+                      embedding[token];
+    ExpectNear((*output)[projection], ReferenceSoftmax(logits));
+  }
 }
 
 TEST_F(KvqReadoutTest, TopThreeUsesFullVocabularyAndStableTieBreaking) {

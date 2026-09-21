@@ -9,12 +9,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
-// We use CUB directly, not Thrust algorithms. Its iterator traits otherwise
-// pull in Thrust's CUDA execution policy, which contains unconditional C++
-// exception handlers. Select the CPP policy for those unused Thrust facilities;
-// cub::DeviceRadixSort still runs CUDA kernels on the supplied executor stream.
-#define THRUST_DEVICE_SYSTEM THRUST_DEVICE_SYSTEM_CPP
-#include <cub/device/device_radix_sort.cuh>
 #include <memory>
 #include <random>
 #include <type_traits>
@@ -64,22 +58,84 @@ __tile_global__ void EmbeddingForwardKernel(const int* __restrict__ tokens,
       row, width_tile);
 }
 
-// The low bits make every key unique: radix sorting groups equal tokens and
-// puts their contributions in input-row order, independently of GPU scheduling.
+constexpr int kKeyTile = 256;
+
+// Bitonic sorting network entirely within one tile. Exchanging the middle
+// dimension swaps partners whose lane IDs differ in Distance's bit. The
+// compiler maps these tile operations to registers/shuffles; no global scratch
+// or thread-level synchronization is needed for the local sort.
+template <int Sequence, int Distance>
+__tile__ auto SortKeyTile(
+    ::cuda::tiles::tile<uint64_t, ::cuda::tiles::shape<kKeyTile>> keys) {
+  namespace ct = ::cuda::tiles;
+  using namespace ct::literals;
+  constexpr int groups = kKeyTile / (2 * Distance);
+  auto grouped = ct::reshape(keys, ct::shape<groups, 2, Distance>{});
+  auto first = ct::extract(grouped, ct::shape<groups, 1, Distance>{}, 0, 0, 0);
+  auto second = ct::extract(grouped, ct::shape<groups, 1, Distance>{}, 0, 1, 0);
+  auto partner =
+      ct::reshape(ct::cat(second, first, 1_ic), ct::shape<kKeyTile>{});
+  auto lanes = ct::iota<ct::tile<int, ct::shape<kKeyTile>>>();
+  auto take_min = ((lanes & Sequence) == 0) == ((lanes & Distance) == 0);
+  auto ordered =
+      ct::select(take_min, ct::min(keys, partner), ct::max(keys, partner));
+  if constexpr (Distance > 1)
+    return SortKeyTile<Sequence, Distance / 2>(ordered);
+  else if constexpr (Sequence < kKeyTile)
+    return SortKeyTile<Sequence * 2, Sequence>(ordered);
+  else
+    return ordered;
+}
+
+// The low bits make every key unique: sorting groups equal tokens and puts
+// their contributions in input-row order, independently of GPU scheduling.
+// Pad only the temporary tile with the largest key, never the stored tensor.
 __tile_global__ void EmbeddingRowKeysKernel(const int* __restrict__ tokens,
                                             int rows, uint64_t* keys) {
   namespace ct = ::cuda::tiles;
   using namespace ct::literals;
   auto token_view = ct::partition_view{
-      ct::tensor_span{tokens, ct::extents{rows}}, ct::shape{1_ic}};
+      ct::tensor_span{tokens, ct::extents{rows}}, ct::shape<kKeyTile>{}};
   auto key_view = ct::partition_view{ct::tensor_span{keys, ct::extents{rows}},
-                                     ct::shape{1_ic}};
-  const int row = ct::bid().x;
-  const int token = static_cast<int>(token_view.load(row));
-  key_view.store(
-      ct::full<ct::tile<uint64_t, ct::shape<1>>>(
-          (static_cast<uint64_t>(token) << 32) | static_cast<uint64_t>(row)),
-      row);
+                                     ct::shape<kKeyTile>{}};
+  const int block = ct::bid().x;
+  auto row = ct::iota<ct::tile<int, ct::shape<kKeyTile>>>() + block * kKeyTile;
+  auto token = ct::element_cast<uint64_t>(token_view.load_masked(block));
+  auto key = (token << 32) | ct::element_cast<uint64_t>(row);
+  auto sentinel = ct::full<ct::tile<uint64_t, ct::shape<kKeyTile>>>(UINT64_MAX);
+  key_view.store_masked(
+      SortKeyTile<2, 1>(ct::select(row < rows, key, sentinel)), block);
+}
+
+// Merge pairs of sorted runs. Each unique key binary-searches its insertion
+// point in the other run, so every output slot has exactly one writer. Both
+// sides can scatter in parallel without atomics. Global passes are ordered by
+// the executor stream, and need only two O(rows) ping-pong buffers.
+__tile_global__ void MergeEmbeddingKeysKernel(const uint64_t* input,
+                                              int64_t rows, int64_t run,
+                                              uint64_t* output) {
+  namespace ct = ::cuda::tiles;
+  auto index = ct::iota<ct::tile<int64_t, ct::shape<kKeyTile>>>() +
+               static_cast<int64_t>(ct::bid().x) * kKeyTile;
+  auto valid = index < rows;
+  auto key = ct::load_masked(input + index, valid);
+  auto pair = (index / (2 * run)) * (2 * run);
+  auto other =
+      pair + ct::select((index / run) % 2 == 0, ct::full<decltype(index)>(run),
+                        ct::zeros<decltype(index)>());
+  auto low = ct::zeros<decltype(index)>();
+  auto high =
+      ct::max(ct::min(other + run, ct::full<decltype(index)>(rows)) - other,
+              ct::zeros<decltype(index)>());
+  for (int64_t span = run; span > 0; span /= 2) {
+    auto searching = valid & (low < high);
+    auto middle = (low + high) / 2;
+    auto candidate = ct::load_masked(input + other + middle, searching);
+    auto go_right = candidate < key;
+    low = ct::select(searching & go_right, middle + 1, low);
+    high = ct::select(searching & !go_right, middle, high);
+  }
+  ct::store_masked(output + pair + index % run + low, key, valid);
 }
 
 __tile_global__ void EmbeddingBackwardKernel(
@@ -469,24 +525,21 @@ absl::StatusOr<BufferVec> EmbeddingLookupLayer::bwd_impl(
       Buffer::Allocate(executor, static_cast<size_t>(rows) * sizeof(uint64_t)));
   auto* keys_ptr = static_cast<uint64_t*>(keys.data());
   auto* sorted_ptr = static_cast<uint64_t*>(sorted_keys.data());
-  size_t sort_bytes = 0;
-  RETURN_IF_ERROR(cuda::CudaStatus(
-      cub::DeviceRadixSort::SortKeys(nullptr, sort_bytes, keys_ptr, sorted_ptr,
-                                     rows, 0, 64, executor.stream()),
-      "query embedding sort scratch"));
-  ASSIGN_OR_RETURN(auto scratch, Buffer::Allocate(executor, sort_bytes));
-  EmbeddingRowKeysKernel<<<rows, 1, 0, executor.stream()>>>(
+  const int key_blocks = 1 + (rows - 1) / kKeyTile;
+  EmbeddingRowKeysKernel<<<key_blocks, 1, 0, executor.stream()>>>(
       static_cast<const int*>(state.intermediates[0].data()), rows, keys_ptr);
   RETURN_IF_ERROR(
       cuda::CudaStatus(cudaGetLastError(), "EmbeddingRowKeysKernel launch"));
-  RETURN_IF_ERROR(cuda::CudaStatus(
-      cub::DeviceRadixSort::SortKeys(scratch.data(), sort_bytes, keys_ptr,
-                                     sorted_ptr, rows, 0, 64,
-                                     executor.stream()),
-      "sort embedding rows"));
+  for (int64_t run = kKeyTile; run < rows; run *= 2) {
+    MergeEmbeddingKeysKernel<<<key_blocks, 1, 0, executor.stream()>>>(
+        keys_ptr, rows, run, sorted_ptr);
+    RETURN_IF_ERROR(cuda::CudaStatus(cudaGetLastError(),
+                                     "MergeEmbeddingKeysKernel launch"));
+    std::swap(keys_ptr, sorted_ptr);
+  }
   EmbeddingBackwardKernel<<<rows * internal::MaskedTileCount(embedding_dim_), 1,
                             0, executor.stream()>>>(
-      sorted_ptr, static_cast<const float*>(output_gradients[0].data()), rows,
+      keys_ptr, static_cast<const float*>(output_gradients[0].data()), rows,
       stored_vocab_size_, embedding_dim_,
       static_cast<float*>(gradient_.data()));
   RETURN_IF_ERROR(

@@ -203,6 +203,50 @@ TEST_F(VocabularyReadoutTest, NonfiniteLogicalLogitInvalidatesOnlyItsRow) {
   }
 }
 
+TEST_F(VocabularyReadoutTest, FullVocabularyCrossTileTiesAndFiniteExtremes) {
+  for (int vocabulary : {3, 257, 4475, 50257}) {
+    SCOPED_TRACE(vocabulary);
+    const int stride = vocabulary + 5;
+    constexpr int kRows = 5;
+    const float lowest = std::numeric_limits<float>::lowest();
+    const float largest = std::numeric_limits<float>::max();
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    std::vector<float> values(kRows * stride, nan);
+    for (int token = 0; token < vocabulary; ++token) {
+      values[token] = -17;
+      values[stride + token] = lowest;
+      values[2 * stride + token] = token % 2 == 0 ? -0.0f : 0.0f;
+      values[3 * stride + token] = largest;
+      values[4 * stride + token] = std::numeric_limits<float>::infinity();
+    }
+    // Include a top-three tie in three different vocabulary tiles, with the
+    // final winning token in a partial tile and poisonous physical padding.
+    values[0] = values[std::min(256, vocabulary - 2)] = values[vocabulary - 1] =
+        3;
+    auto input = Upload(values);
+    ASSERT_TRUE(input.ok()) << input.status();
+    auto first =
+        ReadTopThreeTokens(*executor_, *input, kRows, vocabulary, stride);
+    ASSERT_TRUE(first.ok()) << first.status();
+    auto host = Download(*first);
+    ASSERT_TRUE(host.ok()) << host.status();
+    for (int row = 0; row < kRows; ++row) {
+      SCOPED_TRACE(row);
+      std::vector<double> logical(values.begin() + row * stride,
+                                  values.begin() + row * stride + vocabulary);
+      ExpectNear((*host)[row], ReferenceSoftmax(logical));
+    }
+    auto repeated =
+        ReadTopThreeTokens(*executor_, *input, kRows, vocabulary, stride);
+    ASSERT_TRUE(repeated.ok()) << repeated.status();
+    auto repeated_host = Download(*repeated);
+    ASSERT_TRUE(repeated_host.ok()) << repeated_host.status();
+    EXPECT_EQ(
+        std::memcmp(host->data(), repeated_host->data(), host->size_bytes()),
+        0);
+  }
+}
+
 TEST_F(VocabularyReadoutTest,
        EmbeddingProjectionMatchesScalarOracleAcrossChunks) {
   constexpr int kRows = 35;
@@ -269,6 +313,76 @@ TEST_F(VocabularyReadoutTest,
     EXPECT_EQ(
         std::memcmp(host->data(), repeated_host->data(), host->size_bytes()),
         0);
+  }
+}
+
+TEST_F(VocabularyReadoutTest, ProjectionHandlesPartialColumnAndTokenTiles) {
+  constexpr int kRows = 3;
+  constexpr int kVocab = 9;
+  for (int width : {1, 31, 32, 63, 64, 65, 257}) {
+    SCOPED_TRACE(width);
+    std::vector<float> embedding(16 * width,
+                                 std::numeric_limits<float>::quiet_NaN());
+    std::vector<float> values(kRows * width);
+    for (int token = 0; token < kVocab; ++token)
+      for (int column = 0; column < width; ++column)
+        embedding[token * width + column] =
+            ((token * 11 + column * 17) % 37 - 18) / 32.0f;
+    for (int row = 0; row < kRows; ++row)
+      for (int column = 0; column < width; ++column)
+        values[row * width + column] =
+            row == 2 ? 0 : ((row * 13 + column * 7) % 19 - 9) / 16.0f;
+    auto table = Upload(embedding);
+    ASSERT_TRUE(table.ok()) << table.status();
+    for (DataType storage : {DataType::FP32, DataType::BF16}) {
+      SCOPED_TRACE(static_cast<int>(storage));
+      // These binary fractions have identical FP32 and BF16 representations.
+      absl::StatusOr<Buffer> input = absl::InternalError("unset test input");
+      if (storage == DataType::FP32)
+        input = Upload(values);
+      else {
+        std::vector<uint16_t> bits;
+        for (float value : values)
+          bits.push_back(Bf16Bits(value));
+        input = Upload(bits);
+      }
+      ASSERT_TRUE(input.ok()) << input.status();
+      auto output = ReadEmbeddingNeighbors(*executor_, *input, storage, *table,
+                                           kRows, kVocab, width);
+      ASSERT_TRUE(output.ok()) << output.status();
+      auto actual = Download(*output);
+      ASSERT_TRUE(actual.ok()) << actual.status();
+      for (int row = 0; row < kRows; ++row) {
+        SCOPED_TRACE(row);
+        std::vector<double> logits(kVocab, 0);
+        for (int token = 0; token < kVocab; ++token)
+          for (int column = 0; column < width; ++column)
+            logits[token] += static_cast<double>(values[row * width + column]) *
+                             embedding[token * width + column];
+        ExpectNear((*actual)[row], ReferenceSoftmax(logits));
+      }
+    }
+  }
+}
+
+TEST_F(VocabularyReadoutTest, ProjectionPreservesFp32EmbeddingPrecision) {
+  // Rounding the table to BF16/TF32 would collapse these three distinct values
+  // into a tie and pick the wrong token. Only the activation may be BF16.
+  auto table = Upload<float>({1.00001f, 1.00002f, 1.00003f});
+  ASSERT_TRUE(table.ok()) << table.status();
+  for (DataType storage : {DataType::FP32, DataType::BF16}) {
+    SCOPED_TRACE(static_cast<int>(storage));
+    auto input = storage == DataType::FP32 ? Upload<float>({1})
+                                           : Upload<uint16_t>({Bf16Bits(1)});
+    ASSERT_TRUE(input.ok()) << input.status();
+    auto output =
+        ReadEmbeddingNeighbors(*executor_, *input, storage, *table, 1, 3, 1);
+    ASSERT_TRUE(output.ok()) << output.status();
+    auto host = Download(*output);
+    ASSERT_TRUE(host.ok()) << host.status();
+    EXPECT_EQ((*host)[0].tokens[0], 2);
+    EXPECT_EQ((*host)[0].tokens[1], 1);
+    EXPECT_EQ((*host)[0].tokens[2], 0);
   }
 }
 

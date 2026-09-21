@@ -17,9 +17,10 @@ namespace pluto::llm {
 // contribute once to the norm and are scaled once; weights are never modified.
 //
 // Create() allocates all scratch storage and builds a device list of gradient
-// chunks. Clip() then queues three fixed-order CUDA kernels without allocating,
-// synchronizing, or copying a result to the host. Reduction ordering is fixed,
-// not determined by atomic scheduling. The clipping scale is
+// chunks. Clip() then queues three cuTile C++ kernels without allocating,
+// synchronizing, or copying a result to the host. The norm uses FP64 squares
+// and accumulation so finite FP32 gradients cannot overflow it. Reduction
+// ordering is fixed, not determined by atomic scheduling. The clipping scale is
 // min(1, max_norm / (global_norm + 1e-6)).
 //
 // The model must not replace its gradient allocations while this object is in

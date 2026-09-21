@@ -322,8 +322,11 @@ TEST_F(LayersTest, LookupBackwardIsBitwiseRepeatableInOriginalRowOrder) {
     for (const auto& [width, rows, pattern] :
          {std::tuple{1, 19, 0}, std::tuple{3, 19, 0}, std::tuple{8, 19, 0},
           std::tuple{15, 19, 0}, std::tuple{24, 19, 0}, std::tuple{16, 1, 0},
-          std::tuple{16, 19, 0}, std::tuple{32, 257, 0}, std::tuple{32, 17, 1},
-          std::tuple{32, 10240, 2}}) {
+          std::tuple{16, 19, 0}, std::tuple{32, 255, 0}, std::tuple{32, 256, 0},
+          std::tuple{32, 257, 0}, std::tuple{32, 511, 0},
+          std::tuple{32, 512, 0}, std::tuple{32, 513, 0},
+          std::tuple{32, 1025, 0}, std::tuple{32, 17, 1},
+          std::tuple{32, 10240, 0}, std::tuple{32, 10240, 2}}) {
       SCOPED_TRACE(testing::Message()
                    << "type=" << static_cast<int>(type) << " width=" << width
                    << " rows=" << rows);

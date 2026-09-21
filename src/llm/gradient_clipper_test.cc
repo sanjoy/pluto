@@ -211,6 +211,128 @@ TEST_F(GradientClipperTest, FiniteLargeGradientsDoNotOverflowSquaredNorm) {
   EXPECT_NEAR((*actual)[1], 0.8f, 1e-6f);
 }
 
+TEST_F(GradientClipperTest, MasksEachTensorTailAtTileBoundaries) {
+  // The pointer table describes distinct allocations, not consecutive chunks
+  // of one flat tensor. In particular a short tensor's masked lanes must not
+  // load or scale the following allocation's data.
+  std::vector<std::vector<float>> tensors;
+  double squared_norm = 0;
+  for (int size : {1, 15, 16, 255, 256, 257, 1023, 1024, 1025, 2049}) {
+    std::vector<float> values(size);
+    for (int index = 0; index < size; ++index) {
+      const float value = static_cast<float>((index + size) % 13 - 6) / 8.0f;
+      values[index] = value;
+      squared_norm += static_cast<double>(value) * value;
+    }
+    tensors.push_back(std::move(values));
+  }
+  const float scale =
+      static_cast<float>(0.75 / (std::sqrt(squared_norm) + 1e-6));
+  auto model = MakeModel(tensors);
+  ASSERT_TRUE(model.ok()) << model.status();
+  auto clipper = GradientClipper::Create(*executor_, **model, 0.75f);
+  ASSERT_TRUE(clipper.ok()) << clipper.status();
+  ASSERT_TRUE((*clipper)->Clip().ok());
+  for (size_t tensor = 0; tensor < tensors.size(); ++tensor) {
+    auto actual = Download((*model)->gradients_[tensor]);
+    ASSERT_TRUE(actual.ok()) << actual.status();
+    SCOPED_TRACE(tensors[tensor].size());
+    for (size_t index = 0; index < actual->size(); ++index)
+      EXPECT_NEAR((*actual)[index], tensors[tensor][index] * scale, 1e-8f);
+  }
+}
+
+TEST_F(GradientClipperTest, NormBeyondFloatRangePreservesSubnormalScale) {
+  // The FP64 norm exceeds FLT_MAX, and the final FP32 scale is subnormal.
+  // Neither narrowing the norm nor flushing that scale to zero is acceptable.
+  const float largest = std::numeric_limits<float>::max();
+  auto model = MakeModel({{largest, -largest}, {largest / 2}});
+  ASSERT_TRUE(model.ok()) << model.status();
+  auto clipper = GradientClipper::Create(*executor_, **model);
+  ASSERT_TRUE(clipper.ok()) << clipper.status();
+  ASSERT_TRUE((*clipper)->Clip().ok());
+  auto first = Download((*model)->gradients_[0]);
+  auto second = Download((*model)->gradients_[1]);
+  ASSERT_TRUE(first.ok()) << first.status();
+  ASSERT_TRUE(second.ok()) << second.status();
+  EXPECT_NEAR((*first)[0], 2.0f / 3.0f, 1e-6f);
+  EXPECT_NEAR((*first)[1], -2.0f / 3.0f, 1e-6f);
+  EXPECT_NEAR((*second)[0], 1.0f / 3.0f, 1e-6f);
+}
+
+TEST_F(GradientClipperTest, EpsilonIsAppliedAtTheClippingBoundary) {
+  auto model = MakeModel({{1.0f}});
+  ASSERT_TRUE(model.ok()) << model.status();
+  auto clipper = GradientClipper::Create(*executor_, **model);
+  ASSERT_TRUE(clipper.ok()) << clipper.status();
+  ASSERT_TRUE((*clipper)->Clip().ok());
+  auto actual = Download((*model)->gradients_[0]);
+  ASSERT_TRUE(actual.ok()) << actual.status();
+  EXPECT_FLOAT_EQ((*actual)[0], static_cast<float>(1.0 / (1.0 + 1e-6)));
+  EXPECT_LT((*actual)[0], 1.0f);
+}
+
+TEST_F(GradientClipperTest, NaNNormPreservesLegacyUnchangedGradientBehavior) {
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+  const float infinity = std::numeric_limits<float>::infinity();
+  for (const std::vector<float>& values :
+       {std::vector<float>{nan, 3.0f, -4.0f},
+        std::vector<float>{nan, infinity, 3.0f}}) {
+    auto model = MakeModel({values, {6.0f}});
+    ASSERT_TRUE(model.ok()) << model.status();
+    auto clipper = GradientClipper::Create(*executor_, **model);
+    ASSERT_TRUE(clipper.ok()) << clipper.status();
+    ASSERT_TRUE((*clipper)->Clip().ok());
+    auto first = Download((*model)->gradients_[0]);
+    auto second = Download((*model)->gradients_[1]);
+    ASSERT_TRUE(first.ok()) << first.status();
+    ASSERT_TRUE(second.ok()) << second.status();
+    // Legacy fmin(1, NaN) returns 1. Clipping therefore leaves every tensor
+    // unchanged, including the NaN's bits; it does not repair bad gradients.
+    EXPECT_EQ(std::memcmp(first->data(), values.data(), first->size_bytes()),
+              0);
+    EXPECT_EQ((*second)[0], 6.0f);
+  }
+}
+
+TEST_F(GradientClipperTest, InfiniteNormPreservesLegacyZeroScalingBehavior) {
+  const float infinity = std::numeric_limits<float>::infinity();
+  auto model = MakeModel({{infinity, 3.0f, -4.0f}, {-infinity, 2.0f}});
+  ASSERT_TRUE(model.ok()) << model.status();
+  auto clipper = GradientClipper::Create(*executor_, **model);
+  ASSERT_TRUE(clipper.ok()) << clipper.status();
+  ASSERT_TRUE((*clipper)->Clip().ok());
+  auto first = Download((*model)->gradients_[0]);
+  auto second = Download((*model)->gradients_[1]);
+  ASSERT_TRUE(first.ok()) << first.status();
+  ASSERT_TRUE(second.ok()) << second.status();
+  // With no input NaN, the norm is infinite and the factor is zero. Preserve
+  // IEEE Inf*0 -> NaN and the signs of the finite gradients' resulting zeros.
+  EXPECT_TRUE(std::isnan((*first)[0]));
+  EXPECT_TRUE(std::isnan((*second)[0]));
+  EXPECT_EQ((*first)[1], 0.0f);
+  EXPECT_FALSE(std::signbit((*first)[1]));
+  EXPECT_EQ((*first)[2], 0.0f);
+  EXPECT_TRUE(std::signbit((*first)[2]));
+  EXPECT_EQ((*second)[1], 0.0f);
+}
+
+TEST_F(GradientClipperTest, ReusesScratchAcrossQueuedUpdatesWithoutHostWait) {
+  auto model = MakeModel({{3.0f, 4.0f}});
+  ASSERT_TRUE(model.ok()) << model.status();
+  auto clipper = GradientClipper::Create(*executor_, **model);
+  ASSERT_TRUE(clipper.ok()) << clipper.status();
+  ASSERT_TRUE((*clipper)->Clip().ok());
+  // Queue a new gradient and another clip before the first readback/wait.
+  ASSERT_TRUE(
+      Upload((*model)->gradients_[0], std::vector<float>{-8.0f, 6.0f}).ok());
+  ASSERT_TRUE((*clipper)->Clip().ok());
+  auto actual = Download((*model)->gradients_[0]);
+  ASSERT_TRUE(actual.ok()) << actual.status();
+  EXPECT_NEAR((*actual)[0], -0.8f, 1e-6f);
+  EXPECT_NEAR((*actual)[1], 0.6f, 1e-6f);
+}
+
 TEST_F(GradientClipperTest, RejectsInvalidLimitsAndParameterStorage) {
   auto model = MakeModel({{1.0f}});
   ASSERT_TRUE(model.ok()) << model.status();

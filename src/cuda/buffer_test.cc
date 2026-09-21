@@ -1,6 +1,7 @@
 #include "src/cuda/buffer.h"
 
 #include <cuda_runtime.h>
+#include <cuda_tile.h>
 
 #include <cstddef>
 #include <cstdint>
@@ -14,12 +15,16 @@
 namespace pluto::cuda {
 namespace {
 
-constexpr size_t kByteCount = 4096;
+// An odd length exercises the final masked tile as well as allocation lifetime.
+constexpr size_t kByteCount = 4099;
 
-__global__ void FillBytes(uint8_t* bytes, size_t size, uint8_t value) {
-  const size_t index = blockIdx.x * blockDim.x + threadIdx.x;
-  if (index < size)
-    bytes[index] = value;
+__tile_global__ void FillBytes(uint8_t* bytes, size_t size, uint8_t value) {
+  namespace ct = ::cuda::tiles;
+  using namespace ct::literals;
+  auto output = ct::partition_view{ct::tensor_span{bytes, ct::extents{size}},
+                                   ct::shape{256_ic}};
+  output.store_masked(ct::full<ct::tile<uint8_t, ct::shape<256>>>(value),
+                      ct::bid().x);
 }
 
 class BufferTest : public testing::Test {
@@ -67,7 +72,7 @@ TEST_F(BufferTest, CopiesShareStorageUntilTheLastReferenceIsDestroyed) {
   // allocation remains valid through survivor.
   ASSERT_TRUE(survivor.has_value());
   ASSERT_EQ(survivor->data(), address);
-  FillBytes<<<(kByteCount + 255) / 256, 256, 0, executor_->stream()>>>(
+  FillBytes<<<(kByteCount + 255) / 256, 1, 0, executor_->stream()>>>(
       static_cast<uint8_t*>(survivor->data()), kByteCount, 0xa5);
   ASSERT_EQ(cudaGetLastError(), cudaSuccess);
 

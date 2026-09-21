@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstring>
 #include <limits>
 #include <memory>
 #include <utility>
@@ -131,6 +132,61 @@ TEST_F(TopTransitionsTest, InvalidatesOnlyRowsWithNonfiniteLogicalValues) {
 TEST_F(TopTransitionsTest, HandlesOneTokenAndExtremeFiniteRanges) {
   Check({-3e38f, 3e38f, 7, -9}, 2, 1, 2);
   Check({-3e38f, 3e38f, 0, -100, 3e38f, 3e38f, -3e38f, 0}, 2, 4, 4);
+}
+
+TEST_F(TopTransitionsTest, PartialTilesLowestFiniteAndSignedZeroTies) {
+  for (int vocabulary : {1, 255, 256, 257, 4475}) {
+    SCOPED_TRACE(vocabulary);
+    const int stride = vocabulary + 3;
+    std::vector<float> logits(4 * stride,
+                              std::numeric_limits<float>::quiet_NaN());
+    for (int token = 0; token < vocabulary; ++token) {
+      logits[token] = std::numeric_limits<float>::lowest();
+      logits[stride + token] = std::numeric_limits<float>::max();
+      logits[2 * stride + token] = token % 2 == 0 ? -0.0f : 0.0f;
+      logits[3 * stride + token] = -17;
+    }
+    logits[3 * stride + vocabulary - 1] = -1;
+    Check(logits, 4, vocabulary, stride);
+  }
+}
+
+TEST_F(TopTransitionsTest, ResultsAreBitwiseRepeatable) {
+  constexpr int kRows = 3;
+  constexpr int kVocabulary = 1031;
+  constexpr int kStride = 1033;
+  auto host_input =
+      cuda::PageLockedHostArray<float>::Allocate(*executor_, kRows * kStride);
+  auto first =
+      cuda::PageLockedHostArray<TopTransition>::Allocate(*executor_, kRows);
+  auto next =
+      cuda::PageLockedHostArray<TopTransition>::Allocate(*executor_, kRows);
+  ASSERT_TRUE(host_input.ok());
+  ASSERT_TRUE(first.ok());
+  ASSERT_TRUE(next.ok());
+  std::fill(host_input->begin(), host_input->end(), -3);
+  (*host_input)[257] = (*host_input)[1030] = 2;
+  (*host_input)[2 * kStride] = std::numeric_limits<float>::quiet_NaN();
+  auto input = cuda::Buffer::Allocate(*executor_, host_input->size_bytes());
+  ASSERT_TRUE(input.ok());
+  ASSERT_EQ(cudaMemcpyAsync(input->data(), host_input->data(),
+                            host_input->size_bytes(), cudaMemcpyHostToDevice,
+                            executor_->stream()),
+            cudaSuccess);
+  for (int repetition = 0; repetition < 4; ++repetition) {
+    auto output =
+        ReadTopTransitions(*executor_, *input, kRows, kVocabulary, kStride);
+    ASSERT_TRUE(output.ok()) << output.status();
+    auto& destination = repetition == 0 ? *first : *next;
+    ASSERT_EQ(cudaMemcpyAsync(destination.data(), output->data(),
+                              output->size_bytes(), cudaMemcpyDeviceToHost,
+                              executor_->stream()),
+              cudaSuccess);
+    ASSERT_TRUE(executor_->Synchronize().ok());
+    if (repetition != 0)
+      EXPECT_EQ(std::memcmp(first->data(), next->data(), first->size_bytes()),
+                0);
+  }
 }
 
 TEST_F(TopTransitionsTest, RejectsInvalidDimensionsAndExactSizeMismatch) {

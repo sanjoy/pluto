@@ -6,7 +6,7 @@ cuda_library(
     name = "readout",
     srcs = ["readout.cc"],
     hdrs = ["readout.h"],
-    copts = ["-std=c++20"],
+    copts = ["--enable-tile", "-std=c++20"],
     host_copts = ["-std=c++20"],
     deps = [
         "//src/cuda:buffer",

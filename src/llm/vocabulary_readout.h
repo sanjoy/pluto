@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <type_traits>
 
 #include "absl/status/statusor.h"
@@ -16,6 +17,11 @@ struct TopThreeTokens {
   float probabilities[3];
 };
 static_assert(std::is_trivially_copyable_v<TopThreeTokens>);
+static_assert(std::is_standard_layout_v<TopThreeTokens>);
+// The cuTile writer uses separate strided views into these packed fields.
+static_assert(sizeof(int) == sizeof(float));
+static_assert(offsetof(TopThreeTokens, tokens) == 0);
+static_assert(offsetof(TopThreeTokens, probabilities) == 3 * sizeof(int));
 static_assert(sizeof(TopThreeTokens) == 24);
 
 // Stable temperature-one softmax over columns [0, logical_vocab), returning
@@ -41,7 +47,7 @@ absl::StatusOr<cuda::Buffer> ReadTopThreeTokens(cuda::Executor& executor,
 // compute policy). Activations contain at least rows complete width-element
 // rows; E is row-major FP32 with at least logical_vocab complete rows. Padding
 // in E and activation rows beyond the prefix are ignored. Dot products use a
-// fixed-order FP32 warp reduction. Nonfinite projected logits use the same
+// fixed-order FP32 tile reduction. Nonfinite projected logits use the same
 // invalid-row sentinel as ReadTopThreeTokens.
 //
 // Processes at most 16 rows at a time, reusing one bounded logits allocation;

@@ -22,7 +22,8 @@ The repository includes:
   and Pareto reporting tools live in
   [`scripts/memorize_general_facts`](scripts/memorize_general_facts).
 - CUDA execution, device buffers, and page-locked host memory in
-  [`src/cuda`](src/cuda), with CUDA/cuTile C++ kernels.
+  [`src/cuda`](src/cuda). All project GPU kernels use cuTile C++, including
+  diagnostic readouts, gradient clipping, and deterministic embedding sorting.
 - Tokenization, dataset iterators, and data-preparation utilities in
   [`src/dataset`](src/dataset) and [`src/parquet`](src/parquet).
 
