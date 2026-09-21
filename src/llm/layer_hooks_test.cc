@@ -280,6 +280,7 @@ TEST(LayerHooks, CallbacksAreEmptyByDefault) {
   LayerHooks hooks;
   EXPECT_FALSE(hooks.activation_hook);
   EXPECT_FALSE(hooks.gradient_hook);
+  EXPECT_FALSE(hooks.attention_probabilities_hook);
   EXPECT_FALSE(hooks.enter_combinator);
   EXPECT_FALSE(hooks.exit_combinator);
 }

@@ -2,23 +2,282 @@
 
 #include <cuda_runtime.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "gtest/gtest.h"
 #include "src/cuda/buffer.h"
 #include "src/llm/layer.h"
+#include "src/llm/layer_hooks.h"
 #include "src/llm/layers/reference_test_util.h"
 #include "src/llm/layers/test_util.h"
 
 namespace pluto::llm {
 namespace {
+
+TEST_F(LayerReferenceTest, AttentionProbabilitiesMatchScalarSoftmax) {
+  for (DataType type : {DataType::FP16, DataType::BF16}) {
+    // Singleton sequences, ragged head widths, multiple sequences/heads, and
+    // sequences that cross one or two 32-row tiles exercise every buffer axis.
+    for (const auto& [context, heads, width, batches] :
+         {std::tuple{1, 1, 7, 2}, std::tuple{5, 2, 14, 2},
+          std::tuple{33, 2, 160, 2}, std::tuple{65, 3, 21, 1}}) {
+      for (bool uniform : {false, true}) {
+        SCOPED_TRACE(testing::Message()
+                     << "type=" << static_cast<int>(type) << " context="
+                     << context << " heads=" << heads << " width=" << width
+                     << " batches=" << batches << " uniform=" << uniform);
+        const int rows = context * batches;
+        const int head_dim = width / heads;
+        std::vector<float> qkv(static_cast<size_t>(rows) * 3 * width);
+        for (size_t index = 0; index < qkv.size(); ++index) {
+          // Exact binary fractions avoid making the oracle depend on a
+          // tensor-core operand rounding policy. Uniform rows additionally
+          // verify normalization across the online-softmax tile boundaries.
+          qkv[index] = static_cast<float>(static_cast<int>(index % 19) - 9) / 8;
+          if (uniform && index % (3 * width) < static_cast<size_t>(2 * width))
+            qkv[index] = 0.0f;
+        }
+        auto input = MakeActivationBufferPair(*executor_, qkv, type);
+        auto layer =
+            AttentionLayer::Create(*executor_, context, heads, width, type);
+        ASSERT_TRUE(input.ok()) << input.status();
+        ASSERT_TRUE(layer.ok()) << layer.status();
+        BufferVec retained;
+        LayerHooks hooks;
+        hooks.attention_probabilities_hook = [&](cuda::Executor& executor,
+                                                 absl::string_view name,
+                                                 const ActivationType& shape,
+                                                 const Buffer& buffer) {
+          EXPECT_EQ(&executor, executor_.get());
+          EXPECT_EQ(name, "AttentionLayer");
+          EXPECT_EQ(shape,
+                    (ActivationType{DataType::FP32,
+                                    {batches, heads, context, context}}));
+          EXPECT_EQ(&buffer.executor(), executor_.get());
+          EXPECT_EQ(buffer.size_bytes(), static_cast<size_t>(batches) * heads *
+                                             context * context * sizeof(float));
+          // Buffer copies outlive the callback and need no eager D2H
+          // synchronization while AttentionLayer is still submitting work.
+          retained.push_back(buffer);
+          return absl::OkStatus();
+        };
+        BufferVec inputs = {input->device};
+        auto output = (*layer)->fwd(*executor_, inputs, &hooks);
+        ASSERT_TRUE(output.ok()) << output.status();
+        ASSERT_EQ(retained.size(), 1u);
+        hooks = {};
+        auto probabilities = ReadDeviceFloats(*executor_, retained.front());
+        auto values =
+            ReadDeviceActivations(*executor_, output->outputs[0], type);
+        ASSERT_TRUE(probabilities.ok()) << probabilities.status();
+        ASSERT_TRUE(values.ok()) << values.status();
+
+        // Textbook oracle: one double-precision dot product per visible key,
+        // max-subtracted softmax, and finally P*V. This does not use the
+        // production kernel's saved maxima, normalization, or tiling logic.
+        for (int batch = 0; batch < batches; ++batch) {
+          for (int head = 0; head < heads; ++head) {
+            for (int query = 0; query < context; ++query) {
+              const size_t probability_offset =
+                  ((static_cast<size_t>(batch) * heads + head) * context +
+                   query) *
+                  context;
+              const size_t query_offset =
+                  static_cast<size_t>(batch * context + query) * 3 * width +
+                  head * head_dim;
+              std::vector<double> expected(query + 1);
+              double maximum = -std::numeric_limits<double>::infinity();
+              for (int key = 0; key <= query; ++key) {
+                const size_t key_offset =
+                    static_cast<size_t>(batch * context + key) * 3 * width +
+                    width + head * head_dim;
+                double dot = 0;
+                for (int dim = 0; dim < head_dim; ++dim)
+                  dot += static_cast<double>(qkv[query_offset + dim]) *
+                         qkv[key_offset + dim];
+                expected[key] = dot / std::sqrt(static_cast<double>(head_dim));
+                maximum = std::max(maximum, expected[key]);
+              }
+              double denominator = 0;
+              for (double& probability : expected) {
+                probability = std::exp(probability - maximum);
+                denominator += probability;
+              }
+              double sum = 0;
+              for (int key = 0; key < context; ++key) {
+                const float actual = (*probabilities)[probability_offset + key];
+                if (key <= query) {
+                  EXPECT_NEAR(actual, expected[key] / denominator, 3e-5f);
+                  EXPECT_GE(actual, 0.0f);
+                  EXPECT_LE(actual, 1.0f);
+                  sum += actual;
+                } else {
+                  EXPECT_EQ(actual, 0.0f) << "future key=" << key;
+                }
+              }
+              EXPECT_NEAR(sum, 1.0, 3e-5);
+              for (int dim = 0; dim < head_dim; ++dim) {
+                double weighted_value = 0;
+                for (int key = 0; key <= query; ++key) {
+                  const size_t value_offset =
+                      static_cast<size_t>(batch * context + key) * 3 * width +
+                      2 * width + head * head_dim + dim;
+                  weighted_value += (*probabilities)[probability_offset + key] *
+                                    qkv[value_offset];
+                }
+                const size_t output_offset =
+                    static_cast<size_t>(batch * context + query) * width +
+                    head * head_dim + dim;
+                EXPECT_NEAR((*values)[output_offset], weighted_value,
+                            type == DataType::BF16 ? 5e-3f : 3e-5f);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+TEST_F(LayerReferenceTest,
+       ProbabilityHookPreservesForwardBackwardAndDeterminism) {
+  constexpr int kContext = 33;
+  constexpr int kHeads = 2;
+  constexpr int kWidth = 144;
+  constexpr int kRows = 2 * kContext;
+  for (DataType type : {DataType::FP16, DataType::BF16}) {
+    SCOPED_TRACE(testing::Message() << "type=" << static_cast<int>(type));
+    std::vector<float> qkv(kRows * 3 * kWidth);
+    std::vector<float> gradient(kRows * kWidth);
+    for (size_t index = 0; index < qkv.size(); ++index)
+      qkv[index] = 0.7f * std::sin(static_cast<float>(index) * 0.071f);
+    for (size_t index = 0; index < gradient.size(); ++index)
+      gradient[index] = 0.2f * std::cos(static_cast<float>(index) * 0.13f);
+    auto input = MakeActivationBufferPair(*executor_, qkv, type);
+    auto gradients = MakeRawBufferPair<float>(*executor_, gradient);
+    auto layer =
+        AttentionLayer::Create(*executor_, kContext, kHeads, kWidth, type);
+    ASSERT_TRUE(input.ok()) << input.status();
+    ASSERT_TRUE(gradients.ok()) << gradients.status();
+    ASSERT_TRUE(layer.ok()) << layer.status();
+    BufferVec inputs = {input->device};
+    BufferVec output_gradients = {gradients->device};
+    auto baseline = (*layer)->fwd(*executor_, inputs);
+    ASSERT_TRUE(baseline.ok()) << baseline.status();
+    auto baseline_gradient =
+        (*layer)->bwd(*executor_, output_gradients, std::move(baseline->state));
+    ASSERT_TRUE(baseline_gradient.ok()) << baseline_gradient.status();
+    auto expected_output =
+        ReadDeviceActivations(*executor_, baseline->outputs[0], type);
+    auto expected_gradient =
+        ReadDeviceFloats(*executor_, baseline_gradient->front());
+    ASSERT_TRUE(expected_output.ok()) << expected_output.status();
+    ASSERT_TRUE(expected_gradient.ok()) << expected_gradient.status();
+
+    BufferVec retained;
+    LayerHooks hooks;
+    hooks.attention_probabilities_hook = [&](cuda::Executor&, absl::string_view,
+                                             const ActivationType&,
+                                             const Buffer& buffer) {
+      retained.push_back(buffer);
+      return absl::OkStatus();
+    };
+    LayerHooks empty_hooks;
+    for (LayerHooks* selected : {&empty_hooks, &hooks, &hooks}) {
+      auto output = (*layer)->fwd(*executor_, inputs, selected);
+      ASSERT_TRUE(output.ok()) << output.status();
+      const size_t forward_callback_count = retained.size();
+      auto input_gradient = (*layer)->bwd(*executor_, output_gradients,
+                                          std::move(output->state), selected);
+      ASSERT_TRUE(input_gradient.ok()) << input_gradient.status();
+      EXPECT_EQ(retained.size(), forward_callback_count)
+          << "the probabilities hook must not run during backward";
+      auto actual_output =
+          ReadDeviceActivations(*executor_, output->outputs[0], type);
+      auto actual_gradient =
+          ReadDeviceFloats(*executor_, input_gradient->front());
+      ASSERT_TRUE(actual_output.ok()) << actual_output.status();
+      ASSERT_TRUE(actual_gradient.ok()) << actual_gradient.status();
+      ASSERT_EQ(actual_output->size(), expected_output->size());
+      ASSERT_EQ(actual_gradient->size(), expected_gradient->size());
+      EXPECT_EQ(std::memcmp(actual_output->data(), expected_output->data(),
+                            expected_output->size() * sizeof(float)),
+                0);
+      EXPECT_EQ(std::memcmp(actual_gradient->data(), expected_gradient->data(),
+                            expected_gradient->size() * sizeof(float)),
+                0);
+    }
+    ASSERT_EQ(retained.size(), 2u);
+
+    // Attention probabilities depend only on Q and K. Perturbing V must not
+    // change them, even though V changes the resulting attention activation.
+    for (size_t index = 0; index < qkv.size(); ++index)
+      if (index % (3 * kWidth) >= 2 * kWidth)
+        qkv[index] = -3 * qkv[index];
+    auto changed_values = MakeActivationBufferPair(*executor_, qkv, type);
+    ASSERT_TRUE(changed_values.ok()) << changed_values.status();
+    BufferVec changed_inputs = {changed_values->device};
+    auto changed_output = (*layer)->fwd(*executor_, changed_inputs, &hooks);
+    ASSERT_TRUE(changed_output.ok()) << changed_output.status();
+    ASSERT_EQ(retained.size(), 3u);
+    auto expected_probabilities = ReadDeviceFloats(*executor_, retained[0]);
+    ASSERT_TRUE(expected_probabilities.ok()) << expected_probabilities.status();
+    for (size_t index = 1; index < retained.size(); ++index) {
+      auto actual = ReadDeviceFloats(*executor_, retained[index]);
+      ASSERT_TRUE(actual.ok()) << actual.status();
+      ASSERT_EQ(actual->size(), expected_probabilities->size());
+      EXPECT_EQ(std::memcmp(actual->data(), expected_probabilities->data(),
+                            actual->size() * sizeof(float)),
+                0);
+    }
+  }
+}
+
+TEST_F(LayersTest, AttentionProbabilityHookFailurePreventsOutputPublication) {
+  auto layer = AttentionLayer::Create(*executor_, 2, 1, 7, DataType::FP16);
+  std::vector<float> qkv(2 * 3 * 7, 0.25f);
+  auto input = MakeActivationBufferPair(*executor_, qkv, DataType::FP16);
+  ASSERT_TRUE(layer.ok()) << layer.status();
+  ASSERT_TRUE(input.ok()) << input.status();
+  int probability_calls = 0;
+  int activation_calls = 0;
+  LayerHooks hooks;
+  hooks.attention_probabilities_hook = [&](cuda::Executor&, absl::string_view,
+                                           const ActivationType&,
+                                           const Buffer&) {
+    ++probability_calls;
+    return absl::CancelledError("probability inspection stopped");
+  };
+  hooks.activation_hook = [&](cuda::Executor&, absl::string_view,
+                              absl::Span<const ActivationType>,
+                              absl::Span<Buffer>) {
+    ++activation_calls;
+    return absl::OkStatus();
+  };
+  BufferVec inputs = {input->device};
+  auto failed = (*layer)->fwd(*executor_, inputs, &hooks);
+  ASSERT_FALSE(failed.ok());
+  EXPECT_EQ(failed.status().code(), absl::StatusCode::kCancelled);
+  EXPECT_NE(failed.status().message().find("probability inspection stopped"),
+            std::string::npos);
+  EXPECT_EQ(probability_calls, 1);
+  EXPECT_EQ(activation_calls, 0);
+  hooks.attention_probabilities_hook = {};
+  auto successful = (*layer)->fwd(*executor_, inputs, &hooks);
+  ASSERT_TRUE(successful.ok()) << successful.status();
+  EXPECT_EQ(probability_calls, 1);
+  EXPECT_EQ(activation_calls, 1);
+}
 
 TEST_F(LayersTest, FlashAttentionIsCausalAndHasCorrectSingleTokenGradient) {
   auto attention = AttentionLayer::Create(*executor_, kTestContextLength,

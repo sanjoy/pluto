@@ -17,7 +17,10 @@ namespace pluto::llm {
 // single-writer reductions, with no floating-point atomics. Runs are bitwise
 // repeatable on the same GPU/software stack, but changing tiling/reduction
 // order can change rounding from older implementations. Partial tiles are
-// masked at both sequence and head bounds.
+// masked at both sequence and head bounds. When LayerHooks supplies an
+// attention_probabilities_hook, a separate cuTile pass materializes the FP32
+// causal probabilities for inspection without changing the forward result or
+// saved backward state. This optional inspection costs quadratic memory.
 class AttentionLayer final : public Layer {
  public:
   absl::string_view name() const override { return "AttentionLayer"; }

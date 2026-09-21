@@ -34,8 +34,9 @@ class ActivationType;
 // Work already queued on executor is not necessarily complete. Queue GPU work
 // on that executor, and synchronize explicitly if reading values on the CPU.
 // Names, types, and spans are borrowed only for the callback; retain Buffer
-// copies, not spans, if needed afterwards. Signatures use the symbolic batch
-// dimension from ActivationType (defined in layer.h), not a resolved batch.
+// copies, not spans, if needed afterwards. Activation/gradient signatures use
+// the symbolic batch dimension from ActivationType (defined in layer.h), not
+// a resolved batch. The attention callback instead describes a concrete tensor.
 //
 // Forward interventions do not rewrite saved state or automatically acquire a
 // derivative. Supply a corresponding gradient intervention when needed;
@@ -81,6 +82,25 @@ struct LayerHooks {
                              absl::string_view combinator_layer_name)>
       enter_combinator;
   std::function<absl::Status(cuda::Executor& executor)> exit_combinator;
+
+  // Observe AttentionLayer's causal softmax(Q*K^T/sqrt(head_dimension)) before
+  // its activation_hook. The buffer is contiguous FP32, shaped
+  // [batch_size, num_heads, query_position, key_position], with concrete
+  // dimensions and exactly zero values above the causal diagonal. Each row
+  // contains the weights applied to V, not logits or the weighted V output.
+  // This is read-only: do not change either the handle or its device bytes.
+  // Retain a Buffer copy to extend its lifetime; all work is on executor.
+  //
+  // An installed callback incurs a quadratic allocation and an additional
+  // cuTile pass that reconstructs probabilities from FlashAttention's saved
+  // softmax statistics. An empty callback adds no allocation/kernel. Ordinary
+  // forward and backward still use FlashAttention and their original state.
+  // A callback failure fails fwd, before any activation_hook is invoked.
+  std::function<absl::Status(cuda::Executor& executor,
+                             absl::string_view layer_name,
+                             const ActivationType& probabilities_type,
+                             const cuda::Buffer& probabilities)>
+      attention_probabilities_hook;
 };
 
 }  // namespace pluto::llm

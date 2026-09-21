@@ -6,6 +6,7 @@
 
 #include <cmath>
 #include <cstddef>
+#include <limits>
 #include <memory>
 #include <utility>
 
@@ -13,6 +14,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "src/llm/layer_hooks.h"
 #include "src/llm/layers/util.h"
 #include "src/util/status_macros.h"
 
@@ -24,6 +26,39 @@ namespace {
 // Wider heads use multiple output tiles, but model dimensions remain dynamic.
 constexpr int kAttentionRows = 32;
 constexpr int kAttentionChannels = 64;
+
+struct AttentionProbabilityLayout {
+  size_t bytes;
+  int blocks;
+};
+
+// Validate the optional quadratic tensor before allocating it or narrowing
+// its launch grid. Even a valid packed Q/K/V input can have an unrepresentable
+// attention matrix. No overflowing product is evaluated on either path.
+// fwd has already checked that rows is positive and divisible by the positive
+// context length, so every factor below (including batch size) is nonzero.
+absl::StatusOr<AttentionProbabilityLayout> ProbabilityLayout(int rows,
+                                                             int context_length,
+                                                             int num_heads) {
+  size_t bytes = static_cast<size_t>(rows);
+  for (size_t factor : {static_cast<size_t>(num_heads),
+                        static_cast<size_t>(context_length), sizeof(float)}) {
+    if (bytes > std::numeric_limits<size_t>::max() / factor)
+      return absl::ResourceExhaustedError(
+          "attention probabilities tensor byte size overflows size_t");
+    bytes *= factor;
+  }
+  const int row_tiles =
+      context_length / kAttentionRows + (context_length % kAttentionRows != 0);
+  int blocks = 1;
+  for (int factor : {rows / context_length, num_heads, row_tiles, row_tiles}) {
+    if (blocks > std::numeric_limits<int>::max() / factor)
+      return absl::ResourceExhaustedError(
+          "attention probabilities tile count exceeds CUDA's x-grid limit");
+    blocks *= factor;
+  }
+  return AttentionProbabilityLayout{bytes, blocks};
+}
 
 // Slice one sequence/head with explicit strides. Masked tile loads/stores then
 // handle both partial sequence tiles and partial head tiles without reading a
@@ -132,6 +167,66 @@ __tile_global__ void FlashAttentionForwardKernel(
     norm_view.store_masked(ct::reshape(safe_normalizer, ct::shape{32_ic}),
                            query_tile);
   }
+}
+
+// Inspection uses the same Q.K tile products and forward softmax statistics as
+// backward. One program owns a [32 queries, 32 keys] tile, so storing the full
+// matrix needs no atomics. Fully masked future tiles still store zeros: leaving
+// them uninitialized would expose stale device memory to the callback.
+template <class Activation>
+__tile_global__ void AttentionProbabilitiesKernel(
+    const Activation* __restrict__ qkv, const float* __restrict__ maxima,
+    const float* __restrict__ normalizers, int context_length, int num_heads,
+    int embedding_dim, float scale, float* __restrict__ probabilities) {
+  namespace ct = ::cuda::tiles;
+  using namespace ct::literals;
+  const int head_dimension = embedding_dim / num_heads;
+  const int channel_tiles =
+      (head_dimension + kAttentionChannels - 1) / kAttentionChannels;
+  const int row_tiles =
+      context_length / kAttentionRows + (context_length % kAttentionRows != 0);
+  const int key_tile = ct::bid().x % row_tiles;
+  const int query_tile = ct::bid().x / row_tiles % row_tiles;
+  const int sequence_head = ct::bid().x / row_tiles / row_tiles;
+  const int sequence = sequence_head / num_heads;
+  const int head = sequence_head % num_heads;
+  const size_t packed_offset =
+      static_cast<size_t>(sequence) * context_length * 3 * embedding_dim +
+      head * head_dimension;
+  auto q = HeadView(qkv + packed_offset, context_length, head_dimension,
+                    3 * embedding_dim);
+  auto k = HeadView(qkv + packed_offset + embedding_dim, context_length,
+                    head_dimension, 3 * embedding_dim);
+  auto probability = ct::zeros<ct::tile<float, ct::shape<32, 32>>>();
+  if (key_tile <= query_tile) {
+    auto score = ct::zeros<ct::tile<float, ct::shape<32, 32>>>();
+    for (int dim_tile = 0; dim_tile < channel_tiles; ++dim_tile)
+      score = ct::mma(q.load_masked(query_tile, dim_tile),
+                      ct::transpose(k.load_masked(key_tile, dim_tile)), score);
+    const size_t stats_offset =
+        static_cast<size_t>(sequence_head) * context_length;
+    auto maximum =
+        ct::reshape(StatisticsView(maxima + stats_offset, context_length)
+                        .load_masked(query_tile),
+                    ct::shape{32_ic, 1_ic});
+    auto normalizer =
+        ct::reshape(StatisticsView(normalizers + stats_offset, context_length)
+                        .load_masked(query_tile),
+                    ct::shape{32_ic, 1_ic});
+    // Padded query rows are never stored, but avoid dividing by zero there.
+    normalizer = ct::select(normalizer > 0.0f, normalizer,
+                            ct::full<decltype(normalizer)>(1.0f));
+    probability = ct::select(CausalMask(query_tile, key_tile, context_length),
+                             ct::exp(score * scale - maximum) / normalizer,
+                             ct::zeros<decltype(score)>());
+  }
+  const size_t probability_offset =
+      static_cast<size_t>(sequence_head) * context_length * context_length;
+  auto out = ct::partition_view{
+      ct::tensor_span{probabilities + probability_offset,
+                      ct::extents{context_length, context_length}},
+      ct::shape{32_ic, 32_ic}};
+  out.store_masked(probability, query_tile, key_tile);
 }
 
 // Each query tile owns its dQ tile. It also computes delta=sum(dO*O) once per
@@ -322,7 +417,7 @@ absl::StatusOr<std::unique_ptr<AttentionLayer>> AttentionLayer::Create(
 
 absl::StatusOr<FwdResult> AttentionLayer::fwd_impl(
     cuda::Executor& executor, absl::Span<const Buffer> inputs,
-    LayerHooks*) const {
+    LayerHooks* hooks) const {
   RETURN_IF_ERROR(
       internal::ValidateExecutor(executor_, executor, "AttentionLayer"));
   if (inputs.size() != 1)
@@ -334,6 +429,14 @@ absl::StatusOr<FwdResult> AttentionLayer::fwd_impl(
   if (rows % context_length_ != 0)
     return absl::InvalidArgumentError(
         "attention rows must be divisible by context_length");
+  AttentionProbabilityLayout probability_layout{};
+  const bool inspect_probabilities =
+      hooks != nullptr &&
+      static_cast<bool>(hooks->attention_probabilities_hook);
+  if (inspect_probabilities) {
+    ASSIGN_OR_RETURN(probability_layout,
+                     ProbabilityLayout(rows, context_length_, num_heads_));
+  }
   ASSIGN_OR_RETURN(
       auto output,
       Buffer::Allocate(executor,
@@ -369,6 +472,34 @@ absl::StatusOr<FwdResult> AttentionLayer::fwd_impl(
   }
   RETURN_IF_ERROR(cuda::CudaStatus(cudaGetLastError(),
                                    "FlashAttentionForwardKernel launch"));
+  if (inspect_probabilities) {
+    ASSIGN_OR_RETURN(auto probabilities,
+                     Buffer::Allocate(executor, probability_layout.bytes));
+    if (output_type_ == DataType::BF16) {
+      AttentionProbabilitiesKernel<__nv_bfloat16>
+          <<<probability_layout.blocks, 1, 0, executor.stream()>>>(
+              static_cast<const __nv_bfloat16*>(inputs[0].data()),
+              static_cast<const float*>(maxima.data()),
+              static_cast<const float*>(normalizers.data()), context_length_,
+              num_heads_, embedding_dim_, scale,
+              static_cast<float*>(probabilities.data()));
+    } else {
+      AttentionProbabilitiesKernel<float>
+          <<<probability_layout.blocks, 1, 0, executor.stream()>>>(
+              static_cast<const float*>(inputs[0].data()),
+              static_cast<const float*>(maxima.data()),
+              static_cast<const float*>(normalizers.data()), context_length_,
+              num_heads_, embedding_dim_, scale,
+              static_cast<float*>(probabilities.data()));
+    }
+    RETURN_IF_ERROR(cuda::CudaStatus(cudaGetLastError(),
+                                     "AttentionProbabilitiesKernel launch"));
+    const ActivationType probability_type{
+        DataType::FP32,
+        {rows / context_length_, num_heads_, context_length_, context_length_}};
+    RETURN_IF_ERROR(hooks->attention_probabilities_hook(
+        executor, name(), probability_type, probabilities));
+  }
   BackwardState state;
   state.intermediates = {inputs[0], output, std::move(maxima),
                          std::move(normalizers)};

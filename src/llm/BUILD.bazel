@@ -434,7 +434,7 @@ cc_library(
     ],
 )
 
-layer_library("attention")
+layer_library("attention", [":layer_hooks"])
 layer_library("combinators", [
     ":layer_hooks",
     ":layer_type_check",
@@ -613,7 +613,9 @@ cc_library(
 
 layer_test("attention", [
     ":attention_reference",
+    ":layer_hooks",
     ":layer_reference_test_util",
+    "@abseil-cpp//absl/status",
 ])
 layer_test("combinators", [
     ":fully_connected",
