@@ -84,6 +84,24 @@ artifacts are in `runs/width_depth_coarse_0/width_128/layers_1/`. The independen
 prediction TSV SHA-256 is
 `06ee2f122ccac53cabca3d81a29c82b946fec0f3a72e945a54b58fd1e79364ae`.
 
+## Verified budget failures
+
+| Run | Blocks | Width | Parameters | Updates | Final errors | Best observed errors | Final mean loss (nats) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Coarse | 1 | 64 | 3,333,056 | 5,000 | 2 / 10,002 | 1 at step 4,992 | 0.073553935635 |
+
+The width-64, one-block trial reached its full update cap, not its time cap.
+Its final checkpoint reloaded with the same two errors and passed the independent
+artifact audit. Both errors occur at the first scored token: it swaps ` a` and
+` ordinary` after the prefixes `Heating a gas in` and `Oxygen gas in` (lines
+202 and 699). This near miss does not show insufficient capacity; it warrants
+a separately labeled longer-budget check after the coarse pass.
+
+Checkpoint:
+`/home/ubuntu/checkpoints/memorize_general_facts/width_depth_coarse_0/width_64/layers_1/step_5000`.
+Artifacts: `runs/width_depth_coarse_0/width_64/layers_1/`. Independent prediction
+TSV SHA-256: `cfa1d031cf17645581952a4e619feedff44f7de7319b21252cdc47f807cabb91`.
+
 ## Validation and current status
 
 The configurable recipe and native shape flags pass all 65 optimized native
@@ -113,7 +131,9 @@ The coarse search started on 2026-09-21 at 00:46:16 UTC with one block at width
 256. Its live record is `runs/width_depth_coarse_0/width_depth_search_summary.json`;
 checkpoints are under
 `/home/ubuntu/checkpoints/memorize_general_facts/width_depth_coarse_0/`.
-Widths 256 and 128 passed both independent checks. Width-64 training was
-underway by 01:02:14 UTC. The smallest verified success so far is one block at
-width 128, with 6,764,416 physical parameters; the width/depth frontier is not
-complete yet.
+Widths 256 and 128 passed both independent checks. One block at width 64
+exhausted its budget with two errors; two-block width-64 training was underway
+by 01:08:02 UTC. All 16 tensors shared with the one-block initialization match
+byte-for-byte, including the final LayerNorm after accounting for file indices.
+The smallest verified success so far is one block at width 128, with 6,764,416
+physical parameters; the width/depth frontier is not complete yet.

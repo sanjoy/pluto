@@ -1,0 +1,40 @@
+{
+  "success": false,
+  "sentences": 1024,
+  "exact_sentences": 1022,
+  "targets": 10002,
+  "errors": 2,
+  "accuracy": 0.9998000399920016,
+  "mean_loss_nats": 0.07355393563513997,
+  "corpus": "/home/ubuntu/code/pluto/src/llm/experiments/memorize_general_facts/runs/width_depth_coarse_0/width_64/layers_1/corpus.txt",
+  "corpus_sha256": "814c062e7d7592fe4a4e5b158a37bd37da51700f817c19eb981c1e93d33f245c",
+  "tokenizer": "/home/ubuntu/code/pluto/src/llm/experiments/memorize_general_facts/runs/width_depth_coarse_0/width_64/layers_1/tokenizer.json",
+  "tokenizer_sha256": "1fe93b6152957cf9cfd6d89002467f789ce8b3f3e000b3a2edf27c808ddd0b9e",
+  "predictions": "/home/ubuntu/code/pluto/src/llm/experiments/memorize_general_facts/runs/width_depth_coarse_0/width_64/layers_1/independent_verification/final_predictions.tsv",
+  "predictions_sha256": "cfa1d031cf17645581952a4e619feedff44f7de7319b21252cdc47f807cabb91",
+  "prompt_tokens": 5,
+  "eos_scored": true,
+  "padding_scored": false,
+  "context_length": 1024,
+  "evidence_scope": "validated teacher-forced prediction artifact, not independent checkpoint inference",
+  "error_examples": [
+    {
+      "line_1based": 202,
+      "target_token_index_0based": 5,
+      "causal_prefix": "Heating a gas in",
+      "target_id": 257,
+      "target_text": " a",
+      "predicted_id": 8850,
+      "predicted_text": " ordinary"
+    },
+    {
+      "line_1based": 699,
+      "target_token_index_0based": 5,
+      "causal_prefix": "Oxygen gas in",
+      "target_id": 8850,
+      "target_text": " ordinary",
+      "predicted_id": 257,
+      "predicted_text": " a"
+    }
+  ]
+}
