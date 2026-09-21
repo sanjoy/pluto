@@ -1,4 +1,4 @@
-#include "src/llm/experiments/memorize_general_facts/compact_vocabulary.h"
+#include "src/dataset/compact_vocabulary.h"
 
 #include <cstddef>
 #include <fstream>
@@ -11,13 +11,11 @@
 #include "absl/strings/str_split.h"
 #include "src/util/status_macros.h"
 
-namespace pluto::llm::memorize_general_facts {
+namespace pluto::tokenizer {
 
-absl::StatusOr<std::unique_ptr<CompactVocabularyTokenizer>>
-CompactVocabularyTokenizer::Create(cuda::Executor& executor,
-                                   const tokenizer::Tokenizer& original,
-                                   absl::string_view corpus_text,
-                                   int original_eos_id) {
+absl::StatusOr<CompactVocabularyMapping> BuildCompactVocabularyMapping(
+    cuda::Executor& executor, const Tokenizer& original,
+    absl::string_view corpus_text, int original_eos_id) {
   const int original_size = original.vocab_size();
   if (original_size <= 0 || original_eos_id < 0 ||
       original_eos_id >= original_size)
@@ -56,27 +54,64 @@ CompactVocabularyTokenizer::Create(cuda::Executor& executor,
     reverse[token] = static_cast<int>(originals.size());
     originals.push_back(token);
   }
-  const int eos_token_id = reverse[original_eos_id];
-  return absl::WrapUnique(new CompactVocabularyTokenizer(
-      original, std::move(originals), std::move(reverse), original_eos_id,
-      eos_token_id));
+  return CompactVocabularyMapping{std::move(originals), std::move(reverse),
+                                  original_eos_id};
+}
+
+absl::StatusOr<std::unique_ptr<CompactVocabularyTokenizer>>
+CompactVocabularyTokenizer::Create(const Tokenizer& original,
+                                   CompactVocabularyMapping mapping) {
+  const int original_size = original.vocab_size();
+  if (original_size <= 0 ||
+      mapping.original_to_compact.size() != static_cast<size_t>(original_size))
+    return absl::InvalidArgumentError(
+        "reverse mapping must match the original vocabulary size");
+  if (mapping.compact_to_original.empty() ||
+      mapping.compact_to_original.size() > static_cast<size_t>(original_size))
+    return absl::InvalidArgumentError("invalid compact vocabulary size");
+  if (mapping.original_eos_id < 0 || mapping.original_eos_id >= original_size)
+    return absl::InvalidArgumentError("EOS is outside the original vocabulary");
+
+  // Validate the forward map before using its values as reverse-map indices.
+  // Sorting keeps compact IDs and serialized mappings canonical.
+  int previous_original = -1;
+  for (size_t compact = 0; compact < mapping.compact_to_original.size();
+       ++compact) {
+    const int token = mapping.compact_to_original[compact];
+    if (token <= previous_original || token >= original_size)
+      return absl::InvalidArgumentError(
+          "compact-to-original mapping must contain sorted unique valid IDs");
+    if (mapping.original_to_compact[token] != static_cast<int>(compact))
+      return absl::InvalidArgumentError("vocabulary mappings are not inverses");
+    previous_original = token;
+  }
+  // Check inactive entries too: they must be -1, not aliases of active IDs.
+  const int compact_size = static_cast<int>(mapping.compact_to_original.size());
+  for (int token = 0; token < original_size; ++token) {
+    const int compact = mapping.original_to_compact[token];
+    if (compact == -1)
+      continue;
+    if (compact < 0 || compact >= compact_size ||
+        mapping.compact_to_original[compact] != token)
+      return absl::InvalidArgumentError("vocabulary mappings are not inverses");
+  }
+  if (mapping.original_to_compact[mapping.original_eos_id] == -1)
+    return absl::InvalidArgumentError(
+        "EOS is absent from the compact vocabulary");
+  return absl::WrapUnique(
+      new CompactVocabularyTokenizer(original, std::move(mapping)));
 }
 
 CompactVocabularyTokenizer::CompactVocabularyTokenizer(
-    const tokenizer::Tokenizer& original, std::vector<int> original_token_ids,
-    std::vector<int> original_to_compact, int original_eos_id, int eos_token_id)
-    : original_(original),
-      original_token_ids_(std::move(original_token_ids)),
-      original_to_compact_(std::move(original_to_compact)),
-      original_eos_id_(original_eos_id),
-      eos_token_id_(eos_token_id) {}
+    const Tokenizer& original, CompactVocabularyMapping mapping)
+    : original_(original), mapping_(std::move(mapping)) {}
 
 absl::StatusOr<int> CompactVocabularyTokenizer::OriginalId(
     int compact_id) const {
   if (compact_id < 0 || compact_id >= vocab_size())
     return absl::InvalidArgumentError(absl::StrCat(
         "compact token ID is outside the vocabulary: ", compact_id));
-  return original_token_ids_[compact_id];
+  return mapping_.compact_to_original[compact_id];
 }
 
 absl::StatusOr<int> CompactVocabularyTokenizer::CompactId(
@@ -84,7 +119,7 @@ absl::StatusOr<int> CompactVocabularyTokenizer::CompactId(
   if (original_id < 0 || original_id >= original_vocab_size())
     return absl::InvalidArgumentError(absl::StrCat(
         "original token ID is outside the vocabulary: ", original_id));
-  const int compact_id = original_to_compact_[original_id];
+  const int compact_id = mapping_.original_to_compact[original_id];
   if (compact_id < 0)
     return absl::InvalidArgumentError(absl::StrCat(
         "original token ID is absent from the compact vocabulary: ",
@@ -108,10 +143,11 @@ CompactVocabularyTokenizer::Encode(cuda::Executor& executor,
 std::string CompactVocabularyTokenizer::CanonicalText() const {
   std::string text = absl::StrCat(
       "compact_vocabulary_v1\noriginal_vocab_size\t", original_vocab_size(),
-      "\noriginal_eos_token\t", original_eos_id_, "\ncompact_vocab_size\t",
-      vocab_size(), "\ncompact_id\toriginal_id\n");
-  for (size_t index = 0; index < original_token_ids_.size(); ++index)
-    absl::StrAppend(&text, index, "\t", original_token_ids_[index], "\n");
+      "\noriginal_eos_token\t", original_eos_token_id(),
+      "\ncompact_vocab_size\t", vocab_size(), "\ncompact_id\toriginal_id\n");
+  for (size_t index = 0; index < mapping_.compact_to_original.size(); ++index)
+    absl::StrAppend(&text, index, "\t", mapping_.compact_to_original[index],
+                    "\n");
   return text;
 }
 
@@ -183,4 +219,4 @@ absl::Status CompactVocabularyTokenizer::ValidateFile(
   return absl::OkStatus();
 }
 
-}  // namespace pluto::llm::memorize_general_facts
+}  // namespace pluto::tokenizer

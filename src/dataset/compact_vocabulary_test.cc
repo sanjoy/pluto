@@ -1,4 +1,4 @@
-#include "src/llm/experiments/memorize_general_facts/compact_vocabulary.h"
+#include "src/dataset/compact_vocabulary.h"
 
 #include <cstdlib>
 #include <filesystem>
@@ -15,10 +15,21 @@
 #include "gtest/gtest.h"
 #include "src/dataset/plain_text_tokenizer.h"
 
-namespace pluto::llm::memorize_general_facts {
+namespace pluto::tokenizer {
 namespace {
 
-class RecordingTokenizer final : public tokenizer::Tokenizer {
+// A convenience for the existing end-to-end corpus/serialization checks. The
+// standalone helper and corpus-independent constructor are tested separately.
+absl::StatusOr<std::unique_ptr<CompactVocabularyTokenizer>> CreateFromCorpus(
+    cuda::Executor& executor, const Tokenizer& original,
+    absl::string_view corpus, int eos) {
+  auto mapping = BuildCompactVocabularyMapping(executor, original, corpus, eos);
+  if (!mapping.ok())
+    return mapping.status();
+  return CompactVocabularyTokenizer::Create(original, std::move(*mapping));
+}
+
+class RecordingTokenizer final : public Tokenizer {
  public:
   absl::StatusOr<cuda::PageLockedHostArray<int>> Encode(
       cuda::Executor& executor, absl::string_view text) const override {
@@ -29,11 +40,11 @@ class RecordingTokenizer final : public tokenizer::Tokenizer {
   mutable std::vector<std::string> encoded_text;
 
  private:
-  tokenizer::PlainTextTokenizer bytes_;
+  PlainTextTokenizer bytes_;
 };
 
 // Deliberately returns the same shared array, as permitted by Tokenizer.
-class FixedTokenizer final : public tokenizer::Tokenizer {
+class FixedTokenizer final : public Tokenizer {
  public:
   FixedTokenizer(cuda::PageLockedHostArray<int> tokens, int vocabulary_size)
       : tokens_(std::move(tokens)), vocabulary_size_(vocabulary_size) {}
@@ -47,6 +58,158 @@ class FixedTokenizer final : public tokenizer::Tokenizer {
   cuda::PageLockedHostArray<int> tokens_;
   int vocabulary_size_;
 };
+
+// These constructor tests intentionally create no executor. Constructing a
+// wrapper only needs a completed ID mapping, not access to a corpus or CUDA.
+class NoEncodeTokenizer final : public Tokenizer {
+ public:
+  explicit NoEncodeTokenizer(int vocabulary_size = 8)
+      : vocabulary_size_(vocabulary_size) {}
+  absl::StatusOr<cuda::PageLockedHostArray<int>> Encode(
+      cuda::Executor&, absl::string_view) const override {
+    ++encode_calls;
+    return absl::FailedPreconditionError("Encode must not be called");
+  }
+  int vocab_size() const override { return vocabulary_size_; }
+  mutable int encode_calls = 0;
+
+ private:
+  int vocabulary_size_;
+};
+
+CompactVocabularyMapping ExampleMapping() {
+  return {.compact_to_original = {1, 3, 7},
+          .original_to_compact = {-1, 0, -1, 1, -1, -1, -1, 2},
+          .original_eos_id = 3};
+}
+
+TEST(CompactVocabularyConstructionTest, NeedsOnlyOriginalTokenizerAndMapping) {
+  NoEncodeTokenizer original;
+  const auto mapping = ExampleMapping();
+  auto compact = CompactVocabularyTokenizer::Create(original, mapping);
+  ASSERT_TRUE(compact.ok()) << compact.status();
+  EXPECT_EQ(original.encode_calls, 0);
+  EXPECT_EQ((*compact)->vocab_size(), 3);
+  EXPECT_EQ((*compact)->original_vocab_size(), 8);
+  EXPECT_EQ((*compact)->eos_token_id(), 1);
+  EXPECT_EQ((*compact)->original_eos_token_id(), 3);
+  for (int compact_id = 0; compact_id < (*compact)->vocab_size();
+       ++compact_id) {
+    const int original_id = mapping.compact_to_original[compact_id];
+    ASSERT_TRUE((*compact)->OriginalId(compact_id).ok());
+    ASSERT_TRUE((*compact)->CompactId(original_id).ok());
+    EXPECT_EQ(*(*compact)->OriginalId(compact_id), original_id);
+    EXPECT_EQ(*(*compact)->CompactId(original_id), compact_id);
+  }
+  EXPECT_EQ(mapping.compact_to_original, ExampleMapping().compact_to_original);
+  EXPECT_EQ(mapping.original_to_compact, ExampleMapping().original_to_compact);
+  EXPECT_EQ(mapping.original_eos_id, 3);
+}
+
+TEST(CompactVocabularyConstructionTest, OwnsCopiedAndMovedMappingStorage) {
+  NoEncodeTokenizer original;
+  auto mapping = ExampleMapping();
+  auto copied = CompactVocabularyTokenizer::Create(original, mapping);
+  ASSERT_TRUE(copied.ok()) << copied.status();
+  mapping.compact_to_original.assign(1, 0);
+  mapping.original_to_compact.assign(8, -1);
+  mapping.original_eos_id = 0;
+  auto moved = [&] {
+    auto local = ExampleMapping();
+    return CompactVocabularyTokenizer::Create(original, std::move(local));
+  }();
+  ASSERT_TRUE(moved.ok()) << moved.status();
+  for (const auto* compact : {copied->get(), moved->get()}) {
+    EXPECT_EQ(std::vector<int>(compact->original_token_ids().begin(),
+                               compact->original_token_ids().end()),
+              (std::vector<int>{1, 3, 7}));
+    ASSERT_TRUE(compact->CompactId(7).ok());
+    EXPECT_EQ(*compact->CompactId(7), 2);
+    EXPECT_EQ(compact->original_eos_token_id(), 3);
+    EXPECT_EQ(compact->eos_token_id(), 1);
+  }
+  EXPECT_EQ(original.encode_calls, 0);
+}
+
+TEST(CompactVocabularyConstructionTest, AcceptsMappingContainingOnlyEos) {
+  NoEncodeTokenizer original;
+  CompactVocabularyMapping mapping{
+      .compact_to_original = {7},
+      .original_to_compact = {-1, -1, -1, -1, -1, -1, -1, 0},
+      .original_eos_id = 7};
+  auto compact =
+      CompactVocabularyTokenizer::Create(original, std::move(mapping));
+  ASSERT_TRUE(compact.ok()) << compact.status();
+  EXPECT_EQ((*compact)->vocab_size(), 1);
+  EXPECT_EQ((*compact)->eos_token_id(), 0);
+  EXPECT_EQ(original.encode_calls, 0);
+}
+
+TEST(CompactVocabularyConstructionTest,
+     RejectsMalformedMappingsWithoutEncoding) {
+  NoEncodeTokenizer original;
+  std::vector<std::pair<std::string, CompactVocabularyMapping>> invalid;
+  auto add_case = [&](const char* name, auto change) {
+    auto mapping = ExampleMapping();
+    change(mapping);
+    invalid.emplace_back(name, std::move(mapping));
+  };
+  add_case("empty active set", [](auto& m) {
+    m.compact_to_original.clear();
+    m.original_to_compact.assign(8, -1);
+  });
+  add_case("unsorted but otherwise inverse", [](auto& m) {
+    m.compact_to_original = {3, 1, 7};
+    m.original_to_compact[1] = 1;
+    m.original_to_compact[3] = 0;
+  });
+  add_case("duplicate original", [](auto& m) { m.compact_to_original[0] = 3; });
+  add_case("negative original", [](auto& m) { m.compact_to_original[0] = -1; });
+  add_case("out-of-range original",
+           [](auto& m) { m.compact_to_original[2] = 8; });
+  add_case("huge original", [](auto& m) {
+    m.compact_to_original[2] = std::numeric_limits<int>::max();
+  });
+  add_case("negative EOS", [](auto& m) { m.original_eos_id = -1; });
+  add_case("out-of-range EOS", [](auto& m) { m.original_eos_id = 8; });
+  add_case("absent EOS", [](auto& m) { m.original_eos_id = 2; });
+  add_case("short reverse map",
+           [](auto& m) { m.original_to_compact.pop_back(); });
+  add_case("long reverse map",
+           [](auto& m) { m.original_to_compact.push_back(-1); });
+  add_case("empty reverse map", [](auto& m) { m.original_to_compact.clear(); });
+  add_case("wrong active inverse",
+           [](auto& m) { m.original_to_compact[1] = 2; });
+  add_case("missing active inverse",
+           [](auto& m) { m.original_to_compact[7] = -1; });
+  add_case("missing EOS inverse",
+           [](auto& m) { m.original_to_compact[3] = -1; });
+  add_case("inactive aliases active",
+           [](auto& m) { m.original_to_compact[0] = 0; });
+  add_case("invalid inactive sentinel",
+           [](auto& m) { m.original_to_compact[0] = -2; });
+  add_case("out-of-range compact ID",
+           [](auto& m) { m.original_to_compact[7] = 3; });
+  add_case("huge compact ID", [](auto& m) {
+    m.original_to_compact[7] = std::numeric_limits<int>::max();
+  });
+  for (const auto& [name, mapping] : invalid) {
+    SCOPED_TRACE(name);
+    EXPECT_EQ(
+        CompactVocabularyTokenizer::Create(original, mapping).status().code(),
+        absl::StatusCode::kInvalidArgument);
+  }
+  EXPECT_EQ(original.encode_calls, 0);
+  for (int size : {0, -1}) {
+    NoEncodeTokenizer invalid_original(size);
+    EXPECT_EQ(
+        CompactVocabularyTokenizer::Create(invalid_original, ExampleMapping())
+            .status()
+            .code(),
+        absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ(invalid_original.encode_calls, 0);
+  }
+}
 
 class CompactVocabularyTest : public testing::Test {
  protected:
@@ -92,16 +255,40 @@ class CompactVocabularyTest : public testing::Test {
   }
 
   std::unique_ptr<cuda::Executor> executor_;
-  tokenizer::PlainTextTokenizer tokenizer_;
+  PlainTextTokenizer tokenizer_;
   std::filesystem::path directory_;
 };
 
+TEST_F(CompactVocabularyTest, DiscoveryReturnsCanonicalBidirectionalMapping) {
+  RecordingTokenizer original;
+  auto mapping =
+      BuildCompactVocabularyMapping(*executor_, original, "za\r\n b\nza", 255);
+  ASSERT_TRUE(mapping.ok()) << mapping.status();
+  const std::vector<int> expected{' ', 'a', 'b', 'z', 255};
+  EXPECT_EQ(mapping->compact_to_original, expected);
+  EXPECT_EQ(mapping->original_eos_id, 255);
+  ASSERT_EQ(mapping->original_to_compact.size(), 256u);
+  std::vector<int> expected_reverse(256, -1);
+  for (size_t compact = 0; compact < expected.size(); ++compact)
+    expected_reverse[expected[compact]] = static_cast<int>(compact);
+  EXPECT_EQ(mapping->original_to_compact, expected_reverse);
+  EXPECT_EQ(original.encoded_text,
+            (std::vector<std::string>{"za", " b", "za"}));
+  auto wrapper = CompactVocabularyTokenizer::Create(original, *mapping);
+  ASSERT_TRUE(wrapper.ok()) << wrapper.status();
+  // Construction reuses the discovered map and must not tokenize a second time.
+  EXPECT_EQ(original.encoded_text.size(), 3u);
+  auto reordered =
+      BuildCompactVocabularyMapping(*executor_, original, " b\nza", 255);
+  ASSERT_TRUE(reordered.ok()) << reordered.status();
+  EXPECT_EQ(reordered->compact_to_original, mapping->compact_to_original);
+  EXPECT_EQ(reordered->original_to_compact, mapping->original_to_compact);
+}
+
 TEST_F(CompactVocabularyTest,
        SortedMappingSurvivesLineReorderingAndDuplication) {
-  auto first = CompactVocabularyTokenizer::Create(*executor_, tokenizer_,
-                                                  "za\n b\n", 255);
-  auto reordered = CompactVocabularyTokenizer::Create(*executor_, tokenizer_,
-                                                      " b\nza\nza", 255);
+  auto first = CreateFromCorpus(*executor_, tokenizer_, "za\n b\n", 255);
+  auto reordered = CreateFromCorpus(*executor_, tokenizer_, " b\nza\nza", 255);
   ASSERT_TRUE(first.ok()) << first.status();
   ASSERT_TRUE(reordered.ok()) << reordered.status();
   const std::vector<int> expected{' ', 'a', 'b', 'z', 255};
@@ -127,14 +314,12 @@ TEST_F(CompactVocabularyTest,
 
 TEST_F(CompactVocabularyTest, UsesExactPerLineTokenizationAndCrLfConventions) {
   RecordingTokenizer recording;
-  auto compact = CompactVocabularyTokenizer::Create(*executor_, recording,
-                                                    "ab\r\n cd\r\n", 255);
+  auto compact = CreateFromCorpus(*executor_, recording, "ab\r\n cd\r\n", 255);
   ASSERT_TRUE(compact.ok()) << compact.status();
   EXPECT_EQ(recording.encoded_text, (std::vector<std::string>{"ab", " cd"}));
   const auto path = directory_ / "mapping.tsv";
   ASSERT_TRUE((*compact)->SaveToFile(path).ok());
-  auto lf = CompactVocabularyTokenizer::Create(*executor_, tokenizer_,
-                                               "ab\n cd\n", 255);
+  auto lf = CreateFromCorpus(*executor_, tokenizer_, "ab\n cd\n", 255);
   ASSERT_TRUE(lf.ok()) << lf.status();
   EXPECT_TRUE((*lf)->ValidateFile(path).ok());
   EXPECT_TRUE((*compact)->CompactId(' ').ok());
@@ -144,8 +329,7 @@ TEST_F(CompactVocabularyTest, UsesExactPerLineTokenizationAndCrLfConventions) {
 
 TEST_F(CompactVocabularyTest,
        EncodeKeepsEveryInputTokenAndAddsNoSpecialTokens) {
-  auto compact = CompactVocabularyTokenizer::Create(*executor_, tokenizer_,
-                                                    "qabcdef", 255);
+  auto compact = CreateFromCorpus(*executor_, tokenizer_, "qabcdef", 255);
   ASSERT_TRUE(compact.ok()) << compact.status();
   EXPECT_EQ((*compact)->vocab_size(), 8);  // Seven input IDs, plus EOS.
   auto encoded = (*compact)->Encode(*executor_, "qabcdef");
@@ -163,8 +347,7 @@ TEST_F(CompactVocabularyTest,
 }
 
 TEST_F(CompactVocabularyTest, EosIsIncludedOnceAndNeedNotBeLargestOriginalId) {
-  auto compact =
-      CompactVocabularyTokenizer::Create(*executor_, tokenizer_, "ba", 'a');
+  auto compact = CreateFromCorpus(*executor_, tokenizer_, "ba", 'a');
   ASSERT_TRUE(compact.ok()) << compact.status();
   EXPECT_EQ((*compact)->vocab_size(), 2);
   EXPECT_EQ((*compact)->eos_token_id(), 0);
@@ -175,8 +358,7 @@ TEST_F(CompactVocabularyTest, EosIsIncludedOnceAndNeedNotBeLargestOriginalId) {
 }
 
 TEST_F(CompactVocabularyTest, RejectsInactiveAndOutOfRangeTokenIds) {
-  auto compact =
-      CompactVocabularyTokenizer::Create(*executor_, tokenizer_, "ab", 255);
+  auto compact = CreateFromCorpus(*executor_, tokenizer_, "ab", 255);
   ASSERT_TRUE(compact.ok()) << compact.status();
   EXPECT_EQ((*compact)->Encode(*executor_, "ac").status().code(),
             absl::StatusCode::kInvalidArgument);
@@ -195,18 +377,16 @@ TEST_F(CompactVocabularyTest, RejectsInactiveAndOutOfRangeTokenIds) {
 TEST_F(CompactVocabularyTest, RejectsInvalidCorporaAndOriginalEos) {
   for (const char* corpus : {"", "\n", "a\n\n", "a\n \t\nb", "a\r\n\r\nb"}) {
     SCOPED_TRACE(corpus);
-    EXPECT_EQ(
-        CompactVocabularyTokenizer::Create(*executor_, tokenizer_, corpus, 255)
-            .status()
-            .code(),
-        absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ(BuildCompactVocabularyMapping(*executor_, tokenizer_, corpus, 255)
+                  .status()
+                  .code(),
+              absl::StatusCode::kInvalidArgument);
   }
   for (int eos : {-1, 256, std::numeric_limits<int>::max()}) {
-    EXPECT_EQ(
-        CompactVocabularyTokenizer::Create(*executor_, tokenizer_, "ab", eos)
-            .status()
-            .code(),
-        absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ(BuildCompactVocabularyMapping(*executor_, tokenizer_, "ab", eos)
+                  .status()
+                  .code(),
+              absl::StatusCode::kInvalidArgument);
   }
 }
 
@@ -216,23 +396,21 @@ TEST_F(CompactVocabularyTest, RejectsInvalidIdsReturnedByOriginalTokenizer) {
         *executor_, std::vector<int>{invalid});
     ASSERT_TRUE(tokens.ok()) << tokens.status();
     FixedTokenizer source(*tokens, 256);
-    EXPECT_EQ(
-        CompactVocabularyTokenizer::Create(*executor_, source, "text", 255)
-            .status()
-            .code(),
-        absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ(BuildCompactVocabularyMapping(*executor_, source, "text", 255)
+                  .status()
+                  .code(),
+              absl::StatusCode::kInvalidArgument);
   }
   auto empty = cuda::PageLockedHostArray<int>::Allocate(*executor_, 0);
   ASSERT_TRUE(empty.ok()) << empty.status();
   FixedTokenizer empty_source(*empty, 256);
-  EXPECT_EQ(
-      CompactVocabularyTokenizer::Create(*executor_, empty_source, "text", 255)
-          .status()
-          .code(),
-      absl::StatusCode::kInvalidArgument);
+  EXPECT_EQ(BuildCompactVocabularyMapping(*executor_, empty_source, "text", 255)
+                .status()
+                .code(),
+            absl::StatusCode::kInvalidArgument);
   FixedTokenizer zero_vocabulary(*empty, 0);
   EXPECT_EQ(
-      CompactVocabularyTokenizer::Create(*executor_, zero_vocabulary, "text", 0)
+      BuildCompactVocabularyMapping(*executor_, zero_vocabulary, "text", 0)
           .status()
           .code(),
       absl::StatusCode::kInvalidArgument);
@@ -243,8 +421,12 @@ TEST_F(CompactVocabularyTest, DoesNotMutateSharedOriginalStorage) {
       *executor_, std::vector<int>{7, 20});
   ASSERT_TRUE(tokens.ok()) << tokens.status();
   FixedTokenizer source(*tokens, 32);
+  auto mapping = BuildCompactVocabularyMapping(*executor_, source, "text", 31);
+  ASSERT_TRUE(mapping.ok()) << mapping.status();
+  EXPECT_EQ(std::vector<int>(tokens->begin(), tokens->end()),
+            (std::vector<int>{7, 20}));
   auto compact =
-      CompactVocabularyTokenizer::Create(*executor_, source, "text", 31);
+      CompactVocabularyTokenizer::Create(source, std::move(*mapping));
   ASSERT_TRUE(compact.ok()) << compact.status();
   auto encoded = (*compact)->Encode(*executor_, "text");
   ASSERT_TRUE(encoded.ok()) << encoded.status();
@@ -262,8 +444,7 @@ TEST_F(CompactVocabularyTest, DoesNotMutateSharedOriginalStorage) {
 
 TEST_F(CompactVocabularyTest,
        SavesCanonicalMappingAndRefusesDifferentExistingMap) {
-  auto compact =
-      CompactVocabularyTokenizer::Create(*executor_, tokenizer_, "ba", 255);
+  auto compact = CreateFromCorpus(*executor_, tokenizer_, "ba", 255);
   ASSERT_TRUE(compact.ok()) << compact.status();
   const auto path = directory_ / "mapping.tsv";
   ASSERT_TRUE((*compact)->SaveToFile(path).ok());
@@ -274,8 +455,7 @@ TEST_F(CompactVocabularyTest,
   EXPECT_EQ(Read(path), expected);
   EXPECT_TRUE((*compact)->ValidateFile(path).ok());
   EXPECT_TRUE((*compact)->SaveToFile(path).ok());
-  auto different =
-      CompactVocabularyTokenizer::Create(*executor_, tokenizer_, "bc", 255);
+  auto different = CreateFromCorpus(*executor_, tokenizer_, "bc", 255);
   ASSERT_TRUE(different.ok()) << different.status();
   EXPECT_EQ((*different)->ValidateFile(path).code(),
             absl::StatusCode::kDataLoss);
@@ -284,8 +464,7 @@ TEST_F(CompactVocabularyTest,
 }
 
 TEST_F(CompactVocabularyTest, RejectsMalformedOrMismatchedMappingFiles) {
-  auto compact =
-      CompactVocabularyTokenizer::Create(*executor_, tokenizer_, "ba", 255);
+  auto compact = CreateFromCorpus(*executor_, tokenizer_, "ba", 255);
   ASSERT_TRUE(compact.ok()) << compact.status();
   const auto path = directory_ / "mapping.tsv";
   ASSERT_TRUE((*compact)->SaveToFile(path).ok());
@@ -324,8 +503,7 @@ TEST_F(CompactVocabularyTest, RejectsMalformedOrMismatchedMappingFiles) {
 }
 
 TEST_F(CompactVocabularyTest, RejectsMissingEmptyAndNonFileMappingPaths) {
-  auto compact =
-      CompactVocabularyTokenizer::Create(*executor_, tokenizer_, "ab", 255);
+  auto compact = CreateFromCorpus(*executor_, tokenizer_, "ab", 255);
   ASSERT_TRUE(compact.ok()) << compact.status();
   EXPECT_EQ((*compact)->ValidateFile(directory_ / "missing.tsv").code(),
             absl::StatusCode::kNotFound);
@@ -340,4 +518,4 @@ TEST_F(CompactVocabularyTest, RejectsMissingEmptyAndNonFileMappingPaths) {
 }
 
 }  // namespace
-}  // namespace pluto::llm::memorize_general_facts
+}  // namespace pluto::tokenizer

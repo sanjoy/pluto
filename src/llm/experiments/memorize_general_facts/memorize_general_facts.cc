@@ -25,13 +25,13 @@
 #include "absl/time/time.h"
 #include "src/cuda/executor.h"
 #include "src/cuda/page_locked_host_array.h"
+#include "src/dataset/compact_vocabulary.h"
 #include "src/dataset/dataset.h"
 #include "src/dataset/gpt2_tokenizer.h"
 #include "src/dataset/tokenizer.h"
 #include "src/llm/adamw_optimizer.h"
 #include "src/llm/batch_validation.h"
 #include "src/llm/checkpoint.h"
-#include "src/llm/experiments/memorize_general_facts/compact_vocabulary.h"
 #include "src/llm/experiments/memorize_general_facts/dataset.h"
 #include "src/llm/experiments/memorize_general_facts/gradient_clipper.h"
 #include "src/llm/experiments/memorize_general_facts/predictions.h"
@@ -74,6 +74,8 @@ ABSL_FLAG(double, training_seconds, 10800,
 
 namespace pluto::llm::memorize_general_facts {
 namespace {
+
+using tokenizer::CompactVocabularyTokenizer;
 
 // Record and reconstruct the full shape explicitly. A checkpoint's raw tensor
 // files cannot identify its head count: changing the partition into heads does
@@ -548,9 +550,12 @@ absl::StatusOr<bool> Run() {
   const tokenizer::Tokenizer* model_tokenizer = tokenizer.get();
   int eos_token = tokenizer->eos_token_id();
   if (absl::GetFlag(FLAGS_compact_vocabulary)) {
+    ASSIGN_OR_RETURN(auto mapping, tokenizer::BuildCompactVocabularyMapping(
+                                       *executor, *tokenizer, corpus.text(),
+                                       eos_token));
     ASSIGN_OR_RETURN(vocabulary,
-                     CompactVocabularyTokenizer::Create(
-                         *executor, *tokenizer, corpus.text(), eos_token));
+                     CompactVocabularyTokenizer::Create(*tokenizer,
+                                                        std::move(mapping)));
     model_tokenizer = vocabulary.get();
     eos_token = vocabulary->eos_token_id();
   }

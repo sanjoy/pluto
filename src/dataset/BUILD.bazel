@@ -74,6 +74,42 @@ cc_library(
 )
 
 cc_library(
+    name = "compact_vocabulary",
+    srcs = ["compact_vocabulary.cc"],
+    hdrs = ["compact_vocabulary.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":tokenizer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/memory",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "compact_vocabulary_test",
+    srcs = ["compact_vocabulary_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":compact_vocabulary",
+        ":plain_text_tokenizer",
+        ":tokenizer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "@abseil-cpp//absl/memory",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "gpt2_tokenizer",
     srcs = ["gpt2_tokenizer.cc"],
     hdrs = ["gpt2_tokenizer.h"],

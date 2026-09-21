@@ -32,6 +32,12 @@ contiguous IDs. For this dataset, the resulting vocabulary has **4,475 IDs,
 0 through 4,474**, including EOS. Unknown/inactive tokens are rejected rather
 than silently mapped to a different token.
 
+The reusable implementation lives in `src/dataset/compact_vocabulary.h`.
+`BuildCompactVocabularyMapping(executor, base_tokenizer, corpus_text, eos_id)`
+discovers both ID mappings. `CompactVocabularyTokenizer::Create(base_tokenizer,
+mapping)` validates and owns them without needing the corpus or an executor.
+The base tokenizer must outlive the compact wrapper.
+
 The embedding stores exactly one FP32 row per compact ID, with no trainable
 padding rows. The tied output head reuses that same matrix. Temporary logits
 remain padded to the kernel's tile size, with padding excluded from softmax;
