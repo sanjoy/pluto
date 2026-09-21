@@ -106,6 +106,7 @@ requirement proves a lower bound on model capacity.
 | Coarse | 1 | 128 | 2 × 64 | 512 | 6,764,416 | 2,944 | 46 | 0 / 10,002 | 0.001181248501 |
 | Coarse | 2 | 64 | 1 × 64 | 256 | 3,383,040 | 4,352 | 68 | 0 / 10,002 | 0.054245373258 |
 | Longer budget | 1 | 64 | 1 × 64 | 256 | 3,333,056 | 5,632 | 88 | 0 / 10,002 | 0.00046606012 |
+| Longer budget, narrow | 1 | 32 | 1 × 32 | 128 | 1,654,240 | 9,984 | 156 | 0 / 10,002 | 0.002481923691 |
 
 All successful rows complete all 1,024 sentences exactly under the approved
 five-token-prompt rule. Their fresh-process checkpoint predictions match the
@@ -142,12 +143,25 @@ prediction TSV SHA-256:
 The previous short-budget near miss therefore was not a model-capacity
 impossibility.
 
+One block at width 32 then succeeded with the same longer-budget schedule,
+one attention head, and 1,654,240 parameters, in about 9.3 minutes including
+evaluation and trainer reload. The checkpoint is
+`/home/ubuntu/checkpoints/memorize_general_facts/width_depth_long_1/width_32/layers_1/step_9984`;
+artifacts are in `runs/width_depth_long_1/width_32/layers_1/`. Independent
+prediction TSV SHA-256:
+`89e765fed0c4d303bc9bd02cf6a5cecc4ad4f813520781c03e73aa5d35d6cab7`.
+All 16 initial tensors shared with the coarse two-block width-32 model match
+byte-for-byte, including the relocated final LayerNorm. The deeper width-32
+models' short-budget failures therefore do not establish a width-32 capacity
+limit either.
+
 The measured 5,000-update frontier still contains `(1 block, width 128)` and
 `(2 blocks, width 64)`: neither dominates the other in depth and width under
-that protocol. Pooling all verified successes instead gives `(1 block, width
-64)`, with 3,333,056 parameters, the smallest successful model measured so far.
-The changed cosine schedule prevents attributing the improvement solely to
-the extra 632 updates. These are frontiers over measured outcomes, not
+that protocol. The measured 20,000-update frontier and the pooled frontier
+instead give `(1 block, width 32)`, with 1,654,240 parameters, the smallest
+successful model measured so far. The changed cosine schedule prevents
+attributing improvements over the coarse protocol solely to additional
+updates. These are frontiers over measured outcomes, not
 capacity impossibility claims.
 
 ## Verified budget failures
@@ -315,5 +329,22 @@ exactly. The new binary hash is
 `411377b44fd936a2072c96aafa144f38a4da3e63cbfad559c22a6e98f3b9904c`.
 It reached zero errors at step 5,632, saved/reloaded the checkpoint, and passed
 fresh-process verification and independent retokenization/audit. The two
-prediction TSVs match byte-for-byte. The pooled measured frontier is now
-`(1,64)`; narrower widths and additional depth remain to be investigated.
+prediction TSVs match byte-for-byte. At that point the pooled measured frontier
+was `(1,64)`.
+
+The next search, `runs/width_depth_long_1/`, started at 02:30:46 UTC. It tests
+widths 32, 16, and 8 at depths 1, 2, 4, and 8, with an explicitly fixed single
+attention head and the same 20,000-update schedule and native binary as
+`width_depth_long_0`. One block at width 32 passed both independent checks at
+step 9,984, moving the measured longer-budget and pooled frontiers to `(1,32)`.
+Width 16 is now training; its live artifacts and the changing search manifest
+are not part of this completed-trial commit. The tested fixed-head driver and
+backward-compatible reporter pass all 119 Python experiment tests.
+
+After the active pass, refine observed width gaps with a small, bounded set of
+midpoints (such as 24 between 32 and 16, or 12 between 16 and 8). Fill omitted
+depths where a measured success transition makes them relevant, for example
+depth 3 between a depth-2 failure and depth-4 success. If the adaptive driver
+skips a narrower width after a failure, that width remains untested; a direct
+single-width run can check it without the traversal heuristic. This is an
+empirical search, not an exhaustive capacity proof or an unlimited budget sweep.
