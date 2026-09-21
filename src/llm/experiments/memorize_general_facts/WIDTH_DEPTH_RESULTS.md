@@ -64,6 +64,7 @@ tested family, grid, and training budgets, not a globally smallest architecture.
 | Previous depth search | 1 | 512 | 8 × 64 | 2,048 | 29,416,960 | 2,944 | 46 | 0 / 10,002 | 0.000131258831 |
 | Coarse | 1 | 256 | 4 × 64 | 1,024 | 13,922,048 | 3,456 | 54 | 0 / 10,002 | 0.000256836483 |
 | Coarse | 1 | 128 | 2 × 64 | 512 | 6,764,416 | 2,944 | 46 | 0 / 10,002 | 0.001181248501 |
+| Coarse | 2 | 64 | 1 × 64 | 256 | 3,383,040 | 4,352 | 68 | 0 / 10,002 | 0.054245373258 |
 
 All successful rows complete all 1,024 sentences exactly under the approved
 five-token-prompt rule. Their fresh-process checkpoint predictions match the
@@ -83,6 +84,19 @@ reload. Its checkpoint is
 artifacts are in `runs/width_depth_coarse_0/width_128/layers_1/`. The independent
 prediction TSV SHA-256 is
 `06ee2f122ccac53cabca3d81a29c82b946fec0f3a72e945a54b58fd1e79364ae`.
+
+Two blocks at width 64 took about 6.0 minutes including evaluation and trainer
+reload. The checkpoint is
+`/home/ubuntu/checkpoints/memorize_general_facts/width_depth_coarse_0/width_64/layers_2/step_4352`;
+artifacts are in `runs/width_depth_coarse_0/width_64/layers_2/`. The independent
+prediction TSV SHA-256 is
+`c202905aa978e337f5125bc69326ae86ebede8a48f28852bd4ad1d7ccbcaccda`.
+
+The current measured 5,000-update frontier contains `(1 block, width 128)` and
+`(2 blocks, width 64)`: neither dominates the other in depth and width. The
+second has the fewest parameters among verified successes so far. This is a
+frontier over measured outcomes, not a capacity impossibility claim; in
+particular, the near-perfect one-block width-64 trial needs a longer-budget check.
 
 ## Verified budget failures
 
@@ -131,9 +145,9 @@ The coarse search started on 2026-09-21 at 00:46:16 UTC with one block at width
 256. Its live record is `runs/width_depth_coarse_0/width_depth_search_summary.json`;
 checkpoints are under
 `/home/ubuntu/checkpoints/memorize_general_facts/width_depth_coarse_0/`.
-Widths 256 and 128 passed both independent checks. One block at width 64
-exhausted its budget with two errors; two-block width-64 training was underway
-by 01:08:02 UTC. All 16 tensors shared with the one-block initialization match
-byte-for-byte, including the final LayerNorm after accounting for file indices.
-The smallest verified success so far is one block at width 128, with 6,764,416
-physical parameters; the width/depth frontier is not complete yet.
+One block at widths 256 and 128 and two blocks at width 64 passed both independent
+checks. All 16 tensors shared between the one-/two-block width-64 initializations
+match byte-for-byte, including final LayerNorm after accounting for file indices.
+Two-block width-32 training was underway by 01:14:02 UTC. The smallest verified
+success so far is two blocks at width 64, with 3,383,040 physical parameters;
+the width/depth frontier is not complete yet.
