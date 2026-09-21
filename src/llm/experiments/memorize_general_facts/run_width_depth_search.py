@@ -57,6 +57,10 @@ def parse_args(argv=None):
     parser.add_argument("--output_dir", type=Path, required=True)
     parser.add_argument("--depths", type=_integer_list, default=list(range(1, 9)))
     parser.add_argument("--widths", type=_integer_list, default=[256, 128, 64, 32, 16])
+    parser.add_argument(
+        "--attention_heads", type=int, default=0,
+        help="Fixed head count dividing every width; 0 preserves the gcd(width, 64) head-dimension policy",
+    )
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--steps", type=int, default=5000)
     parser.add_argument("--eval_every", type=int, default=128)
@@ -70,6 +74,11 @@ def parse_args(argv=None):
         parser.error("depths must be between 1 and 8")
     if any(value <= 0 or value * 4 >= 2**31 for value in args.widths):
         parser.error("widths must be positive with 4 * width < INT_MAX")
+    try:
+        for width in args.widths:
+            model_dimensions(1, width, args.attention_heads)
+    except ValueError as error:
+        parser.error(str(error))
     # Accept either ordering at the command line but record the actual traversal.
     args.depths.sort()
     args.widths.sort(reverse=True)
@@ -93,22 +102,26 @@ def parse_args(argv=None):
     return args
 
 
-def model_dimensions(layers, width):
-    """Preserve head width 64 when possible, otherwise use a divisor of 64.
+def model_dimensions(layers, width, attention_heads=0):
+    """Resolve a fixed head count or the original gcd head-dimension policy.
 
     The masked backend supports compact positive widths, including 8 and 24.
-    The gcd policy is unchanged from the coarse search: width 24 uses three
-    eight-wide heads; an odd width uses one-wide heads. These head changes are
-    explicit architectural choices, not inferred from checkpoint file sizes.
+    With no override, width 24 uses three eight-wide heads; an odd width uses
+    one-wide heads. A positive override holds head count fixed across widths.
+    Head partitions are explicit choices, not inferred from checkpoint sizes.
     The parameter count includes the fixed GPT-2 vocabulary's padded rows and
     learned absolute positions, and counts tied embedding/LM-head storage once.
     """
-    head_dim = math.gcd(width, 64)
+    if type(attention_heads) is not int or not 0 <= attention_heads < 2**31:
+        raise ValueError("attention_heads must be a nonnegative int32 value")
+    if attention_heads and width % attention_heads:
+        raise ValueError(f"attention_heads={attention_heads} must divide every requested width; got {width}")
+    heads = attention_heads or width // math.gcd(width, 64)
     return {
         "layers": layers,
         "width": width,
-        "heads": width // head_dim,
-        "head_dim": head_dim,
+        "heads": heads,
+        "head_dim": width // heads,
         "feed_forward_width": 4 * width,
         "parameters": 51298 * width + layers * (12 * width * width + 13 * width),
     }
@@ -146,6 +159,12 @@ def _validate_counts(result, *, success, path, include_sentences):
 
 def run_search(args, *, run_process=subprocess.run):
     """Run and verify the bounded search; the injectable runner enables CPU tests."""
+    # Validate every requested combination before creating directories, including
+    # widths traversal may later skip. Reuse its resolved shape for both phases.
+    resolved_dimensions = {
+        (layers, width): model_dimensions(layers, width, args.attention_heads)
+        for layers in args.depths for width in args.widths
+    }
     if not args.binary.is_file() or not os.access(args.binary, os.X_OK):
         raise ValueError(f"Native binary is not executable: {args.binary}")
     if not args.corpus.is_file() or not (args.tokenizer / "tokenizer.json").is_file():
@@ -194,7 +213,7 @@ def run_search(args, *, run_process=subprocess.run):
                 ):
                     if _sha256(path) != expected:
                         raise ValueError(f"{label} changed during the width/depth search")
-                dimensions = model_dimensions(layers, width)
+                dimensions = resolved_dimensions[layers, width]
                 output_parent = args.output_dir / f"width_{width}"
                 checkpoint_parent = args.checkpoint_dir / f"width_{width}"
                 output = output_parent / f"layers_{layers}"

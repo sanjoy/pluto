@@ -12,7 +12,8 @@ from summarize_width_depth import frontier, load_runs, main, render_markdown
 
 
 class SummarizeWidthDepthTest(unittest.TestCase):
-    def make_run(self, *, depths=None, widths=None, failures=None, steps=5000, seed=1337):
+    def make_run(self, *, depths=None, widths=None, failures=None, steps=5000, seed=1337,
+                 attention_heads=None):
         # Reuse the driver's no-GPU fake to keep these fixtures synchronized with
         # real command/result/audit schemas. It launches no subprocess or GPU work.
         fixture = driver_tests.WidthDepthSearchTest()
@@ -26,6 +27,8 @@ class SummarizeWidthDepthTest(unittest.TestCase):
             fixture.failures = failures
         fixture.args.steps = steps
         fixture.args.seed = seed
+        if attention_heads is not None:
+            fixture.args.attention_heads = attention_heads
         self.assertEqual(fixture.run_driver(), 0)
         path = fixture.args.output_dir / "width_depth_search_summary.json"
         return path
@@ -87,23 +90,74 @@ class SummarizeWidthDepthTest(unittest.TestCase):
 
     def test_alternate_valid_heads_are_not_conflated_with_default_heads(self):
         first = self.make_run(depths=[1], widths=[64], failures=set())
-        second = self.make_run(depths=[1], widths=[64], failures=set())
-        def change_heads(manifest):
-            trial = manifest["trials"][0]
-            trial.update(heads=2, head_dim=32)
-            for field, filename in (("training_result", "result.txt"),
-                                    ("checkpoint_verification", "independent_verification/result.txt")):
-                trial[field]["heads"] = "2"
-                result_path = Path(trial["output_dir"]) / filename
-                result_path.write_text("".join(f"{key}={value}\n" for key, value in trial[field].items()))
-            for command in trial["commands"][:2]:
-                command[command.index("--attention_heads=1")] = "--attention_heads=2"
-        self.mutate_manifest(second, change_heads)
+        second = self.make_run(depths=[1], widths=[64], failures=set(), attention_heads=2)
         runs = load_runs([first, second], ["onehead", "twoheads"])
         points = frontier([trial for run in runs for trial in run["trials"]])
         self.assertEqual(len(points), 2)
         self.assertEqual({trial["heads"] for trial in points}, {1, 2})
         self.assertIn("2 × 32", render_markdown(runs))
+
+    def test_legacy_manifest_without_head_override_uses_gcd_policy(self):
+        path = self.make_run(depths=[1], widths=[24], failures=set())
+        self.mutate_manifest(path, lambda manifest:
+                             manifest["configuration"].pop("attention_heads", None))
+        trial = load_runs([path])[0]["trials"][0]
+        self.assertEqual((trial["heads"], trial["head_dim"]), (3, 8))
+
+    def test_explicit_zero_head_override_uses_gcd_policy(self):
+        path = self.make_run(depths=[1], widths=[24], failures=set(), attention_heads=0)
+        trial = load_runs([path])[0]["trials"][0]
+        self.assertEqual((trial["heads"], trial["head_dim"]), (3, 8))
+
+    def test_positive_head_override_accepts_compact_one_head_trials(self):
+        path = self.make_run(depths=[1], widths=[24, 8], failures=set(), attention_heads=1)
+        runs = load_runs([path], ["onehead"])
+        self.assertEqual([(trial["width"], trial["heads"], trial["head_dim"])
+                          for trial in runs[0]["trials"]], [(24, 1, 24), (8, 1, 8)])
+        self.assertIn("| onehead | 1 | 24 | 1 × 24 |", render_markdown(runs))
+
+    def test_head_override_must_match_resolved_trial_heads(self):
+        path = self.make_run(depths=[1], widths=[64], failures=set())
+        self.mutate_manifest(path, lambda manifest:
+                             manifest["configuration"].update(attention_heads=2))
+        with self.assertRaisesRegex(ValueError, "attention heads disagree"):
+            load_runs([path])
+
+    def test_missing_or_zero_head_override_rejects_non_gcd_trial_heads(self):
+        for legacy in (True, False):
+            with self.subTest(legacy=legacy):
+                path = self.make_run(depths=[1], widths=[24], failures=set(), attention_heads=1)
+                def clear_override(manifest):
+                    if legacy:
+                        manifest["configuration"].pop("attention_heads")
+                    else:
+                        manifest["configuration"]["attention_heads"] = 0
+                self.mutate_manifest(path, clear_override)
+                with self.assertRaisesRegex(ValueError, "attention heads disagree"):
+                    load_runs([path])
+
+    def test_positive_head_override_still_requires_matching_head_dimension(self):
+        path = self.make_run(depths=[1], widths=[24], failures=set(), attention_heads=1)
+        self.mutate_manifest(path, lambda manifest:
+                             manifest["trials"][0].update(head_dim=8))
+        with self.assertRaisesRegex(ValueError, "head dimension is inconsistent"):
+            load_runs([path])
+
+    def test_invalid_head_override_configuration_is_rejected(self):
+        for invalid in (-1, True, 1.5, "1", None):
+            with self.subTest(invalid=invalid):
+                path = self.make_run(depths=[1], widths=[64], failures=set())
+                self.mutate_manifest(path, lambda manifest:
+                                     manifest["configuration"].update(attention_heads=invalid))
+                with self.assertRaisesRegex(ValueError, "attention_heads must be an integer"):
+                    load_runs([path])
+
+    def test_head_override_must_divide_even_untested_configured_widths(self):
+        path = self.make_run(depths=[1], widths=[24, 8], failures={(1, 24)})
+        self.mutate_manifest(path, lambda manifest:
+                             manifest["configuration"].update(attention_heads=3))
+        with self.assertRaisesRegex(ValueError, "divide every configured width"):
+            load_runs([path])
 
     def test_running_trial_with_no_artifacts_is_explicitly_ignored(self):
         path = self.make_run()

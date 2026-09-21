@@ -88,6 +88,9 @@ def _validate_trial(trial, run):
         raise ValueError("Invalid recorded GPT-2 architecture")
     if head_dim != width // heads:
         raise ValueError("Recorded head dimension is inconsistent")
+    expected_heads = configuration.get("attention_heads", 0) or width // math.gcd(width, 64)
+    if heads != expected_heads:
+        raise ValueError("Recorded attention heads disagree with the search configuration")
     parameters = 51298 * width + layers * (12 * width * width + 13 * width)
     if (trial["feed_forward_width"] != 4 * width
         or trial["parameters"] != parameters
@@ -208,6 +211,10 @@ def load_runs(paths, labels=None):
         _finite(configuration["training_seconds"], "time budget")
         if _finite(configuration["learning_rate"], "learning rate") == 0:
             raise ValueError("learning rate must be positive")
+        attention_heads = _integer(configuration.get("attention_heads", 0), "attention_heads")
+        if attention_heads and any(_integer(width, "configured width", 1) % attention_heads
+                                   for width in configuration["widths"]):
+            raise ValueError("attention_heads must divide every configured width")
         digests = {key: _hash(manifest[key], key) for key in
                    ("corpus_sha256", "tokenizer_sha256", "binary_sha256")}
         if input_hashes is None:

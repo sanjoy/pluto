@@ -51,7 +51,7 @@ class WidthDepthSearchTest(unittest.TestCase):
             phase = "verify" if "verify_checkpoint" in flags else "train"
             layers, width = int(flags["layers"]), int(flags["model_width"])
             self.assertIsNone(stdout)
-            dimensions = model_dimensions(layers, width)
+            dimensions = model_dimensions(layers, width, self.args.attention_heads)
             self.assertEqual(int(flags["attention_heads"]), dimensions["heads"])
             self.assertEqual(int(flags["feed_forward_width"]), 4 * width)
         else:
@@ -372,6 +372,58 @@ class WidthDepthSearchTest(unittest.TestCase):
         self.assertEqual(model_dimensions(1, 32)["heads"], 1)
         self.assertEqual(model_dimensions(1, 256)["heads"], 4)
 
+    def test_fixed_head_count_is_validated_for_every_width_before_creating_directories(self):
+        args = parse_args(self.arguments + ["--widths=32,24,8", "--attention_heads=2"])
+        self.assertEqual(args.attention_heads, 2)
+        for width in args.widths:
+            shape = model_dimensions(1, width, args.attention_heads)
+            self.assertEqual((shape["heads"], shape["head_dim"]), (2, width // 2))
+            self.assertEqual(shape["parameters"], model_dimensions(1, width)["parameters"])
+        for widths, heads in (("32,24", 3), ("24,8,3", 2), ("8", 16)):
+            with self.subTest(widths=widths, heads=heads), redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as raised:
+                    parse_args(self.arguments + [f"--widths={widths}", f"--attention_heads={heads}"])
+                self.assertEqual(raised.exception.code, 2)
+        self.assertFalse(self.args.output_dir.exists())
+        self.assertFalse(self.args.checkpoint_dir.exists())
+
+    def test_invalid_head_override_is_rejected_by_runner_before_creating_directories(self):
+        self.args.widths = [32, 24, 3]
+        self.args.attention_heads = 2
+        with self.assertRaisesRegex(ValueError, "must divide every requested width"):
+            self.run_driver()
+        self.assertEqual(self.calls, [])
+        self.assertFalse(self.args.output_dir.exists())
+        self.assertFalse(self.args.checkpoint_dir.exists())
+
+    def test_single_head_override_is_recorded_and_used_for_training_and_verification(self):
+        self.args = parse_args(self.arguments + ["--widths=32,24,3", "--attention_heads=1"])
+        self.failures = {(1, 24), (2, 3)}
+        self.assertEqual(self.run_driver(), 0)
+        summary = self.summary()
+        self.assertEqual(summary["configuration"]["attention_heads"], 1)
+        self.assertEqual([(trial["layers"], trial["width"]) for trial in summary["trials"]],
+                         [(1, 32), (1, 24), (2, 24), (2, 3), (3, 3)])
+        for trial in summary["trials"]:
+            self.assertEqual(trial["heads"], 1)
+            self.assertEqual(trial["head_dim"], trial["width"])
+            for command in trial["commands"][:2]:
+                self.assertIn("--attention_heads=1", command)
+                self.assertIn(f"--model_width={trial['width']}", command)
+        self.assertEqual(len(self.calls), 15)
+
+    def test_explicit_zero_override_preserves_legacy_shapes_in_both_native_phases(self):
+        self.args = parse_args(self.arguments + ["--widths=24,3", "--attention_heads=0"])
+        self.failures.clear()
+        self.assertEqual(self.run_driver(), 0)
+        summary = self.summary()
+        self.assertEqual(summary["configuration"]["attention_heads"], 0)
+        self.assertEqual([(trial["heads"], trial["head_dim"]) for trial in summary["trials"]],
+                         [(3, 8), (3, 1)])
+        for trial in summary["trials"]:
+            for command in trial["commands"][:2]:
+                self.assertIn("--attention_heads=3", command)
+
     def test_parameter_formula_matches_preceding_fixed_width_experiment(self):
         self.assertEqual(model_dimensions(1, 512)["parameters"], 29416960)
         self.assertEqual(model_dimensions(8, 512)["parameters"], 51483648)
@@ -409,7 +461,7 @@ class WidthDepthSearchTest(unittest.TestCase):
                      "--steps=-1", "--steps=2147483647", "--eval_every=0",
                      "--checkpoint_every=0", "--warmup_steps=-1", "--learning_rate=nan",
                      "--learning_rate=0", "--training_seconds=-1", "--training_seconds=inf",
-                     "--seed=2147483648"):
+                     "--seed=2147483648", "--attention_heads=-1", "--attention_heads=2147483648"):
             with self.subTest(flag=flag), redirect_stderr(io.StringIO()):
                 with self.assertRaises(SystemExit) as raised:
                     parse_args(self.arguments + [flag])
@@ -427,6 +479,7 @@ class WidthDepthSearchTest(unittest.TestCase):
         args = parse_args(self.arguments[:-2])
         self.assertEqual(args.depths, list(range(1, 9)))
         self.assertEqual(args.widths, [256, 128, 64, 32, 16])
+        self.assertEqual(args.attention_heads, 0)
         self.assertEqual(args.batch_size, 16)
         self.assertEqual(args.steps, 5000)
         self.assertEqual(args.eval_every, 128)
