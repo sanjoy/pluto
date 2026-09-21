@@ -162,8 +162,8 @@ absl::Status ValidateWeights(cuda::Executor& executor,
   return absl::OkStatus();
 }
 
-absl::StatusOr<size_t> CountWeightFiles(
-    const std::filesystem::path& directory) {
+absl::Status ValidateWeightFiles(const std::filesystem::path& directory,
+                                 size_t expected_count, bool allow_prefix) {
   std::error_code error;
   std::filesystem::directory_iterator iterator(directory, error);
   if (error)
@@ -174,9 +174,33 @@ absl::StatusOr<size_t> CountWeightFiles(
   while (iterator != end) {
     const std::filesystem::directory_entry& entry = *iterator;
     if (IsWeightFile(entry.path())) {
+      if (!allow_prefix) {
+        const std::string name = entry.path().filename().string();
+        constexpr size_t prefix_size = sizeof(kWeightPrefix) - 1;
+        constexpr size_t suffix_size = sizeof(kWeightSuffix) - 1;
+        size_t index;
+        // Counts alone miss holes filled by a higher index or aliases such as
+        // weight_00.bin. Validate the canonical index before counting entries;
+        // an overflowing index is also unexpected, not a metadata filename.
+        if (!absl::SimpleAtoi(
+                name.substr(prefix_size,
+                            name.size() - prefix_size - suffix_size),
+                &index) ||
+            index >= expected_count ||
+            name != absl::StrCat(kWeightPrefix, index, kWeightSuffix)) {
+          return absl::DataLossError(absl::StrCat(
+              "unexpected checkpoint weight ", name,
+              "; layer requires exactly ", expected_count, " unique weights"));
+        }
+      }
       const bool regular = entry.is_regular_file(error);
       if (error)
         return FileSystemError("cannot inspect", entry.path(), error);
+      if (!allow_prefix && !regular) {
+        return absl::DataLossError(
+            absl::StrCat("checkpoint weight is not a regular file: ",
+                         entry.path().string()));
+      }
       if (regular)
         ++count;
     }
@@ -184,7 +208,12 @@ absl::StatusOr<size_t> CountWeightFiles(
     if (error)
       return FileSystemError("cannot list", directory, error);
   }
-  return count;
+  if (count < expected_count) {
+    return absl::DataLossError(absl::StrCat(
+        "checkpoint contains ", count, " weight files; layer requires ",
+        allow_prefix ? "at least " : "exactly ", expected_count));
+  }
+  return absl::OkStatus();
 }
 
 absl::Status RemoveStaleWeightFiles(
@@ -385,16 +414,12 @@ absl::Status WriteToDirectory(cuda::Executor& executor, const Layer& layer,
 }
 
 absl::Status ReadFromDirectory(cuda::Executor& executor, Layer& layer,
-                               const std::filesystem::path& directory) {
+                               const std::filesystem::path& directory,
+                               bool allow_prefix) {
   RETURN_IF_ERROR(ValidateReadDirectory(directory));
   const std::vector<Buffer*> weights = UniqueWeights(layer);
   RETURN_IF_ERROR(ValidateWeights(executor, weights));
-  ASSIGN_OR_RETURN(const size_t file_count, CountWeightFiles(directory));
-  if (file_count < weights.size()) {
-    return absl::DataLossError(absl::StrCat(
-        "checkpoint contains ", file_count,
-        " weight files; layer requires at least ", weights.size()));
-  }
+  RETURN_IF_ERROR(ValidateWeightFiles(directory, weights.size(), allow_prefix));
 
   std::vector<cuda::PageLockedHostArray<char>> host_weights;
   host_weights.reserve(weights.size());

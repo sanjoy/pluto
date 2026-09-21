@@ -294,10 +294,11 @@ output streams normally and each depth retains its own `train.log`. The driver
 checks that its native binary has not changed between phases, so finish any
 builds before launching it.
 
-Independent checkpoint verification requires exactly the model's unique weight
-files, rejecting a wrong depth rather than silently accepting a prefix
-checkpoint. This stricter experiment-only check does not change the framework's
-general-purpose prefix-loading support.
+Independent checkpoint verification uses the shared checkpoint API's
+`ReadFromDirectory(..., /*allow_prefix=*/false)` option to require exactly the
+model's unique weight files, rejecting a wrong depth rather than silently
+accepting a prefix checkpoint. The reader still allows prefix loading by default
+for callers such as activation generators.
 
 ## Width/depth experiments
 

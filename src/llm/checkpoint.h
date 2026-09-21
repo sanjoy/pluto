@@ -37,11 +37,16 @@ absl::Status WriteToDirectory(cuda::Executor& executor, const Layer& layer,
 // byte size is checked before any device buffer is modified. Additional
 // higher-index weight files are ignored, allowing a prefix layer such as an
 // activation generator to read weights from a complete-model checkpoint.
+// Set allow_prefix=false to require exactly the layer's unique weight files:
+// extra numbered weights, noncanonical aliases such as weight_00.bin, and
+// numbered entries that are not regular files are rejected. Unrelated metadata
+// is allowed in either mode. Tied weights count only once in both modes.
 // Uploads are queued on executor; subsequent work on that executor observes
 // the restored weights in order. Host staging destruction is also ordered on
 // that stream, so this function need not synchronize computation.
 absl::Status ReadFromDirectory(cuda::Executor& executor, Layer& layer,
-                               const std::filesystem::path& directory);
+                               const std::filesystem::path& directory,
+                               bool allow_prefix = true);
 
 // Tries step_N children from newest to oldest and restores the first valid
 // checkpoint, using FindLatestCheckpoint's equal-step tie rule. Malformed or

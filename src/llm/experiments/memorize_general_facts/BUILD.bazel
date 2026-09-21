@@ -4,29 +4,6 @@ load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("@rules_cuda//cuda:defs.bzl", "cuda_library")
 
 cc_library(
-    name = "checkpoint_validation",
-    srcs = ["checkpoint_validation.cc"],
-    hdrs = ["checkpoint_validation.h"],
-    deps = [
-        "@abseil-cpp//absl/container:flat_hash_set",
-        "@abseil-cpp//absl/status",
-        "@abseil-cpp//absl/strings",
-    ],
-)
-
-cc_test(
-    name = "checkpoint_validation_test",
-    size = "small",
-    srcs = ["checkpoint_validation_test.cc"],
-    deps = [
-        ":checkpoint_validation",
-        "@abseil-cpp//absl/status",
-        "@abseil-cpp//absl/strings",
-        "@googletest//:gtest_main",
-    ],
-)
-
-cc_library(
     name = "compact_vocabulary",
     srcs = ["compact_vocabulary.cc"],
     hdrs = ["compact_vocabulary.h"],
@@ -143,7 +120,6 @@ cc_binary(
     name = "memorize_general_facts",
     srcs = ["memorize_general_facts.cc"],
     deps = [
-        ":checkpoint_validation",
         ":compact_vocabulary",
         ":dataset",
         ":gradient_clipper",

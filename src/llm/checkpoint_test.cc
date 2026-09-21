@@ -137,7 +137,12 @@ TEST_F(CheckpointTest, RoundTripsUniqueWeightsAndRemovesStaleWeights) {
       cudaSuccess);
   ASSERT_TRUE(executor_->Synchronize().ok());
 
-  ASSERT_TRUE(ReadFromDirectory(*executor_, layer, directory).ok());
+  // Exact loading counts the shared allocation once and permits metadata.
+  std::ofstream(directory / "config.txt") << "model metadata";
+  std::ofstream(directory / "weight_notes.txt") << "not a numbered weight";
+  ASSERT_TRUE(ReadFromDirectory(*executor_, layer, directory,
+                                /*allow_prefix=*/false)
+                  .ok());
   EXPECT_EQ(CopyFromDevice(layer.weights()[0]), first_contents);
   EXPECT_EQ(CopyFromDevice(layer.weights()[1]), second_contents);
   EXPECT_EQ(layer.weights()[0].data(), layer.weights()[2].data());
@@ -167,12 +172,16 @@ TEST_F(CheckpointTest, RejectsWrongFileSizeBeforeModifyingAnyWeight) {
       cudaSuccess);
   ASSERT_TRUE(executor_->Synchronize().ok());
 
-  const absl::Status status = ReadFromDirectory(*executor_, layer, directory);
-  EXPECT_EQ(status.code(), absl::StatusCode::kDataLoss);
-  EXPECT_EQ(CopyFromDevice(layer.weights()[0]),
-            std::vector<unsigned char>(32, 0x7b));
-  EXPECT_EQ(CopyFromDevice(layer.weights()[1]),
-            std::vector<unsigned char>(48, 0x7b));
+  for (bool allow_prefix : {true, false}) {
+    SCOPED_TRACE(allow_prefix);
+    const absl::Status status =
+        ReadFromDirectory(*executor_, layer, directory, allow_prefix);
+    EXPECT_EQ(status.code(), absl::StatusCode::kDataLoss);
+    EXPECT_EQ(CopyFromDevice(layer.weights()[0]),
+              std::vector<unsigned char>(32, 0x7b));
+    EXPECT_EQ(CopyFromDevice(layer.weights()[1]),
+              std::vector<unsigned char>(48, 0x7b));
+  }
 }
 
 TEST_F(CheckpointTest, LoadsLayerPrefixFromLargerCheckpoint) {
@@ -197,8 +206,112 @@ TEST_F(CheckpointTest, LoadsLayerPrefixFromLargerCheckpoint) {
                             executor_->stream()),
             cudaSuccess);
 
+  // All required prefix shapes match, but exact loading must reject the extra
+  // tensor before uploading anything. This also catches a shallower model
+  // mistaking a later block's identically shaped norm for its final norm.
+  EXPECT_EQ(ReadFromDirectory(*executor_, prefix_layer, directory,
+                              /*allow_prefix=*/false)
+                .code(),
+            absl::StatusCode::kDataLoss);
+  EXPECT_EQ(CopyFromDevice(prefix_layer.weights()[0]),
+            std::vector<unsigned char>(24, 0));
+  // Prefix mode does not read or validate the unused tensor's contents.
+  std::filesystem::resize_file(directory / "weight_1.bin", 0);
   ASSERT_TRUE(ReadFromDirectory(*executor_, prefix_layer, directory).ok());
   EXPECT_EQ(CopyFromDevice(prefix_layer.weights()[0]), expected);
+  ASSERT_TRUE(ReadFromDirectory(*executor_, prefix_layer, directory,
+                                /*allow_prefix=*/true)
+                  .ok());
+  EXPECT_EQ(CopyFromDevice(prefix_layer.weights()[0]), expected);
+}
+
+TEST_F(CheckpointTest, ExactLoadingRejectsMalformedFileSetsBeforeAnyUpload) {
+  auto first = Buffer::Allocate(*executor_, 24);
+  auto second = Buffer::Allocate(*executor_, 24);
+  ASSERT_TRUE(first.ok()) << first.status();
+  ASSERT_TRUE(second.ok()) << second.status();
+  CheckpointLayer layer(BufferVec{*first, *second});
+  for (const std::string malformed :
+       {"missing", "hole", "alias", "extra-alias", "directory",
+        "extra-directory", "overflow"}) {
+    SCOPED_TRACE(malformed);
+    const auto directory = std::filesystem::path(testing::TempDir()) /
+                           ("checkpoint-exact-" + malformed);
+    CopyToDevice(layer.weights()[0], Pattern(24, 3));
+    CopyToDevice(layer.weights()[1], Pattern(24, 7));
+    ASSERT_TRUE(WriteToDirectory(*executor_, layer, directory).ok());
+    if (malformed == "missing") {
+      ASSERT_TRUE(std::filesystem::remove(directory / "weight_1.bin"));
+    } else if (malformed == "hole") {
+      // Preserve the file count, but replace a required index with another.
+      std::filesystem::rename(directory / "weight_1.bin",
+                              directory / "weight_2.bin");
+    } else if (malformed == "alias") {
+      std::filesystem::rename(directory / "weight_1.bin",
+                              directory / "weight_01.bin");
+    } else if (malformed == "extra-alias") {
+      ASSERT_TRUE(std::filesystem::copy_file(directory / "weight_0.bin",
+                                             directory / "weight_00.bin"));
+    } else if (malformed == "directory") {
+      ASSERT_TRUE(std::filesystem::remove(directory / "weight_1.bin"));
+      ASSERT_TRUE(
+          std::filesystem::create_directory(directory / "weight_1.bin"));
+    } else if (malformed == "extra-directory") {
+      // Counting only regular files would incorrectly accept this checkpoint.
+      ASSERT_TRUE(
+          std::filesystem::create_directory(directory / "weight_2.bin"));
+    } else {
+      std::ofstream(directory / "weight_99999999999999999999999999999999.bin")
+          << "unexpected numbered weight";
+    }
+    const auto sentinel = Pattern(24, 91);
+    CopyToDevice(layer.weights()[0], sentinel);
+    CopyToDevice(layer.weights()[1], sentinel);
+    EXPECT_EQ(ReadFromDirectory(*executor_, layer, directory,
+                                /*allow_prefix=*/false)
+                  .code(),
+              absl::StatusCode::kDataLoss);
+    EXPECT_EQ(CopyFromDevice(layer.weights()[0]), sentinel);
+    EXPECT_EQ(CopyFromDevice(layer.weights()[1]), sentinel);
+  }
+}
+
+TEST_F(CheckpointTest, ExactLoadingSupportsWeightlessLayers) {
+  CheckpointLayer layer(BufferVec{});
+  const auto directory =
+      std::filesystem::path(testing::TempDir()) / "checkpoint-exact-empty";
+  ASSERT_TRUE(std::filesystem::create_directories(directory));
+  std::ofstream(directory / "config.txt") << "weightless model";
+  EXPECT_TRUE(ReadFromDirectory(*executor_, layer, directory,
+                                /*allow_prefix=*/false)
+                  .ok());
+  std::ofstream(directory / "weight_0.bin") << "unexpected weight";
+  EXPECT_EQ(ReadFromDirectory(*executor_, layer, directory,
+                              /*allow_prefix=*/false)
+                .code(),
+            absl::StatusCode::kDataLoss);
+  EXPECT_TRUE(ReadFromDirectory(*executor_, layer, directory).ok());
+}
+
+TEST_F(CheckpointTest, BothLoadingModesRejectInvalidDirectoryPaths) {
+  CheckpointLayer layer(BufferVec{});
+  const auto root =
+      std::filesystem::path(testing::TempDir()) / "checkpoint-read-invalid";
+  ASSERT_TRUE(std::filesystem::create_directories(root));
+  std::ofstream(root / "not-a-directory") << "regular file";
+  for (bool allow_prefix : {true, false}) {
+    SCOPED_TRACE(allow_prefix);
+    EXPECT_EQ(ReadFromDirectory(*executor_, layer, {}, allow_prefix).code(),
+              absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ(
+        ReadFromDirectory(*executor_, layer, root / "missing", allow_prefix)
+            .code(),
+        absl::StatusCode::kNotFound);
+    EXPECT_EQ(ReadFromDirectory(*executor_, layer, root / "not-a-directory",
+                                allow_prefix)
+                  .code(),
+              absl::StatusCode::kFailedPrecondition);
+  }
 }
 
 TEST_F(CheckpointTest, RejectsMissingRequiredWeightAndWrongExecutor) {
@@ -212,15 +325,20 @@ TEST_F(CheckpointTest, RejectsMissingRequiredWeightAndWrongExecutor) {
       std::filesystem::path(testing::TempDir()) / "checkpoint-missing-weight";
   CheckpointLayer prefix_layer(BufferVec{*first});
   ASSERT_TRUE(WriteToDirectory(*executor_, prefix_layer, directory).ok());
-  EXPECT_EQ(ReadFromDirectory(*executor_, full_layer, directory).code(),
-            absl::StatusCode::kDataLoss);
+  for (bool allow_prefix : {true, false})
+    EXPECT_EQ(ReadFromDirectory(*executor_, full_layer, directory, allow_prefix)
+                  .code(),
+              absl::StatusCode::kDataLoss);
 
   auto other_executor = cuda::Executor::Create();
   ASSERT_TRUE(other_executor.ok()) << other_executor.status();
   EXPECT_EQ(WriteToDirectory(**other_executor, full_layer, directory).code(),
             absl::StatusCode::kInvalidArgument);
-  EXPECT_EQ(ReadFromDirectory(**other_executor, full_layer, directory).code(),
-            absl::StatusCode::kInvalidArgument);
+  for (bool allow_prefix : {true, false})
+    EXPECT_EQ(
+        ReadFromDirectory(**other_executor, full_layer, directory, allow_prefix)
+            .code(),
+        absl::StatusCode::kInvalidArgument);
   EXPECT_TRUE((*other_executor)->Synchronize().ok());
 }
 
