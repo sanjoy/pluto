@@ -104,6 +104,7 @@ cc_test(
     deps = [
         ":generate_greedy_continuation",
         ":layer",
+        ":layer_hooks",
         "//src/cuda:buffer",
         "//src/cuda:executor",
         "//src/cuda:page_locked_host_array",

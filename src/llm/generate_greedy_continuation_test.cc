@@ -18,6 +18,7 @@
 #include "src/cuda/executor.h"
 #include "src/cuda/page_locked_host_array.h"
 #include "src/llm/layer.h"
+#include "src/llm/layer_hooks.h"
 #include "src/util/status_macros.h"
 
 namespace pluto::llm {
@@ -151,6 +152,87 @@ TEST_F(GenerateGreedyContinuationTest,
   ASSERT_EQ(model.input_addresses.size(), 3u);
   EXPECT_EQ(model.input_addresses[0], model.input_addresses[1]);
   EXPECT_EQ(model.input_addresses[0], model.input_addresses[2]);
+}
+
+TEST_F(GenerateGreedyContinuationTest,
+       HooksAndTokenCallbackTrackActualOutputs) {
+  ScriptedLayer model(6, 12, [](absl::Span<const int>, int call) {
+    return Logits(6, 10, 12, 1 + call, call == 2 ? 9 : 3 + call);
+  });
+  int forwards = 0;
+  LayerHooks hooks{.activation_hook = [&](auto& executor, auto, auto, auto) {
+    EXPECT_EQ(&executor, executor_.get());
+    ++forwards;
+    return absl::OkStatus();
+  }};
+  std::vector<std::vector<int>> prefixes;
+  std::vector<int> tokens;
+  const GreedyGenerationOptions options{
+      .layer_hooks = &hooks,
+      .on_token = [&](cuda::Executor& executor, absl::Span<const int> prefix,
+                      int token) {
+        EXPECT_EQ(&executor, executor_.get());
+        EXPECT_EQ(forwards, tokens.size() + 1);
+        prefixes.emplace_back(prefix.begin(), prefix.end());
+        tokens.push_back(token);
+        return absl::OkStatus();
+      }};
+  auto generated =
+      GenerateGreedyContinuation(*executor_, model, {1, 2}, 10, 9, 4, options);
+  ASSERT_TRUE(generated.ok()) << generated.status();
+  EXPECT_EQ(forwards, 3);  // Includes EOS, but on_token must not print it.
+  EXPECT_EQ(tokens, (std::vector<int>{3, 4}));
+  EXPECT_EQ(prefixes, (std::vector<std::vector<int>>{{1, 2}, {1, 2, 3}}));
+  EXPECT_EQ(std::vector<int>(generated->begin(), generated->end()), tokens);
+}
+
+TEST_F(GenerateGreedyContinuationTest, InstrumentationErrorsStopGeneration) {
+  for (bool fail_forward_hook : {false, true}) {
+    SCOPED_TRACE(fail_forward_hook);
+    ScriptedLayer model(6, 12, [](absl::Span<const int>, int call) {
+      return Logits(6, 10, 12, 1 + call, 3 + call);
+    });
+    int token_calls = 0;
+    LayerHooks hooks{.activation_hook = [&](auto&, auto, auto, auto) {
+      return fail_forward_hook ? absl::AbortedError("forward marker")
+                               : absl::OkStatus();
+    }};
+    const GreedyGenerationOptions options{
+        .layer_hooks = &hooks, .on_token = [&](auto&, auto, int) {
+          ++token_calls;
+          return absl::UnavailableError("token marker");
+        }};
+    auto generated = GenerateGreedyContinuation(*executor_, model, {1, 2}, 10,
+                                                9, 4, options);
+    EXPECT_EQ(generated.status().code(), fail_forward_hook
+                                             ? absl::StatusCode::kAborted
+                                             : absl::StatusCode::kUnavailable);
+    EXPECT_EQ(token_calls, fail_forward_hook ? 0 : 1);
+    EXPECT_EQ(model.forward_inputs.size(), 1u);
+  }
+}
+
+TEST_F(GenerateGreedyContinuationTest,
+       TokenCallbackSkipsInvalidLogitsAndNoWork) {
+  ScriptedLayer model(4, 10, [](absl::Span<const int>, int) {
+    return std::vector<float>(40, std::numeric_limits<float>::quiet_NaN());
+  });
+  const GreedyGenerationOptions options{.on_token = [](auto&, auto, int) {
+    ADD_FAILURE() << "no token was produced";
+    return absl::OkStatus();
+  }};
+  EXPECT_EQ(
+      GenerateGreedyContinuation(*executor_, model, {1}, 10, 9, 1, options)
+          .status()
+          .code(),
+      absl::StatusCode::kDataLoss);
+  EXPECT_TRUE(
+      GenerateGreedyContinuation(*executor_, model, {1}, 10, 9, 0, options)
+          .ok());
+  EXPECT_TRUE(GenerateGreedyContinuation(*executor_, model, {1, 2, 3, 4}, 10, 9,
+                                         4, options)
+                  .ok());
+  EXPECT_EQ(model.forward_inputs.size(), 1u);
 }
 
 TEST_F(GenerateGreedyContinuationTest,

@@ -130,6 +130,7 @@ TEST(MemorizeGeneralFactsCliTest, FiltersEveryFlagByExecutionPath) {
       {"infer_checkpoint", false, true, false},
       {"prompt", false, true, false},
       {"generation_tokens", false, true, false},
+      {"print_attention_probs", false, true, false},
       {"verify_checkpoint", false, false, true},
   };
   for (const auto& test : cases) {
@@ -164,7 +165,8 @@ TEST(MemorizeGeneralFactsCliTest, AcceptsCompleteFlagSetsForEachPath) {
       Validate(Mode::kInferModel,
                {"mode", "tokenizer", "layers", "model_width", "attention_heads",
                 "feed_forward_width", "compact_vocabulary", "seed",
-                "infer_checkpoint", "prompt", "generation_tokens"},
+                "infer_checkpoint", "prompt", "generation_tokens",
+                "print_attention_probs"},
                "/model", "", "/tokenizer", "")
           .ok());
   EXPECT_TRUE(

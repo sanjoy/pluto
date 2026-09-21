@@ -72,6 +72,26 @@ printing EOS, after `--generation_tokens` new tokens, or when prompt plus
 continuation reaches 1,024 tokens. Longer prompts are rejected, not silently
 truncated. There is no KV cache: each new token recomputes the model forward.
 
+Add `--print_attention_probs` to print attention for each generated token, in
+both one-prompt and interactive inference. This flag is rejected in training
+and corpus verification, even when explicitly set to false. The usual response
+is still printed after the attention reports.
+
+Each report identifies the generated token, each transformer's attention layer,
+and each head separately. Positions are zero-based: **output token 6** is
+predicted from input positions 0 through 5, so its report is a **6 x 6** matrix
+with only the lower triangle printed. Rows are queries, columns are keys; row N
+contains N+1 probabilities. Token labels use the original tokenizer even for
+compact-vocabulary checkpoints. Future positions, right padding, and EOS
+outputs are omitted; heads are not averaged and probabilities are not
+renormalized for printing. These are scaled causal softmax attention weights,
+not output-token probabilities or proof that a token caused the prediction.
+
+Inspection uses `LayerHooks::attention_probabilities_hook`. The normal
+FlashAttention computation remains unchanged; an extra cuTile pass materializes
+its attention probabilities only when inspection is enabled. This costs
+quadratic device memory and can produce substantial output for long prompts.
+
 `--generation_tokens=0` echoes a valid prompt without generating. An explicitly
 empty `--prompt` is rejected; blank interactive lines are skipped. If a preferred
 GPT-2 token is absent, the compact tokenizer tries an exact encoding with retained

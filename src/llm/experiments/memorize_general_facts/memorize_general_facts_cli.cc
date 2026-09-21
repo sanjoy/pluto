@@ -47,6 +47,7 @@ constexpr FlagRule kFlagRules[] = {
     {"infer_checkpoint", kGenerate},
     {"prompt", kGenerate},
     {"generation_tokens", kGenerate},
+    {"print_attention_probs", kGenerate},
     {"verify_checkpoint", kVerify},
 };
 

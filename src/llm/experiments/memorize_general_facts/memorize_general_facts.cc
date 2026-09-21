@@ -37,6 +37,7 @@
 #include "src/llm/batch_validation.h"
 #include "src/llm/checkpoint.h"
 #include "src/llm/experiments/gpt2_shakespeare/gpt2.h"
+#include "src/llm/experiments/memorize_general_facts/attention_inspection.h"
 #include "src/llm/experiments/memorize_general_facts/memorize_general_facts_cli.h"
 #include "src/llm/extract_top1_ids.h"
 #include "src/llm/generate_greedy_continuation.h"
@@ -63,6 +64,9 @@ ABSL_FLAG(std::string, prompt, "",
 ABSL_FLAG(int, generation_tokens, 64,
           "Maximum new tokens for infer_checkpoint; also stops at EOS or the "
           "context limit");
+ABSL_FLAG(bool, print_attention_probs, false,
+          "In prompt inference, print each layer/head's causal attention "
+          "probabilities for each generated token (can produce large output)");
 ABSL_FLAG(std::string, output_dir,
           "src/llm/experiments/memorize_general_facts/runs/baseline",
           "Experiment artifacts");
@@ -110,6 +114,7 @@ absl::StatusOr<Mode> RunModeFromFlags() {
   AddIfExplicitlySet(FLAGS_infer_checkpoint, &explicitly_set);
   AddIfExplicitlySet(FLAGS_prompt, &explicitly_set);
   AddIfExplicitlySet(FLAGS_generation_tokens, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_print_attention_probs, &explicitly_set);
   AddIfExplicitlySet(FLAGS_output_dir, &explicitly_set);
   AddIfExplicitlySet(FLAGS_layers, &explicitly_set);
   AddIfExplicitlySet(FLAGS_model_width, &explicitly_set);
@@ -609,11 +614,37 @@ absl::Status RunInference(cuda::Executor& executor,
 
   const auto complete = [&](const std::string& prompt) -> absl::Status {
     ASSIGN_OR_RETURN(auto encoded, model_tokenizer->Encode(executor, prompt));
+    // A fresh inspector per prompt also discards a final EOS pass, whose
+    // attention must not be printed as though it produced continuation text.
+    AttentionProbabilityInspector inspection(executor);
+    GreedyGenerationOptions options;
+    if (absl::GetFlag(FLAGS_print_attention_probs)) {
+      options.layer_hooks = &inspection.layer_hooks();
+      options.on_token = [&](cuda::Executor& callback_executor,
+                             absl::Span<const int> prefix,
+                             int token) -> absl::Status {
+        if (vocabulary == nullptr)
+          return inspection.Print(callback_executor, *detokenizer, prefix,
+                                  token, std::cout);
+        // Attention indices use model positions, but labels must decode IDs
+        // through the checkpoint's compact mapping, just like the response.
+        ASSIGN_OR_RETURN(auto original_prefix,
+                         cuda::PageLockedHostArray<int>::CopyFrom(
+                             callback_executor, prefix));
+        for (int& id : original_prefix) {
+          ASSIGN_OR_RETURN(id, vocabulary->OriginalId(id));
+        }
+        ASSIGN_OR_RETURN(auto original_token, vocabulary->OriginalId(token));
+        return inspection.Print(callback_executor, *detokenizer,
+                                original_prefix.span(), original_token,
+                                std::cout);
+      };
+    }
     ASSIGN_OR_RETURN(
         auto generated,
-        GenerateGreedyContinuation(executor, *model, encoded.span(),
-                                   model_tokenizer->vocab_size(), eos_token,
-                                   absl::GetFlag(FLAGS_generation_tokens)));
+        GenerateGreedyContinuation(
+            executor, *model, encoded.span(), model_tokenizer->vocab_size(),
+            eos_token, absl::GetFlag(FLAGS_generation_tokens), options));
     if (vocabulary != nullptr) {
       for (int& token : generated) {
         ASSIGN_OR_RETURN(token, vocabulary->OriginalId(token));

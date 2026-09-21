@@ -16,7 +16,7 @@ namespace pluto::llm {
 absl::StatusOr<cuda::PageLockedHostArray<int>> GenerateGreedyContinuation(
     cuda::Executor& executor, const Layer& model,
     absl::Span<const int> prompt_tokens, int vocabulary_size, int eos_token,
-    int max_new_tokens) {
+    int max_new_tokens, const GreedyGenerationOptions& options) {
   if (vocabulary_size <= 0 || eos_token < 0 || eos_token >= vocabulary_size)
     return absl::InvalidArgumentError("invalid generation vocabulary or EOS");
   if (max_new_tokens < 0)
@@ -98,7 +98,8 @@ absl::StatusOr<cuda::PageLockedHostArray<int>> GenerateGreedyContinuation(
                         targets.size_bytes(), cudaMemcpyHostToDevice,
                         executor.stream()),
         "upload generation row mask"));
-    ASSIGN_OR_RETURN(auto forward, model.fwd(executor, {&device_context, 1}));
+    ASSIGN_OR_RETURN(auto forward, model.fwd(executor, {&device_context, 1},
+                                             options.layer_hooks));
     // Inference never calls backward. Release all saved intermediates on the
     // executor stream before the next full-context forward pass.
     forward.state = BackwardState{};
@@ -123,6 +124,9 @@ absl::StatusOr<cuda::PageLockedHostArray<int>> GenerateGreedyContinuation(
       return absl::DataLossError("generation produced an invalid token ID");
     if (token == eos_token)
       break;
+    if (options.on_token)
+      RETURN_IF_ERROR(
+          options.on_token(executor, context.span().first(used), token));
     context[used++] = token;
   }
   return cuda::PageLockedHostArray<int>::CopyFrom(
