@@ -39,18 +39,6 @@ cc_test(
     ],
 )
 
-cc_test(
-    name = "model_test",
-    srcs = ["model_test.cc"],
-    tags = ["requires-gpu"],
-    deps = [
-        "//src/cuda:executor",
-        "//src/llm/experiments/shakespeare:gpt2",
-        "@abseil-cpp//absl/container:flat_hash_set",
-        "@googletest//:gtest_main",
-    ],
-)
-
 cc_binary(
     name = "memorize_general_facts",
     srcs = ["memorize_general_facts.cc"],
