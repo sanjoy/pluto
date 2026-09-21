@@ -131,6 +131,7 @@ particular, the near-perfect one-block width-64 trial needs a longer-budget chec
 | Coarse | 3 | 32 | 1,679,648 | 5,000 | 2,854 / 10,002 | 2,841 at step 4,992 | 1.868303412209 |
 | Coarse | 4 | 32 | 1,692,352 | 5,000 | 2,894 / 10,002 | 2,894 at step 5,000 | 1.922002390574 |
 | Coarse | 5 | 32 | 1,705,056 | 5,000 | 2,841 / 10,002 | 2,840 at step 4,992 | 1.873806013764 |
+| Coarse | 6 | 32 | 1,717,760 | 5,000 | 2,951 / 10,002 | 2,932 at step 4,992 | 1.941699876939 |
 
 The width-64, one-block trial reached its full update cap, not its time cap.
 Its final checkpoint reloaded with the same two errors and passed the independent
@@ -181,6 +182,14 @@ Checkpoint:
 Artifacts: `runs/width_depth_coarse_0/width_32/layers_5/`. Independent prediction
 TSV SHA-256: `aa1ab4227d972b117a71d91090c06011d9255b016c59f644fd929113dadb91c4`.
 
+Six blocks at width 32 reached the full update cap in about 9.2 minutes, with
+45 exact sentences and 2,951 errors. Fresh checkpoint inference and the
+independent retokenization audit reproduce the final prediction TSV exactly.
+Checkpoint:
+`/home/ubuntu/checkpoints/memorize_general_facts/width_depth_coarse_0/width_32/layers_6/step_5000`.
+Artifacts: `runs/width_depth_coarse_0/width_32/layers_6/`. Independent prediction
+TSV SHA-256: `b232c89d1de42a3a1b755cf823072b5d4a509a6df2daebc9b37d8abb7565d7bc`.
+
 These narrow models learned the end-of-sentence target before memorizing the
 contents. Directly counting the independently checked prediction TSVs gives:
 
@@ -190,6 +199,7 @@ contents. Directly counting the independently checked prediction TSVs gives:
 | 3 | 327 | 2,527 | 0 |
 | 4 | 356 | 2,538 | 0 |
 | 5 | 326 | 2,515 | 0 |
+| 6 | 345 | 2,606 | 0 |
 
 Here the first suffix target has token index 5, EOS has token ID 50,256, and the
 remaining scored targets are later content. This describes the error locations,
@@ -227,9 +237,10 @@ checkpoints are under
 One block at widths 256 and 128 and two blocks at width 64 passed both independent
 checks. All 16 tensors shared between the one-/two-block width-64 initializations
 match byte-for-byte, including final LayerNorm after accounting for file indices.
-Two through five blocks at width 32 exhausted the update budget. Six-block
+Two through six blocks at width 32 exhausted the update budget. Seven-block
 width-32 training is now underway. The 28 shared initial tensors for depths
 two/three, 40 for depths three/four, 52 for depths four/five, and 64 for depths
-five/six match byte-for-byte, including the relocated final norms.
+five/six match byte-for-byte, including the relocated final norms. The 76 shared
+initial tensors for depths six/seven also match exactly.
 The smallest verified success so far is two blocks at width 64, with 3,383,040
 physical parameters; the width/depth frontier is not complete yet.
