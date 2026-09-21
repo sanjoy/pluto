@@ -314,8 +314,8 @@ absl::StatusOr<std::unique_ptr<AttentionLayer>> AttentionLayer::Create(
     return absl::InvalidArgumentError(
         "embedding_dim must be divisible by num_heads");
   }
-  RETURN_IF_ERROR(internal::ValidateTiledExtent(embedding_dim / num_heads,
-                                                "attention head dimension"));
+  // Head width is a logical extent. Every tiled Q/K/V access masks its tail;
+  // neither the dot-product scale nor the model storage includes padded lanes.
   return absl::WrapUnique(new AttentionLayer(
       executor, context_length, num_heads, embedding_dim, data_type));
 }

@@ -39,7 +39,8 @@ struct Gpt2Config {
   int feed_forward_width = kGpt2FeedForwardWidth;
 
   // Checks shape and current CUDA-kernel limits without allocating memory.
-  // Depth is in [0, 8]; model/MLP/head widths must be positive multiples of 16.
+  // Depth is in [0, 8]; model/MLP/head widths must be positive. Compute-tile
+  // padding never adds stored parameters or contributes to model statistics.
   // Parameter tensors and single-sample intermediate tensors must fit the
   // backend's 32-bit element counts. Larger batches still need to respect
   // the per-layer runtime buffer/grid limits.

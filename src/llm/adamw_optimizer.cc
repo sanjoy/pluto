@@ -38,17 +38,21 @@ __tile_global__ void AdamWUpdateKernel(
       ct::tensor_span{second_moment, ct::extents{elements}}, ct::shape{16_ic}};
 
   const int block = ct::bid().x;
-  auto g = gradient_view.load(block);
-  auto m = beta1 * first_view.load(block) + (1.0f - beta1) * g;
-  auto v = beta2 * second_view.load(block) + (1.0f - beta2) * g * g;
-  auto w = weight_view.load(block);
+  // Biases and normalization parameters can be shorter than one compute tile.
+  // Mask every access so the optimizer uses the logical allocation size, not
+  // a padded parameter tensor with extra trainable degrees of freedom.
+  auto g = gradient_view.load_masked(block);
+  auto m = beta1 * first_view.load_masked(block) + (1.0f - beta1) * g;
+  auto v = beta2 * second_view.load_masked(block) + (1.0f - beta2) * g * g;
+  auto w = weight_view.load_masked(block);
   auto update = (m * inverse_bias_correction1) /
                     (ct::sqrt(v * inverse_bias_correction2) + epsilon) +
                 weight_decay * w;
-  weight_view.store(w - learning_rate * update, block);
-  first_view.store(m, block);
-  second_view.store(v, block);
-  gradient_view.store(ct::zeros<ct::tile<float, ct::shape<16>>>(), block);
+  weight_view.store_masked(w - learning_rate * update, block);
+  first_view.store_masked(m, block);
+  second_view.store_masked(v, block);
+  gradient_view.store_masked(ct::zeros<ct::tile<float, ct::shape<16>>>(),
+                             block);
 }
 
 }  // namespace
@@ -83,9 +87,11 @@ absl::StatusOr<std::unique_ptr<AdamWOptimizer>> AdamWOptimizer::Create(
       return absl::InvalidArgumentError(
           "AdamW parameters must be matching FP32 buffers on its executor");
     }
-    const int elements = static_cast<int>(weight.size_bytes() / sizeof(float));
-    RETURN_IF_ERROR(
-        internal::ValidateTiledExtent(elements, "AdamW parameter elements"));
+    // Validate the size before narrowing it to the kernel's int argument.
+    ASSIGN_OR_RETURN(const int elements,
+                     internal::ElementCount(executor, weight, sizeof(float),
+                                            "AdamW parameter"));
+    (void)elements;
     ASSIGN_OR_RETURN(auto first,
                      Buffer::Allocate(executor, weight.size_bytes()));
     ASSIGN_OR_RETURN(auto second,
@@ -138,7 +144,7 @@ absl::Status AdamWOptimizer::ApplyStep() {
   for (size_t index = 0; index < weights_.size(); ++index) {
     const int elements =
         static_cast<int>(weights_[index].size_bytes() / sizeof(float));
-    AdamWUpdateKernel<<<internal::TileCount(elements), 1, 0,
+    AdamWUpdateKernel<<<internal::MaskedTileCount(elements), 1, 0,
                         executor_.stream()>>>(
         static_cast<float*>(weights_[index].data()),
         static_cast<float*>(gradients_[index].data()),

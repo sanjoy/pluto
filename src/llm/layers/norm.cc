@@ -346,7 +346,7 @@ absl::StatusOr<std::unique_ptr<LayerNormLayer>> LayerNormLayer::Create(
   if (!(epsilon > 0.0f))
     return absl::InvalidArgumentError("layer-norm epsilon must be positive");
   RETURN_IF_ERROR(
-      internal::ValidateTiledExtent(embedding_dim, "embedding_dim"));
+      internal::ValidatePositiveExtent(embedding_dim, "embedding_dim"));
   const size_t bytes = static_cast<size_t>(embedding_dim) * sizeof(float);
   ASSIGN_OR_RETURN(auto gamma, Buffer::Allocate(executor, bytes));
   ASSIGN_OR_RETURN(auto beta, Buffer::Allocate(executor, bytes));
@@ -412,9 +412,9 @@ absl::StatusOr<BufferVec> LayerNormLayer::bwd_impl(
       !state.children.empty())
     return absl::InvalidArgumentError(
         "LayerNormLayer bwd received an incompatible gradient or state");
-  ASSIGN_OR_RETURN(int rows, internal::MatrixRows(executor, output_gradients[0],
-                                                  embedding_dim_,
-                                                  "layer-norm output gradient"));
+  ASSIGN_OR_RETURN(int rows, internal::MatrixRows(
+                                 executor, output_gradients[0], embedding_dim_,
+                                 "layer-norm output gradient"));
   RETURN_IF_ERROR(internal::ValidateBuffer(
       executor, state.intermediates[0],
       static_cast<size_t>(rows) * embedding_dim_ *
@@ -429,8 +429,8 @@ absl::StatusOr<BufferVec> LayerNormLayer::bwd_impl(
                                            "layer-norm saved inverse stddevs"));
   ASSIGN_OR_RETURN(
       auto input_gradient,
-      Buffer::Allocate(
-          executor, static_cast<size_t>(rows) * embedding_dim_ * sizeof(float)));
+      Buffer::Allocate(executor, static_cast<size_t>(rows) * embedding_dim_ *
+                                     sizeof(float)));
   ASSIGN_OR_RETURN(auto gradient_means,
                    Buffer::Allocate(executor, statistics_bytes));
   ASSIGN_OR_RETURN(auto projected_means,

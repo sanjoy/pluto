@@ -22,8 +22,7 @@ testing::AssertionResult LayerNormActivationsNear(
   if (actual.size() != expected.size())
     return testing::AssertionFailure() << "activation size mismatch";
   for (size_t index = 0; index < actual.size(); ++index) {
-    if (actual[index] == expected[index])
-      continue;
+    if (actual[index] == expected[index]) continue;
     if (!std::isfinite(actual[index]) || !std::isfinite(expected[index]))
       return testing::AssertionFailure() << "nonfinite activation " << index;
     const float magnitude =
@@ -49,8 +48,7 @@ testing::AssertionResult SavedStatisticsMatchDoubleOracle(
     return testing::AssertionFailure() << "expected three saved buffers";
   auto means = ReadDeviceFloats(executor, state.intermediates[1]);
   auto inverse_stddevs = ReadDeviceFloats(executor, state.intermediates[2]);
-  if (!means.ok())
-    return testing::AssertionFailure() << means.status();
+  if (!means.ok()) return testing::AssertionFailure() << means.status();
   if (!inverse_stddevs.ok())
     return testing::AssertionFailure() << inverse_stddevs.status();
   auto input = ReadHostActivations(input_pattern, type);
@@ -100,9 +98,11 @@ testing::AssertionResult SavedStatisticsMatchDoubleOracle(
 TEST_F(LayerReferenceTest, ForwardAndBackwardMatchAcrossShapesAndTypes) {
   for (DataType type : {DataType::FP16, DataType::BF16}) {
     for (const auto& [rows, width] :
-         {std::tuple{1, 16}, std::tuple{3, 16}, std::tuple{16, 32},
-          std::tuple{17, 48}, std::tuple{31, 80}, std::tuple{127, 512},
-          std::tuple{129, 144}, std::tuple{257, 528}}) {
+         {std::tuple{3, 1}, std::tuple{5, 3}, std::tuple{7, 7},
+          std::tuple{3, 8}, std::tuple{17, 15}, std::tuple{3, 24},
+          std::tuple{17, 33}, std::tuple{1, 16}, std::tuple{3, 16},
+          std::tuple{16, 32}, std::tuple{17, 48}, std::tuple{31, 80},
+          std::tuple{127, 512}, std::tuple{129, 144}, std::tuple{257, 528}}) {
       SCOPED_TRACE(testing::Message()
                    << "type=" << static_cast<int>(type) << " rows=" << rows
                    << " width=" << width);
@@ -348,8 +348,7 @@ TEST_F(LayerReferenceTest,
         ReadDeviceFloats(*executor_, retained.intermediates[2]);
     ASSERT_TRUE(means_before.ok()) << means_before.status();
     ASSERT_TRUE(inverse_stddevs_before.ok()) << inverse_stddevs_before.status();
-    for (float& value : pattern)
-      value = value * 3.0f + 2.0f;
+    for (float& value : pattern) value = value * 3.0f + 2.0f;
     auto later_pair = MakeActivationBufferPair(*executor_, pattern, type);
     ASSERT_TRUE(later_pair.ok()) << later_pair.status();
     auto later_output =
@@ -394,8 +393,7 @@ TEST_F(LayerReferenceTest,
           ReadDeviceFloats(*executor_, device_parameter_gradients[index]);
       ASSERT_TRUE(actual.ok()) << actual.status();
       auto expected = ReadHostFloats(reference_parameter_gradients[index]);
-      for (float& value : expected)
-        value *= kRepeats;
+      for (float& value : expected) value *= kRepeats;
       EXPECT_TRUE(VectorsNear(actual->span(), expected, 8e-3f, 3e-4f));
       first_parameter_gradients.emplace_back(actual->begin(), actual->end());
     }

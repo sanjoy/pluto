@@ -26,8 +26,7 @@ inline size_t ActivationElementBytes(DataType type) {
 }
 
 inline absl::Status ValidateComputeType(DataType type) {
-  if (type == DataType::FP16 || type == DataType::BF16)
-    return absl::OkStatus();
+  if (type == DataType::FP16 || type == DataType::BF16) return absl::OkStatus();
   if (type != DataType::FP8)
     return absl::UnimplementedError(
         "reference backend supports only FP16 and BF16 compute policies");
@@ -43,6 +42,13 @@ inline absl::Status ValidateTiledExtent(int extent, const char* name) {
     return absl::InvalidArgumentError(
         absl::StrCat(name, " must be a positive multiple of ", kDenseTile));
   }
+  return absl::OkStatus();
+}
+
+inline absl::Status ValidatePositiveExtent(int extent, const char* name) {
+  if (extent <= 0)
+    return absl::InvalidArgumentError(
+        absl::StrCat(name, " must be positive; got ", extent));
   return absl::OkStatus();
 }
 
@@ -122,11 +128,9 @@ inline uint16_t FloatToHalf(float value) {
     return static_cast<uint16_t>(sign | (mantissa == 0 ? 0x7c00u : 0x7e00u));
 
   int half_exponent = static_cast<int>(exponent) - 127 + 15;
-  if (half_exponent >= 31)
-    return static_cast<uint16_t>(sign | 0x7c00u);
+  if (half_exponent >= 31) return static_cast<uint16_t>(sign | 0x7c00u);
   if (half_exponent <= 0) {
-    if (half_exponent < -10)
-      return static_cast<uint16_t>(sign);
+    if (half_exponent < -10) return static_cast<uint16_t>(sign);
     mantissa |= 0x800000u;
     const int shift = 14 - half_exponent;
     uint32_t rounded = mantissa >> shift;
@@ -145,8 +149,7 @@ inline uint16_t FloatToHalf(float value) {
     if (rounded_mantissa == 0x400u) {
       rounded_mantissa = 0;
       ++half_exponent;
-      if (half_exponent >= 31)
-        return static_cast<uint16_t>(sign | 0x7c00u);
+      if (half_exponent >= 31) return static_cast<uint16_t>(sign | 0x7c00u);
     }
   }
   return static_cast<uint16_t>(
@@ -207,8 +210,7 @@ inline absl::StatusOr<HostBuffer> AllocateActivation(size_t elements,
 inline absl::StatusOr<HostBuffer> AllocateFloats(size_t elements,
                                                  bool clear = false) {
   ASSIGN_OR_RETURN(auto buffer, HostBuffer::Allocate(elements * sizeof(float)));
-  if (clear)
-    std::memset(buffer.data(), 0, buffer.size_bytes());
+  if (clear) std::memset(buffer.data(), 0, buffer.size_bytes());
   return buffer;
 }
 

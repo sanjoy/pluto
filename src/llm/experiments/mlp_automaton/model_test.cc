@@ -53,8 +53,7 @@ std::vector<BufferType> DistinctWeights(absl::Span<BufferType> weights) {
   absl::flat_hash_set<const void*> seen;
   std::vector<BufferType> result;
   for (const auto& weight : weights)
-    if (seen.insert(weight.data()).second)
-      result.push_back(weight);
+    if (seen.insert(weight.data()).second) result.push_back(weight);
   return result;
 }
 
@@ -93,8 +92,7 @@ class MlpAutomatonModelTest : public LayerReferenceTest {
  protected:
   void SetUp() override {
     LayerReferenceTest::SetUp();
-    if (HasFatalFailure())
-      return;
+    if (HasFatalFailure()) return;
     std::string pattern =
         (std::filesystem::path(testing::TempDir()) / "mlp-automaton-XXXXXX")
             .string();
@@ -148,8 +146,7 @@ class MlpAutomatonModelTest : public LayerReferenceTest {
       ASSERT_TRUE(std::filesystem::create_directory(directory));
     auto weights = DistinctWeights(reference_->weights());
     for (size_t index = 0; index < weights.size(); ++index) {
-      if (omit_last && index + 1 == weights.size())
-        continue;
+      if (omit_last && index + 1 == weights.size()) continue;
       std::ofstream output(
           directory /
               ("weight_" +
@@ -169,8 +166,7 @@ class MlpAutomatonModelTest : public LayerReferenceTest {
     for (const auto& weight : DistinctWeights(model_->weights())) {
       auto values = ReadDeviceFloats(*executor_, weight);
       EXPECT_TRUE(values.ok()) << values.status();
-      if (!values.ok())
-        return {};
+      if (!values.ok()) return {};
       result.emplace_back(values->begin(), values->end());
     }
     return result;
@@ -325,8 +321,7 @@ TEST_F(MlpAutomatonModelTest, EveryBlockLoadsItsOwnMlpAndMatchesCpuReadout) {
     auto logits = ReadDeviceFloats(*executor_, actual->outputs[0]);
     ASSERT_TRUE(logits.ok()) << logits.status();
     std::vector<float> current_logits(logits->begin(), logits->end());
-    if (block != 0)
-      EXPECT_NE(current_logits, previous_logits);
+    if (block != 0) EXPECT_NE(current_logits, previous_logits);
     previous_logits = std::move(current_logits);
   }
 }
@@ -363,10 +358,8 @@ TEST_F(MlpAutomatonModelTest, InvalidLateFileDoesNotModifyAnyDeviceWeight) {
     ASSERT_FALSE(HasFatalFailure());
     if (mode != "missing") {
       std::vector<float> invalid(16, 0.25f);
-      if (mode == "short")
-        invalid.pop_back();
-      if (mode == "long")
-        invalid.push_back(0.5f);
+      if (mode == "short") invalid.pop_back();
+      if (mode == "long") invalid.push_back(0.5f);
       if (mode == "nan")
         invalid.back() = std::numeric_limits<float>::quiet_NaN();
       if (mode == "inf")
@@ -409,9 +402,32 @@ TEST_F(MlpAutomatonModelTest, RejectsIncompatibleWeightLayout) {
 
 TEST_F(MlpAutomatonModelTest, RejectsInvalidDimensions) {
   for (const Dimensions dimensions :
-       {Dimensions{0, 16, 32}, Dimensions{17, 15, 32}, Dimensions{17, 16, 31},
+       {Dimensions{0, 16, 32}, Dimensions{17, -1, 32}, Dimensions{17, 16, -1},
         Dimensions{17, 0, 32}, Dimensions{17, 16, 0}}) {
     EXPECT_FALSE(CreateReadout(*executor_, dimensions).ok());
+  }
+}
+
+TEST_F(MlpAutomatonModelTest, CompactChannelWidthsScanWithoutTrainablePadding) {
+  // Channels need not fill a compute tile. ScanVocabulary still pads token
+  // rows to 16, satisfying the flat GELU/residual and dense-row contracts.
+  for (const Dimensions dimensions :
+       {Dimensions{17, 15, 32}, Dimensions{17, 16, 31}, Dimensions{17, 3, 13},
+        Dimensions{17, 8, 32}}) {
+    auto readout = CreateReadout(*executor_, dimensions);
+    ASSERT_TRUE(readout.ok()) << readout.status();
+    EXPECT_EQ((*readout)->weights()[0].size_bytes(),
+              32 * dimensions.model_width * sizeof(float));
+    auto transitions =
+        ScanVocabulary(*executor_, **readout, 17, 16, [](int) {});
+    ASSERT_TRUE(transitions.ok()) << transitions.status();
+    ASSERT_EQ(transitions->size(), 17);
+    // New readouts have zero embeddings/projections, hence uniform logical
+    // vocabulary logits. Padding vocabulary lanes must remain excluded.
+    for (const auto& transition : *transitions) {
+      EXPECT_EQ(transition.token, 0);
+      EXPECT_NEAR(transition.probability, 1.0 / 17, 1e-7);
+    }
   }
 }
 
@@ -447,8 +463,7 @@ TEST_F(MlpAutomatonModelTest, ScanCoversEveryTokenAndFinalPartialBatch) {
     const float* row = logits->data() + source * kPaddedVocabulary;
     int winner = 0;
     for (int target = 1; target < kDimensions.vocab_size; ++target)
-      if (row[target] > row[winner])
-        winner = target;
+      if (row[target] > row[winner]) winner = target;
     double denominator = 0;
     for (int target = 0; target < kDimensions.vocab_size; ++target)
       denominator += std::exp(static_cast<double>(row[target]) - row[winner]);

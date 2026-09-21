@@ -44,7 +44,7 @@ EmbeddingLookupLayerReference::Create(int vocab_size, int embedding_dim,
     return absl::InvalidArgumentError("sequence_length must be positive");
   if (vocab_size <= 0)
     return absl::InvalidArgumentError("vocab_size must be positive");
-  RETURN_IF_ERROR(ri::ValidateTiledExtent(embedding_dim, "embedding_dim"));
+  RETURN_IF_ERROR(ri::ValidatePositiveExtent(embedding_dim, "embedding_dim"));
   const int padded_vocab_size = ri::RoundUpToTile(vocab_size);
   const size_t elements =
       static_cast<size_t>(padded_vocab_size) * embedding_dim;
@@ -77,8 +77,8 @@ absl::StatusOr<ReferenceFwdResult> EmbeddingLookupLayerReference::fwd_impl(
     return absl::InvalidArgumentError(
         "EmbeddingLookupLayerReference fwd expects token IDs");
   }
-  ASSIGN_OR_RETURN(int rows,
-                   ri::ElementCount(inputs[0], sizeof(int), "embedding tokens"));
+  ASSIGN_OR_RETURN(
+      int rows, ri::ElementCount(inputs[0], sizeof(int), "embedding tokens"));
   ASSIGN_OR_RETURN(auto output, ri::AllocateActivation(
                                     static_cast<size_t>(rows) * embedding_dim_,
                                     output_type_));
@@ -260,7 +260,7 @@ PositionEmbeddingLayerReference::Create(int context_length, int embedding_dim,
   RETURN_IF_ERROR(ri::ValidateComputeType(data_type));
   if (context_length <= 0)
     return absl::InvalidArgumentError("context_length must be positive");
-  RETURN_IF_ERROR(ri::ValidateTiledExtent(embedding_dim, "embedding_dim"));
+  RETURN_IF_ERROR(ri::ValidatePositiveExtent(embedding_dim, "embedding_dim"));
   const size_t elements = static_cast<size_t>(context_length) * embedding_dim;
   ASSIGN_OR_RETURN(auto weight, ri::AllocateFloats(elements, true));
   ASSIGN_OR_RETURN(auto gradient, ri::AllocateFloats(elements, true));

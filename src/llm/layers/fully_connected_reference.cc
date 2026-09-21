@@ -25,8 +25,8 @@ FullyConnectedLayerReference::Create(int input_dim, int output_dim,
   if (sequence_length <= 0)
     return absl::InvalidArgumentError("sequence_length must be positive");
   RETURN_IF_ERROR(ri::ValidateComputeType(data_type));
-  RETURN_IF_ERROR(ri::ValidateTiledExtent(input_dim, "input_dim"));
-  RETURN_IF_ERROR(ri::ValidateTiledExtent(output_dim, "output_dim"));
+  RETURN_IF_ERROR(ri::ValidatePositiveExtent(input_dim, "input_dim"));
+  RETURN_IF_ERROR(ri::ValidatePositiveExtent(output_dim, "output_dim"));
   ASSIGN_OR_RETURN(
       auto matrix,
       ri::AllocateFloats(static_cast<size_t>(input_dim) * output_dim, true));

@@ -20,6 +20,12 @@ inline constexpr int kDenseTile = 16;
 
 inline int TileCount(int extent) { return extent / kDenseTile; }
 
+// Use only for kernels whose loads and stores mask the final partial tile.
+// The quotient/remainder form avoids overflow for a positive INT_MAX extent.
+inline int MaskedTileCount(int extent) {
+  return extent / kDenseTile + (extent % kDenseTile != 0);
+}
+
 inline int RoundUpToTile(int extent) {
   return ((extent + kDenseTile - 1) / kDenseTile) * kDenseTile;
 }
@@ -37,6 +43,13 @@ inline absl::Status ValidateTiledExtent(int extent, const char* name) {
         absl::StrCat(name, " must be a positive multiple of ", kDenseTile,
                      "; got ", extent));
   }
+  return absl::OkStatus();
+}
+
+inline absl::Status ValidatePositiveExtent(int extent, const char* name) {
+  if (extent <= 0)
+    return absl::InvalidArgumentError(
+        absl::StrCat(name, " must be positive; got ", extent));
   return absl::OkStatus();
 }
 

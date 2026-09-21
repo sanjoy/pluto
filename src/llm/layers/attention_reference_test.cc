@@ -175,6 +175,17 @@ TEST_F(AttentionReferenceTest, ProductionContextForwardAndBackwardMatch) {
     CheckConfiguration(type, 1024, 1, 64, 1);
 }
 
+TEST_F(AttentionReferenceTest, SubTileHeadWidthsMatchAndRepeat) {
+  // Head width, not the padded MMA tile width, determines attention scaling.
+  // Odd channel strides exercise both tail masking and head/sequence offsets.
+  for (DataType type : {DataType::FP16, DataType::BF16}) {
+    for (int width : {1, 3, 7, 8, 15, 24, 33})
+      CheckConfiguration(type, 33, 1, width, 2, 1.0f, 3);
+    CheckConfiguration(type, 65, 3, 21, 2, 1.0f, 3);
+  }
+  CheckConfiguration(DataType::BF16, 1024, 1, 8, 1, 1.0f, 3);
+}
+
 TEST_F(AttentionReferenceTest,
        NarrowBf16HeadsAtProductionContextMatchAndRepeat) {
   // The width search uses heads smaller than the kernel's 64-channel tile.

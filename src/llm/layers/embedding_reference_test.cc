@@ -15,10 +15,12 @@ namespace {
 TEST_F(LayerReferenceTest, LookupAndTiedHeadMatchAcrossShapesAndTypes) {
   for (DataType type : {DataType::FP16, DataType::BF16}) {
     for (const auto [vocab, width, rows] :
-         {std::tuple{17, 16, 16}, std::tuple{32, 32, 32},
-          std::tuple{17, 48, 48}, std::tuple{65, 80, 80},
-          std::tuple{257, 48, 16}, std::tuple{257, 80, 48},
-          std::tuple{50257, 16, 16}}) {
+         {std::tuple{17, 1, 16}, std::tuple{17, 3, 16}, std::tuple{17, 7, 32},
+          std::tuple{17, 8, 16}, std::tuple{17, 15, 32}, std::tuple{17, 24, 16},
+          std::tuple{17, 33, 32}, std::tuple{17, 16, 16},
+          std::tuple{32, 32, 32}, std::tuple{17, 48, 48},
+          std::tuple{65, 80, 80}, std::tuple{257, 48, 16},
+          std::tuple{257, 80, 48}, std::tuple{50257, 16, 16}}) {
       SCOPED_TRACE(testing::Message()
                    << "type=" << static_cast<int>(type) << " vocab=" << vocab
                    << " width=" << width << " rows=" << rows);
@@ -157,7 +159,9 @@ TEST_F(LayerReferenceTest, LookupAndTiedHeadMatchAcrossShapesAndTypes) {
 TEST_F(LayerReferenceTest, PositionEmbeddingForwardAndBackwardMatch) {
   for (DataType type : {DataType::FP16, DataType::BF16}) {
     for (const auto [context, width, rows] :
-         {std::tuple{4, 16, 8}, std::tuple{8, 32, 24}}) {
+         {std::tuple{4, 1, 8}, std::tuple{4, 3, 8}, std::tuple{4, 7, 8},
+          std::tuple{4, 8, 8}, std::tuple{4, 15, 8}, std::tuple{4, 24, 8},
+          std::tuple{4, 33, 8}, std::tuple{4, 16, 8}, std::tuple{8, 32, 24}}) {
       auto device =
           PositionEmbeddingLayer::Create(*executor_, context, width, type);
       auto reference =

@@ -22,27 +22,25 @@ absl::StatusOr<std::vector<uint8_t>> ReadDenseBytes(cuda::Executor& executor,
                                                     const Buffer& buffer) {
   auto pinned = cuda::PageLockedHostArray<uint8_t>::Allocate(
       executor, buffer.size_bytes());
-  if (!pinned.ok())
-    return pinned.status();
+  if (!pinned.ok()) return pinned.status();
   auto status = cuda::CudaStatus(
       cudaMemcpyAsync(pinned->data(), buffer.data(), buffer.size_bytes(),
                       cudaMemcpyDeviceToHost, executor.stream()),
       "read dense repeatability output");
-  if (!status.ok())
-    return status;
+  if (!status.ok()) return status;
   status = executor.Synchronize();
-  if (!status.ok())
-    return status;
+  if (!status.ok()) return status;
   return std::vector<uint8_t>(pinned->begin(), pinned->end());
 }
 
 TEST_F(LayerReferenceTest, ForwardAndBackwardMatchAcrossShapesAndTypes) {
   for (DataType type : {DataType::FP16, DataType::BF16}) {
     for (const auto [rows, input_dim, output_dim] :
-         {std::tuple{16, 16, 16}, std::tuple{32, 32, 48},
-          std::tuple{16, 48, 16}, std::tuple{64, 64, 64},
-          std::tuple{80, 80, 112}, std::tuple{272, 144, 80},
-          std::tuple{528, 80, 144}}) {
+         {std::tuple{16, 1, 3}, std::tuple{32, 3, 7}, std::tuple{16, 8, 24},
+          std::tuple{32, 15, 33}, std::tuple{16, 16, 16},
+          std::tuple{32, 32, 48}, std::tuple{16, 48, 16},
+          std::tuple{64, 64, 64}, std::tuple{80, 80, 112},
+          std::tuple{272, 144, 80}, std::tuple{528, 80, 144}}) {
       SCOPED_TRACE(testing::Message()
                    << "type=" << static_cast<int>(type) << " rows=" << rows
                    << " input=" << input_dim << " output=" << output_dim);

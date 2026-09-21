@@ -99,8 +99,7 @@ class Gpt2Test : public testing::Test {
   }
 
   void TearDown() override {
-    if (executor_ == nullptr)
-      return;
+    if (executor_ == nullptr) return;
     EXPECT_TRUE(executor_->Synchronize().ok());
     executor_.reset();
   }
@@ -146,6 +145,10 @@ TEST(Gpt2ConfigTest, DefaultsAndSupportedWidths) {
   }
   // Feed-forward width is deliberately independent of the residual width.
   EXPECT_TRUE((Gpt2Config{2, 32, 1, 80}.Validate().ok()));
+  for (int width : {1, 2, 3, 7, 8, 15, 24, 33}) {
+    EXPECT_TRUE((Gpt2Config{1, width, 1, 4 * width + 1}.Validate().ok()));
+    EXPECT_TRUE((Gpt2Config{1, width, width, 4 * width}.Validate().ok()));
+  }
 }
 
 TEST(Gpt2ConfigTest, RejectsInvalidAndOverflowingShapesBeforeAllocating) {
@@ -153,11 +156,9 @@ TEST(Gpt2ConfigTest, RejectsInvalidAndOverflowingShapesBeforeAllocating) {
   for (const Gpt2Config& config :
        {Gpt2Config{-1, 32, 1, 128}, Gpt2Config{9, 32, 1, 128},
         Gpt2Config{1, 0, 1, 128}, Gpt2Config{1, -16, 1, 128},
-        Gpt2Config{1, 8, 1, 128}, Gpt2Config{1, 33, 1, 128},
         Gpt2Config{1, 32, 0, 128}, Gpt2Config{1, 32, -1, 128},
-        Gpt2Config{1, 32, 3, 128}, Gpt2Config{1, 32, 4, 128},
+        Gpt2Config{1, 32, 3, 128}, Gpt2Config{1, 32, 64, 128},
         Gpt2Config{1, 32, 1, 0}, Gpt2Config{1, 32, 1, -16},
-        Gpt2Config{1, 32, 1, 8}, Gpt2Config{1, 32, 1, 129},
         Gpt2Config{1, largest_multiple, 1, 128},
         Gpt2Config{1, 32, 1, largest_multiple},
         // Embedding fits, but the packed QKV matrix does not.
@@ -173,7 +174,7 @@ TEST(Gpt2ConfigTest, RejectsInvalidAndOverflowingShapesBeforeAllocating) {
 }
 
 TEST_F(Gpt2Test, ConfiguredFactoriesPropagateValidationErrors) {
-  const Gpt2Config config{1, 32, 4, 128};  // Eight-wide heads are unsupported.
+  const Gpt2Config config{1, 32, 3, 128};  // Heads must divide model width.
   auto model = CreateGpt2(*executor_, DataType::BF16, 123, config);
   EXPECT_EQ(model.status().code(), absl::StatusCode::kInvalidArgument);
   auto generator =
@@ -225,9 +226,11 @@ TEST_F(Gpt2Test, NarrowModelsKeepSeedReproducibilityAndPrefixInitialization) {
 
 TEST_F(Gpt2Test, NarrowConfigurationsHaveExpectedUniqueParametersAndTiedHead) {
   for (const Gpt2Config& config :
-       {Gpt2Config{0, 16, 1, 64}, Gpt2Config{1, 32, 2, 80},
-        Gpt2Config{2, 64, 2, 256}, Gpt2Config{1, 96, 3, 384},
-        Gpt2Config{1, 128, 8, 512}, Gpt2Config{1, 256, 4, 1024}}) {
+       {Gpt2Config{1, 3, 1, 13}, Gpt2Config{2, 8, 1, 32},
+        Gpt2Config{1, 24, 3, 96}, Gpt2Config{0, 16, 1, 64},
+        Gpt2Config{1, 32, 2, 80}, Gpt2Config{2, 64, 2, 256},
+        Gpt2Config{1, 96, 3, 384}, Gpt2Config{1, 128, 8, 512},
+        Gpt2Config{1, 256, 4, 1024}}) {
     SCOPED_TRACE(config.model_width);
     auto model = CreateGpt2(*executor_, DataType::BF16, 123, config);
     ASSERT_TRUE(model.ok()) << model.status();
@@ -260,8 +263,9 @@ TEST_F(Gpt2Test, NarrowConfigurationsHaveExpectedUniqueParametersAndTiedHead) {
 TEST_F(Gpt2Test, SmallAndPartialTileModelsRunForwardAndBackward) {
   for (DataType type : {DataType::FP16, DataType::BF16}) {
     for (const Gpt2Config& config :
-         {Gpt2Config{1, 16, 1, 64}, Gpt2Config{2, 32, 2, 80},
-          Gpt2Config{1, 96, 3, 384}}) {
+         {Gpt2Config{1, 3, 1, 13}, Gpt2Config{2, 8, 1, 32},
+          Gpt2Config{1, 24, 3, 96}, Gpt2Config{1, 16, 1, 64},
+          Gpt2Config{2, 32, 2, 80}, Gpt2Config{1, 96, 3, 384}}) {
       SCOPED_TRACE(config.model_width);
       SCOPED_TRACE(static_cast<int>(type));
       auto model = CreateGpt2(*executor_, type, 123, config);

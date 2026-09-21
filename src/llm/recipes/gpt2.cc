@@ -134,18 +134,15 @@ absl::Status Gpt2Config::Validate() const {
     return absl::InvalidArgumentError(
         "transformer_block_count must be between zero and "
         "kGpt2TransformerBlockCount");
-  // These are the shared ValidateTiledExtent constraints of the embedding,
-  // dense, normalization, and attention kernels, not a 64-channel tile floor:
-  // partial 64-wide tiles are masked, so 16-wide models/heads are supported.
-  if (model_width <= 0 || model_width % 16 != 0 || feed_forward_width <= 0 ||
-      feed_forward_width % 16 != 0)
+  // Compute tiles are masked independently of logical channel widths. In
+  // particular, a narrow model has no extra trainable padding channels and
+  // LayerNorm/attention statistics use only its actual dimensions.
+  if (model_width <= 0 || feed_forward_width <= 0)
     return absl::InvalidArgumentError(
-        "model_width and feed_forward_width must be positive multiples of 16");
-  if (attention_heads <= 0 || model_width % attention_heads != 0 ||
-      (model_width / attention_heads) % 16 != 0)
+        "model_width and feed_forward_width must be positive");
+  if (attention_heads <= 0 || model_width % attention_heads != 0)
     return absl::InvalidArgumentError(
-        "attention_heads must divide model_width into positive multiples of "
-        "16 channels");
+        "attention_heads must be positive and divide model_width");
 
   // Check the embedding first: besides the optimizer's element-count limit,
   // this bounds width enough that 3 * width and all following int64 products

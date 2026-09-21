@@ -29,8 +29,6 @@ AttentionLayerReference::Create(int context_length, int num_heads,
     return absl::InvalidArgumentError(
         "embedding_dim must be divisible by num_heads");
   }
-  RETURN_IF_ERROR(ri::ValidateTiledExtent(embedding_dim / num_heads,
-                                          "attention head dimension"));
   return absl::WrapUnique(new AttentionLayerReference(
       context_length, num_heads, embedding_dim, data_type));
 }

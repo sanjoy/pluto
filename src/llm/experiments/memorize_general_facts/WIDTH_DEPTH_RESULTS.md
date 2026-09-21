@@ -50,8 +50,12 @@ against actual unique allocations. It reports both the nondominated
 `(depth, width)` points and the successful configuration with the fewest
 parameters; those are different questions.
 
-The current backend requires widths and head dimensions divisible by 16.
-That is an implementation restriction, not a mathematical minimum. Dense
+The coarse-run binary requires widths and head dimensions divisible by 16.
+That is an implementation restriction, not a mathematical minimum. Subsequent
+backend changes support compact positive logical channel widths, with CPU/GPU,
+repeatability, and memory checks documented in
+`runs/compact_width_validation_0/README.md`. No new-width training result is
+implied by those tests. The active coarse binary remains unchanged. Dense
 kernels internally pad narrow dimensions to 64, and full-vocabulary loss work
 does not shrink with residual width, so fewer parameters need not imply a
 proportional speedup. The result will be an empirical frontier within the

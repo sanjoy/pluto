@@ -206,8 +206,8 @@ FullyConnectedLayer::Create(cuda::Executor& executor, int input_dim,
   if (sequence_length <= 0)
     return absl::InvalidArgumentError("sequence_length must be positive");
   RETURN_IF_ERROR(internal::ValidateComputeType(data_type));
-  RETURN_IF_ERROR(internal::ValidateTiledExtent(input_dim, "input_dim"));
-  RETURN_IF_ERROR(internal::ValidateTiledExtent(output_dim, "output_dim"));
+  RETURN_IF_ERROR(internal::ValidatePositiveExtent(input_dim, "input_dim"));
+  RETURN_IF_ERROR(internal::ValidatePositiveExtent(output_dim, "output_dim"));
   const size_t matrix_bytes =
       static_cast<size_t>(input_dim) * output_dim * sizeof(float);
   const size_t bias_bytes = static_cast<size_t>(output_dim) * sizeof(float);
@@ -255,8 +255,7 @@ absl::Status FullyConnectedLayer::InitializeNormal(float standard_deviation,
   ASSIGN_OR_RETURN(auto matrix, cuda::PageLockedHostArray<float>::Allocate(
                                     executor_, static_cast<size_t>(input_dim_) *
                                                    output_dim_));
-  for (float& value : matrix)
-    value = distribution(random);
+  for (float& value : matrix) value = distribution(random);
   RETURN_IF_ERROR(cuda::CudaStatus(
       cudaMemcpyAsync(weights_[0].data(), matrix.data(),
                       weights_[0].size_bytes(), cudaMemcpyHostToDevice,

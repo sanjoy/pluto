@@ -22,7 +22,7 @@ LayerNormLayerReference::Create(int embedding_dim, float epsilon,
     return absl::InvalidArgumentError("sequence_length must be positive");
   if (!(epsilon > 0.0f))
     return absl::InvalidArgumentError("layer-norm epsilon must be positive");
-  RETURN_IF_ERROR(ri::ValidateTiledExtent(embedding_dim, "embedding_dim"));
+  RETURN_IF_ERROR(ri::ValidatePositiveExtent(embedding_dim, "embedding_dim"));
   ASSIGN_OR_RETURN(auto gamma, ri::AllocateFloats(embedding_dim));
   ASSIGN_OR_RETURN(auto beta, ri::AllocateFloats(embedding_dim, true));
   ASSIGN_OR_RETURN(auto d_gamma, ri::AllocateFloats(embedding_dim, true));

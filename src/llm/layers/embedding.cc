@@ -51,14 +51,16 @@ __tile_global__ void EmbeddingForwardKernel(const int* __restrict__ tokens,
   auto output_view = ct::partition_view{
       ct::tensor_span{output, ct::extents{rows, embedding_dim}},
       ct::shape{1_ic, 16_ic}};
-  const int width_tiles = embedding_dim / internal::kDenseTile;
+  const int width_tiles = (embedding_dim - 1) / internal::kDenseTile + 1;
   const int block = ct::bid().x;
   const int row = block / width_tiles;
   const int width_tile = block % width_tiles;
   const int token = static_cast<int>(token_view.load(row));
-  output_view.store(
-      ct::element_cast<Activation>(table_view.load(token, width_tile)), row,
-      width_tile);
+  // A narrow model stores exactly embedding_dim channels per row. Mask the
+  // tail rather than reading the next row or adding trainable padding lanes.
+  output_view.store_masked(
+      ct::element_cast<Activation>(table_view.load_masked(token, width_tile)),
+      row, width_tile);
 }
 
 // The low bits make every key unique: radix sorting groups equal tokens and
@@ -94,14 +96,13 @@ __tile_global__ void EmbeddingBackwardKernel(
       ct::tensor_span{table_gradient,
                       ct::extents{padded_vocab_size, embedding_dim}},
       ct::shape{1_ic, 16_ic}};
-  const int width_tiles = embedding_dim / internal::kDenseTile;
+  const int width_tiles = (embedding_dim - 1) / internal::kDenseTile + 1;
   const int block = ct::bid().x;
   const int start = block / width_tiles;
   const int width_tile = block % width_tiles;
   const uint64_t key = static_cast<uint64_t>(key_view.load(start));
   const uint64_t token = key >> 32;
-  if (token >= static_cast<uint64_t>(padded_vocab_size))
-    return;
+  if (token >= static_cast<uint64_t>(padded_vocab_size)) return;
   if (start > 0 &&
       (static_cast<uint64_t>(key_view.load(start - 1)) >> 32) == token)
     return;
@@ -110,22 +111,22 @@ __tile_global__ void EmbeddingBackwardKernel(
   // existing gradient, which may already contain the tied LM head's gradient.
   // A floating-point atomic scatter is not equivalent: its addition order
   // changes with scheduling and can perturb every subsequent optimizer step.
-  auto accumulator = table_view.load(static_cast<int>(token), width_tile);
+  auto accumulator =
+      table_view.load_masked(static_cast<int>(token), width_tile);
   for (int index = start; index < rows; ++index) {
     const uint64_t next = static_cast<uint64_t>(key_view.load(index));
-    if ((next >> 32) != token)
-      break;
+    if ((next >> 32) != token) break;
     const int row = static_cast<int>(next & 0xffffffffULL);
-    accumulator = accumulator + gradient_view.load(row, width_tile);
+    accumulator = accumulator + gradient_view.load_masked(row, width_tile);
   }
-  table_view.store(accumulator, static_cast<int>(token), width_tile);
+  table_view.store_masked(accumulator, static_cast<int>(token), width_tile);
 }
 
 // These are compute tiles, not model dimensions. Reusing each operand across a
 // 64x64 output tile avoids the many repeated loads of the old 16x16 products.
 // K is traversed in a fixed order and each result tile has a single writer;
 // no atomics or scheduling-dependent split-K reduction are needed. All views
-// are masked because the public shape contract is still multiples of 16.
+// are masked, including embedding widths smaller than a compute tile.
 constexpr int kLmHeadTile = 64;
 
 template <class Activation>
@@ -269,13 +270,13 @@ __tile_global__ void PositionEmbeddingForwardKernel(
   auto output_view = ct::partition_view{
       ct::tensor_span{output, ct::extents{rows, embedding_dim}},
       ct::shape{1_ic, 16_ic}};
-  const int width_tiles = embedding_dim / internal::kDenseTile;
+  const int width_tiles = (embedding_dim - 1) / internal::kDenseTile + 1;
   const int block = ct::bid().x;
   const int row = block / width_tiles;
   const int width_tile = block % width_tiles;
-  auto sum = ct::element_cast<float>(input_view.load(row, width_tile)) +
-             position_view.load(row % context_length, width_tile);
-  output_view.store(ct::element_cast<Activation>(sum), row, width_tile);
+  auto sum = ct::element_cast<float>(input_view.load_masked(row, width_tile)) +
+             position_view.load_masked(row % context_length, width_tile);
+  output_view.store_masked(ct::element_cast<Activation>(sum), row, width_tile);
 }
 
 __tile_global__ void PositionEmbeddingBackwardKernel(
@@ -290,20 +291,20 @@ __tile_global__ void PositionEmbeddingBackwardKernel(
       ct::tensor_span{position_gradient,
                       ct::extents{context_length, embedding_dim}},
       ct::shape{1_ic, 16_ic}};
-  const int width_tiles = embedding_dim / internal::kDenseTile;
+  const int width_tiles = (embedding_dim - 1) / internal::kDenseTile + 1;
   const int block = ct::bid().x;
   const int position = block / width_tiles;
   const int width_tile = block % width_tiles;
   // One writer per position/width tile, with a fixed sequence-row order.
   // Unvisited positions stay untouched, including for a partial context.
-  auto accumulator = position_view.load(position, width_tile);
+  auto accumulator = position_view.load_masked(position, width_tile);
   // Use a wider loop counter: the final stride may exceed INT_MAX even
   // though every visited row fits the validated int-sized input.
   for (int64_t row = position; row < rows; row += context_length) {
-    accumulator =
-        accumulator + gradient_view.load(static_cast<int>(row), width_tile);
+    accumulator = accumulator +
+                  gradient_view.load_masked(static_cast<int>(row), width_tile);
   }
-  position_view.store(accumulator, position, width_tile);
+  position_view.store_masked(accumulator, position, width_tile);
 }
 
 absl::Status CopyNormalInitialization(cuda::Executor& executor, Buffer& weight,
@@ -318,8 +319,7 @@ absl::Status CopyNormalInitialization(cuda::Executor& executor, Buffer& weight,
   ASSIGN_OR_RETURN(auto values,
                    cuda::PageLockedHostArray<float>::Allocate(
                        executor, weight.size_bytes() / sizeof(float)));
-  for (float& value : values)
-    value = distribution(random);
+  for (float& value : values) value = distribution(random);
   RETURN_IF_ERROR(cuda::CudaStatus(
       cudaMemcpyAsync(weight.data(), values.data(), weight.size_bytes(),
                       cudaMemcpyHostToDevice, executor.stream()),
@@ -355,7 +355,7 @@ EmbeddingLookupLayer::Create(cuda::Executor& executor, int vocab_size,
   if (vocab_size <= 0)
     return absl::InvalidArgumentError("vocab_size must be positive");
   RETURN_IF_ERROR(
-      internal::ValidateTiledExtent(embedding_dim, "embedding_dim"));
+      internal::ValidatePositiveExtent(embedding_dim, "embedding_dim"));
   const int padded_vocab_size = internal::RoundUpToTile(vocab_size);
   const size_t bytes =
       static_cast<size_t>(padded_vocab_size) * embedding_dim * sizeof(float);
@@ -411,7 +411,7 @@ absl::StatusOr<FwdResult> EmbeddingLookupLayer::fwd_impl(
       Buffer::Allocate(executor,
                        static_cast<size_t>(rows) * embedding_dim_ *
                            internal::ActivationElementBytes(output_type_)));
-  const int blocks = rows * internal::TileCount(embedding_dim_);
+  const int blocks = rows * internal::MaskedTileCount(embedding_dim_);
   if (output_type_ == DataType::BF16) {
     EmbeddingForwardKernel<__nv_bfloat16><<<blocks, 1, 0, executor.stream()>>>(
         static_cast<const int*>(inputs[0].data()),
@@ -439,9 +439,9 @@ absl::StatusOr<BufferVec> EmbeddingLookupLayer::bwd_impl(
     return absl::InvalidArgumentError(
         "EmbeddingLookupLayer bwd received an incompatible gradient or state");
   }
-  ASSIGN_OR_RETURN(int rows,
-                   internal::ElementCount(executor, state.intermediates[0],
-                                          sizeof(int), "embedding token input"));
+  ASSIGN_OR_RETURN(
+      int rows, internal::ElementCount(executor, state.intermediates[0],
+                                       sizeof(int), "embedding token input"));
   RETURN_IF_ERROR(internal::ValidateBuffer(
       executor, output_gradients[0],
       static_cast<size_t>(rows) * embedding_dim_ * sizeof(float),
@@ -472,8 +472,8 @@ absl::StatusOr<BufferVec> EmbeddingLookupLayer::bwd_impl(
                                      sorted_ptr, rows, 0, 64,
                                      executor.stream()),
       "sort embedding rows"));
-  EmbeddingBackwardKernel<<<rows * internal::TileCount(embedding_dim_), 1, 0,
-                            executor.stream()>>>(
+  EmbeddingBackwardKernel<<<rows * internal::MaskedTileCount(embedding_dim_), 1,
+                            0, executor.stream()>>>(
       sorted_ptr, static_cast<const float*>(output_gradients[0].data()), rows,
       padded_vocab_size_, embedding_dim_,
       static_cast<float*>(gradient_.data()));
@@ -621,7 +621,7 @@ PositionEmbeddingLayer::Create(cuda::Executor& executor, int context_length,
   if (context_length <= 0)
     return absl::InvalidArgumentError("context_length must be positive");
   RETURN_IF_ERROR(
-      internal::ValidateTiledExtent(embedding_dim, "embedding_dim"));
+      internal::ValidatePositiveExtent(embedding_dim, "embedding_dim"));
   const size_t bytes =
       static_cast<size_t>(context_length) * embedding_dim * sizeof(float);
   ASSIGN_OR_RETURN(auto weight, Buffer::Allocate(executor, bytes));
@@ -658,7 +658,7 @@ absl::StatusOr<FwdResult> PositionEmbeddingLayer::fwd_impl(
                                  output_type_, "position-embedding input"));
   ASSIGN_OR_RETURN(auto output,
                    Buffer::Allocate(executor, inputs[0].size_bytes()));
-  const int blocks = rows * internal::TileCount(embedding_dim_);
+  const int blocks = rows * internal::MaskedTileCount(embedding_dim_);
   if (output_type_ == DataType::BF16) {
     PositionEmbeddingForwardKernel<__nv_bfloat16>
         <<<blocks, 1, 0, executor.stream()>>>(
@@ -692,7 +692,8 @@ absl::StatusOr<BufferVec> PositionEmbeddingLayer::bwd_impl(
                                  executor, output_gradients[0], embedding_dim_,
                                  "position-embedding output gradient"));
   PositionEmbeddingBackwardKernel<<<std::min(rows, context_length_) *
-                                        internal::TileCount(embedding_dim_),
+                                        internal::MaskedTileCount(
+                                            embedding_dim_),
                                     1, 0, executor.stream()>>>(
       static_cast<const float*>(output_gradients[0].data()), rows,
       context_length_, embedding_dim_, static_cast<float*>(gradient_.data()));

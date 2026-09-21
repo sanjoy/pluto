@@ -89,6 +89,80 @@ TEST_F(LayersTest, DeduplicatesTiedEmbeddingWeights) {
   EXPECT_EQ((*optimizer)->parameter_tensor_count(), 1u);
 }
 
+TEST_F(LayersTest, PartialParameterTilesMatchScalarAdamAcrossSteps) {
+  for (int width : {1, 3, 8, 17}) {
+    SCOPED_TRACE(width);
+    // Both a sub-tile bias and a matrix with a partial last tile are real
+    // compact allocations. Check every element, including the final one.
+    auto dense = FullyConnectedLayer::Create(*executor_, width, width + 2,
+                                             DataType::BF16);
+    ASSERT_TRUE(dense.ok()) << dense.status();
+    const AdamWConfig config{.learning_rate = 0.01f,
+                             .beta1 = 0.8f,
+                             .beta2 = 0.9f,
+                             .epsilon = 1e-6f,
+                             .weight_decay = 0.02f};
+    auto optimizer = AdamWOptimizer::Create(*executor_, **dense, config);
+    ASSERT_TRUE(optimizer.ok()) << optimizer.status();
+    std::vector<std::vector<double>> expected, first, second;
+    for (const Buffer& weight : (*dense)->weights()) {
+      const size_t count = weight.size_bytes() / sizeof(float);
+      expected.emplace_back(count, 0.0);
+      first.emplace_back(count, 0.0);
+      second.emplace_back(count, 0.0);
+    }
+    for (int step = 1; step <= 3; ++step) {
+      for (size_t tensor = 0; tensor < expected.size(); ++tensor) {
+        const auto& gradient = (*dense)->gradients()[tensor];
+        auto values = AllocatePageLockedHostArray<float>(
+            *executor_, expected[tensor].size());
+        for (size_t index = 0; index < values.size(); ++index) {
+          values[index] = ((index + step) % 2 == 0 ? 1.0f : -1.0f) *
+                          (0.125f * (index + 1) + step);
+          const double g = values[index];
+          double& m = first[tensor][index];
+          double& v = second[tensor][index];
+          double& w = expected[tensor][index];
+          m = config.beta1 * m + (1.0 - config.beta1) * g;
+          v = config.beta2 * v + (1.0 - config.beta2) * g * g;
+          const double m_hat = m / (1.0 - std::pow(config.beta1, step));
+          const double v_hat = v / (1.0 - std::pow(config.beta2, step));
+          w -= config.learning_rate *
+               (m_hat / (std::sqrt(v_hat) + config.epsilon) +
+                config.weight_decay * w);
+        }
+        ASSERT_EQ(cudaMemcpyAsync(gradient.data(), values.data(),
+                                  gradient.size_bytes(), cudaMemcpyHostToDevice,
+                                  executor_->stream()),
+                  cudaSuccess);
+      }
+      ASSERT_TRUE((*optimizer)->ApplyStep().ok());
+      EXPECT_EQ((*optimizer)->step(), step);
+      for (size_t tensor = 0; tensor < expected.size(); ++tensor) {
+        auto actual = AllocatePageLockedHostArray<float>(
+            *executor_, expected[tensor].size());
+        auto gradient = AllocatePageLockedHostArray<float>(
+            *executor_, expected[tensor].size());
+        ASSERT_EQ(
+            cudaMemcpyAsync(actual.data(), (*dense)->weights()[tensor].data(),
+                            actual.size_bytes(), cudaMemcpyDeviceToHost,
+                            executor_->stream()),
+            cudaSuccess);
+        ASSERT_EQ(cudaMemcpyAsync(gradient.data(),
+                                  (*dense)->gradients()[tensor].data(),
+                                  gradient.size_bytes(), cudaMemcpyDeviceToHost,
+                                  executor_->stream()),
+                  cudaSuccess);
+        ASSERT_TRUE(executor_->Synchronize().ok());
+        for (size_t index = 0; index < actual.size(); ++index) {
+          EXPECT_NEAR(actual[index], expected[tensor][index], 2e-7);
+          EXPECT_FLOAT_EQ(gradient[index], 0.0f);
+        }
+      }
+    }
+  }
+}
+
 TEST_F(LayersTest, LearningRateSchedulePreservesAdamMomentsAndStep) {
   auto dense = FullyConnectedLayer::Create(*executor_, 16, DataType::FP16);
   ASSERT_TRUE(dense.ok()) << dense.status();
