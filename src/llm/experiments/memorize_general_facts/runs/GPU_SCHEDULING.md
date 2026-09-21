@@ -24,9 +24,27 @@ latest completed-step log entry was step 464; that does not identify the exact
 in-flight operation at the instant of the pause. Width 16's evaluation interval
 returned to roughly 6.5 seconds after the pause.
 
-The width-24 process is currently paused. Resume/cancellation and any later
-scheduling changes will be recorded here before treating its outcome as final.
-The search process waiting for it has not been restarted.
+At **02:53:19 UTC**, only the `width_depth_long_1` Python coordinator (PID
+3264113) was also paused. Its existing width-16 native child (PID 3266171)
+continued normally to its stopping condition. This prevented the coordinator
+from immediately launching a deeper/narrower trial before the paused width-24
+midpoint could run. Width 16 finished all 20,000 updates with 1,833 errors and
+`reached_time_limit=0`. After its GPU process exited, the two targeted width-24
+attention/GPT-2 test targets passed. The native experiment executable's SHA256
+remained unchanged.
+
+The coordinator was briefly resumed to complete the fresh native checkpoint
+reload and independent prediction audit for width 16. Both checks passed and
+its manifest now records `verified_budget_failure`. At **03:00:20 UTC**, the
+coordinator and its newly spawned two-block width-16 child (PID 3275073) were
+paused. At **03:00:50 UTC**, the original width-24 process was resumed with
+`SIGCONT`, after a roughly 13-minute-29-second pause. Its existing optimizer
+state and update schedule were preserved; no checkpoint restart occurred.
+
+Width 24 is now the only active training process. The paused coordinator and
+two-block width-16 child will be resumed after that midpoint trial finishes.
+Pausing the coordinator alone did not pause the earlier one-block child or
+alter that child's update schedule. None of these processes has been restarted.
 
 Both native runs have a 10,800-second wall-clock cap, which includes contention,
 evaluation/checkpoint overhead, and a scheduling pause. Final evidence must check

@@ -177,6 +177,21 @@ capacity impossibility claims.
 | Coarse | 6 | 32 | 1,717,760 | 5,000 | 2,951 / 10,002 | 2,932 at step 4,992 | 1.941699876939 |
 | Coarse | 7 | 32 | 1,730,464 | 5,000 | 2,891 / 10,002 | 2,879 at step 4,992 | 1.913807373659 |
 | Coarse | 8 | 32 | 1,743,168 | 5,000 | 2,777 / 10,002 | 2,777 at step 5,000 | 1.897634668045 |
+| Longer budget, narrow | 1 | 16 | 824,048 | 20,000 | 1,833 / 10,002 | 1,814 at step 19,840 | 1.020205828413 |
+
+One block at width 16 reached the full 20,000-update cap (312.5 epochs), not
+its time cap, with 151 exact sentences and 1,833 errors. The fresh native
+reload and independent retokenization audit agree, and both prediction TSVs
+match byte-for-byte. Of its errors, 211 are at the first suffix token and
+1,622 at later content tokens; all 1,024 EOS targets are correct. This is a
+broad set of remaining content errors, not a near-perfect run or a proof that
+width 16 cannot fit the dataset with a different depth/budget/optimizer.
+Checkpoint:
+`/home/ubuntu/checkpoints/memorize_general_facts/width_depth_long_1/width_16/layers_1/step_20000`.
+Artifacts: `runs/width_depth_long_1/width_16/layers_1/`. Independent prediction
+TSV SHA-256: `7c5966613790aca10fe392081a070ac641214c0bf7f48900273ecf895b7df78b`.
+The elapsed time includes brief overlap with the width-24 refinement; it is
+not an isolated throughput measurement (see `runs/GPU_SCHEDULING.md`).
 
 The width-64, one-block trial reached its full update cap, not its time cap.
 Its final checkpoint reloaded with the same two errors and passed the independent
@@ -338,16 +353,22 @@ widths 32, 16, and 8 at depths 1, 2, 4, and 8, with an explicitly fixed single
 attention head and the same 20,000-update schedule and native binary as
 `width_depth_long_0`. One block at width 32 passed both independent checks at
 step 9,984, moving the measured longer-budget and pooled frontiers to `(1,32)`.
-Width 16 is now training; its live artifacts and the changing search manifest
-are not part of this completed-trial commit. The tested fixed-head driver and
+One block at width 16 has now completed and independently verified its
+20,000-update budget failure above. Its completed artifacts are committed;
+the changing search manifest and future/live trials are not. The fixed-head driver and
 backward-compatible reporter pass all 119 Python experiment tests.
 
 A one-block width-24 midpoint trial, `runs/width_depth_refine_24`, started at
 02:44:58 UTC with the same longer-budget protocol and one head. GPU contention
 made simultaneous training inefficient, so it was paused at 02:47:21 UTC with
-its in-memory optimizer state retained while width 16 continues. Scheduling
-details and the elapsed-time caveat are in `runs/GPU_SCHEDULING.md`; neither
-the paused trial nor the active width-16 trial has a final outcome yet.
+its in-memory optimizer state retained while one-block width 16 finished.
+Width 24 resumed at 03:00:50 UTC; the next two-block width-16 trial and search
+coordinator are paused until it finishes. Scheduling details and the elapsed-time
+caveat are in `runs/GPU_SCHEDULING.md`. Width 24 and two-block width 16 do not
+have final outcomes yet. Added tests specifically cover one 24-wide BF16 head
+at context 1,024 with CPU/GPU forward/backward agreement and three bitwise
+GPU repeats, plus complete one-head width-24 GPT-2 forward/backward and tied
+parameter counts; both optimized test targets pass.
 
 After the active pass, refine observed width gaps with a small, bounded set of
 midpoints (such as 24 between 32 and 16, or 12 between 16 and 8). Fill omitted
