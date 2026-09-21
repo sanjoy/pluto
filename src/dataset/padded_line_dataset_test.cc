@@ -1,4 +1,4 @@
-#include "src/llm/experiments/memorize_general_facts/dataset.h"
+#include "src/dataset/padded_line_dataset.h"
 
 #include <cuda_runtime_api.h>
 
@@ -12,10 +12,11 @@
 
 #include "gtest/gtest.h"
 #include "src/cuda/page_locked_host_array.h"
+#include "src/dataset/compact_vocabulary.h"
 #include "src/dataset/gpt2_tokenizer.h"
 #include "src/dataset/plain_text_tokenizer.h"
 
-namespace pluto::llm::memorize_general_facts {
+namespace pluto {
 namespace {
 
 class PaddedLineDataSetTest : public testing::Test {
@@ -27,14 +28,16 @@ class PaddedLineDataSetTest : public testing::Test {
   }
 
   void TearDown() override {
-    if (executor_ != nullptr) EXPECT_TRUE(executor_->Synchronize().ok());
+    if (executor_ != nullptr)
+      EXPECT_TRUE(executor_->Synchronize().ok());
   }
 
   std::vector<int> Download(const cuda::Buffer& buffer) {
     auto host = cuda::PageLockedHostArray<int>::Allocate(
         *executor_, buffer.size_bytes() / sizeof(int));
     EXPECT_TRUE(host.ok()) << host.status();
-    if (!host.ok()) return {};
+    if (!host.ok())
+      return {};
     EXPECT_EQ(cudaMemcpyAsync(host->data(), buffer.data(), buffer.size_bytes(),
                               cudaMemcpyDeviceToHost, executor_->stream()),
               cudaSuccess);
@@ -107,6 +110,31 @@ TEST_F(PaddedLineDataSetTest, FinalPartialBatchNeverDuplicatesOrCrossesLines) {
   ASSERT_TRUE(next_tail.ok()) << next_tail.status();
   EXPECT_EQ(next_tail->inputs.data(), last->inputs.data());
   EXPECT_EQ(next_tail->targets.data(), last->targets.data());
+}
+
+TEST_F(PaddedLineDataSetTest, UsesCompactVocabularyForInputsTargetsAndEos) {
+  auto mapping = tokenizer::BuildCompactVocabularyMapping(
+      *executor_, tokenizer_, "abc\naxc", 255);
+  ASSERT_TRUE(mapping.ok()) << mapping.status();
+  auto compact = tokenizer::CompactVocabularyTokenizer::Create(
+      tokenizer_, std::move(*mapping));
+  ASSERT_TRUE(compact.ok()) << compact.status();
+  auto iterator = PaddedLineDataSetIterator::Create(
+      *executor_, "abc\naxc", **compact,
+      {.batch_size = 2,
+       .context_length = 4,
+       .prompt_tokens = 2,
+       .eos_token = (*compact)->eos_token_id()});
+  ASSERT_TRUE(iterator.ok()) << iterator.status();
+  auto batch = (*iterator)->Next();
+  ASSERT_TRUE(batch.ok()) << batch.status();
+  EXPECT_EQ(batch->batch_size, 2);
+  EXPECT_EQ(batch->supervised_row_count, 4);
+  // Sorted active original IDs are a, b, c, x, EOS; compact EOS is 4.
+  EXPECT_EQ(Download(batch->inputs),
+            (std::vector<int>{0, 1, 2, 4, 0, 3, 2, 4}));
+  EXPECT_EQ(Download(batch->targets),
+            (std::vector<int>{-1, 2, 4, -1, -1, 2, 4, -1}));
 }
 
 TEST_F(PaddedLineDataSetTest, BatchLargerThanCorpusIsOnePartialBatch) {
@@ -182,7 +210,8 @@ TEST_F(PaddedLineDataSetTest, ShuffleVisitsEverySampleAndResetReplaysEpochs) {
     for (size_t batch = 0; batch < (*iterator)->batches_per_epoch(); ++batch) {
       auto data = (*iterator)->Next();
       EXPECT_TRUE(data.ok()) << data.status();
-      if (!data.ok()) return std::vector<int>{};
+      if (!data.ok())
+        return std::vector<int>{};
       const auto inputs = Download(data->inputs);
       for (int sample = 0; sample < data->batch_size; ++sample)
         first_tokens.push_back(inputs[sample * data->sequence_length]);
@@ -298,4 +327,4 @@ TEST_F(PaddedLineDataSetTest, RealGpt2FactsHaveExactApprovedTargetCount) {
 }
 
 }  // namespace
-}  // namespace pluto::llm::memorize_general_facts
+}  // namespace pluto

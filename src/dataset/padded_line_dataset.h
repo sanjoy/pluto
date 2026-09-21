@@ -16,7 +16,7 @@
 #include "src/dataset/dataset.h"
 #include "src/dataset/tokenizer.h"
 
-namespace pluto::llm::memorize_general_facts {
+namespace pluto {
 
 struct PaddedLineDataSetOptions {
   int batch_size = 1;
@@ -93,4 +93,4 @@ class PaddedLineDataSetIterator final : public DataSetIterator {
   int64_t supervised_row_count_ = 0;
 };
 
-}  // namespace pluto::llm::memorize_general_facts
+}  // namespace pluto

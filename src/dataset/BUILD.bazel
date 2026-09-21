@@ -46,6 +46,51 @@ cc_test(
 )
 
 cc_library(
+    name = "padded_line_dataset",
+    srcs = ["padded_line_dataset.cc"],
+    hdrs = ["padded_line_dataset.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":dataset",
+        ":tokenizer",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/log:check",
+        "@abseil-cpp//absl/memory",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_test(
+    name = "padded_line_dataset_test",
+    size = "small",
+    srcs = ["padded_line_dataset_test.cc"],
+    data = ["//testdata:general_facts_dataset.txt"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":compact_vocabulary",
+        ":dataset",
+        ":gpt2_tokenizer",
+        ":padded_line_dataset",
+        ":plain_text_tokenizer",
+        ":tokenizer",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/strings",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "gpt2_tokenizer_vocabulary",
     srcs = ["gpt2_tokenizer_vocabulary.cc"],
     hdrs = ["gpt2_tokenizer_vocabulary.h"],

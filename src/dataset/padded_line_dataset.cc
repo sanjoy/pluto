@@ -1,4 +1,4 @@
-#include "src/llm/experiments/memorize_general_facts/dataset.h"
+#include "src/dataset/padded_line_dataset.h"
 
 #include <cuda_runtime_api.h>
 
@@ -15,7 +15,7 @@
 #include "absl/strings/str_split.h"
 #include "src/util/status_macros.h"
 
-namespace pluto::llm::memorize_general_facts {
+namespace pluto {
 
 absl::StatusOr<std::unique_ptr<PaddedLineDataSetIterator>>
 PaddedLineDataSetIterator::Create(cuda::Executor& executor,
@@ -36,7 +36,8 @@ PaddedLineDataSetIterator::Create(cuda::Executor& executor,
     return absl::InvalidArgumentError("EOS token is outside the vocabulary");
   if (corpus_text.empty())
     return absl::InvalidArgumentError("the line corpus must not be empty");
-  if (corpus_text.back() == '\n') corpus_text.remove_suffix(1);
+  if (corpus_text.back() == '\n')
+    corpus_text.remove_suffix(1);
   std::vector<absl::string_view> lines = absl::StrSplit(corpus_text, '\n');
   if (lines.size() > std::numeric_limits<size_t>::max() /
                          static_cast<size_t>(options.context_length) /
@@ -55,7 +56,8 @@ PaddedLineDataSetIterator::Create(cuda::Executor& executor,
   for (size_t line_index = 0; line_index < lines.size(); ++line_index) {
     absl::string_view line = lines[line_index];
     // Accept CRLF as a line ending, but preserve every other text byte.
-    if (!line.empty() && line.back() == '\r') line.remove_suffix(1);
+    if (!line.empty() && line.back() == '\r')
+      line.remove_suffix(1);
     if (absl::StripAsciiWhitespace(line).empty())
       return absl::InvalidArgumentError(
           absl::StrCat("line ", line_index + 1, " is empty"));
@@ -141,12 +143,14 @@ PaddedLineDataSetIterator::PaddedLineDataSetIterator(
 
 void PaddedLineDataSetIterator::BeginEpoch() {
   std::iota(order_.begin(), order_.end(), 0);
-  if (options_.shuffle) std::shuffle(order_.begin(), order_.end(), random_);
+  if (options_.shuffle)
+    std::shuffle(order_.begin(), order_.end(), random_);
   next_sample_ = 0;
 }
 
 absl::StatusOr<DataBatch> PaddedLineDataSetIterator::Next() {
-  if (next_sample_ == order_.size()) BeginEpoch();
+  if (next_sample_ == order_.size())
+    BeginEpoch();
   const size_t samples = std::min(static_cast<size_t>(options_.batch_size),
                                   order_.size() - next_sample_);
   const BatchBuffers& batch =
@@ -198,4 +202,4 @@ absl::Span<const int> PaddedLineDataSetIterator::sample_tokens(
       host_inputs_.data() + index * options_.context_length, lengths_[index]);
 }
 
-}  // namespace pluto::llm::memorize_general_facts
+}  // namespace pluto

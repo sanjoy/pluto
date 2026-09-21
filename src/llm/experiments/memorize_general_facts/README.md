@@ -19,6 +19,9 @@ in [`scripts/memorize_general_facts`](../../../../scripts/memorize_general_facts
 The native implementation does not depend on those scripts; the drivers invoke
 the built binary.
 
+The shared line-based iterator is `src/dataset/padded_line_dataset.h`; it
+provides per-sentence padding, prompt masking, and reproducible epoch shuffling.
+
 Existing reports and `runs/` evidence remain here unchanged. Recorded commands
 in historical manifests may name the old script locations; those are provenance,
 not current entry points. Use the script paths in the commands below for new runs.
