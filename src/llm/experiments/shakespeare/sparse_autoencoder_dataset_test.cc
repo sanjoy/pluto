@@ -1,4 +1,4 @@
-#include "src/llm/recipes/sparse_autoencoder_dataset.h"
+#include "src/llm/experiments/shakespeare/sparse_autoencoder_dataset.h"
 
 #include <cuda_runtime.h>
 

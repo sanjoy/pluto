@@ -1,4 +1,4 @@
 exports_files([
     "general_facts_dataset.txt",
-    "shakespeare.txt",
+    "shakespeare_dataset.txt",
 ])

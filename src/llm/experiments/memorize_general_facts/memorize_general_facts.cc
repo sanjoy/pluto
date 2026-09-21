@@ -33,10 +33,10 @@
 #include "src/llm/adamw_optimizer.h"
 #include "src/llm/batch_validation.h"
 #include "src/llm/checkpoint.h"
+#include "src/llm/experiments/shakespeare/gpt2.h"
 #include "src/llm/extract_top1_ids.h"
 #include "src/llm/gradient_clipper.h"
 #include "src/llm/layers/cross_entropy_loss.h"
-#include "src/llm/recipes/gpt2.h"
 #include "src/util/status_macros.h"
 #include "src/util/tee_stream.h"
 

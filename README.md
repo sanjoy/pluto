@@ -13,8 +13,8 @@ The repository includes:
 - GPU layers, CPU reference implementations, composition, AdamW, reusable
   training/evaluation loops, and weight checkpoints in [`src/llm`](src/llm).
 - GPT-2 and sparse-autoencoder experiments in
-  [`src/llm/recipes`](src/llm/recipes), including training and inference on
-  Shakespeare.
+  [`src/llm/experiments/shakespeare`](src/llm/experiments/shakespeare),
+  including training and inference on Shakespeare.
 - Standalone experimental tools in [`src/llm/experiments`](src/llm/experiments), including the
   MLP automaton readout.
 - Benchmark/sweep drivers and operational utilities in [`scripts`](scripts),

@@ -1,7 +1,7 @@
 # MLP token-transition automaton
 
 Read high-confidence token continuations directly from isolated MLPs of the
-GPT-2 recipe (all eight blocks by default). This is a diagnostic,
+Shakespeare GPT-2 model (all eight blocks by default). This is a diagnostic,
 **not** the full language model.
 For every logical vocabulary token `t`, it computes:
 
@@ -34,7 +34,7 @@ bazel build -c opt //src/llm/experiments/mlp_automaton
 bazel-bin/src/llm/experiments/mlp_automaton/mlp_automaton \
   --checkpoint=/home/ubuntu/checkpoints/shakespeare/step_13030 \
   --tokenizer=/home/ubuntu/datasets/tokenizer/gpt2 \
-  --corpus=testdata/shakespeare.txt \
+  --corpus=testdata/shakespeare_dataset.txt \
   --test_fraction=0.1 \
   --output_dir=/tmp/mlp-automaton \
   --batch_size=256 \
@@ -78,7 +78,7 @@ combined in increasing **numeric** step order:
 bazel-bin/src/llm/experiments/mlp_automaton/mlp_automaton \
   --checkpoint=/home/ubuntu/checkpoints/shakespeare_0 \
   --tokenizer=/home/ubuntu/datasets/tokenizer/gpt2 \
-  --corpus=testdata/shakespeare.txt \
+  --corpus=testdata/shakespeare_dataset.txt \
   --test_fraction=0.1 \
   --output_dir=/tmp/mlp-history \
   --threads=4 \
@@ -180,7 +180,7 @@ boundaries. The full graph in `graph.json` still records every qualifying
 model transition.
 
 Set `--corpus` to the text used for the checkpoint and `--test_fraction` to
-the training run's value. Defaults are `testdata/shakespeare.txt` and `0.1`.
+the training run's value. Defaults are `testdata/shakespeare_dataset.txt` and `0.1`.
 The file is memory-mapped and split with the same newline-aligned
 `SplitCorpus` helper as training. Held-out-only matches and matches that
 cross the split boundary are excluded. Use `--test_fraction=0` when the file

@@ -34,7 +34,7 @@ ABSL_FLAG(int, mlp_block, 0,
           "all blocks");
 ABSL_FLAG(std::string, tokenizer, "datasets/tokenizer/gpt2",
           "Directory containing the matching GPT-2 tokenizer.json");
-ABSL_FLAG(std::string, corpus, "testdata/shakespeare.txt",
+ABSL_FLAG(std::string, corpus, "testdata/shakespeare_dataset.txt",
           "Text corpus used for training; only paths present in its training "
           "portion are printed or saved in samples.json");
 ABSL_FLAG(double, test_fraction, 0.1,

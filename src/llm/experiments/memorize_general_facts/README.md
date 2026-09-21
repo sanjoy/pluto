@@ -368,7 +368,7 @@ in depth comparisons. Construction order and per-block seeds are unchanged.
 A model with `L` blocks has `4 + 12*L` unique checkpoint files; sixteen blocks
 therefore use 196 files, not 100. Verify such checkpoints with this experiment's
 native runner and their recorded depth, widths, and head count. The default
-Shakespeare/SAE recipes and the original fixed-shape inspectors still describe
+Shakespeare/SAE experiments and the original fixed-shape inspectors still describe
 the original eight-block model, not arbitrary deeper checkpoints. The older
 `run_depth_search.py` intentionally retains its historical depth-eight starting
 limit; use `run_width_depth_search.py` for these configurable searches. Supporting

@@ -33,14 +33,14 @@
 #include "src/dataset/tokenizer.h"
 #include "src/llm/adamw_optimizer.h"
 #include "src/llm/checkpoint.h"
+#include "src/llm/experiments/shakespeare/activation_inspection.h"
+#include "src/llm/experiments/shakespeare/gpt2.h"
+#include "src/llm/experiments/shakespeare/gpt2_shakespeare_cli.h"
+#include "src/llm/experiments/shakespeare/sparse_autoencoder_dataset.h"
 #include "src/llm/layer.h"
 #include "src/llm/layer_hooks.h"
 #include "src/llm/layers/cross_entropy_loss.h"
 #include "src/llm/layers/sparse_autoencoder.h"
-#include "src/llm/recipes/activation_inspection.h"
-#include "src/llm/recipes/gpt2.h"
-#include "src/llm/recipes/gpt2_shakespeare_cli.h"
-#include "src/llm/recipes/sparse_autoencoder_dataset.h"
 #include "src/llm/sampling.h"
 #include "src/llm/trainer.h"
 #include "src/util/status_macros.h"
@@ -222,13 +222,13 @@ std::string CorpusPath() {
 
   if (const char* test_srcdir = std::getenv("TEST_SRCDIR")) {
     if (const char* workspace = std::getenv("TEST_WORKSPACE")) {
-      const std::string runfile = absl::StrCat(test_srcdir, "/", workspace,
-                                               "/testdata/shakespeare.txt");
+      const std::string runfile = absl::StrCat(
+          test_srcdir, "/", workspace, "/testdata/shakespeare_dataset.txt");
       if (std::filesystem::exists(runfile))
         return runfile;
     }
   }
-  return "testdata/shakespeare.txt";
+  return "testdata/shakespeare_dataset.txt";
 }
 
 absl::StatusOr<std::filesystem::path> TokenizerDirectory() {

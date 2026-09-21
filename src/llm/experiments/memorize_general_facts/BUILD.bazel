@@ -7,7 +7,7 @@ cc_test(
     tags = ["requires-gpu"],
     deps = [
         "//src/cuda:executor",
-        "//src/llm/recipes:gpt2",
+        "//src/llm/experiments/shakespeare:gpt2",
         "@abseil-cpp//absl/container:flat_hash_set",
         "@googletest//:gtest_main",
     ],
@@ -32,7 +32,7 @@ cc_binary(
         "//src/llm:extract_top1_ids",
         "//src/llm:gradient_clipper",
         "//src/llm:layer",
-        "//src/llm/recipes:gpt2",
+        "//src/llm/experiments/shakespeare:gpt2",
         "//src/util:status_macros",
         "//src/util:tee_stream",
         "@abseil-cpp//absl/time",

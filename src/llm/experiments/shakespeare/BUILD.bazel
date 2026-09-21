@@ -119,7 +119,7 @@ cc_test(
 cc_binary(
     name = "gpt2_shakespeare_llm",
     srcs = ["gpt2_shakespeare_llm.cc"],
-    data = ["//testdata:shakespeare.txt"],
+    data = ["//testdata:shakespeare_dataset.txt"],
     deps = [
         ":activation_inspection",
         ":gpt2",
@@ -164,7 +164,7 @@ cc_test(
         "--eval_batches=1",
         "--steps=0",
     ],
-    data = ["//testdata:shakespeare.txt"],
+    data = ["//testdata:shakespeare_dataset.txt"],
     tags = [
         "requires-gpu",
         "requires-tokenizer",
@@ -215,7 +215,7 @@ cc_test(
         "--steps=10",
         "--train_until_loss=20",
     ],
-    data = ["//testdata:shakespeare.txt"],
+    data = ["//testdata:shakespeare_dataset.txt"],
     tags = [
         "requires-gpu",
         "requires-tokenizer",

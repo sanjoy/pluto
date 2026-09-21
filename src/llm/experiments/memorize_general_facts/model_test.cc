@@ -3,7 +3,7 @@
 #include "absl/container/flat_hash_set.h"
 #include "gtest/gtest.h"
 #include "src/cuda/executor.h"
-#include "src/llm/recipes/gpt2.h"
+#include "src/llm/experiments/shakespeare/gpt2.h"
 
 namespace pluto::llm::memorize_general_facts {
 namespace {

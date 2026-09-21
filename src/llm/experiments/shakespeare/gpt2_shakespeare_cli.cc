@@ -1,4 +1,4 @@
-#include "src/llm/recipes/gpt2_shakespeare_cli.h"
+#include "src/llm/experiments/shakespeare/gpt2_shakespeare_cli.h"
 
 #include <cmath>
 #include <cstddef>

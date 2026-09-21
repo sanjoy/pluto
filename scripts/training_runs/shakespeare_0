@@ -5,12 +5,12 @@ set -euo pipefail
 # Save initialization and every 100th step. Reproducibility requires the same
 # code, inputs, flags, and GPU/software stack across runs.
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.."
-bazel build -c opt //src/llm/recipes:gpt2_shakespeare_llm
+bazel build -c opt //src/llm/experiments/shakespeare:gpt2_shakespeare_llm
 
 export CUDA_VISIBLE_DEVICES=0
-exec ./bazel-bin/src/llm/recipes/gpt2_shakespeare_llm \
+exec ./bazel-bin/src/llm/experiments/shakespeare/gpt2_shakespeare_llm \
   --mode=train_model \
-  --corpus="$PWD/testdata/shakespeare.txt" \
+  --corpus="$PWD/testdata/shakespeare_dataset.txt" \
   --tokenizer_dir=/home/ubuntu/datasets/tokenizer/gpt2 \
   --seed=17 \
   --batch_size=20 \
