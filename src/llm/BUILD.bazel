@@ -78,6 +78,44 @@ cc_test(
     ],
 )
 
+cc_library(
+    name = "generate_greedy_continuation",
+    srcs = ["generate_greedy_continuation.cc"],
+    hdrs = ["generate_greedy_continuation.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":extract_top1_ids",
+        ":layer",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_test(
+    name = "generate_greedy_continuation_test",
+    srcs = ["generate_greedy_continuation_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":generate_greedy_continuation",
+        ":layer",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
 cuda_library(
     name = "gradient_clipper",
     srcs = ["gradient_clipper.cc"],

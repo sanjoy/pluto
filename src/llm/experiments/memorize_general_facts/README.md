@@ -12,9 +12,10 @@ per-depth evidence, smallest checkpoint, and exact verification command.
 
 ## Code and experiment utilities
 
-This directory contains the native C++ training/evaluation/inference binary,
-its generation helper, and tests. Reusable components live in `src/dataset/`
-and `src/llm/`.
+This directory contains the native C++ training/evaluation/inference binary
+and its CLI tests. The reusable `GenerateGreedyContinuation` helper lives in
+`src/llm/generate_greedy_continuation.h`; other reusable components live in
+`src/dataset/` and `src/llm/`.
 Python sweep drivers, Pareto reporting,
 checkpoint conversion, corpus/prediction audits, and their tests live separately
 in [`scripts/memorize_general_facts`](../../../../scripts/memorize_general_facts).

@@ -1,4 +1,4 @@
-#include "src/llm/experiments/memorize_general_facts/generation.h"
+#include "src/llm/generate_greedy_continuation.h"
 
 #include <cuda_runtime.h>
 
@@ -11,9 +11,9 @@
 #include "src/llm/extract_top1_ids.h"
 #include "src/util/status_macros.h"
 
-namespace pluto::llm::memorize_general_facts {
+namespace pluto::llm {
 
-absl::StatusOr<cuda::PageLockedHostArray<int>> GenerateContinuation(
+absl::StatusOr<cuda::PageLockedHostArray<int>> GenerateGreedyContinuation(
     cuda::Executor& executor, const Layer& model,
     absl::Span<const int> prompt_tokens, int vocabulary_size, int eos_token,
     int max_new_tokens) {
@@ -130,4 +130,4 @@ absl::StatusOr<cuda::PageLockedHostArray<int>> GenerateContinuation(
                                        used - prompt_tokens.size()));
 }
 
-}  // namespace pluto::llm::memorize_general_facts
+}  // namespace pluto::llm

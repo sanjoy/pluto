@@ -1,4 +1,4 @@
-#include "src/llm/experiments/memorize_general_facts/generation.h"
+#include "src/llm/generate_greedy_continuation.h"
 
 #include <cuda_runtime.h>
 
@@ -20,7 +20,7 @@
 #include "src/llm/layer.h"
 #include "src/util/status_macros.h"
 
-namespace pluto::llm::memorize_general_facts {
+namespace pluto::llm {
 namespace {
 
 constexpr int64_t kBatch = ActivationType::kBatchDimension;
@@ -118,7 +118,7 @@ class ScriptedLayer final : public Layer {
   Script script_;
 };
 
-class GenerationTest : public testing::Test {
+class GenerateGreedyContinuationTest : public testing::Test {
  protected:
   void SetUp() override {
     auto executor = cuda::Executor::Create();
@@ -133,12 +133,14 @@ class GenerationTest : public testing::Test {
   std::unique_ptr<cuda::Executor> executor_;
 };
 
-TEST_F(GenerationTest, FeedsGeneratedTokensAtAdvancingFinalPositions) {
+TEST_F(GenerateGreedyContinuationTest,
+       FeedsGeneratedTokensAtAdvancingFinalPositions) {
   ScriptedLayer model(6, 12, [](absl::Span<const int> input, int call) {
     const int row = 1 + call;
     return Logits(6, 10, 12, row, input[row] + 1);
   });
-  auto generated = GenerateContinuation(*executor_, model, {1, 2}, 10, 9, 3);
+  auto generated =
+      GenerateGreedyContinuation(*executor_, model, {1, 2}, 10, 9, 3);
   ASSERT_TRUE(generated.ok()) << generated.status();
   EXPECT_EQ(&generated->executor(), executor_.get());
   EXPECT_EQ(std::vector<int>(generated->begin(), generated->end()),
@@ -151,11 +153,13 @@ TEST_F(GenerationTest, FeedsGeneratedTokensAtAdvancingFinalPositions) {
   EXPECT_EQ(model.input_addresses[0], model.input_addresses[2]);
 }
 
-TEST_F(GenerationTest, StopsAtEosAndExcludesItFromContinuation) {
+TEST_F(GenerateGreedyContinuationTest,
+       StopsAtEosAndExcludesItFromContinuation) {
   ScriptedLayer model(6, 12, [](absl::Span<const int>, int call) {
     return Logits(6, 10, 12, 1 + call, call == 0 ? 3 : 9);
   });
-  auto generated = GenerateContinuation(*executor_, model, {1, 2}, 10, 9, 4);
+  auto generated =
+      GenerateGreedyContinuation(*executor_, model, {1, 2}, 10, 9, 4);
   ASSERT_TRUE(generated.ok()) << generated.status();
   EXPECT_EQ(std::vector<int>(generated->begin(), generated->end()),
             (std::vector<int>{3}));
@@ -164,19 +168,20 @@ TEST_F(GenerationTest, StopsAtEosAndExcludesItFromContinuation) {
   ScriptedLayer immediate(6, 10, [](absl::Span<const int>, int) {
     return Logits(6, 10, 10, 0, 9);
   });
-  auto empty = GenerateContinuation(*executor_, immediate, {1}, 10, 9, 5);
+  auto empty = GenerateGreedyContinuation(*executor_, immediate, {1}, 10, 9, 5);
   ASSERT_TRUE(empty.ok()) << empty.status();
   EXPECT_TRUE(empty->empty());
   EXPECT_EQ(immediate.forward_inputs.size(), 1u);
 }
 
-TEST_F(GenerationTest, CapsHugeRequestAtAvailableContextWithoutShifting) {
+TEST_F(GenerateGreedyContinuationTest,
+       CapsHugeRequestAtAvailableContextWithoutShifting) {
   ScriptedLayer model(4, 10, [](absl::Span<const int> input, int call) {
     const int row = 1 + call;
     return Logits(4, 10, 10, row, input[row] + 1);
   });
-  auto generated = GenerateContinuation(*executor_, model, {1, 2}, 10, 9,
-                                        std::numeric_limits<int>::max());
+  auto generated = GenerateGreedyContinuation(*executor_, model, {1, 2}, 10, 9,
+                                              std::numeric_limits<int>::max());
   ASSERT_TRUE(generated.ok()) << generated.status();
   EXPECT_EQ(std::vector<int>(generated->begin(), generated->end()),
             (std::vector<int>{3, 4}));
@@ -184,13 +189,14 @@ TEST_F(GenerationTest, CapsHugeRequestAtAvailableContextWithoutShifting) {
             (std::vector<std::vector<int>>{{1, 2, 9, 9}, {1, 2, 3, 9}}));
 }
 
-TEST_F(GenerationTest, ZeroRequestAndFullContextDoNotRunModel) {
+TEST_F(GenerateGreedyContinuationTest, ZeroRequestAndFullContextDoNotRunModel) {
   ScriptedLayer model(4, 10, [](absl::Span<const int>, int) {
     ADD_FAILURE() << "model should not run without room or requested tokens";
     return std::vector<float>{};
   });
-  auto zero = GenerateContinuation(*executor_, model, {1, 2}, 10, 9, 0);
-  auto full = GenerateContinuation(*executor_, model, {1, 2, 3, 4}, 10, 9, 100);
+  auto zero = GenerateGreedyContinuation(*executor_, model, {1, 2}, 10, 9, 0);
+  auto full =
+      GenerateGreedyContinuation(*executor_, model, {1, 2, 3, 4}, 10, 9, 100);
   ASSERT_TRUE(zero.ok()) << zero.status();
   ASSERT_TRUE(full.ok()) << full.status();
   EXPECT_TRUE(zero->empty());
@@ -200,30 +206,32 @@ TEST_F(GenerationTest, ZeroRequestAndFullContextDoNotRunModel) {
   EXPECT_TRUE(model.forward_inputs.empty());
 }
 
-TEST_F(GenerationTest, LowestIdWinsTiesAndPaddingNeverWinsRepeatedly) {
+TEST_F(GenerateGreedyContinuationTest,
+       LowestIdWinsTiesAndPaddingNeverWinsRepeatedly) {
   ScriptedLayer model(4, 12, [](absl::Span<const int>, int) {
     auto values = Logits(4, 10, 12, 1, 7);
     values[12 + 3] = 10;
     return values;
   });
   for (int repetition = 0; repetition < 5; ++repetition) {
-    auto generated = GenerateContinuation(*executor_, model, {1, 2}, 10, 9, 1);
+    auto generated =
+        GenerateGreedyContinuation(*executor_, model, {1, 2}, 10, 9, 1);
     ASSERT_TRUE(generated.ok()) << generated.status();
     ASSERT_EQ(generated->size(), 1u);
     EXPECT_EQ((*generated)[0], 3);
   }
 }
 
-TEST_F(GenerationTest, SingleTokenVocabularyCanOnlyProduceEos) {
+TEST_F(GenerateGreedyContinuationTest, SingleTokenVocabularyCanOnlyProduceEos) {
   ScriptedLayer model(
       2, 1, [](absl::Span<const int>, int) { return Logits(2, 1, 1, 0, 0); });
-  auto generated = GenerateContinuation(*executor_, model, {0}, 1, 0, 1);
+  auto generated = GenerateGreedyContinuation(*executor_, model, {0}, 1, 0, 1);
   ASSERT_TRUE(generated.ok()) << generated.status();
   EXPECT_TRUE(generated->empty());
   EXPECT_EQ(model.forward_inputs.size(), 1u);
 }
 
-TEST_F(GenerationTest, RejectsNonfiniteSelectedLogits) {
+TEST_F(GenerateGreedyContinuationTest, RejectsNonfiniteSelectedLogits) {
   for (float invalid : {std::numeric_limits<float>::quiet_NaN(),
                         std::numeric_limits<float>::infinity(),
                         -std::numeric_limits<float>::infinity()}) {
@@ -232,13 +240,14 @@ TEST_F(GenerationTest, RejectsNonfiniteSelectedLogits) {
       values[12 + 8] = invalid;
       return values;
     });
-    auto generated = GenerateContinuation(*executor_, model, {1, 2}, 10, 9, 1);
+    auto generated =
+        GenerateGreedyContinuation(*executor_, model, {1, 2}, 10, 9, 1);
     EXPECT_EQ(generated.status().code(), absl::StatusCode::kDataLoss);
     EXPECT_EQ(model.forward_inputs.size(), 1u);
   }
 }
 
-TEST_F(GenerationTest,
+TEST_F(GenerateGreedyContinuationTest,
        RejectsInvalidPromptAndGenerationArgumentsBeforeForward) {
   ScriptedLayer model(4, 10, [](absl::Span<const int>, int) {
     ADD_FAILURE() << "invalid inputs must be rejected before forward";
@@ -246,33 +255,35 @@ TEST_F(GenerationTest,
   });
   for (const auto& prompt :
        std::vector<std::vector<int>>{{}, {-1}, {10}, {1, 2, 3, 4, 5}}) {
-    EXPECT_EQ(GenerateContinuation(*executor_, model, prompt, 10, 9, 1)
+    EXPECT_EQ(GenerateGreedyContinuation(*executor_, model, prompt, 10, 9, 1)
                   .status()
                   .code(),
               absl::StatusCode::kInvalidArgument);
     // Zero new tokens does not bypass prompt validation.
-    EXPECT_EQ(GenerateContinuation(*executor_, model, prompt, 10, 9, 0)
+    EXPECT_EQ(GenerateGreedyContinuation(*executor_, model, prompt, 10, 9, 0)
                   .status()
                   .code(),
               absl::StatusCode::kInvalidArgument);
   }
   for (int vocabulary : {-1, 0, 11})
-    EXPECT_EQ(GenerateContinuation(*executor_, model, {1}, vocabulary, 9, 1)
-                  .status()
-                  .code(),
-              absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ(
+        GenerateGreedyContinuation(*executor_, model, {1}, vocabulary, 9, 1)
+            .status()
+            .code(),
+        absl::StatusCode::kInvalidArgument);
   for (int eos : {-1, 10})
-    EXPECT_EQ(GenerateContinuation(*executor_, model, {1}, 10, eos, 1)
+    EXPECT_EQ(GenerateGreedyContinuation(*executor_, model, {1}, 10, eos, 1)
                   .status()
                   .code(),
               absl::StatusCode::kInvalidArgument);
-  EXPECT_EQ(
-      GenerateContinuation(*executor_, model, {1}, 10, 9, -1).status().code(),
-      absl::StatusCode::kInvalidArgument);
+  EXPECT_EQ(GenerateGreedyContinuation(*executor_, model, {1}, 10, 9, -1)
+                .status()
+                .code(),
+            absl::StatusCode::kInvalidArgument);
   EXPECT_TRUE(model.forward_inputs.empty());
 }
 
-TEST_F(GenerationTest, RejectsInvalidDeclaredSignatures) {
+TEST_F(GenerateGreedyContinuationTest, RejectsInvalidDeclaredSignatures) {
   const ScriptedLayer::Script unused = [](absl::Span<const int>, int) {
     ADD_FAILURE() << "invalid signatures must be rejected before forward";
     return std::vector<float>{};
@@ -286,9 +297,10 @@ TEST_F(GenerationTest, RejectsInvalidDeclaredSignatures) {
            {DataType::INT32, {kBatch, int64_t{1} << 32}}}) {
     ScriptedLayer model(4, 10, unused);
     model.input_signatures = {input};
-    EXPECT_EQ(
-        GenerateContinuation(*executor_, model, {1}, 10, 9, 1).status().code(),
-        absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ(GenerateGreedyContinuation(*executor_, model, {1}, 10, 9, 1)
+                  .status()
+                  .code(),
+              absl::StatusCode::kInvalidArgument);
   }
   for (const ActivationType& output : std::vector<ActivationType>{
            {DataType::BF16, {kBatch, 4, 10}},
@@ -300,45 +312,51 @@ TEST_F(GenerationTest, RejectsInvalidDeclaredSignatures) {
            {DataType::FP32, {kBatch, 4, int64_t{1} << 32}}}) {
     ScriptedLayer model(4, 10, unused);
     model.output_signatures = {output};
-    EXPECT_EQ(
-        GenerateContinuation(*executor_, model, {1}, 10, 9, 1).status().code(),
-        absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ(GenerateGreedyContinuation(*executor_, model, {1}, 10, 9, 1)
+                  .status()
+                  .code(),
+              absl::StatusCode::kInvalidArgument);
   }
   for (int count : {0, 2}) {
     ScriptedLayer model(4, 10, unused);
     model.input_signatures.assign(count, {DataType::INT32, {kBatch, 4}});
-    EXPECT_EQ(
-        GenerateContinuation(*executor_, model, {1}, 10, 9, 1).status().code(),
-        absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ(GenerateGreedyContinuation(*executor_, model, {1}, 10, 9, 1)
+                  .status()
+                  .code(),
+              absl::StatusCode::kInvalidArgument);
     model.input_signatures = {{DataType::INT32, {kBatch, 4}}};
     model.output_signatures.assign(count, {DataType::FP32, {kBatch, 4, 10}});
-    EXPECT_EQ(
-        GenerateContinuation(*executor_, model, {1}, 10, 9, 1).status().code(),
-        absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ(GenerateGreedyContinuation(*executor_, model, {1}, 10, 9, 1)
+                  .status()
+                  .code(),
+              absl::StatusCode::kInvalidArgument);
   }
 }
 
-TEST_F(GenerationTest, RejectsOutputBufferSizeOrCountMismatch) {
+TEST_F(GenerateGreedyContinuationTest, RejectsOutputBufferSizeOrCountMismatch) {
   for (int count : {0, 39, 41, 80}) {
     ScriptedLayer model(4, 10, [count](absl::Span<const int>, int) {
       return std::vector<float>(count, 0);
     });
-    EXPECT_EQ(
-        GenerateContinuation(*executor_, model, {1}, 10, 9, 1).status().code(),
-        absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ(GenerateGreedyContinuation(*executor_, model, {1}, 10, 9, 1)
+                  .status()
+                  .code(),
+              absl::StatusCode::kInvalidArgument);
   }
   for (size_t outputs : {0, 2}) {
     ScriptedLayer model(4, 10, [](absl::Span<const int>, int) {
       return Logits(4, 10, 10, 0, 3);
     });
     model.output_count = outputs;
-    EXPECT_EQ(
-        GenerateContinuation(*executor_, model, {1}, 10, 9, 1).status().code(),
-        absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ(GenerateGreedyContinuation(*executor_, model, {1}, 10, 9, 1)
+                  .status()
+                  .code(),
+              absl::StatusCode::kInvalidArgument);
   }
 }
 
-TEST_F(GenerationTest, RejectsWeightsAndOutputsFromAnotherExecutor) {
+TEST_F(GenerateGreedyContinuationTest,
+       RejectsWeightsAndOutputsFromAnotherExecutor) {
   auto other = cuda::Executor::Create();
   ASSERT_TRUE(other.ok()) << other.status();
   {
@@ -348,19 +366,21 @@ TEST_F(GenerationTest, RejectsWeightsAndOutputsFromAnotherExecutor) {
     auto weight = cuda::Buffer::Allocate(**other, sizeof(float));
     ASSERT_TRUE(weight.ok()) << weight.status();
     model.parameter_buffers.push_back(std::move(*weight));
-    EXPECT_EQ(
-        GenerateContinuation(*executor_, model, {1}, 10, 9, 1).status().code(),
-        absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ(GenerateGreedyContinuation(*executor_, model, {1}, 10, 9, 1)
+                  .status()
+                  .code(),
+              absl::StatusCode::kInvalidArgument);
     EXPECT_TRUE(model.forward_inputs.empty());
     model.parameter_buffers.clear();
     model.output_executor = other->get();
-    EXPECT_EQ(
-        GenerateContinuation(*executor_, model, {1}, 10, 9, 1).status().code(),
-        absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ(GenerateGreedyContinuation(*executor_, model, {1}, 10, 9, 1)
+                  .status()
+                  .code(),
+              absl::StatusCode::kInvalidArgument);
     EXPECT_EQ(model.forward_inputs.size(), 1u);
   }
   EXPECT_TRUE((*other)->Synchronize().ok());
 }
 
 }  // namespace
-}  // namespace pluto::llm::memorize_general_facts
+}  // namespace pluto::llm

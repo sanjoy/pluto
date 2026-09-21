@@ -37,9 +37,9 @@
 #include "src/llm/batch_validation.h"
 #include "src/llm/checkpoint.h"
 #include "src/llm/experiments/gpt2_shakespeare/gpt2.h"
-#include "src/llm/experiments/memorize_general_facts/generation.h"
 #include "src/llm/experiments/memorize_general_facts/memorize_general_facts_cli.h"
 #include "src/llm/extract_top1_ids.h"
+#include "src/llm/generate_greedy_continuation.h"
 #include "src/llm/layers/cross_entropy_loss.h"
 #include "src/util/status_macros.h"
 #include "src/util/tee_stream.h"
@@ -611,16 +611,17 @@ absl::Status RunInference(cuda::Executor& executor,
     ASSIGN_OR_RETURN(auto encoded, model_tokenizer->Encode(executor, prompt));
     ASSIGN_OR_RETURN(
         auto generated,
-        GenerateContinuation(executor, *model, encoded.span(),
-                             model_tokenizer->vocab_size(), eos_token,
-                             absl::GetFlag(FLAGS_generation_tokens)));
+        GenerateGreedyContinuation(executor, *model, encoded.span(),
+                                   model_tokenizer->vocab_size(), eos_token,
+                                   absl::GetFlag(FLAGS_generation_tokens)));
     if (vocabulary != nullptr) {
       for (int& token : generated) {
         ASSIGN_OR_RETURN(token, vocabulary->OriginalId(token));
       }
     }
     // Decode the whole continuation at once: individual GPT-2 tokens can split
-    // UTF-8 characters. GenerateContinuation omits EOS, so it is never printed.
+    // UTF-8 characters. GenerateGreedyContinuation omits EOS, so it is never
+    // printed.
     ASSIGN_OR_RETURN(auto text, detokenizer->Decode(generated.span()));
     std::cout << prompt << text << std::endl;
     return absl::OkStatus();

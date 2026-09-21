@@ -3,43 +3,6 @@ load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 
 cc_library(
-    name = "generation",
-    srcs = ["generation.cc"],
-    hdrs = ["generation.h"],
-    deps = [
-        "//src/cuda:buffer",
-        "//src/cuda:executor",
-        "//src/cuda:page_locked_host_array",
-        "//src/llm:extract_top1_ids",
-        "//src/llm:layer",
-        "//src/util:status_macros",
-        "@abseil-cpp//absl/status",
-        "@abseil-cpp//absl/status:statusor",
-        "@abseil-cpp//absl/types:span",
-        "@cuda//:cuda_runtime",
-    ],
-)
-
-cc_test(
-    name = "generation_test",
-    srcs = ["generation_test.cc"],
-    tags = ["requires-gpu"],
-    deps = [
-        ":generation",
-        "//src/cuda:buffer",
-        "//src/cuda:executor",
-        "//src/cuda:page_locked_host_array",
-        "//src/llm:layer",
-        "//src/util:status_macros",
-        "@abseil-cpp//absl/status",
-        "@abseil-cpp//absl/status:statusor",
-        "@abseil-cpp//absl/types:span",
-        "@cuda//:cuda_runtime",
-        "@googletest//:gtest_main",
-    ],
-)
-
-cc_library(
     name = "memorize_general_facts_cli",
     srcs = ["memorize_general_facts_cli.cc"],
     hdrs = ["memorize_general_facts_cli.h"],
@@ -69,7 +32,6 @@ cc_binary(
     name = "memorize_general_facts",
     srcs = ["memorize_general_facts.cc"],
     deps = [
-        ":generation",
         ":memorize_general_facts_cli",
         "//src/cuda:buffer",
         "//src/cuda:executor",
@@ -85,6 +47,7 @@ cc_binary(
         "//src/llm:checkpoint",
         "//src/llm:cross_entropy_loss",
         "//src/llm:extract_top1_ids",
+        "//src/llm:generate_greedy_continuation",
         "//src/llm:layer",
         "//src/llm/experiments/gpt2_shakespeare:gpt2",
         "//src/util:status_macros",

@@ -6,7 +6,7 @@
 #include "src/cuda/page_locked_host_array.h"
 #include "src/llm/layer.h"
 
-namespace pluto::llm::memorize_general_facts {
+namespace pluto::llm {
 
 // Generates a batch-one greedy continuation, resolving ties by lowest token
 // ID. The model must accept INT32 [batch, context] and return FP32
@@ -18,9 +18,9 @@ namespace pluto::llm::memorize_general_facts {
 // cache. Prompts must be nonempty and fit the context. A zero count or an
 // already-full context returns an empty continuation after input validation.
 // The returned pinned storage is CPU-ready and must not outlive executor.
-absl::StatusOr<cuda::PageLockedHostArray<int>> GenerateContinuation(
+absl::StatusOr<cuda::PageLockedHostArray<int>> GenerateGreedyContinuation(
     cuda::Executor& executor, const Layer& model,
     absl::Span<const int> prompt_tokens, int vocabulary_size, int eos_token,
     int max_new_tokens);
 
-}  // namespace pluto::llm::memorize_general_facts
+}  // namespace pluto::llm
