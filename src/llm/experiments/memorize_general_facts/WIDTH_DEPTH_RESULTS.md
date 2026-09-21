@@ -71,6 +71,13 @@ so a fixed top-1 prediction cannot satisfy it. This does not exclude width 2 or
 any larger width. Positive width 1 remains a valid layer shape for numerical
 tests; shape validity is not task capacity.
 
+Fixed initialization also changes initial attention-score scale with width.
+[INITIALIZATION_NOTES.md](INITIALIZATION_NOTES.md) derives this effect and
+records a reproducible FP64 CPU first-block diagnostic. It is a potential
+optimization confound, not a demonstrated explanation of the budget failures
+or evidence that an initialization change would help. The active protocol is
+unchanged.
+
 ## Follow-up search plan
 
 The coarse search is not the endpoint. The one-block width-32 longer-budget
