@@ -104,6 +104,7 @@ particular, the near-perfect one-block width-64 trial needs a longer-budget chec
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | Coarse | 1 | 64 | 3,333,056 | 5,000 | 2 / 10,002 | 1 at step 4,992 | 0.073553935635 |
 | Coarse | 2 | 32 | 1,666,944 | 5,000 | 2,884 / 10,002 | 2,884 at step 5,000 | 1.908862034386 |
+| Coarse | 3 | 32 | 1,679,648 | 5,000 | 2,854 / 10,002 | 2,841 at step 4,992 | 1.868303412209 |
 
 The width-64, one-block trial reached its full update cap, not its time cap.
 Its final checkpoint reloaded with the same two errors and passed the independent
@@ -125,6 +126,15 @@ Checkpoint:
 `/home/ubuntu/checkpoints/memorize_general_facts/width_depth_coarse_0/width_32/layers_2/step_5000`.
 Artifacts: `runs/width_depth_coarse_0/width_32/layers_2/`. Independent prediction
 TSV SHA-256: `56a3496ebcbe85037d26f2a9779644e5f9ac3f4900807c4756639d56db01301c`.
+
+Three blocks at width 32 also reached the full update cap, in about 6.5 minutes,
+with 43 exact sentences and 2,854 final errors. Both independent checks passed
+and reproduced the prediction TSV exactly. This is only a small improvement
+over two blocks under the same short budget.
+Checkpoint:
+`/home/ubuntu/checkpoints/memorize_general_facts/width_depth_coarse_0/width_32/layers_3/step_5000`.
+Artifacts: `runs/width_depth_coarse_0/width_32/layers_3/`. Independent prediction
+TSV SHA-256: `02d9d2ae80dd8e044d9a710489a964f1dd928cefcff859e999ff38c3bedc7abb`.
 
 ## Validation and current status
 
@@ -158,8 +168,9 @@ checkpoints are under
 One block at widths 256 and 128 and two blocks at width 64 passed both independent
 checks. All 16 tensors shared between the one-/two-block width-64 initializations
 match byte-for-byte, including final LayerNorm after accounting for file indices.
-Two blocks at width 32 exhausted the update budget; three-block width-32
-training was underway by 01:19:39 UTC. Its 28 shared initial tensors match the
-two-block width-32 model byte-for-byte, including the relocated final norm.
+Two and three blocks at width 32 exhausted the update budget. Four-block
+width-32 training was underway by 01:26:11 UTC. The 28 shared initial tensors
+for depths two/three and 40 for depths three/four match byte-for-byte, including
+the relocated final norms.
 The smallest verified success so far is two blocks at width 64, with 3,383,040
 physical parameters; the width/depth frontier is not complete yet.
