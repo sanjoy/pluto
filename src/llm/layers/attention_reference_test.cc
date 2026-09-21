@@ -192,7 +192,7 @@ TEST_F(AttentionReferenceTest,
   // Full 1024-token sequences exercise all 32 causal key/query tiles, including
   // the long backward reductions that short partial-tile tests do not cover.
   // Nontrivial Q/K scaling keeps the attention probabilities nonuniform.
-  for (int head_dimension : {16, 32})
+  for (int head_dimension : {16, 24, 32})
     CheckConfiguration(DataType::BF16, 1024, 1, head_dimension, 1, 4.0f, 3);
 }
 
