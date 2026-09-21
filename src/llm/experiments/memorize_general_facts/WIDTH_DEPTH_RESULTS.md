@@ -55,7 +55,7 @@ That is an implementation restriction, not a mathematical minimum. Subsequent
 backend changes support compact positive logical channel widths, with CPU/GPU,
 repeatability, and memory checks documented in
 `runs/compact_width_validation_0/README.md`. No new-width training result is
-implied by those tests. The active coarse binary remains unchanged. Dense
+implied by those tests. The coarse run kept its original binary throughout. Dense
 kernels internally pad narrow dimensions to 64, and full-vocabulary loss work
 does not shrink with residual width, so fewer parameters need not imply a
 proportional speedup. The result will be an empirical frontier within the
@@ -72,9 +72,11 @@ tests; shape validity is not task capacity.
 
 ## Follow-up search plan
 
-The coarse search is not the endpoint. After it completes, test intermediate
-aligned widths (starting with 96, 80, and 48) under the same 5,000-update
-protocol, recording their different head partitions explicitly. Use separate
+The coarse search is not the endpoint. Intermediate widths (such as 96, 80,
+and 48) can refine its 5,000-update frontier, recording their different head
+partitions explicitly. Prioritize the one-block width-64 longer-budget near
+miss first: if that succeeds, widths 96 and 80 cannot improve the pooled
+frontier and need not be trained just to reconfirm dominated points. Use separate
 named runs so their evidence does not alter the coarse manifest. In particular,
 a failure at a wider width must not be used as evidence for an untested narrower
 width; targeted single-width runs can bypass that coarse traversal heuristic.
@@ -146,6 +148,7 @@ particular, the near-perfect one-block width-64 trial needs a longer-budget chec
 | Coarse | 5 | 32 | 1,705,056 | 5,000 | 2,841 / 10,002 | 2,840 at step 4,992 | 1.873806013764 |
 | Coarse | 6 | 32 | 1,717,760 | 5,000 | 2,951 / 10,002 | 2,932 at step 4,992 | 1.941699876939 |
 | Coarse | 7 | 32 | 1,730,464 | 5,000 | 2,891 / 10,002 | 2,879 at step 4,992 | 1.913807373659 |
+| Coarse | 8 | 32 | 1,743,168 | 5,000 | 2,777 / 10,002 | 2,777 at step 5,000 | 1.897634668045 |
 
 The width-64, one-block trial reached its full update cap, not its time cap.
 Its final checkpoint reloaded with the same two errors and passed the independent
@@ -214,6 +217,15 @@ Checkpoint:
 Artifacts: `runs/width_depth_coarse_0/width_32/layers_7/`. Independent prediction
 TSV SHA-256: `fb5b60e767d688974c6e633f14778d6b8212505cc49ca3b351131be051e0bde4`.
 
+Eight blocks at width 32 reached 5,000 updates in about 11.0 minutes, with
+58 exact sentences and 2,777 errors. Its saved checkpoint and prediction TSV
+passed both independent checks. This is the lowest final error count among the
+tested width-32 depths, but still far from exact memorization.
+Checkpoint:
+`/home/ubuntu/checkpoints/memorize_general_facts/width_depth_coarse_0/width_32/layers_8/step_5000`.
+Artifacts: `runs/width_depth_coarse_0/width_32/layers_8/`. Independent prediction
+TSV SHA-256: `c3782d1523a48f2aa2efefbbaaa2737144c9342d07bb4003ce4ff35154068bdc`.
+
 These narrow models learned the end-of-sentence target before memorizing the
 contents. Directly counting the independently checked prediction TSVs gives:
 
@@ -225,6 +237,7 @@ contents. Directly counting the independently checked prediction TSVs gives:
 | 5 | 326 | 2,515 | 0 |
 | 6 | 345 | 2,606 | 0 |
 | 7 | 355 | 2,536 | 0 |
+| 8 | 336 | 2,441 | 0 |
 
 Here the first suffix target has token index 5, EOS has token ID 50,256, and the
 remaining scored targets are later content. This describes the error locations,
@@ -255,18 +268,23 @@ The read-only evidence reporter adds 23 tests; all 103 Python experiment tests
 pass. It can combine named coarse/refinement/longer-budget runs while preserving
 their separate protocols and rechecking saved evidence.
 
-The coarse search started on 2026-09-21 at 00:46:16 UTC with one block at width
-256. Its live record is `runs/width_depth_coarse_0/width_depth_search_summary.json`;
+The coarse search ran on 2026-09-21 from 00:46:16 through 02:12:22 UTC. Its
+completed record is `runs/width_depth_coarse_0/width_depth_search_summary.json`;
 checkpoints are under
 `/home/ubuntu/checkpoints/memorize_general_facts/width_depth_coarse_0/`.
 One block at widths 256 and 128 and two blocks at width 64 passed both independent
 checks. All 16 tensors shared between the one-/two-block width-64 initializations
 match byte-for-byte, including final LayerNorm after accounting for file indices.
-Two through seven blocks at width 32 exhausted the update budget. Eight-block
-width-32 training is now underway. The 28 shared initial tensors for depths
+Two through eight blocks at width 32 exhausted the update budget. The 28 shared initial tensors for depths
 two/three, 40 for depths three/four, 52 for depths four/five, and 64 for depths
 five/six match byte-for-byte, including the relocated final norms. The 76 shared
 initial tensors for depths six/seven and 88 for depths seven/eight also match
 exactly.
 The smallest verified success so far is two blocks at width 64, with 3,383,040
 physical parameters; the width/depth frontier is not complete yet.
+
+The coarse pass has 11 verified trials: three successes and eight budget
+failures. Its measured frontier is `(1,128), (2,64)`; no untested narrower point
+is called a failure. The search now moves to post-rebuild compatibility/smoke
+checks, then longer budgets and width refinement. All 107 Python experiment
+tests pass after adding compact-width driver/report support.
