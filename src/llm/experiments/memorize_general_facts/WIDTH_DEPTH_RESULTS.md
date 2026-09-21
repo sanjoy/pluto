@@ -116,6 +116,7 @@ requirement proves a lower bound on model capacity.
 | Longer budget | 1 | 64 | 1 × 64 | 256 | 3,333,056 | 5,632 | 88 | 0 / 10,002 | 0.00046606012 |
 | Longer budget, narrow | 1 | 32 | 1 × 32 | 128 | 1,654,240 | 9,984 | 156 | 0 / 10,002 | 0.002481923691 |
 | 40k-cap midpoint refinement | 1 | 24 | 1 × 24 | 96 | 1,238,376 | 29,824 | 466 | 0 / 10,002 | 0.000156123977 |
+| 40k-cap depth refinement | 8 | 16 | 1 × 16 | 64 | 847,008 | 25,472 | 398 | 0 / 10,002 | 0.008924517551 |
 
 All successful rows complete all 1,024 sentences exactly under the approved
 five-token-prompt rule. Their fresh-process checkpoint predictions match the
@@ -181,63 +182,66 @@ cosine decay, so this is not a continuation or an isolated test of update count.
 The search and both final checks finished at 05:11:23 UTC, about 25.4 minutes
 after starting, without reaching either budget cap.
 
+Eight blocks at width 16 then succeeded under the fresh 40,000-update schedule
+at step 25,472 (398 epochs), with 847,008 parameters and mean loss
+0.008924517550865827 nats. All 1,024 first-suffix targets, 7,954 later content
+targets, and 1,024 EOS targets are correct: 10,002 targets across 1,024 exact
+sentences. The completed manifest, trainer result, fresh native checkpoint
+inference, and independent retokenization agree. Both prediction TSVs are
+byte-identical. All 100 final FP32 arrays have the recipe-derived sizes and
+finite values, totaling 3,388,032 bytes.
+
+Checkpoint:
+`/home/ubuntu/checkpoints/memorize_general_facts/width_depth_refine_16_deep_long_0/width_16/layers_8/step_25472`.
+Artifacts: `runs/width_depth_refine_16_deep_long_0/width_16/layers_8/`.
+Independent prediction TSV SHA-256:
+`5d6062932bab5a775372aa290bfe36bed8ac81f12737cd37b9d1b8e40a192c0c`.
+Concatenating the final checkpoint files in numerical order, `weight_0.bin`
+through `weight_99.bin`, gives SHA-256
+`cd0ad387e4d383e23e3465d82d28d5f78040252e8a31ea6b74a36774738f1aac`.
+All 100 initial arrays are finite and byte-identical to the earlier eight-block
+width-16 run; their concatenated SHA-256 is
+`925390511f06ffe397c21875daae8d99d13f6aff1c9689237fff1804266b801d`.
+The changed cosine schedule makes this a separate protocol, not a continuation
+or an isolated test of update count. The run and both final checks lasted from
+05:46:43 to 06:37:08 UTC, about 50.4 minutes, without reaching either budget cap.
+This establishes successful width-16 memorization in the tested family despite
+the earlier 20,000-update failures. It does not establish eight as the minimum
+successful depth at width 16: no shallower width-16 model has been tested under
+the 40,000-update protocol.
+
 The measured 5,000-update frontier still contains `(1 block, width 128)` and
 `(2 blocks, width 64)`: neither dominates the other in depth and width under
 that protocol. The measured 20,000-update frontier remains `(1 block, width 32)`.
-The measured 40,000-update frontier and pooled frontier now give
-`(1 block, width 24)`, with 1,238,376 parameters, the smallest successful model
-measured so far: 25.1% fewer parameters than width 32. Changed cosine schedules
-prevent attributing improvements across protocols solely to additional updates.
-These are frontiers over measured outcomes, not capacity impossibility claims.
+The measured 40,000-update frontier and pooled frontier now contain
+`(1 block, width 24)` and `(8 blocks, width 16)`: the former is shallower and
+the latter narrower, so neither dominates the other in depth and width.
+Eight blocks at width 16 is the smallest successful model measured so far,
+with 847,008 parameters, 31.6% fewer than one block at width 24. Changed cosine
+schedules prevent attributing improvements across protocols solely to additional
+updates. These are frontiers over measured outcomes, not global optima or
+capacity impossibility claims.
 
-### Bounded next refinement round
+### Completed bounded refinement round
 
 The one-head width-16 depth sweep finished its 20,000-update schedule without
-a success; skipped width-8 configurations remain untested. The following
-decision tree was recorded before that sweep finished. Trials are serialized:
+a success; skipped width-8 configurations remain untested. The subsequent
+bounded round is complete, with three serialized, fresh trials. All used one
+attention head, seed 1337, batch size 16, and the same 40,000-update protocol:
 
-1. Repeat one block at width 24 with one head, fresh initialization, and a
-   **40,000-update cap**, keeping the other controls fixed. Its three-error
-   near miss and still-decreasing late loss justify this budget check. Use
-   a fresh named run, `width_depth_refine_24_long_0`. This stretches the cosine
-   schedule and does not resume optimizer state from the 20,000-update model.
-2. If the current depth sweep establishes a narrower successful width, use
-   the remaining slots first to test missing shallower depths in increasing
-   order. For example, a four-block width-16 success makes depth 3 relevant;
-   a shallower success makes deeper trials at the same width dominated.
-   Otherwise, if the longer one-block width-24 trial succeeds, test one block
-   at width 20 with the same 40,000-update protocol. Two blocks at width 24
-   and one block at width 28 would then be
-   dominated in the pooled frontier, so omit them from this refinement round.
-   If width 24 instead exhausts the longer budget, test two blocks at width 24
-   under the existing 20,000-update protocol: that provides a controlled depth
-   comparison with the original one-block width-24 failure.
-3. Choose at most one further width refinement from those outcomes. For example,
-   follow a two-block width-24 success with two-block width 20 at 20,000 updates;
-   if two-block width 24 also fails, test one-block width 28 at 20,000 updates
-   to narrow the original one-block width-24/32 gap. Keep any 40,000-update
-   continuation of the first branch in its own matched-protocol group.
+1. `width_depth_refine_24_long_0`: one block at width 24 succeeded at
+   29,824 updates, selecting the narrower one-block width-20 branch.
+2. `width_depth_refine_20_long_0`: one block at width 20 exhausted 40,000
+   updates with eight errors; this is a verified budget failure.
+3. `width_depth_refine_16_deep_long_0`: eight blocks at width 16 succeeded
+   at 25,472 updates. The third slot tested the still-improving deeper model
+   from the 20,000-update pass and added a distinct depth/width Pareto point.
 
-Width 24 has now succeeded, selecting the fresh one-block width-20,
-40,000-update branch, `width_depth_refine_20_long_0`. Reserve the third slot
-for a fresh eight-block width-16 trial with the same 40,000-update protocol,
-after width 20 finishes and its evidence is verified. The earlier eight-block
-run improved from 220 errors at step 16,384 to 106 at step 20,000; extending
-that check targets the currently missing successful depth/width trade-off.
-Its 847,008 parameters would be fewer than either one-block width 24 or 20,
-while its extra depth would keep it nondominated in depth/width if successful.
-That is a reason to test it, not a prediction of success. This choice replaces
-another shallow midpoint in the third slot; no fourth trial is added to this
-round. Any later shallower-depth or width refinement needs a separate decision
-based on these outcomes.
-
-This round has at most three new architecture/budget trials; it is not an
-unlimited optimizer or head-count sweep. A three-head width-24 variant is
-supported and has the same parameter count, but changes the architecture, so
-defer it while testing the requested width/depth trade-off. Afterwards, use
-measured success transitions to decide whether an omitted depth or a midpoint
-such as width 12 needs a direct trial. Keep finite-budget failures, untested
-configurations, and matched-budget versus pooled frontiers distinct.
+No fourth trial is part of this round. The next architecture/budget choice
+remains undecided. Unmeasured shallower depths at width 16 under the longer
+protocol, intermediate widths, and narrower/deeper configurations remain
+untested, not failures. Keep finite-budget failures, untested configurations,
+and matched-budget versus pooled frontiers distinct.
 
 ## Verified budget failures
 
@@ -303,8 +307,8 @@ Artifacts: `runs/width_depth_refine_20_long_0/width_20/layers_1/`. Independent
 prediction TSV SHA-256:
 `b8f2d97c072c8d24ab166c2f46db411e0a03199f3cc403879ffdf761879a3219`.
 The trial and both independent checks ran from 05:13:11 to 05:46:43 UTC,
-without a competing GPU experiment or test. The measured 40,000-update and
-pooled frontier remains `(1,24)`.
+without a competing GPU experiment or test. It adds no successful point to
+the measured frontier.
 
 One block at width 24 completed all 20,000 updates (312.5 epochs) without
 reaching its time limit. It has 1,021 exact sentences and three remaining
