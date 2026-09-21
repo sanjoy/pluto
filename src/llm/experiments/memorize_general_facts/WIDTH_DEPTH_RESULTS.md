@@ -57,6 +57,30 @@ does not shrink with residual width, so fewer parameters need not imply a
 proportional speedup. The result will be an empirical frontier within the
 tested family, grid, and training budgets, not a globally smallest architecture.
 
+## Follow-up search plan
+
+The coarse search is not the endpoint. After it completes, test intermediate
+aligned widths (starting with 96, 80, and 48) under the same 5,000-update
+protocol, recording their different head partitions explicitly. Use separate
+named runs so their evidence does not alter the coarse manifest. In particular,
+a failure at a wider width must not be used as evidence for an untested narrower
+width; targeted single-width runs can bypass that coarse traversal heuristic.
+
+Also repeat the one-block width-64 near miss with a fresh initialization and a
+20,000-update cap. Narrower promising configurations need longer-budget checks
+too: the width-32 models are still learning at 5,000 updates. The longer run
+keeps the seed, peak learning rate, warmup, batch, and optimizer fixed, but
+stretching the cosine decay to the new cap changes the learning-rate schedule.
+It is therefore a separately named protocol, not a continuation of the old
+checkpoint or a controlled comparison at the old step count.
+
+Report the common-5,000-update frontier separately from the pooled frontier of
+all verified successes. A later one-block width-64 success, for example, would
+dominate the two-block width-64 point in the pooled depth/width frontier without
+invalidating the original short-budget result. Continue refinement based on
+measured outcomes; neither a finite trial budget nor the backend's alignment
+requirement proves a lower bound on model capacity.
+
 ## Verified memorization results
 
 | Run | Blocks | Width | Heads × dimension | FF width | Parameters | Updates | Epochs | Errors | Mean loss (nats) |
@@ -105,6 +129,7 @@ particular, the near-perfect one-block width-64 trial needs a longer-budget chec
 | Coarse | 1 | 64 | 3,333,056 | 5,000 | 2 / 10,002 | 1 at step 4,992 | 0.073553935635 |
 | Coarse | 2 | 32 | 1,666,944 | 5,000 | 2,884 / 10,002 | 2,884 at step 5,000 | 1.908862034386 |
 | Coarse | 3 | 32 | 1,679,648 | 5,000 | 2,854 / 10,002 | 2,841 at step 4,992 | 1.868303412209 |
+| Coarse | 4 | 32 | 1,692,352 | 5,000 | 2,894 / 10,002 | 2,894 at step 5,000 | 1.922002390574 |
 
 The width-64, one-block trial reached its full update cap, not its time cap.
 Its final checkpoint reloaded with the same two errors and passed the independent
@@ -135,6 +160,15 @@ Checkpoint:
 `/home/ubuntu/checkpoints/memorize_general_facts/width_depth_coarse_0/width_32/layers_3/step_5000`.
 Artifacts: `runs/width_depth_coarse_0/width_32/layers_3/`. Independent prediction
 TSV SHA-256: `02d9d2ae80dd8e044d9a710489a964f1dd928cefcff859e999ff38c3bedc7abb`.
+
+Four blocks at width 32 reached 5,000 updates in about 7.4 minutes, with 50 exact
+sentences and 2,894 errors. Fresh checkpoint inference and the independent
+prediction audit agree. Its loss was still falling, and adding depth has not
+materially improved the final error count over the two-/three-block trials.
+Checkpoint:
+`/home/ubuntu/checkpoints/memorize_general_facts/width_depth_coarse_0/width_32/layers_4/step_5000`.
+Artifacts: `runs/width_depth_coarse_0/width_32/layers_4/`. Independent prediction
+TSV SHA-256: `8e50f59b8a36459b7b65af4eb35bfc923fbf1a760d63a4f5b1219a70c3eee0e5`.
 
 ## Validation and current status
 
@@ -168,9 +202,9 @@ checkpoints are under
 One block at widths 256 and 128 and two blocks at width 64 passed both independent
 checks. All 16 tensors shared between the one-/two-block width-64 initializations
 match byte-for-byte, including final LayerNorm after accounting for file indices.
-Two and three blocks at width 32 exhausted the update budget. Four-block
-width-32 training was underway by 01:26:11 UTC. The 28 shared initial tensors
-for depths two/three and 40 for depths three/four match byte-for-byte, including
-the relocated final norms.
+Two through four blocks at width 32 exhausted the update budget. Five-block
+width-32 training is now underway. The 28 shared initial tensors for depths
+two/three, 40 for depths three/four, and 52 for depths four/five match
+byte-for-byte, including the relocated final norms.
 The smallest verified success so far is two blocks at width 64, with 3,383,040
 physical parameters; the width/depth frontier is not complete yet.
