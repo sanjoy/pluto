@@ -47,7 +47,11 @@ Width 24 completed all 20,000 updates with three errors and
 the two updated targets executed). At **03:19:22 UTC**, the original two-block
 width-16 child (PID 3275073) and coordinator (PID 3264113) were both resumed
 with `SIGCONT`. They continue the existing `width_depth_long_1` search; no new
-instance was launched and the pinned binary hash is unchanged.
+instance was launched and the pinned binary hash is unchanged. Two-block
+width 16 subsequently reached 20,000 updates with 454 errors and
+`reached_time_limit=0`; both independent checks completed at **03:39:37 UTC**.
+The same coordinator then started four-block width 16 normally. No process
+remains deliberately paused.
 
 Pausing the coordinator alone did not pause the earlier one-block child or
 alter that child's update schedule. None of these processes has been restarted.

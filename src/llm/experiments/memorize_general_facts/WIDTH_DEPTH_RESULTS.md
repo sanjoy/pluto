@@ -178,6 +178,7 @@ capacity impossibility claims.
 | Coarse | 7 | 32 | 1,730,464 | 5,000 | 2,891 / 10,002 | 2,879 at step 4,992 | 1.913807373659 |
 | Coarse | 8 | 32 | 1,743,168 | 5,000 | 2,777 / 10,002 | 2,777 at step 5,000 | 1.897634668045 |
 | Longer budget, narrow | 1 | 16 | 824,048 | 20,000 | 1,833 / 10,002 | 1,814 at step 19,840 | 1.020205828413 |
+| Longer budget, narrow | 2 | 16 | 827,328 | 20,000 | 454 / 10,002 | 454 at step 20,000 | 0.411472814485 |
 | Midpoint refinement | 1 | 24 | 1,238,376 | 20,000 | 3 / 10,002 | 2 at step 16,768 | 0.004384264733 |
 
 One block at width 24 completed all 20,000 updates (312.5 epochs) without
@@ -216,6 +217,25 @@ Artifacts: `runs/width_depth_long_1/width_16/layers_1/`. Independent prediction
 TSV SHA-256: `7c5966613790aca10fe392081a070ac641214c0bf7f48900273ecf895b7df78b`.
 The elapsed time includes brief overlap with the width-24 refinement; it is
 not an isolated throughput measurement (see `runs/GPU_SCHEDULING.md`).
+
+Two blocks at width 16 also reached all 20,000 updates without hitting the
+time cap. Fresh checkpoint inference and independent retokenization confirm
+454 errors, 710 exact sentences, and mean loss 0.411472814485; the trainer and
+fresh-process prediction TSVs match byte-for-byte. Compared with one block,
+the extra 3,280 parameters (about 0.4%) reduce final errors by 75.2% under the
+same update schedule, seed, head count, and batch size. All 16 shared initial
+tensors are byte-identical, including final LayerNorm after remapping indices.
+The two-block model corrects 1,514 previously incorrect targets but introduces
+135 new errors; 319 target positions remain wrong in both models. Its errors
+comprise 72 first-suffix tokens and 382 later content tokens; all EOS targets
+are correct. This is evidence that depth helps this narrow model, but neither
+model has memorized the corpus. Checkpoint:
+`/home/ubuntu/checkpoints/memorize_general_facts/width_depth_long_1/width_16/layers_2/step_20000`.
+Artifacts: `runs/width_depth_long_1/width_16/layers_2/`. Independent prediction
+TSV SHA-256: `d0b544fa2cf83d0ef3668ad31e7b41c2732132289d2594ec652df95652195b0f`.
+Its coordinator started the trial at 03:00:20 UTC; it was paused during the
+width-24 refinement, resumed at 03:19:22, and finished verification at 03:39:37.
+See `runs/GPU_SCHEDULING.md` before comparing elapsed times.
 
 The width-64, one-block trial reached its full update cap, not its time cap.
 Its final checkpoint reloaded with the same two errors and passed the independent
@@ -377,8 +397,8 @@ widths 32, 16, and 8 at depths 1, 2, 4, and 8, with an explicitly fixed single
 attention head and the same 20,000-update schedule and native binary as
 `width_depth_long_0`. One block at width 32 passed both independent checks at
 step 9,984, moving the measured longer-budget and pooled frontiers to `(1,32)`.
-One block at width 16 has now completed and independently verified its
-20,000-update budget failure above. Its completed artifacts are committed;
+One and two blocks at width 16 have now completed and independently verified
+their 20,000-update budget failures above. Their completed artifacts are committed;
 the changing search manifest and future/live trials are not. The fixed-head driver and
 backward-compatible reporter pass all 119 Python experiment tests.
 
@@ -389,7 +409,11 @@ its in-memory optimizer state retained while one-block width 16 finished.
 Width 24 resumed at 03:00:50 UTC and finished with the verified three-error
 budget result above. The next two-block width-16 trial and search coordinator
 resumed at 03:19:22 UTC. Scheduling details and the elapsed-time caveat are in
-`runs/GPU_SCHEDULING.md`. Two-block width 16 has no final outcome yet.
+`runs/GPU_SCHEDULING.md`. Two-block width 16 completed both independent checks
+at 03:39:37 UTC, and the existing driver then started four-block width 16.
+All 28 shared initial tensors between those two/four-block trials match
+byte-for-byte, with the final norm indices remapped. Four-block width 16 is
+still running and has no final outcome yet.
 Added tests specifically cover one 24-wide BF16 head
 at context 1,024 with CPU/GPU forward/backward agreement and three bitwise
 GPU repeats, plus complete one-head width-24 GPT-2 forward/backward and tied

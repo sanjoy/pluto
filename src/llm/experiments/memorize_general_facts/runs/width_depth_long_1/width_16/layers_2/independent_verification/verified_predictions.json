@@ -1,0 +1,67 @@
+{
+  "success": false,
+  "sentences": 1024,
+  "exact_sentences": 710,
+  "targets": 10002,
+  "errors": 454,
+  "accuracy": 0.9546090781843631,
+  "mean_loss_nats": 0.411472814484932,
+  "corpus": "/home/ubuntu/code/pluto/src/llm/experiments/memorize_general_facts/runs/width_depth_long_1/width_16/layers_2/corpus.txt",
+  "corpus_sha256": "814c062e7d7592fe4a4e5b158a37bd37da51700f817c19eb981c1e93d33f245c",
+  "tokenizer": "/home/ubuntu/code/pluto/src/llm/experiments/memorize_general_facts/runs/width_depth_long_1/width_16/layers_2/tokenizer.json",
+  "tokenizer_sha256": "1fe93b6152957cf9cfd6d89002467f789ce8b3f3e000b3a2edf27c808ddd0b9e",
+  "predictions": "/home/ubuntu/code/pluto/src/llm/experiments/memorize_general_facts/runs/width_depth_long_1/width_16/layers_2/independent_verification/final_predictions.tsv",
+  "predictions_sha256": "d0b544fa2cf83d0ef3668ad31e7b41c2732132289d2594ec652df95652195b0f",
+  "prompt_tokens": 5,
+  "eos_scored": true,
+  "padding_scored": false,
+  "context_length": 1024,
+  "evidence_scope": "validated teacher-forced prediction artifact, not independent checkpoint inference",
+  "error_examples": [
+    {
+      "line_1based": 2,
+      "target_token_index_0based": 14,
+      "causal_prefix": "In English, the plural of mouse is usually mice when referring to the",
+      "target_id": 5044,
+      "target_text": " animal",
+      "predicted_id": 1767,
+      "predicted_text": " body"
+    },
+    {
+      "line_1based": 3,
+      "target_token_index_0based": 8,
+      "causal_prefix": "The flowers of a fig develop inside its",
+      "target_id": 20596,
+      "target_text": " hollow",
+      "predicted_id": 6971,
+      "predicted_text": " supports"
+    },
+    {
+      "line_1based": 6,
+      "target_token_index_0based": 10,
+      "causal_prefix": "In an inertial reference frame, an object with",
+      "target_id": 645,
+      "target_text": " no",
+      "predicted_id": 269,
+      "predicted_text": " c"
+    },
+    {
+      "line_1based": 19,
+      "target_token_index_0based": 6,
+      "causal_prefix": "The Alhambra is a",
+      "target_id": 20562,
+      "target_text": " palace",
+      "predicted_id": 16021,
+      "predicted_text": " horizontal"
+    },
+    {
+      "line_1based": 21,
+      "target_token_index_0based": 13,
+      "causal_prefix": "A supernova is a powerful stellar explosion that can briefly rival a",
+      "target_id": 16161,
+      "target_text": " galaxy",
+      "predicted_id": 8122,
+      "predicted_text": " liquid"
+    }
+  ]
+}
