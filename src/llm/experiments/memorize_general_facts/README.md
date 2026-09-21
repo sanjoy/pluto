@@ -258,6 +258,19 @@ python -B src/llm/experiments/memorize_general_facts/summarize_width_depth.py \
 
 Additional summary paths and optional `--labels=coarse,refinement` combine
 runs while keeping their budgets, seeds, and head dimensions explicit. The
-reporter rechecks saved evidence before recomputing the pooled measured
-frontier; running and untested configurations are never counted as failures.
-Tokenizer snapshots must remain available locally for their SHA-256 check.
+reporter rechecks saved evidence, then shows a measured depth/width frontier and
+minimum-parameter verified success for each matched protocol. Protocols match
+only when the full pinned binary SHA-256 and every recorded training control
+match: batch size, step cap, learning rate, warmup steps, seed, time cap,
+evaluation interval, and checkpoint interval. Each group is labeled by its input
+run names. Width, depth, heads, and feed-forward width remain per-row
+architecture choices; default `--attention_heads=0` and explicit
+`--attention_heads=1` do not by themselves split protocols. Older manifests
+without that override field remain supported.
+
+The pooled frontier and parameter minimum are also retained as existence
+evidence across protocols, not a matched-budget comparison. Only verified
+successes enter either kind of frontier or minimum; groups without successes
+say so explicitly. Budget failures do not prove a capacity limit, and running
+or untested configurations are never counted as failures. Tokenizer snapshots
+must remain available locally for their SHA-256 check.

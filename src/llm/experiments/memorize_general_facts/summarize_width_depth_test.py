@@ -8,12 +8,14 @@ from pathlib import Path
 import unittest
 
 import run_width_depth_search_test as driver_tests
-from summarize_width_depth import frontier, load_runs, main, render_markdown
+from summarize_width_depth import (
+    SCHEDULE_FIELDS, frontier, load_runs, main, protocol_groups, render_markdown,
+)
 
 
 class SummarizeWidthDepthTest(unittest.TestCase):
     def make_run(self, *, depths=None, widths=None, failures=None, steps=5000, seed=1337,
-                 attention_heads=None):
+                 attention_heads=None, **controls):
         # Reuse the driver's no-GPU fake to keep these fixtures synchronized with
         # real command/result/audit schemas. It launches no subprocess or GPU work.
         fixture = driver_tests.WidthDepthSearchTest()
@@ -29,6 +31,9 @@ class SummarizeWidthDepthTest(unittest.TestCase):
         fixture.args.seed = seed
         if attention_heads is not None:
             fixture.args.attention_heads = attention_heads
+        for field, value in controls.items():
+            self.assertIn(field, SCHEDULE_FIELDS)
+            setattr(fixture.args, field, value)
         self.assertEqual(fixture.run_driver(), 0)
         path = fixture.args.output_dir / "width_depth_search_summary.json"
         return path
@@ -87,6 +92,122 @@ class SummarizeWidthDepthTest(unittest.TestCase):
         self.assertEqual({trial["seed"] for trial in points}, {1337, 42})
         report = render_markdown(runs)
         self.assertIn("| seed42 | 5000 | 10800 | 16 | 42 |", report)
+
+    def test_matching_controls_merge_across_architectures_and_head_policies(self):
+        legacy = self.make_run(depths=[1], widths=[64], failures=set())
+        self.mutate_manifest(legacy, lambda manifest:
+                             manifest["configuration"].pop("attention_heads"))
+        default = self.make_run(depths=[2], widths=[24], failures=set(), attention_heads=0)
+        explicit = self.make_run(depths=[1], widths=[16], failures=set(), attention_heads=1)
+        runs = load_runs([legacy, default, explicit], ["legacy", "default", "explicit"])
+        groups = protocol_groups(runs)
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(groups[0]["labels"], ["legacy", "default", "explicit"])
+        self.assertEqual(groups[0]["binary_sha256"], runs[0]["binary_sha256"])
+        self.assertEqual(groups[0]["configuration"],
+                         {field: runs[0]["configuration"][field] for field in SCHEDULE_FIELDS})
+        self.assertEqual([(trial["run"], trial["layers"], trial["width"], trial["heads"])
+                          for trial in groups[0]["trials"]],
+                         [("legacy", 1, 64, 1), ("default", 2, 24, 3), ("explicit", 1, 16, 1)])
+        report = render_markdown(runs)
+        self.assertIn("## Matched-protocol measured depth/width frontiers", report)
+        self.assertIn("### Protocol 1: legacy, default, explicit", report)
+
+    def test_every_training_control_separates_protocol_groups(self):
+        alternatives = {
+            "steps": 20000, "training_seconds": 0, "batch_size": 8, "seed": 42,
+            "learning_rate": 0.001, "warmup_steps": 200, "eval_every": 64,
+            "checkpoint_every": 256,
+        }
+        self.assertEqual(set(alternatives), set(SCHEDULE_FIELDS))
+        for field, value in alternatives.items():
+            with self.subTest(field=field):
+                baseline = self.make_run(depths=[1], widths=[64], failures=set())
+                changed = self.make_run(depths=[1], widths=[64], failures=set(), **{field: value})
+                groups = protocol_groups(load_runs([baseline, changed], ["baseline", "changed"]))
+                self.assertEqual([group["labels"] for group in groups], [["baseline"], ["changed"]])
+                self.assertEqual(groups[1]["configuration"][field], value)
+
+    def test_full_binary_identity_separates_otherwise_matching_protocols(self):
+        first = self.make_run(depths=[1], widths=[64], failures=set())
+        second = self.make_run(depths=[1], widths=[64], failures=set())
+        first_hash, second_hash = "a" * 12 + "0" * 52, "a" * 12 + "1" * 52
+        self.mutate_manifest(first, lambda manifest: manifest.update(binary_sha256=first_hash))
+        self.mutate_manifest(second, lambda manifest: manifest.update(binary_sha256=second_hash))
+        groups = protocol_groups(load_runs([first, second], ["first", "second"]))
+        self.assertEqual([group["labels"] for group in groups], [["first"], ["second"]])
+        self.assertEqual([group["binary_sha256"] for group in groups], [first_hash, second_hash])
+
+    def test_protocol_groups_preserve_first_seen_group_and_run_order(self):
+        first = self.make_run(depths=[1], widths=[64], failures=set())
+        other = self.make_run(depths=[1], widths=[64], failures=set(), steps=20000)
+        matching = self.make_run(depths=[2], widths=[32], failures=set())
+        groups = protocol_groups(load_runs([first, other, matching], ["first", "other", "matching"]))
+        self.assertEqual([group["labels"] for group in groups], [["first", "matching"], ["other"]])
+        self.assertEqual([[trial["run"] for trial in group["trials"]] for group in groups],
+                         [["first", "matching"], ["other"]])
+
+    def protocol_section(self, report, number, labels):
+        heading = f"### Protocol {number}: {', '.join(labels)}\n"
+        self.assertIn(heading, report)
+        body = report.split(heading, 1)[1]
+        return body.split("\n### Protocol ", 1)[0].split("\n## ", 1)[0]
+
+    def test_matched_frontier_and_minimum_exclude_lower_parameter_failure(self):
+        success = self.make_run(depths=[1], widths=[64], failures=set())
+        failure = self.make_run(depths=[1], widths=[32], failures={(1, 32)})
+        runs = load_runs([success, failure], ["success", "failure"])
+        group = protocol_groups(runs)[0]
+        self.assertEqual(len(group["trials"]), 2)
+        self.assertEqual([trial["run"] for trial in frontier(group["trials"])], ["success"])
+        section = self.protocol_section(render_markdown(runs), 1, ["success", "failure"])
+        self.assertEqual(section.count("| success | 1 | 64 |"), 2)
+        self.assertNotIn("| failure |", section)
+        self.assertNotIn("1,654,240", section)
+        self.assertNotIn("budget exhausted", section)
+
+    def test_matched_frontier_retains_success_dominated_only_under_other_protocol(self):
+        coarse = self.make_run(depths=[1], widths=[128], failures=set())
+        long = self.make_run(depths=[1], widths=[32], failures=set(), steps=20000)
+        runs = load_runs([coarse, long], ["coarse", "long"])
+        report = render_markdown(runs)
+        coarse_section = self.protocol_section(report, 1, ["coarse"])
+        long_section = self.protocol_section(report, 2, ["long"])
+        self.assertEqual(coarse_section.count("| coarse | 1 | 128 |"), 2)
+        self.assertNotIn("| long |", coarse_section)
+        self.assertEqual(long_section.count("| long | 1 | 32 |"), 2)
+        self.assertNotIn("| coarse |", long_section)
+        pooled = report.split("## Pooled measured depth/width frontier\n", 1)[1].split("\n## ", 1)[0]
+        self.assertIn("| long | 1 | 32 |", pooled)
+        self.assertNotIn("| coarse |", pooled)
+        self.assertIn("## Minimum-parameter verified success", report)
+
+    def test_protocol_without_completed_trials_remains_explicit(self):
+        path = self.make_run(depths=[1], widths=[64], failures=set())
+        def make_pending(manifest):
+            manifest["status"] = "running"
+            manifest["trials"] = [{"layers": 1, "width": 64,
+                                   "status": "running", "phase": "training"}]
+        self.mutate_manifest(path, make_pending)
+        runs = load_runs([path], ["pending"])
+        groups = protocol_groups(runs)
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(groups[0]["labels"], ["pending"])
+        self.assertEqual(groups[0]["trials"], [])
+        section = self.protocol_section(render_markdown(runs), 1, ["pending"])
+        self.assertRegex(section.lower(), "no verified success")
+        self.assertNotIn("| pending |", section)
+
+    def test_protocol_with_only_failures_does_not_invent_success_or_minimum(self):
+        path = self.make_run(depths=[1], widths=[32], failures={(1, 32)})
+        runs = load_runs([path], ["failed"])
+        group = protocol_groups(runs)[0]
+        self.assertEqual(len(group["trials"]), 1)
+        self.assertEqual(frontier(group["trials"]), [])
+        section = self.protocol_section(render_markdown(runs), 1, ["failed"])
+        self.assertRegex(section.lower(), "no verified success")
+        self.assertNotIn("| failed |", section)
+        self.assertNotIn("1,654,240", section)
 
     def test_alternate_valid_heads_are_not_conflated_with_default_heads(self):
         first = self.make_run(depths=[1], widths=[64], failures=set())

@@ -10,8 +10,9 @@ The original tokenizer snapshots must remain available for their hash check.
 
 Running/error trials and explicitly skipped configurations remain unverified or
 untested, never failed. Every verified observation keeps its run, seed, budget,
-head configuration, and binary identity. The pooled success frontier is an
-existence result across these protocols, not a fixed-budget impossibility bound.
+head configuration, and binary identity. Matched-protocol success frontiers
+share the binary and all recorded training controls. The pooled success frontier
+is an existence result across protocols, not a fixed-budget impossibility bound.
 Nothing is written except the final Markdown report to stdout; any unverifiable
 completed trial aborts before printing a partial report.
 """
@@ -260,6 +261,22 @@ def frontier(trials):
         for other in successes)]
 
 
+def protocol_groups(runs):
+    """Group validated runs by actual training controls, not search-grid choices."""
+    groups = {}
+    for run in runs:
+        configuration = {field: run["configuration"][field] for field in SCHEDULE_FIELDS}
+        for field in ("training_seconds", "learning_rate"):
+            configuration[field] = float(configuration[field])
+        key = (run["binary_sha256"], *(configuration[field] for field in SCHEDULE_FIELDS))
+        if key not in groups:
+            groups[key] = {"labels": [], "binary_sha256": run["binary_sha256"],
+                           "configuration": configuration, "trials": []}
+        groups[key]["labels"].append(run["label"])
+        groups[key]["trials"].extend(run["trials"])
+    return list(groups.values())
+
+
 def _cell(value):
     return str(value).replace("\\", "\\\\").replace("|", "\\|").replace("\n", " ")
 
@@ -282,7 +299,8 @@ def render_markdown(runs):
         ["Run", "Step cap", "Time cap (s)", "Batch", "Seed", "LR", "Warmup", "Eval every", "Save every", "Binary SHA256 prefix"],
         [[run["label"], *[run["configuration"][field] for field in SCHEDULE_FIELDS], run["binary_sha256"][:12]]
          for run in runs]))
-    lines += ["", "Run names distinguish protocols even when their budgets happen to match. Heads and head dimensions remain explicit below.",
+    lines += ["", "Run labels retain each observation's source; matching binary and training controls are grouped below. "
+              "Heads and head dimensions remain explicit per architecture.",
               "", "## Verified tested configurations", ""]
     headers = ["Run", "Layers", "Width", "Heads × dim", "FF width", "Parameters", "Outcome", "Errors / 10,002", "Step", "Mean loss"]
     def row(trial):
@@ -291,6 +309,26 @@ def render_markdown(runs):
                 "memorized" if trial["status"] == "verified_success" else "budget exhausted",
                 trial["errors"], trial["step"], f"{trial['mean_loss']:.8g}"]
     lines.append(_table(headers, [row(trial) for trial in trials]) if trials else "No completed, artifact-verified trials yet.")
+    lines += ["", "## Matched-protocol measured depth/width frontiers", "",
+              "Each group shares the full binary SHA256 and all named training controls: batch size, step cap, learning rate, "
+              "warmup, seed, time cap, evaluation interval, and checkpoint interval. Width, depth, heads, and FF width "
+              "remain per-row architecture choices; the attention-head override spelling does not split groups. "
+              "Only verified successes enter either frontier or parameter minimum. These measured results do not "
+              "turn finite-budget failures into capacity bounds."]
+    for index, group in enumerate(protocol_groups(runs), 1):
+        labels = ", ".join(_cell(label) for label in group["labels"])
+        lines += ["", f"### Protocol {index}: {labels}", "",
+                  f"Binary SHA256: `{group['binary_sha256']}`.", ""]
+        group_trials = sorted(group["trials"], key=lambda trial:
+                              (trial["layers"], trial["width"], trial["run"], trial["heads"]))
+        group_points = frontier(group_trials)
+        if not group_points:
+            lines.append("No verified success yet in this protocol; its minimum-parameter success is not established.")
+            continue
+        lines += ["Measured depth/width frontier:", "", _table(headers, [row(trial) for trial in group_points])]
+        group_minimum = min(trial["parameters"] for trial in group_points)
+        lines += ["", "Minimum-parameter verified success:", "",
+                  _table(headers, [row(trial) for trial in group_points if trial["parameters"] == group_minimum])]
     points = frontier(trials)
     lines += ["", "## Pooled measured depth/width frontier", "",
               "Only verified successes are candidates. This pools existence evidence across the named budgets/seeds; "
