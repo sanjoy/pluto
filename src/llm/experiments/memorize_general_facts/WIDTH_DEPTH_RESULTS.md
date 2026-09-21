@@ -13,7 +13,8 @@ eight. The GELU MLP width is four times the residual-stream width. To keep the
 head partition explicit and valid, head dimension is `gcd(width, 64)` and head
 count is `width / head_dimension`. This gives the usual 64-wide heads for
 widths divisible by 64, one 32-wide head at width 32, and one 16-wide head at
-width 16. Intermediate refinements such as width 48 or 96 use the same rule.
+width 16. This is the coarse-pass policy; follow-up narrow-width refinements
+will keep one head explicitly, so width changes need not change head count.
 Head count is an architectural change and is recorded with every checkpoint
 evaluation, not inferred from weight-file sizes.
 
@@ -72,16 +73,16 @@ tests; shape validity is not task capacity.
 
 ## Follow-up search plan
 
-The coarse search is not the endpoint. Intermediate widths (such as 96, 80,
-and 48) can refine its 5,000-update frontier, recording their different head
-partitions explicitly. Prioritize the one-block width-64 longer-budget near
-miss first: if that succeeds, widths 96 and 80 cannot improve the pooled
-frontier and need not be trained just to reconfirm dominated points. Use separate
+The coarse search is not the endpoint. The one-block width-64 longer-budget
+trial succeeded, so widths 96 and 80 cannot improve the pooled frontier and
+need not be trained just to reconfirm dominated points. Next test narrower
+widths with the longer budget, then refine measured gaps (for example with
+widths 48 or 24). Keep one attention head for these narrow-width trials. Use separate
 named runs so their evidence does not alter the coarse manifest. In particular,
 a failure at a wider width must not be used as evidence for an untested narrower
 width; targeted single-width runs can bypass that coarse traversal heuristic.
 
-Also repeat the one-block width-64 near miss with a fresh initialization and a
+The one-block width-64 near miss was repeated with a fresh initialization and a
 20,000-update cap. Narrower promising configurations need longer-budget checks
 too: the width-32 models are still learning at 5,000 updates. The longer run
 keeps the seed, peak learning rate, warmup, batch, and optimizer fixed, but
@@ -90,8 +91,8 @@ It is therefore a separately named protocol, not a continuation of the old
 checkpoint or a controlled comparison at the old step count.
 
 Report the common-5,000-update frontier separately from the pooled frontier of
-all verified successes. A later one-block width-64 success, for example, would
-dominate the two-block width-64 point in the pooled depth/width frontier without
+all verified successes. The one-block width-64 success now dominates the
+two-block width-64 point in the pooled depth/width frontier without
 invalidating the original short-budget result. Continue refinement based on
 measured outcomes; neither a finite trial budget nor the backend's alignment
 requirement proves a lower bound on model capacity.
@@ -104,6 +105,7 @@ requirement proves a lower bound on model capacity.
 | Coarse | 1 | 256 | 4 × 64 | 1,024 | 13,922,048 | 3,456 | 54 | 0 / 10,002 | 0.000256836483 |
 | Coarse | 1 | 128 | 2 × 64 | 512 | 6,764,416 | 2,944 | 46 | 0 / 10,002 | 0.001181248501 |
 | Coarse | 2 | 64 | 1 × 64 | 256 | 3,383,040 | 4,352 | 68 | 0 / 10,002 | 0.054245373258 |
+| Longer budget | 1 | 64 | 1 × 64 | 256 | 3,333,056 | 5,632 | 88 | 0 / 10,002 | 0.00046606012 |
 
 All successful rows complete all 1,024 sentences exactly under the approved
 five-token-prompt rule. Their fresh-process checkpoint predictions match the
@@ -131,11 +133,22 @@ artifacts are in `runs/width_depth_coarse_0/width_64/layers_2/`. The independent
 prediction TSV SHA-256 is
 `c202905aa978e337f5125bc69326ae86ebede8a48f28852bd4ad1d7ccbcaccda`.
 
-The current measured 5,000-update frontier contains `(1 block, width 128)` and
-`(2 blocks, width 64)`: neither dominates the other in depth and width. The
-second has the fewest parameters among verified successes so far. This is a
-frontier over measured outcomes, not a capacity impossibility claim; in
-particular, the near-perfect one-block width-64 trial needs a longer-budget check.
+One block at width 64 succeeded under the longer-budget protocol in about
+6.5 minutes including evaluation and trainer reload. The checkpoint is
+`/home/ubuntu/checkpoints/memorize_general_facts/width_depth_long_0/width_64/layers_1/step_5632`;
+artifacts are in `runs/width_depth_long_0/width_64/layers_1/`. Independent
+prediction TSV SHA-256:
+`01c079b1adf8c31e73075427507871f1673ce7ffcbcfff15df9cd4651711dd83`.
+The previous short-budget near miss therefore was not a model-capacity
+impossibility.
+
+The measured 5,000-update frontier still contains `(1 block, width 128)` and
+`(2 blocks, width 64)`: neither dominates the other in depth and width under
+that protocol. Pooling all verified successes instead gives `(1 block, width
+64)`, with 3,333,056 parameters, the smallest successful model measured so far.
+The changed cosine schedule prevents attributing the improvement solely to
+the extra 632 updates. These are frontiers over measured outcomes, not
+capacity impossibility claims.
 
 ## Verified budget failures
 
@@ -154,8 +167,8 @@ The width-64, one-block trial reached its full update cap, not its time cap.
 Its final checkpoint reloaded with the same two errors and passed the independent
 artifact audit. Both errors occur at the first scored token: it swaps ` a` and
 ` ordinary` after the prefixes `Heating a gas in` and `Oxygen gas in` (lines
-202 and 699). This near miss does not show insufficient capacity; it warrants
-a separately labeled longer-budget check after the coarse pass.
+202 and 699). This near miss does not show insufficient capacity; the separately
+labeled longer-budget trial above subsequently memorized the full corpus.
 
 Checkpoint:
 `/home/ubuntu/checkpoints/memorize_general_facts/width_depth_coarse_0/width_64/layers_1/step_5000`.
@@ -280,7 +293,7 @@ initial tensors for depths two/three, 40 for depths three/four, 52 for depths fo
 five/six match byte-for-byte, including the relocated final norms. The 76 shared
 initial tensors for depths six/seven and 88 for depths seven/eight also match
 exactly.
-The smallest verified success so far is two blocks at width 64, with 3,383,040
+The smallest coarse-protocol success is two blocks at width 64, with 3,383,040
 physical parameters; the width/depth frontier is not complete yet.
 
 The coarse pass has 11 verified trials: three successes and eight budget
@@ -292,7 +305,7 @@ old-binary weights or predictions byte-for-byte. Details are in
 `runs/compact_width_validation_0/README.md`. All 107 Python experiment tests pass
 after adding compact-width driver/report support.
 
-A fresh one-block width-64 longer-budget trial started at 02:17:57 UTC in
+A fresh one-block width-64 longer-budget trial ran from 02:17:57 to 02:24:28 UTC in
 `runs/width_depth_long_0/`, with checkpoints under
 `/home/ubuntu/checkpoints/memorize_general_facts/width_depth_long_0/`. It keeps
 batch 16, seed 1337, peak LR 0.0006, warmup 100, evaluation every 128 updates,
@@ -300,3 +313,7 @@ and checkpointing every 512. The cap and cosine schedule extend to 20,000
 updates. All 16 initial weight tensors match the corresponding coarse trial
 exactly. The new binary hash is
 `411377b44fd936a2072c96aafa144f38a4da3e63cbfad559c22a6e98f3b9904c`.
+It reached zero errors at step 5,632, saved/reloaded the checkpoint, and passed
+fresh-process verification and independent retokenization/audit. The two
+prediction TSVs match byte-for-byte. The pooled measured frontier is now
+`(1,64)`; narrower widths and additional depth remain to be investigated.

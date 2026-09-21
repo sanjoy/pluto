@@ -1,0 +1,148 @@
+{
+  "started_utc": "2026-09-21T02:17:57+00:00",
+  "status": "completed",
+  "configuration": {
+    "binary": "/home/ubuntu/.cache/bazel/_bazel_ubuntu/9b77d017224599208add03aa10616b01/execroot/_main/bazel-out/aarch64-opt/bin/src/llm/experiments/memorize_general_facts/memorize_general_facts",
+    "corpus": "/home/ubuntu/code/pluto/testdata/general_facts_dataset.txt",
+    "tokenizer": "/home/ubuntu/datasets/tokenizer/gpt2",
+    "checkpoint_dir": "/home/ubuntu/checkpoints/memorize_general_facts/width_depth_long_0",
+    "output_dir": "/home/ubuntu/code/pluto/src/llm/experiments/memorize_general_facts/runs/width_depth_long_0",
+    "depths": [
+      1
+    ],
+    "widths": [
+      64
+    ],
+    "batch_size": 16,
+    "steps": 20000,
+    "eval_every": 128,
+    "checkpoint_every": 512,
+    "seed": 1337,
+    "learning_rate": 0.0006,
+    "warmup_steps": 100,
+    "training_seconds": 10800
+  },
+  "corpus_sha256": "814c062e7d7592fe4a4e5b158a37bd37da51700f817c19eb981c1e93d33f245c",
+  "tokenizer_sha256": "1fe93b6152957cf9cfd6d89002467f789ce8b3f3e000b3a2edf27c808ddd0b9e",
+  "binary_sha256": "411377b44fd936a2072c96aafa144f38a4da3e63cbfad559c22a6e98f3b9904c",
+  "scope": "Measured fixed-vocabulary GPT-2 configurations under the stated training budget; untested configurations are not failures.",
+  "trials": [
+    {
+      "layers": 1,
+      "width": 64,
+      "heads": 1,
+      "head_dim": 64,
+      "feed_forward_width": 256,
+      "parameters": 3333056,
+      "expected_parameters": 3333056,
+      "phase": "verified",
+      "status": "verified_success",
+      "commands": [
+        [
+          "/home/ubuntu/.cache/bazel/_bazel_ubuntu/9b77d017224599208add03aa10616b01/execroot/_main/bazel-out/aarch64-opt/bin/src/llm/experiments/memorize_general_facts/memorize_general_facts",
+          "--layers=1",
+          "--model_width=64",
+          "--attention_heads=1",
+          "--feed_forward_width=256",
+          "--corpus=/home/ubuntu/code/pluto/testdata/general_facts_dataset.txt",
+          "--tokenizer=/home/ubuntu/datasets/tokenizer/gpt2",
+          "--batch_size=16",
+          "--steps=20000",
+          "--eval_every=128",
+          "--checkpoint_every=512",
+          "--seed=1337",
+          "--learning_rate=0.0006",
+          "--warmup_steps=100",
+          "--training_seconds=10800",
+          "--output_dir=/home/ubuntu/code/pluto/src/llm/experiments/memorize_general_facts/runs/width_depth_long_0/width_64",
+          "--checkpoint_dir=/home/ubuntu/checkpoints/memorize_general_facts/width_depth_long_0/width_64",
+          "--search=false"
+        ],
+        [
+          "/home/ubuntu/.cache/bazel/_bazel_ubuntu/9b77d017224599208add03aa10616b01/execroot/_main/bazel-out/aarch64-opt/bin/src/llm/experiments/memorize_general_facts/memorize_general_facts",
+          "--layers=1",
+          "--model_width=64",
+          "--attention_heads=1",
+          "--feed_forward_width=256",
+          "--verify_checkpoint=/home/ubuntu/checkpoints/memorize_general_facts/width_depth_long_0/width_64/layers_1/step_5632",
+          "--output_dir=/home/ubuntu/code/pluto/src/llm/experiments/memorize_general_facts/runs/width_depth_long_0/width_64/layers_1/independent_verification",
+          "--corpus=/home/ubuntu/code/pluto/src/llm/experiments/memorize_general_facts/runs/width_depth_long_0/width_64/layers_1/corpus.txt",
+          "--tokenizer=/home/ubuntu/code/pluto/src/llm/experiments/memorize_general_facts/runs/width_depth_long_0/width_64/layers_1",
+          "--batch_size=16",
+          "--seed=1337"
+        ],
+        [
+          "/tmp/pluto-dit-venv.q2Bytl/bin/python",
+          "/home/ubuntu/code/pluto/src/llm/experiments/memorize_general_facts/verify_predictions.py",
+          "--corpus=/home/ubuntu/code/pluto/src/llm/experiments/memorize_general_facts/runs/width_depth_long_0/width_64/layers_1/corpus.txt",
+          "--tokenizer=/home/ubuntu/code/pluto/src/llm/experiments/memorize_general_facts/runs/width_depth_long_0/width_64/layers_1/tokenizer.json",
+          "--predictions=/home/ubuntu/code/pluto/src/llm/experiments/memorize_general_facts/runs/width_depth_long_0/width_64/layers_1/independent_verification/final_predictions.tsv"
+        ]
+      ],
+      "output_dir": "/home/ubuntu/code/pluto/src/llm/experiments/memorize_general_facts/runs/width_depth_long_0/width_64/layers_1",
+      "started_utc": "2026-09-21T02:17:57+00:00",
+      "last_returncode": 0,
+      "training_result": {
+        "success": "1",
+        "layers": "1",
+        "width": "64",
+        "heads": "1",
+        "feed_forward_width": "256",
+        "parameters": "3333056",
+        "step": "5632",
+        "errors": "0",
+        "targets": "10002",
+        "samples_seen": "90112",
+        "epochs": "88",
+        "reached_time_limit": "0",
+        "checkpoint": "/home/ubuntu/checkpoints/memorize_general_facts/width_depth_long_0/width_64/layers_1/step_5632"
+      },
+      "checkpoint": "/home/ubuntu/checkpoints/memorize_general_facts/width_depth_long_0/width_64/layers_1/step_5632",
+      "step": 5632,
+      "checkpoint_verification": {
+        "checkpoint": "/home/ubuntu/checkpoints/memorize_general_facts/width_depth_long_0/width_64/layers_1/step_5632",
+        "corpus": "/home/ubuntu/code/pluto/src/llm/experiments/memorize_general_facts/runs/width_depth_long_0/width_64/layers_1/corpus.txt",
+        "tokenizer": "/home/ubuntu/code/pluto/src/llm/experiments/memorize_general_facts/runs/width_depth_long_0/width_64/layers_1",
+        "layers": "1",
+        "width": "64",
+        "heads": "1",
+        "feed_forward_width": "256",
+        "parameters": "3333056",
+        "errors": "0",
+        "targets": "10002",
+        "mean_loss": "0.00046606",
+        "exact_sentences": "1024",
+        "sentences": "1024"
+      },
+      "prediction_artifact_verification": "/home/ubuntu/code/pluto/src/llm/experiments/memorize_general_facts/runs/width_depth_long_0/width_64/layers_1/independent_verification/verified_predictions.json",
+      "errors": 0,
+      "finished_utc": "2026-09-21T02:24:28+00:00"
+    }
+  ],
+  "skipped_configurations": [],
+  "verified_success_frontier": [
+    {
+      "layers": 1,
+      "width": 64,
+      "heads": 1,
+      "head_dim": 64,
+      "feed_forward_width": 256,
+      "parameters": 3333056,
+      "checkpoint": "/home/ubuntu/checkpoints/memorize_general_facts/width_depth_long_0/width_64/layers_1/step_5632",
+      "step": 5632,
+      "output_dir": "/home/ubuntu/code/pluto/src/llm/experiments/memorize_general_facts/runs/width_depth_long_0/width_64/layers_1"
+    }
+  ],
+  "minimum_parameter_success": {
+    "layers": 1,
+    "width": 64,
+    "heads": 1,
+    "head_dim": 64,
+    "feed_forward_width": 256,
+    "parameters": 3333056,
+    "checkpoint": "/home/ubuntu/checkpoints/memorize_general_facts/width_depth_long_0/width_64/layers_1/step_5632",
+    "step": 5632,
+    "output_dir": "/home/ubuntu/code/pluto/src/llm/experiments/memorize_general_facts/runs/width_depth_long_0/width_64/layers_1"
+  },
+  "updated_utc": "2026-09-21T02:24:28+00:00"
+}

@@ -1,0 +1,13 @@
+success=1
+layers=1
+width=64
+heads=1
+feed_forward_width=256
+parameters=3333056
+step=5632
+errors=0
+targets=10002
+samples_seen=90112
+epochs=88
+reached_time_limit=0
+checkpoint=/home/ubuntu/checkpoints/memorize_general_facts/width_depth_long_0/width_64/layers_1/step_5632
