@@ -57,7 +57,26 @@ does not shrink with residual width, so fewer parameters need not imply a
 proportional speedup. The result will be an empirical frontier within the
 tested family, grid, and training budgets, not a globally smallest architecture.
 
-## Status
+## Verified memorization results
+
+| Run | Blocks | Width | Heads × dimension | FF width | Parameters | Updates | Epochs | Errors | Mean loss (nats) |
+| --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Previous depth search | 1 | 512 | 8 × 64 | 2,048 | 29,416,960 | 2,944 | 46 | 0 / 10,002 | 0.000131258831 |
+| Coarse | 1 | 256 | 4 × 64 | 1,024 | 13,922,048 | 3,456 | 54 | 0 / 10,002 | 0.000256836483 |
+
+All successful rows complete all 1,024 sentences exactly under the approved
+five-token-prompt rule. Their fresh-process checkpoint predictions match the
+trainer's final TSV byte-for-byte and pass independent retokenization/audit.
+Widths/depths not yet measured must not be treated as failures.
+
+The width-256 trial took about 10.6 minutes including evaluation and trainer
+checkpoint reload. Its checkpoint is
+`/home/ubuntu/checkpoints/memorize_general_facts/width_depth_coarse_0/width_256/layers_1/step_3456`;
+artifacts are in `runs/width_depth_coarse_0/width_256/layers_1/`. The independent
+prediction TSV SHA-256 is
+`9bbc4356aa389b45be53568f5a94a7e1740656fcd6345cd70093074d49ab947d`.
+
+## Validation and current status
 
 The configurable recipe and native shape flags pass all 65 optimized native
 test targets. New cases cover small/partial-tile model forward/backward,
@@ -86,5 +105,7 @@ The coarse search started on 2026-09-21 at 00:46:16 UTC with one block at width
 256. Its live record is `runs/width_depth_coarse_0/width_depth_search_summary.json`;
 checkpoints are under
 `/home/ubuntu/checkpoints/memorize_general_facts/width_depth_coarse_0/`.
-No new memorization result has been claimed yet. The independently verified
-starting point remains one block at width 512, with 29,416,960 physical parameters.
+Width 256 passed and its independent verification completed before width-128
+training started at approximately 00:56:56 UTC. The smallest verified success
+so far is one block at width 256, with 13,922,048 physical parameters; the
+width/depth frontier is not complete yet.
