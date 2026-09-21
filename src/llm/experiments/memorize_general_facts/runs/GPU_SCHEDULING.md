@@ -90,5 +90,21 @@ preexisting output/checkpoint destinations. The new artifact root is
 This is a fresh initialization with a longer cosine schedule, not a checkpoint
 resume. At **04:46:00 UTC**, the predecessor exited successfully, all guards
 passed, and the new search launched. All 16 initial weight tensors match the
-earlier width-24 trial byte-for-byte. The new search is running; its own
-manifest records the start and will record its final outcome.
+earlier width-24 trial byte-for-byte. The trial reached zero errors at step
+29,824 and completed both independent checks at **05:11:23 UTC**. Its manifest
+records `verified_success`, and its coordinator exited normally. No competing
+GPU test or experiment was launched during this trial; the two next-width test
+binaries were compiled without running GPU work.
+
+## Serialized width-20 refinement
+
+After the width-24 search exited, the optimized attention-reference and GPT-2
+recipe tests passed with added exact width-20 coverage. They executed serially;
+the pinned experiment binary hash was unchanged. The planned fresh one-block
+width-20, one-head, FF-80, 40,000-update trial then started at **05:13:11 UTC**.
+It uses the same training controls as the completed width-24 run and no learned
+weights are transferred. Artifacts are in `runs/width_depth_refine_20_long_0/`
+and checkpoints in
+`/home/ubuntu/checkpoints/memorize_general_facts/width_depth_refine_20_long_0/`.
+This trial is currently running. No other GPU experiment or test is scheduled
+to overlap it.

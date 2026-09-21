@@ -115,6 +115,7 @@ requirement proves a lower bound on model capacity.
 | Coarse | 2 | 64 | 1 × 64 | 256 | 3,383,040 | 4,352 | 68 | 0 / 10,002 | 0.054245373258 |
 | Longer budget | 1 | 64 | 1 × 64 | 256 | 3,333,056 | 5,632 | 88 | 0 / 10,002 | 0.00046606012 |
 | Longer budget, narrow | 1 | 32 | 1 × 32 | 128 | 1,654,240 | 9,984 | 156 | 0 / 10,002 | 0.002481923691 |
+| 40k-cap midpoint refinement | 1 | 24 | 1 × 24 | 96 | 1,238,376 | 29,824 | 466 | 0 / 10,002 | 0.000156123977 |
 
 All successful rows complete all 1,024 sentences exactly under the approved
 five-token-prompt rule. Their fresh-process checkpoint predictions match the
@@ -163,21 +164,37 @@ byte-for-byte, including the relocated final LayerNorm. The deeper width-32
 models' short-budget failures therefore do not establish a width-32 capacity
 limit either.
 
+One block at width 24 succeeded under the fresh 40,000-update schedule at
+step 29,824 (466 epochs), with 1,238,376 parameters and mean loss
+0.00015612397689062187 nats. All 10,002 targets and all 1,024 sentences are
+correct, including the three targets missed by its earlier 20,000-update run.
+Fresh native checkpoint inference and independent retokenization confirm the
+result; both prediction TSVs match byte-for-byte. All 16 final FP32 arrays have
+the recipe-derived sizes and finite values, totaling 4,953,504 bytes.
+Checkpoint:
+`/home/ubuntu/checkpoints/memorize_general_facts/width_depth_refine_24_long_0/width_24/layers_1/step_29824`.
+Artifacts: `runs/width_depth_refine_24_long_0/width_24/layers_1/`. Independent
+prediction TSV SHA-256:
+`db7a0ab9a42ad4ed9f7d1658d4eba949181e1a3e00b94ca15bc7347c9454a1a7`.
+All 16 initial arrays match its earlier run exactly. The new schedule changes
+cosine decay, so this is not a continuation or an isolated test of update count.
+The search and both final checks finished at 05:11:23 UTC, about 25.4 minutes
+after starting, without reaching either budget cap.
+
 The measured 5,000-update frontier still contains `(1 block, width 128)` and
 `(2 blocks, width 64)`: neither dominates the other in depth and width under
-that protocol. The measured 20,000-update frontier and the pooled frontier
-instead give `(1 block, width 32)`, with 1,654,240 parameters, the smallest
-successful model measured so far. The changed cosine schedule prevents
-attributing improvements over the coarse protocol solely to additional
-updates. These are frontiers over measured outcomes, not
-capacity impossibility claims.
+that protocol. The measured 20,000-update frontier remains `(1 block, width 32)`.
+The measured 40,000-update frontier and pooled frontier now give
+`(1 block, width 24)`, with 1,238,376 parameters, the smallest successful model
+measured so far: 25.1% fewer parameters than width 32. Changed cosine schedules
+prevent attributing improvements across protocols solely to additional updates.
+These are frontiers over measured outcomes, not capacity impossibility claims.
 
 ### Bounded next refinement round
 
-Finish the already-running one-head width-16 depth sweep without changing its
-20,000-update schedule. Any width-8 trials that its adaptive traversal launches
-remain part of that same pass; configurations it skips remain untested.
-Then serialize the following decision tree rather than run competing GPU jobs:
+The one-head width-16 depth sweep finished its 20,000-update schedule without
+a success; skipped width-8 configurations remain untested. The following
+decision tree was recorded before that sweep finished. Trials are serialized:
 
 1. Repeat one block at width 24 with one head, fresh initialization, and a
    **40,000-update cap**, keeping the other controls fixed. Its three-error
@@ -200,6 +217,19 @@ Then serialize the following decision tree rather than run competing GPU jobs:
    if two-block width 24 also fails, test one-block width 28 at 20,000 updates
    to narrow the original one-block width-24/32 gap. Keep any 40,000-update
    continuation of the first branch in its own matched-protocol group.
+
+Width 24 has now succeeded, selecting the fresh one-block width-20,
+40,000-update branch, `width_depth_refine_20_long_0`. Reserve the third slot
+for a fresh eight-block width-16 trial with the same 40,000-update protocol,
+after width 20 finishes and its evidence is verified. The earlier eight-block
+run improved from 220 errors at step 16,384 to 106 at step 20,000; extending
+that check targets the currently missing successful depth/width trade-off.
+Its 847,008 parameters would be fewer than either one-block width 24 or 20,
+while its extra depth would keep it nondominated in depth/width if successful.
+That is a reason to test it, not a prediction of success. This choice replaces
+another shallow midpoint in the third slot; no fourth trial is added to this
+round. Any later shallower-depth or width refinement needs a separate decision
+based on these outcomes.
 
 This round has at most three new architecture/budget trials; it is not an
 unlimited optimizer or head-count sweep. A three-head width-24 variant is
@@ -523,7 +553,8 @@ all 65 optimized native test targets passed (63 cached, the two updated targets
 executed), and the experiment binary hash remained unchanged. The reporter now
 computes matched-protocol frontiers using the binary hash and all eight training
 controls, separately from pooled existence evidence; all 127 Python experiment
-tests pass. The current 20,000-update and pooled frontier remains `(1,32)`.
+tests pass. The current 20,000-update frontier remains `(1,32)`; the pooled
+frontier is now `(1,24)` after the separately scheduled result below.
 
 The fresh 40,000-update one-block width-24 refinement was queued at 03:59:36
 UTC and started at 04:46:00 UTC, after the completed search exited and its
@@ -533,10 +564,22 @@ artifact root is `runs/width_depth_refine_24_long_0/`, with checkpoints under
 All 16 initial weight tensors match the earlier one-block width-24 trial
 byte-for-byte. The peak learning rate, seed, head count, batch, and optimizer
 remain fixed, but the stretched cosine schedule is a separate protocol.
-The trial is currently running; its live artifacts and changing manifest are
-not committed. The reporter checks 11 completed 5,000-update trials, seven
-completed 20,000-update trials, and no verified 40,000-update result yet.
-See `runs/GPU_SCHEDULING.md` for the serialization details.
+The trial completed both independent checks at 05:11:23 UTC with zero errors
+at step 29,824; its completed artifacts and manifest are committed. The reporter
+checks 11 completed 5,000-update trials, seven completed 20,000-update trials,
+and one verified 40,000-update success.
+
+After both targeted optimized GPU tests passed, the fresh one-block width-20,
+one-head, FF-80, 40,000-update trial started at 05:13:11 UTC. It has 1,031,020
+parameters and uses the same binary, seed, schedule, and remaining controls as
+the successful width-24 trial. Added tests cover its exact 20-wide BF16 head
+at context 1,024, CPU/GPU forward/backward agreement, three bitwise GPU repeats,
+and complete FP16/BF16 GPT-2 forward/backward and tied parameter counts.
+The experiment executable's hash is unchanged. Its artifact root is
+`runs/width_depth_refine_20_long_0/`, with checkpoints under
+`/home/ubuntu/checkpoints/memorize_general_facts/width_depth_refine_20_long_0/`.
+This trial is running; its changing artifacts are not committed and it is not
+yet a memorization result. See `runs/GPU_SCHEDULING.md` for serialization details.
 
 After the active pass, refine observed width gaps with a small, bounded set of
 midpoints (such as 24 between 32 and 16, or 12 between 16 and 8). Fill omitted
