@@ -68,6 +68,18 @@ class SummarizeWidthDepthTest(unittest.TestCase):
         self.assertEqual((points[0]["layers"], points[0]["width"]), (1, 32))
         self.assertIn("1,654,240", render_markdown(runs))
 
+    def test_historical_commands_without_explicit_modes_remain_readable(self):
+        path = self.make_run()
+        def remove_modes(manifest):
+            for trial in manifest["trials"]:
+                for command in trial["commands"][:2]:
+                    command[:] = [flag for flag in command
+                                  if not flag.startswith("--mode=")]
+        self.mutate_manifest(path, remove_modes)
+        runs = load_runs([path], ["historical"])
+        self.assertEqual(len(runs[0]["trials"]), 5)
+        self.assertIn("memorized", render_markdown(runs))
+
     def test_same_architecture_different_budgets_preserves_failure_and_success(self):
         short = self.make_run(depths=[1], widths=[64], failures={(1, 64)})
         long = self.make_run(depths=[1], widths=[64], failures=set(), steps=20000)

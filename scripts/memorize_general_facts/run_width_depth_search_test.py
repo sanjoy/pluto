@@ -49,6 +49,15 @@ class WidthDepthSearchTest(unittest.TestCase):
                      if argument.startswith("--"))
         if Path(command[0]) == self.binary:
             phase = "verify" if "verify_checkpoint" in flags else "train"
+            expected_mode = "infer_model" if phase == "verify" else "train_model"
+            self.assertEqual(flags["mode"], expected_mode)
+            self.assertEqual(command.count(f"--mode={expected_mode}"), 1)
+            if phase == "verify":
+                self.assertLessEqual(set(flags), {
+                    "mode", "verify_checkpoint", "layers", "model_width",
+                    "attention_heads", "feed_forward_width", "compact_vocabulary",
+                    "output_dir", "corpus", "tokenizer", "batch_size", "seed",
+                })
             layers, width = int(flags["layers"]), int(flags["model_width"])
             self.assertIsNone(stdout)
             dimensions = model_dimensions(layers, width, self.args.attention_heads)
@@ -192,6 +201,14 @@ class WidthDepthSearchTest(unittest.TestCase):
             for command in trial["commands"]:
                 self.assertFalse(any(flag.startswith("--gradient_clip_norm")
                                      for flag in command))
+
+    def test_manifest_records_explicit_training_and_inference_modes(self):
+        # Exercise both successful trials and independently verified budget failures.
+        self.assertEqual(self.run_driver(), 0)
+        for trial in self.summary()["trials"]:
+            self.assertIn("--mode=train_model", trial["commands"][0])
+            self.assertIn("--mode=infer_model", trial["commands"][1])
+            self.assertNotIn("--mode=train_model", trial["commands"][1])
 
     def test_training_execution_failure_stops_without_verification(self):
         self.statuses["train", (1, 128)] = 1

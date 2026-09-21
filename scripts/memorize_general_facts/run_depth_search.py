@@ -204,7 +204,7 @@ def run_search(args, *, run_process=subprocess.run):
                 return completed.returncode
 
             training = (
-                [str(args.binary)]
+                [str(args.binary), "--mode=train_model"]
                 + [
                     f"--{key}={getattr(args, key)}"
                     for key in (
@@ -263,6 +263,7 @@ def run_search(args, *, run_process=subprocess.run):
             active["phase"] = "checkpoint_verification"
             independent = [
                 str(args.binary),
+                "--mode=infer_model",
                 f"--layers={layers}",
                 "--compact_vocabulary=false",
                 f"--verify_checkpoint={checkpoint}",

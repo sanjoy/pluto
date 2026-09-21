@@ -14,6 +14,7 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/flags/flag.h"
@@ -21,6 +22,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "src/cuda/executor.h"
@@ -34,23 +36,27 @@
 #include "src/llm/adamw_optimizer.h"
 #include "src/llm/batch_validation.h"
 #include "src/llm/checkpoint.h"
-#include "src/llm/experiments/memorize_general_facts/generation.h"
 #include "src/llm/experiments/gpt2_shakespeare/gpt2.h"
+#include "src/llm/experiments/memorize_general_facts/generation.h"
+#include "src/llm/experiments/memorize_general_facts/memorize_general_facts_cli.h"
 #include "src/llm/extract_top1_ids.h"
 #include "src/llm/layers/cross_entropy_loss.h"
 #include "src/util/status_macros.h"
 #include "src/util/tee_stream.h"
 
+ABSL_FLAG(std::string, mode, "",
+          "Required run mode: train_model or infer_model");
 ABSL_FLAG(std::string, corpus, "testdata/general_facts_dataset.txt",
           "One fact per line");
 ABSL_FLAG(std::string, tokenizer, "",
           "Local GPT-2 tokenizer directory (required)");
-ABSL_FLAG(std::string, checkpoint_dir, "", "Checkpoint parent (required)");
+ABSL_FLAG(std::string, checkpoint_dir, "",
+          "Checkpoint parent (required in train_model)");
 ABSL_FLAG(std::string, verify_checkpoint, "",
-          "Load one checkpoint and independently evaluate it without training");
+          "In infer_model, independently evaluate a checkpoint on the corpus");
 ABSL_FLAG(std::string, infer_checkpoint, "",
-          "Load one checkpoint for greedy prompt completion, without training "
-          "or reading a corpus");
+          "In infer_model, load a checkpoint for greedy prompt completion "
+          "without reading a corpus");
 ABSL_FLAG(std::string, prompt, "",
           "One nonempty prompt for infer_checkpoint; omit for an interactive "
           "prompt loop");
@@ -84,6 +90,89 @@ namespace pluto::llm::memorize_general_facts {
 namespace {
 
 using tokenizer::CompactVocabularyTokenizer;
+
+template <class T>
+void AddIfExplicitlySet(const absl::Flag<T>& flag,
+                        std::vector<absl::string_view>* names) {
+  if (flag.IsSpecifiedOnCommandLine())
+    names->push_back(flag.Name());
+}
+
+// Follow the Shakespeare CLI's explicit-presence policy: an unused flag is an
+// error even if its supplied value equals the default. Validate before creating
+// an executor or opening any corpus, checkpoint, or output files.
+absl::StatusOr<Mode> ParseAndValidateRunMode() {
+  ASSIGN_OR_RETURN(auto mode, ParseMode(absl::GetFlag(FLAGS_mode)));
+  std::vector<absl::string_view> explicitly_set;
+  AddIfExplicitlySet(FLAGS_mode, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_corpus, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_tokenizer, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_checkpoint_dir, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_verify_checkpoint, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_infer_checkpoint, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_prompt, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_generation_tokens, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_output_dir, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_layers, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_model_width, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_attention_heads, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_feed_forward_width, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_compact_vocabulary, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_search, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_batch_size, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_steps, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_eval_every, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_checkpoint_every, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_seed, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_learning_rate, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_warmup_steps, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_training_seconds, &explicitly_set);
+  RETURN_IF_ERROR(ValidateModeFlags(mode, explicitly_set,
+                                    absl::GetFlag(FLAGS_tokenizer),
+                                    absl::GetFlag(FLAGS_checkpoint_dir),
+                                    absl::GetFlag(FLAGS_infer_checkpoint),
+                                    absl::GetFlag(FLAGS_verify_checkpoint)));
+
+  if (mode == Mode::kInferModel &&
+      !absl::GetFlag(FLAGS_infer_checkpoint).empty()) {
+    if (absl::GetFlag(FLAGS_generation_tokens) < 0)
+      return absl::InvalidArgumentError(
+          "--generation_tokens must be nonnegative");
+    if (FLAGS_prompt.IsSpecifiedOnCommandLine() &&
+        absl::GetFlag(FLAGS_prompt).empty())
+      return absl::InvalidArgumentError(
+          "--prompt must be nonempty when supplied");
+    return mode;
+  }
+
+  // Training and checkpoint verification consume corpus batches and write
+  // artifacts. Verification does not consume optimizer or schedule settings.
+  if (absl::GetFlag(FLAGS_corpus).empty())
+    return absl::InvalidArgumentError("--corpus must be nonempty");
+  if (absl::GetFlag(FLAGS_output_dir).empty())
+    return absl::InvalidArgumentError("--output_dir must be nonempty");
+  if (absl::GetFlag(FLAGS_batch_size) <= 0)
+    return absl::InvalidArgumentError("--batch_size must be positive");
+  if (mode == Mode::kTrainModel) {
+    if (absl::GetFlag(FLAGS_steps) < 0)
+      return absl::InvalidArgumentError("--steps must be nonnegative");
+    if (absl::GetFlag(FLAGS_eval_every) <= 0)
+      return absl::InvalidArgumentError("--eval_every must be positive");
+    if (absl::GetFlag(FLAGS_checkpoint_every) <= 0)
+      return absl::InvalidArgumentError("--checkpoint_every must be positive");
+    if (absl::GetFlag(FLAGS_warmup_steps) < 0)
+      return absl::InvalidArgumentError("--warmup_steps must be nonnegative");
+    if (!std::isfinite(absl::GetFlag(FLAGS_learning_rate)) ||
+        absl::GetFlag(FLAGS_learning_rate) <= 0)
+      return absl::InvalidArgumentError(
+          "--learning_rate must be finite and positive");
+    if (!std::isfinite(absl::GetFlag(FLAGS_training_seconds)) ||
+        absl::GetFlag(FLAGS_training_seconds) < 0)
+      return absl::InvalidArgumentError(
+          "--training_seconds must be finite and nonnegative");
+  }
+  return mode;
+}
 
 // Record and reconstruct the full shape explicitly. A checkpoint's raw tensor
 // files cannot identify its head count: changing the partition into heads does
@@ -593,45 +682,15 @@ absl::Status RunInference(cuda::Executor& executor,
 }
 
 absl::StatusOr<bool> Run() {
-  const bool inference = !absl::GetFlag(FLAGS_infer_checkpoint).empty();
-  if (inference && (absl::GetFlag(FLAGS_tokenizer).empty() ||
-                    !absl::GetFlag(FLAGS_verify_checkpoint).empty() ||
-                    !absl::GetFlag(FLAGS_checkpoint_dir).empty() ||
-                    absl::GetFlag(FLAGS_search) ||
-                    absl::GetFlag(FLAGS_generation_tokens) < 0 ||
-                    (FLAGS_prompt.IsSpecifiedOnCommandLine() &&
-                     absl::GetFlag(FLAGS_prompt).empty())))
-    return absl::InvalidArgumentError(
-        "infer_checkpoint requires tokenizer, nonnegative generation_tokens "
-        "and a nonempty prompt when supplied; it cannot be combined with "
-        "verify_checkpoint, checkpoint_dir or search");
-  if (!inference && (FLAGS_prompt.IsSpecifiedOnCommandLine() ||
-                     FLAGS_generation_tokens.IsSpecifiedOnCommandLine()))
-    return absl::InvalidArgumentError(
-        "prompt and generation_tokens require infer_checkpoint");
-  if (!inference &&
-      (absl::GetFlag(FLAGS_tokenizer).empty() ||
-       (absl::GetFlag(FLAGS_checkpoint_dir).empty() &&
-        absl::GetFlag(FLAGS_verify_checkpoint).empty()) ||
-       (!absl::GetFlag(FLAGS_verify_checkpoint).empty() &&
-        absl::GetFlag(FLAGS_search)) ||
-       absl::GetFlag(FLAGS_batch_size) <= 0 || absl::GetFlag(FLAGS_steps) < 0 ||
-       absl::GetFlag(FLAGS_eval_every) <= 0 ||
-       absl::GetFlag(FLAGS_checkpoint_every) <= 0 ||
-       absl::GetFlag(FLAGS_warmup_steps) < 0 ||
-       !std::isfinite(absl::GetFlag(FLAGS_learning_rate)) ||
-       absl::GetFlag(FLAGS_learning_rate) <= 0 ||
-       !std::isfinite(absl::GetFlag(FLAGS_training_seconds)) ||
-       absl::GetFlag(FLAGS_training_seconds) < 0))
-    return absl::InvalidArgumentError(
-        "invalid experiment flags; tokenizer and checkpoint_dir are required");
+  ASSIGN_OR_RETURN(const auto mode, ParseAndValidateRunMode());
   ASSIGN_OR_RETURN(auto executor, cuda::Executor::Create());
   ASSIGN_OR_RETURN(auto tokenizer, tokenizer::Gpt2Tokenizer::Load(
                                        absl::GetFlag(FLAGS_tokenizer)));
   if (tokenizer->vocab_size() != kGpt2VocabularySize)
     return absl::InvalidArgumentError(
         "the experiment requires the full GPT-2 vocabulary");
-  if (inference) {
+  if (mode == Mode::kInferModel &&
+      !absl::GetFlag(FLAGS_infer_checkpoint).empty()) {
     RETURN_IF_ERROR(RunInference(*executor, *tokenizer));
     return true;
   }
@@ -651,7 +710,7 @@ absl::StatusOr<bool> Run() {
   RETURN_IF_ERROR(ModelConfiguration(absl::GetFlag(FLAGS_layers),
                                      model_tokenizer->vocab_size())
                       .Validate());
-  if (!absl::GetFlag(FLAGS_verify_checkpoint).empty())
+  if (mode == Mode::kInferModel)
     return VerifyCheckpoint(*executor, *model_tokenizer, eos_token, corpus,
                             vocabulary.get());
   for (int layers = absl::GetFlag(FLAGS_layers); layers >= 0; --layers) {

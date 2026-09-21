@@ -32,11 +32,18 @@ local-only and ignored by Git. They are not required to build or test the code.
 Recorded commands in historical manifests may name old script locations; those
 are provenance, not current entry points. Use the commands below for new runs.
 
+Every native invocation requires `--mode=train_model` or `--mode=infer_model`.
+Training uses `train_model`; inference uses `infer_model` with exactly one
+nonempty checkpoint selector: `--infer_checkpoint` for prompt completion or
+`--verify_checkpoint` for corpus evaluation. The selectors are mutually exclusive
+even when one is explicitly empty. Training rejects both checkpoint selectors.
+
 ## Prompt inference
 
-Load an exact checkpoint directory with `--infer_checkpoint`. The shape flags
+Load an exact checkpoint directory with
+`--mode=infer_model --infer_checkpoint=PATH`. The shape flags
 must match training: raw checkpoint weights do not encode the attention head
-count. Inference neither reads the corpus nor creates training/evaluation
+count. Prompt inference neither reads the corpus nor creates training/evaluation
 artifacts. Compact inference loads `compact_vocabulary.tsv` directly from the
 checkpoint and translates generated IDs back to the original GPT-2 vocabulary
 for decoding. Use the same base tokenizer as training.
@@ -48,6 +55,7 @@ bazel build -c opt //src/llm/experiments/memorize_general_facts:memorize_general
 
 facts_run=/home/ubuntu/checkpoints/memorize_general_facts/compact_batch_32_no_clip_0
 bazel-bin/src/llm/experiments/memorize_general_facts/memorize_general_facts \
+  --mode=infer_model \
   --infer_checkpoint="$facts_run/layers_8/step_16128" \
   --tokenizer="$facts_run/inputs/tokenizer" \
   --layers=8 --model_width=16 --attention_heads=1 --feed_forward_width=64 \
@@ -72,9 +80,12 @@ memorization model, not an instruction-following assistant: prompts outside the
 training facts need not give sensible answers. To reproduce the memorization
 task, supply the first five GPT-2 tokens of a fact.
 
-`--infer_checkpoint` cannot be combined with `--verify_checkpoint`,
-`--checkpoint_dir`, or `--search`. `--prompt` and `--generation_tokens` are
-inference-only. For older full-vocabulary checkpoints, use
+Prompt inference accepts tokenizer, shape, seed, compact-vocabulary, prompt, and
+generation-token options. It rejects corpus, output-directory, batch-size, and
+training options, including explicitly supplied defaults such as `--search=false`
+or `--steps=5000`. `--prompt` and `--generation_tokens` are exclusive to prompt
+inference; they are not accepted by corpus verification or training. For older
+full-vocabulary checkpoints, use
 `--compact_vocabulary=false` and their original shape flags.
 
 ## Compact active vocabulary
@@ -124,6 +135,7 @@ full-vocabulary search as if the protocol were unchanged.
 ```sh
 bazel build -c opt //src/llm/experiments/memorize_general_facts:memorize_general_facts
 bazel-bin/src/llm/experiments/memorize_general_facts/memorize_general_facts \
+  --mode=train_model \
   --tokenizer=/home/ubuntu/datasets/tokenizer/gpt2 \
   --checkpoint_dir=/home/ubuntu/checkpoints/memorize_general_facts/compact_new_trial \
   --output_dir=src/llm/experiments/memorize_general_facts/runs/compact_new_trial \
@@ -166,6 +178,7 @@ python scripts/memorize_general_facts/compact_checkpoint.py \
   --layers=8 --model_width=16 --feed_forward_width=64
 
 bazel-bin/src/llm/experiments/memorize_general_facts/memorize_general_facts \
+  --mode=infer_model \
   --verify_checkpoint=/path/to/existing_parent/new_compact_checkpoint \
   --tokenizer=/home/ubuntu/datasets/tokenizer/gpt2 \
   --corpus=testdata/general_facts_dataset.txt \
@@ -241,6 +254,7 @@ python -B -m unittest discover \
 ```sh
 bazel build -c opt //src/llm/experiments/memorize_general_facts:memorize_general_facts
 bazel-bin/src/llm/experiments/memorize_general_facts/memorize_general_facts \
+  --mode=train_model \
   --tokenizer=/home/ubuntu/datasets/tokenizer/gpt2 \
   --checkpoint_dir=/home/ubuntu/checkpoints/memorize_general_facts/new_trial \
   --output_dir=src/llm/experiments/memorize_general_facts/runs/new_trial \
@@ -314,12 +328,18 @@ weights into a fresh process and reevaluate the whole corpus, use:
 
 ```sh
 bazel-bin/src/llm/experiments/memorize_general_facts/memorize_general_facts \
+  --mode=infer_model \
   --verify_checkpoint=/path/to/layers_8/step_N \
   --layers=8 --corpus=RUN/corpus.txt --tokenizer=RUN --compact_vocabulary=false \
   --output_dir=src/llm/experiments/memorize_general_facts/runs/verification
 ```
 
-Use the checkpoint's actual depth and a fresh output directory. No optimizer or
+Use the checkpoint's actual depth and a fresh output directory. Corpus
+verification accepts `--corpus`, `--output_dir`, `--batch_size`, `--seed`,
+`--tokenizer`, shape flags, and `--compact_vocabulary`. It rejects all training
+options: `--checkpoint_dir`, `--search`, `--steps`, `--learning_rate`,
+`--warmup_steps`, `--eval_every`, `--checkpoint_every`, and `--training_seconds`,
+including explicitly supplied defaults and `--search=false`. No optimizer or
 training updates run in verification mode. Feed its new `final_predictions.tsv`
 to the Python verifier with the original snapshots. The native binary exits 0
 for zero errors, 2 for a valid nonperfect model, and 1 for an execution error.
@@ -333,8 +353,9 @@ another checkout, replace native `--tokenizer=RUN` with
 [RESULTS.md](ai_slop/RESULTS.md). Corpus snapshots and prediction TSVs are local
 artifacts; copy them from the original run or generate them with a new run.
 
-The experiment's `--verify_checkpoint` supports every tested depth via
-`--layers=N`. The existing `gpt2_shakespeare_llm --mode=infer_model` CLI instead
+The experiment's `--mode=infer_model --verify_checkpoint=PATH` supports every
+tested depth via `--layers=N`. The existing
+`gpt2_shakespeare_llm --mode=infer_model` CLI instead
 constructs eight blocks: it can run the eight-block smoke checks in
 [RESULTS.md](ai_slop/RESULTS.md),
 but cannot load a shallower experiment checkpoint. Its decoder also emits
@@ -377,6 +398,7 @@ four-times-expanded MLP uses:
 
 ```sh
 bazel-bin/src/llm/experiments/memorize_general_facts/memorize_general_facts \
+  --mode=train_model \
   --layers=1 --model_width=64 --attention_heads=1 --feed_forward_width=256 \
   --compact_vocabulary=false \
   --tokenizer=/home/ubuntu/datasets/tokenizer/gpt2 \

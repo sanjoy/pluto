@@ -247,7 +247,7 @@ def run_search(args, *, run_process=subprocess.run):
                                f"--attention_heads={dimensions['heads']}",
                                f"--feed_forward_width={dimensions['feed_forward_width']}",
                                "--compact_vocabulary=false"]
-                training = ([str(args.binary)] + shape_flags + [
+                training = ([str(args.binary), "--mode=train_model"] + shape_flags + [
                     f"--{key}={getattr(args, key)}" for key in
                     ("corpus", "tokenizer", "batch_size", "steps", "eval_every",
                      "checkpoint_every", "seed", "learning_rate", "warmup_steps", "training_seconds")
@@ -280,7 +280,7 @@ def run_search(args, *, run_process=subprocess.run):
                     raise ValueError("Run snapshots do not match the original corpus/tokenizer")
                 active.update(training_result=result, checkpoint=str(checkpoint), step=step,
                               phase="checkpoint_verification")
-                independent = [str(args.binary)] + shape_flags + [
+                independent = [str(args.binary), "--mode=infer_model"] + shape_flags + [
                     f"--verify_checkpoint={checkpoint}", f"--output_dir={verification}",
                     f"--corpus={output / 'corpus.txt'}", f"--tokenizer={output}",
                     f"--batch_size={args.batch_size}", f"--seed={args.seed}",

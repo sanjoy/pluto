@@ -52,6 +52,15 @@ class DepthSearchTest(unittest.TestCase):
         )
         if Path(command[0]) == self.binary:
             phase = "verify" if "verify_checkpoint" in flags else "train"
+            expected_mode = "infer_model" if phase == "verify" else "train_model"
+            self.assertEqual(flags["mode"], expected_mode)
+            self.assertEqual(command.count(f"--mode={expected_mode}"), 1)
+            if phase == "verify":
+                self.assertLessEqual(set(flags), {
+                    "mode", "verify_checkpoint", "layers", "model_width",
+                    "attention_heads", "feed_forward_width", "compact_vocabulary",
+                    "output_dir", "corpus", "tokenizer", "batch_size", "seed",
+                })
             layers = int(flags["layers"])
             self.assertIsNone(stdout)
         else:
@@ -163,6 +172,13 @@ class DepthSearchTest(unittest.TestCase):
             self.assertEqual(command.count("--compact_vocabulary=false"), 1)
         self.assertEqual(sum(any(flag.startswith("--verify_checkpoint=") for flag in command)
                              for command in native), 2)
+
+    def test_manifest_records_explicit_training_and_inference_modes(self):
+        self.assertEqual(self.run_driver(), 0)
+        for depth in self.summary()["depths"]:
+            self.assertIn("--mode=train_model", depth["commands"][0])
+            self.assertIn("--mode=infer_model", depth["commands"][1])
+            self.assertNotIn("--mode=train_model", depth["commands"][1])
 
     def test_later_failure_preserves_preceding_verified_minimum(self):
         self.statuses["train", 1] = 2

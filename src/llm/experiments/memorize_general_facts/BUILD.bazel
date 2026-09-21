@@ -39,11 +39,37 @@ cc_test(
     ],
 )
 
+cc_library(
+    name = "memorize_general_facts_cli",
+    srcs = ["memorize_general_facts_cli.cc"],
+    hdrs = ["memorize_general_facts_cli.h"],
+    deps = [
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "memorize_general_facts_cli_test",
+    size = "small",
+    srcs = ["memorize_general_facts_cli_test.cc"],
+    deps = [
+        ":memorize_general_facts_cli",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@googletest//:gtest_main",
+    ],
+)
+
 cc_binary(
     name = "memorize_general_facts",
     srcs = ["memorize_general_facts.cc"],
     deps = [
         ":generation",
+        ":memorize_general_facts_cli",
         "//src/cuda:buffer",
         "//src/cuda:executor",
         "//src/cuda:page_locked_host_array",

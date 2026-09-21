@@ -40,10 +40,14 @@ python -B scripts/memorize_general_facts/summarize_width_depth.py \
   /tmp/pluto-facts-new-width-search/width_depth_search_summary.json
 ```
 
-The sweep drivers use the full GPT-2 vocabulary, passing
-`--compact_vocabulary=false`. The native binary supports compact-vocabulary
-training separately. Gradient clipping support has been removed, so all new
-runs train without clipping. Historical sweeps used norm-one gradient clipping;
+The sweep drivers pass `--mode=train_model` for training and
+`--mode=infer_model --verify_checkpoint=PATH` for fresh checkpoint evaluation;
+the native binary requires an explicit mode. Verification commands omit all
+training controls, including `--search=false`. The drivers use the full GPT-2
+vocabulary, passing `--compact_vocabulary=false`. The native binary supports
+compact-vocabulary training separately. Gradient clipping support has been
+removed, so all new runs train without clipping. Historical sweeps used norm-one
+gradient clipping;
 these commands no longer reproduce that training protocol. Historical results
 remain evidence for the protocol recorded in their original manifests.
 Successful frontier points require zero errors, while exhausting a trial budget
@@ -55,7 +59,8 @@ training protocols separate. Generated evidence is not checked in. The optional
 local directory `src/llm/experiments/memorize_general_facts/runs/` is ignored by
 Git; output directories elsewhere should also stay out of version control.
 Historical manifests retain the commands and absolute paths used at the time,
-including old script paths. Do not rewrite those provenance records.
+including old script paths and commands without an explicit mode. The reporter
+continues to read those manifests. Do not rewrite those provenance records.
 
 ## Audit a finished run
 
