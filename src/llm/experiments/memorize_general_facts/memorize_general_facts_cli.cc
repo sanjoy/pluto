@@ -1,5 +1,7 @@
 #include "src/llm/experiments/memorize_general_facts/memorize_general_facts_cli.h"
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 
 #include "absl/status/status.h"
@@ -7,6 +9,7 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "src/util/status_macros.h"
 
 namespace pluto::llm::memorize_general_facts {
 namespace {
@@ -55,6 +58,54 @@ const FlagRule* FindRule(absl::string_view name) {
 }
 
 }  // namespace
+
+absl::StatusOr<Mode> ParseAndValidateRunMode(
+    const CommandLineOptions& options,
+    absl::Span<const absl::string_view> explicitly_set_flags) {
+  ASSIGN_OR_RETURN(auto mode, ParseMode(options.mode));
+  RETURN_IF_ERROR(ValidateModeFlags(
+      mode, explicitly_set_flags, options.tokenizer, options.checkpoint_dir,
+      options.infer_checkpoint, options.verify_checkpoint));
+
+  if (mode == Mode::kInferModel && !options.infer_checkpoint.empty()) {
+    if (options.generation_tokens < 0)
+      return absl::InvalidArgumentError(
+          "--generation_tokens must be nonnegative");
+    if (std::find(explicitly_set_flags.begin(), explicitly_set_flags.end(),
+                  "prompt") != explicitly_set_flags.end() &&
+        options.prompt.empty())
+      return absl::InvalidArgumentError(
+          "--prompt must be nonempty when supplied");
+    return mode;
+  }
+
+  // Training and checkpoint verification consume corpus batches and write
+  // artifacts. Verification does not consume optimizer or schedule settings.
+  if (options.corpus.empty())
+    return absl::InvalidArgumentError("--corpus must be nonempty");
+  if (options.output_dir.empty())
+    return absl::InvalidArgumentError("--output_dir must be nonempty");
+  if (options.batch_size <= 0)
+    return absl::InvalidArgumentError("--batch_size must be positive");
+  if (mode == Mode::kTrainModel) {
+    if (options.steps < 0)
+      return absl::InvalidArgumentError("--steps must be nonnegative");
+    if (options.eval_every <= 0)
+      return absl::InvalidArgumentError("--eval_every must be positive");
+    if (options.checkpoint_every <= 0)
+      return absl::InvalidArgumentError("--checkpoint_every must be positive");
+    if (options.warmup_steps < 0)
+      return absl::InvalidArgumentError("--warmup_steps must be nonnegative");
+    if (!std::isfinite(options.learning_rate) || options.learning_rate <= 0)
+      return absl::InvalidArgumentError(
+          "--learning_rate must be finite and positive");
+    if (!std::isfinite(options.training_seconds) ||
+        options.training_seconds < 0)
+      return absl::InvalidArgumentError(
+          "--training_seconds must be finite and nonnegative");
+  }
+  return mode;
+}
 
 absl::StatusOr<Mode> ParseMode(absl::string_view mode) {
   if (mode == "train_model")

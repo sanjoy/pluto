@@ -98,11 +98,9 @@ void AddIfExplicitlySet(const absl::Flag<T>& flag,
     names->push_back(flag.Name());
 }
 
-// Follow the Shakespeare CLI's explicit-presence policy: an unused flag is an
-// error even if its supplied value equals the default. Validate before creating
-// an executor or opening any corpus, checkpoint, or output files.
-absl::StatusOr<Mode> ParseAndValidateRunMode() {
-  ASSIGN_OR_RETURN(auto mode, ParseMode(absl::GetFlag(FLAGS_mode)));
+// Only collect flag values and explicit presence here. All validation lives in
+// the CPU-only CLI helper and runs before any executor or file is opened.
+absl::StatusOr<Mode> RunModeFromFlags() {
   std::vector<absl::string_view> explicitly_set;
   AddIfExplicitlySet(FLAGS_mode, &explicitly_set);
   AddIfExplicitlySet(FLAGS_corpus, &explicitly_set);
@@ -127,51 +125,24 @@ absl::StatusOr<Mode> ParseAndValidateRunMode() {
   AddIfExplicitlySet(FLAGS_learning_rate, &explicitly_set);
   AddIfExplicitlySet(FLAGS_warmup_steps, &explicitly_set);
   AddIfExplicitlySet(FLAGS_training_seconds, &explicitly_set);
-  RETURN_IF_ERROR(ValidateModeFlags(mode, explicitly_set,
-                                    absl::GetFlag(FLAGS_tokenizer),
-                                    absl::GetFlag(FLAGS_checkpoint_dir),
-                                    absl::GetFlag(FLAGS_infer_checkpoint),
-                                    absl::GetFlag(FLAGS_verify_checkpoint)));
-
-  if (mode == Mode::kInferModel &&
-      !absl::GetFlag(FLAGS_infer_checkpoint).empty()) {
-    if (absl::GetFlag(FLAGS_generation_tokens) < 0)
-      return absl::InvalidArgumentError(
-          "--generation_tokens must be nonnegative");
-    if (FLAGS_prompt.IsSpecifiedOnCommandLine() &&
-        absl::GetFlag(FLAGS_prompt).empty())
-      return absl::InvalidArgumentError(
-          "--prompt must be nonempty when supplied");
-    return mode;
-  }
-
-  // Training and checkpoint verification consume corpus batches and write
-  // artifacts. Verification does not consume optimizer or schedule settings.
-  if (absl::GetFlag(FLAGS_corpus).empty())
-    return absl::InvalidArgumentError("--corpus must be nonempty");
-  if (absl::GetFlag(FLAGS_output_dir).empty())
-    return absl::InvalidArgumentError("--output_dir must be nonempty");
-  if (absl::GetFlag(FLAGS_batch_size) <= 0)
-    return absl::InvalidArgumentError("--batch_size must be positive");
-  if (mode == Mode::kTrainModel) {
-    if (absl::GetFlag(FLAGS_steps) < 0)
-      return absl::InvalidArgumentError("--steps must be nonnegative");
-    if (absl::GetFlag(FLAGS_eval_every) <= 0)
-      return absl::InvalidArgumentError("--eval_every must be positive");
-    if (absl::GetFlag(FLAGS_checkpoint_every) <= 0)
-      return absl::InvalidArgumentError("--checkpoint_every must be positive");
-    if (absl::GetFlag(FLAGS_warmup_steps) < 0)
-      return absl::InvalidArgumentError("--warmup_steps must be nonnegative");
-    if (!std::isfinite(absl::GetFlag(FLAGS_learning_rate)) ||
-        absl::GetFlag(FLAGS_learning_rate) <= 0)
-      return absl::InvalidArgumentError(
-          "--learning_rate must be finite and positive");
-    if (!std::isfinite(absl::GetFlag(FLAGS_training_seconds)) ||
-        absl::GetFlag(FLAGS_training_seconds) < 0)
-      return absl::InvalidArgumentError(
-          "--training_seconds must be finite and nonnegative");
-  }
-  return mode;
+  return ParseAndValidateRunMode(
+      {.mode = absl::GetFlag(FLAGS_mode),
+       .tokenizer = absl::GetFlag(FLAGS_tokenizer),
+       .checkpoint_dir = absl::GetFlag(FLAGS_checkpoint_dir),
+       .infer_checkpoint = absl::GetFlag(FLAGS_infer_checkpoint),
+       .verify_checkpoint = absl::GetFlag(FLAGS_verify_checkpoint),
+       .prompt = absl::GetFlag(FLAGS_prompt),
+       .corpus = absl::GetFlag(FLAGS_corpus),
+       .output_dir = absl::GetFlag(FLAGS_output_dir),
+       .generation_tokens = absl::GetFlag(FLAGS_generation_tokens),
+       .batch_size = absl::GetFlag(FLAGS_batch_size),
+       .steps = absl::GetFlag(FLAGS_steps),
+       .eval_every = absl::GetFlag(FLAGS_eval_every),
+       .checkpoint_every = absl::GetFlag(FLAGS_checkpoint_every),
+       .warmup_steps = absl::GetFlag(FLAGS_warmup_steps),
+       .learning_rate = absl::GetFlag(FLAGS_learning_rate),
+       .training_seconds = absl::GetFlag(FLAGS_training_seconds)},
+      explicitly_set);
 }
 
 // Record and reconstruct the full shape explicitly. A checkpoint's raw tensor
@@ -682,7 +653,7 @@ absl::Status RunInference(cuda::Executor& executor,
 }
 
 absl::StatusOr<bool> Run() {
-  ASSIGN_OR_RETURN(const auto mode, ParseAndValidateRunMode());
+  ASSIGN_OR_RETURN(const auto mode, RunModeFromFlags());
   ASSIGN_OR_RETURN(auto executor, cuda::Executor::Create());
   ASSIGN_OR_RETURN(auto tokenizer, tokenizer::Gpt2Tokenizer::Load(
                                        absl::GetFlag(FLAGS_tokenizer)));

@@ -1,6 +1,8 @@
 #include "src/llm/experiments/memorize_general_facts/memorize_general_facts_cli.h"
 
 #include <initializer_list>
+#include <limits>
+#include <string>
 
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
@@ -23,6 +25,47 @@ void ExpectInvalid(const absl::Status& status, absl::string_view diagnostic) {
   EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument) << status;
   EXPECT_NE(status.message().find(diagnostic), absl::string_view::npos)
       << status;
+}
+
+CommandLineOptions TrainingOptions() {
+  CommandLineOptions options;
+  options.mode = "train_model";
+  options.tokenizer = "/tokenizer";
+  options.checkpoint_dir = "/checkpoints";
+  options.corpus = "/corpus";
+  options.output_dir = "/output";
+  options.batch_size = 1;
+  options.eval_every = 1;
+  options.checkpoint_every = 1;
+  options.learning_rate = 0.001;
+  return options;
+}
+
+CommandLineOptions GenerationOptions() {
+  CommandLineOptions options;
+  options.mode = "infer_model";
+  options.tokenizer = "/tokenizer";
+  options.infer_checkpoint = "/model";
+  return options;
+}
+
+CommandLineOptions VerificationOptions() {
+  CommandLineOptions options;
+  options.mode = "infer_model";
+  options.tokenizer = "/tokenizer";
+  options.verify_checkpoint = "/model";
+  options.corpus = "/corpus";
+  options.output_dir = "/output";
+  options.batch_size = 1;
+  return options;
+}
+
+absl::Status ValidateOptions(
+    const CommandLineOptions& options,
+    std::initializer_list<absl::string_view> flags = {}) {
+  return ParseAndValidateRunMode(
+             options, absl::MakeConstSpan(flags.begin(), flags.size()))
+      .status();
 }
 
 TEST(MemorizeGeneralFactsCliTest, ParsesOnlyExactNamedModes) {
@@ -231,6 +274,202 @@ TEST(MemorizeGeneralFactsCliTest, RejectsFlagsMissingFromThePolicy) {
       EXPECT_NE(status.message().find("missing mode policy for --"),
                 absl::string_view::npos);
     }
+  }
+}
+
+TEST(MemorizeGeneralFactsCliTest, ValidatesAndReturnsEachExecutionMode) {
+  for (const auto& options :
+       {TrainingOptions(), GenerationOptions(), VerificationOptions()}) {
+    SCOPED_TRACE(options.mode);
+    SCOPED_TRACE(options.verify_checkpoint);
+    const auto mode = ParseAndValidateRunMode(options, {});
+    ASSERT_TRUE(mode.ok()) << mode.status();
+    EXPECT_EQ(*mode, options.mode == "train_model" ? Mode::kTrainModel
+                                                   : Mode::kInferModel);
+  }
+}
+
+TEST(MemorizeGeneralFactsCliTest, GenerationRequiresNonnegativeTokenCount) {
+  auto options = GenerationOptions();
+  for (int value : {std::numeric_limits<int>::min(), -1, 0, 1,
+                    std::numeric_limits<int>::max()}) {
+    SCOPED_TRACE(value);
+    options.generation_tokens = value;
+    const auto status = ValidateOptions(options);
+    if (value < 0)
+      ExpectInvalid(status, "--generation_tokens must be nonnegative");
+    else
+      EXPECT_TRUE(status.ok()) << status;
+  }
+}
+
+TEST(MemorizeGeneralFactsCliTest, EmptyPromptIsAllowedOnlyWhenOmitted) {
+  auto options = GenerationOptions();
+  EXPECT_TRUE(ValidateOptions(options).ok());
+  ExpectInvalid(ValidateOptions(options, {"prompt"}),
+                "--prompt must be nonempty when supplied");
+  options.prompt = "A fact about Earth";
+  EXPECT_TRUE(ValidateOptions(options, {"prompt"}).ok());
+}
+
+TEST(MemorizeGeneralFactsCliTest,
+     CorpusPathsAreRequiredForTrainingAndVerification) {
+  struct Case {
+    std::string CommandLineOptions::*field;
+    absl::string_view diagnostic;
+  };
+  const Case cases[] = {
+      {&CommandLineOptions::corpus, "--corpus must be nonempty"},
+      {&CommandLineOptions::output_dir, "--output_dir must be nonempty"},
+  };
+  for (const auto& valid : {TrainingOptions(), VerificationOptions()}) {
+    SCOPED_TRACE(valid.mode);
+    for (const auto& test : cases) {
+      auto options = valid;
+      (options.*test.field).clear();
+      ExpectInvalid(ValidateOptions(options), test.diagnostic);
+    }
+  }
+}
+
+TEST(MemorizeGeneralFactsCliTest, CorpusPathsRequirePositiveBatchSize) {
+  for (auto options : {TrainingOptions(), VerificationOptions()}) {
+    SCOPED_TRACE(options.mode);
+    for (int value : {std::numeric_limits<int>::min(), -1, 0, 1,
+                      std::numeric_limits<int>::max()}) {
+      SCOPED_TRACE(value);
+      options.batch_size = value;
+      const auto status = ValidateOptions(options);
+      if (value <= 0)
+        ExpectInvalid(status, "--batch_size must be positive");
+      else
+        EXPECT_TRUE(status.ok()) << status;
+    }
+  }
+}
+
+TEST(MemorizeGeneralFactsCliTest, ValidatesTrainingScheduleBoundaries) {
+  struct Case {
+    int CommandLineOptions::*field;
+    absl::string_view diagnostic;
+    bool allows_zero;
+  };
+  const Case cases[] = {
+      {&CommandLineOptions::steps, "--steps must be nonnegative", true},
+      {&CommandLineOptions::eval_every, "--eval_every must be positive", false},
+      {&CommandLineOptions::checkpoint_every,
+       "--checkpoint_every must be positive", false},
+      {&CommandLineOptions::warmup_steps, "--warmup_steps must be nonnegative",
+       true},
+  };
+  for (const auto& test : cases) {
+    SCOPED_TRACE(test.diagnostic);
+    auto options = TrainingOptions();
+    for (int value : {std::numeric_limits<int>::min(), -1, 0, 1,
+                      std::numeric_limits<int>::max()}) {
+      SCOPED_TRACE(value);
+      options.*test.field = value;
+      const auto status = ValidateOptions(options);
+      if (value < 0 || (value == 0 && !test.allows_zero))
+        ExpectInvalid(status, test.diagnostic);
+      else
+        EXPECT_TRUE(status.ok()) << status;
+    }
+  }
+}
+
+TEST(MemorizeGeneralFactsCliTest, LearningRateMustBeFiniteAndPositive) {
+  auto options = TrainingOptions();
+  for (double value : {-1.0, 0.0, std::numeric_limits<double>::quiet_NaN(),
+                       std::numeric_limits<double>::infinity(),
+                       -std::numeric_limits<double>::infinity()}) {
+    SCOPED_TRACE(value);
+    options.learning_rate = value;
+    ExpectInvalid(ValidateOptions(options),
+                  "--learning_rate must be finite and positive");
+  }
+  for (double value : {std::numeric_limits<double>::denorm_min(),
+                       std::numeric_limits<double>::min(), 1.0,
+                       std::numeric_limits<double>::max()}) {
+    SCOPED_TRACE(value);
+    options.learning_rate = value;
+    const auto status = ValidateOptions(options);
+    EXPECT_TRUE(status.ok()) << status;
+  }
+}
+
+TEST(MemorizeGeneralFactsCliTest, TrainingSecondsMustBeFiniteAndNonnegative) {
+  auto options = TrainingOptions();
+  for (double value : {-1.0, std::numeric_limits<double>::quiet_NaN(),
+                       std::numeric_limits<double>::infinity(),
+                       -std::numeric_limits<double>::infinity()}) {
+    SCOPED_TRACE(value);
+    options.training_seconds = value;
+    ExpectInvalid(ValidateOptions(options),
+                  "--training_seconds must be finite and nonnegative");
+  }
+  for (double value : {0.0, std::numeric_limits<double>::denorm_min(), 1.0,
+                       std::numeric_limits<double>::max()}) {
+    SCOPED_TRACE(value);
+    options.training_seconds = value;
+    const auto status = ValidateOptions(options);
+    EXPECT_TRUE(status.ok()) << status;
+  }
+}
+
+TEST(MemorizeGeneralFactsCliTest,
+     IgnoresIrrelevantValuesUnlessExplicitlySupplied) {
+  for (auto options : {GenerationOptions(), VerificationOptions()}) {
+    SCOPED_TRACE(options.verify_checkpoint);
+    options.steps = -1;
+    options.eval_every = -1;
+    options.checkpoint_every = -1;
+    options.warmup_steps = -1;
+    options.learning_rate = std::numeric_limits<double>::quiet_NaN();
+    options.training_seconds = std::numeric_limits<double>::infinity();
+    if (options.verify_checkpoint.empty())
+      options.batch_size = -1;
+    else
+      options.generation_tokens = -1;
+    const auto status = ValidateOptions(options);
+    EXPECT_TRUE(status.ok()) << status;
+    ExpectInvalid(ValidateOptions(options, {"steps"}), "--steps is not valid");
+  }
+  auto options = TrainingOptions();
+  options.generation_tokens = -1;
+  EXPECT_TRUE(ValidateOptions(options).ok());
+  ExpectInvalid(ValidateOptions(options, {"generation_tokens"}),
+                "--generation_tokens is not valid");
+}
+
+TEST(MemorizeGeneralFactsCliTest, DelegatesPolicyChecksBeforeValueValidation) {
+  auto options = TrainingOptions();
+  options.batch_size = 0;
+  ExpectInvalid(ValidateOptions(options, {"prompt"}), "--prompt is not valid");
+  const auto unknown = ValidateOptions(options, {"unknown_flag"});
+  EXPECT_EQ(unknown.code(), absl::StatusCode::kInternal) << unknown;
+
+  options.tokenizer.clear();
+  ExpectInvalid(ValidateOptions(options), "--tokenizer");
+  options.tokenizer = "/tokenizer";
+  options.checkpoint_dir.clear();
+  ExpectInvalid(ValidateOptions(options), "--checkpoint_dir");
+
+  options = GenerationOptions();
+  options.generation_tokens = -1;
+  options.verify_checkpoint = "/verification";
+  ExpectInvalid(ValidateOptions(options), "mutually exclusive");
+  options.infer_checkpoint.clear();
+  options.verify_checkpoint.clear();
+  ExpectInvalid(ValidateOptions(options), "exactly one nonempty");
+}
+
+TEST(MemorizeGeneralFactsCliTest, ParsesModeBeforePolicyOrValues) {
+  CommandLineOptions options;
+  for (const char* mode : {"", "train", "INFER_MODEL"}) {
+    SCOPED_TRACE(mode);
+    options.mode = mode;
+    ExpectInvalid(ValidateOptions(options, {"unknown_flag"}), "--mode");
   }
 }
 

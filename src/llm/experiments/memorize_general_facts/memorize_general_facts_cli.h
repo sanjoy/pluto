@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -8,6 +10,37 @@
 namespace pluto::llm::memorize_general_facts {
 
 enum class Mode { kTrainModel, kInferModel };
+
+// Snapshot of the flag values needed for command-line validation. The caller
+// supplies the actual values, including CLI defaults; these initializers are
+// only safe empty values, not a second set of flag defaults. Owning the strings
+// keeps snapshots returned by absl::GetFlag alive throughout validation.
+struct CommandLineOptions {
+  std::string mode;
+  std::string tokenizer;
+  std::string checkpoint_dir;
+  std::string infer_checkpoint;
+  std::string verify_checkpoint;
+  std::string prompt;
+  std::string corpus;
+  std::string output_dir;
+  int generation_tokens = 0;
+  int batch_size = 0;
+  int steps = 0;
+  int eval_every = 0;
+  int checkpoint_every = 0;
+  int warmup_steps = 0;
+  double learning_rate = 0;
+  double training_seconds = 0;
+};
+
+// Validates the mode, explicit flag usage, and the selected path's values.
+// Unused values are ignored, but explicitly supplying an unused flag is an
+// error even if it equals its default. This performs no I/O or CUDA work, so
+// call it before creating an executor or opening any input/output files.
+absl::StatusOr<Mode> ParseAndValidateRunMode(
+    const CommandLineOptions& options,
+    absl::Span<const absl::string_view> explicitly_set_flags);
 
 // Accepts exactly train_model or infer_model; an omitted/empty mode is invalid.
 absl::StatusOr<Mode> ParseMode(absl::string_view mode);

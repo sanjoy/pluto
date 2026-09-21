@@ -44,6 +44,7 @@ cc_library(
     srcs = ["memorize_general_facts_cli.cc"],
     hdrs = ["memorize_general_facts_cli.h"],
     deps = [
+        "//src/util:status_macros",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings",
