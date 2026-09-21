@@ -21,6 +21,7 @@ the built binary.
 
 The shared line-based iterator is `src/dataset/padded_line_dataset.h`; it
 provides per-sentence padding, prompt masking, and reproducible epoch shuffling.
+Optional global gradient clipping uses `src/llm/gradient_clipper.h`.
 
 Existing reports and `runs/` evidence remain here unchanged. Recorded commands
 in historical manifests may name the old script locations; those are provenance,

@@ -1,4 +1,4 @@
-#include "src/llm/experiments/memorize_general_facts/gradient_clipper.h"
+#include "src/llm/gradient_clipper.h"
 
 #include <cuda_runtime.h>
 
@@ -15,7 +15,7 @@
 #include "src/cuda/page_locked_host_array.h"
 #include "src/util/status_macros.h"
 
-namespace pluto::llm::memorize_general_facts {
+namespace pluto::llm {
 namespace {
 
 constexpr int kThreads = 256;
@@ -47,7 +47,8 @@ __global__ void PartialSquaredNormKernel(const GradientChunk* chunks,
       partial[threadIdx.x] += partial[threadIdx.x + stride];
     __syncthreads();
   }
-  if (threadIdx.x == 0) squared_norms[blockIdx.x] = partial[0];
+  if (threadIdx.x == 0)
+    squared_norms[blockIdx.x] = partial[0];
 }
 
 __global__ void ClippingScaleKernel(const double* squared_norms, int chunks,
@@ -73,7 +74,8 @@ __global__ void ClippingScaleKernel(const double* squared_norms, int chunks,
 __global__ void ScaleGradientsKernel(const GradientChunk* chunks,
                                      const float* scale) {
   const float factor = scale[0];
-  if (factor == 1.0f) return;
+  if (factor == 1.0f)
+    return;
   const GradientChunk chunk = chunks[blockIdx.x];
   for (int index = threadIdx.x; index < chunk.elements; index += kThreads)
     chunk.values[index] *= factor;
@@ -104,7 +106,8 @@ absl::StatusOr<std::unique_ptr<GradientClipper>> GradientClipper::Create(
         gradient.size_bytes() % sizeof(float) != 0)
       return absl::InvalidArgumentError(
           "gradient clipping needs matching FP32 buffers on its executor");
-    if (!seen.insert(gradient.data()).second) continue;
+    if (!seen.insert(gradient.data()).second)
+      continue;
     const size_t elements = gradient.size_bytes() / sizeof(float);
     const size_t count = 1 + (elements - 1) / kChunkElements;
     if (count >
@@ -114,9 +117,9 @@ absl::StatusOr<std::unique_ptr<GradientClipper>> GradientClipper::Create(
     gradients.push_back(gradient);
   }
 
-  ASSIGN_OR_RETURN(auto host_chunks,
-                   cuda::PageLockedHostArray<GradientChunk>::Allocate(
-                       executor, chunk_count));
+  ASSIGN_OR_RETURN(
+      auto host_chunks,
+      cuda::PageLockedHostArray<GradientChunk>::Allocate(executor, chunk_count));
   size_t chunk = 0;
   for (const auto& gradient : gradients) {
     const size_t elements = gradient.size_bytes() / sizeof(float);
@@ -161,4 +164,4 @@ absl::Status GradientClipper::Clip() {
   return cuda::CudaStatus(cudaGetLastError(), "ScaleGradientsKernel launch");
 }
 
-}  // namespace pluto::llm::memorize_general_facts
+}  // namespace pluto::llm

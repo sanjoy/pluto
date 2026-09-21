@@ -1,4 +1,4 @@
-#include "src/llm/experiments/memorize_general_facts/gradient_clipper.h"
+#include "src/llm/gradient_clipper.h"
 
 #include <cuda_runtime_api.h>
 
@@ -16,7 +16,7 @@
 #include "src/cuda/page_locked_host_array.h"
 #include "src/util/status_macros.h"
 
-namespace pluto::llm::memorize_general_facts {
+namespace pluto::llm {
 namespace {
 
 // The clipper operates on parameter storage only. A minimal fake layer makes
@@ -53,7 +53,8 @@ class GradientClipperTest : public testing::Test {
   }
 
   void TearDown() override {
-    if (executor_ == nullptr) return;
+    if (executor_ == nullptr)
+      return;
     EXPECT_TRUE(executor_->Synchronize().ok());
   }
 
@@ -121,7 +122,8 @@ TEST_F(GradientClipperTest, ClipsOneGlobalNormAndDoesNotModifyWeights) {
   for (const auto& weight : (*model)->weights_) {
     auto values = Download(weight);
     ASSERT_TRUE(values.ok()) << values.status();
-    for (float value : values->span()) EXPECT_EQ(value, 42.0f);
+    for (float value : values->span())
+      EXPECT_EQ(value, 42.0f);
   }
 }
 
@@ -241,4 +243,4 @@ TEST_F(GradientClipperTest, RejectsInvalidLimitsAndParameterStorage) {
 }
 
 }  // namespace
-}  // namespace pluto::llm::memorize_general_facts
+}  // namespace pluto::llm

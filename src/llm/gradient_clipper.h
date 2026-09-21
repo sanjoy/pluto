@@ -10,7 +10,7 @@
 #include "src/cuda/executor.h"
 #include "src/llm/layer.h"
 
-namespace pluto::llm::memorize_general_facts {
+namespace pluto::llm {
 
 // Clips the joint L2 norm of a model's unique FP32 gradient allocations. Call
 // Clip() after backward and before the optimizer's ApplyStep(). Tied gradients
@@ -54,4 +54,4 @@ class GradientClipper final {
   int chunk_count_;
 };
 
-}  // namespace pluto::llm::memorize_general_facts
+}  // namespace pluto::llm
