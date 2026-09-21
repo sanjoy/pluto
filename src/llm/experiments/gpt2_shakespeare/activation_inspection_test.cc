@@ -207,8 +207,8 @@ TEST_F(ActivationInspectionTest,
     const ActivationType type(DataType::FP32, {-2, kSequence, stride});
     ASSERT_TRUE((*inspector)
                     ->layer_hooks()
-                    .ActivationHook(*executor_, "LanguageModelingHeadLayer",
-                                    {&type, 1}, absl::MakeSpan(outputs))
+                    .activation_hook(*executor_, "LanguageModelingHeadLayer",
+                                     {&type, 1}, absl::MakeSpan(outputs))
                     .ok());
     std::ostringstream output;
     ASSERT_TRUE(
@@ -239,8 +239,8 @@ TEST_F(ActivationInspectionTest,
   const ActivationType type(DataType::FP32, {-2, kSequence, kPaddedVocabulary});
   ASSERT_TRUE((*inspector)
                   ->layer_hooks()
-                  .ActivationHook(*executor_, "Logits", {&type, 1},
-                                  absl::MakeSpan(outputs))
+                  .activation_hook(*executor_, "Logits", {&type, 1},
+                                   absl::MakeSpan(outputs))
                   .ok());
   std::ostringstream output;
   ASSERT_TRUE(
@@ -266,8 +266,8 @@ TEST_F(ActivationInspectionTest, NonFiniteRowDoesNotDiscardOtherPositions) {
   const ActivationType type(DataType::FP32, {-2, kSequence, kPaddedVocabulary});
   ASSERT_TRUE((*inspector)
                   ->layer_hooks()
-                  .ActivationHook(*executor_, "Logits", {&type, 1},
-                                  absl::MakeSpan(outputs))
+                  .activation_hook(*executor_, "Logits", {&type, 1},
+                                   absl::MakeSpan(outputs))
                   .ok());
   std::ostringstream output;
   ASSERT_TRUE(
@@ -302,8 +302,8 @@ TEST_F(ActivationInspectionTest,
       {DataType::FP32, {-2, kWidth}}};
   ASSERT_TRUE((*inspector)
                   ->layer_hooks()
-                  .ActivationHook(*executor_, "MultiOutput", types,
-                                  absl::MakeSpan(outputs))
+                  .activation_hook(*executor_, "MultiOutput", types,
+                                   absl::MakeSpan(outputs))
                   .ok());
   std::ostringstream output;
   ASSERT_TRUE(
@@ -323,8 +323,8 @@ TEST_F(ActivationInspectionTest, DoesNotGuessWhenHiddenAndLogitWidthsCoincide) {
   BufferVec outputs{*input};
   ASSERT_TRUE((*inspector)
                   ->layer_hooks()
-                  .ActivationHook(*executor_, "Ambiguous", {&type, 1},
-                                  absl::MakeSpan(outputs))
+                  .activation_hook(*executor_, "Ambiguous", {&type, 1},
+                                   absl::MakeSpan(outputs))
                   .ok());
   std::ostringstream output;
   ASSERT_TRUE((*inspector)->Print(*executor_, detokenizer_, {0}, output).ok());
@@ -346,8 +346,8 @@ TEST_F(ActivationInspectionTest, HeadingsUseEscapedInputTokensAtWindowOffset) {
   const ActivationType type(DataType::FP32, {-2, kSequence, kPaddedVocabulary});
   ASSERT_TRUE((*inspector)
                   ->layer_hooks()
-                  .ActivationHook(*executor_, "Logits", {&type, 1},
-                                  absl::MakeSpan(outputs))
+                  .activation_hook(*executor_, "Logits", {&type, 1},
+                                   absl::MakeSpan(outputs))
                   .ok());
 
   // These are exactly the four IDs in the cropped window, not the preceding
@@ -382,8 +382,8 @@ TEST_F(ActivationInspectionTest,
   const ActivationType type(DataType::FP32, {-2, kSequence, kPaddedVocabulary});
   ASSERT_TRUE((*inspector)
                   ->layer_hooks()
-                  .ActivationHook(*executor_, "Logits", {&type, 1},
-                                  absl::MakeSpan(outputs))
+                  .activation_hook(*executor_, "Logits", {&type, 1},
+                                   absl::MakeSpan(outputs))
                   .ok());
 
   const std::vector<std::vector<int>> invalid_windows = {
@@ -426,8 +426,8 @@ TEST_F(ActivationInspectionTest, InclusiveThresholdDoesNotRenormalizeTopThree) {
     ASSERT_TRUE(inspector.ok()) << inspector.status();
     ASSERT_TRUE((*inspector)
                     ->layer_hooks()
-                    .ActivationHook(*executor_, "Logits", {&type, 1},
-                                    absl::MakeSpan(outputs))
+                    .activation_hook(*executor_, "Logits", {&type, 1},
+                                     absl::MakeSpan(outputs))
                     .ok());
     std::ostringstream output;
     ASSERT_TRUE(
@@ -473,32 +473,32 @@ TEST_F(ActivationInspectionTest, SuppressedLayersStillConsumeSiblingIndices) {
       *executor_, *embedding, kVocabulary, kWidth, 1, 0, 0.5);
   ASSERT_TRUE(inspector.ok()) << inspector.status();
   LayerHooks& hooks = (*inspector)->layer_hooks();
+  // Transferring the owning pointer preserves the captured inspector address.
+  auto moved_owner = std::move(*inspector);
+  EXPECT_EQ(&moved_owner->layer_hooks(), &hooks);
   const ActivationType type(DataType::FP32, {-2, kSequence, kWidth});
   const ActivationType wide_type(DataType::FP32, {-2, kSequence, 2 * kWidth});
   BufferVec wide_output{*wide};
   BufferVec uniform_output{*uniform};
   BufferVec strong_output{*strong};
-  ASSERT_TRUE(hooks.EnterCombinator(*executor_, "Root").ok());
+  ASSERT_TRUE(hooks.enter_combinator(*executor_, "Root").ok());
   ASSERT_TRUE(hooks
-                  .ActivationHook(*executor_, "Unsupported", {&wide_type, 1},
-                                  absl::MakeSpan(wide_output))
+                  .activation_hook(*executor_, "Unsupported", {&wide_type, 1},
+                                   absl::MakeSpan(wide_output))
                   .ok());
   ASSERT_TRUE(hooks
-                  .ActivationHook(*executor_, "BelowThreshold", {&type, 1},
-                                  absl::MakeSpan(uniform_output))
+                  .activation_hook(*executor_, "BelowThreshold", {&type, 1},
+                                   absl::MakeSpan(uniform_output))
                   .ok());
   ASSERT_TRUE(hooks
-                  .ActivationHook(*executor_, "Kept", {&type, 1},
-                                  absl::MakeSpan(strong_output))
+                  .activation_hook(*executor_, "Kept", {&type, 1},
+                                   absl::MakeSpan(strong_output))
                   .ok());
-  ASSERT_TRUE(hooks.ExitCombinator(*executor_).ok());
+  ASSERT_TRUE(hooks.exit_combinator(*executor_).ok());
   ASSERT_TRUE(hooks
-                  .ActivationHook(*executor_, "Root", {&type, 1},
-                                  absl::MakeSpan(strong_output))
+                  .activation_hook(*executor_, "Root", {&type, 1},
+                                   absl::MakeSpan(strong_output))
                   .ok());
-  // Transferring the owning pointer cannot invalidate the adapter's owner.
-  auto moved_owner = std::move(*inspector);
-  EXPECT_EQ(&moved_owner->layer_hooks(), &hooks);
   std::ostringstream output;
   ASSERT_TRUE(moved_owner->Print(*executor_, detokenizer_, {0}, output).ok());
   EXPECT_NE(output.str().find("Root[0]/Kept[2]:"), std::string::npos);
@@ -548,7 +548,7 @@ TEST_F(ActivationInspectionTest, NestedCombinatorsRetainTheirAssignedPaths) {
   EXPECT_EQ(text.find("IdentityLayer[3]"), std::string::npos);
 }
 
-TEST_F(ActivationInspectionTest, InheritedGradientHookIsANoOp) {
+TEST_F(ActivationInspectionTest, AbsentGradientHookLeavesBackwardUnchanged) {
   auto embedding = Upload(*executor_, EmbeddingValues());
   auto input = Upload(*executor_, ActivationValues());
   ASSERT_TRUE(embedding.ok()) << embedding.status();
@@ -559,16 +559,15 @@ TEST_F(ActivationInspectionTest, InheritedGradientHookIsANoOp) {
   IdentityLayer layer;
   auto forward = layer.fwd(*executor_, {*input}, &(*inspector)->layer_hooks());
   ASSERT_TRUE(forward.ok()) << forward.status();
-  auto backward =
-      (*inspector)->layer_hooks().GradientHook(*executor_, "unused", {}, {});
-  ASSERT_TRUE(backward.ok()) << backward;
+  EXPECT_FALSE((*inspector)->layer_hooks().gradient_hook);
   auto gradients = layer.bwd(*executor_, {*input}, std::move(forward->state),
                              &(*inspector)->layer_hooks());
   ASSERT_TRUE(gradients.ok()) << gradients.status();
   EXPECT_EQ((*gradients)[0].data(), input->data());
   std::ostringstream output;
   ASSERT_TRUE((*inspector)->Print(*executor_, detokenizer_, {0}, output).ok());
-  EXPECT_EQ(output.str().find("unused"), std::string::npos);
+  EXPECT_NE(output.str().find("IdentityLayer[0]:"), std::string::npos);
+  EXPECT_EQ(output.str().find("IdentityLayer[1]:"), std::string::npos);
 }
 
 TEST_F(ActivationInspectionTest, RejectsInvalidCreationArguments) {
@@ -621,15 +620,15 @@ TEST_F(ActivationInspectionTest, RejectsMalformedShapesAndMissingPrefixRows) {
                        {-2, std::numeric_limits<int64_t>::max(), 2})}) {
     EXPECT_EQ((*inspector)
                   ->layer_hooks()
-                  .ActivationHook(*executor_, "invalid", {&type, 1},
-                                  absl::MakeSpan(outputs))
+                  .activation_hook(*executor_, "invalid", {&type, 1},
+                                   absl::MakeSpan(outputs))
                   .code(),
               absl::StatusCode::kInvalidArgument);
   }
   EXPECT_EQ(
       (*inspector)
           ->layer_hooks()
-          .ActivationHook(*executor_, "invalid", {}, absl::MakeSpan(outputs))
+          .activation_hook(*executor_, "invalid", {}, absl::MakeSpan(outputs))
           .code(),
       absl::StatusCode::kInvalidArgument);
 }
@@ -648,7 +647,7 @@ TEST_F(ActivationInspectionTest, RejectsForeignExecutorAndUnbalancedScopes) {
                 .code(),
             absl::StatusCode::kInvalidArgument);
   EXPECT_EQ(
-      (*inspector)->layer_hooks().EnterCombinator(**other, "wrong").code(),
+      (*inspector)->layer_hooks().enter_combinator(**other, "wrong").code(),
       absl::StatusCode::kInvalidArgument);
   auto foreign = Upload(**other, ActivationValues());
   ASSERT_TRUE(foreign.ok()) << foreign.status();
@@ -656,18 +655,18 @@ TEST_F(ActivationInspectionTest, RejectsForeignExecutorAndUnbalancedScopes) {
   const ActivationType type(DataType::FP32, {-2, kSequence, kWidth});
   EXPECT_EQ((*inspector)
                 ->layer_hooks()
-                .ActivationHook(*executor_, "foreign", {&type, 1},
-                                absl::MakeSpan(outputs))
+                .activation_hook(*executor_, "foreign", {&type, 1},
+                                 absl::MakeSpan(outputs))
                 .code(),
             absl::StatusCode::kInvalidArgument);
-  EXPECT_EQ((*inspector)->layer_hooks().ExitCombinator(*executor_).code(),
+  EXPECT_EQ((*inspector)->layer_hooks().exit_combinator(*executor_).code(),
             absl::StatusCode::kFailedPrecondition);
   ASSERT_TRUE(
-      (*inspector)->layer_hooks().EnterCombinator(*executor_, "open").ok());
+      (*inspector)->layer_hooks().enter_combinator(*executor_, "open").ok());
   std::ostringstream output;
   EXPECT_EQ((*inspector)->Print(*executor_, detokenizer_, {0}, output).code(),
             absl::StatusCode::kFailedPrecondition);
-  ASSERT_TRUE((*inspector)->layer_hooks().ExitCombinator(*executor_).ok());
+  ASSERT_TRUE((*inspector)->layer_hooks().exit_combinator(*executor_).ok());
   EXPECT_EQ((*inspector)->Print(**other, detokenizer_, {0}, output).code(),
             absl::StatusCode::kInvalidArgument);
 }

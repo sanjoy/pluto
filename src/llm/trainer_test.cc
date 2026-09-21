@@ -374,46 +374,52 @@ class TrainerTest : public testing::Test {
 };
 
 // Records only calls whose training/evaluation options explicitly supply it.
-class TrainingLayerHooks final : public LayerHooks {
+class TrainingLayerHooks final {
  public:
-  explicit TrainingLayerHooks(cuda::Executor& executor) : executor_(executor) {}
-
-  absl::Status ActivationHook(cuda::Executor& executor, absl::string_view name,
-                              absl::Span<const ActivationType> types,
-                              absl::Span<Buffer> buffers) override {
-    EXPECT_EQ(&executor, &executor_);
-    EXPECT_EQ(types.size(), 1);
-    EXPECT_EQ(buffers.size(), 1);
-    if (name == "FakeModel")
-      ++model_forward;
-    else {
-      EXPECT_EQ(name, "FakeLoss");
-      ++loss_forward;
-    }
-    return fail_activation ? absl::UnavailableError("hooks stopped evaluation")
-                           : absl::OkStatus();
-  }
-
-  absl::Status GradientHook(cuda::Executor& executor, absl::string_view name,
-                            absl::Span<const ActivationType> types,
-                            absl::Span<Buffer> gradients) override {
-    EXPECT_EQ(&executor, &executor_);
-    if (name == "FakeLoss") {
-      ++loss_backward;
-      EXPECT_TRUE(types.empty());
-      EXPECT_TRUE(gradients.empty());
-    } else {
-      EXPECT_EQ(name, "FakeModel");
-      ++model_backward;
-      EXPECT_EQ(gradients.size(), 1);
+  explicit TrainingLayerHooks(cuda::Executor& executor) : executor_(executor) {
+    callbacks.activation_hook = [this](cuda::Executor& executor,
+                                       absl::string_view name,
+                                       absl::Span<const ActivationType> types,
+                                       absl::Span<Buffer> buffers) {
+      EXPECT_EQ(&executor, &executor_);
       EXPECT_EQ(types.size(), 1);
-      if (types.size() == 1)
-        EXPECT_EQ(types[0], kFloatType);
-    }
-    return fail_gradient ? absl::AbortedError("hooks stopped backward")
-                         : absl::OkStatus();
+      EXPECT_EQ(buffers.size(), 1);
+      if (name == "FakeModel")
+        ++model_forward;
+      else {
+        EXPECT_EQ(name, "FakeLoss");
+        ++loss_forward;
+      }
+      return fail_activation
+                 ? absl::UnavailableError("hooks stopped evaluation")
+                 : absl::OkStatus();
+    };
+    callbacks.gradient_hook = [this](cuda::Executor& executor,
+                                     absl::string_view name,
+                                     absl::Span<const ActivationType> types,
+                                     absl::Span<Buffer> gradients) {
+      EXPECT_EQ(&executor, &executor_);
+      if (name == "FakeLoss") {
+        ++loss_backward;
+        EXPECT_TRUE(types.empty());
+        EXPECT_TRUE(gradients.empty());
+      } else {
+        EXPECT_EQ(name, "FakeModel");
+        ++model_backward;
+        EXPECT_EQ(gradients.size(), 1);
+        EXPECT_EQ(types.size(), 1);
+        if (types.size() == 1)
+          EXPECT_EQ(types[0], kFloatType);
+      }
+      return fail_gradient ? absl::AbortedError("hooks stopped backward")
+                           : absl::OkStatus();
+    };
   }
 
+  TrainingLayerHooks(const TrainingLayerHooks&) = delete;
+  TrainingLayerHooks& operator=(const TrainingLayerHooks&) = delete;
+
+  LayerHooks callbacks;
   int model_forward = 0;
   int loss_forward = 0;
   int model_backward = 0;
@@ -433,12 +439,14 @@ TEST_F(TrainerTest, OptionsPassHooksToEvaluateAndTrainWithoutAdapters) {
   ASSERT_TRUE(loss.ok()) << loss.status();
   ASSERT_TRUE(data.ok()) << data.status();
   TrainingLayerHooks hooks(*executor_);
+  EXPECT_FALSE(hooks.callbacks.enter_combinator);
+  EXPECT_FALSE(hooks.callbacks.exit_combinator);
 
   auto evaluated = Evaluate(*executor_, model,
                             EvaluationOptions{.loss_layer = **loss,
                                               .eval_data = **data,
                                               .batches = 2,
-                                              .layer_hooks = &hooks});
+                                              .layer_hooks = &hooks.callbacks});
   ASSERT_TRUE(evaluated.ok()) << evaluated.status();
   EXPECT_EQ(hooks.model_forward, 2);
   EXPECT_EQ(hooks.loss_forward, 2);
@@ -450,7 +458,7 @@ TEST_F(TrainerTest, OptionsPassHooksToEvaluateAndTrainWithoutAdapters) {
                                        .optimizer = optimizer,
                                        .training_data = **data,
                                        .max_steps = 3,
-                                       .layer_hooks = &hooks});
+                                       .layer_hooks = &hooks.callbacks});
   ASSERT_TRUE(trained.ok()) << trained.status();
   EXPECT_EQ(hooks.model_forward, model.forward_calls);
   EXPECT_EQ(hooks.loss_forward, (*loss)->forward_calls);
@@ -489,7 +497,7 @@ TEST_F(TrainerTest, HooksReachInitialAndPeriodicEvaluationsInsideTrain) {
                                             evaluated_steps.push_back(step);
                                             EXPECT_DOUBLE_EQ(mean_loss, 2.5);
                                           },
-                                      .layer_hooks = &hooks});
+                                      .layer_hooks = &hooks.callbacks});
   ASSERT_TRUE(result.ok()) << result.status();
   EXPECT_EQ(evaluated_steps, (std::vector<int>{0, 1, 2}));
   // Two training passes plus two batches at each of the three evaluations.
@@ -528,7 +536,7 @@ TEST_F(TrainerTest, PeriodicEvaluationPreservesHookFailureStatus) {
                             hooks.fail_activation = true;
                             return absl::OkStatus();
                           },
-                      .layer_hooks = &hooks});
+                      .layer_hooks = &hooks.callbacks});
   EXPECT_EQ(result.status().code(), absl::StatusCode::kUnavailable);
   EXPECT_EQ(result.status().message(), "hooks stopped evaluation");
   EXPECT_EQ(hooks.model_forward, 2);
@@ -554,7 +562,7 @@ TEST_F(TrainerTest, HookFailureStopsTrainingBeforeBackwardAndOptimizer) {
                                       .optimizer = optimizer,
                                       .training_data = **data,
                                       .max_steps = 1,
-                                      .layer_hooks = &hooks});
+                                      .layer_hooks = &hooks.callbacks});
   EXPECT_EQ(result.status().code(), absl::StatusCode::kAborted);
   EXPECT_EQ(result.status().message(), "hooks stopped backward");
   EXPECT_EQ(hooks.model_forward, model.forward_calls);
@@ -579,7 +587,8 @@ TEST_F(TrainerTest, HooksOptionsDoNotLeakIntoLaterCalls) {
                            EvaluationOptions{.loss_layer = **loss,
                                              .eval_data = **data,
                                              .batches = 1,
-                                             .layer_hooks = &evaluation_hooks});
+                                             .layer_hooks =
+                                                 &evaluation_hooks.callbacks});
   ASSERT_TRUE(observed.ok()) << observed.status();
   auto unobserved =
       Evaluate(*executor_, model,
@@ -595,7 +604,8 @@ TEST_F(TrainerTest, HooksOptionsDoNotLeakIntoLaterCalls) {
                                        .optimizer = optimizer,
                                        .training_data = **data,
                                        .max_steps = 1,
-                                       .layer_hooks = &training_hooks});
+                                       .layer_hooks =
+                                           &training_hooks.callbacks});
   ASSERT_TRUE(trained.ok()) << trained.status();
   auto unobserved_train = Train(*executor_, model,
                                 TrainingOptions{.loss_layer = **loss,

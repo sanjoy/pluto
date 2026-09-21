@@ -47,9 +47,10 @@ class NeighboringVocabInspector final {
       int model_width, int positions, int position_offset = 0,
       double min_prob = 0.01);
 
-  // Borrow the private adapter for Layer::fwd. The inspector must outlive every
+  // Borrow the callbacks for Layer::fwd. The inspector must outlive every
   // call using this reference. Moving the owning unique_ptr is safe; moving
-  // or copying the inspector itself is disabled to preserve adapter ownership.
+  // or copying the inspector itself is disabled to keep callback captures
+  // valid.
   LayerHooks& layer_hooks() { return hooks_; }
 
   // Group output by token position, preserving forward callback order within
@@ -68,27 +69,6 @@ class NeighboringVocabInspector final {
                      std::ostream& output) const;
 
  private:
-  class Hooks final : public LayerHooks {
-   public:
-    explicit Hooks(NeighboringVocabInspector& owner) : owner_(owner) {}
-    absl::Status ActivationHook(cuda::Executor& executor,
-                                absl::string_view name,
-                                absl::Span<const ActivationType> types,
-                                absl::Span<Buffer> activations) override {
-      return owner_.ActivationHook(executor, name, types, activations);
-    }
-    absl::Status EnterCombinator(cuda::Executor& executor,
-                                 absl::string_view name) override {
-      return owner_.EnterCombinator(executor, name);
-    }
-    absl::Status ExitCombinator(cuda::Executor& executor) override {
-      return owner_.ExitCombinator(executor);
-    }
-
-   private:
-    NeighboringVocabInspector& owner_;
-  };
-
   struct Scope {
     std::string name;
     std::string path;
@@ -111,7 +91,20 @@ class NeighboringVocabInspector final {
         position_offset_(position_offset),
         embedding_rows_(embedding_rows),
         min_prob_(min_prob),
-        hooks_(*this) {}
+        hooks_{.activation_hook =
+                   [this](cuda::Executor& executor, absl::string_view name,
+                          absl::Span<const ActivationType> types,
+                          absl::Span<Buffer> activations) {
+                     return activation_hook(executor, name, types, activations);
+                   },
+               .enter_combinator =
+                   [this](cuda::Executor& executor, absl::string_view name) {
+                     return enter_combinator(executor, name);
+                   },
+               .exit_combinator =
+                   [this](cuda::Executor& executor) {
+                     return exit_combinator(executor);
+                   }} {}
 
   NeighboringVocabInspector(const NeighboringVocabInspector&) = delete;
   NeighboringVocabInspector& operator=(const NeighboringVocabInspector&) =
@@ -119,13 +112,13 @@ class NeighboringVocabInspector final {
   NeighboringVocabInspector(NeighboringVocabInspector&&) = delete;
   NeighboringVocabInspector& operator=(NeighboringVocabInspector&&) = delete;
 
-  absl::Status ActivationHook(cuda::Executor& executor,
-                              absl::string_view layer_name,
-                              absl::Span<const ActivationType> activation_types,
-                              absl::Span<Buffer> activations);
-  absl::Status EnterCombinator(cuda::Executor& executor,
-                               absl::string_view layer_name);
-  absl::Status ExitCombinator(cuda::Executor& executor);
+  absl::Status activation_hook(
+      cuda::Executor& executor, absl::string_view layer_name,
+      absl::Span<const ActivationType> activation_types,
+      absl::Span<Buffer> activations);
+  absl::Status enter_combinator(cuda::Executor& executor,
+                                absl::string_view layer_name);
+  absl::Status exit_combinator(cuda::Executor& executor);
 
   absl::Status ValidateExecutor(const cuda::Executor& executor) const;
   std::string NextPath(absl::string_view name);
@@ -138,10 +131,10 @@ class NeighboringVocabInspector final {
   int position_offset_;
   int embedding_rows_;
   double min_prob_;
-  Hooks hooks_;
+  LayerHooks hooks_;
   size_t next_root_ = 0;
   std::vector<Scope> scopes_;
-  // Combinators publish their activation immediately AFTER ExitCombinator.
+  // Combinators publish their activation immediately AFTER exit_combinator.
   // Keep its already-assigned path so this callback does not consume another
   // sibling index or appear outside the subtree it just completed.
   std::optional<Scope> exited_scope_;

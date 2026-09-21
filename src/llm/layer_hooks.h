@@ -1,5 +1,7 @@
 #pragma once
 
+#include <functional>
+
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -14,9 +16,12 @@ class ActivationType;
 // Pass a non-owning instance explicitly to Layer::fwd/bwd; combinators forward
 // it to their children. The instance only needs to outlive that call and is
 // never stored on the Executor, layer, or saved backward state. Passing nullptr
-// disables instrumentation. Every callback defaults to a no-op, so subclasses
-// need only override the hooks they use. Sharing one instance across threads
-// requires synchronization in the hooks.
+// disables instrumentation. Each std::function is empty by default and layers
+// invoke only the callbacks that are set. Captured references must also outlive
+// the call; copying this struct copies callbacks, not the objects they refer
+// to. Sharing captured state across threads requires synchronization in the
+// hooks. Do not change callback fields while a layer call is using this
+// instance.
 //
 // Callbacks may read buffers or replace their handles with initialized buffers
 // of the SAME byte size, physical dtype, logical shape, and Executor. Do not
@@ -37,18 +42,14 @@ class ActivationType;
 // otherwise backward uses the original saved state (straight-through at the
 // replacement). Replacing a loss output changes reporting, not its terminal
 // backward rule. Changing an SAE auxiliary output does not rerun its decoder.
-class LayerHooks {
- public:
-  virtual ~LayerHooks() = default;
-
+struct LayerHooks {
   // Called after a successful fwd_impl, before its output/state is published.
   // Types and buffers are the ordered forward outputs, not layer inputs.
-  virtual absl::Status ActivationHook(
-      cuda::Executor& executor, absl::string_view layer_name,
-      absl::Span<const ActivationType> activation_types,
-      absl::Span<cuda::Buffer> activations) {
-    return absl::OkStatus();
-  }
+  std::function<absl::Status(cuda::Executor& executor,
+                             absl::string_view layer_name,
+                             absl::Span<const ActivationType> activation_types,
+                             absl::Span<cuda::Buffer> activations)>
+      activation_hook;
 
   // Called after saved-state identity validation and BEFORE bwd_impl, so an
   // intervention affects parameter gradients as well as input gradients.
@@ -56,30 +57,30 @@ class LayerHooks {
   // The types have the corresponding output dimensions (a prefix for SAE's
   // optional auxiliary gradients). Terminal losses have no upstream gradient:
   // they receive empty type/buffer spans, not an invented gradient of one.
-  virtual absl::Status GradientHook(
-      cuda::Executor& executor, absl::string_view layer_name,
-      absl::Span<const ActivationType> activation_types,
-      absl::Span<cuda::Buffer> gradients) {
-    return absl::OkStatus();
-  }
+  std::function<absl::Status(cuda::Executor& executor,
+                             absl::string_view layer_name,
+                             absl::Span<const ActivationType> activation_types,
+                             absl::Span<cuda::Buffer> gradients)>
+      gradient_hook;
 
   // Bracket a combinator's implementation, in both forward and backward.
-  // A successful Enter gets exactly one Exit, even if a child fails. A failed
-  // Enter must leave hook scope state unchanged and does not get an Exit.
-  // Exit must unwind its scope even when returning an error. Errors propagate
-  // to the layer caller; if both a child and Exit fail, both are reported.
+  // The two callbacks are independently optional. A failed enter_combinator
+  // must leave scope state unchanged and skips both the body and the exit.
+  // Otherwise, an installed exit_combinator runs exactly once after the body,
+  // even if no enter callback is set or a child fails. Install both callbacks
+  // when maintaining a scope stack; exit must unwind it even on an error.
+  // Errors propagate to the layer caller; if both body and exit fail, both
+  // are reported.
   //
-  // Thus forward order is Enter, children, Exit, own activation callback;
-  // backward order is own gradient callback, Enter, children, Exit. Names are
-  // diagnostic labels, not unique IDs: use nesting/order to distinguish
-  // repeated blocks. These callbacks do not wait for GPU work to complete.
-  virtual absl::Status EnterCombinator(
-      cuda::Executor& executor, absl::string_view combinator_layer_name) {
-    return absl::OkStatus();
-  }
-  virtual absl::Status ExitCombinator(cuda::Executor& executor) {
-    return absl::OkStatus();
-  }
+  // Forward order is enter_combinator, children, exit_combinator, own
+  // activation_hook; backward order is own gradient_hook, enter_combinator,
+  // children, exit_combinator. Names are diagnostic labels, not unique IDs:
+  // use nesting/order to distinguish repeated blocks. These callbacks do not
+  // wait for GPU work to complete.
+  std::function<absl::Status(cuda::Executor& executor,
+                             absl::string_view combinator_layer_name)>
+      enter_combinator;
+  std::function<absl::Status(cuda::Executor& executor)> exit_combinator;
 };
 
 }  // namespace pluto::llm

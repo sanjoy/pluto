@@ -103,7 +103,7 @@ std::string NeighboringVocabInspector::NextPath(absl::string_view name) {
   return absl::StrCat(parent.path, "/", name, "[", parent.next_child++, "]");
 }
 
-absl::Status NeighboringVocabInspector::EnterCombinator(
+absl::Status NeighboringVocabInspector::enter_combinator(
     cuda::Executor& executor, absl::string_view layer_name) {
   RETURN_IF_ERROR(ValidateExecutor(executor));
   exited_scope_.reset();
@@ -112,7 +112,7 @@ absl::Status NeighboringVocabInspector::EnterCombinator(
   return absl::OkStatus();
 }
 
-absl::Status NeighboringVocabInspector::ExitCombinator(
+absl::Status NeighboringVocabInspector::exit_combinator(
     cuda::Executor& executor) {
   RETURN_IF_ERROR(ValidateExecutor(executor));
   if (scopes_.empty())
@@ -123,7 +123,7 @@ absl::Status NeighboringVocabInspector::ExitCombinator(
   return absl::OkStatus();
 }
 
-absl::Status NeighboringVocabInspector::ActivationHook(
+absl::Status NeighboringVocabInspector::activation_hook(
     cuda::Executor& executor, absl::string_view layer_name,
     absl::Span<const ActivationType> activation_types,
     absl::Span<Buffer> activations) {

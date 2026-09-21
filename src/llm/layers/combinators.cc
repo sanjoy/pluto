@@ -39,7 +39,7 @@ using internal::ValidateTiledExtent;
 namespace {
 // Invoke a member body, keeping hook scopes balanced even on an error return.
 // Forward the arguments only when invoking the body, so backward state is not
-// consumed if Enter fails. LayerType also preserves forward's const receiver.
+// consumed if enter_combinator fails. LayerType preserves fwd's const receiver.
 // This codebase disables C++ exceptions.
 template <class LayerType, class Function, class... Args>
 auto WithCombinatorScope(cuda::Executor& executor, LayerHooks* hooks,
@@ -47,10 +47,13 @@ auto WithCombinatorScope(cuda::Executor& executor, LayerHooks* hooks,
     -> decltype((layer.*body)(executor, std::forward<Args>(args)..., hooks)) {
   if (hooks == nullptr)
     return (layer.*body)(executor, std::forward<Args>(args)..., hooks);
-  RETURN_IF_ERROR(hooks->EnterCombinator(executor, layer.name()));
+  if (hooks->enter_combinator)
+    RETURN_IF_ERROR(hooks->enter_combinator(executor, layer.name()));
 
   auto result = (layer.*body)(executor, std::forward<Args>(args)..., hooks);
-  const auto exit_hook_status = hooks->ExitCombinator(executor);
+  if (!hooks->exit_combinator)
+    return result;
+  const auto exit_hook_status = hooks->exit_combinator(executor);
   if (exit_hook_status.ok())
     return result;
   if (result.ok())
@@ -58,7 +61,7 @@ auto WithCombinatorScope(cuda::Executor& executor, LayerHooks* hooks,
   return absl::Status(
       result.status().code(),
       absl::StrCat(result.status().message(),
-                   "; ExitCombinator failed: ", exit_hook_status.ToString()));
+                   "; exit_combinator failed: ", exit_hook_status.ToString()));
 }
 
 template <class Element>

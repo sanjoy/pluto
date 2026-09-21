@@ -36,7 +36,7 @@ absl::StatusOr<FwdResult> Layer::fwd(cuda::Executor& executor,
                                      absl::Span<const Buffer> inputs,
                                      LayerHooks* hooks) const {
   ASSIGN_OR_RETURN(auto result, fwd_impl(executor, inputs, hooks));
-  if (hooks != nullptr) {
+  if (hooks != nullptr && hooks->activation_hook) {
     const auto types = output_types();
     if (result.outputs.size() != types.size())
       return absl::InvalidArgumentError(
@@ -45,8 +45,8 @@ absl::StatusOr<FwdResult> Layer::fwd(cuda::Executor& executor,
     // Retain the original handles through the callback: replacing a handle
     // must not enqueue its free before a callback queues a read of its bytes.
     const BufferVec original = result.outputs;
-    RETURN_IF_ERROR(hooks->ActivationHook(executor, name(), types,
-                                          absl::MakeSpan(result.outputs)));
+    RETURN_IF_ERROR(hooks->activation_hook(executor, name(), types,
+                                           absl::MakeSpan(result.outputs)));
     RETURN_IF_ERROR(ValidateReplacements(executor, original, result.outputs));
   }
   result.state.layer = this;
@@ -59,7 +59,7 @@ absl::StatusOr<BufferVec> Layer::bwd(cuda::Executor& executor,
   if (state.layer != this)
     return absl::InvalidArgumentError(
         "bwd requires a state from this layer's successful fwd");
-  if (hooks == nullptr)
+  if (hooks == nullptr || !hooks->gradient_hook)
     return bwd_impl(executor, output_gradients, std::move(state), hooks);
 
   const auto types = output_types();
@@ -77,8 +77,8 @@ absl::StatusOr<BufferVec> Layer::bwd(cuda::Executor& executor,
   // Only copy refcounted handles. The caller's original gradients stay alive
   // and unchanged, including a residual's gradient shared by its skip branch.
   BufferVec gradients(output_gradients.begin(), output_gradients.end());
-  RETURN_IF_ERROR(hooks->GradientHook(executor, name(), gradient_types,
-                                      absl::MakeSpan(gradients)));
+  RETURN_IF_ERROR(hooks->gradient_hook(executor, name(), gradient_types,
+                                       absl::MakeSpan(gradients)));
   RETURN_IF_ERROR(ValidateReplacements(executor, output_gradients, gradients));
   return bwd_impl(executor, gradients, std::move(state), hooks);
 }

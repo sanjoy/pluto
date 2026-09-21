@@ -88,7 +88,7 @@ inline DataType ActivationDataType(DataType compute_type) {
 }
 
 class Layer;
-class LayerHooks;
+struct LayerHooks;
 
 // Saved forward state. A tree, rather than one flat vector, lets composed
 // layers keep each child's private intermediates without imposing a
@@ -134,9 +134,10 @@ class Layer {
 
   // State is published only with a successful output. Failed calls cannot
   // overwrite state retained from an earlier forward pass. Optional hooks are
-  // borrowed only for this call and passed to all nested layers; nullptr skips
-  // instrumentation. ActivationHook processes successful outputs before they
-  // are published. See layer_hooks.h for replacement/aliasing rules.
+  // borrowed only for this call and passed to all nested layers. A nullptr
+  // skips all instrumentation; empty callbacks are skipped individually.
+  // activation_hook processes successful outputs before they are published.
+  // See layer_hooks.h for replacement/aliasing rules.
   absl::StatusOr<FwdResult> fwd(cuda::Executor& executor,
                                 absl::Span<const Buffer> inputs,
                                 LayerHooks* hooks = nullptr) const;
@@ -147,8 +148,8 @@ class Layer {
   // consuming nondifferentiable integer inputs may return no input gradients.
   // Check instance identity before dispatching any backward work. Matching
   // shapes or layer types alone do not make another layer's saved state valid.
-  // The supplied GradientHook processes incoming output gradients (FP32) before
-  // bwd_impl computes parameter/input gradients. Its handle replacements do
+  // An installed gradient_hook processes incoming output gradients (FP32)
+  // before bwd_impl computes parameter/input gradients. Its replacements do
   // not alter the caller's gradient handles. Hooks are selected independently
   // for each call, never recovered from the forward state or Executor.
   absl::StatusOr<BufferVec> bwd(cuda::Executor& executor,

@@ -8,6 +8,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -28,6 +29,9 @@
 
 namespace pluto::llm {
 namespace {
+
+static_assert(std::is_aggregate_v<LayerHooks>);
+static_assert(!std::is_polymorphic_v<LayerHooks>);
 
 ActivationType FloatRows() {
   return ActivationType(DataType::FP32, {-2, 1, 16});
@@ -68,15 +72,27 @@ struct Observation {
   std::vector<const void*> addresses;
 };
 
-class RecordingLayerHooks final : public LayerHooks {
+class RecordingLayerHooks final {
  public:
   using Hook = std::function<absl::Status(cuda::Executor&, absl::string_view,
                                           absl::Span<const ActivationType>,
                                           absl::Span<Buffer>)>;
 
+  RecordingLayerHooks()
+      : hooks{[this](auto& executor, auto layer, auto types, auto buffers) {
+                return ActivationHook(executor, layer, types, buffers);
+              },
+              [this](auto& executor, auto layer, auto types, auto buffers) {
+                return GradientHook(executor, layer, types, buffers);
+              },
+              [this](auto& executor, auto layer) {
+                return EnterCombinator(executor, layer);
+              },
+              [this](auto& executor) { return ExitCombinator(executor); }} {}
+
   absl::Status ActivationHook(cuda::Executor& executor, absl::string_view layer,
                               absl::Span<const ActivationType> types,
-                              absl::Span<Buffer> buffers) override {
+                              absl::Span<Buffer> buffers) {
     Record(executor, layer, types, buffers, "activation:", activations);
     return activation_hook ? activation_hook(executor, layer, types, buffers)
                            : absl::OkStatus();
@@ -84,14 +100,14 @@ class RecordingLayerHooks final : public LayerHooks {
 
   absl::Status GradientHook(cuda::Executor& executor, absl::string_view layer,
                             absl::Span<const ActivationType> types,
-                            absl::Span<Buffer> buffers) override {
+                            absl::Span<Buffer> buffers) {
     Record(executor, layer, types, buffers, "gradient:", gradients);
     return gradient_hook ? gradient_hook(executor, layer, types, buffers)
                          : absl::OkStatus();
   }
 
   absl::Status EnterCombinator(cuda::Executor& executor,
-                               absl::string_view layer) override {
+                               absl::string_view layer) {
     events.push_back("enter:" + std::string(layer));
     scope_executors.push_back(&executor);
     if (enter_hook) {
@@ -103,7 +119,7 @@ class RecordingLayerHooks final : public LayerHooks {
     return absl::OkStatus();
   }
 
-  absl::Status ExitCombinator(cuda::Executor& executor) override {
+  absl::Status ExitCombinator(cuda::Executor& executor) {
     EXPECT_FALSE(scopes.empty());
     if (scopes.empty())
       return absl::InternalError("unexpected unmatched hooks exit");
@@ -114,6 +130,7 @@ class RecordingLayerHooks final : public LayerHooks {
     return exit_hook ? exit_hook(layer) : absl::OkStatus();
   }
 
+  LayerHooks hooks;
   std::vector<std::string> events;
   std::vector<std::string> scopes;
   std::vector<cuda::Executor*> scope_executors;
@@ -159,6 +176,7 @@ class SpyLayer final : public Layer {
     return inputs_;
   }
   absl::Span<const ActivationType> output_types() const override {
+    ++output_type_calls;
     return outputs_;
   }
   absl::Span<Buffer> weights() override { return {}; }
@@ -171,14 +189,19 @@ class SpyLayer final : public Layer {
   bool save_outputs = true;
   bool copy_forward_output = false;
   mutable int forward_calls = 0;
+  mutable int output_type_calls = 0;
   int backward_calls = 0;
+  mutable LayerHooks* forward_hooks = nullptr;
+  LayerHooks* backward_hooks = nullptr;
+  const Buffer* received_gradient_handles = nullptr;
   BufferVec received_gradients;
 
  private:
   absl::StatusOr<FwdResult> fwd_impl(cuda::Executor& executor,
                                      absl::Span<const Buffer> inputs,
-                                     LayerHooks*) const override {
+                                     LayerHooks* hooks) const override {
     ++forward_calls;
+    forward_hooks = hooks;
     if (events_ != nullptr)
       events_->push_back("fwd:" + std::string(label_));
     RETURN_IF_ERROR(forward_status);
@@ -204,8 +227,11 @@ class SpyLayer final : public Layer {
 
   absl::StatusOr<BufferVec> bwd_impl(cuda::Executor&,
                                      absl::Span<const Buffer> gradients,
-                                     BackwardState, LayerHooks*) override {
+                                     BackwardState,
+                                     LayerHooks* hooks) override {
     ++backward_calls;
+    backward_hooks = hooks;
+    received_gradient_handles = gradients.data();
     if (events_ != nullptr)
       events_->push_back("bwd:" + std::string(label_));
     RETURN_IF_ERROR(backward_status);
@@ -250,6 +276,14 @@ absl::StatusOr<NestedModel> MakeNested(RecordingLayerHooks& hooks) {
 
 class LayerHooksTest : public LayersTest {};
 
+TEST(LayerHooks, CallbacksAreEmptyByDefault) {
+  LayerHooks hooks;
+  EXPECT_FALSE(hooks.activation_hook);
+  EXPECT_FALSE(hooks.gradient_hook);
+  EXPECT_FALSE(hooks.enter_combinator);
+  EXPECT_FALSE(hooks.exit_combinator);
+}
+
 TEST_F(LayerHooksTest, DefaultScopeCallbacksPreserveNumericalResults) {
   LayerHooks hooks;
   auto residual = ResidualLayer::Create(absl::make_unique<SpyLayer>("branch"));
@@ -274,10 +308,11 @@ TEST_F(LayerHooksTest, DefaultAndNullHooksDoNotObserveCallsOnTheSameExecutor) {
   SpyLayer layer("identity");
   auto input = Buffer::Allocate(*executor_, 16 * sizeof(float));
   ASSERT_TRUE(input.ok()) << input.status();
-  auto observed = layer.fwd(*executor_, {*input}, &hooks);
+  auto observed = layer.fwd(*executor_, {*input}, &hooks.hooks);
   ASSERT_TRUE(observed.ok()) << observed.status();
   ASSERT_TRUE(
-      layer.bwd(*executor_, {*input}, std::move(observed->state), &hooks).ok());
+      layer.bwd(*executor_, {*input}, std::move(observed->state), &hooks.hooks)
+          .ok());
   ASSERT_EQ(hooks.activations.size(), 1);
   ASSERT_EQ(hooks.gradients.size(), 1);
   const auto events = hooks.events;
@@ -304,10 +339,10 @@ TEST_F(LayerHooksTest, DispatchesActivationAfterAndGradientBeforeImpl) {
   auto gradient = Buffer::Allocate(*executor_, 32 * sizeof(float));
   ASSERT_TRUE(input.ok()) << input.status();
   ASSERT_TRUE(gradient.ok()) << gradient.status();
-  auto forward = layer.fwd(*executor_, {*input}, &hooks);
+  auto forward = layer.fwd(*executor_, {*input}, &hooks.hooks);
   ASSERT_TRUE(forward.ok()) << forward.status();
-  auto backward =
-      layer.bwd(*executor_, {*gradient}, std::move(forward->state), &hooks);
+  auto backward = layer.bwd(*executor_, {*gradient}, std::move(forward->state),
+                            &hooks.hooks);
   ASSERT_TRUE(backward.ok()) << backward.status();
   EXPECT_EQ(hooks.events,
             (std::vector<std::string>{"fwd:bf16", "activation:bf16",
@@ -341,7 +376,7 @@ TEST_F(LayerHooksTest, ReportsEmptyTerminalAndPrefixSaeGradients) {
   ASSERT_TRUE(dz.ok()) << dz.status();
   sae.forward_outputs = BufferVec{*x, *z, *d};
   for (bool auxiliary : {false, true}) {
-    auto forward = sae.fwd(*executor_, {*x}, &hooks);
+    auto forward = sae.fwd(*executor_, {*x}, &hooks.hooks);
     ASSERT_TRUE(forward.ok()) << forward.status();
     BufferVec gradients{*dx};
     if (auxiliary) {
@@ -349,7 +384,7 @@ TEST_F(LayerHooksTest, ReportsEmptyTerminalAndPrefixSaeGradients) {
       gradients.push_back(*d);
     }
     auto backward =
-        sae.bwd(*executor_, gradients, std::move(forward->state), &hooks);
+        sae.bwd(*executor_, gradients, std::move(forward->state), &hooks.hooks);
     ASSERT_TRUE(backward.ok()) << backward.status();
     std::vector<ActivationType> expected{
         ActivationType(DataType::FP32, {-2, 1, 16})};
@@ -367,9 +402,10 @@ TEST_F(LayerHooksTest, ReportsEmptyTerminalAndPrefixSaeGradients) {
   ASSERT_TRUE(scalar.ok()) << scalar.status();
   loss.forward_outputs = BufferVec{*scalar};
   loss.backward_outputs = BufferVec{*dx, *dz, *d};
-  auto forward = loss.fwd(*executor_, {*x, *z, *d, *x}, &hooks);
+  auto forward = loss.fwd(*executor_, {*x, *z, *d, *x}, &hooks.hooks);
   ASSERT_TRUE(forward.ok()) << forward.status();
-  auto backward = loss.bwd(*executor_, {}, std::move(forward->state), &hooks);
+  auto backward =
+      loss.bwd(*executor_, {}, std::move(forward->state), &hooks.hooks);
   ASSERT_TRUE(backward.ok()) << backward.status();
   EXPECT_EQ(backward->size(), 3);
   EXPECT_TRUE(hooks.gradients.back().types.empty());
@@ -386,10 +422,10 @@ TEST_F(LayerHooksTest, EmbeddingStillReportsIncomingGradient) {
   ASSERT_TRUE(activation.ok()) << activation.status();
   embedding.forward_outputs = BufferVec{*activation};
   embedding.backward_outputs = BufferVec{};
-  auto forward = embedding.fwd(*executor_, {*token}, &hooks);
+  auto forward = embedding.fwd(*executor_, {*token}, &hooks.hooks);
   ASSERT_TRUE(forward.ok()) << forward.status();
   auto backward = embedding.bwd(*executor_, {*activation},
-                                std::move(forward->state), &hooks);
+                                std::move(forward->state), &hooks.hooks);
   ASSERT_TRUE(backward.ok()) << backward.status();
   EXPECT_TRUE(backward->empty());
   ASSERT_EQ(hooks.gradients.size(), 1);
@@ -402,11 +438,11 @@ TEST_F(LayerHooksTest, InvalidBackwardStateDoesNotInvokeHooks) {
   SpyLayer other("other");
   auto input = Buffer::Allocate(*executor_, 16 * sizeof(float));
   ASSERT_TRUE(input.ok()) << input.status();
-  auto forward = first.fwd(*executor_, {*input}, &hooks);
+  auto forward = first.fwd(*executor_, {*input}, &hooks.hooks);
   ASSERT_TRUE(forward.ok()) << forward.status();
   hooks.events.clear();
   auto backward =
-      other.bwd(*executor_, {*input}, std::move(forward->state), &hooks);
+      other.bwd(*executor_, {*input}, std::move(forward->state), &hooks.hooks);
   EXPECT_EQ(backward.status().code(), absl::StatusCode::kInvalidArgument);
   EXPECT_EQ(other.backward_calls, 0);
   EXPECT_TRUE(hooks.events.empty());
@@ -416,7 +452,7 @@ TEST_F(LayerHooksTest, FailedImplDoesNotPublishActivation) {
   RecordingLayerHooks hooks;
   SpyLayer layer("broken", &hooks.events);
   layer.forward_status = absl::NotFoundError("forward body failed");
-  const auto result = layer.fwd(*executor_, {}, &hooks);
+  const auto result = layer.fwd(*executor_, {}, &hooks.hooks);
   EXPECT_EQ(result.status(), layer.forward_status);
   EXPECT_EQ(hooks.events, std::vector<std::string>{"fwd:broken"});
   EXPECT_TRUE(hooks.activations.empty());
@@ -430,18 +466,18 @@ TEST_F(LayerHooksTest, CallbackErrorsPropagateAndStopBackwardImpl) {
   hooks.activation_hook = [](auto&, auto, auto, auto) {
     return absl::PermissionDeniedError("activation callback failed");
   };
-  auto failed = layer.fwd(*executor_, {*input}, &hooks);
+  auto failed = layer.fwd(*executor_, {*input}, &hooks.hooks);
   EXPECT_EQ(failed.status().code(), absl::StatusCode::kPermissionDenied);
   EXPECT_NE(failed.status().message().find("activation callback failed"),
             absl::string_view::npos);
   hooks.activation_hook = {};
-  auto forward = layer.fwd(*executor_, {*input}, &hooks);
+  auto forward = layer.fwd(*executor_, {*input}, &hooks.hooks);
   ASSERT_TRUE(forward.ok()) << forward.status();
   hooks.gradient_hook = [](auto&, auto, auto, auto) {
     return absl::CancelledError("gradient callback failed");
   };
   auto backward =
-      layer.bwd(*executor_, {*input}, std::move(forward->state), &hooks);
+      layer.bwd(*executor_, {*input}, std::move(forward->state), &hooks.hooks);
   EXPECT_EQ(backward.status().code(), absl::StatusCode::kCancelled);
   EXPECT_EQ(layer.backward_calls, 0);
 }
@@ -457,7 +493,7 @@ TEST_F(LayerHooksTest, ReplacementsPreserveOriginalAndSavedHandles) {
     buffers[0] = *replacement;
     return absl::OkStatus();
   };
-  auto forward = layer.fwd(*executor_, {*original}, &hooks);
+  auto forward = layer.fwd(*executor_, {*original}, &hooks.hooks);
   ASSERT_TRUE(forward.ok()) << forward.status();
   EXPECT_EQ(forward->outputs[0].data(), replacement->data());
   ASSERT_EQ(forward->state.intermediates.size(), 1);
@@ -472,7 +508,7 @@ TEST_F(LayerHooksTest, ReplacementsPreserveOriginalAndSavedHandles) {
   };
   BufferVec incoming{*original};
   auto backward =
-      layer.bwd(*executor_, incoming, std::move(forward->state), &hooks);
+      layer.bwd(*executor_, incoming, std::move(forward->state), &hooks.hooks);
   ASSERT_TRUE(backward.ok()) << backward.status();
   EXPECT_EQ(incoming[0].data(), original->data());
   ASSERT_EQ(layer.received_gradients.size(), 1);
@@ -499,7 +535,7 @@ TEST_F(LayerHooksTest, RetainsOldOutputWhileCallbackQueuesCopy) {
                         cudaMemcpyDeviceToDevice, executor.stream()),
         "copy replaced hooks output");
   };
-  auto forward = layer.fwd(*executor_, {*input}, &hooks);
+  auto forward = layer.fwd(*executor_, {*input}, &hooks.hooks);
   ASSERT_TRUE(forward.ok()) << forward.status();
   EXPECT_NE(forward->outputs[0].data(), input->data());
   auto values = Download(*executor_, forward->outputs[0]);
@@ -523,18 +559,18 @@ TEST_F(LayerHooksTest, RejectsWrongSizeAndForeignExecutorReplacements) {
       buffers[0] = replacement;
       return absl::OkStatus();
     };
-    auto invalid_forward = layer.fwd(*executor_, {*input}, &hooks);
+    auto invalid_forward = layer.fwd(*executor_, {*input}, &hooks.hooks);
     EXPECT_EQ(invalid_forward.status().code(),
               absl::StatusCode::kInvalidArgument);
     hooks.activation_hook = {};
-    auto forward = layer.fwd(*executor_, {*input}, &hooks);
+    auto forward = layer.fwd(*executor_, {*input}, &hooks.hooks);
     ASSERT_TRUE(forward.ok()) << forward.status();
     hooks.gradient_hook = [&](auto&, auto, auto, absl::Span<Buffer> buffers) {
       buffers[0] = replacement;
       return absl::OkStatus();
     };
-    auto invalid_backward =
-        layer.bwd(*executor_, {*input}, std::move(forward->state), &hooks);
+    auto invalid_backward = layer.bwd(*executor_, {*input},
+                                      std::move(forward->state), &hooks.hooks);
     EXPECT_EQ(invalid_backward.status().code(),
               absl::StatusCode::kInvalidArgument);
     EXPECT_EQ(layer.backward_calls, 0);
@@ -548,14 +584,14 @@ TEST_F(LayerHooksTest, InvalidArityNeverPairsBuffersWithWrongMetadata) {
   auto input = Buffer::Allocate(*executor_, 16 * sizeof(float));
   ASSERT_TRUE(input.ok()) << input.status();
   layer.forward_outputs = BufferVec{*input, *input};
-  EXPECT_EQ(layer.fwd(*executor_, {*input}, &hooks).status().code(),
+  EXPECT_EQ(layer.fwd(*executor_, {*input}, &hooks.hooks).status().code(),
             absl::StatusCode::kInvalidArgument);
   EXPECT_TRUE(hooks.activations.empty());
   layer.forward_outputs.reset();
-  auto forward = layer.fwd(*executor_, {*input}, &hooks);
+  auto forward = layer.fwd(*executor_, {*input}, &hooks.hooks);
   ASSERT_TRUE(forward.ok()) << forward.status();
   auto backward = layer.bwd(*executor_, {*input, *input},
-                            std::move(forward->state), &hooks);
+                            std::move(forward->state), &hooks.hooks);
   EXPECT_EQ(backward.status().code(), absl::StatusCode::kInvalidArgument);
   EXPECT_EQ(layer.backward_calls, 0);
   EXPECT_TRUE(hooks.gradients.empty());
@@ -567,7 +603,7 @@ TEST_F(LayerHooksTest, NestedScopesBracketChildrenInBothDirections) {
   ASSERT_TRUE(nested.ok()) << nested.status();
   auto input = Upload(*executor_, std::vector<float>(16, 1.0f));
   ASSERT_TRUE(input.ok()) << input.status();
-  auto forward = nested->model->fwd(*executor_, {*input}, &hooks);
+  auto forward = nested->model->fwd(*executor_, {*input}, &hooks.hooks);
   ASSERT_TRUE(forward.ok()) << forward.status();
   EXPECT_EQ(
       hooks.events,
@@ -580,7 +616,7 @@ TEST_F(LayerHooksTest, NestedScopesBracketChildrenInBothDirections) {
   EXPECT_TRUE(hooks.scopes.empty());
   hooks.events.clear();
   auto backward = nested->model->bwd(*executor_, {*input},
-                                     std::move(forward->state), &hooks);
+                                     std::move(forward->state), &hooks.hooks);
   ASSERT_TRUE(backward.ok()) << backward.status();
   EXPECT_EQ(hooks.events,
             (std::vector<std::string>{
@@ -601,7 +637,7 @@ TEST_F(LayerHooksTest, NestedForwardFailureUnwindsEveryEnteredScope) {
   nested->second->forward_status = absl::NotFoundError("second forward failed");
   auto input = Upload(*executor_, std::vector<float>(16, 1.0f));
   ASSERT_TRUE(input.ok()) << input.status();
-  auto forward = nested->model->fwd(*executor_, {*input}, &hooks);
+  auto forward = nested->model->fwd(*executor_, {*input}, &hooks.hooks);
   EXPECT_EQ(forward.status().code(), absl::StatusCode::kNotFound);
   EXPECT_EQ(hooks.events, (std::vector<std::string>{
                               "enter:outer_pipeline", "enter:ResidualLayer",
@@ -618,13 +654,13 @@ TEST_F(LayerHooksTest, NestedBackwardFailureUnwindsEveryEnteredScope) {
   ASSERT_TRUE(nested.ok()) << nested.status();
   auto input = Upload(*executor_, std::vector<float>(16, 1.0f));
   ASSERT_TRUE(input.ok()) << input.status();
-  auto forward = nested->model->fwd(*executor_, {*input}, &hooks);
+  auto forward = nested->model->fwd(*executor_, {*input}, &hooks.hooks);
   ASSERT_TRUE(forward.ok()) << forward.status();
   nested->second->backward_status =
       absl::NotFoundError("second backward failed");
   hooks.events.clear();
   auto backward = nested->model->bwd(*executor_, {*input},
-                                     std::move(forward->state), &hooks);
+                                     std::move(forward->state), &hooks.hooks);
   EXPECT_EQ(backward.status().code(), absl::StatusCode::kNotFound);
   EXPECT_EQ(hooks.events,
             (std::vector<std::string>{
@@ -647,7 +683,7 @@ TEST_F(LayerHooksTest, FailedEnterIsNotExitedButParentStillIs) {
   };
   auto input = Buffer::Allocate(*executor_, 16 * sizeof(float));
   ASSERT_TRUE(input.ok()) << input.status();
-  auto forward = nested->model->fwd(*executor_, {*input}, &hooks);
+  auto forward = nested->model->fwd(*executor_, {*input}, &hooks.hooks);
   EXPECT_EQ(forward.status().code(), absl::StatusCode::kUnavailable);
   EXPECT_EQ(hooks.events, (std::vector<std::string>{"enter:outer_pipeline",
                                                     "enter:ResidualLayer",
@@ -669,7 +705,7 @@ TEST_F(LayerHooksTest, ExitFailurePropagatesAndCombinesWithBodyError) {
     };
     auto input = Upload(*executor_, std::vector<float>(16, 1.0f));
     ASSERT_TRUE(input.ok()) << input.status();
-    auto forward = nested->model->fwd(*executor_, {*input}, &hooks);
+    auto forward = nested->model->fwd(*executor_, {*input}, &hooks.hooks);
     EXPECT_EQ(forward.status().code(), body_fails ? absl::StatusCode::kNotFound
                                                   : absl::StatusCode::kAborted);
     EXPECT_NE(forward.status().message().find("exit marker"),
@@ -693,19 +729,19 @@ TEST_F(LayerHooksTest, CallbackFailureStillExitsNestedScopes) {
     return name == "B" ? absl::CancelledError("activation marker")
                        : absl::OkStatus();
   };
-  auto failed = nested->model->fwd(*executor_, {*input}, &hooks);
+  auto failed = nested->model->fwd(*executor_, {*input}, &hooks.hooks);
   EXPECT_EQ(failed.status().code(), absl::StatusCode::kCancelled);
   EXPECT_TRUE(hooks.scopes.empty());
   EXPECT_EQ(hooks.events.back(), "exit:outer_pipeline");
   hooks.activation_hook = {};
-  auto forward = nested->model->fwd(*executor_, {*input}, &hooks);
+  auto forward = nested->model->fwd(*executor_, {*input}, &hooks.hooks);
   ASSERT_TRUE(forward.ok()) << forward.status();
   hooks.gradient_hook = [](auto&, absl::string_view name, auto, auto) {
     return name == "B" ? absl::CancelledError("gradient marker")
                        : absl::OkStatus();
   };
   auto backward = nested->model->bwd(*executor_, {*input},
-                                     std::move(forward->state), &hooks);
+                                     std::move(forward->state), &hooks.hooks);
   EXPECT_EQ(backward.status().code(), absl::StatusCode::kCancelled);
   EXPECT_TRUE(hooks.scopes.empty());
   EXPECT_EQ(hooks.events.back(), "exit:outer_pipeline");
@@ -722,7 +758,7 @@ TEST_F(LayerHooksTest, ReplacingBranchGradientPreservesResidualSkipPath) {
   auto replacement = Upload(*executor_, std::vector<float>(16, 7.0f));
   ASSERT_TRUE(original.ok()) << original.status();
   ASSERT_TRUE(replacement.ok()) << replacement.status();
-  auto forward = (*residual)->fwd(*executor_, {*original}, &hooks);
+  auto forward = (*residual)->fwd(*executor_, {*original}, &hooks.hooks);
   ASSERT_TRUE(forward.ok()) << forward.status();
   hooks.gradient_hook = [&](auto&, absl::string_view name, auto,
                             absl::Span<Buffer> buffers) {
@@ -731,7 +767,7 @@ TEST_F(LayerHooksTest, ReplacingBranchGradientPreservesResidualSkipPath) {
     return absl::OkStatus();
   };
   auto backward = (*residual)->bwd(*executor_, {*original},
-                                   std::move(forward->state), &hooks);
+                                   std::move(forward->state), &hooks.hooks);
   ASSERT_TRUE(backward.ok()) << backward.status();
   ASSERT_EQ(backward->size(), 1);
   auto values = Download(*executor_, (*backward)[0]);
@@ -770,7 +806,7 @@ TEST_F(LayerHooksTest, GradientHookChangesDenseParameterGradients) {
                         parameter_gradient.size_bytes(), executor_->stream()),
         cudaSuccess);
   }
-  auto forward = (*dense)->fwd(*executor_, {*input}, &hooks);
+  auto forward = (*dense)->fwd(*executor_, {*input}, &hooks.hooks);
   ASSERT_TRUE(forward.ok()) << forward.status();
   hooks.gradient_hook = [&](auto&, absl::string_view name, auto,
                             absl::Span<Buffer> buffers) {
@@ -778,8 +814,8 @@ TEST_F(LayerHooksTest, GradientHookChangesDenseParameterGradients) {
     buffers[0] = *zero;
     return absl::OkStatus();
   };
-  auto backward =
-      (*dense)->bwd(*executor_, {*input}, std::move(forward->state), &hooks);
+  auto backward = (*dense)->bwd(*executor_, {*input}, std::move(forward->state),
+                                &hooks.hooks);
   ASSERT_TRUE(backward.ok()) << backward.status();
   auto input_gradient = Download(*executor_, (*backward)[0]);
   ASSERT_TRUE(input_gradient.ok()) << input_gradient.status();
@@ -791,32 +827,18 @@ TEST_F(LayerHooksTest, GradientHookChangesDenseParameterGradients) {
   }
 }
 
-class ActivationOnlyHooks final : public LayerHooks {
- public:
-  absl::Status ActivationHook(cuda::Executor&, absl::string_view,
-                              absl::Span<const ActivationType>,
-                              absl::Span<Buffer>) override {
-    ++calls;
-    return absl::OkStatus();
-  }
-  int calls = 0;
-};
-
-class GradientOnlyHooks final : public LayerHooks {
- public:
-  absl::Status GradientHook(cuda::Executor&, absl::string_view,
-                            absl::Span<const ActivationType>,
-                            absl::Span<Buffer>) override {
-    ++calls;
-    return absl::OkStatus();
-  }
-  int calls = 0;
-};
-
-TEST_F(LayerHooksTest, CanOverrideOnlyOneHook) {
+TEST_F(LayerHooksTest, CanInstallOnlyOneCapturingCallback) {
   SpyLayer layer("identity");
-  ActivationOnlyHooks activation;
-  GradientOnlyHooks gradient;
+  int activation_calls = 0;
+  int gradient_calls = 0;
+  LayerHooks activation{.activation_hook = [&](auto&, auto, auto, auto) {
+    ++activation_calls;
+    return absl::OkStatus();
+  }};
+  LayerHooks gradient{.gradient_hook = [&](auto&, auto, auto, auto) {
+    ++gradient_calls;
+    return absl::OkStatus();
+  }};
   auto input = Buffer::Allocate(*executor_, 16 * sizeof(float));
   ASSERT_TRUE(input.ok()) << input.status();
 
@@ -825,14 +847,242 @@ TEST_F(LayerHooksTest, CanOverrideOnlyOneHook) {
   EXPECT_TRUE(
       layer.bwd(*executor_, {*input}, std::move(first->state), &activation)
           .ok());
-  EXPECT_EQ(activation.calls, 1);
+  EXPECT_EQ(activation_calls, 1);
 
   auto second = layer.fwd(*executor_, {*input}, &gradient);
   ASSERT_TRUE(second.ok()) << second.status();
   EXPECT_TRUE(
       layer.bwd(*executor_, {*input}, std::move(second->state), &gradient)
           .ok());
-  EXPECT_EQ(gradient.calls, 1);
+  EXPECT_EQ(gradient_calls, 1);
+}
+
+TEST_F(LayerHooksTest, EveryCallbackPresenceCombinationPreservesOrdering) {
+  auto input = Buffer::Allocate(*executor_, 16 * sizeof(float));
+  ASSERT_TRUE(input.ok()) << input.status();
+  for (int mask = 0; mask < 16; ++mask) {
+    SCOPED_TRACE(mask);
+    std::vector<std::string> events;
+    LayerHooks hooks;
+    if (mask & 1) {
+      hooks.activation_hook = [&](auto& executor, auto name, auto, auto) {
+        EXPECT_EQ(&executor, executor_.get());
+        events.push_back("activation:" + std::string(name));
+        return absl::OkStatus();
+      };
+    }
+    if (mask & 2) {
+      hooks.gradient_hook = [&](auto& executor, auto name, auto, auto) {
+        EXPECT_EQ(&executor, executor_.get());
+        events.push_back("gradient:" + std::string(name));
+        return absl::OkStatus();
+      };
+    }
+    if (mask & 4) {
+      hooks.enter_combinator = [&](auto& executor, auto name) {
+        EXPECT_EQ(&executor, executor_.get());
+        events.push_back("enter:" + std::string(name));
+        return absl::OkStatus();
+      };
+    }
+    if (mask & 8) {
+      hooks.exit_combinator = [&](auto& executor) {
+        EXPECT_EQ(&executor, executor_.get());
+        events.push_back("exit");
+        return absl::OkStatus();
+      };
+    }
+    ComposedLayerBuilder builder;
+    auto child = absl::make_unique<SpyLayer>("child", &events);
+    auto* child_pointer = child.get();
+    ASSERT_TRUE(builder.add(std::move(child)).ok());
+    auto model = builder.create("parent");
+    ASSERT_TRUE(model.ok()) << model.status();
+    auto forward = (*model)->fwd(*executor_, {*input}, &hooks);
+    ASSERT_TRUE(forward.ok()) << forward.status();
+    auto backward =
+        (*model)->bwd(*executor_, {*input}, std::move(forward->state), &hooks);
+    ASSERT_TRUE(backward.ok()) << backward.status();
+    EXPECT_EQ(child_pointer->forward_hooks, &hooks);
+    EXPECT_EQ(child_pointer->backward_hooks, &hooks);
+
+    std::vector<std::string> expected;
+    if (mask & 4)
+      expected.push_back("enter:parent");
+    expected.push_back("fwd:child");
+    if (mask & 1)
+      expected.push_back("activation:child");
+    if (mask & 8)
+      expected.push_back("exit");
+    if (mask & 1)
+      expected.push_back("activation:parent");
+    if (mask & 2)
+      expected.push_back("gradient:parent");
+    if (mask & 4)
+      expected.push_back("enter:parent");
+    if (mask & 2)
+      expected.push_back("gradient:child");
+    expected.push_back("bwd:child");
+    if (mask & 8)
+      expected.push_back("exit");
+    EXPECT_EQ(events, expected);
+  }
+}
+
+TEST_F(LayerHooksTest, MissingCallbacksSkipMetadataAndArityValidation) {
+  auto input = Buffer::Allocate(*executor_, 16 * sizeof(float));
+  ASSERT_TRUE(input.ok()) << input.status();
+  for (bool other_callback_present : {false, true}) {
+    SCOPED_TRACE(other_callback_present);
+    SpyLayer layer("identity");
+    LayerHooks hooks;
+    if (other_callback_present) {
+      hooks.gradient_hook = [](auto&, auto, auto, auto) {
+        ADD_FAILURE() << "gradient callback must not run during forward";
+        return absl::OkStatus();
+      };
+    }
+    layer.forward_outputs = BufferVec{*input, *input};
+    auto forward = layer.fwd(*executor_, {*input}, &hooks);
+    ASSERT_TRUE(forward.ok()) << forward.status();
+    EXPECT_EQ(forward->outputs.size(), 2);
+    EXPECT_EQ(layer.output_type_calls, 0);
+
+    hooks.gradient_hook = {};
+    if (other_callback_present) {
+      hooks.activation_hook = [](auto&, auto, auto, auto) {
+        ADD_FAILURE() << "activation callback must not run during backward";
+        return absl::OkStatus();
+      };
+    }
+    const BufferVec gradients{*input, *input};
+    auto backward =
+        layer.bwd(*executor_, gradients, std::move(forward->state), &hooks);
+    ASSERT_TRUE(backward.ok()) << backward.status();
+    EXPECT_EQ(backward->size(), 2);
+    EXPECT_EQ(layer.output_type_calls, 0);
+    EXPECT_EQ(layer.backward_calls, 1);
+    EXPECT_EQ(layer.received_gradient_handles, gradients.data());
+  }
+}
+
+TEST_F(LayerHooksTest, MissingGradientCallbackStillValidatesStateOwner) {
+  SpyLayer first("first");
+  SpyLayer other("other");
+  LayerHooks empty;
+  LayerHooks activation{.activation_hook = [](auto&, auto, auto, auto) {
+    return absl::OkStatus();
+  }};
+  auto input = Buffer::Allocate(*executor_, 16 * sizeof(float));
+  ASSERT_TRUE(input.ok()) << input.status();
+  for (LayerHooks* hooks :
+       {static_cast<LayerHooks*>(nullptr), &empty, &activation}) {
+    auto forward = first.fwd(*executor_, {*input});
+    ASSERT_TRUE(forward.ok()) << forward.status();
+    auto backward =
+        other.bwd(*executor_, {*input}, std::move(forward->state), hooks);
+    EXPECT_EQ(backward.status().code(), absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ(other.backward_calls, 0);
+  }
+}
+
+TEST_F(LayerHooksTest, EnterOnlyCallbackPropagatesEnterAndBodyFailures) {
+  auto input = Buffer::Allocate(*executor_, 16 * sizeof(float));
+  ASSERT_TRUE(input.ok()) << input.status();
+  for (bool backward : {false, true}) {
+    for (bool enter_fails : {false, true}) {
+      for (bool body_fails : {false, true}) {
+        SCOPED_TRACE(backward);
+        SCOPED_TRACE(enter_fails);
+        SCOPED_TRACE(body_fails);
+        std::vector<std::string> events;
+        auto child = absl::make_unique<SpyLayer>("child", &events);
+        auto* child_pointer = child.get();
+        ComposedLayerBuilder builder;
+        ASSERT_TRUE(builder.add(std::move(child)).ok());
+        auto model = builder.create("parent");
+        ASSERT_TRUE(model.ok()) << model.status();
+        auto forward = (*model)->fwd(*executor_, {*input});
+        ASSERT_TRUE(forward.ok()) << forward.status();
+        if (body_fails) {
+          child_pointer->forward_status = absl::NotFoundError("body marker");
+          child_pointer->backward_status = child_pointer->forward_status;
+        }
+        events.clear();
+        LayerHooks hooks{.enter_combinator = [&](auto&, auto name) {
+          events.push_back("enter:" + std::string(name));
+          return enter_fails ? absl::UnavailableError("enter marker")
+                             : absl::OkStatus();
+        }};
+        const auto status =
+            backward ? (*model)
+                           ->bwd(*executor_, {*input},
+                                 std::move(forward->state), &hooks)
+                           .status()
+                     : (*model)->fwd(*executor_, {*input}, &hooks).status();
+        EXPECT_EQ(status.code(), enter_fails  ? absl::StatusCode::kUnavailable
+                                 : body_fails ? absl::StatusCode::kNotFound
+                                              : absl::StatusCode::kOk);
+        std::vector<std::string> expected{"enter:parent"};
+        if (!enter_fails)
+          expected.push_back(backward ? "bwd:child" : "fwd:child");
+        EXPECT_EQ(events, expected);
+      }
+    }
+  }
+}
+
+TEST_F(LayerHooksTest, ExitOnlyCallbackRunsAfterSuccessfulOrFailedBody) {
+  auto input = Buffer::Allocate(*executor_, 16 * sizeof(float));
+  ASSERT_TRUE(input.ok()) << input.status();
+  for (bool backward : {false, true}) {
+    for (bool exit_fails : {false, true}) {
+      for (bool body_fails : {false, true}) {
+        SCOPED_TRACE(backward);
+        SCOPED_TRACE(exit_fails);
+        SCOPED_TRACE(body_fails);
+        std::vector<std::string> events;
+        auto child = absl::make_unique<SpyLayer>("child", &events);
+        auto* child_pointer = child.get();
+        ComposedLayerBuilder builder;
+        ASSERT_TRUE(builder.add(std::move(child)).ok());
+        auto model = builder.create("parent");
+        ASSERT_TRUE(model.ok()) << model.status();
+        auto forward = (*model)->fwd(*executor_, {*input});
+        ASSERT_TRUE(forward.ok()) << forward.status();
+        if (body_fails) {
+          child_pointer->forward_status = absl::NotFoundError("body marker");
+          child_pointer->backward_status = child_pointer->forward_status;
+        }
+        events.clear();
+        LayerHooks hooks{.exit_combinator = [&](auto&) {
+          events.push_back("exit");
+          return exit_fails ? absl::AbortedError("exit marker")
+                            : absl::OkStatus();
+        }};
+        const auto status =
+            backward ? (*model)
+                           ->bwd(*executor_, {*input},
+                                 std::move(forward->state), &hooks)
+                           .status()
+                     : (*model)->fwd(*executor_, {*input}, &hooks).status();
+        EXPECT_EQ(status.code(), body_fails   ? absl::StatusCode::kNotFound
+                                 : exit_fails ? absl::StatusCode::kAborted
+                                              : absl::StatusCode::kOk);
+        EXPECT_EQ(events, (std::vector<std::string>{
+                              backward ? "bwd:child" : "fwd:child", "exit"}));
+        if (body_fails)
+          EXPECT_NE(status.message().find("body marker"),
+                    absl::string_view::npos);
+        if (exit_fails)
+          EXPECT_NE(status.message().find("exit marker"),
+                    absl::string_view::npos);
+        if (body_fails && exit_fails)
+          EXPECT_NE(status.message().find("exit_combinator failed"),
+                    absl::string_view::npos);
+      }
+    }
+  }
 }
 
 TEST_F(LayerHooksTest, DifferentHooksAreSelectedIndependentlyOnEachCall) {
@@ -841,19 +1091,21 @@ TEST_F(LayerHooksTest, DifferentHooksAreSelectedIndependentlyOnEachCall) {
   RecordingLayerHooks second;
   auto input = Buffer::Allocate(*executor_, 16 * sizeof(float));
   ASSERT_TRUE(input.ok()) << input.status();
-  auto forward = layer.fwd(*executor_, {*input}, &first);
+  auto forward = layer.fwd(*executor_, {*input}, &first.hooks);
   ASSERT_TRUE(forward.ok()) << forward.status();
   EXPECT_TRUE(
-      layer.bwd(*executor_, {*input}, std::move(forward->state), &second).ok());
+      layer.bwd(*executor_, {*input}, std::move(forward->state), &second.hooks)
+          .ok());
   EXPECT_EQ(first.activations.size(), 1);
   EXPECT_TRUE(first.gradients.empty());
   EXPECT_TRUE(second.activations.empty());
   EXPECT_EQ(second.gradients.size(), 1);
 
-  auto another = layer.fwd(*executor_, {*input}, &second);
+  auto another = layer.fwd(*executor_, {*input}, &second.hooks);
   ASSERT_TRUE(another.ok()) << another.status();
   EXPECT_TRUE(
-      layer.bwd(*executor_, {*input}, std::move(another->state), &first).ok());
+      layer.bwd(*executor_, {*input}, std::move(another->state), &first.hooks)
+          .ok());
   EXPECT_EQ(first.activations.size(), 1);
   EXPECT_EQ(first.gradients.size(), 1);
   EXPECT_EQ(second.activations.size(), 1);
@@ -867,7 +1119,7 @@ TEST_F(LayerHooksTest, ForwardStateDoesNotRetainHooksForBackward) {
   BackwardState state;
   {
     RecordingLayerHooks temporary;
-    auto forward = layer.fwd(*executor_, {*input}, &temporary);
+    auto forward = layer.fwd(*executor_, {*input}, &temporary.hooks);
     ASSERT_TRUE(forward.ok()) << forward.status();
     EXPECT_EQ(temporary.activations.size(), 1);
     state = std::move(forward->state);

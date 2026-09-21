@@ -30,34 +30,33 @@ namespace {
 
 // Read-only recording checks the actual dispatch path, not just name()
 // accessors. The hook never reads or replaces any activation buffer.
-class RecipeNameHooks final : public LayerHooks {
- public:
-  absl::Status EnterCombinator(cuda::Executor&,
-                               absl::string_view name) override {
-    entered.emplace_back(name);
-    active.emplace_back(name);
-    return absl::OkStatus();
-  }
-
-  absl::Status ExitCombinator(cuda::Executor&) override {
-    if (active.empty())
-      return absl::InternalError("recipe exited a scope that was not entered");
-    exited.push_back(active.back());
-    active.pop_back();
-    return absl::OkStatus();
-  }
-
-  absl::Status ActivationHook(cuda::Executor&, absl::string_view name,
-                              absl::Span<const ActivationType>,
-                              absl::Span<Buffer>) override {
-    activations.emplace_back(name);
-    return absl::OkStatus();
-  }
-
+struct RecipeNameHooks {
   std::vector<std::string> entered;
   std::vector<std::string> exited;
   std::vector<std::string> active;
   std::vector<std::string> activations;
+  LayerHooks layer_hooks{
+      .activation_hook =
+          [this](cuda::Executor&, absl::string_view name,
+                 absl::Span<const ActivationType>, absl::Span<Buffer>) {
+            activations.emplace_back(name);
+            return absl::OkStatus();
+          },
+      .enter_combinator =
+          [this](cuda::Executor&, absl::string_view name) {
+            entered.emplace_back(name);
+            active.emplace_back(name);
+            return absl::OkStatus();
+          },
+      .exit_combinator =
+          [this](cuda::Executor&) {
+            if (active.empty())
+              return absl::InternalError(
+                  "recipe exited a scope that was not entered");
+            exited.push_back(active.back());
+            active.pop_back();
+            return absl::OkStatus();
+          }};
 };
 
 void ExpectRecipeScopeNames(const RecipeNameHooks& hooks,
@@ -541,7 +540,7 @@ TEST_F(Gpt2Test, SixteenBlockNarrowModelsRunFullContextForwardAndBackward) {
                               executor_->stream()),
               cudaSuccess);
     RecipeNameHooks hooks;
-    auto forward = (*model)->fwd(*executor_, {*tokens}, &hooks);
+    auto forward = (*model)->fwd(*executor_, {*tokens}, &hooks.layer_hooks);
     ASSERT_TRUE(forward.ok()) << forward.status();
     ASSERT_EQ(forward->outputs.size(), 1u);
     ASSERT_EQ(forward->outputs[0].size_bytes(),
@@ -684,7 +683,7 @@ TEST_F(Gpt2Test, FullModelProducesPaddedFp32LogitsFromBf16Activations) {
                             executor_->stream()),
             cudaSuccess);
   RecipeNameHooks hooks;
-  auto forward = (*model)->fwd(*executor_, {*tokens}, &hooks);
+  auto forward = (*model)->fwd(*executor_, {*tokens}, &hooks.layer_hooks);
   ASSERT_TRUE(forward.ok()) << forward.status();
   ASSERT_EQ(forward->outputs.size(), 1);
   EXPECT_EQ(forward->outputs[0].size_bytes(),
@@ -720,7 +719,7 @@ TEST_F(Gpt2Test, OneBlockProducesResidualStreamActivations) {
 
   BufferVec inputs = {*tokens};
   RecipeNameHooks hooks;
-  auto activations = (*generator)->fwd(*executor_, inputs, &hooks);
+  auto activations = (*generator)->fwd(*executor_, inputs, &hooks.layer_hooks);
 
   ASSERT_TRUE(activations.ok()) << activations.status();
   ASSERT_EQ(activations->outputs.size(), 1u);
