@@ -1,0 +1,67 @@
+{
+  "success": false,
+  "sentences": 1024,
+  "exact_sentences": 43,
+  "targets": 10002,
+  "errors": 2891,
+  "accuracy": 0.7109578084383124,
+  "mean_loss_nats": 1.9138073736593981,
+  "corpus": "/home/ubuntu/code/pluto/src/llm/experiments/memorize_general_facts/runs/width_depth_coarse_0/width_32/layers_7/corpus.txt",
+  "corpus_sha256": "814c062e7d7592fe4a4e5b158a37bd37da51700f817c19eb981c1e93d33f245c",
+  "tokenizer": "/home/ubuntu/code/pluto/src/llm/experiments/memorize_general_facts/runs/width_depth_coarse_0/width_32/layers_7/tokenizer.json",
+  "tokenizer_sha256": "1fe93b6152957cf9cfd6d89002467f789ce8b3f3e000b3a2edf27c808ddd0b9e",
+  "predictions": "/home/ubuntu/code/pluto/src/llm/experiments/memorize_general_facts/runs/width_depth_coarse_0/width_32/layers_7/independent_verification/final_predictions.tsv",
+  "predictions_sha256": "fb5b60e767d688974c6e633f14778d6b8212505cc49ca3b351131be051e0bde4",
+  "prompt_tokens": 5,
+  "eos_scored": true,
+  "padding_scored": false,
+  "context_length": 1024,
+  "evidence_scope": "validated teacher-forced prediction artifact, not independent checkpoint inference",
+  "error_examples": [
+    {
+      "line_1based": 1,
+      "target_token_index_0based": 5,
+      "causal_prefix": "Female mammals produce milk to",
+      "target_id": 31219,
+      "target_text": " nour",
+      "predicted_id": 4439,
+      "predicted_text": " produce"
+    },
+    {
+      "line_1based": 1,
+      "target_token_index_0based": 8,
+      "causal_prefix": "Female mammals produce milk to nourish their",
+      "target_id": 1862,
+      "target_text": " young",
+      "predicted_id": 2656,
+      "predicted_text": " original"
+    },
+    {
+      "line_1based": 2,
+      "target_token_index_0based": 6,
+      "causal_prefix": "In English, the plural of",
+      "target_id": 10211,
+      "target_text": " mouse",
+      "predicted_id": 47394,
+      "predicted_text": " scorp"
+    },
+    {
+      "line_1based": 2,
+      "target_token_index_0based": 8,
+      "causal_prefix": "In English, the plural of mouse is",
+      "target_id": 3221,
+      "target_text": " usually",
+      "predicted_id": 1444,
+      "predicted_text": " called"
+    },
+    {
+      "line_1based": 2,
+      "target_token_index_0based": 9,
+      "causal_prefix": "In English, the plural of mouse is usually",
+      "target_id": 10693,
+      "target_text": " mice",
+      "predicted_id": 3812,
+      "predicted_text": " toward"
+    }
+  ]
+}
