@@ -224,6 +224,7 @@ configurations, and matched-budget versus pooled frontiers distinct.
 | Longer budget, narrow | 1 | 16 | 824,048 | 20,000 | 1,833 / 10,002 | 1,814 at step 19,840 | 1.020205828413 |
 | Longer budget, narrow | 2 | 16 | 827,328 | 20,000 | 454 / 10,002 | 454 at step 20,000 | 0.411472814485 |
 | Longer budget, narrow | 4 | 16 | 833,888 | 20,000 | 485 / 10,002 | 474 at step 19,968 | 0.463739087712 |
+| Longer budget, narrow | 8 | 16 | 847,008 | 20,000 | 106 / 10,002 | 97 at step 19,584 | 0.247292333787 |
 | Midpoint refinement | 1 | 24 | 1,238,376 | 20,000 | 3 / 10,002 | 2 at step 16,768 | 0.004384264733 |
 
 One block at width 24 completed all 20,000 updates (312.5 epochs) without
@@ -305,6 +306,30 @@ Artifacts: `runs/width_depth_long_1/width_16/layers_4/`. Independent prediction
 TSV SHA-256: `d8bc59b93f308c43abfe47873cf1d66bfc0a4bb1d1b5362e99629008191df311`.
 This trial ran from 03:39:37 to completion of both independent checks at
 04:06:23 UTC. No competing GPU experiment or test was launched during it.
+
+Eight blocks at width 16 completed all 20,000 updates with 106 errors,
+926 exact sentences, and mean loss 0.247292333787, without reaching the time
+cap. Fresh native checkpoint inference and independent retokenization agree;
+both prediction TSVs are byte-identical. All 100 FP32 weight files have the
+recipe-derived sizes and finite values, totaling 847,008 parameters
+(3,388,032 bytes). There are 21 first-suffix errors, 85 later content errors,
+and no EOS errors.
+
+Relative to two blocks, eight blocks correct 408 target positions but introduce
+60 errors, with 46 positions wrong in both. Relative to four blocks, they
+correct 442 positions and introduce 63 errors, with 43 shared wrong positions.
+The resulting 106 errors are substantially fewer than the shallower models'
+final counts, but still fail the exact criterion. The best observed evaluation
+had 97 errors at step 19,584; it is not the independently verified final result.
+These outcomes show a non-monotonic depth comparison under this fixed seed and
+budget, not a width-16 capacity bound.
+
+Checkpoint:
+`/home/ubuntu/checkpoints/memorize_general_facts/width_depth_long_1/width_16/layers_8/step_20000`.
+Artifacts: `runs/width_depth_long_1/width_16/layers_8/`. Independent prediction
+TSV SHA-256: `a8c3ccb9ce6badedd63576c96917ff6e1c6c19b8416e251859e0e06ded08660d`.
+The trial ran from 04:06:23 until both independent checks finished at 04:46:00
+UTC. No competing GPU experiment or test was launched during it.
 
 The width-64, one-block trial reached its full update cap, not its time cap.
 Its final checkpoint reloaded with the same two errors and passed the independent
@@ -461,15 +486,19 @@ fresh-process verification and independent retokenization/audit. The two
 prediction TSVs match byte-for-byte. At that point the pooled measured frontier
 was `(1,64)`.
 
-The next search, `runs/width_depth_long_1/`, started at 02:30:46 UTC. It tests
+The next search, `runs/width_depth_long_1/`, started at 02:30:46 UTC. It requested
 widths 32, 16, and 8 at depths 1, 2, 4, and 8, with an explicitly fixed single
 attention head and the same 20,000-update schedule and native binary as
 `width_depth_long_0`. One block at width 32 passed both independent checks at
 step 9,984, moving the measured longer-budget and pooled frontiers to `(1,32)`.
-One, two, and four blocks at width 16 have now completed and independently verified
-their 20,000-update budget failures above. Their completed artifacts are committed;
-the changing search manifest and future/live trials are not. The fixed-head driver and
-backward-compatible reporter pass all 119 Python experiment tests.
+One, two, four, and eight blocks at width 16 completed and independently verified
+their 20,000-update budget failures above. The search finished at 04:46:00 UTC
+with five verified trials: one success and four budget failures. Its final
+manifest and all completed artifacts are committed. Every requested width-8
+trial was skipped after a wider budget failure and remains untested under
+this protocol; deeper width-32 trials were skipped as dominated by the verified
+one-block success. The earlier fixed-head driver/report changes passed 119
+Python experiment tests at that stage.
 
 A one-block width-24 midpoint trial, `runs/width_depth_refine_24`, started at
 02:44:58 UTC with the same longer-budget protocol and one head. GPU contention
@@ -485,7 +514,7 @@ byte-for-byte, with the final norm indices remapped. Four-block width 16 then
 completed both checks at 04:06:23 UTC with the budget result above, and the
 existing driver started eight-block width 16. All 52 shared initial tensors
 between four/eight blocks match byte-for-byte, including the relocated final
-norm. Eight-block width 16 is still running and has no final outcome yet.
+norm. Eight-block width 16 completed at 04:46:00 UTC with the result above.
 Added tests specifically cover one 24-wide BF16 head
 at context 1,024 with CPU/GPU forward/backward agreement and three bitwise
 GPU repeats, plus complete one-head width-24 GPT-2 forward/backward and tied
@@ -497,11 +526,17 @@ controls, separately from pooled existence evidence; all 127 Python experiment
 tests pass. The current 20,000-update and pooled frontier remains `(1,32)`.
 
 The fresh 40,000-update one-block width-24 refinement was queued at 03:59:36
-UTC, but has not started training. Its CPU-only coordinator waits for the
-entire current search to finish and verifies its evidence and pinned input
-hashes before launching. See `runs/GPU_SCHEDULING.md` for the serialization
-details. The queued trial keeps the peak learning rate, seed, and head count
-fixed; its longer cosine schedule remains a separately reported protocol.
+UTC and started at 04:46:00 UTC, after the completed search exited and its
+evidence and pinned binary/corpus/tokenizer hashes passed verification. Its
+artifact root is `runs/width_depth_refine_24_long_0/`, with checkpoints under
+`/home/ubuntu/checkpoints/memorize_general_facts/width_depth_refine_24_long_0/`.
+All 16 initial weight tensors match the earlier one-block width-24 trial
+byte-for-byte. The peak learning rate, seed, head count, batch, and optimizer
+remain fixed, but the stretched cosine schedule is a separate protocol.
+The trial is currently running; its live artifacts and changing manifest are
+not committed. The reporter checks 11 completed 5,000-update trials, seven
+completed 20,000-update trials, and no verified 40,000-update result yet.
+See `runs/GPU_SCHEDULING.md` for the serialization details.
 
 After the active pass, refine observed width gaps with a small, bounded set of
 midpoints (such as 24 between 32 and 16, or 12 between 16 and 8). Fill omitted

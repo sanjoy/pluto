@@ -54,7 +54,11 @@ The same coordinator then started four-block width 16 normally. That trial
 completed all 20,000 updates with 485 errors and `reached_time_limit=0`, and
 finished both independent checks at **04:06:23 UTC**. No competing GPU trial
 or test was launched during it. The same coordinator then started eight-block
-width 16 normally. No process remains deliberately paused.
+width 16 normally. Eight-block width 16 then completed all 20,000 updates with
+106 errors and `reached_time_limit=0`; both independent checks finished at
+**04:46:00 UTC**. The search completed and its coordinator exited normally.
+No competing GPU experiment or test was launched during the eight-block trial.
+No process remains deliberately paused.
 
 Pausing the coordinator alone did not pause the earlier one-block child or
 alter that child's update schedule. None of these processes has been restarted.
@@ -67,7 +71,7 @@ elapsed durations from these trials are not isolated performance measurements.
 Implementation inspection and existing repeatability tests support independent
 per-update trajectories; no concurrent-versus-isolated replay was performed.
 
-## Queued width-24 longer-budget refinement
+## Serialized width-24 longer-budget refinement
 
 At **03:59:36 UTC**, a CPU-only coordinator (PID 3290991) was queued for the
 planned fresh one-block width-24, one-head, 40,000-update trial. It waits on a
@@ -84,4 +88,7 @@ preexisting output/checkpoint destinations. The new artifact root is
 `runs/width_depth_refine_24_long_0/`; its checkpoints will be under
 `/home/ubuntu/checkpoints/memorize_general_facts/width_depth_refine_24_long_0/`.
 This is a fresh initialization with a longer cosine schedule, not a checkpoint
-resume. The actual start and final result will be recorded by its own manifest.
+resume. At **04:46:00 UTC**, the predecessor exited successfully, all guards
+passed, and the new search launched. All 16 initial weight tensors match the
+earlier width-24 trial byte-for-byte. The new search is running; its own
+manifest records the start and will record its final outcome.

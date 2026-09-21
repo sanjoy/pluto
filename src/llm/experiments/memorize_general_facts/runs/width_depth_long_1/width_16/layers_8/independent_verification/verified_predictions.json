@@ -1,0 +1,67 @@
+{
+  "success": false,
+  "sentences": 1024,
+  "exact_sentences": 926,
+  "targets": 10002,
+  "errors": 106,
+  "accuracy": 0.9894021195760848,
+  "mean_loss_nats": 0.24729233378726054,
+  "corpus": "/home/ubuntu/code/pluto/src/llm/experiments/memorize_general_facts/runs/width_depth_long_1/width_16/layers_8/corpus.txt",
+  "corpus_sha256": "814c062e7d7592fe4a4e5b158a37bd37da51700f817c19eb981c1e93d33f245c",
+  "tokenizer": "/home/ubuntu/code/pluto/src/llm/experiments/memorize_general_facts/runs/width_depth_long_1/width_16/layers_8/tokenizer.json",
+  "tokenizer_sha256": "1fe93b6152957cf9cfd6d89002467f789ce8b3f3e000b3a2edf27c808ddd0b9e",
+  "predictions": "/home/ubuntu/code/pluto/src/llm/experiments/memorize_general_facts/runs/width_depth_long_1/width_16/layers_8/independent_verification/final_predictions.tsv",
+  "predictions_sha256": "a8c3ccb9ce6badedd63576c96917ff6e1c6c19b8416e251859e0e06ded08660d",
+  "prompt_tokens": 5,
+  "eos_scored": true,
+  "padding_scored": false,
+  "context_length": 1024,
+  "evidence_scope": "validated teacher-forced prediction artifact, not independent checkpoint inference",
+  "error_examples": [
+    {
+      "line_1based": 3,
+      "target_token_index_0based": 10,
+      "causal_prefix": "The flowers of a fig develop inside its hollow,",
+      "target_id": 11222,
+      "target_text": " flesh",
+      "predicted_id": 8701,
+      "predicted_text": " grass"
+    },
+    {
+      "line_1based": 25,
+      "target_token_index_0based": 13,
+      "causal_prefix": "A homophone sounds the same as another word but can differ in",
+      "target_id": 3616,
+      "target_text": " meaning",
+      "predicted_id": 2237,
+      "predicted_text": " six"
+    },
+    {
+      "line_1based": 26,
+      "target_token_index_0based": 9,
+      "causal_prefix": "Many tortoises feed mainly on leaves,",
+      "target_id": 8701,
+      "target_text": " grass",
+      "predicted_id": 5667,
+      "predicted_text": " leaves"
+    },
+    {
+      "line_1based": 35,
+      "target_token_index_0based": 8,
+      "causal_prefix": "An elephant's trunk combines its nose and",
+      "target_id": 6727,
+      "target_text": " upper",
+      "predicted_id": 6697,
+      "predicted_text": " opposite"
+    },
+    {
+      "line_1based": 50,
+      "target_token_index_0based": 10,
+      "causal_prefix": "Hydrogen has the lowest atomic number of any chemical",
+      "target_id": 5002,
+      "target_text": " element",
+      "predicted_id": 11904,
+      "predicted_text": " seeds"
+    }
+  ]
+}
