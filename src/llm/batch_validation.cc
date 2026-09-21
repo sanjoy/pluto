@@ -6,7 +6,7 @@
 
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "src/llm/layers/util/type_check.h"
+#include "src/llm/layers/type_check_util.h"
 #include "src/util/status_macros.h"
 
 namespace pluto::llm {

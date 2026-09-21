@@ -10,7 +10,7 @@
 #include "absl/types/span.h"
 #include "src/llm/layers/combinators.h"
 #include "src/llm/layers/reference_internal.h"
-#include "src/llm/layers/util/type_check.h"
+#include "src/llm/layers/type_check_util.h"
 #include "src/util/status_macros.h"
 
 namespace pluto::llm {

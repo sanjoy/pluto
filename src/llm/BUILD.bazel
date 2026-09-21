@@ -424,7 +424,7 @@ cc_library(
 
 cc_library(
     name = "layer_type_check",
-    hdrs = ["layers/util/type_check.h"],
+    hdrs = ["layers/type_check_util.h"],
     deps = [
         ":layer",
         "//src/util:status_macros",

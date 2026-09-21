@@ -21,8 +21,8 @@
 #include "absl/types/span.h"
 #include "src/cuda/buffer.h"
 #include "src/llm/layer_hooks.h"
+#include "src/llm/layers/type_check_util.h"
 #include "src/llm/layers/util.h"
-#include "src/llm/layers/util/type_check.h"
 #include "src/util/status_macros.h"
 
 namespace pluto::llm {
