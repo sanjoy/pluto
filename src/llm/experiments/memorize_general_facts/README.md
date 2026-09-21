@@ -213,3 +213,22 @@ raw checkpoint file sizes, so preserve the run's configuration. See
 [WIDTH_DEPTH_RESULTS.md](WIDTH_DEPTH_RESULTS.md) for the search protocol,
 empirical frontier, and distinction between a training-budget failure and a
 capacity lower bound.
+
+The verified sequential driver explores the coarse grid without rerunning
+already dominated widths at greater depths. Use fresh parent directories:
+
+```sh
+python src/llm/experiments/memorize_general_facts/run_width_depth_search.py \
+  --tokenizer=/home/ubuntu/datasets/tokenizer/gpt2 \
+  --checkpoint_dir=/home/ubuntu/checkpoints/memorize_general_facts/new_width_search \
+  --output_dir=src/llm/experiments/memorize_general_facts/runs/new_width_search
+```
+
+Defaults are `--widths=256,128,64,32,16 --depths=1,2,3,4,5,6,7,8` and the same
+5,000-update schedule as the earlier experiment. The Python environment needs
+`tokenizers`. Both successes and budget failures are independently reloaded and
+audited. `width_depth_search_summary.json` records the measured frontier and
+minimum-parameter successful model. A budget failure advances to the next
+depth; an execution or evidence-validation error stops the search. The native
+binary and input hashes are pinned, so do not rebuild that executable or edit
+the inputs while a search is active.

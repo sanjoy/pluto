@@ -73,6 +73,11 @@ retokenized/audited; the expected nonperfect result is preserved in
 `runs/width_config_smoke/`. This checks training/checkpoint mechanics only, not
 the configuration's ability to memorize within the actual search budget.
 
-The search driver is being validated before launch. No new memorization result
-has been claimed yet. The independently verified starting point remains one
-block at width 512, with 29,416,960 physical parameters.
+The search driver passes 33 targeted CPU tests; all 80 Python experiment tests
+pass. Its end-to-end two-update width-16 trial correctly preserves and
+independently verifies an expected budget failure, then completes normally;
+that control-flow smoke test is in `runs/width_driver_smoke/`.
+
+The coarse search is ready to launch. No new memorization result has been
+claimed yet. The independently verified starting point remains one block at
+width 512, with 29,416,960 physical parameters.
