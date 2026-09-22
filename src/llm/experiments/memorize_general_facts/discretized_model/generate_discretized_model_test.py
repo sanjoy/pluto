@@ -119,8 +119,8 @@ class GenerateDriverTest(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()):
             driver.generate(args)
         source = (args.output / "model.cc").read_text()
-        self.assertIn("const Model& GeneratedModel()", source)
-        self.assertNotIn("const Model &GeneratedModel()", source)
+        self.assertIn("const DiscreteModel& GeneratedModel()", source)
+        self.assertNotIn("const DiscreteModel &GeneratedModel()", source)
 
     def test_completed_reduction_gets_independent_certificate(self):
         args = self.arguments("--reduce")

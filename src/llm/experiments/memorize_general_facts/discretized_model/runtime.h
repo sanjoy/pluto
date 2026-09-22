@@ -18,7 +18,8 @@ struct DiscreteHiddenState;
 
 // A compact vocabulary token; explicit state conversion preserves its ID.
 struct DiscreteToken {
-  int value = 0;  // Index in Model::vocabulary; negative values are invalid.
+  // Index in DiscreteModel::vocabulary; negative values are invalid.
+  int value = 0;
 
   constexpr explicit operator DiscreteHiddenState() const;
   constexpr auto operator<=>(const DiscreteToken&) const = default;
@@ -39,7 +40,8 @@ constexpr DiscreteToken::operator DiscreteHiddenState() const {
   return DiscreteHiddenState{value};
 }
 
-// One vocabulary entry, indexed by DiscreteToken::value in Model::vocabulary.
+// One vocabulary entry, indexed by DiscreteToken::value in
+// DiscreteModel::vocabulary.
 struct VocabularyRow {
   int32_t original_id;      // Token ID before compact-vocabulary remapping.
   absl::string_view bytes;  // Exact decoded bytes, not necessarily valid UTF-8.
@@ -91,10 +93,10 @@ class PositionEmbedding {
 // no sample identity, corpus text, expected suffix, or floating-point weights
 // are available to this object. The model borrows its operations and
 // vocabulary; all referenced objects must outlive its use.
-struct Model {
+struct DiscreteModel {
   uint32_t context_length;  // Maximum number of tokens in a causal sequence.
-  uint32_t prompt_tokens;   // Prefix length for corpus verification.
-  DiscreteToken eos_token;  // Compact ID that terminates generation.
+  uint32_t prompt_token_count;  // Prefix length for corpus verification.
+  DiscreteToken eos_token;      // Compact ID that terminates generation.
   // Indexed by compact DiscreteToken; its bytes are also used for decoding.
   absl::Span<const VocabularyRow> vocabulary;
   // Ordered transformer blocks; each pairs its attention and MLP operations.
@@ -108,23 +110,23 @@ struct Model {
 // Checks dimensions, including that positions fit in int32_t. Generation and
 // independent tests verify the individual operations' transition behavior.
 // Inference also calls this inexpensive structural check before dispatch.
-absl::Status ValidateModel(const Model& model);
+absl::Status ValidateModel(const DiscreteModel& model);
 
 // Executes entry -> (causal attention -> pointwise MLP)* -> language modeling
 // head. Recomputes all real positions. Unknown keys fail explicitly; there is
 // no nearest-state fallback and no corpus-line or continuation lookup.
 absl::StatusOr<DiscreteToken> PredictNext(
-    const Model& model, absl::Span<const DiscreteToken> tokens);
+    const DiscreteModel& model, absl::Span<const DiscreteToken> tokens);
 
 // Returns newly generated tokens, INCLUDING EOS when reached. Zero budget
 // returns an empty vector after prompt validation. Stops at context_length.
 absl::StatusOr<std::vector<DiscreteToken>> Generate(
-    const Model& model, absl::Span<const DiscreteToken> prompt,
+    const DiscreteModel& model, absl::Span<const DiscreteToken> prompt,
     size_t max_new_tokens);
-absl::StatusOr<std::string> Decode(const Model& model,
+absl::StatusOr<std::string> Decode(const DiscreteModel& model,
                                    absl::Span<const DiscreteToken> tokens);
 
 // Implemented by the generated production code; it does not link fixtures.
-const Model& GeneratedModel();
+const DiscreteModel& GeneratedModel();
 
 }  // namespace pluto::llm::discretized

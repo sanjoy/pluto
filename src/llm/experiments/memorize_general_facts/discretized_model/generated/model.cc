@@ -6,7 +6,7 @@
 #include "vocabulary_tokens.h"
 
 namespace pluto::llm::discretized {
-const Model& GeneratedModel() {
+const DiscreteModel& GeneratedModel() {
   static const Transformer kTransformers[] = {
       {GeneratedAttention0(), GeneratedMlp0()},
       {GeneratedAttention1(), GeneratedMlp1()},
@@ -17,13 +17,13 @@ const Model& GeneratedModel() {
       {GeneratedAttention6(), GeneratedMlp6()},
       {GeneratedAttention7(), GeneratedMlp7()},
   };
-  static const Model model{1024,
-                           5,
-                           vocab::kEos_4474,
-                           GeneratedVocabulary(),
-                           {kTransformers, 8},
-                           GeneratedLanguageModelingHead(),
-                           GeneratedPositionEmbedding()};
+  static const DiscreteModel model{1024,
+                                   5,
+                                   vocab::kEos_4474,
+                                   GeneratedVocabulary(),
+                                   {kTransformers, 8},
+                                   GeneratedLanguageModelingHead(),
+                                   GeneratedPositionEmbedding()};
   return model;
 }
 }  // namespace pluto::llm::discretized

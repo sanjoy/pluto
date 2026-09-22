@@ -307,7 +307,7 @@ the same runtime interfaces:
   position's attention residual symbol.
 - `Map` maps one hidden state to another; MLPs and the language modeling head
   implement it. The head's output encodes the compact next-token ID.
-- Each `Transformer` pairs attention and MLP references. `Model::transformers`
+- Each `Transformer` pairs attention and MLP references. `DiscreteModel::transformers`
   holds these blocks in execution order, with separate references to the
   position embedding and language modeling head.
 
