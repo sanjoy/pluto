@@ -700,6 +700,4 @@ TransitionResult GeneratedEntryFunction(TokenId token, uint32_t position) {
   return {4475u + static_cast<StateId>(packed >> 26)};
 }
 
-absl::Span<const EntryRow> GeneratedEntry() { return {}; }
-
 }  // namespace pluto::llm::discretized

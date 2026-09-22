@@ -13088,6 +13088,6 @@ TransitionResult Attention6(absl::Span<const StateId> history) {
   }
 }
 }  // namespace
-AttentionTable GeneratedAttention6() { return {{}, {}, Attention6}; }
+AttentionTable GeneratedAttention6() { return {Attention6}; }
 
 }  // namespace pluto::llm::discretized

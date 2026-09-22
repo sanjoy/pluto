@@ -20,7 +20,6 @@ const Model& GeneratedModel() {
                            5,
                            vocab::kEos_4474,
                            GeneratedVocabulary(),
-                           GeneratedEntry(),
                            {kAttention, 8},
                            {kMlp, 8},
                            GeneratedSnap(),

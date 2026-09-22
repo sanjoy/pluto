@@ -294,8 +294,15 @@ python3 -B src/llm/experiments/memorize_general_facts/discretized_model/generate
   --save_model=/tmp/facts-compact.json --output=/tmp/facts-compact-generated
 ```
 
-The output path must be fresh. Omit `--compact_transitions` to emit the original
-per-boundary tables for comparison. All generation logic and its Python tests
+The output path must be fresh. Omit `--compact_transitions` to emit private
+per-boundary tables behind binary-search lookup functions. Both modes expose
+the same compiled-function-only runtime interface: entry, attention, MLP, and
+snap must each provide a pure lookup returning `TransitionResult`. The runtime
+has no table storage or alternate dispatch path. Missing functions are rejected
+before inference; unsupported inputs still fail explicitly. Generation validates
+table structure, and tests compare lookup outputs against the source records.
+
+All generation logic and its Python tests
 live alongside this README: the driver, C++ emitter, state reduction,
 irreducibility checker, and compact-transition helpers. Generated C++ stays in
 `generated/`. Benchmarking and training-sweep utilities remain in

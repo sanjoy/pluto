@@ -13294,6 +13294,6 @@ TransitionResult Attention7(absl::Span<const StateId> history) {
   }
 }
 }  // namespace
-AttentionTable GeneratedAttention7() { return {{}, {}, Attention7}; }
+AttentionTable GeneratedAttention7() { return {Attention7}; }
 
 }  // namespace pluto::llm::discretized

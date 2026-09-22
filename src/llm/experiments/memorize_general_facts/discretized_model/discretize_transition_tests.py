@@ -185,6 +185,8 @@ namespace {{
 constexpr size_t kLayers = {layers};
 constexpr size_t kSampleCount = {len(samples)};
 struct Sample {{ size_t token_offset; size_t state_offset; size_t length; }};
+// Independent readout expectations; not part of the production model interface.
+struct SnapRow {{ StateId input; StateId output; }};
 struct AttentionProbe {{
   size_t block; size_t offset; size_t length; TransitionResult expected;
 }};
@@ -195,7 +197,7 @@ struct EntryProbe {{ TokenId token; uint32_t position; TransitionResult expected
     body += _array("TokenId", "kSampleTokens", (token_names[t] for t in tokens), 4)
     body += _array("StateId", "kExpectedStates", map(str, states), 16)
     body += _array("Sample", "kSamples", (f"{{{a}, {b}, {c}}}" for a, b, c in samples))
-    body += _array("StateRow", "kSnapRows",
+    body += _array("SnapRow", "kSnapRows",
                    (f"{{{state}, {token_names[token]}}}" for state, token in sorted(model["snap"])))
     body += _array("StateId", "kAttentionProbeKeys", map(str, attention_keys), 16)
     body += _array("AttentionProbe", "kAttentionProbes", attention_rows)

@@ -12,6 +12,6 @@ TransitionResult Mlp3(StateId state) {
   return {state + 48u};
 }
 }  // namespace
-StateTable GeneratedMlp3() { return {{}, Mlp3}; }
+StateTable GeneratedMlp3() { return {Mlp3}; }
 
 }  // namespace pluto::llm::discretized

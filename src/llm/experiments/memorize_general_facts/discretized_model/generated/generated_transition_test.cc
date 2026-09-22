@@ -16,6 +16,11 @@ struct Sample {
   size_t state_offset;
   size_t length;
 };
+// Independent readout expectations; not part of the production model interface.
+struct SnapRow {
+  StateId input;
+  StateId output;
+};
 struct AttentionProbe {
   size_t block;
   size_t offset;
@@ -36270,7 +36275,7 @@ constexpr Sample kSamples[] = {
     {14051, 238867, 13}, {14064, 239088, 13}, {14077, 239309, 10},
     {14087, 239479, 11},
 };
-constexpr StateRow kSnapRows[] = {
+constexpr SnapRow kSnapRows[] = {
     {9664, vocab::kComma_0},
     {9665, vocab::kHyphen_1},
     {9666, vocab::kPeriod_2},
