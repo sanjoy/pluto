@@ -1,0 +1,162 @@
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+
+cc_library(
+    name = "weights",
+    srcs = ["weights.cc"],
+    hdrs = ["weights.h"],
+    deps = [
+        "//src/llm:gpt2",
+        "//src/llm:layer",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "evaluation",
+    srcs = ["evaluation.cc"],
+    hdrs = ["evaluation.h"],
+    deps = [
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset:padded_line_dataset",
+        "//src/llm:batch_validation",
+        "//src/llm:extract_top1_ids",
+        "//src/llm:layer",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_library(
+    name = "runner",
+    srcs = ["runner.cc"],
+    hdrs = ["runner.h"],
+    deps = [
+        ":evaluation",
+        ":weights",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/util:combine_statuses",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/functional:function_ref",
+        "@abseil-cpp//absl/status:statusor",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_library(
+    name = "html",
+    srcs = ["html.cc"],
+    hdrs = ["html.h"],
+    deps = [
+        ":evaluation",
+        ":weights",
+        "//src/llm:gpt2",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+    ],
+)
+
+cc_binary(
+    name = "weight_sensitivity",
+    srcs = ["weight_sensitivity.cc"],
+    deps = [
+        ":evaluation",
+        ":html",
+        ":runner",
+        ":weights",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset",
+        "//src/dataset:compact_vocabulary",
+        "//src/dataset:gpt2_tokenizer",
+        "//src/dataset:padded_line_dataset",
+        "//src/llm:checkpoint",
+        "//src/llm:gpt2",
+        "//src/llm:layer",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_test(
+    name = "weights_test",
+    srcs = ["weights_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":weights",
+        "//src/cuda:executor",
+        "//src/llm:gpt2",
+        "//src/llm:layer",
+        "@abseil-cpp//absl/types:span",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "evaluation_test",
+    srcs = ["evaluation_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":evaluation",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset:padded_line_dataset",
+        "//src/dataset:plain_text_tokenizer",
+        "//src/llm:embedding",
+        "//src/llm:extract_top1_ids",
+        "//src/llm:layer",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "runner_test",
+    srcs = ["runner_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":runner",
+        ":weights",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "html_test",
+    size = "small",
+    srcs = ["html_test.cc"],
+    deps = [
+        ":html",
+        "@googletest//:gtest_main",
+    ],
+)
