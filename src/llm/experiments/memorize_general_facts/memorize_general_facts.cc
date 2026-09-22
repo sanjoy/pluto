@@ -167,12 +167,9 @@ Gpt2Config ModelConfiguration(int layers, int vocabulary_size) {
 // cannot silently reinterpret the embedding rows on reload.
 absl::Status SaveCheckpoint(cuda::Executor& executor, const Layer& model,
                             const std::filesystem::path& directory,
-                            const CompactVocabularyTokenizer* vocabulary) {
+                            const CompactVocabularyTokenizer& vocabulary) {
   RETURN_IF_ERROR(WriteToDirectory(executor, model, directory));
-  if (vocabulary != nullptr)
-    RETURN_IF_ERROR(
-        vocabulary->SaveToFile(directory / "compact_vocabulary.tsv"));
-  return absl::OkStatus();
+  return vocabulary.SaveToFile(directory / "compact_vocabulary.tsv");
 }
 
 struct Metrics {
@@ -404,8 +401,14 @@ absl::StatusOr<bool> TrainDepth(cuda::Executor& executor,
       << " feed_forward_width=" << model_config.feed_forward_width
       << " parameters=" << parameters << " samples=" << training->sample_count()
       << " scored_targets=" << training->supervised_row_count() << std::endl;
-  RETURN_IF_ERROR(
-      SaveCheckpoint(executor, *model, checkpoints / "step_0", vocabulary));
+  // Full-vocabulary checkpoints use original token IDs and need no mapping.
+  const auto save_checkpoint =
+      [&](const std::filesystem::path& directory) -> absl::Status {
+    if (vocabulary != nullptr)
+      return SaveCheckpoint(executor, *model, directory, *vocabulary);
+    return WriteToDirectory(executor, *model, directory);
+  };
+  RETURN_IF_ERROR(save_checkpoint(checkpoints / "step_0"));
   RETURN_IF_ERROR(executor.Synchronize());
   const auto start = std::chrono::steady_clock::now();
   auto report = [&](int step, const Metrics& metrics) {
@@ -461,17 +464,15 @@ absl::StatusOr<bool> TrainDepth(cuda::Executor& executor,
       report(step, metrics);
     }
     if (step % absl::GetFlag(FLAGS_checkpoint_every) == 0)
-      RETURN_IF_ERROR(SaveCheckpoint(executor, *model,
-                                     checkpoints / absl::StrCat("step_", step),
-                                     vocabulary));
+      RETURN_IF_ERROR(
+          save_checkpoint(checkpoints / absl::StrCat("step_", step)));
     if (timeout) {
       reached_time_limit = true;
       break;
     }
   }
   const auto final_checkpoint = checkpoints / absl::StrCat("step_", completed);
-  RETURN_IF_ERROR(
-      SaveCheckpoint(executor, *model, final_checkpoint, vocabulary));
+  RETURN_IF_ERROR(save_checkpoint(final_checkpoint));
   // Reload the on-disk weights and repeat the full audit. This verifies that
   // success belongs to a usable checkpoint, not just an in-memory model.
   RETURN_IF_ERROR(ReadFromDirectory(executor, *model, final_checkpoint));
