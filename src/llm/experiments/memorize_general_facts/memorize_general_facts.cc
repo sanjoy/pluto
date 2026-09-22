@@ -188,8 +188,8 @@ struct Metrics {
 // Reading small diagnostic arrays is intentional. The vocabulary-sized
 // logits stay on-device; all transfers use executor-owned pinned memory.
 template <class T>
-absl::StatusOr<cuda::PageLockedHostArray<T>> Download(cuda::Executor& executor,
-                                                      const Buffer& source) {
+absl::StatusOr<cuda::PageLockedHostArray<T>> CopyD2H(cuda::Executor& executor,
+                                                   const Buffer& source) {
   ASSIGN_OR_RETURN(auto host, cuda::PageLockedHostArray<T>::Allocate(
                                   executor, source.size_bytes() / sizeof(T)));
   RETURN_IF_ERROR(cuda::CudaStatus(
@@ -216,10 +216,10 @@ absl::StatusOr<Metrics> EvaluateExact(
                                          batch.targets, vocabulary_size));
     ASSIGN_OR_RETURN(auto loss_forward,
                      loss.fwd(executor, {forward.outputs[0], batch.targets}));
-    ASSIGN_OR_RETURN(auto ids, Download<int>(executor, predictions));
-    ASSIGN_OR_RETURN(auto targets, Download<int>(executor, batch.targets));
+    ASSIGN_OR_RETURN(auto ids, CopyD2H<int>(executor, predictions));
+    ASSIGN_OR_RETURN(auto targets, CopyD2H<int>(executor, batch.targets));
     ASSIGN_OR_RETURN(auto losses,
-                     Download<float>(executor, loss_forward.outputs[0]));
+                     CopyD2H<float>(executor, loss_forward.outputs[0]));
     RETURN_IF_ERROR(executor.Synchronize());
     int counted = 0;
     for (int sample = 0; sample < batch.batch_size; ++sample) {
