@@ -41,7 +41,8 @@ bool Covers(const StateTable& table, const std::vector<int>& states) {
 }
 }  // namespace
 
-absl::StatusOr<CertificateResult> CertifyModel(const SymbolicModel& model) {
+absl::StatusOr<CertificateResult> CertifyCompaction(
+    const SymbolicModel& model) {
   RETURN_IF_ERROR(internal::ValidateTables(model, false));
   const int layers = model.metadata.layers;
   std::vector<std::vector<int>> by_stage(2 * layers + 1);
@@ -133,7 +134,7 @@ absl::StatusOr<CertificateResult> CertifyModel(const SymbolicModel& model) {
         }
         if (!witnessed)
           return inconclusive(
-              "state identification has no contradictory attention-key "
+              "state compaction has no contradictory attention-key "
               "collision",
               stage, std::pair(first, second));
       }
@@ -141,7 +142,7 @@ absl::StatusOr<CertificateResult> CertifyModel(const SymbolicModel& model) {
            "every pair collides on already-distinguishable attention outputs");
   }
   report.status = CertificateStatus::kProven;
-  report.pairwise_irreducible_proven = true;
+  report.pairwise_compaction_complete = true;
   return report;
 }
 }  // namespace pluto::llm::discretized::generator

@@ -1,7 +1,7 @@
 Historical transition measurements for the checked-in 6,514-state model.
 These measurements were produced by the earlier Python generator. This
 report only changes their presentation; no transition code was regenerated
-and no full reduction search was rerun during the C++ generator migration.
+and no full compaction search was rerun during the C++ generator migration.
 Byte counts below retain their original formatted/unformatted meanings.
 
 relabeling:

@@ -22,9 +22,10 @@ struct CertificateStage {
   auto operator<=>(const CertificateStage&) const = default;
 };
 
-// A sufficient proof of pairwise irreducibility, not a claim that no different
-// global partition could use fewer states. Inconclusive results identify the
-// first boundary and optional state pair the proof could not distinguish.
+// A sufficient proof of complete pairwise compaction, not a claim that no
+// different global partition could use fewer states. Inconclusive results
+// identify the first boundary and optional state pair the proof could not
+// distinguish.
 struct CertificateResult {
   CertificateStatus status = CertificateStatus::kInconclusive;
   int64_t states = 0;
@@ -32,7 +33,7 @@ struct CertificateResult {
   int64_t same_boundary_pairs = 0;
   int64_t proven_pairs = 0;
   int64_t attention_pairs_checked = 0;
-  bool pairwise_irreducible_proven = false;
+  bool pairwise_compaction_complete = false;
   bool global_minimum_proven = false;
   std::vector<CertificateStage> stages;
   std::string reason;
@@ -42,9 +43,10 @@ struct CertificateResult {
 };
 
 // Independent backward collision proof over immutable transition tables. It
-// reads no reducer state, search history, or rejection cache. "Inconclusive"
-// is not failure: this sufficient argument need not prove every irreducible
-// model. A successful proof is pairwise, not global-partition minimality.
-absl::StatusOr<CertificateResult> CertifyModel(const SymbolicModel& model);
+// reads no compactor state, search history, or rejection cache. "Inconclusive"
+// is not failure: this sufficient argument need not prove compaction complete
+// for every model. A successful proof is pairwise, not global-partition
+// minimality.
+absl::StatusOr<CertificateResult> CertifyCompaction(const SymbolicModel& model);
 
 }  // namespace pluto::llm::discretized::generator

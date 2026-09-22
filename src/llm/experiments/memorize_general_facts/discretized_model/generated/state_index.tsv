@@ -1,6 +1,6 @@
 # Inspection only; never linked into or read by inference.
 # Examples are empirical captured token-prefix contexts, not semantic labels.
-# A representative vector is only one original member, not the meaning of a merged class; unknown membership counts are not guessed.
+# A representative vector is only one original member, not the meaning of a compacted class; unknown membership counts are not guessed.
 # Occurrences count each real sample position once at its named boundary, including prompt positions; no padding or repeated autoregressive passes.
 # Each example has complete compact token IDs and text preview of at most 160 original bytes; at most three distinct examples per state.
 state_id	boundary	representative_bf16_hex	observed_occurrences	empirical_prefix_examples_json	original_member_count

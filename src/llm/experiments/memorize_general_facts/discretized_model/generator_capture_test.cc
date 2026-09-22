@@ -52,7 +52,7 @@ TEST_F(GeneratorCaptureTest, OneStepGenerationWritesOnlyCppAndReadableReports) {
   ASSERT_NE(workspace, nullptr);
   options_.clang_format_config =
       std::filesystem::path(runfiles) / workspace / ".clang-format";
-  options_.reduce = true;
+  options_.compaction = true;
   options_.compact_transitions = true;
   options_.state_index = true;
   auto model = Generate(options_);
@@ -142,7 +142,11 @@ TEST_F(GeneratorCaptureTest,
       "--prompt_tokens=1",
       "--expected_samples=1",
       "--verify_greedy",
-      "--reduce",
+      "--compaction",
+      "--compaction_neighbors=2",
+      "--compaction_max_passes=3",
+      "--compaction_max_attempts=10",
+      "--compaction_exhaustive_pair_limit=1000",
       "--compact_transitions",
       "--state_index"};
   const auto result = RunProcess(command);
@@ -158,6 +162,13 @@ TEST_F(GeneratorCaptureTest,
       std::filesystem::is_regular_file(output / "generation_report.txt"));
   EXPECT_TRUE(
       std::filesystem::is_regular_file(output / "transition_patterns.txt"));
+  auto report = ReadFile(output / "generation_report.txt");
+  ASSERT_TRUE(report.ok()) << report.status();
+  EXPECT_NE(report->find("compaction_search:"), std::string::npos);
+  EXPECT_NE(report->find("nearest_neighbors: 2"), std::string::npos);
+  EXPECT_NE(report->find("exhaustive_pair_limit: 1000"), std::string::npos);
+  EXPECT_NE(report->find("pairwise_compaction_complete: true"),
+            std::string::npos);
   ExpectNoIntermediateFiles();
 }
 

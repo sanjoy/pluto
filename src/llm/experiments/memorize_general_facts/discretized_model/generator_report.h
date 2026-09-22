@@ -7,7 +7,7 @@
 
 namespace pluto::llm::discretized::generator {
 
-// Human-readable reports are presentation only. Generation, reduction, and
+// Human-readable reports are presentation only. Generation, compaction, and
 // verification exchange typed data and never parse these strings back.
 std::string FormatProgress(const ProgressEvent& event);
 std::string FormatVerification(const VerificationResult& result);

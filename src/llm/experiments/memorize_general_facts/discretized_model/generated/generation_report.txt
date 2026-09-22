@@ -5,11 +5,11 @@ This is the existing 6,514-hidden-state, eight-block CPU model. Its C++
 sources and finite transition domains were not changed during migration
 from the Python generator to the one-step C++ checkpoint converter.
 
-Historical sections below preserve earlier reduction statistics, timings,
-independent pairwise-irreducibility evidence, verification results, input
-identifiers, and hashes. They do not claim that the full reduction search
+Historical sections below preserve earlier compaction statistics, timings,
+independent pairwise compaction completeness evidence, verification results, input
+identifiers, and hashes. They do not claim that the full compaction search
 or its certificate was rerun with the new C++ generator. Pairwise
-irreducibility is not a proof of a global minimum.
+compaction completeness is not a proof of a global minimum.
 
 The source paths (including temporary .json paths), generator name, and
 hashes in historical sections identify past inputs and artifacts only.
@@ -18,8 +18,11 @@ The former manifest.json, provenance.json, and transition_patterns.json
 reports were converted to these readable text reports and removed; their
 original bytes remain recoverable from Git history, with hashes below.
 
-current_generated_files_sha256 includes the updated transition-test comment;
-the generated transition behavior is unchanged. It covers every current file
+Report labels and inspection comments use compaction terminology. Historical
+hashes below still identify the original artifact bytes; no search was rerun.
+
+current_generated_files_sha256 includes the updated inspection comments and
+text reports; generated transition behavior is unchanged. It covers every current file
 in this generated directory except
 this self-referential report, including transition_patterns.txt. It excludes
 all three removed JSON reports. Historical hash lists are retained separately
@@ -51,11 +54,11 @@ current_generated_files_sha256:
   model.cc: "8124e32d0c1335823d341277816bcd7d9b60f3d143ee8d2283e1d88342e7119a"
   model.h: "fd8655b9fc766c97bdb8bf642454faa4ac6ce5bf0a119264c711619801dc02e6"
   prompt_encoder.cc: "56734fc0f086097cc74744babd8e39b28543d78596510a25c1a73861209ec89d"
-  state_index.tsv: "dd43d9deff2b4bddf214246df286d3f76b9d3d53fc4cfbc8cddff424e1b6ca1c"
-  state_members.tsv: "0a5827de91a26de0f272d239df558767cd2b68599014bd719bea565c97329484"
+  state_index.tsv: "4ea2dc32fa7a8ff855dcb5168915f3b6fc6c20a40391c0bdd8d556fcbe260dc3"
+  state_members.tsv: "70e702c5769d0e286ebde5edbdcc2ad493e41faf7b7fb2c6619224545a8f8657"
   state_relabeling.tsv: "0b35dc730a50d065250f3ad6ae71fd4d04a5d7bdb8f6848ade5113ae2ffe98ae"
   tables.h: "bf16820e9438b1f7694e16acede14799a04aeb0fb65cd51909081b69a67d8b92"
-  transition_patterns.txt: "26f7c85446364b4574ab94cc8a247fd59fb7e75b8d0d74878844fc1bebdd7e81"
+  transition_patterns.txt: "e118451ca2e57ceee2b4612bf35e4bbfe2a9a7e1bc2eaeb402eea152aefb844e"
   verification.cc: "621c3ae0b36bed6acb00c5385586f7ccbc6c6a583798d40af33ba62d733b211d"
   vocabulary.cc: "58d0629f1c3f023bdc0890f96b57e8b8eceb6b81f14d602749372b2ea713670b"
   vocabulary_tokens.h: "a1da08294158df7213097f7dbfec93f65c333ffd98ef24b0dcbbc5fc858472b9"
@@ -246,13 +249,13 @@ historical_provenance:
     verification.cc: "621c3ae0b36bed6acb00c5385586f7ccbc6c6a583798d40af33ba62d733b211d"
     vocabulary.cc: "58d0629f1c3f023bdc0890f96b57e8b8eceb6b81f14d602749372b2ea713670b"
     vocabulary_tokens.h: "a1da08294158df7213097f7dbfec93f65c333ffd98ef24b0dcbbc5fc858472b9"
-  irreducibility_certificate:
+  compaction_certificate:
     attention_pairs_checked: 8990
     boundaries: 17
     certificate_schema: 1
     global_minimum_proven: false
     method: "independent_backward_table_collisions"
-    pairwise_irreducible_proven: true
+    pairwise_compaction_complete: true
     proven_pairs: 8423754
     same_boundary_pairs: 8423754
     stages:
@@ -349,8 +352,8 @@ historical_provenance:
   source: "/tmp/pluto-lm-head.tiw7U5/search-final.json"
   source_sha256: "aa7a6ce0ef43d241e888177d5c936c4597217d49ce2ae0569a4bd9231b5095cc"
   stats:
-    accepted_merge_records: 89345
-    accepted_merges_sha256: "f850a19d6b9d7e230601fb38a723cfa13ebd5fcb552a2f2bc435bac98f46908e"
+    accepted_compaction_records: 89345
+    accepted_compactions_sha256: "f850a19d6b9d7e230601fb38a723cfa13ebd5fcb552a2f2bc435bac98f46908e"
     accepted_seeds: 89345
     attempted_seeds: 116246
     cached_rejections: 168004
@@ -359,8 +362,8 @@ historical_provenance:
     exact_states: 221558
     membership_complete: true
     membership_original_states: 221558
-    merge_distance_summary:
-      induced_unions: 125699
+    compaction_distance_summary:
+      induced_compactions: 125699
       maximum: 4.211830037493031
       minimum: 0.000244140625
     pointwise_relabeling:
@@ -410,7 +413,7 @@ historical_provenance:
             - 45
             - 2900
             - 2900
-          unions: 323
+          compactions: 323
         -
           accepted: 317
           attempted: 9347
@@ -436,7 +439,7 @@ historical_provenance:
             - 45
             - 2900
             - 2900
-          unions: 329
+          compactions: 329
         -
           accepted: 317
           attempted: 9378
@@ -462,7 +465,7 @@ historical_provenance:
             - 45
             - 2900
             - 2900
-          unions: 329
+          compactions: 329
         -
           accepted: 325
           attempted: 18252
@@ -488,7 +491,7 @@ historical_provenance:
             - 45
             - 2900
             - 2900
-          unions: 339
+          compactions: 339
         -
           accepted: 325
           attempted: 18252
@@ -514,13 +517,13 @@ historical_provenance:
             - 45
             - 2900
             - 2900
-          unions: 339
+          compactions: 339
       nearest_neighbors: 16
-      pairwise_irreducible: true
+      pairwise_compaction_complete: true
       remaining_pairs_before_sweep: 17131
       seconds: 558.603562018834
       stopping_reason: "no_compatible_pair"
-    state_unions: 215044
+    state_compactions: 215044
     states: 6514
     states_per_stage:
       - 52

@@ -93,51 +93,53 @@ struct VerificationResult {
   auto operator<=>(const VerificationResult&) const = default;
 };
 
-struct MergeRecord {
+struct CompactionRecord {
   int boundary = 0;
   std::array<int, 2> seed_ids{};
   double euclidean_distance =
-      0;                       // Distance between the chosen representatives.
-  int64_t induced_unions = 0;  // Further unions forced by this seed merge.
-  auto operator<=>(const MergeRecord&) const = default;
+      0;  // Distance between the chosen representatives.
+  int64_t induced_compactions =
+      0;  // Further compactions forced by this seed compaction.
+  auto operator<=>(const CompactionRecord&) const = default;
 };
 
-enum class ReductionPhase {
+enum class CompactionPhase {
   kNearest,
   kNearestPassComplete,
   kExhaustive,
   kExhaustivePassComplete,
 };
 
-struct ReductionProgress {
-  ReductionPhase phase = ReductionPhase::kNearest;
+struct CompactionProgress {
+  CompactionPhase phase = CompactionPhase::kNearest;
   int pass = 0;
   int64_t states = 0;
   std::vector<int> states_per_stage;
   int64_t attempted = 0;
   int64_t accepted = 0;
-  int64_t unions = 0;
+  int64_t compactions = 0;
   double seconds = 0;
-  auto operator<=>(const ReductionProgress&) const = default;
+  auto operator<=>(const CompactionProgress&) const = default;
 };
 
-enum class SearchStoppingReason {
+enum class CompactionStoppingReason {
   kPassLimit,
   kAttemptLimit,
   kNearestCandidatesExhausted,
   kNoCompatiblePair,
 };
 
-struct SearchStatistics {
-  SearchStoppingReason stopping_reason = SearchStoppingReason::kPassLimit;
-  bool pairwise_irreducible = false;
+struct CompactionSearchStatistics {
+  CompactionStoppingReason stopping_reason =
+      CompactionStoppingReason::kPassLimit;
+  bool pairwise_compaction_complete = false;
   bool global_minimum_proven = false;
   int nearest_neighbors = 0;
   int64_t exhaustive_pair_limit = 0;
   int64_t remaining_pairs_before_sweep = 0;
-  std::vector<ReductionProgress> history;
+  std::vector<CompactionProgress> history;
   double seconds = 0;
-  auto operator<=>(const SearchStatistics&) const = default;
+  auto operator<=>(const CompactionSearchStatistics&) const = default;
 };
 
 struct RelabelStatistics {
@@ -162,16 +164,16 @@ struct ModelStatistics {
   std::vector<int> states_per_stage;
   int64_t attempted_seeds = 0;
   int64_t accepted_seeds = 0;
-  int64_t state_unions = 0;
+  int64_t state_compactions = 0;
   int64_t cached_rejections = 0;
-  std::vector<MergeRecord> accepted_merges;
+  std::vector<CompactionRecord> accepted_compactions;
   std::optional<VerificationResult> verification;
-  std::optional<SearchStatistics> search;
+  std::optional<CompactionSearchStatistics> compaction_search;
   std::optional<RelabelStatistics> pointwise_relabeling;
   auto operator<=>(const ModelStatistics&) const = default;
 };
 
-// Finite transition system consumed by reduction and code generation. The
+// Finite transition system consumed by compaction and code generation. The
 // expected corpus is verification-only and never consulted by a transition.
 struct SymbolicModel {
   ModelMetadata metadata;
@@ -201,6 +203,6 @@ struct GenerationProgress {
 };
 
 using ProgressEvent =
-    std::variant<CaptureProgress, ReductionProgress, GenerationProgress>;
+    std::variant<CaptureProgress, CompactionProgress, GenerationProgress>;
 
 }  // namespace pluto::llm::discretized::generator

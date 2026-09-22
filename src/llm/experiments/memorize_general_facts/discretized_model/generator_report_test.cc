@@ -15,19 +15,20 @@ TEST(GeneratorReportTest, EachProgressAlternativeHasTypedFields) {
                                            .greedy_verified = true}),
             "phase: capture\nsamples: 2\ntotal_samples: 4\nrows: 17\n"
             "greedy_verified: true\n");
-  auto reduction = FormatProgress(
-      ReductionProgress{.phase = ReductionPhase::kExhaustivePassComplete,
-                        .pass = 3,
-                        .states = 6,
-                        .states_per_stage = {2, 2, 2},
-                        .attempted = 5,
-                        .accepted = 1,
-                        .unions = 2,
-                        .seconds = 0.5});
-  EXPECT_NE(reduction.find("phase: exhaustive_pass_complete\n"),
+  auto compaction = FormatProgress(
+      CompactionProgress{.phase = CompactionPhase::kExhaustivePassComplete,
+                         .pass = 3,
+                         .states = 6,
+                         .states_per_stage = {2, 2, 2},
+                         .attempted = 5,
+                         .accepted = 1,
+                         .compactions = 2,
+                         .seconds = 0.5});
+  EXPECT_NE(compaction.find("phase: compaction_exhaustive_pass_complete\n"),
             std::string::npos);
-  EXPECT_NE(reduction.find("states_per_stage: [2, 2, 2]\n"), std::string::npos);
-  EXPECT_NE(reduction.find("seconds: 0.5\n"), std::string::npos);
+  EXPECT_NE(compaction.find("states_per_stage: [2, 2, 2]\n"),
+            std::string::npos);
+  EXPECT_NE(compaction.find("seconds: 0.5\n"), std::string::npos);
   auto generated = FormatProgress(GenerationProgress{
       .phase = GenerationPhase::kGenerated,
       .states = 6,
@@ -40,29 +41,30 @@ TEST(GeneratorReportTest, EachProgressAlternativeHasTypedFields) {
             std::string::npos);
 }
 
-TEST(GeneratorReportTest, StatisticsSummarizeTypedMergesDeterministically) {
+TEST(GeneratorReportTest,
+     StatisticsSummarizeTypedCompactionsDeterministically) {
   ModelStatistics stats;
   stats.states = 2;
-  stats.accepted_merges = {{.boundary = 0,
-                            .seed_ids = {10, 11},
-                            .euclidean_distance = 0.5,
-                            .induced_unions = 3},
-                           {.boundary = 1,
-                            .seed_ids = {20, 21},
-                            .euclidean_distance = 0.25,
-                            .induced_unions = 1}};
-  stats.search = SearchStatistics{
-      .stopping_reason = SearchStoppingReason::kNoCompatiblePair,
-      .pairwise_irreducible = true};
+  stats.accepted_compactions = {{.boundary = 0,
+                                 .seed_ids = {10, 11},
+                                 .euclidean_distance = 0.5,
+                                 .induced_compactions = 3},
+                                {.boundary = 1,
+                                 .seed_ids = {20, 21},
+                                 .euclidean_distance = 0.25,
+                                 .induced_compactions = 1}};
+  stats.compaction_search = CompactionSearchStatistics{
+      .stopping_reason = CompactionStoppingReason::kNoCompatiblePair,
+      .pairwise_compaction_complete = true};
   const auto report = FormatStatistics(stats);
   EXPECT_EQ(FormatStatistics(stats), report);
-  EXPECT_NE(report.find("accepted_merge_records: 2\n"), std::string::npos);
+  EXPECT_NE(report.find("accepted_compaction_records: 2\n"), std::string::npos);
   EXPECT_NE(report.find("  minimum: 0.25\n"), std::string::npos);
   EXPECT_NE(report.find("  maximum: 0.5\n"), std::string::npos);
-  EXPECT_NE(report.find("  induced_unions: 4\n"), std::string::npos);
+  EXPECT_NE(report.find("  induced_compactions: 4\n"), std::string::npos);
   EXPECT_NE(report.find("global_minimum_proven: false\n"), std::string::npos);
   EXPECT_EQ(report.find("membership_original_states"), std::string::npos);
-  stats.accepted_merges[0].seed_ids[0] = 9;
+  stats.accepted_compactions[0].seed_ids[0] = 9;
   EXPECT_NE(FormatStatistics(stats), report);
 }
 
@@ -73,20 +75,20 @@ TEST(GeneratorReportTest, InconclusiveCertificateDoesNotClaimMinimality) {
   certificate.unresolved_pair = {10, 11};
   auto report = FormatCertificate(certificate);
   EXPECT_NE(report.find("status: inconclusive\n"), std::string::npos);
-  EXPECT_NE(report.find("pairwise_irreducible_proven: false\n"),
+  EXPECT_NE(report.find("pairwise_compaction_complete: false\n"),
             std::string::npos);
   EXPECT_NE(report.find("global_minimum_proven: false\n"), std::string::npos);
   EXPECT_NE(report.find("unresolved_stage: 0\n"), std::string::npos);
   EXPECT_NE(report.find("unresolved_pair: [10, 11]\n"), std::string::npos);
 }
 
-TEST(GeneratorReportTest, StatisticsAndMergeHashesIgnoreProcessLocale) {
+TEST(GeneratorReportTest, StatisticsAndCompactionHashesIgnoreProcessLocale) {
   ModelStatistics stats;
   stats.states = 1024;
-  stats.accepted_merges = {{.boundary = 0,
-                            .seed_ids = {10000, 10001},
-                            .euclidean_distance = 0.25,
-                            .induced_unions = 2}};
+  stats.accepted_compactions = {{.boundary = 0,
+                                 .seed_ids = {10000, 10001},
+                                 .euclidean_distance = 0.25,
+                                 .induced_compactions = 2}};
   const std::string expected = FormatStatistics(stats);
   class CommaNumbers : public std::numpunct<char> {
     char do_decimal_point() const override { return ','; }
