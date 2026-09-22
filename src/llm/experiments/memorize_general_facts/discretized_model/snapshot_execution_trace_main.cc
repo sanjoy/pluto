@@ -24,7 +24,7 @@
 #include "src/dataset/gpt2_tokenizer.h"
 #include "src/dataset/padded_line_dataset.h"
 #include "src/llm/checkpoint.h"
-#include "src/llm/experiments/memorize_general_facts/discretized_model/snapshot_checkpoint.h"
+#include "src/llm/experiments/memorize_general_facts/discretized_model/snapshot_execution_trace.h"
 #include "src/llm/gpt2.h"
 #include "src/util/status_macros.h"
 
