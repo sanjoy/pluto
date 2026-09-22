@@ -132,7 +132,8 @@ def render_attention(name, rows, *, chunk_size=256, strategy="hybrid"):
 
     The public signature is:
       TransitionResult name(absl::Span<const StateId> history)
-    TransitionResult must have {StateId output; bool supported;}. The caller
+    TransitionResult is std::optional<StateId>: a value (including zero) is a
+    supported output, and std::nullopt is an unsupported history. The caller
     supplies its declaration and standard size/integer types via runtime.h.
 
     Generated MATCH statements are literal symbol tests, not packed old-table
@@ -163,7 +164,7 @@ def render_attention(name, rows, *, chunk_size=256, strategy="hybrid"):
         f"constexpr std::uint32_t {done} = 0xffffffffu;",
         f"struct {result_type} {{ std::uint32_t next; TransitionResult result; }};",
         "#define PLUTO_ATTN_END(output) \\",
-        f"  do {{ if (position == history.size()) return {{{done}, {{output, true}}}}; }} while (false)",
+        f"  do {{ if (position == history.size()) return {{{done}, StateId{{output}}}}; }} while (false)",
         "#define PLUTO_ATTN_MORE() \\",
         f"  do {{ if (position == history.size()) return {{{done}, {{}}}}; }} while (false)",
         "#define PLUTO_ATTN_MATCH(symbol, output) \\",
@@ -267,7 +268,7 @@ def render_attention(name, rows, *, chunk_size=256, strategy="hybrid"):
             f"{result_type} {name}MatchSequence(const {sequence_type}* steps,",
             "    std::size_t count, absl::Span<const StateId> history, std::size_t& position) {",
             "  for (std::size_t index = 0; index < count; ++index) {",
-            f"    if (position == history.size()) return {{{done}, {{steps[index].output, true}}}};",
+            f"    if (position == history.size()) return {{{done}, StateId{{steps[index].output}}}};",
             f"    if (history[position++] != steps[index].symbol) return {{{done}, {{}}}};",
             "  }",
             "  return {0u, {}};  // The literal run matched; continue at its shared tail.",

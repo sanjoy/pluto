@@ -132,29 +132,42 @@ class AttentionLogicTest(unittest.TestCase):
         generated, stats = render_attention("CompiledAttention", rows, chunk_size=7)
         pure, _ = render_attention("PureAttention", rows, chunk_size=7, strategy="control_flow")
         empty, _ = render_attention("EmptyAttention", [])
+        narrow_rows = [[list(range(1, length + 1)), length - 1]
+                       for length in range(1, 9)]
+        narrow, narrow_stats = render_attention("NarrowAttention", narrow_rows)
+        self.assertEqual(narrow_stats["literal_sequence_word_bits"], 16)
+        self.assertGreater(narrow_stats["literal_sequence_patterns"], 0)
         self.assertGreater(stats["helpers"], 1)
         self.assertGreater(stats["literal_sequence_patterns"], 0)
         self.assertEqual(stats["literal_sequence_word_bits"], 32)
         source = """#include <cstddef>
 #include <cstdint>
 #include <iostream>
+#include <optional>
 #include <span>
 #include <vector>
 namespace absl { template<class T> using Span = std::span<T>; }
 using StateId = std::uint32_t;
-struct TransitionResult { StateId output; bool supported; };
-""" + generated + pure + empty + """
+using TransitionResult = std::optional<StateId>;
+""" + generated + pure + empty + narrow + """
 int main() {
+  std::vector<StateId> narrow_key;
+  if (NarrowAttention(narrow_key).has_value()) return 4;
+  for (StateId length = 1; length <= 8; ++length) {
+    narrow_key.push_back(length);
+    if (NarrowAttention(narrow_key) != TransitionResult{length - 1}) return 5;
+  }
+  narrow_key.push_back(9);
+  if (NarrowAttention(narrow_key).has_value()) return 6;
   std::size_t count;
   while (std::cin >> count) {
     std::vector<StateId> key(count);
     for (auto& symbol : key) std::cin >> symbol;
-    if (EmptyAttention(key).supported) return 2;
+    if (EmptyAttention(key).has_value()) return 2;
     auto result = CompiledAttention(key);
     auto original = PureAttention(key);
-    if (result.supported != original.supported ||
-        (result.supported && result.output != original.output)) return 3;
-    if (result.supported) std::cout << result.output << '\\n';
+    if (result != original) return 3;
+    if (result.has_value()) std::cout << *result << '\\n';
     else std::cout << "unsupported\\n";
   }
 }

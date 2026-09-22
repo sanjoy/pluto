@@ -70,7 +70,7 @@ TransitionResult Mlp7(StateId state) {
   const uint32_t offset = state - 5189u;
   if ((kSupport[offset >> 3] & (uint32_t{1} << (offset & 7u))) == 0)
     return {};
-  return {state + 4475u, true};
+  return state + 4475u;
 }
 }  // namespace
 StateTable GeneratedMlp7() { return {{}, Mlp7}; }
