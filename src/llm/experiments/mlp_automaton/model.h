@@ -9,8 +9,8 @@
 #include "src/cuda/executor.h"
 #include "src/cuda/page_locked_host_array.h"
 #include "src/llm/experiments/mlp_automaton/top_transitions.h"
+#include "src/llm/gpt2.h"
 #include "src/llm/layer.h"
-#include "src/llm/experiments/gpt2_shakespeare/gpt2.h"
 
 namespace pluto::llm::mlp_automaton {
 

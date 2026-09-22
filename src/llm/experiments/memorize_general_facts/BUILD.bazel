@@ -93,7 +93,7 @@ cc_binary(
         "//src/llm:extract_top1_ids",
         "//src/llm:generate_greedy_continuation",
         "//src/llm:layer",
-        "//src/llm/experiments/gpt2_shakespeare:gpt2",
+        "//src/llm:gpt2",
         "//src/util:status_macros",
         "//src/util:tee_stream",
         "@abseil-cpp//absl/time",

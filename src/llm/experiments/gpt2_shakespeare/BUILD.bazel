@@ -3,49 +3,6 @@ load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 
 cc_library(
-    name = "gpt2",
-    srcs = ["gpt2.cc"],
-    hdrs = ["gpt2.h"],
-    copts = ["-std=c++20"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//src/cuda:executor",
-        "//src/llm:attention",
-        "//src/llm:combinators",
-        "//src/llm:embedding",
-        "//src/llm:fully_connected",
-        "//src/llm:gelu",
-        "//src/llm:layer",
-        "//src/llm:norm",
-        "//src/util:status_macros",
-        "@abseil-cpp//absl/status",
-        "@abseil-cpp//absl/status:statusor",
-        "@abseil-cpp//absl/strings",
-    ],
-)
-
-cc_test(
-    name = "gpt2_test",
-    size = "medium",
-    srcs = ["gpt2_test.cc"],
-    tags = ["requires-gpu"],
-    deps = [
-        ":gpt2",
-        "//src/cuda:buffer",
-        "//src/cuda:executor",
-        "//src/cuda:page_locked_host_array",
-        "//src/llm:cross_entropy_loss",
-        "//src/llm:layer",
-        "//src/llm:layer_hooks",
-        "@abseil-cpp//absl/status",
-        "@abseil-cpp//absl/strings",
-        "@abseil-cpp//absl/types:span",
-        "@cuda//:cuda_runtime",
-        "@googletest//:gtest_main",
-    ],
-)
-
-cc_library(
     name = "gpt2_shakespeare_cli",
     srcs = ["gpt2_shakespeare_cli.cc"],
     hdrs = ["gpt2_shakespeare_cli.h"],
@@ -122,7 +79,6 @@ cc_binary(
     data = ["//testdata:shakespeare_dataset.txt"],
     deps = [
         ":activation_inspection",
-        ":gpt2",
         ":gpt2_shakespeare_cli",
         ":sparse_autoencoder_dataset",
         "//src/cuda:buffer",
@@ -135,6 +91,7 @@ cc_binary(
         "//src/dataset:tokenizer",
         "//src/llm:checkpoint",
         "//src/llm:cross_entropy_loss",
+        "//src/llm:gpt2",
         "//src/llm:layer",
         "//src/llm:layer_hooks",
         "//src/llm:optimizer",
@@ -171,7 +128,6 @@ cc_test(
     ],
     deps = [
         ":activation_inspection",
-        ":gpt2",
         ":gpt2_shakespeare_cli",
         ":sparse_autoencoder_dataset",
         "//src/cuda:buffer",
@@ -184,6 +140,7 @@ cc_test(
         "//src/dataset:tokenizer",
         "//src/llm:checkpoint",
         "//src/llm:cross_entropy_loss",
+        "//src/llm:gpt2",
         "//src/llm:layer",
         "//src/llm:layer_hooks",
         "//src/llm:optimizer",
@@ -222,7 +179,6 @@ cc_test(
     ],
     deps = [
         ":activation_inspection",
-        ":gpt2",
         ":gpt2_shakespeare_cli",
         ":sparse_autoencoder_dataset",
         "//src/cuda:buffer",
@@ -235,6 +191,7 @@ cc_test(
         "//src/dataset:tokenizer",
         "//src/llm:checkpoint",
         "//src/llm:cross_entropy_loss",
+        "//src/llm:gpt2",
         "//src/llm:layer",
         "//src/llm:layer_hooks",
         "//src/llm:optimizer",
