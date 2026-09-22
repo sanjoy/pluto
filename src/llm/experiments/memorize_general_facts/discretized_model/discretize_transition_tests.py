@@ -9,7 +9,7 @@ its control-flow construction algorithms.
 """
 
 
-_UINT32_MAX = 2**32 - 1
+_INT32_MIN = -(2**31)
 _INT32_MAX = 2**31 - 1
 _PROBE_LIMIT = 64
 _RUNTIME = "src/llm/experiments/memorize_general_facts/discretized_model/runtime.h"
@@ -123,7 +123,8 @@ def _entry_probes(model, limit=_PROBE_LIMIT):
     probes = {}
 
     def add(token, position):
-        if (-2**31 <= token <= _INT32_MAX and 0 <= position <= _UINT32_MAX
+        if (_INT32_MIN <= token <= _INT32_MAX and
+                _INT32_MIN <= position <= _INT32_MAX
                 and len(probes) < limit):
             key = (token, position)
             probes.setdefault(key, (key in table, table.get(key, 0)))
@@ -131,7 +132,8 @@ def _entry_probes(model, limit=_PROBE_LIMIT):
     for token in (-1, model["vocab_size"], _INT32_MAX):
         add(token, 0)
     for token, position in _evenly_spaced(sorted(table), limit):
-        for candidate in (position, position - 1, position + 1, 1024, _UINT32_MAX):
+        for candidate in (position, position - 1, position + 1, 1024,
+                          _INT32_MIN, _INT32_MAX):
             add(token, candidate)
         add(token - 1, position)
         add(token + 1, position)
@@ -194,11 +196,11 @@ struct Sample {{ size_t token_offset; size_t state_offset; size_t length; }};
 // Independent readout expectations; not part of the production model interface.
 struct LanguageModelingHeadRow {{ DiscreteHiddenState input; DiscreteHiddenState output; }};
 struct AttentionProbe {{
-  size_t block; size_t offset; size_t length; TransitionResult expected;
+  size_t block; size_t offset; size_t length; std::optional<DiscreteHiddenState> expected;
 }};
-struct PointwiseProbe {{ size_t block; DiscreteHiddenState input; TransitionResult expected; }};
-struct StateProbe {{ DiscreteHiddenState input; TransitionResult expected; }};
-struct EntryProbe {{ DiscreteToken token; uint32_t position; TransitionResult expected; }};
+struct PointwiseProbe {{ size_t block; DiscreteHiddenState input; std::optional<DiscreteHiddenState> expected; }};
+struct StateProbe {{ DiscreteHiddenState input; std::optional<DiscreteHiddenState> expected; }};
+struct EntryProbe {{ DiscreteToken token; int32_t position; std::optional<DiscreteHiddenState> expected; }};
 '''
     body += _array("DiscreteToken", "kSampleTokens", (token_names[t] for t in tokens), 4)
     body += _array("DiscreteHiddenState", "kExpectedStates", (f"{{{state}}}" for state in states), 16)
@@ -217,20 +219,14 @@ struct EntryProbe {{ DiscreteToken token; uint32_t position; TransitionResult ex
                     f"{position}, {_result(supported, output)}}}"
                     for token, position, supported, output in entry_probes))
     body += f'''
-void ExpectTransition(TransitionResult actual, TransitionResult expected) {{
-  EXPECT_EQ(actual.output, expected.output);
+void ExpectTransition(std::optional<DiscreteHiddenState> actual,
+                      std::optional<DiscreteHiddenState> expected) {{
+  EXPECT_EQ(actual, expected);
 }}
 
 TEST(GeneratedTransitionBoundaries, EverySamplePositionAtEveryBoundary) {{
   const auto& model = GeneratedModel();
-  ASSERT_NE(model.entry_function, nullptr);
-  ASSERT_NE(model.language_modeling_head.function, nullptr);
-  ASSERT_EQ(model.attention.size(), kLayers);
-  ASSERT_EQ(model.mlp.size(), kLayers);
-  for (size_t block = 0; block < kLayers; ++block) {{
-    ASSERT_NE(model.attention[block].function, nullptr);
-    ASSERT_NE(model.mlp[block].function, nullptr);
-  }}
+  ASSERT_EQ(model.transformers.size(), kLayers);
   for (size_t index = 0; index < kSampleCount; ++index) {{
     SCOPED_TRACE(::testing::Message() << "sample " << index);
     const auto& sample = kSamples[index];
@@ -238,7 +234,8 @@ TEST(GeneratedTransitionBoundaries, EverySamplePositionAtEveryBoundary) {{
     const auto* expected = kExpectedStates + sample.state_offset;
     for (size_t position = 0; position < sample.length; ++position) {{
       SCOPED_TRACE(::testing::Message() << "entry position " << position);
-      ExpectTransition(model.entry_function(tokens[position], position),
+      ExpectTransition(model.position_embedding(tokens[position],
+                                                static_cast<int32_t>(position)),
                        {{expected[position]}});
     }}
     for (size_t block = 0; block < kLayers; ++block) {{
@@ -250,10 +247,10 @@ TEST(GeneratedTransitionBoundaries, EverySamplePositionAtEveryBoundary) {{
         SCOPED_TRACE(::testing::Message() << "position " << position);
         // Both callbacks receive SOURCE expectations, never prior callback outputs.
         // Two compensating boundary mistakes therefore cannot pass this test.
-        ExpectTransition(model.attention[block].function(
+        ExpectTransition(model.transformers[block].attention(
                              absl::MakeConstSpan(input, position + 1)),
                          {{after_attention[position]}});
-        ExpectTransition(model.mlp[block].function(after_attention[position]),
+        ExpectTransition(model.transformers[block].mlp(after_attention[position]),
                          {{after_mlp[position]}});
       }}
     }}
@@ -263,7 +260,7 @@ TEST(GeneratedTransitionBoundaries, EverySamplePositionAtEveryBoundary) {{
       SCOPED_TRACE(::testing::Message() << "language modeling head position " << position);
       const DiscreteToken target = position + 1 < sample.length
           ? tokens[position + 1] : {token_names[model['eos_token']]};
-      ExpectTransition(model.language_modeling_head.function(final_states[position]),
+      ExpectTransition(model.language_modeling_head(final_states[position]),
                        {{static_cast<DiscreteHiddenState>(target)}});
     }}
   }}
@@ -271,22 +268,20 @@ TEST(GeneratedTransitionBoundaries, EverySamplePositionAtEveryBoundary) {{
 
 TEST(GeneratedTransitionBoundaries, EverySourceLanguageModelingHeadConstraint) {{
   const auto& model = GeneratedModel();
-  ASSERT_NE(model.language_modeling_head.function, nullptr);
   for (size_t index = 0; index < {len(model['language_modeling_head'])}; ++index) {{
     const auto& row = kLanguageModelingHeadRows[index];
     SCOPED_TRACE(::testing::Message() << "language modeling head state " << row.input.value);
-    ExpectTransition(model.language_modeling_head.function(row.input), {{row.output}});
+    ExpectTransition(model.language_modeling_head(row.input), {{row.output}});
   }}
 }}
 
 TEST(GeneratedTransitionBoundaries, ExactAttentionDomainMutationProbes) {{
   const auto& model = GeneratedModel();
-  ASSERT_EQ(model.attention.size(), kLayers);
+  ASSERT_EQ(model.transformers.size(), kLayers);
   for (size_t index = 0; index < {len(attention_rows)}; ++index) {{
     const auto& probe = kAttentionProbes[index];
     SCOPED_TRACE(::testing::Message() << "probe " << index << " block " << probe.block);
-    ASSERT_NE(model.attention[probe.block].function, nullptr);
-    ExpectTransition(model.attention[probe.block].function(absl::MakeConstSpan(
+    ExpectTransition(model.transformers[probe.block].attention(absl::MakeConstSpan(
                          kAttentionProbeKeys + probe.offset, probe.length)),
                      probe.expected);
   }}
@@ -294,24 +289,21 @@ TEST(GeneratedTransitionBoundaries, ExactAttentionDomainMutationProbes) {{
 
 TEST(GeneratedTransitionBoundaries, EntryAndPointwiseDomainProbes) {{
   const auto& model = GeneratedModel();
-  ASSERT_NE(model.entry_function, nullptr);
-  ASSERT_NE(model.language_modeling_head.function, nullptr);
-  ASSERT_EQ(model.mlp.size(), kLayers);
+  ASSERT_EQ(model.transformers.size(), kLayers);
   for (size_t index = 0; index < {len(entry_probes)}; ++index) {{
     const auto& probe = kEntryProbes[index];
     SCOPED_TRACE(::testing::Message() << "entry probe " << index);
-    ExpectTransition(model.entry_function(probe.token, probe.position), probe.expected);
+    ExpectTransition(model.position_embedding(probe.token, probe.position), probe.expected);
   }}
   for (size_t index = 0; index < {len(pointwise_rows)}; ++index) {{
     const auto& probe = kMlpProbes[index];
     SCOPED_TRACE(::testing::Message() << "MLP probe " << index << " block " << probe.block);
-    ASSERT_NE(model.mlp[probe.block].function, nullptr);
-    ExpectTransition(model.mlp[probe.block].function(probe.input), probe.expected);
+    ExpectTransition(model.transformers[probe.block].mlp(probe.input), probe.expected);
   }}
   for (size_t index = 0; index < {len(language_modeling_head_probes)}; ++index) {{
     const auto& probe = kLanguageModelingHeadProbes[index];
     SCOPED_TRACE(::testing::Message() << "language modeling head probe " << index);
-    ExpectTransition(model.language_modeling_head.function(probe.input), probe.expected);
+    ExpectTransition(model.language_modeling_head(probe.input), probe.expected);
   }}
 }}
 }}  // namespace

@@ -61,7 +61,7 @@ class TransitionFixturesTest(unittest.TestCase):
         for state, token in fixture()["language_modeling_head"]:
             self.assertIn(f"{{{{{state}}}, static_cast<DiscreteHiddenState>({_NAMES[token]})}}", source)
         self.assertIn("EverySourceLanguageModelingHeadConstraint", source)
-        self.assertIn("model.language_modeling_head.function(row.input), {row.output}", source)
+        self.assertIn("model.language_modeling_head(row.input), {row.output}", source)
 
     def test_optional_expectations_preserve_supported_zero(self):
         self.assertEqual(_result(True, 0), "{DiscreteHiddenState{0}}")
@@ -69,7 +69,7 @@ class TransitionFixturesTest(unittest.TestCase):
                          "{static_cast<DiscreteHiddenState>(vocab::kA_0)}")
         self.assertEqual(_result(False, 0), "{std::nullopt}")
         source = render_transition_test(fixture(), _NAMES)
-        self.assertIn("EXPECT_EQ(actual.output, expected.output);", source)
+        self.assertIn("EXPECT_EQ(actual, expected);", source)
         self.assertNotIn(".supported", source)
 
     def test_prompt_only_states_need_not_have_language_modeling_head_constraints(self):
@@ -151,7 +151,9 @@ class TransitionFixturesTest(unittest.TestCase):
         probes = _entry_probes(model)
         self.assertIn((-1, 0, False, 0), probes)
         self.assertIn((4, 0, False, 0), probes)
-        self.assertIn((0, 2**32 - 1, False, 0), probes)
+        self.assertIn((0, 2**31 - 1, False, 0), probes)
+        self.assertIn((0, -(2**31), False, 0), probes)
+        self.assertIn((0, -1, False, 0), probes)
         self.assertIn((0, 1, False, 0), probes)
         self.assertIn((1, 1, True, 20), probes)
         for token, position, supported, output in probes:
@@ -165,7 +167,13 @@ class TransitionFixturesTest(unittest.TestCase):
         states = [int(value) for value in re.findall(r"\{(-?\d+)\}", values)]
         self.assertEqual(states, _replay_samples(fixture())[1])
         self.assertIn("absl::MakeConstSpan(input, position + 1)", source)
-        self.assertIn("model.mlp[block].function(after_attention[position])", source)
+        self.assertIn("model.transformers[block].mlp(after_attention[position])", source)
+        self.assertIn("model.transformers[block].attention(", source)
+        self.assertIn("model.position_embedding(tokens[position],", source)
+        self.assertIn("static_cast<int32_t>(position)", source)
+        self.assertNotIn("TransitionResult", source)
+        self.assertNotIn(".function", source)
+        self.assertNotIn("entry_function", source)
         self.assertIn("input = expected + (2 * block) * sample.length", source)
         self.assertNotIn("vocab::vocab::", source)
         # The fixture cannot populate production tables or execute autoregression.

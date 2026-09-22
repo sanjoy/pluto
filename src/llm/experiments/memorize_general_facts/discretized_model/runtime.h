@@ -45,50 +45,68 @@ struct VocabularyRow {
   absl::string_view bytes;  // Exact decoded bytes, not necessarily valid UTF-8.
 };
 
-// A compiled transition's output, or nullopt for an unsupported input. An
-// engaged zero is a valid vocabulary ID, not a failure sentinel. Transition
-// functions must be pure: they cannot retain history across calls.
-struct TransitionResult {
-  // Result symbol, or nullopt if unsupported.
-  std::optional<DiscreteHiddenState> output;
-};
-
 // Maps the complete ordered prefix of residual symbols, including the current
-// position, to that position's post-attention residual symbol.
-struct AttentionTable {
-  // Required pure function; unsupported inputs produce an empty output.
-  TransitionResult (*function)(absl::Span<const DiscreteHiddenState>) = nullptr;
+// position, to that position's post-attention residual symbol. Implementations
+// must be pure: they cannot retain sequence history across calls.
+class CausalAttention {
+ public:
+  virtual ~CausalAttention() = default;
+
+  // Returns nullopt when the complete causal prefix is unsupported.
+  virtual std::optional<DiscreteHiddenState> operator()(
+      absl::Span<const DiscreteHiddenState> prefix) = 0;
 };
 
 // Maps one residual symbol to a post-MLP residual symbol, or to a compact
-// vocabulary token ID for the language modeling head.
-struct StateTable {
-  // Required pure function; unsupported inputs produce an empty output.
-  TransitionResult (*function)(DiscreteHiddenState) = nullptr;
+// vocabulary token ID for the language modeling head. Implementations are pure.
+class Map {
+ public:
+  virtual ~Map() = default;
+
+  // Returns nullopt for an unsupported symbol. An engaged zero is a valid
+  // vocabulary ID, not an error sentinel.
+  virtual std::optional<DiscreteHiddenState> operator()(
+      DiscreteHiddenState state) = 0;
 };
 
-// A finite integer network. Pure compiled functions implement each boundary;
+// One transformer block; both residual boundaries are evaluated independently.
+// The referenced operations must outlive this block and its model.
+struct Transformer {
+  CausalAttention& attention;  // Complete causal prefix -> attention residual.
+  Map& mlp;                    // Attention residual -> MLP residual.
+};
+
+// Encodes a vocabulary token and its absolute position as a residual symbol.
+// Implementations are pure and must not retain sequence history across calls.
+class PositionEmbedding {
+ public:
+  virtual ~PositionEmbedding() = default;
+
+  // Returns nullopt for an unsupported token or position, including negatives.
+  virtual std::optional<DiscreteHiddenState> operator()(DiscreteToken token,
+                                                        int32_t position) = 0;
+};
+
+// A finite integer network. Pure operations implement each boundary;
 // no sample identity, corpus text, expected suffix, or floating-point weights
-// are available to this object. Referenced storage must remain immutable and
-// outlive the model's use.
+// are available to this object. The model borrows its operations and
+// vocabulary; all referenced objects must outlive its use.
 struct Model {
   uint32_t context_length;  // Maximum number of tokens in a causal sequence.
   uint32_t prompt_tokens;   // Prefix length for corpus verification.
   DiscreteToken eos_token;  // Compact ID that terminates generation.
   // Indexed by compact DiscreteToken; its bytes are also used for decoding.
   absl::Span<const VocabularyRow> vocabulary;
-  // Attention residual boundaries in transformer-block order.
-  absl::Span<const AttentionTable> attention;
-  // MLP residual boundaries, one per attention block in the same order.
-  absl::Span<const StateTable> mlp;
+  // Ordered transformer blocks; each pairs its attention and MLP operations.
+  absl::Span<const Transformer> transformers;
   // Final LayerNorm/top-1 readout: residual symbols -> compact tokens.
-  StateTable language_modeling_head;
-  // Required pure lookup: (compact token, absolute position) -> state.
-  TransitionResult (*entry_function)(DiscreteToken, uint32_t) = nullptr;
+  Map& language_modeling_head;
+  // (Compact token, absolute position) -> token-plus-position residual symbol.
+  PositionEmbedding& position_embedding;
 };
 
-// Checks model dimensions and required lookup functions. Generation validates
-// any private table storage; independent tests verify the compiled transitions.
+// Checks dimensions, including that positions fit in int32_t. Generation and
+// independent tests verify the individual operations' transition behavior.
 // Inference also calls this inexpensive structural check before dispatch.
 absl::Status ValidateModel(const Model& model);
 

@@ -6,7 +6,7 @@
 
 namespace pluto::llm::discretized {
 namespace {
-TransitionResult Mlp7(DiscreteHiddenState state) {
+std::optional<DiscreteHiddenState> Lookup(DiscreteHiddenState state) {
   if (state.value < 5189 || state.value > 9663)
     return {};
   static constexpr uint8_t kSupport[] = {
@@ -72,7 +72,19 @@ TransitionResult Mlp7(DiscreteHiddenState state) {
     return {};
   return {DiscreteHiddenState{state.value + 4475}};
 }
+
+class Mlp7Impl final : public Map {
+ public:
+  std::optional<DiscreteHiddenState> operator()(
+      DiscreteHiddenState state) override {
+    return Lookup(state);
+  }
+};
 }  // namespace
-StateTable GeneratedMlp7() { return {Mlp7}; }
+
+Map& GeneratedMlp7() {
+  static Mlp7Impl instance;
+  return instance;
+}
 
 }  // namespace pluto::llm::discretized

@@ -22,13 +22,13 @@ absl::Status CheckPrompt(const Model& model,
   return absl::OkStatus();
 }
 
-absl::StatusOr<DiscreteHiddenState> LookupState(StateTable table,
+absl::StatusOr<DiscreteHiddenState> LookupState(Map& map,
                                                 DiscreteHiddenState key,
                                                 absl::string_view boundary,
                                                 size_t block) {
-  const auto result = table.function(key);
-  if (result.output.has_value())
-    return *result.output;
+  const auto result = map(key);
+  if (result.has_value())
+    return *result;
   return absl::NotFoundError(absl::StrCat(
       "unsupported ", boundary, " state at block ", block, ": ", key.value));
 }
@@ -36,23 +36,16 @@ absl::StatusOr<DiscreteHiddenState> LookupState(StateTable table,
 }  // namespace
 
 absl::Status ValidateModel(const Model& model) {
-  if (model.context_length == 0 || model.prompt_tokens == 0 ||
-      model.prompt_tokens > model.context_length || model.vocabulary.empty() ||
+  if (model.context_length == 0 ||
+      model.context_length >
+          static_cast<uint32_t>(std::numeric_limits<int32_t>::max()) ||
+      model.prompt_tokens == 0 || model.prompt_tokens > model.context_length ||
+      model.vocabulary.empty() ||
       model.vocabulary.size() >
           static_cast<size_t>(std::numeric_limits<int>::max()) ||
       model.eos_token.value < 0 ||
-      static_cast<size_t>(model.eos_token.value) >= model.vocabulary.size() ||
-      model.attention.size() != model.mlp.size())
+      static_cast<size_t>(model.eos_token.value) >= model.vocabulary.size())
     return absl::InvalidArgumentError("invalid integer model dimensions");
-  if (model.entry_function == nullptr ||
-      model.language_modeling_head.function == nullptr)
-    return absl::InvalidArgumentError(
-        "missing entry or language modeling head lookup function");
-  for (size_t block = 0; block < model.attention.size(); ++block)
-    if (model.attention[block].function == nullptr ||
-        model.mlp[block].function == nullptr)
-      return absl::InvalidArgumentError(absl::StrCat(
-          "missing attention or MLP lookup function at block ", block));
   return absl::OkStatus();
 }
 
@@ -62,32 +55,33 @@ absl::StatusOr<DiscreteToken> PredictNext(
   std::vector<DiscreteHiddenState> states;
   states.reserve(tokens.size());
   for (size_t position = 0; position < tokens.size(); ++position) {
-    const auto result = model.entry_function(tokens[position], position);
-    if (!result.output.has_value())
+    const auto result = model.position_embedding(
+        tokens[position], static_cast<int32_t>(position));
+    if (!result.has_value())
       return absl::NotFoundError(absl::StrCat(
-          "unsupported token/position entry: ", tokens[position].value, "/",
+          "unsupported token/position embedding: ", tokens[position].value, "/",
           position));
-    if (result.output->value < 0 ||
-        static_cast<size_t>(result.output->value) < model.vocabulary.size())
-      return absl::DataLossError("entry function produced an invalid state");
-    states.push_back(*result.output);
+    if (result->value < 0 ||
+        static_cast<size_t>(result->value) < model.vocabulary.size())
+      return absl::DataLossError(
+          "position embedding produced an invalid state");
+    states.push_back(*result);
   }
-  for (size_t block = 0; block < model.attention.size(); ++block) {
-    const auto& attention = model.attention[block];
+  for (size_t block = 0; block < model.transformers.size(); ++block) {
+    const auto& transformer = model.transformers[block];
     std::vector<DiscreteHiddenState> next(states.size());
     for (size_t position = 0; position < states.size(); ++position) {
       const auto key = absl::MakeConstSpan(states).first(position + 1);
-      const auto attended = attention.function(key);
-      if (!attended.output.has_value())
+      const auto attended = transformer.attention(key);
+      if (!attended.has_value())
         return absl::NotFoundError(
             absl::StrCat("unsupported attention history at block ", block,
                          ", position ", position));
-      if (attended.output->value < 0 ||
-          static_cast<size_t>(attended.output->value) < model.vocabulary.size())
+      if (attended->value < 0 ||
+          static_cast<size_t>(attended->value) < model.vocabulary.size())
         return absl::DataLossError(
             "attention function produced an invalid state");
-      auto output =
-          LookupState(model.mlp[block], *attended.output, "MLP", block);
+      auto output = LookupState(transformer.mlp, *attended, "MLP", block);
       if (!output.ok())
         return output.status();
       if (output->value < 0 ||
@@ -98,7 +92,7 @@ absl::StatusOr<DiscreteToken> PredictNext(
     states.swap(next);
   }
   auto token = LookupState(model.language_modeling_head, states.back(),
-                           "language modeling head", model.attention.size());
+                           "language modeling head", model.transformers.size());
   if (!token.ok())
     return token.status();
   if (token->value < 0 ||

@@ -280,7 +280,7 @@ prompt encoder, and corpus-verification support, shrink from 6,520,292 to
 
 In addition to all 1,024 autonomous completions, a separate C++ test reconstructs
 histories from 239,666 independently computed expected boundary states. Every
-callback receives the **source table's** inputs, not the preceding callback's
+operation receives the **source table's** inputs, not the preceding operation's
 actual outputs, so compensating mistakes cannot pass. Distinct-key coverage was
 checked against all 98,497 source entry, attention, MLP, and language modeling
 head records.
@@ -298,13 +298,24 @@ python3 -B src/llm/experiments/memorize_general_facts/discretized_model/generate
 ```
 
 The output path must be fresh. Omit `--compact_transitions` to emit private
-per-boundary tables behind binary-search lookup functions. Both modes expose
-the same compiled-function-only runtime interface: entry, attention, MLP, and
-language modeling head must each provide a pure lookup returning
-`TransitionResult`. The runtime has no table storage or alternate dispatch path.
-Missing functions are rejected before inference; unsupported inputs still fail
-explicitly. Generation validates table structure, and tests compare lookup
-outputs against the source records.
+per-boundary tables behind binary-search lookup functions. Both modes implement
+the same runtime interfaces:
+
+- `PositionEmbedding` maps a compact token and signed absolute position to a
+  token-plus-position residual symbol.
+- `CausalAttention` maps a complete ordered causal prefix to the current
+  position's attention residual symbol.
+- `Map` maps one hidden state to another; MLPs and the language modeling head
+  implement it. The head's output encodes the compact next-token ID.
+- Each `Transformer` pairs attention and MLP references. `Model::transformers`
+  holds these blocks in execution order, with separate references to the
+  position embedding and language modeling head.
+
+All operations are pure and return `std::optional<DiscreteHiddenState>`:
+`nullopt` rejects unsupported inputs, whereas an engaged zero is a valid token
+ID. The model borrows its operations; generated implementations have static
+lifetime. Reference members cannot be null. Generation validates transition
+domains, and tests compare virtual calls against the source records.
 
 All generation logic and its Python tests
 live alongside this README: the driver, C++ emitter, state reduction,
