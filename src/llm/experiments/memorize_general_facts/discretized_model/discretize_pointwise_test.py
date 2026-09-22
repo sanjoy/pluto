@@ -75,6 +75,14 @@ class PointwiseTest(unittest.TestCase):
                 base = stats["last_attention_base"] if state["stage"] == 3 else stats["final_state_base"]
                 self.assertTrue(base <= state["id"] < base + model["vocab_size"])
 
+    def test_final_alignment_does_not_exceed_signed_id_range(self):
+        model = fixture()
+        model["states"].append({"id": 2147483646, "stage": 0})
+        renamed, _ = relabel_mlp_outputs(model)
+        self.assertFalse(renamed["stats"]["pointwise_relabeling"]
+                         ["vocabulary_aligned_final_boundaries"])
+        self.assertLessEqual(max(row["id"] for row in renamed["states"]), 2147483647)
+
     def test_large_sparse_affine_named_map_uses_exact_bitset(self):
         rows = [[1000 + i, i] for i in range(128) if i % 3 != 1]
         body, stats = render_pointwise("Snap", rows, {i: f"vocab::Token{i}" for i in range(128)})
@@ -99,8 +107,8 @@ class PointwiseTest(unittest.TestCase):
         body, stats = render_pointwise("Mlp", [[10, 20], [11, 21], [12, 22]])
         self.assertEqual(stats["representation"], "guarded_affine")
         self.assertEqual(stats["table_bytes"], 0)
-        self.assertIn("state < 10u || state > 12u", body)
-        self.assertIn("return {state + 10u};", body)
+        self.assertIn("state.value < 10 || state.value > 12", body)
+        self.assertIn("return {DiscreteHiddenState{state.value + 10}};", body)
         named, stats = render_pointwise("Snap", [[10 + i, (i * 7) % 20] for i in range(20)],
                                         {i: f"vocab::Token{i}" for i in range(20)})
         self.assertIn("vocab::Token19", named)
@@ -111,19 +119,35 @@ class PointwiseTest(unittest.TestCase):
         rows = [[0, 0, 20], [0, 2, 20], [0, 3, 21], [1, 1, 21], [3, 0, 20]]
         body, stats = render_entry("Entry", rows, {0: "vocab::A", 1: "vocab::B", 3: "vocab::D"})
         self.assertEqual(stats["position_exceptions"], 1)
-        self.assertIn("case vocab::A:", body)
+        self.assertIn("case vocab::A.value:", body)
         self.assertIn("position == 3", body)
         self.assertIn("position > 3", body)
         self.assertIn("return {};", body)
         self.assertEqual(stats["source_bytes"], len(body.encode()))
 
+    def test_generator_rejects_unrepresentable_ids_and_positions(self):
+        for bad in (-1, 2147483648, 4294967295, True, 1.5):
+            with self.subTest(bad=bad):
+                for rows in ([[bad, 0]], [[0, bad]]):
+                    with self.assertRaisesRegex(ValueError, "IDs"):
+                        render_pointwise("Bad", rows)
+                for rows in ([[bad, 0, 0]], [[0, 0, bad]]):
+                    with self.assertRaisesRegex(ValueError, "IDs"):
+                        render_entry("Bad", rows, {0: "vocab::A"})
+        for position in (-1, 4294967296, True, 1.5):
+            with self.assertRaisesRegex(ValueError, "position"):
+                render_entry("Bad", [[0, position, 0]], {0: "vocab::A"})
+
     @unittest.skipUnless(shutil.which("c++"), "C++ compiler unavailable")
     def test_compiled_functions_match_exact_partial_domains(self):
-        declarations = ["#include <cstdint>", "#include <optional>",
-                        "using StateId = uint32_t; using TokenId = int32_t;",
-                        "struct TransitionResult { std::optional<StateId> output; };",
-                        "namespace vocab { constexpr TokenId A=0, B=1, C=2, D=3, Far=1000000000; }"]
-        declarations.append("namespace vocab {" + " ".join(f"constexpr TokenId Token{i}={i};" for i in range(128)) + "}")
+        declarations = ["#include <cstdint>", "#include <optional>", "#include <compare>",
+                        "struct DiscreteToken;",
+                        "struct DiscreteHiddenState { int value=0; constexpr auto operator<=>(const DiscreteHiddenState&) const = default; constexpr explicit operator DiscreteToken() const; };",
+                        "struct DiscreteToken { int value=0; constexpr auto operator<=>(const DiscreteToken&) const = default; constexpr explicit operator DiscreteHiddenState() const { return {value}; } };",
+                        "constexpr DiscreteHiddenState::operator DiscreteToken() const { return {value}; }",
+                        "struct TransitionResult { std::optional<DiscreteHiddenState> output; };",
+                        "namespace vocab { constexpr DiscreteToken A{0}, B{1}, C{2}, D{3}, Far{1000000000}, Max{2147483647}; }"]
+        declarations.append("namespace vocab {" + " ".join(f"constexpr DiscreteToken Token{i}{{{i}}};" for i in range(128)) + "}")
         checks = []
         pointwise = {
             "Affine": [[5, 25], [6, 26], [7, 27]],
@@ -132,41 +156,43 @@ class PointwiseTest(unittest.TestCase):
             "Named": [[i, i % 3] for i in range(15)],
             "SparseAffine": [[20 + i, 100 + i] for i in range(100) if i % 3 != 1],
             "NamedSparseAffine": [[i, i] for i in range(128) if i % 3 != 1],
-            "MaxUnsigned": [[4294967290 + i, i] for i in range(6) if i != 2],
-            "EntireUnsignedSpan": [[0, 0], [4294967295, 4294967295]],
+            "MaxSigned": [[2147483642 + i, i] for i in range(6) if i != 2],
+            "EntireSignedSpan": [[0, 0], [2147483647, 2147483647]],
+            "HighOutputs": [[i, 2147483647 - (i * 7) % 13] for i in range(13)],
+            "HighAffineOutputs": [[0, 2147483645], [1, 2147483646], [2, 2147483647]],
             "ZeroBasedRanges": [[i, i] for i in range(8)] + [[100, 200]],
             "Empty": []}
-        names = {0: "vocab::A", 1: "vocab::B", 2: "vocab::C", 3: "vocab::D", 1000000000: "vocab::Far"}
+        names = {0: "vocab::A", 1: "vocab::B", 2: "vocab::C", 3: "vocab::D",
+                 1000000000: "vocab::Far", 2147483647: "vocab::Max"}
         for name, rows in pointwise.items():
             token_names = (names if name == "Named" else
                            {i: f"vocab::Token{i}" for i in range(128)} if name == "NamedSparseAffine" else None)
             declarations.append(render_pointwise(name, rows, token_names)[0])
-            for state in list(range(-2, 130)) + list(range(4294967288, 4294967296)):
+            for state in [-2147483648] + list(range(-2, 130)) + list(range(2147483640, 2147483648)):
                 output, supported = evaluate_pointwise(rows, state)
-                literal = f"static_cast<StateId>({state})" if state < 0 else f"{state}u"
-                # Negative C++ inputs convert to uint32_t before the lookup.
-                output, supported = evaluate_pointwise(rows, state & 0xffffffff)
-                checks.append(f"{{ auto r={name}({literal}); if(r.output.value_or(0)!={output}u || r.output.has_value()!={str(supported).lower()}) return 1; }}")
+                checks.append(f"{{ auto r={name}(DiscreteHiddenState{{{state}}}); if(r.output.value_or(DiscreteHiddenState{{0}}).value!={output} || r.output.has_value()!={str(supported).lower()}) return 1; }}")
         entries = {
             "Entry": [[0, 0, 20], [0, 2, 20], [0, 3, 21], [1, 1, 21], [3, 0, 20]],
             "WideMask": [[0, 31, 20], [1, 31, 21]],
             "Sparse": [[0, 0, 20], [1000000000, 0, 21]],
             "WidePosition": [[0, 100, 20]],
             "ZeroEntry": [[0, 0, 0]],
-            "UnsignedEntry": [[0, 0, 4294967295], [1, 0, 4294967294]],
+            "MaxEntry": [[0, 0, 2147483647], [1, 0, 2147483646]],
+            "MaxToken": [[2147483647, 0, 2147483647]],
+            "SparseStates": [[0, 0, 0], [1, 0, 2147483647]],
             "EmptyEntry": []}
         for name, rows in entries.items():
             declarations.append(render_entry(name, rows, names)[0])
-            for token in [-1, 0, 1, 2, 3, 4, 1000000000]:
+            for token in [-2147483648, -1, 0, 1, 2, 3, 4, 1000000000, 2147483647]:
                 for position in [0, 1, 2, 3, 4, 31, 32, 63, 64, 100, 101, 4294967295]:
                     output, supported = evaluate_entry(rows, token, position)
-                    checks.append(f"{{ auto r={name}({token},{position}u); if(r.output.value_or(0)!={output} || r.output.has_value()!={str(supported).lower()}) return 2; }}")
+                    checks.append(f"{{ auto r={name}(DiscreteToken{{{token}}},{position}u); if(r.output.value_or(DiscreteHiddenState{{0}}).value!={output} || r.output.has_value()!={str(supported).lower()}) return 2; }}")
         program = "\n".join(declarations) + "\nint main(){\n" + "\n".join(checks) + "\nreturn 0;}\n"
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
             source, binary = directory / "pointwise.cc", directory / "pointwise"
             source.write_text(program)
-            subprocess.run(["c++", "-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror",
+            subprocess.run(["c++", "-std=c++20", "-O1", "-Wall", "-Wextra", "-Werror", "-fsanitize=undefined",
                             str(source), "-o", str(binary)], check=True, capture_output=True, text=True)
             subprocess.run([str(binary)], check=True)
 

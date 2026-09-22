@@ -72,7 +72,8 @@ def _attention_probes(rows, limit=_PROBE_LIMIT):
 
     add(())
     add((0,))
-    add((_UINT32_MAX,))
+    add((-1,))
+    add((_INT32_MAX,))
     if keys:
         longest = max(keys, key=len)
         add(longest + (longest[-1],))
@@ -86,7 +87,7 @@ def _attention_probes(rows, limit=_PROBE_LIMIT):
             add(prefix[1:])
             add(prefix[::-1])
             for position in sorted({0, len(prefix) // 2, len(prefix) - 1}):
-                for state in (successor[prefix[position]], 0, _UINT32_MAX):
+                for state in (successor[prefix[position]], 0, -1, _INT32_MAX):
                     add(prefix[:position] + (state,) + prefix[position + 1:])
             if len(probes) >= limit:
                 break
@@ -100,11 +101,12 @@ def _pointwise_probes(rows, limit=_PROBE_LIMIT):
     probes = {}
 
     def add(state):
-        if 0 <= state <= _UINT32_MAX and len(probes) < limit:
+        if -2**31 <= state <= _INT32_MAX and len(probes) < limit:
             probes.setdefault(state, (state in table, table.get(state, 0)))
 
     add(0)
-    add(_UINT32_MAX)
+    add(-1)
+    add(_INT32_MAX)
     keys = sorted(table)
     if keys:
         add(keys[0] - 1)
@@ -145,7 +147,11 @@ def _array(typename, name, values, per_line=1):
 
 
 def _result(supported, output):
-    return f"{{StateId{{{output}}}}}" if supported else "{std::nullopt}"
+    if not supported:
+        return "{std::nullopt}"
+    if isinstance(output, str):
+        return f"{{static_cast<DiscreteHiddenState>({output})}}"
+    return f"{{DiscreteHiddenState{{{output}}}}}"
 
 
 def render_transition_test(model, token_names):
@@ -168,7 +174,7 @@ def render_transition_test(model, token_names):
                 f"{_result(supported, output)}}}")
             attention_keys.extend(prefix)
         pointwise_rows.extend(
-            f"{{{block}, {state}, {_result(supported, output)}}}"
+            f"{{{block}, {{{state}}}, {_result(supported, output)}}}"
             for state, supported, output in _pointwise_probes(model["mlp"][block]))
     snap_probes = _pointwise_probes(model["snap"])
     entry_probes = _entry_probes(model)
@@ -186,27 +192,28 @@ constexpr size_t kLayers = {layers};
 constexpr size_t kSampleCount = {len(samples)};
 struct Sample {{ size_t token_offset; size_t state_offset; size_t length; }};
 // Independent readout expectations; not part of the production model interface.
-struct SnapRow {{ StateId input; StateId output; }};
+struct SnapRow {{ DiscreteHiddenState input; DiscreteHiddenState output; }};
 struct AttentionProbe {{
   size_t block; size_t offset; size_t length; TransitionResult expected;
 }};
-struct PointwiseProbe {{ size_t block; StateId input; TransitionResult expected; }};
-struct StateProbe {{ StateId input; TransitionResult expected; }};
-struct EntryProbe {{ TokenId token; uint32_t position; TransitionResult expected; }};
+struct PointwiseProbe {{ size_t block; DiscreteHiddenState input; TransitionResult expected; }};
+struct StateProbe {{ DiscreteHiddenState input; TransitionResult expected; }};
+struct EntryProbe {{ DiscreteToken token; uint32_t position; TransitionResult expected; }};
 '''
-    body += _array("TokenId", "kSampleTokens", (token_names[t] for t in tokens), 4)
-    body += _array("StateId", "kExpectedStates", map(str, states), 16)
+    body += _array("DiscreteToken", "kSampleTokens", (token_names[t] for t in tokens), 4)
+    body += _array("DiscreteHiddenState", "kExpectedStates", (f"{{{state}}}" for state in states), 16)
     body += _array("Sample", "kSamples", (f"{{{a}, {b}, {c}}}" for a, b, c in samples))
     body += _array("SnapRow", "kSnapRows",
-                   (f"{{{state}, {token_names[token]}}}" for state, token in sorted(model["snap"])))
-    body += _array("StateId", "kAttentionProbeKeys", map(str, attention_keys), 16)
+                   (f"{{{{{state}}}, static_cast<DiscreteHiddenState>({token_names[token]})}}"
+                    for state, token in sorted(model["snap"])))
+    body += _array("DiscreteHiddenState", "kAttentionProbeKeys", (f"{{{state}}}" for state in attention_keys), 16)
     body += _array("AttentionProbe", "kAttentionProbes", attention_rows)
     body += _array("PointwiseProbe", "kMlpProbes", pointwise_rows)
     body += _array("StateProbe", "kSnapProbes",
-                   (f"{{{state}, {_result(supported, token_names[output] if supported else 0)}}}"
+                   (f"{{{{{state}}}, {_result(supported, token_names[output] if supported else 0)}}}"
                     for state, supported, output in snap_probes))
     body += _array("EntryProbe", "kEntryProbes",
-                   (f"{{{token_names[token] if 0 <= token < len(token_names) else token}, "
+                   (f"{{{token_names[token] if 0 <= token < len(token_names) else 'DiscreteToken{' + str(token) + '}'}, "
                     f"{position}, {_result(supported, output)}}}"
                     for token, position, supported, output in entry_probes))
     body += f'''
@@ -254,9 +261,10 @@ TEST(GeneratedTransitionBoundaries, EverySamplePositionAtEveryBoundary) {{
     for (size_t position = {model['prompt_tokens'] - 1}; position < sample.length;
          ++position) {{
       SCOPED_TRACE(::testing::Message() << "snap position " << position);
-      const StateId target = position + 1 < sample.length
+      const DiscreteToken target = position + 1 < sample.length
           ? tokens[position + 1] : {token_names[model['eos_token']]};
-      ExpectTransition(model.snap.function(final_states[position]), {{target}});
+      ExpectTransition(model.snap.function(final_states[position]),
+                       {{static_cast<DiscreteHiddenState>(target)}});
     }}
   }}
 }}
@@ -266,7 +274,7 @@ TEST(GeneratedTransitionBoundaries, EverySourceSnapConstraint) {{
   ASSERT_NE(model.snap.function, nullptr);
   for (size_t index = 0; index < {len(model['snap'])}; ++index) {{
     const auto& row = kSnapRows[index];
-    SCOPED_TRACE(::testing::Message() << "snap state " << row.input);
+    SCOPED_TRACE(::testing::Message() << "snap state " << row.input.value);
     ExpectTransition(model.snap.function(row.input), {{row.output}});
   }}
 }}

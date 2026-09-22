@@ -153,7 +153,7 @@ emit_model(json.loads(Path(sys.argv[2]).read_text()), Path(sys.argv[3]),
         self.assertNotIn("StateRow", header)
         self.assertNotIn("AttentionRow", header)
         self.assertNotIn("GeneratedEntry()", header)
-        self.assertIn("TransitionResult GeneratedEntryFunction(TokenId, uint32_t);", header)
+        self.assertIn("TransitionResult GeneratedEntryFunction(DiscreteToken, uint32_t);", header)
         model = (destination / "model.cc").read_text()
         self.assertIn("GeneratedSnap(), GeneratedEntryFunction", model)
         self.assertNotIn("GeneratedEntry()", model)
@@ -176,29 +176,42 @@ emit_model(json.loads(Path(sys.argv[2]).read_text()), Path(sys.argv[3]),
         header.parent.mkdir(parents=True)
         header.write_text('''#pragma once
 #include <cstddef>
+#include <compare>
 #include <cstdint>
 #include <optional>
 #include <span>
 #include <string_view>
 namespace absl { template<class T> using Span = std::span<T>; }
 namespace pluto::llm::discretized {
-using StateId = uint32_t;
-using TokenId = int32_t;
-struct VocabularyRow { int32_t original_id; std::string_view bytes; };
-struct TransitionResult { std::optional<StateId> output; };
-struct AttentionTable {
-  TransitionResult (*function)(absl::Span<const StateId>) = nullptr;
+struct DiscreteHiddenState;
+struct DiscreteToken {
+  int value = 0;
+  constexpr explicit operator DiscreteHiddenState() const;
+  constexpr auto operator<=>(const DiscreteToken&) const = default;
 };
-struct StateTable { TransitionResult (*function)(StateId) = nullptr; };
+struct DiscreteHiddenState {
+  int value = 0;
+  constexpr explicit operator DiscreteToken() const { return DiscreteToken{value}; }
+  constexpr auto operator<=>(const DiscreteHiddenState&) const = default;
+};
+constexpr DiscreteToken::operator DiscreteHiddenState() const {
+  return DiscreteHiddenState{value};
+}
+struct VocabularyRow { int32_t original_id; std::string_view bytes; };
+struct TransitionResult { std::optional<DiscreteHiddenState> output; };
+struct AttentionTable {
+  TransitionResult (*function)(absl::Span<const DiscreteHiddenState>) = nullptr;
+};
+struct StateTable { TransitionResult (*function)(DiscreteHiddenState) = nullptr; };
 struct Model {
   uint32_t context_length;
   uint32_t prompt_tokens;
-  TokenId eos_token;
+  DiscreteToken eos_token;
   absl::Span<const VocabularyRow> vocabulary;
   absl::Span<const AttentionTable> attention;
   absl::Span<const StateTable> mlp;
   StateTable snap;
-  TransitionResult (*entry_function)(TokenId, uint32_t) = nullptr;
+  TransitionResult (*entry_function)(DiscreteToken, uint32_t) = nullptr;
 };
 const Model& GeneratedModel();
 }
@@ -207,7 +220,7 @@ const Model& GeneratedModel();
 
         def check(expression, expected):
             output = ("std::nullopt" if expected is None else
-                      f"std::optional<StateId>({expected}u)")
+                      f"std::optional<DiscreteHiddenState>(DiscreteHiddenState{{{expected}}})")
             label = len(checks)
             checks.append(f'if (({expression}).output != {output}) {{ '
                           f'std::cerr << "partial function check {label} failed\\n"; return 1; }}')
@@ -215,23 +228,23 @@ const Model& GeneratedModel();
         entries = {(token, position): output for token, position, output in model["entry"]}
         for token in [-1, *range(model["vocab_size"] + 1), 2147483647]:
             for position in [*range(5), 4294967295]:
-                check(f"model.entry_function({token}, {position}u)", entries.get((token, position)))
+                check(f"model.entry_function(DiscreteToken{{{token}}}, {position}u)", entries.get((token, position)))
         pointwise = [(f"model.mlp[{block}].function", dict(rows))
                      for block, rows in enumerate(model["mlp"])]
         pointwise.append(("model.snap.function", dict(model["snap"])))
         for function, rows in pointwise:
-            for state in [*range(20), *rows, 4294967294, 4294967295]:
-                check(f"{function}({state}u)", rows.get(state))
+            for state in [-2147483648, -1, *range(20), *rows, 2147483646, 2147483647]:
+                check(f"{function}(DiscreteHiddenState{{{state}}})", rows.get(state))
         for block, rows in enumerate(model["attention"]):
             by_key = {tuple(prefix): output for prefix, output in rows}
-            alphabet = sorted({0, 4, 5, 6, 7, 4294967295} |
+            alphabet = sorted({-1, 0, 4, 5, 6, 7, 2147483647} |
                               {state for prefix, _ in rows for state in prefix})
             probes = {()} | set(by_key)
             for length in range(1, 4):
                 probes.update(itertools.product(alphabet, repeat=length))
             for prefix in sorted(probes):
-                literal = ", ".join(f"{state}u" for state in prefix)
-                check(f"model.attention[{block}].function(std::vector<StateId>{{{literal}}})",
+                literal = ", ".join(f"DiscreteHiddenState{{{state}}}" for state in prefix)
+                check(f"model.attention[{block}].function(std::vector<DiscreteHiddenState>{{{literal}}})",
                       by_key.get(prefix))
         source = directory / "partial_functions_test.cc"
         source.write_text('''#include <iostream>
@@ -278,9 +291,9 @@ int main() {
     @unittest.skipUnless(shutil.which("c++"), "C++ compiler unavailable")
     def test_plain_zero_blocks_and_maximum_state_ids(self):
         self.model.update(layers=0,
-                          states=[{"id": 4294967295, "stage": 0, "bits": [0, 0]}],
-                          entry=[[0, 0, 4294967295]], attention=[], mlp=[],
-                          snap=[[4294967295, 0]], samples=[{"tokens": [0]}])
+                          states=[{"id": 2147483647, "stage": 0, "bits": [0, 0]}],
+                          entry=[[0, 0, 2147483647]], attention=[], mlp=[],
+                          snap=[[2147483647, 0]], samples=[{"tokens": [0]}])
         self._compile_and_check_partial_functions(self.model, compact=False)
 
     def test_expected_suffixes_never_enter_production_model_sources(self):
@@ -301,30 +314,30 @@ int main() {
     def test_named_vocabulary_constants_have_exact_ids_and_cover_all_token_references(self):
         destination, manifest = self.emit()
         header = (destination / "vocabulary_tokens.h").read_text()
-        declarations = dict(re.findall(r"inline\s+constexpr\s+TokenId\s+(\w+)\s*=\s*(\d+)\s*;", header))
+        declarations = dict(re.findall(r"inline\s+constexpr\s+DiscreteToken\s+(\w+)\s*\{(\d+)\}\s*;", header))
         self.assertEqual(declarations, {"kA_0": "0", "kB_1": "1", "kC_2": "2", "kEos_3": "3"})
         self.assertIn(discretize_emit.NAMESPACE + "::vocab", header)
         self.assertIn("vocabulary_tokens.h", manifest["files"])
         names = ["kA_0", "kB_1", "kC_2", "kEos_3"]
         entry = (destination / "entry.cc").read_text()
         for token, position, state in self.model["entry"]:
-            self.assertIn(f"{{vocab::{names[token]}, {position}, {state}}}", entry)
+            self.assertIn(f"{{vocab::{names[token]}, {position}, {{{state}}}}}", entry)
         snap = (destination / "snap.cc").read_text()
         for state, token in self.model["snap"]:
-            self.assertIn(f"{{{state}, vocab::{names[token]}}}", snap)
+            self.assertIn(f"{{{{{state}}}, static_cast<DiscreteHiddenState>(vocab::{names[token]})}}", snap)
         self.assertIn("1024, 1, vocab::kEos_3", (destination / "model.cc").read_text())
         for filename, array, expected in (
                 ("prompt_encoder.cc", "kTokens", ["kA_0", "kA_0", "kB_1", "kB_1"]),
                 ("verification.cc", "kExpectedTokens", ["kA_0", "kB_1", "kB_1"])):
             text = (destination / filename).read_text()
-            body = re.search(r"const TokenId " + array + r"\[\]\s*=\s*\{(.*?)\};", text, re.S)
+            body = re.search(r"const DiscreteToken " + array + r"\[\]\s*=\s*\{(.*?)\};", text, re.S)
             self.assertIsNotNone(body)
             values = [value.strip() for value in body.group(1).split(",") if value.strip()]
             self.assertEqual(values, ["vocab::" + name for name in expected])
         # Attention and MLP symbols remain numeric hidden-state IDs.
         self.assertNotIn("vocab::", (destination / "attention_0.cc").read_text())
         self.assertNotIn("vocab::", (destination / "mlp_0.cc").read_text())
-        self.assertIn("{8, 12}", (destination / "mlp_0.cc").read_text())
+        self.assertIn("{{8}, {12}}", (destination / "mlp_0.cc").read_text())
 
     def test_named_vocabulary_header_has_shared_explicit_build_dependencies(self):
         destination, _ = self.emit()
@@ -347,15 +360,15 @@ int main() {
         self.model["vocabulary"][2]["hex"] = self.model["vocabulary"][0]["hex"]
         destination, _ = self.emit()
         header = (destination / "vocabulary_tokens.h").read_text()
-        self.assertIn("kA_0 = 0", header)
-        self.assertIn("kA_2 = 2", header)
+        self.assertIn("kA_0{0}", header)
+        self.assertIn("kA_2{2}", header)
 
     def test_exact_history_keys_are_flat_integer_sequences_not_hashes(self):
         destination, _ = self.emit()
         text = (destination / "attention_0.cc").read_text()
-        self.assertIn("const StateId kKeys[]", text)
-        self.assertIn("{1, 2, 9}", text)
-        self.assertIn("{3, 2, 10}", text)
+        self.assertIn("const DiscreteHiddenState kKeys[]", text)
+        self.assertIn("{1, 2, {9}}", text)
+        self.assertIn("{3, 2, {10}}", text)
         self.assertNotIn("hash", text)
         self.assertNotIn("float", text)
 
@@ -486,6 +499,18 @@ int main() {
         model = fixture()
         model["vocabulary"][0]["hex"] = "FF"
         invalid.append(model)
+        # Every symbolic state is stored in an int, including original-member
+        # metadata and transition references; no uint32-only values may leak out.
+        for value in (2**31, 2**32 - 1):
+            model = fixture()
+            model["states"][0]["id"] = value
+            invalid.append(model)
+            model = fixture()
+            model["states"][0].update(members=[value], member_count=1)
+            invalid.append(model)
+            model = fixture()
+            model["entry"][0][2] = value
+            invalid.append(model)
         for model in invalid:
             with self.subTest(model=model), mock.patch.object(discretize_emit.tempfile, "TemporaryDirectory") as staging:
                 with self.assertRaises(ValueError):

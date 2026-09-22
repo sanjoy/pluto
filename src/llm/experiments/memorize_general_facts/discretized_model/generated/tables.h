@@ -2,7 +2,7 @@
 #pragma once
 #include "src/llm/experiments/memorize_general_facts/discretized_model/runtime.h"
 namespace pluto::llm::discretized {
-TransitionResult GeneratedEntryFunction(TokenId, uint32_t);
+TransitionResult GeneratedEntryFunction(DiscreteToken, uint32_t);
 absl::Span<const VocabularyRow> GeneratedVocabulary();
 StateTable GeneratedSnap();
 AttentionTable GeneratedAttention0();

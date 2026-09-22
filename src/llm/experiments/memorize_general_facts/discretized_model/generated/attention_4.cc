@@ -16,40 +16,40 @@ struct Attention4Step {
   std::uint32_t next;
   TransitionResult result;
 };
-#define PLUTO_ATTN_END(output)                     \
-  do {                                             \
-    if (position == history.size())                \
-      return {kAttention4Done, {StateId{output}}}; \
+#define PLUTO_ATTN_END(output)                                 \
+  do {                                                         \
+    if (position == history.size())                            \
+      return {kAttention4Done, {DiscreteHiddenState{output}}}; \
   } while (false)
 #define PLUTO_ATTN_MORE()           \
   do {                              \
     if (position == history.size()) \
       return {kAttention4Done, {}}; \
   } while (false)
-#define PLUTO_ATTN_MATCH(symbol, output) \
-  do {                                   \
-    PLUTO_ATTN_END(output);              \
-    if (history[position++] != symbol)   \
-      return {kAttention4Done, {}};      \
+#define PLUTO_ATTN_MATCH(symbol, output)     \
+  do {                                       \
+    PLUTO_ATTN_END(output);                  \
+    if (history[position++].value != symbol) \
+      return {kAttention4Done, {}};          \
   } while (false)
-#define PLUTO_ATTN_SKIP(symbol)        \
-  do {                                 \
-    PLUTO_ATTN_MORE();                 \
-    if (history[position++] != symbol) \
-      return {kAttention4Done, {}};    \
+#define PLUTO_ATTN_SKIP(symbol)              \
+  do {                                       \
+    PLUTO_ATTN_MORE();                       \
+    if (history[position++].value != symbol) \
+      return {kAttention4Done, {}};          \
   } while (false)
 struct Attention4MatchStep {
   std::uint16_t symbol, output;
 };
 [[gnu::noinline]]
-Attention4Step Attention4MatchSequence(const Attention4MatchStep* steps,
-                                       std::size_t count,
-                                       absl::Span<const StateId> history,
-                                       std::size_t& position) {
+Attention4Step Attention4MatchSequence(
+    const Attention4MatchStep* steps, std::size_t count,
+    absl::Span<const DiscreteHiddenState> history, std::size_t& position) {
   for (std::size_t index = 0; index < count; ++index) {
     if (position == history.size())
-      return {kAttention4Done, {StateId{steps[index].output}}};
-    if (history[position++] != steps[index].symbol)
+      return {kAttention4Done,
+              {DiscreteHiddenState{static_cast<int>(steps[index].output)}}};
+    if (history[position++].value != static_cast<int>(steps[index].symbol))
       return {kAttention4Done, {}};
   }
   return {0u, {}};  // The literal run matched; continue at its shared tail.
@@ -4089,7 +4089,8 @@ constexpr Attention4MatchStep kAttention4Sequence887[] = {
     {4907u, 4924u}, {4902u, 4928u}, {4868u, 4924u}, {4868u, 4913u},
 };
 Attention4Step Attention4Part0(
-    std::uint32_t node, [[maybe_unused]] absl::Span<const StateId> history,
+    std::uint32_t node,
+    [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
   switch (node) {
     case 255u:
@@ -4177,7 +4178,7 @@ n255:
   PLUTO_ATTN_RUN(kAttention4Sequence0);
   goto n247;
 n247:
-  PLUTO_ATTN_MATCH(4893u, 4913u);
+  PLUTO_ATTN_MATCH(4893, 4913);
   goto n132;
 n246:
   PLUTO_ATTN_RUN(kAttention4Sequence1);
@@ -4186,58 +4187,58 @@ n236:
   PLUTO_ATTN_RUN(kAttention4Sequence2);
   goto n230;
 n230:
-  PLUTO_ATTN_MATCH(4874u, 4924u);
+  PLUTO_ATTN_MATCH(4874, 4924);
   goto n1;
 n229:
-  PLUTO_ATTN_END(4953u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4953);
+  switch (history[position++].value) {
+    case 4868:
       goto n228;
-    case 4870u:
+    case 4870:
       goto n113;
-    case 4873u:
+    case 4873:
       goto n85;
-    case 4876u:
+    case 4876:
       goto n52;
-    case 4877u:
+    case 4877:
       goto n24;
-    case 4891u:
+    case 4891:
       goto n13;
     default:
       return {kAttention4Done, {}};
   }
 n228:
-  PLUTO_ATTN_END(4924u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4924);
+  switch (history[position++].value) {
+    case 4868:
       goto n227;
-    case 4870u:
+    case 4870:
       goto n177;
-    case 4873u:
+    case 4873:
       goto n174;
-    case 4891u:
+    case 4891:
       goto n140;
-    case 4902u:
+    case 4902:
       goto n131;
-    case 4904u:
+    case 4904:
       goto n121;
     default:
       return {kAttention4Done, {}};
   }
 n227:
-  PLUTO_ATTN_END(4924u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4924);
+  switch (history[position++].value) {
+    case 4868:
       goto n226;
-    case 4874u:
+    case 4874:
       goto n219;
-    case 4875u:
+    case 4875:
       goto n214;
-    case 4883u:
+    case 4883:
       goto n196;
-    case 4886u:
+    case 4886:
       goto n194;
-    case 4897u:
+    case 4897:
       goto n190;
     default:
       return {kAttention4Done, {}};
@@ -4246,10 +4247,10 @@ n226:
   PLUTO_ATTN_RUN(kAttention4Sequence3);
   goto n221;
 n221:
-  PLUTO_ATTN_MATCH(4885u, 4953u);
+  PLUTO_ATTN_MATCH(4885, 4953);
   goto n220;
 n220:
-  PLUTO_ATTN_MATCH(4902u, 4929u);
+  PLUTO_ATTN_MATCH(4902, 4929);
   goto n1;
 n219:
   PLUTO_ATTN_RUN(kAttention4Sequence4);
@@ -4258,19 +4259,19 @@ n214:
   PLUTO_ATTN_RUN(kAttention4Sequence5);
   goto n199;
 n199:
-  PLUTO_ATTN_MATCH(4868u, 4924u);
+  PLUTO_ATTN_MATCH(4868, 4924);
   goto n198;
 n198:
-  PLUTO_ATTN_MATCH(4868u, 4924u);
+  PLUTO_ATTN_MATCH(4868, 4924);
   goto n197;
 n197:
-  PLUTO_ATTN_MATCH(4908u, 4952u);
+  PLUTO_ATTN_MATCH(4908, 4952);
   goto n0;
 n196:
-  PLUTO_ATTN_MATCH(4868u, 4952u);
+  PLUTO_ATTN_MATCH(4868, 4952);
   goto n195;
 n195:
-  PLUTO_ATTN_MATCH(4868u, 4915u);
+  PLUTO_ATTN_MATCH(4868, 4915);
   goto n1;
 n194:
   PLUTO_ATTN_RUN(kAttention4Sequence6);
@@ -4279,25 +4280,25 @@ n190:
   PLUTO_ATTN_RUN(kAttention4Sequence7);
   goto n178;
 n178:
-  PLUTO_ATTN_MATCH(4868u, 4950u);
+  PLUTO_ATTN_MATCH(4868, 4950);
   goto n114;
 n177:
-  PLUTO_ATTN_MATCH(4868u, 4953u);
-  PLUTO_ATTN_MATCH(4868u, 4926u);
+  PLUTO_ATTN_MATCH(4868, 4953);
+  PLUTO_ATTN_MATCH(4868, 4926);
   goto n175;
 n175:
-  PLUTO_ATTN_MATCH(4902u, 4924u);
+  PLUTO_ATTN_MATCH(4902, 4924);
   goto n14;
 n174:
-  PLUTO_ATTN_END(4953u);
-  switch (history[position++]) {
-    case 4874u:
+  PLUTO_ATTN_END(4953);
+  switch (history[position++].value) {
+    case 4874:
       goto n173;
-    case 4887u:
+    case 4887:
       goto n165;
-    case 4898u:
+    case 4898:
       goto n159;
-    case 4900u:
+    case 4900:
       goto n152;
     default:
       return {kAttention4Done, {}};
@@ -4306,16 +4307,16 @@ n173:
   PLUTO_ATTN_RUN(kAttention4Sequence8);
   goto n166;
 n166:
-  PLUTO_ATTN_MATCH(4868u, 4929u);
+  PLUTO_ATTN_MATCH(4868, 4929);
   goto n1;
 n165:
   PLUTO_ATTN_RUN(kAttention4Sequence9);
   goto n161;
 n161:
-  PLUTO_ATTN_MATCH(4902u, 4924u);
+  PLUTO_ATTN_MATCH(4902, 4924);
   goto n160;
 n160:
-  PLUTO_ATTN_MATCH(4902u, 4924u);
+  PLUTO_ATTN_MATCH(4902, 4924);
   goto n2;
 n159:
   PLUTO_ATTN_RUN(kAttention4Sequence10);
@@ -4324,26 +4325,26 @@ n152:
   PLUTO_ATTN_RUN(kAttention4Sequence11);
   goto n142;
 n142:
-  PLUTO_ATTN_MATCH(4868u, 4913u);
+  PLUTO_ATTN_MATCH(4868, 4913);
   goto n141;
 n141:
-  PLUTO_ATTN_MATCH(4868u, 4924u);
+  PLUTO_ATTN_MATCH(4868, 4924);
   goto n114;
 n140:
   PLUTO_ATTN_RUN(kAttention4Sequence12);
   goto n133;
 n133:
-  PLUTO_ATTN_MATCH(4868u, 4924u);
+  PLUTO_ATTN_MATCH(4868, 4924);
   goto n132;
 n132:
-  PLUTO_ATTN_MATCH(4868u, 4913u);
+  PLUTO_ATTN_MATCH(4868, 4913);
   goto n1;
 n131:
-  PLUTO_ATTN_END(4952u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4952);
+  switch (history[position++].value) {
+    case 4868:
       goto n130;
-    case 4904u:
+    case 4904:
       goto n125;
     default:
       return {kAttention4Done, {}};
@@ -4352,7 +4353,7 @@ n130:
   PLUTO_ATTN_RUN(kAttention4Sequence13);
   goto n126;
 n126:
-  PLUTO_ATTN_MATCH(4902u, 4916u);
+  PLUTO_ATTN_MATCH(4902, 4916);
   goto n1;
 n125:
   PLUTO_ATTN_RUN(kAttention4Sequence14);
@@ -4361,15 +4362,15 @@ n121:
   PLUTO_ATTN_RUN(kAttention4Sequence15);
   goto n114;
 n114:
-  PLUTO_ATTN_MATCH(4902u, 4924u);
+  PLUTO_ATTN_MATCH(4902, 4924);
   goto n1;
 n113:
-  PLUTO_ATTN_MATCH(4902u, 4953u);
-  PLUTO_ATTN_END(4924u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_MATCH(4902, 4953);
+  PLUTO_ATTN_END(4924);
+  switch (history[position++].value) {
+    case 4868:
       goto n111;
-    case 4902u:
+    case 4902:
       goto n98;
     default:
       return {kAttention4Done, {}};
@@ -4378,25 +4379,25 @@ n111:
   PLUTO_ATTN_RUN(kAttention4Sequence16);
   goto n99;
 n99:
-  PLUTO_ATTN_MATCH(4908u, 4913u);
+  PLUTO_ATTN_MATCH(4908, 4913);
   goto n1;
 n98:
   PLUTO_ATTN_RUN(kAttention4Sequence17);
   goto n87;
 n87:
-  PLUTO_ATTN_MATCH(4868u, 4953u);
+  PLUTO_ATTN_MATCH(4868, 4953);
   goto n86;
 n86:
-  PLUTO_ATTN_MATCH(4908u, 4923u);
+  PLUTO_ATTN_MATCH(4908, 4923);
   goto n0;
 n85:
-  PLUTO_ATTN_END(4943u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4943);
+  switch (history[position++].value) {
+    case 4868:
       goto n84;
-    case 4891u:
+    case 4891:
       goto n77;
-    case 4893u:
+    case 4893:
       goto n66;
     default:
       return {kAttention4Done, {}};
@@ -4405,7 +4406,7 @@ n84:
   PLUTO_ATTN_RUN(kAttention4Sequence18);
   goto n78;
 n78:
-  PLUTO_ATTN_MATCH(4902u, 4953u);
+  PLUTO_ATTN_MATCH(4902, 4953);
   goto n42;
 n77:
   PLUTO_ATTN_RUN(kAttention4Sequence19);
@@ -4414,24 +4415,24 @@ n66:
   PLUTO_ATTN_RUN(kAttention4Sequence20);
   goto n53;
 n53:
-  PLUTO_ATTN_MATCH(4902u, 4933u);
+  PLUTO_ATTN_MATCH(4902, 4933);
   goto n1;
 n52:
-  PLUTO_ATTN_END(4929u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4929);
+  switch (history[position++].value) {
+    case 4868:
       goto n51;
-    case 4893u:
+    case 4893:
       goto n36;
     default:
       return {kAttention4Done, {}};
   }
 n51:
-  PLUTO_ATTN_END(4913u);
-  switch (history[position++]) {
-    case 4873u:
+  PLUTO_ATTN_END(4913);
+  switch (history[position++].value) {
+    case 4873:
       goto n50;
-    case 4898u:
+    case 4898:
       goto n41;
     default:
       return {kAttention4Done, {}};
@@ -4440,57 +4441,58 @@ n50:
   PLUTO_ATTN_RUN(kAttention4Sequence21);
   goto n42;
 n42:
-  PLUTO_ATTN_MATCH(4908u, 4913u);
+  PLUTO_ATTN_MATCH(4908, 4913);
   goto n0;
 n41:
   PLUTO_ATTN_RUN(kAttention4Sequence22);
   goto n37;
 n37:
-  PLUTO_ATTN_MATCH(4868u, 4953u);
+  PLUTO_ATTN_MATCH(4868, 4953);
   goto n1;
 n36:
   PLUTO_ATTN_RUN(kAttention4Sequence23);
   goto n25;
 n25:
-  PLUTO_ATTN_MATCH(4902u, 4928u);
+  PLUTO_ATTN_MATCH(4902, 4928);
   goto n1;
 n24:
   PLUTO_ATTN_RUN(kAttention4Sequence24);
   goto n16;
 n16:
-  PLUTO_ATTN_MATCH(4876u, 4953u);
+  PLUTO_ATTN_MATCH(4876, 4953);
   goto n15;
 n15:
-  PLUTO_ATTN_MATCH(4893u, 4929u);
+  PLUTO_ATTN_MATCH(4893, 4929);
   goto n14;
 n14:
-  PLUTO_ATTN_MATCH(4902u, 4913u);
+  PLUTO_ATTN_MATCH(4902, 4913);
   goto n1;
 n13:
-  PLUTO_ATTN_MATCH(4886u, 4925u);
-  PLUTO_ATTN_MATCH(4885u, 4933u);
+  PLUTO_ATTN_MATCH(4886, 4925);
+  PLUTO_ATTN_MATCH(4885, 4933);
   goto n3;
 n11:
   PLUTO_ATTN_RUN(kAttention4Sequence25);
   goto n4;
 n4:
-  PLUTO_ATTN_MATCH(4876u, 4953u);
+  PLUTO_ATTN_MATCH(4876, 4953);
   goto n3;
 n3:
-  PLUTO_ATTN_MATCH(4868u, 4929u);
+  PLUTO_ATTN_MATCH(4868, 4929);
   goto n2;
 n2:
-  PLUTO_ATTN_MATCH(4868u, 4924u);
+  PLUTO_ATTN_MATCH(4868, 4924);
   goto n1;
 n1:
-  PLUTO_ATTN_MATCH(4908u, 4924u);
+  PLUTO_ATTN_MATCH(4908, 4924);
   goto n0;
 n0:
-  PLUTO_ATTN_END(4913u);
+  PLUTO_ATTN_END(4913);
   return {kAttention4Done, {}};
 }
 Attention4Step Attention4Part1(
-    std::uint32_t node, [[maybe_unused]] absl::Span<const StateId> history,
+    std::uint32_t node,
+    [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
   switch (node) {
     case 511u:
@@ -4598,39 +4600,39 @@ n511:
   PLUTO_ATTN_RUN(kAttention4Sequence26);
   goto n502;
 n502:
-  PLUTO_ATTN_MATCH(4868u, 4924u);
-  PLUTO_ATTN_MATCH(4868u, 4924u);
+  PLUTO_ATTN_MATCH(4868, 4924);
+  PLUTO_ATTN_MATCH(4868, 4924);
   return {133u, {}};
 n500:
   PLUTO_ATTN_RUN(kAttention4Sequence27);
   return {197u, {}};
 n490:
-  PLUTO_ATTN_MATCH(4902u, 4953u);
-  PLUTO_ATTN_MATCH(4880u, 4952u);
+  PLUTO_ATTN_MATCH(4902, 4953);
+  PLUTO_ATTN_MATCH(4880, 4952);
   goto n488;
 n488:
-  PLUTO_ATTN_MATCH(4900u, 4928u);
+  PLUTO_ATTN_MATCH(4900, 4928);
   goto n487;
 n487:
-  PLUTO_ATTN_MATCH(4868u, 4942u);
+  PLUTO_ATTN_MATCH(4868, 4942);
   return {1u, {}};
 n486:
-  PLUTO_ATTN_MATCH(4898u, 4938u);
-  PLUTO_ATTN_MATCH(4898u, 4953u);
-  PLUTO_ATTN_MATCH(4908u, 4924u);
+  PLUTO_ATTN_MATCH(4898, 4938);
+  PLUTO_ATTN_MATCH(4898, 4953);
+  PLUTO_ATTN_MATCH(4908, 4924);
   goto n483;
 n483:
-  PLUTO_ATTN_MATCH(4883u, 4940u);
-  PLUTO_ATTN_MATCH(4868u, 4920u);
+  PLUTO_ATTN_MATCH(4883, 4940);
+  PLUTO_ATTN_MATCH(4868, 4920);
   return {2u, {}};
 n481:
-  PLUTO_ATTN_END(4925u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4925);
+  switch (history[position++].value) {
+    case 4868:
       goto n480;
-    case 4876u:
+    case 4876:
       goto n475;
-    case 4902u:
+    case 4902:
       goto n471;
     default:
       return {kAttention4Done, {}};
@@ -4639,15 +4641,15 @@ n480:
   PLUTO_ATTN_RUN(kAttention4Sequence28);
   goto n476;
 n476:
-  PLUTO_ATTN_MATCH(4868u, 4924u);
+  PLUTO_ATTN_MATCH(4868, 4924);
   return {42u, {}};
 n475:
-  PLUTO_ATTN_MATCH(4868u, 4929u);
-  PLUTO_ATTN_MATCH(4868u, 4953u);
-  PLUTO_ATTN_MATCH(4898u, 4923u);
+  PLUTO_ATTN_MATCH(4868, 4929);
+  PLUTO_ATTN_MATCH(4868, 4953);
+  PLUTO_ATTN_MATCH(4898, 4923);
   goto n472;
 n472:
-  PLUTO_ATTN_MATCH(4868u, 4953u);
+  PLUTO_ATTN_MATCH(4868, 4953);
   return {197u, {}};
 n471:
   PLUTO_ATTN_RUN(kAttention4Sequence29);
@@ -4656,19 +4658,19 @@ n464:
   PLUTO_ATTN_RUN(kAttention4Sequence30);
   goto n404;
 n456:
-  PLUTO_ATTN_END(4913u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4913);
+  switch (history[position++].value) {
+    case 4868:
       goto n455;
-    case 4870u:
+    case 4870:
       goto n445;
-    case 4874u:
+    case 4874:
       goto n434;
-    case 4875u:
+    case 4875:
       goto n428;
-    case 4902u:
+    case 4902:
       goto n419;
-    case 4904u:
+    case 4904:
       goto n403;
     default:
       return {kAttention4Done, {}};
@@ -4680,13 +4682,13 @@ n445:
   PLUTO_ATTN_RUN(kAttention4Sequence32);
   goto n435;
 n435:
-  PLUTO_ATTN_MATCH(4876u, 4950u);
+  PLUTO_ATTN_MATCH(4876, 4950);
   return {166u, {}};
 n434:
   PLUTO_ATTN_RUN(kAttention4Sequence33);
   goto n429;
 n429:
-  PLUTO_ATTN_MATCH(4893u, 4953u);
+  PLUTO_ATTN_MATCH(4893, 4953);
   return {197u, {}};
 n428:
   PLUTO_ATTN_RUN(kAttention4Sequence34);
@@ -4695,62 +4697,62 @@ n419:
   PLUTO_ATTN_RUN(kAttention4Sequence35);
   goto n405;
 n405:
-  PLUTO_ATTN_MATCH(4868u, 4924u);
+  PLUTO_ATTN_MATCH(4868, 4924);
   goto n404;
 n404:
-  PLUTO_ATTN_MATCH(4868u, 4952u);
+  PLUTO_ATTN_MATCH(4868, 4952);
   return {1u, {}};
 n403:
   PLUTO_ATTN_RUN(kAttention4Sequence36);
   goto n397;
 n397:
-  PLUTO_ATTN_MATCH(4883u, 4924u);
+  PLUTO_ATTN_MATCH(4883, 4924);
   goto n396;
 n396:
-  PLUTO_ATTN_MATCH(4902u, 4920u);
+  PLUTO_ATTN_MATCH(4902, 4920);
   return {1u, {}};
 n395:
   PLUTO_ATTN_RUN(kAttention4Sequence37);
   goto n387;
 n387:
-  PLUTO_ATTN_MATCH(4868u, 4929u);
+  PLUTO_ATTN_MATCH(4868, 4929);
   goto n386;
 n386:
-  PLUTO_ATTN_MATCH(4898u, 4924u);
+  PLUTO_ATTN_MATCH(4898, 4924);
   goto n385;
 n385:
-  PLUTO_ATTN_MATCH(4902u, 4953u);
+  PLUTO_ATTN_MATCH(4902, 4953);
   return {197u, {}};
 n384:
-  PLUTO_ATTN_END(4941u);
-  switch (history[position++]) {
-    case 4866u:
+  PLUTO_ATTN_END(4941);
+  switch (history[position++].value) {
+    case 4866:
       goto n383;
-    case 4868u:
+    case 4868:
       goto n376;
-    case 4870u:
+    case 4870:
       goto n371;
-    case 4873u:
+    case 4873:
       goto n365;
-    case 4874u:
+    case 4874:
       goto n357;
-    case 4880u:
+    case 4880:
       goto n354;
-    case 4883u:
+    case 4883:
       goto n350;
-    case 4885u:
+    case 4885:
       goto n342;
-    case 4893u:
+    case 4893:
       goto n337;
-    case 4897u:
+    case 4897:
       goto n326;
-    case 4902u:
+    case 4902:
       goto n317;
-    case 4903u:
+    case 4903:
       goto n306;
-    case 4904u:
+    case 4904:
       goto n300;
-    case 4907u:
+    case 4907:
       goto n294;
     default:
       return {kAttention4Done, {}};
@@ -4759,41 +4761,41 @@ n383:
   PLUTO_ATTN_RUN(kAttention4Sequence38);
   goto n378;
 n378:
-  PLUTO_ATTN_MATCH(4868u, 4953u);
+  PLUTO_ATTN_MATCH(4868, 4953);
   goto n377;
 n377:
-  PLUTO_ATTN_MATCH(4902u, 4924u);
+  PLUTO_ATTN_MATCH(4902, 4924);
   goto n291;
 n376:
-  PLUTO_ATTN_MATCH(4898u, 4923u);
+  PLUTO_ATTN_MATCH(4898, 4923);
   goto n375;
 n375:
-  PLUTO_ATTN_MATCH(4876u, 4953u);
-  PLUTO_ATTN_MATCH(4868u, 4929u);
+  PLUTO_ATTN_MATCH(4876, 4953);
+  PLUTO_ATTN_MATCH(4868, 4929);
   goto n373;
 n373:
-  PLUTO_ATTN_MATCH(4898u, 4924u);
+  PLUTO_ATTN_MATCH(4898, 4924);
   goto n372;
 n372:
-  PLUTO_ATTN_MATCH(4902u, 4953u);
+  PLUTO_ATTN_MATCH(4902, 4953);
   return {1u, {}};
 n371:
   PLUTO_ATTN_RUN(kAttention4Sequence39);
   goto n366;
 n366:
-  PLUTO_ATTN_MATCH(4868u, 4913u);
+  PLUTO_ATTN_MATCH(4868, 4913);
   return {132u, {}};
 n365:
   PLUTO_ATTN_RUN(kAttention4Sequence40);
   goto n307;
 n357:
-  PLUTO_ATTN_MATCH(4902u, 4933u);
+  PLUTO_ATTN_MATCH(4902, 4933);
   goto n356;
 n356:
-  PLUTO_ATTN_MATCH(4898u, 4952u);
+  PLUTO_ATTN_MATCH(4898, 4952);
   goto n355;
 n355:
-  PLUTO_ATTN_MATCH(4902u, 4953u);
+  PLUTO_ATTN_MATCH(4902, 4953);
   return {2u, {}};
 n354:
   PLUTO_ATTN_RUN(kAttention4Sequence41);
@@ -4802,75 +4804,75 @@ n350:
   PLUTO_ATTN_RUN(kAttention4Sequence42);
   goto n343;
 n343:
-  PLUTO_ATTN_MATCH(4893u, 4952u);
+  PLUTO_ATTN_MATCH(4893, 4952);
   return {132u, {}};
 n342:
-  PLUTO_ATTN_MATCH(4868u, 4935u);
-  PLUTO_ATTN_MATCH(4873u, 4913u);
-  PLUTO_ATTN_MATCH(4902u, 4953u);
+  PLUTO_ATTN_MATCH(4868, 4935);
+  PLUTO_ATTN_MATCH(4873, 4913);
+  PLUTO_ATTN_MATCH(4902, 4953);
   goto n339;
 n339:
-  PLUTO_ATTN_MATCH(4880u, 4924u);
+  PLUTO_ATTN_MATCH(4880, 4924);
   goto n338;
 n338:
-  PLUTO_ATTN_MATCH(4868u, 4928u);
+  PLUTO_ATTN_MATCH(4868, 4928);
   return {1u, {}};
 n337:
   PLUTO_ATTN_RUN(kAttention4Sequence43);
   goto n327;
 n327:
-  PLUTO_ATTN_MATCH(4868u, 4924u);
+  PLUTO_ATTN_MATCH(4868, 4924);
   return {2u, {}};
 n326:
   PLUTO_ATTN_RUN(kAttention4Sequence44);
   goto n319;
 n319:
-  PLUTO_ATTN_MATCH(4868u, 4953u);
+  PLUTO_ATTN_MATCH(4868, 4953);
   goto n318;
 n318:
-  PLUTO_ATTN_MATCH(4902u, 4924u);
+  PLUTO_ATTN_MATCH(4902, 4924);
   return {42u, {}};
 n317:
   PLUTO_ATTN_RUN(kAttention4Sequence45);
   goto n307;
 n307:
-  PLUTO_ATTN_MATCH(4902u, 4924u);
+  PLUTO_ATTN_MATCH(4902, 4924);
   return {114u, {}};
 n306:
   PLUTO_ATTN_RUN(kAttention4Sequence46);
   goto n302;
 n302:
-  PLUTO_ATTN_MATCH(4893u, 4913u);
+  PLUTO_ATTN_MATCH(4893, 4913);
   goto n301;
 n301:
-  PLUTO_ATTN_MATCH(4908u, 4940u);
+  PLUTO_ATTN_MATCH(4908, 4940);
   return {0u, {}};
 n300:
   PLUTO_ATTN_RUN(kAttention4Sequence47);
   goto n295;
 n295:
-  PLUTO_ATTN_MATCH(4868u, 4940u);
+  PLUTO_ATTN_MATCH(4868, 4940);
   return {1u, {}};
 n294:
-  PLUTO_ATTN_MATCH(4885u, 4926u);
-  PLUTO_ATTN_MATCH(4898u, 4929u);
+  PLUTO_ATTN_MATCH(4885, 4926);
+  PLUTO_ATTN_MATCH(4898, 4929);
   goto n292;
 n292:
-  PLUTO_ATTN_MATCH(4898u, 4924u);
+  PLUTO_ATTN_MATCH(4898, 4924);
   goto n291;
 n291:
-  PLUTO_ATTN_MATCH(4908u, 4915u);
+  PLUTO_ATTN_MATCH(4908, 4915);
   return {0u, {}};
 n290:
-  PLUTO_ATTN_END(4950u);
-  switch (history[position++]) {
-    case 4872u:
+  PLUTO_ATTN_END(4950);
+  switch (history[position++].value) {
+    case 4872:
       goto n289;
-    case 4876u:
+    case 4876:
       goto n281;
-    case 4880u:
+    case 4880:
       goto n275;
-    case 4885u:
+    case 4885:
       goto n268;
     default:
       return {kAttention4Done, {}};
@@ -4879,49 +4881,50 @@ n289:
   PLUTO_ATTN_RUN(kAttention4Sequence48);
   goto n282;
 n282:
-  PLUTO_ATTN_MATCH(4902u, 4915u);
+  PLUTO_ATTN_MATCH(4902, 4915);
   return {1u, {}};
 n281:
   PLUTO_ATTN_RUN(kAttention4Sequence49);
   goto n276;
 n276:
-  PLUTO_ATTN_MATCH(4893u, 4913u);
+  PLUTO_ATTN_MATCH(4893, 4913);
   return {14u, {}};
 n275:
   PLUTO_ATTN_RUN(kAttention4Sequence50);
   goto n269;
 n269:
-  PLUTO_ATTN_MATCH(4874u, 4915u);
+  PLUTO_ATTN_MATCH(4874, 4915);
   return {1u, {}};
 n268:
   PLUTO_ATTN_RUN(kAttention4Sequence51);
   return {3u, {}};
 n264:
-  PLUTO_ATTN_END(4924u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4924);
+  switch (history[position++].value) {
+    case 4868:
       goto n263;
-    case 4876u:
+    case 4876:
       goto n259;
-    case 4902u:
+    case 4902:
       return {246u, {}};
     default:
       return {kAttention4Done, {}};
   }
 n263:
-  PLUTO_ATTN_MATCH(4902u, 4915u);
-  PLUTO_ATTN_MATCH(4898u, 4952u);
-  PLUTO_ATTN_MATCH(4902u, 4953u);
+  PLUTO_ATTN_MATCH(4902, 4915);
+  PLUTO_ATTN_MATCH(4898, 4952);
+  PLUTO_ATTN_MATCH(4902, 4953);
   goto n260;
 n260:
-  PLUTO_ATTN_MATCH(4868u, 4952u);
+  PLUTO_ATTN_MATCH(4868, 4952);
   return {197u, {}};
 n259:
   PLUTO_ATTN_RUN(kAttention4Sequence52);
   return {255u, {}};
 }
 Attention4Step Attention4Part2(
-    std::uint32_t node, [[maybe_unused]] absl::Span<const StateId> history,
+    std::uint32_t node,
+    [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
   switch (node) {
     case 767u:
@@ -4985,81 +4988,81 @@ n767:
   PLUTO_ATTN_RUN(kAttention4Sequence53);
   goto n763;
 n763:
-  PLUTO_ATTN_MATCH(4893u, 4913u);
+  PLUTO_ATTN_MATCH(4893, 4913);
   return {1u, {}};
 n762:
   PLUTO_ATTN_RUN(kAttention4Sequence54);
   return {472u, {}};
 n752:
-  PLUTO_ATTN_END(4923u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4923);
+  switch (history[position++].value) {
+    case 4868:
       goto n751;
-    case 4870u:
+    case 4870:
       goto n628;
-    case 4873u:
+    case 4873:
       goto n590;
-    case 4879u:
+    case 4879:
       goto n529;
-    case 4880u:
+    case 4880:
       return {500u, {}};
-    case 4886u:
+    case 4886:
       return {490u, {}};
-    case 4887u:
+    case 4887:
       return {486u, {}};
-    case 4891u:
+    case 4891:
       return {481u, {}};
-    case 4892u:
+    case 4892:
       return {464u, {}};
-    case 4893u:
+    case 4893:
       return {456u, {}};
-    case 4900u:
+    case 4900:
       return {395u, {}};
-    case 4902u:
+    case 4902:
       return {384u, {}};
-    case 4903u:
+    case 4903:
       return {290u, {}};
-    case 4904u:
+    case 4904:
       return {264u, {}};
-    case 4907u:
+    case 4907:
       return {236u, {}};
     default:
       return {kAttention4Done, {}};
   }
 n751:
-  PLUTO_ATTN_END(4923u);
-  switch (history[position++]) {
-    case 4863u:
+  PLUTO_ATTN_END(4923);
+  switch (history[position++].value) {
+    case 4863:
       goto n750;
-    case 4868u:
+    case 4868:
       goto n745;
-    case 4873u:
+    case 4873:
       goto n736;
-    case 4874u:
+    case 4874:
       goto n730;
-    case 4875u:
+    case 4875:
       goto n720;
-    case 4876u:
+    case 4876:
       goto n715;
-    case 4880u:
+    case 4880:
       goto n706;
-    case 4883u:
+    case 4883:
       goto n699;
-    case 4885u:
+    case 4885:
       goto n693;
-    case 4886u:
+    case 4886:
       goto n686;
-    case 4891u:
+    case 4891:
       goto n675;
-    case 4893u:
+    case 4893:
       goto n667;
-    case 4895u:
+    case 4895:
       goto n661;
-    case 4898u:
+    case 4898:
       goto n650;
-    case 4902u:
+    case 4902:
       goto n643;
-    case 4904u:
+    case 4904:
       goto n634;
     default:
       return {kAttention4Done, {}};
@@ -5068,7 +5071,7 @@ n750:
   PLUTO_ATTN_RUN(kAttention4Sequence55);
   goto n746;
 n746:
-  PLUTO_ATTN_MATCH(4902u, 4928u);
+  PLUTO_ATTN_MATCH(4902, 4928);
   return {197u, {}};
 n745:
   PLUTO_ATTN_RUN(kAttention4Sequence56);
@@ -5077,21 +5080,21 @@ n736:
   PLUTO_ATTN_RUN(kAttention4Sequence57);
   goto n731;
 n731:
-  PLUTO_ATTN_MATCH(4902u, 4952u);
+  PLUTO_ATTN_MATCH(4902, 4952);
   return {1u, {}};
 n730:
   PLUTO_ATTN_RUN(kAttention4Sequence58);
   return {1u, {}};
 n720:
-  PLUTO_ATTN_MATCH(4902u, 4943u);
-  PLUTO_ATTN_MATCH(4868u, 4943u);
-  PLUTO_ATTN_MATCH(4903u, 4924u);
+  PLUTO_ATTN_MATCH(4902, 4943);
+  PLUTO_ATTN_MATCH(4868, 4943);
+  PLUTO_ATTN_MATCH(4903, 4924);
   goto n717;
 n717:
-  PLUTO_ATTN_MATCH(4900u, 4950u);
+  PLUTO_ATTN_MATCH(4900, 4950);
   goto n716;
 n716:
-  PLUTO_ATTN_MATCH(4868u, 4942u);
+  PLUTO_ATTN_MATCH(4868, 4942);
   return {291u, {}};
 n715:
   PLUTO_ATTN_RUN(kAttention4Sequence59);
@@ -5100,10 +5103,10 @@ n706:
   PLUTO_ATTN_RUN(kAttention4Sequence60);
   goto n701;
 n701:
-  PLUTO_ATTN_MATCH(4907u, 4924u);
+  PLUTO_ATTN_MATCH(4907, 4924);
   goto n700;
 n700:
-  PLUTO_ATTN_MATCH(4868u, 4953u);
+  PLUTO_ATTN_MATCH(4868, 4953);
   return {2u, {}};
 n699:
   PLUTO_ATTN_RUN(kAttention4Sequence61);
@@ -5112,22 +5115,22 @@ n693:
   PLUTO_ATTN_RUN(kAttention4Sequence62);
   goto n687;
 n687:
-  PLUTO_ATTN_MATCH(4893u, 4950u);
+  PLUTO_ATTN_MATCH(4893, 4950);
   return {132u, {}};
 n686:
   PLUTO_ATTN_RUN(kAttention4Sequence63);
   goto n677;
 n677:
-  PLUTO_ATTN_MATCH(4900u, 4953u);
+  PLUTO_ATTN_MATCH(4900, 4953);
   goto n676;
 n676:
-  PLUTO_ATTN_MATCH(4902u, 4942u);
+  PLUTO_ATTN_MATCH(4902, 4942);
   return {1u, {}};
 n675:
   PLUTO_ATTN_RUN(kAttention4Sequence64);
   goto n668;
 n668:
-  PLUTO_ATTN_MATCH(4893u, 4913u);
+  PLUTO_ATTN_MATCH(4893, 4913);
   return {197u, {}};
 n667:
   PLUTO_ATTN_RUN(kAttention4Sequence65);
@@ -5142,24 +5145,24 @@ n643:
   PLUTO_ATTN_RUN(kAttention4Sequence68);
   goto n635;
 n635:
-  PLUTO_ATTN_MATCH(4908u, 4943u);
+  PLUTO_ATTN_MATCH(4908, 4943);
   return {0u, {}};
 n634:
   PLUTO_ATTN_RUN(kAttention4Sequence69);
   goto n629;
 n629:
-  PLUTO_ATTN_MATCH(4898u, 4928u);
+  PLUTO_ATTN_MATCH(4898, 4928);
   return {327u, {}};
 n628:
-  PLUTO_ATTN_END(4953u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4953);
+  switch (history[position++].value) {
+    case 4868:
       goto n627;
-    case 4875u:
+    case 4875:
       goto n613;
-    case 4893u:
+    case 4893:
       goto n605;
-    case 4902u:
+    case 4902:
       goto n598;
     default:
       return {kAttention4Done, {}};
@@ -5168,46 +5171,46 @@ n627:
   PLUTO_ATTN_RUN(kAttention4Sequence70);
   goto n614;
 n614:
-  PLUTO_ATTN_MATCH(4901u, 4925u);
+  PLUTO_ATTN_MATCH(4901, 4925);
   return {1u, {}};
 n613:
   PLUTO_ATTN_RUN(kAttention4Sequence71);
   goto n606;
 n606:
-  PLUTO_ATTN_MATCH(4868u, 4953u);
+  PLUTO_ATTN_MATCH(4868, 4953);
   return {141u, {}};
 n605:
   PLUTO_ATTN_RUN(kAttention4Sequence72);
   goto n599;
 n599:
-  PLUTO_ATTN_MATCH(4902u, 4913u);
+  PLUTO_ATTN_MATCH(4902, 4913);
   goto n575;
 n598:
   PLUTO_ATTN_RUN(kAttention4Sequence73);
   goto n591;
 n591:
-  PLUTO_ATTN_MATCH(4876u, 4953u);
+  PLUTO_ATTN_MATCH(4876, 4953);
   return {166u, {}};
 n590:
-  PLUTO_ATTN_END(4942u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4942);
+  switch (history[position++].value) {
+    case 4868:
       goto n589;
-    case 4873u:
+    case 4873:
       goto n584;
-    case 4876u:
+    case 4876:
       goto n574;
-    case 4885u:
+    case 4885:
       goto n564;
-    case 4886u:
+    case 4886:
       goto n558;
-    case 4889u:
+    case 4889:
       goto n548;
-    case 4891u:
+    case 4891:
       goto n544;
-    case 4899u:
+    case 4899:
       goto n540;
-    case 4902u:
+    case 4902:
       goto n537;
     default:
       return {kAttention4Done, {}};
@@ -5219,34 +5222,34 @@ n584:
   PLUTO_ATTN_RUN(kAttention4Sequence75);
   goto n577;
 n577:
-  PLUTO_ATTN_MATCH(4900u, 4924u);
+  PLUTO_ATTN_MATCH(4900, 4924);
   goto n576;
 n576:
-  PLUTO_ATTN_MATCH(4868u, 4953u);
+  PLUTO_ATTN_MATCH(4868, 4953);
   goto n575;
 n575:
-  PLUTO_ATTN_MATCH(4908u, 4953u);
+  PLUTO_ATTN_MATCH(4908, 4953);
   return {0u, {}};
 n574:
   PLUTO_ATTN_RUN(kAttention4Sequence76);
   goto n566;
 n566:
-  PLUTO_ATTN_MATCH(4903u, 4924u);
+  PLUTO_ATTN_MATCH(4903, 4924);
   goto n565;
 n565:
-  PLUTO_ATTN_MATCH(4902u, 4950u);
+  PLUTO_ATTN_MATCH(4902, 4950);
   return {1u, {}};
 n564:
   PLUTO_ATTN_RUN(kAttention4Sequence77);
   goto n559;
 n559:
-  PLUTO_ATTN_MATCH(4868u, 4929u);
+  PLUTO_ATTN_MATCH(4868, 4929);
   return {132u, {}};
 n558:
   PLUTO_ATTN_RUN(kAttention4Sequence78);
   goto n549;
 n549:
-  PLUTO_ATTN_MATCH(4868u, 4913u);
+  PLUTO_ATTN_MATCH(4868, 4913);
   return {2u, {}};
 n548:
   PLUTO_ATTN_RUN(kAttention4Sequence79);
@@ -5255,19 +5258,19 @@ n544:
   PLUTO_ATTN_RUN(kAttention4Sequence80);
   return {133u, {}};
 n540:
-  PLUTO_ATTN_MATCH(4907u, 4923u);
-  PLUTO_ATTN_MATCH(4872u, 4950u);
-  PLUTO_ATTN_MATCH(4904u, 4929u);
+  PLUTO_ATTN_MATCH(4907, 4923);
+  PLUTO_ATTN_MATCH(4872, 4950);
+  PLUTO_ATTN_MATCH(4904, 4929);
   return {132u, {}};
 n537:
   PLUTO_ATTN_RUN(kAttention4Sequence81);
   return {37u, {}};
 n529:
-  PLUTO_ATTN_END(4915u);
-  switch (history[position++]) {
-    case 4876u:
+  PLUTO_ATTN_END(4915);
+  switch (history[position++].value) {
+    case 4876:
       goto n528;
-    case 4886u:
+    case 4886:
       goto n513;
     default:
       return {kAttention4Done, {}};
@@ -5276,12 +5279,13 @@ n528:
   PLUTO_ATTN_RUN(kAttention4Sequence82);
   return {1u, {}};
 n513:
-  PLUTO_ATTN_MATCH(4902u, 4923u);
-  PLUTO_ATTN_MATCH(4907u, 4953u);
+  PLUTO_ATTN_MATCH(4902, 4923);
+  PLUTO_ATTN_MATCH(4907, 4953);
   return {511u, {}};
 }
 Attention4Step Attention4Part3(
-    std::uint32_t node, [[maybe_unused]] absl::Span<const StateId> history,
+    std::uint32_t node,
+    [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
   switch (node) {
     case 1023u:
@@ -5348,26 +5352,26 @@ Attention4Step Attention4Part3(
       return {kAttention4Done, {}};
   }
 n1023:
-  PLUTO_ATTN_MATCH(4898u, 4940u);
-  PLUTO_ATTN_MATCH(4876u, 4953u);
+  PLUTO_ATTN_MATCH(4898, 4940);
+  PLUTO_ATTN_MATCH(4876, 4953);
   goto n1021;
 n1021:
-  PLUTO_ATTN_MATCH(4868u, 4929u);
+  PLUTO_ATTN_MATCH(4868, 4929);
   return {14u, {}};
 n1020:
   PLUTO_ATTN_RUN(kAttention4Sequence83);
   goto n1012;
 n1012:
-  PLUTO_ATTN_MATCH(4872u, 4952u);
+  PLUTO_ATTN_MATCH(4872, 4952);
   return {166u, {}};
 n1011:
-  PLUTO_ATTN_END(4929u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4929);
+  switch (history[position++].value) {
+    case 4868:
       goto n1010;
-    case 4874u:
+    case 4874:
       goto n1004;
-    case 4902u:
+    case 4902:
       goto n995;
     default:
       return {kAttention4Done, {}};
@@ -5376,7 +5380,7 @@ n1010:
   PLUTO_ATTN_RUN(kAttention4Sequence84);
   goto n1005;
 n1005:
-  PLUTO_ATTN_MATCH(4902u, 4952u);
+  PLUTO_ATTN_MATCH(4902, 4952);
   return {197u, {}};
 n1004:
   PLUTO_ATTN_RUN(kAttention4Sequence85);
@@ -5385,30 +5389,30 @@ n995:
   PLUTO_ATTN_RUN(kAttention4Sequence86);
   goto n990;
 n990:
-  PLUTO_ATTN_MATCH(4891u, 4913u);
-  PLUTO_ATTN_MATCH(4885u, 4925u);
+  PLUTO_ATTN_MATCH(4891, 4913);
+  PLUTO_ATTN_MATCH(4885, 4925);
   return {166u, {}};
 n988:
-  PLUTO_ATTN_END(4953u);
-  switch (history[position++]) {
-    case 4886u:
+  PLUTO_ATTN_END(4953);
+  switch (history[position++].value) {
+    case 4886:
       goto n987;
-    case 4902u:
+    case 4902:
       goto n983;
-    case 4903u:
+    case 4903:
       goto n976;
     default:
       return {kAttention4Done, {}};
   }
 n987:
-  PLUTO_ATTN_MATCH(4903u, 4922u);
-  PLUTO_ATTN_MATCH(4902u, 4950u);
+  PLUTO_ATTN_MATCH(4903, 4922);
+  PLUTO_ATTN_MATCH(4902, 4950);
   goto n985;
 n985:
-  PLUTO_ATTN_MATCH(4883u, 4921u);
+  PLUTO_ATTN_MATCH(4883, 4921);
   goto n984;
 n984:
-  PLUTO_ATTN_MATCH(4868u, 4920u);
+  PLUTO_ATTN_MATCH(4868, 4920);
   return {197u, {}};
 n983:
   PLUTO_ATTN_RUN(kAttention4Sequence87);
@@ -5417,38 +5421,38 @@ n976:
   PLUTO_ATTN_RUN(kAttention4Sequence88);
   goto n966;
 n966:
-  PLUTO_ATTN_MATCH(4868u, 4913u);
+  PLUTO_ATTN_MATCH(4868, 4913);
   return {37u, {}};
 n965:
-  PLUTO_ATTN_END(4924u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4924);
+  switch (history[position++].value) {
+    case 4868:
       goto n964;
-    case 4870u:
+    case 4870:
       goto n935;
-    case 4876u:
+    case 4876:
       goto n927;
-    case 4885u:
+    case 4885:
       goto n917;
-    case 4891u:
+    case 4891:
       goto n907;
-    case 4898u:
+    case 4898:
       goto n895;
-    case 4899u:
+    case 4899:
       goto n879;
     default:
       return {kAttention4Done, {}};
   }
 n964:
-  PLUTO_ATTN_END(4923u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4923);
+  switch (history[position++].value) {
+    case 4868:
       goto n963;
-    case 4874u:
+    case 4874:
       goto n955;
-    case 4899u:
+    case 4899:
       goto n945;
-    case 4902u:
+    case 4902:
       goto n939;
     default:
       return {kAttention4Done, {}};
@@ -5457,40 +5461,40 @@ n963:
   PLUTO_ATTN_RUN(kAttention4Sequence89);
   goto n956;
 n956:
-  PLUTO_ATTN_MATCH(4900u, 4953u);
+  PLUTO_ATTN_MATCH(4900, 4953);
   return {487u, {}};
 n955:
   PLUTO_ATTN_RUN(kAttention4Sequence90);
   goto n946;
 n946:
-  PLUTO_ATTN_MATCH(4868u, 4913u);
+  PLUTO_ATTN_MATCH(4868, 4913);
   return {197u, {}};
 n945:
   PLUTO_ATTN_RUN(kAttention4Sequence91);
   goto n940;
 n940:
-  PLUTO_ATTN_MATCH(4893u, 4953u);
+  PLUTO_ATTN_MATCH(4893, 4953);
   return {132u, {}};
 n939:
-  PLUTO_ATTN_MATCH(4903u, 4952u);
-  PLUTO_ATTN_MATCH(4868u, 4950u);
-  PLUTO_ATTN_MATCH(4868u, 4913u);
+  PLUTO_ATTN_MATCH(4903, 4952);
+  PLUTO_ATTN_MATCH(4868, 4950);
+  PLUTO_ATTN_MATCH(4868, 4913);
   goto n936;
 n936:
-  PLUTO_ATTN_MATCH(4898u, 4952u);
+  PLUTO_ATTN_MATCH(4898, 4952);
   return {37u, {}};
 n935:
-  PLUTO_ATTN_END(4926u);
-  switch (history[position++]) {
-    case 4874u:
+  PLUTO_ATTN_END(4926);
+  switch (history[position++].value) {
+    case 4874:
       goto n934;
-    case 4893u:
+    case 4893:
       goto n933;
     default:
       return {kAttention4Done, {}};
   }
 n934:
-  PLUTO_ATTN_MATCH(4902u, 4923u);
+  PLUTO_ATTN_MATCH(4902, 4923);
   return {132u, {}};
 n933:
   PLUTO_ATTN_RUN(kAttention4Sequence92);
@@ -5499,23 +5503,23 @@ n927:
   PLUTO_ATTN_RUN(kAttention4Sequence93);
   goto n918;
 n918:
-  PLUTO_ATTN_MATCH(4876u, 4920u);
+  PLUTO_ATTN_MATCH(4876, 4920);
   return {166u, {}};
 n917:
   PLUTO_ATTN_RUN(kAttention4Sequence94);
   goto n908;
 n908:
-  PLUTO_ATTN_MATCH(4893u, 4924u);
+  PLUTO_ATTN_MATCH(4893, 4924);
   return {114u, {}};
 n907:
   PLUTO_ATTN_RUN(kAttention4Sequence95);
   return {676u, {}};
 n895:
-  PLUTO_ATTN_END(4953u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4953);
+  switch (history[position++].value) {
+    case 4868:
       goto n894;
-    case 4874u:
+    case 4874:
       goto n887;
     default:
       return {kAttention4Done, {}};
@@ -5527,14 +5531,14 @@ n887:
   PLUTO_ATTN_RUN(kAttention4Sequence97);
   goto n880;
 n880:
-  PLUTO_ATTN_MATCH(4902u, 4953u);
+  PLUTO_ATTN_MATCH(4902, 4953);
   return {114u, {}};
 n879:
-  PLUTO_ATTN_END(4953u);
-  switch (history[position++]) {
-    case 4875u:
+  PLUTO_ATTN_END(4953);
+  switch (history[position++].value) {
+    case 4875:
       goto n878;
-    case 4904u:
+    case 4904:
       goto n869;
     default:
       return {kAttention4Done, {}};
@@ -5543,7 +5547,7 @@ n878:
   PLUTO_ATTN_RUN(kAttention4Sequence98);
   goto n870;
 n870:
-  PLUTO_ATTN_MATCH(4868u, 4913u);
+  PLUTO_ATTN_MATCH(4868, 4913);
   return {114u, {}};
 n869:
   PLUTO_ATTN_RUN(kAttention4Sequence99);
@@ -5552,71 +5556,71 @@ n859:
   PLUTO_ATTN_RUN(kAttention4Sequence100);
   goto n852;
 n852:
-  PLUTO_ATTN_MATCH(4873u, 4953u);
+  PLUTO_ATTN_MATCH(4873, 4953);
   return {197u, {}};
 n851:
   PLUTO_ATTN_RUN(kAttention4Sequence101);
   return {37u, {}};
 n843:
-  PLUTO_ATTN_END(4953u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4953);
+  switch (history[position++].value) {
+    case 4868:
       goto n842;
-    case 4870u:
+    case 4870:
       goto n813;
     default:
       return {kAttention4Done, {}};
   }
 n842:
-  PLUTO_ATTN_END(4923u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4923);
+  switch (history[position++].value) {
+    case 4868:
       goto n841;
-    case 4870u:
+    case 4870:
       goto n837;
-    case 4880u:
+    case 4880:
       goto n833;
-    case 4893u:
+    case 4893:
       goto n830;
-    case 4902u:
+    case 4902:
       goto n819;
     default:
       return {kAttention4Done, {}};
   }
 n841:
-  PLUTO_ATTN_MATCH(4868u, 4952u);
-  PLUTO_ATTN_MATCH(4898u, 4933u);
-  PLUTO_ATTN_MATCH(4874u, 4953u);
+  PLUTO_ATTN_MATCH(4868, 4952);
+  PLUTO_ATTN_MATCH(4898, 4933);
+  PLUTO_ATTN_MATCH(4874, 4953);
   goto n838;
 n838:
-  PLUTO_ATTN_MATCH(4868u, 4943u);
+  PLUTO_ATTN_MATCH(4868, 4943);
   return {1u, {}};
 n837:
   PLUTO_ATTN_RUN(kAttention4Sequence102);
   return {372u, {}};
 n833:
-  PLUTO_ATTN_MATCH(4902u, 4928u);
-  PLUTO_ATTN_MATCH(4898u, 4924u);
-  PLUTO_ATTN_MATCH(4886u, 4952u);
+  PLUTO_ATTN_MATCH(4902, 4928);
+  PLUTO_ATTN_MATCH(4898, 4924);
+  PLUTO_ATTN_MATCH(4886, 4952);
   return {731u, {}};
 n830:
   PLUTO_ATTN_RUN(kAttention4Sequence103);
   goto n821;
 n821:
-  PLUTO_ATTN_MATCH(4868u, 4953u);
+  PLUTO_ATTN_MATCH(4868, 4953);
   goto n820;
 n820:
-  PLUTO_ATTN_MATCH(4902u, 4924u);
+  PLUTO_ATTN_MATCH(4902, 4924);
   return {197u, {}};
 n819:
   PLUTO_ATTN_RUN(kAttention4Sequence104);
   return {576u, {}};
 n813:
-  PLUTO_ATTN_END(4924u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4924);
+  switch (history[position++].value) {
+    case 4868:
       goto n812;
-    case 4902u:
+    case 4902:
       goto n805;
     default:
       return {kAttention4Done, {}};
@@ -5628,29 +5632,29 @@ n805:
   PLUTO_ATTN_RUN(kAttention4Sequence106);
   goto n800;
 n800:
-  PLUTO_ATTN_MATCH(4868u, 4953u);
+  PLUTO_ATTN_MATCH(4868, 4953);
   goto n799;
 n799:
-  PLUTO_ATTN_MATCH(4893u, 4924u);
+  PLUTO_ATTN_MATCH(4893, 4924);
   return {132u, {}};
 n798:
-  PLUTO_ATTN_END(4953u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4953);
+  switch (history[position++].value) {
+    case 4868:
       goto n797;
-    case 4874u:
+    case 4874:
       goto n776;
-    case 4891u:
+    case 4891:
       return {762u, {}};
     default:
       return {kAttention4Done, {}};
   }
 n797:
-  PLUTO_ATTN_END(4913u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4913);
+  switch (history[position++].value) {
+    case 4868:
       goto n796;
-    case 4904u:
+    case 4904:
       goto n784;
     default:
       return {kAttention4Done, {}};
@@ -5662,26 +5666,27 @@ n784:
   PLUTO_ATTN_RUN(kAttention4Sequence108);
   return {114u, {}};
 n776:
-  PLUTO_ATTN_END(4916u);
-  switch (history[position++]) {
-    case 4891u:
+  PLUTO_ATTN_END(4916);
+  switch (history[position++].value) {
+    case 4891:
       goto n775;
-    case 4902u:
+    case 4902:
       goto n772;
     default:
       return {kAttention4Done, {}};
   }
 n775:
-  PLUTO_ATTN_MATCH(4898u, 4925u);
-  PLUTO_ATTN_MATCH(4900u, 4952u);
-  PLUTO_ATTN_MATCH(4874u, 4942u);
+  PLUTO_ATTN_MATCH(4898, 4925);
+  PLUTO_ATTN_MATCH(4900, 4952);
+  PLUTO_ATTN_MATCH(4874, 4942);
   return {1u, {}};
 n772:
   PLUTO_ATTN_RUN(kAttention4Sequence109);
   return {767u, {}};
 }
 Attention4Step Attention4Part4(
-    std::uint32_t node, [[maybe_unused]] absl::Span<const StateId> history,
+    std::uint32_t node,
+    [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
   switch (node) {
     case 1279u:
@@ -5743,28 +5748,28 @@ n1279:
   PLUTO_ATTN_RUN(kAttention4Sequence110);
   goto n1273;
 n1273:
-  PLUTO_ATTN_MATCH(4891u, 4924u);
-  PLUTO_ATTN_MATCH(4868u, 4925u);
+  PLUTO_ATTN_MATCH(4891, 4924);
+  PLUTO_ATTN_MATCH(4868, 4925);
   return {301u, {}};
 n1271:
   PLUTO_ATTN_RUN(kAttention4Sequence111);
   return {269u, {}};
 n1264:
-  PLUTO_ATTN_END(4923u);
-  switch (history[position++]) {
-    case 4891u:
+  PLUTO_ATTN_END(4923);
+  switch (history[position++].value) {
+    case 4891:
       goto n1263;
-    case 4902u:
+    case 4902:
       goto n1249;
     default:
       return {kAttention4Done, {}};
   }
 n1263:
-  PLUTO_ATTN_END(4925u);
-  switch (history[position++]) {
-    case 4898u:
+  PLUTO_ATTN_END(4925);
+  switch (history[position++].value) {
+    case 4898:
       goto n1262;
-    case 4902u:
+    case 4902:
       goto n1255;
     default:
       return {kAttention4Done, {}};
@@ -5773,61 +5778,61 @@ n1262:
   PLUTO_ATTN_RUN(kAttention4Sequence112);
   goto n1257;
 n1257:
-  PLUTO_ATTN_MATCH(4885u, 4953u);
+  PLUTO_ATTN_MATCH(4885, 4953);
   goto n1256;
 n1256:
-  PLUTO_ATTN_MATCH(4868u, 4929u);
+  PLUTO_ATTN_MATCH(4868, 4929);
   return {197u, {}};
 n1255:
   PLUTO_ATTN_RUN(kAttention4Sequence113);
   goto n1250;
 n1250:
-  PLUTO_ATTN_MATCH(4868u, 4953u);
+  PLUTO_ATTN_MATCH(4868, 4953);
   return {301u, {}};
 n1249:
   PLUTO_ATTN_RUN(kAttention4Sequence114);
   goto n1235;
 n1235:
-  PLUTO_ATTN_MATCH(4874u, 4929u);
+  PLUTO_ATTN_MATCH(4874, 4929);
   return {1u, {}};
 n1234:
   PLUTO_ATTN_RUN(kAttention4Sequence115);
   goto n1226;
 n1226:
-  PLUTO_ATTN_MATCH(4898u, 4924u);
+  PLUTO_ATTN_MATCH(4898, 4924);
   return {78u, {}};
 n1225:
-  PLUTO_ATTN_END(4924u);
-  switch (history[position++]) {
-    case 4869u:
+  PLUTO_ATTN_END(4924);
+  switch (history[position++].value) {
+    case 4869:
       goto n1224;
-    case 4870u:
+    case 4870:
       goto n1213;
-    case 4874u:
+    case 4874:
       goto n1167;
-    case 4876u:
+    case 4876:
       goto n1154;
-    case 4879u:
+    case 4879:
       goto n1126;
-    case 4883u:
+    case 4883:
       goto n1066;
-    case 4885u:
+    case 4885:
       goto n1062;
-    case 4887u:
+    case 4887:
       goto n1056;
-    case 4891u:
+    case 4891:
       goto n1036;
-    case 4893u:
+    case 4893:
       return {965u, {}};
-    case 4895u:
+    case 4895:
       return {859u, {}};
-    case 4897u:
+    case 4897:
       return {851u, {}};
-    case 4898u:
+    case 4898:
       return {843u, {}};
-    case 4900u:
+    case 4900:
       return {798u, {}};
-    case 4902u:
+    case 4902:
       return {752u, {}};
     default:
       return {kAttention4Done, {}};
@@ -5836,23 +5841,23 @@ n1224:
   PLUTO_ATTN_RUN(kAttention4Sequence116);
   return {763u, {}};
 n1213:
-  PLUTO_ATTN_END(4950u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4950);
+  switch (history[position++].value) {
+    case 4868:
       goto n1212;
-    case 4887u:
+    case 4887:
       goto n1194;
-    case 4902u:
+    case 4902:
       goto n1190;
     default:
       return {kAttention4Done, {}};
   }
 n1212:
-  PLUTO_ATTN_END(4923u);
-  switch (history[position++]) {
-    case 4902u:
+  PLUTO_ATTN_END(4923);
+  switch (history[position++].value) {
+    case 4902:
       goto n1211;
-    case 4907u:
+    case 4907:
       goto n1201;
     default:
       return {kAttention4Done, {}};
@@ -5867,15 +5872,15 @@ n1194:
   PLUTO_ATTN_RUN(kAttention4Sequence119);
   return {1u, {}};
 n1190:
-  PLUTO_ATTN_END(4924u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4924);
+  switch (history[position++].value) {
+    case 4868:
       goto n1189;
-    case 4876u:
+    case 4876:
       goto n1185;
-    case 4893u:
+    case 4893:
       goto n1178;
-    case 4902u:
+    case 4902:
       goto n1174;
     default:
       return {kAttention4Done, {}};
@@ -5887,25 +5892,25 @@ n1185:
   PLUTO_ATTN_RUN(kAttention4Sequence121);
   goto n1179;
 n1179:
-  PLUTO_ATTN_MATCH(4868u, 4923u);
+  PLUTO_ATTN_MATCH(4868, 4923);
   return {1u, {}};
 n1178:
-  PLUTO_ATTN_MATCH(4902u, 4913u);
-  PLUTO_ATTN_MATCH(4907u, 4953u);
-  PLUTO_ATTN_MATCH(4868u, 4953u);
+  PLUTO_ATTN_MATCH(4902, 4913);
+  PLUTO_ATTN_MATCH(4907, 4953);
+  PLUTO_ATTN_MATCH(4868, 4953);
   goto n1175;
 n1175:
-  PLUTO_ATTN_MATCH(4868u, 4924u);
+  PLUTO_ATTN_MATCH(4868, 4924);
   return {14u, {}};
 n1174:
   PLUTO_ATTN_RUN(kAttention4Sequence122);
   return {575u, {}};
 n1167:
-  PLUTO_ATTN_END(4923u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4923);
+  switch (history[position++].value) {
+    case 4868:
       goto n1166;
-    case 4902u:
+    case 4902:
       goto n1159;
     default:
       return {kAttention4Done, {}};
@@ -5914,32 +5919,32 @@ n1166:
   PLUTO_ATTN_RUN(kAttention4Sequence123);
   goto n1160;
 n1160:
-  PLUTO_ATTN_MATCH(4868u, 4924u);
+  PLUTO_ATTN_MATCH(4868, 4924);
   return {476u, {}};
 n1159:
   PLUTO_ATTN_RUN(kAttention4Sequence124);
   goto n1155;
 n1155:
-  PLUTO_ATTN_MATCH(4868u, 4953u);
+  PLUTO_ATTN_MATCH(4868, 4953);
   return {14u, {}};
 n1154:
-  PLUTO_ATTN_END(4929u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4929);
+  switch (history[position++].value) {
+    case 4868:
       goto n1153;
-    case 4902u:
+    case 4902:
       goto n1130;
     default:
       return {kAttention4Done, {}};
   }
 n1153:
-  PLUTO_ATTN_END(4952u);
-  switch (history[position++]) {
-    case 4886u:
+  PLUTO_ATTN_END(4952);
+  switch (history[position++].value) {
+    case 4886:
       goto n1152;
-    case 4893u:
+    case 4893:
       goto n1146;
-    case 4902u:
+    case 4902:
       goto n1135;
     default:
       return {kAttention4Done, {}};
@@ -5948,10 +5953,10 @@ n1152:
   PLUTO_ATTN_RUN(kAttention4Sequence125);
   goto n1148;
 n1148:
-  PLUTO_ATTN_MATCH(4868u, 4929u);
+  PLUTO_ATTN_MATCH(4868, 4929);
   goto n1147;
 n1147:
-  PLUTO_ATTN_MATCH(4898u, 4924u);
+  PLUTO_ATTN_MATCH(4898, 4924);
   return {37u, {}};
 n1146:
   PLUTO_ATTN_RUN(kAttention4Sequence126);
@@ -5960,39 +5965,39 @@ n1135:
   PLUTO_ATTN_RUN(kAttention4Sequence127);
   return {385u, {}};
 n1130:
-  PLUTO_ATTN_MATCH(4874u, 4952u);
-  PLUTO_ATTN_MATCH(4868u, 4933u);
-  PLUTO_ATTN_MATCH(4868u, 4924u);
+  PLUTO_ATTN_MATCH(4874, 4952);
+  PLUTO_ATTN_MATCH(4868, 4933);
+  PLUTO_ATTN_MATCH(4868, 4924);
   goto n1127;
 n1127:
-  PLUTO_ATTN_MATCH(4903u, 4923u);
+  PLUTO_ATTN_MATCH(4903, 4923);
   return {435u, {}};
 n1126:
-  PLUTO_ATTN_END(4953u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4953);
+  switch (history[position++].value) {
+    case 4868:
       goto n1125;
-    case 4873u:
+    case 4873:
       goto n1098;
-    case 4875u:
+    case 4875:
       goto n1090;
-    case 4885u:
+    case 4885:
       goto n1082;
-    case 4896u:
+    case 4896:
       goto n1074;
     default:
       return {kAttention4Done, {}};
   }
 n1125:
-  PLUTO_ATTN_END(4953u);
-  switch (history[position++]) {
-    case 4883u:
+  PLUTO_ATTN_END(4953);
+  switch (history[position++].value) {
+    case 4883:
       goto n1124;
-    case 4886u:
+    case 4886:
       goto n1116;
-    case 4898u:
+    case 4898:
       goto n1110;
-    case 4902u:
+    case 4902:
       goto n1104;
     default:
       return {kAttention4Done, {}};
@@ -6001,7 +6006,7 @@ n1124:
   PLUTO_ATTN_RUN(kAttention4Sequence128);
   goto n1117;
 n1117:
-  PLUTO_ATTN_MATCH(4874u, 4924u);
+  PLUTO_ATTN_MATCH(4874, 4924);
   return {291u, {}};
 n1116:
   PLUTO_ATTN_RUN(kAttention4Sequence129);
@@ -6010,23 +6015,23 @@ n1110:
   PLUTO_ATTN_RUN(kAttention4Sequence130);
   goto n1105;
 n1105:
-  PLUTO_ATTN_MATCH(4900u, 4924u);
+  PLUTO_ATTN_MATCH(4900, 4924);
   return {87u, {}};
 n1104:
   PLUTO_ATTN_RUN(kAttention4Sequence131);
   goto n1100;
 n1100:
-  PLUTO_ATTN_MATCH(4868u, 4953u);
-  PLUTO_ATTN_MATCH(4902u, 4915u);
+  PLUTO_ATTN_MATCH(4868, 4953);
+  PLUTO_ATTN_MATCH(4902, 4915);
   return {197u, {}};
 n1098:
   PLUTO_ATTN_RUN(kAttention4Sequence132);
   goto n1092;
 n1092:
-  PLUTO_ATTN_MATCH(4868u, 4953u);
+  PLUTO_ATTN_MATCH(4868, 4953);
   goto n1091;
 n1091:
-  PLUTO_ATTN_MATCH(4907u, 4913u);
+  PLUTO_ATTN_MATCH(4907, 4913);
   return {37u, {}};
 n1090:
   PLUTO_ATTN_RUN(kAttention4Sequence133);
@@ -6038,7 +6043,7 @@ n1074:
   PLUTO_ATTN_RUN(kAttention4Sequence135);
   goto n1067;
 n1067:
-  PLUTO_ATTN_MATCH(4902u, 4929u);
+  PLUTO_ATTN_MATCH(4902, 4929);
   return {731u, {}};
 n1066:
   PLUTO_ATTN_RUN(kAttention4Sequence136);
@@ -6047,15 +6052,15 @@ n1062:
   PLUTO_ATTN_RUN(kAttention4Sequence137);
   goto n1057;
 n1057:
-  PLUTO_ATTN_MATCH(4874u, 4913u);
+  PLUTO_ATTN_MATCH(4874, 4913);
   return {635u, {}};
 n1056:
-  PLUTO_ATTN_MATCH(4868u, 4938u);
-  PLUTO_ATTN_END(4953u);
-  switch (history[position++]) {
-    case 4876u:
+  PLUTO_ATTN_MATCH(4868, 4938);
+  PLUTO_ATTN_END(4953);
+  switch (history[position++].value) {
+    case 4876:
       goto n1054;
-    case 4893u:
+    case 4893:
       goto n1045;
     default:
       return {kAttention4Done, {}};
@@ -6067,18 +6072,18 @@ n1045:
   PLUTO_ATTN_RUN(kAttention4Sequence139);
   goto n1037;
 n1037:
-  PLUTO_ATTN_MATCH(4893u, 4924u);
+  PLUTO_ATTN_MATCH(4893, 4924);
   return {946u, {}};
 n1036:
-  PLUTO_ATTN_END(4925u);
-  switch (history[position++]) {
-    case 4872u:
+  PLUTO_ATTN_END(4925);
+  switch (history[position++].value) {
+    case 4872:
       goto n1035;
-    case 4876u:
+    case 4876:
       goto n1029;
-    case 4885u:
+    case 4885:
       return {1011u, {}};
-    case 4902u:
+    case 4902:
       return {988u, {}};
     default:
       return {kAttention4Done, {}};
@@ -6087,11 +6092,11 @@ n1035:
   PLUTO_ATTN_RUN(kAttention4Sequence140);
   return {175u, {}};
 n1029:
-  PLUTO_ATTN_END(4929u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4929);
+  switch (history[position++].value) {
+    case 4868:
       goto n1028;
-    case 4874u:
+    case 4874:
       return {1020u, {}};
     default:
       return {kAttention4Done, {}};
@@ -6101,7 +6106,8 @@ n1028:
   return {1023u, {}};
 }
 Attention4Step Attention4Part5(
-    std::uint32_t node, [[maybe_unused]] absl::Span<const StateId> history,
+    std::uint32_t node,
+    [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
   switch (node) {
     case 1535u:
@@ -6172,18 +6178,18 @@ n1526:
   PLUTO_ATTN_RUN(kAttention4Sequence143);
   return {870u, {}};
 n1522:
-  PLUTO_ATTN_MATCH(4868u, 4923u);
-  PLUTO_ATTN_MATCH(4898u, 4953u);
-  PLUTO_ATTN_MATCH(4893u, 4953u);
+  PLUTO_ATTN_MATCH(4868, 4923);
+  PLUTO_ATTN_MATCH(4898, 4953);
+  PLUTO_ATTN_MATCH(4893, 4953);
   return {966u, {}};
 n1519:
-  PLUTO_ATTN_END(4944u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4944);
+  switch (history[position++].value) {
+    case 4868:
       goto n1518;
-    case 4876u:
+    case 4876:
       goto n1512;
-    case 4902u:
+    case 4902:
       goto n1507;
     default:
       return {kAttention4Done, {}};
@@ -6198,11 +6204,11 @@ n1507:
   PLUTO_ATTN_RUN(kAttention4Sequence146);
   return {1175u, {}};
 n1499:
-  PLUTO_ATTN_END(4952u);
-  switch (history[position++]) {
-    case 4874u:
+  PLUTO_ATTN_END(4952);
+  switch (history[position++].value) {
+    case 4874:
       goto n1498;
-    case 4904u:
+    case 4904:
       goto n1493;
     default:
       return {kAttention4Done, {}};
@@ -6211,29 +6217,29 @@ n1498:
   PLUTO_ATTN_RUN(kAttention4Sequence147);
   goto n1494;
 n1494:
-  PLUTO_ATTN_MATCH(4893u, 4924u);
+  PLUTO_ATTN_MATCH(4893, 4924);
   return {1u, {}};
 n1493:
   PLUTO_ATTN_RUN(kAttention4Sequence148);
   goto n1487;
 n1487:
-  PLUTO_ATTN_MATCH(4898u, 4924u);
+  PLUTO_ATTN_MATCH(4898, 4924);
   goto n1486;
 n1486:
-  PLUTO_ATTN_MATCH(4868u, 4953u);
+  PLUTO_ATTN_MATCH(4868, 4953);
   return {132u, {}};
 n1485:
-  PLUTO_ATTN_END(4953u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4953);
+  switch (history[position++].value) {
+    case 4868:
       goto n1484;
-    case 4885u:
+    case 4885:
       goto n1471;
-    case 4900u:
+    case 4900:
       goto n1465;
-    case 4902u:
+    case 4902:
       goto n1458;
-    case 4903u:
+    case 4903:
       goto n1454;
     default:
       return {kAttention4Done, {}};
@@ -6242,7 +6248,7 @@ n1484:
   PLUTO_ATTN_RUN(kAttention4Sequence149);
   goto n1472;
 n1472:
-  PLUTO_ATTN_MATCH(4868u, 4929u);
+  PLUTO_ATTN_MATCH(4868, 4929);
   goto n1306;
 n1471:
   PLUTO_ATTN_RUN(kAttention4Sequence150);
@@ -6260,18 +6266,18 @@ n1446:
   PLUTO_ATTN_RUN(kAttention4Sequence154);
   goto n1435;
 n1435:
-  PLUTO_ATTN_MATCH(4868u, 4920u);
+  PLUTO_ATTN_MATCH(4868, 4920);
   return {1u, {}};
 n1434:
   PLUTO_ATTN_RUN(kAttention4Sequence155);
   return {488u, {}};
 n1428:
-  PLUTO_ATTN_MATCH(4868u, 4929u);
-  PLUTO_ATTN_END(4924u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_MATCH(4868, 4929);
+  PLUTO_ATTN_END(4924);
+  switch (history[position++].value) {
+    case 4868:
       goto n1426;
-    case 4898u:
+    case 4898:
       goto n1420;
     default:
       return {kAttention4Done, {}};
@@ -6283,21 +6289,21 @@ n1420:
   PLUTO_ATTN_RUN(kAttention4Sequence157);
   goto n1413;
 n1413:
-  PLUTO_ATTN_MATCH(4902u, 4953u);
+  PLUTO_ATTN_MATCH(4902, 4953);
   return {301u, {}};
 n1412:
   PLUTO_ATTN_RUN(kAttention4Sequence158);
   return {472u, {}};
 n1404:
-  PLUTO_ATTN_END(4925u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4925);
+  switch (history[position++].value) {
+    case 4868:
       goto n1403;
-    case 4872u:
+    case 4872:
       goto n1398;
-    case 4876u:
+    case 4876:
       goto n1389;
-    case 4885u:
+    case 4885:
       goto n1373;
     default:
       return {kAttention4Done, {}};
@@ -6309,11 +6315,11 @@ n1398:
   PLUTO_ATTN_RUN(kAttention4Sequence160);
   return {197u, {}};
 n1389:
-  PLUTO_ATTN_END(4929u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4929);
+  switch (history[position++].value) {
+    case 4868:
       goto n1388;
-    case 4874u:
+    case 4874:
       goto n1379;
     default:
       return {kAttention4Done, {}};
@@ -6322,30 +6328,30 @@ n1388:
   PLUTO_ATTN_RUN(kAttention4Sequence161);
   goto n1380;
 n1380:
-  PLUTO_ATTN_MATCH(4902u, 4940u);
+  PLUTO_ATTN_MATCH(4902, 4940);
   return {1u, {}};
 n1379:
   PLUTO_ATTN_RUN(kAttention4Sequence162);
   goto n1375;
 n1375:
-  PLUTO_ATTN_MATCH(4880u, 4924u);
-  PLUTO_ATTN_MATCH(4902u, 4928u);
+  PLUTO_ATTN_MATCH(4880, 4924);
+  PLUTO_ATTN_MATCH(4902, 4928);
   return {160u, {}};
 n1373:
   PLUTO_ATTN_RUN(kAttention4Sequence163);
   goto n1365;
 n1365:
-  PLUTO_ATTN_MATCH(4893u, 4952u);
+  PLUTO_ATTN_MATCH(4893, 4952);
   return {42u, {}};
 n1364:
   PLUTO_ATTN_RUN(kAttention4Sequence164);
   return {373u, {}};
 n1353:
-  PLUTO_ATTN_END(4953u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4953);
+  switch (history[position++].value) {
+    case 4868:
       goto n1352;
-    case 4907u:
+    case 4907:
       goto n1345;
     default:
       return {kAttention4Done, {}};
@@ -6360,14 +6366,14 @@ n1337:
   PLUTO_ATTN_RUN(kAttention4Sequence167);
   goto n1323;
 n1323:
-  PLUTO_ATTN_MATCH(4902u, 4929u);
+  PLUTO_ATTN_MATCH(4902, 4929);
   return {291u, {}};
 n1322:
-  PLUTO_ATTN_END(4924u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4924);
+  switch (history[position++].value) {
+    case 4868:
       goto n1321;
-    case 4874u:
+    case 4874:
       goto n1316;
     default:
       return {kAttention4Done, {}};
@@ -6376,21 +6382,21 @@ n1321:
   PLUTO_ATTN_RUN(kAttention4Sequence168);
   goto n1317;
 n1317:
-  PLUTO_ATTN_MATCH(4868u, 4953u);
+  PLUTO_ATTN_MATCH(4868, 4953);
   return {42u, {}};
 n1316:
   PLUTO_ATTN_RUN(kAttention4Sequence169);
   goto n1306;
 n1306:
-  PLUTO_ATTN_MATCH(4900u, 4924u);
+  PLUTO_ATTN_MATCH(4900, 4924);
   return {37u, {}};
 n1305:
-  PLUTO_ATTN_MATCH(4902u, 4953u);
-  PLUTO_ATTN_END(4923u);
-  switch (history[position++]) {
-    case 4874u:
+  PLUTO_ATTN_MATCH(4902, 4953);
+  PLUTO_ATTN_END(4923);
+  switch (history[position++].value) {
+    case 4874:
       goto n1303;
-    case 4897u:
+    case 4897:
       goto n1296;
     default:
       return {kAttention4Done, {}};
@@ -6402,25 +6408,25 @@ n1296:
   PLUTO_ATTN_RUN(kAttention4Sequence171);
   return {132u, {}};
 n1291:
-  PLUTO_ATTN_END(4920u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4920);
+  switch (history[position++].value) {
+    case 4868:
       goto n1290;
-    case 4886u:
+    case 4886:
       return {1264u, {}};
-    case 4899u:
+    case 4899:
       return {1234u, {}};
     default:
       return {kAttention4Done, {}};
   }
 n1290:
-  PLUTO_ATTN_END(4924u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4924);
+  switch (history[position++].value) {
+    case 4868:
       goto n1289;
-    case 4902u:
+    case 4902:
       goto n1280;
-    case 4907u:
+    case 4907:
       return {1271u, {}};
     default:
       return {kAttention4Done, {}};
@@ -6429,11 +6435,12 @@ n1289:
   PLUTO_ATTN_RUN(kAttention4Sequence172);
   return {1250u, {}};
 n1280:
-  PLUTO_ATTN_MATCH(4891u, 4924u);
+  PLUTO_ATTN_MATCH(4891, 4924);
   return {1279u, {}};
 }
 Attention4Step Attention4Part6(
-    std::uint32_t node, [[maybe_unused]] absl::Span<const StateId> history,
+    std::uint32_t node,
+    [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
   switch (node) {
     case 1791u:
@@ -6488,20 +6495,20 @@ Attention4Step Attention4Part6(
       return {kAttention4Done, {}};
   }
 n1791:
-  PLUTO_ATTN_MATCH(4898u, 4924u);
+  PLUTO_ATTN_MATCH(4898, 4924);
   return {2u, {}};
 n1790:
   PLUTO_ATTN_RUN(kAttention4Sequence173);
   goto n1782;
 n1782:
-  PLUTO_ATTN_MATCH(4902u, 4929u);
+  PLUTO_ATTN_MATCH(4902, 4929);
   return {2u, {}};
 n1781:
-  PLUTO_ATTN_END(4929u);
-  switch (history[position++]) {
-    case 4874u:
+  PLUTO_ATTN_END(4929);
+  switch (history[position++].value) {
+    case 4874:
       goto n1780;
-    case 4886u:
+    case 4886:
       goto n1772;
     default:
       return {kAttention4Done, {}};
@@ -6510,38 +6517,38 @@ n1780:
   PLUTO_ATTN_RUN(kAttention4Sequence174);
   goto n1773;
 n1773:
-  PLUTO_ATTN_MATCH(4902u, 4953u);
+  PLUTO_ATTN_MATCH(4902, 4953);
   return {575u, {}};
 n1772:
-  PLUTO_ATTN_MATCH(4880u, 4952u);
-  PLUTO_ATTN_MATCH(4893u, 4928u);
-  PLUTO_ATTN_MATCH(4907u, 4952u);
+  PLUTO_ATTN_MATCH(4880, 4952);
+  PLUTO_ATTN_MATCH(4893, 4928);
+  PLUTO_ATTN_MATCH(4907, 4952);
   return {591u, {}};
 n1769:
   PLUTO_ATTN_RUN(kAttention4Sequence175);
   goto n1763;
 n1763:
-  PLUTO_ATTN_MATCH(4893u, 4924u);
+  PLUTO_ATTN_MATCH(4893, 4924);
   return {14u, {}};
 n1762:
   PLUTO_ATTN_RUN(kAttention4Sequence176);
   return {488u, {}};
 n1753:
-  PLUTO_ATTN_END(4952u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4952);
+  switch (history[position++].value) {
+    case 4868:
       goto n1752;
-    case 4870u:
+    case 4870:
       goto n1747;
-    case 4876u:
+    case 4876:
       goto n1744;
-    case 4898u:
+    case 4898:
       goto n1737;
-    case 4902u:
+    case 4902:
       goto n1731;
-    case 4904u:
+    case 4904:
       goto n1716;
-    case 4907u:
+    case 4907:
       goto n1706;
     default:
       return {kAttention4Done, {}};
@@ -6550,28 +6557,28 @@ n1752:
   PLUTO_ATTN_RUN(kAttention4Sequence177);
   goto n1748;
 n1748:
-  PLUTO_ATTN_MATCH(4907u, 4953u);
+  PLUTO_ATTN_MATCH(4907, 4953);
   return {372u, {}};
 n1747:
-  PLUTO_ATTN_MATCH(4868u, 4950u);
-  PLUTO_ATTN_MATCH(4902u, 4953u);
-  PLUTO_ATTN_MATCH(4898u, 4940u);
+  PLUTO_ATTN_MATCH(4868, 4950);
+  PLUTO_ATTN_MATCH(4902, 4953);
+  PLUTO_ATTN_MATCH(4898, 4940);
   return {1100u, {}};
 n1744:
   PLUTO_ATTN_RUN(kAttention4Sequence178);
   goto n1738;
 n1738:
-  PLUTO_ATTN_MATCH(4868u, 4952u);
+  PLUTO_ATTN_MATCH(4868, 4952);
   return {42u, {}};
 n1737:
   PLUTO_ATTN_RUN(kAttention4Sequence179);
   return {2u, {}};
 n1731:
-  PLUTO_ATTN_END(4950u);
-  switch (history[position++]) {
-    case 4873u:
+  PLUTO_ATTN_END(4950);
+  switch (history[position++].value) {
+    case 4873:
       goto n1730;
-    case 4902u:
+    case 4902:
       goto n1724;
     default:
       return {kAttention4Done, {}};
@@ -6586,27 +6593,27 @@ n1716:
   PLUTO_ATTN_RUN(kAttention4Sequence182);
   return {2u, {}};
 n1706:
-  PLUTO_ATTN_MATCH(4886u, 4953u);
-  PLUTO_ATTN_MATCH(4898u, 4923u);
+  PLUTO_ATTN_MATCH(4886, 4953);
+  PLUTO_ATTN_MATCH(4898, 4923);
   return {687u, {}};
 n1704:
-  PLUTO_ATTN_END(4953u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4953);
+  switch (history[position++].value) {
+    case 4868:
       goto n1703;
-    case 4873u:
+    case 4873:
       goto n1687;
-    case 4876u:
+    case 4876:
       goto n1677;
     default:
       return {kAttention4Done, {}};
   }
 n1703:
-  PLUTO_ATTN_END(4924u);
-  switch (history[position++]) {
-    case 4880u:
+  PLUTO_ATTN_END(4924);
+  switch (history[position++].value) {
+    case 4880:
       goto n1702;
-    case 4902u:
+    case 4902:
       goto n1697;
     default:
       return {kAttention4Done, {}};
@@ -6621,91 +6628,91 @@ n1687:
   PLUTO_ATTN_RUN(kAttention4Sequence185);
   goto n1679;
 n1679:
-  PLUTO_ATTN_MATCH(4868u, 4924u);
+  PLUTO_ATTN_MATCH(4868, 4924);
   goto n1678;
 n1678:
-  PLUTO_ATTN_MATCH(4902u, 4952u);
+  PLUTO_ATTN_MATCH(4902, 4952);
   return {2u, {}};
 n1677:
   PLUTO_ATTN_RUN(kAttention4Sequence186);
   goto n1669;
 n1669:
-  PLUTO_ATTN_MATCH(4868u, 4940u);
+  PLUTO_ATTN_MATCH(4868, 4940);
   return {2u, {}};
 n1668:
-  PLUTO_ATTN_END(4924u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4924);
+  switch (history[position++].value) {
+    case 4868:
       goto n1667;
-    case 4872u:
+    case 4872:
       return {1434u, {}};
-    case 4876u:
+    case 4876:
       return {1428u, {}};
-    case 4879u:
+    case 4879:
       return {1412u, {}};
-    case 4891u:
+    case 4891:
       return {1404u, {}};
-    case 4893u:
+    case 4893:
       return {1364u, {}};
-    case 4900u:
+    case 4900:
       return {1353u, {}};
-    case 4902u:
+    case 4902:
       return {1337u, {}};
-    case 4904u:
+    case 4904:
       return {1322u, {}};
-    case 4907u:
+    case 4907:
       return {1305u, {}};
     default:
       return {kAttention4Done, {}};
   }
 n1667:
-  PLUTO_ATTN_END(4923u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4923);
+  switch (history[position++].value) {
+    case 4868:
       goto n1666;
-    case 4874u:
+    case 4874:
       goto n1603;
-    case 4876u:
+    case 4876:
       goto n1596;
-    case 4880u:
+    case 4880:
       goto n1591;
-    case 4887u:
+    case 4887:
       goto n1568;
-    case 4891u:
+    case 4891:
       goto n1559;
-    case 4893u:
+    case 4893:
       goto n1544;
-    case 4902u:
+    case 4902:
       return {1519u, {}};
-    case 4903u:
+    case 4903:
       return {1499u, {}};
-    case 4904u:
+    case 4904:
       return {1485u, {}};
-    case 4905u:
+    case 4905:
       return {1446u, {}};
     default:
       return {kAttention4Done, {}};
   }
 n1666:
-  PLUTO_ATTN_END(4940u);
-  switch (history[position++]) {
-    case 4873u:
+  PLUTO_ATTN_END(4940);
+  switch (history[position++].value) {
+    case 4873:
       goto n1665;
-    case 4876u:
+    case 4876:
       goto n1659;
-    case 4883u:
+    case 4883:
       goto n1645;
-    case 4887u:
+    case 4887:
       goto n1639;
-    case 4893u:
+    case 4893:
       goto n1632;
-    case 4902u:
+    case 4902:
       goto n1626;
-    case 4904u:
+    case 4904:
       goto n1622;
-    case 4907u:
+    case 4907:
       goto n1613;
-    case 4908u:
+    case 4908:
       goto n1609;
     default:
       return {kAttention4Done, {}};
@@ -6714,7 +6721,7 @@ n1665:
   PLUTO_ATTN_RUN(kAttention4Sequence187);
   goto n1660;
 n1660:
-  PLUTO_ATTN_MATCH(4893u, 4953u);
+  PLUTO_ATTN_MATCH(4893, 4953);
   return {946u, {}};
 n1659:
   PLUTO_ATTN_RUN(kAttention4Sequence188);
@@ -6744,25 +6751,25 @@ n1603:
   PLUTO_ATTN_RUN(kAttention4Sequence196);
   goto n1597;
 n1597:
-  PLUTO_ATTN_MATCH(4868u, 4924u);
+  PLUTO_ATTN_MATCH(4868, 4924);
   return {820u, {}};
 n1596:
-  PLUTO_ATTN_MATCH(4868u, 4929u);
+  PLUTO_ATTN_MATCH(4868, 4929);
   goto n1595;
 n1595:
-  PLUTO_ATTN_MATCH(4898u, 4923u);
-  PLUTO_ATTN_MATCH(4893u, 4953u);
-  PLUTO_ATTN_MATCH(4880u, 4913u);
+  PLUTO_ATTN_MATCH(4898, 4923);
+  PLUTO_ATTN_MATCH(4893, 4953);
+  PLUTO_ATTN_MATCH(4880, 4913);
   goto n1592;
 n1592:
-  PLUTO_ATTN_MATCH(4885u, 4928u);
+  PLUTO_ATTN_MATCH(4885, 4928);
   return {3u, {}};
 n1591:
-  PLUTO_ATTN_END(4928u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4928);
+  switch (history[position++].value) {
+    case 4868:
       goto n1590;
-    case 4886u:
+    case 4886:
       goto n1579;
     default:
       return {kAttention4Done, {}};
@@ -6774,45 +6781,45 @@ n1579:
   PLUTO_ATTN_RUN(kAttention4Sequence198);
   goto n1569;
 n1569:
-  PLUTO_ATTN_MATCH(4868u, 4913u);
+  PLUTO_ATTN_MATCH(4868, 4913);
   return {575u, {}};
 n1568:
   PLUTO_ATTN_RUN(kAttention4Sequence199);
   return {114u, {}};
 n1559:
-  PLUTO_ATTN_END(4934u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4934);
+  switch (history[position++].value) {
+    case 4868:
       goto n1558;
-    case 4885u:
+    case 4885:
       goto n1554;
     default:
       return {kAttention4Done, {}};
   }
 n1558:
-  PLUTO_ATTN_MATCH(4902u, 4923u);
-  PLUTO_ATTN_MATCH(4880u, 4924u);
-  PLUTO_ATTN_MATCH(4900u, 4928u);
+  PLUTO_ATTN_MATCH(4902, 4923);
+  PLUTO_ATTN_MATCH(4880, 4924);
+  PLUTO_ATTN_MATCH(4900, 4928);
   goto n1555;
 n1555:
-  PLUTO_ATTN_MATCH(4902u, 4942u);
+  PLUTO_ATTN_MATCH(4902, 4942);
   return {2u, {}};
 n1554:
   PLUTO_ATTN_RUN(kAttention4Sequence200);
   goto n1545;
 n1545:
-  PLUTO_ATTN_MATCH(4902u, 4913u);
+  PLUTO_ATTN_MATCH(4902, 4913);
   return {197u, {}};
 n1544:
-  PLUTO_ATTN_END(4924u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4924);
+  switch (history[position++].value) {
+    case 4868:
       goto n1543;
-    case 4885u:
+    case 4885:
       goto n1537;
-    case 4895u:
+    case 4895:
       return {1526u, {}};
-    case 4902u:
+    case 4902:
       return {1522u, {}};
     default:
       return {kAttention4Done, {}};
@@ -6821,15 +6828,16 @@ n1543:
   PLUTO_ATTN_RUN(kAttention4Sequence201);
   goto n1538;
 n1538:
-  PLUTO_ATTN_MATCH(4907u, 4924u);
+  PLUTO_ATTN_MATCH(4907, 4924);
   return {372u, {}};
 n1537:
-  PLUTO_ATTN_MATCH(4870u, 4935u);
-  PLUTO_ATTN_MATCH(4875u, 4953u);
+  PLUTO_ATTN_MATCH(4870, 4935);
+  PLUTO_ATTN_MATCH(4875, 4953);
   return {1535u, {}};
 }
 Attention4Step Attention4Part7(
-    std::uint32_t node, [[maybe_unused]] absl::Span<const StateId> history,
+    std::uint32_t node,
+    [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
   switch (node) {
     case 2047u:
@@ -6886,27 +6894,27 @@ Attention4Step Attention4Part7(
       return {kAttention4Done, {}};
   }
 n2047:
-  PLUTO_ATTN_MATCH(4880u, 4924u);
-  PLUTO_ATTN_MATCH(4868u, 4928u);
+  PLUTO_ATTN_MATCH(4880, 4924);
+  PLUTO_ATTN_MATCH(4868, 4928);
   return {114u, {}};
 n2045:
-  PLUTO_ATTN_END(4923u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4923);
+  switch (history[position++].value) {
+    case 4868:
       goto n2044;
-    case 4870u:
+    case 4870:
       goto n2036;
-    case 4874u:
+    case 4874:
       goto n2030;
-    case 4879u:
+    case 4879:
       goto n2021;
-    case 4886u:
+    case 4886:
       goto n2016;
-    case 4891u:
+    case 4891:
       goto n2011;
-    case 4893u:
+    case 4893:
       goto n2006;
-    case 4902u:
+    case 4902:
       goto n1997;
     default:
       return {kAttention4Done, {}};
@@ -6921,7 +6929,7 @@ n2030:
   PLUTO_ATTN_RUN(kAttention4Sequence204);
   goto n2022;
 n2022:
-  PLUTO_ATTN_MATCH(4893u, 4952u);
+  PLUTO_ATTN_MATCH(4893, 4952);
   return {197u, {}};
 n2021:
   PLUTO_ATTN_RUN(kAttention4Sequence205);
@@ -6933,13 +6941,13 @@ n2011:
   PLUTO_ATTN_RUN(kAttention4Sequence207);
   goto n2007;
 n2007:
-  PLUTO_ATTN_MATCH(4883u, 4924u);
+  PLUTO_ATTN_MATCH(4883, 4924);
   return {918u, {}};
 n2006:
   PLUTO_ATTN_RUN(kAttention4Sequence208);
   goto n1998;
 n1998:
-  PLUTO_ATTN_MATCH(4902u, 4943u);
+  PLUTO_ATTN_MATCH(4902, 4943);
   return {1u, {}};
 n1997:
   PLUTO_ATTN_RUN(kAttention4Sequence209);
@@ -6948,15 +6956,15 @@ n1989:
   PLUTO_ATTN_RUN(kAttention4Sequence210);
   return {1021u, {}};
 n1978:
-  PLUTO_ATTN_END(4925u);
-  switch (history[position++]) {
-    case 4876u:
+  PLUTO_ATTN_END(4925);
+  switch (history[position++].value) {
+    case 4876:
       goto n1977;
-    case 4885u:
+    case 4885:
       goto n1970;
-    case 4886u:
+    case 4886:
       goto n1961;
-    case 4902u:
+    case 4902:
       goto n1952;
     default:
       return {kAttention4Done, {}};
@@ -6971,17 +6979,17 @@ n1961:
   PLUTO_ATTN_RUN(kAttention4Sequence213);
   goto n1953;
 n1953:
-  PLUTO_ATTN_MATCH(4868u, 4913u);
+  PLUTO_ATTN_MATCH(4868, 4913);
   return {42u, {}};
 n1952:
   PLUTO_ATTN_RUN(kAttention4Sequence214);
   return {870u, {}};
 n1946:
-  PLUTO_ATTN_END(4950u);
-  switch (history[position++]) {
-    case 4885u:
+  PLUTO_ATTN_END(4950);
+  switch (history[position++].value) {
+    case 4885:
       goto n1945;
-    case 4902u:
+    case 4902:
       goto n1940;
     default:
       return {kAttention4Done, {}};
@@ -6993,14 +7001,14 @@ n1940:
   PLUTO_ATTN_RUN(kAttention4Sequence216);
   goto n1936;
 n1936:
-  PLUTO_ATTN_MATCH(4902u, 4913u);
+  PLUTO_ATTN_MATCH(4902, 4913);
   return {42u, {}};
 n1935:
-  PLUTO_ATTN_END(4953u);
-  switch (history[position++]) {
-    case 4872u:
+  PLUTO_ATTN_END(4953);
+  switch (history[position++].value) {
+    case 4872:
       goto n1934;
-    case 4885u:
+    case 4885:
       goto n1926;
     default:
       return {kAttention4Done, {}};
@@ -7012,13 +7020,13 @@ n1926:
   PLUTO_ATTN_RUN(kAttention4Sequence218);
   return {166u, {}};
 n1922:
-  PLUTO_ATTN_END(4916u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4916);
+  switch (history[position++].value) {
+    case 4868:
       goto n1921;
-    case 4870u:
+    case 4870:
       goto n1916;
-    case 4873u:
+    case 4873:
       goto n1909;
     default:
       return {kAttention4Done, {}};
@@ -7033,13 +7041,13 @@ n1909:
   PLUTO_ATTN_RUN(kAttention4Sequence221);
   return {160u, {}};
 n1904:
-  PLUTO_ATTN_END(4932u);
-  switch (history[position++]) {
-    case 4874u:
+  PLUTO_ATTN_END(4932);
+  switch (history[position++].value) {
+    case 4874:
       goto n1903;
-    case 4885u:
+    case 4885:
       goto n1897;
-    case 4902u:
+    case 4902:
       goto n1888;
     default:
       return {kAttention4Done, {}};
@@ -7051,23 +7059,23 @@ n1897:
   PLUTO_ATTN_RUN(kAttention4Sequence223);
   goto n1890;
 n1890:
-  PLUTO_ATTN_MATCH(4898u, 4924u);
+  PLUTO_ATTN_MATCH(4898, 4924);
   goto n1889;
 n1889:
-  PLUTO_ATTN_MATCH(4885u, 4953u);
+  PLUTO_ATTN_MATCH(4885, 4953);
   return {166u, {}};
 n1888:
   PLUTO_ATTN_RUN(kAttention4Sequence224);
   goto n1880;
 n1880:
-  PLUTO_ATTN_MATCH(4886u, 4929u);
+  PLUTO_ATTN_MATCH(4886, 4929);
   return {1u, {}};
 n1879:
-  PLUTO_ATTN_END(4953u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4953);
+  switch (history[position++].value) {
+    case 4868:
       goto n1878;
-    case 4902u:
+    case 4902:
       goto n1869;
     default:
       return {kAttention4Done, {}};
@@ -7076,18 +7084,18 @@ n1878:
   PLUTO_ATTN_RUN(kAttention4Sequence225);
   goto n1870;
 n1870:
-  PLUTO_ATTN_MATCH(4902u, 4924u);
+  PLUTO_ATTN_MATCH(4902, 4924);
   return {132u, {}};
 n1869:
   PLUTO_ATTN_RUN(kAttention4Sequence226);
   return {746u, {}};
 n1860:
-  PLUTO_ATTN_MATCH(4868u, 4929u);
-  PLUTO_ATTN_END(4924u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_MATCH(4868, 4929);
+  PLUTO_ATTN_END(4924);
+  switch (history[position++].value) {
+    case 4868:
       goto n1858;
-    case 4898u:
+    case 4898:
       goto n1849;
     default:
       return {kAttention4Done, {}};
@@ -7096,28 +7104,28 @@ n1858:
   PLUTO_ATTN_RUN(kAttention4Sequence227);
   return {820u, {}};
 n1849:
-  PLUTO_ATTN_MATCH(4876u, 4953u);
-  PLUTO_ATTN_MATCH(4868u, 4929u);
-  PLUTO_ATTN_MATCH(4898u, 4952u);
+  PLUTO_ATTN_MATCH(4876, 4953);
+  PLUTO_ATTN_MATCH(4868, 4929);
+  PLUTO_ATTN_MATCH(4898, 4952);
   goto n1846;
 n1846:
-  PLUTO_ATTN_MATCH(4876u, 4953u);
+  PLUTO_ATTN_MATCH(4876, 4953);
   return {220u, {}};
 n1845:
   PLUTO_ATTN_RUN(kAttention4Sequence228);
   goto n1837;
 n1837:
-  PLUTO_ATTN_MATCH(4900u, 4923u);
+  PLUTO_ATTN_MATCH(4900, 4923);
   goto n1836;
 n1836:
-  PLUTO_ATTN_MATCH(4902u, 4942u);
+  PLUTO_ATTN_MATCH(4902, 4942);
   return {42u, {}};
 n1835:
-  PLUTO_ATTN_END(4938u);
-  switch (history[position++]) {
-    case 4875u:
+  PLUTO_ATTN_END(4938);
+  switch (history[position++].value) {
+    case 4875:
       goto n1834;
-    case 4899u:
+    case 4899:
       goto n1822;
     default:
       return {kAttention4Done, {}};
@@ -7129,13 +7137,13 @@ n1822:
   PLUTO_ATTN_RUN(kAttention4Sequence230);
   return {114u, {}};
 n1815:
-  PLUTO_ATTN_END(4925u);
-  switch (history[position++]) {
-    case 4870u:
+  PLUTO_ATTN_END(4925);
+  switch (history[position++].value) {
+    case 4870:
       goto n1814;
-    case 4876u:
+    case 4876:
       goto n1802;
-    case 4885u:
+    case 4885:
       return {1781u, {}};
     default:
       return {kAttention4Done, {}};
@@ -7144,11 +7152,11 @@ n1814:
   PLUTO_ATTN_RUN(kAttention4Sequence231);
   return {175u, {}};
 n1802:
-  PLUTO_ATTN_END(4929u);
-  switch (history[position++]) {
-    case 4886u:
+  PLUTO_ATTN_END(4929);
+  switch (history[position++].value) {
+    case 4886:
       goto n1801;
-    case 4902u:
+    case 4902:
       return {1790u, {}};
     default:
       return {kAttention4Done, {}};
@@ -7158,7 +7166,8 @@ n1801:
   return {1791u, {}};
 }
 Attention4Step Attention4Part8(
-    std::uint32_t node, [[maybe_unused]] absl::Span<const StateId> history,
+    std::uint32_t node,
+    [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
   switch (node) {
     case 2303u:
@@ -7209,26 +7218,26 @@ Attention4Step Attention4Part8(
       return {kAttention4Done, {}};
   }
 n2303:
-  PLUTO_ATTN_MATCH(4898u, 4924u);
-  PLUTO_ATTN_MATCH(4885u, 4953u);
+  PLUTO_ATTN_MATCH(4898, 4924);
+  PLUTO_ATTN_MATCH(4885, 4953);
   goto n2301;
 n2301:
-  PLUTO_ATTN_MATCH(4868u, 4929u);
+  PLUTO_ATTN_MATCH(4868, 4929);
   return {114u, {}};
 n2300:
   PLUTO_ATTN_RUN(kAttention4Sequence233);
   goto n2293;
 n2293:
-  PLUTO_ATTN_MATCH(4893u, 4953u);
+  PLUTO_ATTN_MATCH(4893, 4953);
   return {1569u, {}};
 n2292:
-  PLUTO_ATTN_END(4925u);
-  switch (history[position++]) {
-    case 4876u:
+  PLUTO_ATTN_END(4925);
+  switch (history[position++].value) {
+    case 4876:
       goto n2291;
-    case 4886u:
+    case 4886:
       goto n2282;
-    case 4902u:
+    case 4902:
       goto n2273;
     default:
       return {kAttention4Done, {}};
@@ -7237,32 +7246,32 @@ n2291:
   PLUTO_ATTN_RUN(kAttention4Sequence234);
   goto n2283;
 n2283:
-  PLUTO_ATTN_MATCH(4902u, 4924u);
+  PLUTO_ATTN_MATCH(4902, 4924);
   return {86u, {}};
 n2282:
   PLUTO_ATTN_RUN(kAttention4Sequence235);
   goto n2274;
 n2274:
-  PLUTO_ATTN_MATCH(4868u, 4913u);
+  PLUTO_ATTN_MATCH(4868, 4913);
   return {86u, {}};
 n2273:
   PLUTO_ATTN_RUN(kAttention4Sequence236);
   goto n2265;
 n2265:
-  PLUTO_ATTN_MATCH(4902u, 4925u);
+  PLUTO_ATTN_MATCH(4902, 4925);
   return {1u, {}};
 n2264:
-  PLUTO_ATTN_END(4940u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4940);
+  switch (history[position++].value) {
+    case 4868:
       goto n2263;
-    case 4870u:
+    case 4870:
       goto n2253;
-    case 4875u:
+    case 4875:
       goto n2250;
-    case 4876u:
+    case 4876:
       goto n2244;
-    case 4904u:
+    case 4904:
       goto n2234;
     default:
       return {kAttention4Done, {}};
@@ -7271,9 +7280,9 @@ n2263:
   PLUTO_ATTN_RUN(kAttention4Sequence237);
   return {1494u, {}};
 n2253:
-  PLUTO_ATTN_MATCH(4885u, 4926u);
-  PLUTO_ATTN_MATCH(4868u, 4929u);
-  PLUTO_ATTN_MATCH(4898u, 4915u);
+  PLUTO_ATTN_MATCH(4885, 4926);
+  PLUTO_ATTN_MATCH(4868, 4929);
+  PLUTO_ATTN_MATCH(4898, 4915);
   return {1155u, {}};
 n2250:
   PLUTO_ATTN_RUN(kAttention4Sequence238);
@@ -7285,21 +7294,21 @@ n2234:
   PLUTO_ATTN_RUN(kAttention4Sequence240);
   return {3u, {}};
 n2227:
-  PLUTO_ATTN_END(4953u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4953);
+  switch (history[position++].value) {
+    case 4868:
       goto n2226;
-    case 4873u:
+    case 4873:
       goto n2217;
-    case 4880u:
+    case 4880:
       goto n2210;
-    case 4883u:
+    case 4883:
       goto n2203;
-    case 4895u:
+    case 4895:
       goto n2197;
-    case 4898u:
+    case 4898:
       goto n2189;
-    case 4902u:
+    case 4902:
       goto n2184;
     default:
       return {kAttention4Done, {}};
@@ -7311,7 +7320,7 @@ n2217:
   PLUTO_ATTN_RUN(kAttention4Sequence242);
   goto n2211;
 n2211:
-  PLUTO_ATTN_MATCH(4900u, 4924u);
+  PLUTO_ATTN_MATCH(4900, 4924);
   return {372u, {}};
 n2210:
   PLUTO_ATTN_RUN(kAttention4Sequence243);
@@ -7326,20 +7335,20 @@ n2189:
   PLUTO_ATTN_RUN(kAttention4Sequence246);
   goto n2185;
 n2185:
-  PLUTO_ATTN_MATCH(4898u, 4953u);
+  PLUTO_ATTN_MATCH(4898, 4953);
   return {372u, {}};
 n2184:
   PLUTO_ATTN_RUN(kAttention4Sequence247);
   goto n2176;
 n2176:
-  PLUTO_ATTN_MATCH(4900u, 4924u);
+  PLUTO_ATTN_MATCH(4900, 4924);
   return {472u, {}};
 n2175:
-  PLUTO_ATTN_END(4950u);
-  switch (history[position++]) {
-    case 4876u:
+  PLUTO_ATTN_END(4950);
+  switch (history[position++].value) {
+    case 4876:
       goto n2174;
-    case 4902u:
+    case 4902:
       goto n2167;
     default:
       return {kAttention4Done, {}};
@@ -7351,51 +7360,51 @@ n2167:
   PLUTO_ATTN_RUN(kAttention4Sequence249);
   return {385u, {}};
 n2161:
-  PLUTO_ATTN_END(4923u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4923);
+  switch (history[position++].value) {
+    case 4868:
       goto n2160;
-    case 4870u:
+    case 4870:
       goto n2132;
-    case 4873u:
+    case 4873:
       goto n2118;
-    case 4875u:
+    case 4875:
       goto n2111;
-    case 4876u:
+    case 4876:
       goto n2083;
-    case 4879u:
+    case 4879:
       goto n2077;
-    case 4880u:
+    case 4880:
       goto n2065;
-    case 4885u:
+    case 4885:
       goto n2060;
-    case 4886u:
+    case 4886:
       return {2045u, {}};
-    case 4887u:
+    case 4887:
       return {1989u, {}};
-    case 4891u:
+    case 4891:
       return {1978u, {}};
-    case 4896u:
+    case 4896:
       return {1946u, {}};
-    case 4898u:
+    case 4898:
       return {1935u, {}};
-    case 4902u:
+    case 4902:
       return {1922u, {}};
-    case 4904u:
+    case 4904:
       return {1904u, {}};
-    case 4907u:
+    case 4907:
       return {1879u, {}};
     default:
       return {kAttention4Done, {}};
   }
 n2160:
-  PLUTO_ATTN_END(4913u);
-  switch (history[position++]) {
-    case 4873u:
+  PLUTO_ATTN_END(4913);
+  switch (history[position++].value) {
+    case 4873:
       goto n2159;
-    case 4874u:
+    case 4874:
       goto n2150;
-    case 4896u:
+    case 4896:
       goto n2140;
     default:
       return {kAttention4Done, {}};
@@ -7404,7 +7413,7 @@ n2159:
   PLUTO_ATTN_RUN(kAttention4Sequence250);
   goto n2151;
 n2151:
-  PLUTO_ATTN_MATCH(4868u, 4952u);
+  PLUTO_ATTN_MATCH(4868, 4952);
   return {575u, {}};
 n2150:
   PLUTO_ATTN_RUN(kAttention4Sequence251);
@@ -7413,11 +7422,11 @@ n2140:
   PLUTO_ATTN_RUN(kAttention4Sequence252);
   return {1147u, {}};
 n2132:
-  PLUTO_ATTN_END(4924u);
-  switch (history[position++]) {
-    case 4886u:
+  PLUTO_ATTN_END(4924);
+  switch (history[position++].value) {
+    case 4886:
       goto n2131;
-    case 4902u:
+    case 4902:
       goto n2123;
     default:
       return {kAttention4Done, {}};
@@ -7426,32 +7435,32 @@ n2131:
   PLUTO_ATTN_RUN(kAttention4Sequence253);
   goto n2124;
 n2124:
-  PLUTO_ATTN_MATCH(4902u, 4923u);
+  PLUTO_ATTN_MATCH(4902, 4923);
   return {1494u, {}};
 n2123:
-  PLUTO_ATTN_MATCH(4868u, 4952u);
-  PLUTO_ATTN_MATCH(4907u, 4924u);
-  PLUTO_ATTN_MATCH(4893u, 4953u);
+  PLUTO_ATTN_MATCH(4868, 4952);
+  PLUTO_ATTN_MATCH(4907, 4924);
+  PLUTO_ATTN_MATCH(4893, 4953);
   goto n2120;
 n2120:
-  PLUTO_ATTN_MATCH(4902u, 4924u);
-  PLUTO_ATTN_MATCH(4868u, 4940u);
+  PLUTO_ATTN_MATCH(4902, 4924);
+  PLUTO_ATTN_MATCH(4868, 4940);
   return {132u, {}};
 n2118:
   PLUTO_ATTN_RUN(kAttention4Sequence254);
   return {908u, {}};
 n2111:
-  PLUTO_ATTN_END(4952u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4952);
+  switch (history[position++].value) {
+    case 4868:
       goto n2110;
-    case 4870u:
+    case 4870:
       goto n2103;
-    case 4880u:
+    case 4880:
       goto n2094;
-    case 4898u:
+    case 4898:
       goto n2091;
-    case 4900u:
+    case 4900:
       goto n2084;
     default:
       return {kAttention4Done, {}};
@@ -7463,32 +7472,32 @@ n2103:
   PLUTO_ATTN_RUN(kAttention4Sequence256);
   goto n2095;
 n2095:
-  PLUTO_ATTN_MATCH(4893u, 4953u);
+  PLUTO_ATTN_MATCH(4893, 4953);
   return {870u, {}};
 n2094:
-  PLUTO_ATTN_MATCH(4868u, 4928u);
-  PLUTO_ATTN_MATCH(4902u, 4924u);
-  PLUTO_ATTN_MATCH(4898u, 4924u);
+  PLUTO_ATTN_MATCH(4868, 4928);
+  PLUTO_ATTN_MATCH(4902, 4924);
+  PLUTO_ATTN_MATCH(4898, 4924);
   return {175u, {}};
 n2091:
   PLUTO_ATTN_RUN(kAttention4Sequence257);
   goto n2086;
 n2086:
-  PLUTO_ATTN_MATCH(4904u, 4924u);
-  PLUTO_ATTN_MATCH(4868u, 4941u);
+  PLUTO_ATTN_MATCH(4904, 4924);
+  PLUTO_ATTN_MATCH(4868, 4941);
   return {1u, {}};
 n2084:
-  PLUTO_ATTN_MATCH(4902u, 4942u);
+  PLUTO_ATTN_MATCH(4902, 4942);
   return {373u, {}};
 n2083:
   PLUTO_ATTN_RUN(kAttention4Sequence258);
   return {936u, {}};
 n2077:
-  PLUTO_ATTN_END(4924u);
-  switch (history[position++]) {
-    case 4887u:
+  PLUTO_ATTN_END(4924);
+  switch (history[position++].value) {
+    case 4887:
       goto n2076;
-    case 4889u:
+    case 4889:
       goto n2069;
     default:
       return {kAttention4Done, {}};
@@ -7497,22 +7506,22 @@ n2076:
   PLUTO_ATTN_RUN(kAttention4Sequence259);
   return {1545u, {}};
 n2069:
-  PLUTO_ATTN_MATCH(4886u, 4933u);
-  PLUTO_ATTN_MATCH(4902u, 4924u);
-  PLUTO_ATTN_MATCH(4873u, 4915u);
+  PLUTO_ATTN_MATCH(4886, 4933);
+  PLUTO_ATTN_MATCH(4902, 4924);
+  PLUTO_ATTN_MATCH(4873, 4915);
   goto n2066;
 n2066:
-  PLUTO_ATTN_MATCH(4868u, 4952u);
+  PLUTO_ATTN_MATCH(4868, 4952);
   return {114u, {}};
 n2065:
   PLUTO_ATTN_RUN(kAttention4Sequence260);
   return {549u, {}};
 n2060:
-  PLUTO_ATTN_END(4929u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4929);
+  switch (history[position++].value) {
+    case 4868:
       goto n2059;
-    case 4874u:
+    case 4874:
       goto n2053;
     default:
       return {kAttention4Done, {}};
@@ -7521,14 +7530,15 @@ n2059:
   PLUTO_ATTN_RUN(kAttention4Sequence261);
   goto n2054;
 n2054:
-  PLUTO_ATTN_MATCH(4902u, 4940u);
+  PLUTO_ATTN_MATCH(4902, 4940);
   return {575u, {}};
 n2053:
   PLUTO_ATTN_RUN(kAttention4Sequence262);
   return {2047u, {}};
 }
 Attention4Step Attention4Part9(
-    std::uint32_t node, [[maybe_unused]] absl::Span<const StateId> history,
+    std::uint32_t node,
+    [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
   switch (node) {
     case 2559u:
@@ -7591,7 +7601,7 @@ Attention4Step Attention4Part9(
       return {kAttention4Done, {}};
   }
 n2559:
-  PLUTO_ATTN_MATCH(4872u, 4928u);
+  PLUTO_ATTN_MATCH(4872, 4928);
   return {1782u, {}};
 n2558:
   PLUTO_ATTN_RUN(kAttention4Sequence263);
@@ -7600,14 +7610,14 @@ n2547:
   PLUTO_ATTN_RUN(kAttention4Sequence264);
   goto n2540;
 n2540:
-  PLUTO_ATTN_MATCH(4893u, 4924u);
+  PLUTO_ATTN_MATCH(4893, 4924);
   return {2u, {}};
 n2539:
-  PLUTO_ATTN_END(4952u);
-  switch (history[position++]) {
-    case 4876u:
+  PLUTO_ATTN_END(4952);
+  switch (history[position++].value) {
+    case 4876:
       goto n2538;
-    case 4898u:
+    case 4898:
       goto n2533;
     default:
       return {kAttention4Done, {}};
@@ -7619,7 +7629,7 @@ n2533:
   PLUTO_ATTN_RUN(kAttention4Sequence266);
   goto n2529;
 n2529:
-  PLUTO_ATTN_MATCH(4868u, 4950u);
+  PLUTO_ATTN_MATCH(4868, 4950);
   return {2u, {}};
 n2528:
   PLUTO_ATTN_RUN(kAttention4Sequence267);
@@ -7628,19 +7638,19 @@ n2520:
   PLUTO_ATTN_RUN(kAttention4Sequence268);
   return {487u, {}};
 n2516:
-  PLUTO_ATTN_END(4926u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4926);
+  switch (history[position++].value) {
+    case 4868:
       goto n2515;
-    case 4874u:
+    case 4874:
       goto n2507;
-    case 4879u:
+    case 4879:
       goto n2501;
-    case 4885u:
+    case 4885:
       goto n2492;
-    case 4893u:
+    case 4893:
       return {1273u, {}};
-    case 4902u:
+    case 4902:
       goto n2486;
     default:
       return {kAttention4Done, {}};
@@ -7658,38 +7668,38 @@ n2492:
   PLUTO_ATTN_RUN(kAttention4Sequence272);
   goto n2488;
 n2488:
-  PLUTO_ATTN_MATCH(4885u, 4953u);
+  PLUTO_ATTN_MATCH(4885, 4953);
   goto n2487;
 n2487:
-  PLUTO_ATTN_MATCH(4902u, 4929u);
+  PLUTO_ATTN_MATCH(4902, 4929);
   return {197u, {}};
 n2486:
-  PLUTO_ATTN_END(4940u);
-  switch (history[position++]) {
-    case 4891u:
+  PLUTO_ATTN_END(4940);
+  switch (history[position++].value) {
+    case 4891:
       goto n2485;
-    case 4904u:
+    case 4904:
       goto n2483;
     default:
       return {kAttention4Done, {}};
   }
 n2485:
-  PLUTO_ATTN_MATCH(4876u, 4928u);
-  PLUTO_ATTN_MATCH(4902u, 4929u);
+  PLUTO_ATTN_MATCH(4876, 4928);
+  PLUTO_ATTN_MATCH(4902, 4929);
   return {575u, {}};
 n2483:
   PLUTO_ATTN_RUN(kAttention4Sequence273);
   return {1u, {}};
 n2479:
-  PLUTO_ATTN_END(4924u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4924);
+  switch (history[position++].value) {
+    case 4868:
       goto n2478;
-    case 4898u:
+    case 4898:
       goto n2474;
-    case 4900u:
+    case 4900:
       goto n2470;
-    case 4902u:
+    case 4902:
       goto n2459;
     default:
       return {kAttention4Done, {}};
@@ -7698,18 +7708,18 @@ n2478:
   PLUTO_ATTN_RUN(kAttention4Sequence274);
   return {1092u, {}};
 n2474:
-  PLUTO_ATTN_MATCH(4868u, 4953u);
-  PLUTO_ATTN_MATCH(4902u, 4953u);
-  PLUTO_ATTN_MATCH(4907u, 4952u);
+  PLUTO_ATTN_MATCH(4868, 4953);
+  PLUTO_ATTN_MATCH(4902, 4953);
+  PLUTO_ATTN_MATCH(4907, 4952);
   goto n2471;
 n2471:
-  PLUTO_ATTN_MATCH(4873u, 4953u);
+  PLUTO_ATTN_MATCH(4873, 4953);
   return {575u, {}};
 n2470:
   PLUTO_ATTN_RUN(kAttention4Sequence275);
   goto n2460;
 n2460:
-  PLUTO_ATTN_MATCH(4902u, 4924u);
+  PLUTO_ATTN_MATCH(4902, 4924);
   return {301u, {}};
 n2459:
   PLUTO_ATTN_RUN(kAttention4Sequence276);
@@ -7718,27 +7728,27 @@ n2453:
   PLUTO_ATTN_RUN(kAttention4Sequence277);
   return {404u, {}};
 n2446:
-  PLUTO_ATTN_END(4925u);
-  switch (history[position++]) {
-    case 4872u:
+  PLUTO_ATTN_END(4925);
+  switch (history[position++].value) {
+    case 4872:
       goto n2445;
-    case 4876u:
+    case 4876:
       goto n2432;
-    case 4885u:
+    case 4885:
       goto n2423;
-    case 4902u:
+    case 4902:
       goto n2401;
-    case 4904u:
+    case 4904:
       goto n2380;
     default:
       return {kAttention4Done, {}};
   }
 n2445:
-  PLUTO_ATTN_END(4929u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4929);
+  switch (history[position++].value) {
+    case 4868:
       goto n2444;
-    case 4874u:
+    case 4874:
       goto n2437;
     default:
       return {kAttention4Done, {}};
@@ -7753,24 +7763,24 @@ n2432:
   PLUTO_ATTN_RUN(kAttention4Sequence280);
   goto n2424;
 n2424:
-  PLUTO_ATTN_MATCH(4873u, 4924u);
+  PLUTO_ATTN_MATCH(4873, 4924);
   return {37u, {}};
 n2423:
-  PLUTO_ATTN_END(4929u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4929);
+  switch (history[position++].value) {
+    case 4868:
       goto n2422;
-    case 4902u:
+    case 4902:
       goto n2405;
     default:
       return {kAttention4Done, {}};
   }
 n2422:
-  PLUTO_ATTN_END(4923u);
-  switch (history[position++]) {
-    case 4893u:
+  PLUTO_ATTN_END(4923);
+  switch (history[position++].value) {
+    case 4893:
       goto n2421;
-    case 4898u:
+    case 4898:
       goto n2415;
     default:
       return {kAttention4Done, {}};
@@ -7779,10 +7789,10 @@ n2421:
   PLUTO_ATTN_RUN(kAttention4Sequence281);
   goto n2417;
 n2417:
-  PLUTO_ATTN_MATCH(4898u, 4924u);
+  PLUTO_ATTN_MATCH(4898, 4924);
   goto n2416;
 n2416:
-  PLUTO_ATTN_MATCH(4902u, 4953u);
+  PLUTO_ATTN_MATCH(4902, 4953);
   return {14u, {}};
 n2415:
   PLUTO_ATTN_RUN(kAttention4Sequence282);
@@ -7791,13 +7801,13 @@ n2405:
   PLUTO_ATTN_RUN(kAttention4Sequence283);
   return {606u, {}};
 n2401:
-  PLUTO_ATTN_END(4913u);
-  switch (history[position++]) {
-    case 4880u:
+  PLUTO_ATTN_END(4913);
+  switch (history[position++].value) {
+    case 4880:
       goto n2400;
-    case 4885u:
+    case 4885:
       goto n2394;
-    case 4886u:
+    case 4886:
       goto n2388;
     default:
       return {kAttention4Done, {}};
@@ -7809,42 +7819,42 @@ n2394:
   PLUTO_ATTN_RUN(kAttention4Sequence285);
   goto n2389;
 n2389:
-  PLUTO_ATTN_MATCH(4868u, 4952u);
+  PLUTO_ATTN_MATCH(4868, 4952);
   return {301u, {}};
 n2388:
   PLUTO_ATTN_RUN(kAttention4Sequence286);
   goto n2381;
 n2381:
-  PLUTO_ATTN_MATCH(4902u, 4913u);
+  PLUTO_ATTN_MATCH(4902, 4913);
   return {132u, {}};
 n2380:
-  PLUTO_ATTN_MATCH(4879u, 4925u);
-  PLUTO_ATTN_MATCH(4907u, 4952u);
+  PLUTO_ATTN_MATCH(4879, 4925);
+  PLUTO_ATTN_MATCH(4907, 4952);
   return {1592u, {}};
 n2378:
-  PLUTO_ATTN_END(4940u);
-  switch (history[position++]) {
-    case 4870u:
+  PLUTO_ATTN_END(4940);
+  switch (history[position++].value) {
+    case 4870:
       goto n2377;
-    case 4873u:
+    case 4873:
       goto n2368;
-    case 4874u:
+    case 4874:
       return {2161u, {}};
-    case 4876u:
+    case 4876:
       return {1860u, {}};
-    case 4885u:
+    case 4885:
       return {1845u, {}};
-    case 4887u:
+    case 4887:
       return {1835u, {}};
-    case 4891u:
+    case 4891:
       return {1815u, {}};
-    case 4893u:
+    case 4893:
       return {1769u, {}};
-    case 4900u:
+    case 4900:
       return {1762u, {}};
-    case 4903u:
+    case 4903:
       return {1753u, {}};
-    case 4904u:
+    case 4904:
       return {1704u, {}};
     default:
       return {kAttention4Done, {}};
@@ -7853,53 +7863,53 @@ n2377:
   PLUTO_ATTN_RUN(kAttention4Sequence287);
   return {318u, {}};
 n2368:
-  PLUTO_ATTN_END(4952u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4952);
+  switch (history[position++].value) {
+    case 4868:
       goto n2367;
-    case 4869u:
+    case 4869:
       goto n2347;
-    case 4876u:
+    case 4876:
       goto n2329;
-    case 4879u:
+    case 4879:
       goto n2324;
-    case 4887u:
+    case 4887:
       goto n2317;
-    case 4891u:
+    case 4891:
       return {2292u, {}};
-    case 4893u:
+    case 4893:
       return {2264u, {}};
-    case 4902u:
+    case 4902:
       return {2227u, {}};
-    case 4903u:
+    case 4903:
       return {2175u, {}};
     default:
       return {kAttention4Done, {}};
   }
 n2367:
-  PLUTO_ATTN_END(4923u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4923);
+  switch (history[position++].value) {
+    case 4868:
       goto n2366;
-    case 4883u:
+    case 4883:
       goto n2361;
-    case 4898u:
+    case 4898:
       goto n2356;
-    case 4902u:
+    case 4902:
       goto n2351;
     default:
       return {kAttention4Done, {}};
   }
 n2366:
-  PLUTO_ATTN_MATCH(4883u, 4940u);
-  PLUTO_ATTN_MATCH(4902u, 4920u);
-  PLUTO_ATTN_MATCH(4880u, 4924u);
+  PLUTO_ATTN_MATCH(4883, 4940);
+  PLUTO_ATTN_MATCH(4902, 4920);
+  PLUTO_ATTN_MATCH(4880, 4924);
   goto n2363;
 n2363:
-  PLUTO_ATTN_MATCH(4876u, 4928u);
+  PLUTO_ATTN_MATCH(4876, 4928);
   goto n2362;
 n2362:
-  PLUTO_ATTN_MATCH(4868u, 4929u);
+  PLUTO_ATTN_MATCH(4868, 4929);
   return {37u, {}};
 n2361:
   PLUTO_ATTN_RUN(kAttention4Sequence288);
@@ -7911,13 +7921,13 @@ n2351:
   PLUTO_ATTN_RUN(kAttention4Sequence290);
   return {591u, {}};
 n2347:
-  PLUTO_ATTN_END(4938u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4938);
+  switch (history[position++].value) {
+    case 4868:
       goto n2346;
-    case 4878u:
+    case 4878:
       goto n2339;
-    case 4885u:
+    case 4885:
       goto n2335;
     default:
       return {kAttention4Done, {}};
@@ -7926,7 +7936,7 @@ n2346:
   PLUTO_ATTN_RUN(kAttention4Sequence291);
   goto n2340;
 n2340:
-  PLUTO_ATTN_MATCH(4893u, 4953u);
+  PLUTO_ATTN_MATCH(4893, 4953);
   return {14u, {}};
 n2339:
   PLUTO_ATTN_RUN(kAttention4Sequence292);
@@ -7935,31 +7945,31 @@ n2335:
   PLUTO_ATTN_RUN(kAttention4Sequence293);
   return {291u, {}};
 n2329:
-  PLUTO_ATTN_MATCH(4868u, 4929u);
-  PLUTO_ATTN_MATCH(4868u, 4952u);
+  PLUTO_ATTN_MATCH(4868, 4929);
+  PLUTO_ATTN_MATCH(4868, 4952);
   goto n2327;
 n2327:
-  PLUTO_ATTN_MATCH(4898u, 4953u);
-  PLUTO_ATTN_MATCH(4876u, 4953u);
-  PLUTO_ATTN_MATCH(4868u, 4929u);
+  PLUTO_ATTN_MATCH(4898, 4953);
+  PLUTO_ATTN_MATCH(4876, 4953);
+  PLUTO_ATTN_MATCH(4868, 4929);
   return {198u, {}};
 n2324:
   PLUTO_ATTN_RUN(kAttention4Sequence294);
   goto n2319;
 n2319:
-  PLUTO_ATTN_MATCH(4868u, 4953u);
+  PLUTO_ATTN_MATCH(4868, 4953);
   goto n2318;
 n2318:
-  PLUTO_ATTN_MATCH(4868u, 4913u);
+  PLUTO_ATTN_MATCH(4868, 4913);
   return {14u, {}};
 n2317:
-  PLUTO_ATTN_END(4938u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4938);
+  switch (history[position++].value) {
+    case 4868:
       goto n2316;
-    case 4870u:
+    case 4870:
       goto n2307;
-    case 4902u:
+    case 4902:
       return {2300u, {}};
     default:
       return {kAttention4Done, {}};
@@ -7972,7 +7982,8 @@ n2307:
   return {2303u, {}};
 }
 Attention4Step Attention4Part10(
-    std::uint32_t node, [[maybe_unused]] absl::Span<const StateId> history,
+    std::uint32_t node,
+    [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
   switch (node) {
     case 2815u:
@@ -8038,7 +8049,7 @@ n2815:
   PLUTO_ATTN_RUN(kAttention4Sequence297);
   goto n2806;
 n2806:
-  PLUTO_ATTN_MATCH(4876u, 4950u);
+  PLUTO_ATTN_MATCH(4876, 4950);
   return {220u, {}};
 n2805:
   PLUTO_ATTN_RUN(kAttention4Sequence298);
@@ -8047,15 +8058,15 @@ n2797:
   PLUTO_ATTN_RUN(kAttention4Sequence299);
   return {429u, {}};
 n2792:
-  PLUTO_ATTN_END(4915u);
-  switch (history[position++]) {
-    case 4870u:
+  PLUTO_ATTN_END(4915);
+  switch (history[position++].value) {
+    case 4870:
       goto n2791;
-    case 4873u:
+    case 4873:
       goto n2787;
-    case 4885u:
+    case 4885:
       goto n2776;
-    case 4907u:
+    case 4907:
       goto n2771;
     default:
       return {kAttention4Done, {}};
@@ -8067,19 +8078,19 @@ n2787:
   PLUTO_ATTN_RUN(kAttention4Sequence301);
   goto n2777;
 n2777:
-  PLUTO_ATTN_MATCH(4880u, 4924u);
+  PLUTO_ATTN_MATCH(4880, 4924);
   return {25u, {}};
 n2776:
   PLUTO_ATTN_RUN(kAttention4Sequence302);
   return {1u, {}};
 n2771:
-  PLUTO_ATTN_MATCH(4868u, 4953u);
+  PLUTO_ATTN_MATCH(4868, 4953);
   goto n2770;
 n2770:
-  PLUTO_ATTN_MATCH(4907u, 4924u);
+  PLUTO_ATTN_MATCH(4907, 4924);
   goto n2769;
 n2769:
-  PLUTO_ATTN_MATCH(4868u, 4953u);
+  PLUTO_ATTN_MATCH(4868, 4953);
   return {282u, {}};
 n2768:
   PLUTO_ATTN_RUN(kAttention4Sequence303);
@@ -8091,11 +8102,11 @@ n2759:
   PLUTO_ATTN_RUN(kAttention4Sequence305);
   return {1538u, {}};
 n2749:
-  PLUTO_ATTN_END(4926u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4926);
+  switch (history[position++].value) {
+    case 4868:
       goto n2748;
-    case 4873u:
+    case 4873:
       goto n2743;
     default:
       return {kAttention4Done, {}};
@@ -8107,33 +8118,33 @@ n2743:
   PLUTO_ATTN_RUN(kAttention4Sequence307);
   return {763u, {}};
 n2736:
-  PLUTO_ATTN_MATCH(4868u, 4924u);
-  PLUTO_ATTN_MATCH(4870u, 4940u);
-  PLUTO_ATTN_MATCH(4868u, 4950u);
+  PLUTO_ATTN_MATCH(4868, 4924);
+  PLUTO_ATTN_MATCH(4870, 4940);
+  PLUTO_ATTN_MATCH(4868, 4950);
   return {343u, {}};
 n2733:
   PLUTO_ATTN_RUN(kAttention4Sequence308);
   goto n2723;
 n2723:
-  PLUTO_ATTN_MATCH(4873u, 4924u);
+  PLUTO_ATTN_MATCH(4873, 4924);
   return {114u, {}};
 n2722:
-  PLUTO_ATTN_END(4925u);
-  switch (history[position++]) {
-    case 4872u:
+  PLUTO_ATTN_END(4925);
+  switch (history[position++].value) {
+    case 4872:
       goto n2721;
-    case 4876u:
+    case 4876:
       goto n2717;
     default:
       return {kAttention4Done, {}};
   }
 n2721:
-  PLUTO_ATTN_MATCH(4875u, 4929u);
-  PLUTO_ATTN_MATCH(4898u, 4924u);
-  PLUTO_ATTN_MATCH(4875u, 4953u);
+  PLUTO_ATTN_MATCH(4875, 4929);
+  PLUTO_ATTN_MATCH(4898, 4924);
+  PLUTO_ATTN_MATCH(4875, 4953);
   goto n2718;
 n2718:
-  PLUTO_ATTN_MATCH(4907u, 4924u);
+  PLUTO_ATTN_MATCH(4907, 4924);
   return {37u, {}};
 n2717:
   PLUTO_ATTN_RUN(kAttention4Sequence309);
@@ -8142,16 +8153,16 @@ n2711:
   PLUTO_ATTN_RUN(kAttention4Sequence310);
   goto n2702;
 n2702:
-  PLUTO_ATTN_MATCH(4868u, 4921u);
+  PLUTO_ATTN_MATCH(4868, 4921);
   return {1u, {}};
 n2701:
-  PLUTO_ATTN_END(4953u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4953);
+  switch (history[position++].value) {
+    case 4868:
       goto n2700;
-    case 4875u:
+    case 4875:
       goto n2694;
-    case 4885u:
+    case 4885:
       goto n2690;
     default:
       return {kAttention4Done, {}};
@@ -8163,11 +8174,11 @@ n2694:
   PLUTO_ATTN_RUN(kAttention4Sequence312);
   return {133u, {}};
 n2690:
-  PLUTO_ATTN_END(4929u);
-  switch (history[position++]) {
-    case 4886u:
+  PLUTO_ATTN_END(4929);
+  switch (history[position++].value) {
+    case 4886:
       goto n2689;
-    case 4899u:
+    case 4899:
       goto n2683;
     default:
       return {kAttention4Done, {}};
@@ -8176,7 +8187,7 @@ n2689:
   PLUTO_ATTN_RUN(kAttention4Sequence313);
   goto n2684;
 n2684:
-  PLUTO_ATTN_MATCH(4868u, 4953u);
+  PLUTO_ATTN_MATCH(4868, 4953);
   return {307u, {}};
 n2683:
   PLUTO_ATTN_RUN(kAttention4Sequence314);
@@ -8185,55 +8196,55 @@ n2677:
   PLUTO_ATTN_RUN(kAttention4Sequence315);
   return {1555u, {}};
 n2665:
-  PLUTO_ATTN_END(4915u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4915);
+  switch (history[position++].value) {
+    case 4868:
       goto n2664;
-    case 4881u:
+    case 4881:
       goto n2603;
-    case 4887u:
+    case 4887:
       goto n2590;
     default:
       return {kAttention4Done, {}};
   }
 n2664:
-  PLUTO_ATTN_END(4923u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4923);
+  switch (history[position++].value) {
+    case 4868:
       goto n2663;
-    case 4870u:
+    case 4870:
       goto n2660;
-    case 4886u:
+    case 4886:
       goto n2649;
-    case 4893u:
+    case 4893:
       goto n2640;
-    case 4897u:
+    case 4897:
       goto n2639;
-    case 4902u:
+    case 4902:
       goto n2633;
-    case 4904u:
+    case 4904:
       goto n2625;
-    case 4907u:
+    case 4907:
       goto n2605;
     default:
       return {kAttention4Done, {}};
   }
 n2663:
-  PLUTO_ATTN_MATCH(4903u, 4923u);
-  PLUTO_ATTN_MATCH(4868u, 4950u);
-  PLUTO_ATTN_MATCH(4876u, 4952u);
+  PLUTO_ATTN_MATCH(4903, 4923);
+  PLUTO_ATTN_MATCH(4868, 4950);
+  PLUTO_ATTN_MATCH(4876, 4952);
   return {15u, {}};
 n2660:
   PLUTO_ATTN_RUN(kAttention4Sequence316);
   goto n2650;
 n2650:
-  PLUTO_ATTN_MATCH(4893u, 4924u);
+  PLUTO_ATTN_MATCH(4893, 4924);
   return {197u, {}};
 n2649:
   PLUTO_ATTN_RUN(kAttention4Sequence317);
   return {956u, {}};
 n2640:
-  PLUTO_ATTN_MATCH(4902u, 4913u);
+  PLUTO_ATTN_MATCH(4902, 4913);
   return {1890u, {}};
 n2639:
   PLUTO_ATTN_RUN(kAttention4Sequence318);
@@ -8242,23 +8253,23 @@ n2633:
   PLUTO_ATTN_RUN(kAttention4Sequence319);
   goto n2626;
 n2626:
-  PLUTO_ATTN_MATCH(4902u, 4943u);
+  PLUTO_ATTN_MATCH(4902, 4943);
   return {114u, {}};
 n2625:
   PLUTO_ATTN_RUN(kAttention4Sequence320);
   return {197u, {}};
 n2605:
-  PLUTO_ATTN_MATCH(4902u, 4953u);
+  PLUTO_ATTN_MATCH(4902, 4953);
   goto n2604;
 n2604:
-  PLUTO_ATTN_MATCH(4868u, 4953u);
+  PLUTO_ATTN_MATCH(4868, 4953);
   return {373u, {}};
 n2603:
-  PLUTO_ATTN_END(4953u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4953);
+  switch (history[position++].value) {
+    case 4868:
       goto n2602;
-    case 4876u:
+    case 4876:
       goto n2596;
     default:
       return {kAttention4Done, {}};
@@ -8270,48 +8281,48 @@ n2596:
   PLUTO_ATTN_RUN(kAttention4Sequence322);
   goto n2591;
 n2591:
-  PLUTO_ATTN_MATCH(4898u, 4924u);
+  PLUTO_ATTN_MATCH(4898, 4924);
   return {880u, {}};
 n2590:
-  PLUTO_ATTN_MATCH(4902u, 4938u);
-  PLUTO_ATTN_MATCH(4886u, 4933u);
+  PLUTO_ATTN_MATCH(4902, 4938);
+  PLUTO_ATTN_MATCH(4886, 4933);
   return {2124u, {}};
 n2588:
-  PLUTO_ATTN_END(4924u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4924);
+  switch (history[position++].value) {
+    case 4868:
       goto n2587;
-    case 4873u:
+    case 4873:
       return {2539u, {}};
-    case 4879u:
+    case 4879:
       return {2528u, {}};
-    case 4885u:
+    case 4885:
       return {2520u, {}};
-    case 4898u:
+    case 4898:
       return {2516u, {}};
-    case 4899u:
+    case 4899:
       return {2479u, {}};
-    case 4902u:
+    case 4902:
       return {2453u, {}};
     default:
       return {kAttention4Done, {}};
   }
 n2587:
-  PLUTO_ATTN_END(4923u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4923);
+  switch (history[position++].value) {
+    case 4868:
       goto n2586;
-    case 4874u:
+    case 4874:
       goto n2579;
-    case 4875u:
+    case 4875:
       goto n2575;
-    case 4898u:
+    case 4898:
       goto n2568;
-    case 4902u:
+    case 4902:
       goto n2563;
-    case 4903u:
+    case 4903:
       return {2558u, {}};
-    case 4904u:
+    case 4904:
       return {2547u, {}};
     default:
       return {kAttention4Done, {}};
@@ -8333,7 +8344,8 @@ n2563:
   return {2559u, {}};
 }
 Attention4Step Attention4Part11(
-    std::uint32_t node, [[maybe_unused]] absl::Span<const StateId> history,
+    std::uint32_t node,
+    [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
   switch (node) {
     case 3071u:
@@ -8365,29 +8377,29 @@ n3071:
   PLUTO_ATTN_RUN(kAttention4Sequence328);
   return {292u, {}};
 n3063:
-  PLUTO_ATTN_END(4929u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4929);
+  switch (history[position++].value) {
+    case 4868:
       goto n3062;
-    case 4870u:
+    case 4870:
       goto n2990;
-    case 4893u:
+    case 4893:
       goto n2969;
-    case 4902u:
+    case 4902:
       goto n2874;
     default:
       return {kAttention4Done, {}};
   }
 n3062:
-  PLUTO_ATTN_END(4923u);
-  switch (history[position++]) {
-    case 4876u:
+  PLUTO_ATTN_END(4923);
+  switch (history[position++].value) {
+    case 4876:
       goto n3061;
-    case 4886u:
+    case 4886:
       goto n3045;
-    case 4902u:
+    case 4902:
       goto n3028;
-    case 4904u:
+    case 4904:
       goto n3001;
     default:
       return {kAttention4Done, {}};
@@ -8396,11 +8408,11 @@ n3061:
   PLUTO_ATTN_RUN(kAttention4Sequence329);
   return {472u, {}};
 n3045:
-  PLUTO_ATTN_END(4924u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4924);
+  switch (history[position++].value) {
+    case 4868:
       goto n3044;
-    case 4900u:
+    case 4900:
       goto n3036;
     default:
       return {kAttention4Done, {}};
@@ -8412,13 +8424,13 @@ n3036:
   PLUTO_ATTN_RUN(kAttention4Sequence331);
   return {132u, {}};
 n3028:
-  PLUTO_ATTN_END(4953u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4953);
+  switch (history[position++].value) {
+    case 4868:
       goto n3027;
-    case 4898u:
+    case 4898:
       goto n3021;
-    case 4904u:
+    case 4904:
       goto n3010;
     default:
       return {kAttention4Done, {}};
@@ -8430,7 +8442,7 @@ n3021:
   PLUTO_ATTN_RUN(kAttention4Sequence333);
   goto n3011;
 n3011:
-  PLUTO_ATTN_MATCH(4898u, 4953u);
+  PLUTO_ATTN_MATCH(4898, 4953);
   return {292u, {}};
 n3010:
   PLUTO_ATTN_RUN(kAttention4Sequence334);
@@ -8439,14 +8451,14 @@ n3001:
   PLUTO_ATTN_RUN(kAttention4Sequence335);
   goto n2991;
 n2991:
-  PLUTO_ATTN_MATCH(4901u, 4953u);
+  PLUTO_ATTN_MATCH(4901, 4953);
   return {1u, {}};
 n2990:
-  PLUTO_ATTN_END(4952u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4952);
+  switch (history[position++].value) {
+    case 4868:
       goto n2989;
-    case 4889u:
+    case 4889:
       goto n2978;
     default:
       return {kAttention4Done, {}};
@@ -8458,22 +8470,22 @@ n2978:
   PLUTO_ATTN_RUN(kAttention4Sequence337);
   goto n2970;
 n2970:
-  PLUTO_ATTN_MATCH(4868u, 4953u);
+  PLUTO_ATTN_MATCH(4868, 4953);
   return {114u, {}};
 n2969:
-  PLUTO_ATTN_END(4913u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4913);
+  switch (history[position++].value) {
+    case 4868:
       goto n2968;
-    case 4876u:
+    case 4876:
       goto n2959;
-    case 4886u:
+    case 4886:
       goto n2945;
-    case 4893u:
+    case 4893:
       goto n2916;
-    case 4900u:
+    case 4900:
       goto n2891;
-    case 4904u:
+    case 4904:
       goto n2882;
     default:
       return {kAttention4Done, {}};
@@ -8485,14 +8497,14 @@ n2959:
   PLUTO_ATTN_RUN(kAttention4Sequence339);
   goto n2946;
 n2946:
-  PLUTO_ATTN_MATCH(4873u, 4952u);
+  PLUTO_ATTN_MATCH(4873, 4952);
   return {197u, {}};
 n2945:
-  PLUTO_ATTN_END(4924u);
-  switch (history[position++]) {
-    case 4873u:
+  PLUTO_ATTN_END(4924);
+  switch (history[position++].value) {
+    case 4873:
       goto n2944;
-    case 4904u:
+    case 4904:
       goto n2927;
     default:
       return {kAttention4Done, {}};
@@ -8504,14 +8516,14 @@ n2927:
   PLUTO_ATTN_RUN(kAttention4Sequence341);
   goto n2917;
 n2917:
-  PLUTO_ATTN_MATCH(4868u, 4950u);
+  PLUTO_ATTN_MATCH(4868, 4950);
   return {1u, {}};
 n2916:
-  PLUTO_ATTN_END(4913u);
-  switch (history[position++]) {
-    case 4902u:
+  PLUTO_ATTN_END(4913);
+  switch (history[position++].value) {
+    case 4902:
       goto n2915;
-    case 4904u:
+    case 4904:
       goto n2906;
     default:
       return {kAttention4Done, {}};
@@ -8529,14 +8541,14 @@ n2882:
   PLUTO_ATTN_RUN(kAttention4Sequence345);
   goto n2875;
 n2875:
-  PLUTO_ATTN_MATCH(4902u, 4924u);
+  PLUTO_ATTN_MATCH(4902, 4924);
   return {575u, {}};
 n2874:
-  PLUTO_ATTN_END(4924u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4924);
+  switch (history[position++].value) {
+    case 4868:
       goto n2873;
-    case 4904u:
+    case 4904:
       goto n2865;
     default:
       return {kAttention4Done, {}};
@@ -8548,70 +8560,70 @@ n2865:
   PLUTO_ATTN_RUN(kAttention4Sequence347);
   return {2u, {}};
 n2858:
-  PLUTO_ATTN_END(4938u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4938);
+  switch (history[position++].value) {
+    case 4868:
       goto n2857;
-    case 4870u:
+    case 4870:
       return {2749u, {}};
-    case 4875u:
+    case 4875:
       return {2736u, {}};
-    case 4880u:
+    case 4880:
       return {2733u, {}};
-    case 4891u:
+    case 4891:
       return {2722u, {}};
-    case 4897u:
+    case 4897:
       return {2711u, {}};
-    case 4898u:
+    case 4898:
       return {2701u, {}};
-    case 4900u:
+    case 4900:
       return {2677u, {}};
-    case 4902u:
+    case 4902:
       return {2665u, {}};
-    case 4904u:
+    case 4904:
       return {2588u, {}};
     default:
       return {kAttention4Done, {}};
   }
 n2857:
-  PLUTO_ATTN_END(4923u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4923);
+  switch (history[position++].value) {
+    case 4868:
       goto n2856;
-    case 4874u:
+    case 4874:
       goto n2853;
-    case 4877u:
+    case 4877:
       return {2805u, {}};
-    case 4891u:
+    case 4891:
       return {2797u, {}};
-    case 4898u:
+    case 4898:
       return {2792u, {}};
-    case 4903u:
+    case 4903:
       return {2768u, {}};
-    case 4905u:
+    case 4905:
       return {2763u, {}};
-    case 4907u:
+    case 4907:
       return {2759u, {}};
     default:
       return {kAttention4Done, {}};
   }
 n2856:
-  PLUTO_ATTN_MATCH(4902u, 4924u);
-  PLUTO_ATTN_MATCH(4870u, 4923u);
-  PLUTO_ATTN_MATCH(4873u, 4952u);
+  PLUTO_ATTN_MATCH(4902, 4924);
+  PLUTO_ATTN_MATCH(4870, 4923);
+  PLUTO_ATTN_MATCH(4873, 4952);
   return {14u, {}};
 n2853:
-  PLUTO_ATTN_END(4953u);
-  switch (history[position++]) {
-    case 4873u:
+  PLUTO_ATTN_END(4953);
+  switch (history[position++].value) {
+    case 4873:
       goto n2852;
-    case 4874u:
+    case 4874:
       goto n2840;
-    case 4876u:
+    case 4876:
       goto n2834;
-    case 4880u:
+    case 4880:
       goto n2823;
-    case 4891u:
+    case 4891:
       goto n2818;
     default:
       return {kAttention4Done, {}};
@@ -8620,13 +8632,13 @@ n2852:
   PLUTO_ATTN_RUN(kAttention4Sequence348);
   goto n2841;
 n2841:
-  PLUTO_ATTN_MATCH(4879u, 4924u);
+  PLUTO_ATTN_MATCH(4879, 4924);
   return {1u, {}};
 n2840:
   PLUTO_ATTN_RUN(kAttention4Sequence349);
   goto n2835;
 n2835:
-  PLUTO_ATTN_MATCH(4873u, 4953u);
+  PLUTO_ATTN_MATCH(4873, 4953);
   return {2u, {}};
 n2834:
   PLUTO_ATTN_RUN(kAttention4Sequence350);
@@ -8635,13 +8647,14 @@ n2823:
   PLUTO_ATTN_RUN(kAttention4Sequence351);
   return {198u, {}};
 n2818:
-  PLUTO_ATTN_MATCH(4885u, 4925u);
-  PLUTO_ATTN_MATCH(4868u, 4929u);
-  PLUTO_ATTN_MATCH(4902u, 4924u);
+  PLUTO_ATTN_MATCH(4885, 4925);
+  PLUTO_ATTN_MATCH(4868, 4929);
+  PLUTO_ATTN_MATCH(4902, 4924);
   return {2815u, {}};
 }
 Attention4Step Attention4Part12(
-    std::uint32_t node, [[maybe_unused]] absl::Span<const StateId> history,
+    std::uint32_t node,
+    [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
   switch (node) {
     case 3327u:
@@ -8681,19 +8694,19 @@ n3327:
   PLUTO_ATTN_RUN(kAttention4Sequence352);
   return {295u, {}};
 n3320:
-  PLUTO_ATTN_END(4924u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4924);
+  switch (history[position++].value) {
+    case 4868:
       goto n3319;
-    case 4870u:
+    case 4870:
       goto n3313;
-    case 4884u:
+    case 4884:
       goto n3307;
-    case 4886u:
+    case 4886:
       goto n3301;
-    case 4893u:
+    case 4893:
       goto n3296;
-    case 4902u:
+    case 4902:
       goto n3289;
     default:
       return {kAttention4Done, {}};
@@ -8717,11 +8730,11 @@ n3289:
   PLUTO_ATTN_RUN(kAttention4Sequence358);
   return {327u, {}};
 n3285:
-  PLUTO_ATTN_END(4952u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4952);
+  switch (history[position++].value) {
+    case 4868:
       goto n3284;
-    case 4891u:
+    case 4891:
       goto n3278;
     default:
       return {kAttention4Done, {}};
@@ -8730,64 +8743,64 @@ n3284:
   PLUTO_ATTN_RUN(kAttention4Sequence359);
   goto n3279;
 n3279:
-  PLUTO_ATTN_MATCH(4904u, 4924u);
+  PLUTO_ATTN_MATCH(4904, 4924);
   return {372u, {}};
 n3278:
   PLUTO_ATTN_RUN(kAttention4Sequence360);
   return {1u, {}};
 n3273:
-  PLUTO_ATTN_END(4953u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4953);
+  switch (history[position++].value) {
+    case 4868:
       goto n3272;
-    case 4886u:
+    case 4886:
       goto n3269;
     default:
       return {kAttention4Done, {}};
   }
 n3272:
-  PLUTO_ATTN_MATCH(4868u, 4952u);
-  PLUTO_ATTN_MATCH(4868u, 4913u);
-  PLUTO_ATTN_MATCH(4880u, 4923u);
+  PLUTO_ATTN_MATCH(4868, 4952);
+  PLUTO_ATTN_MATCH(4868, 4913);
+  PLUTO_ATTN_MATCH(4880, 4923);
   goto n3265;
 n3269:
-  PLUTO_ATTN_END(4923u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4923);
+  switch (history[position++].value) {
+    case 4868:
       goto n3268;
-    case 4874u:
+    case 4874:
       goto n3266;
     default:
       return {kAttention4Done, {}};
   }
 n3268:
-  PLUTO_ATTN_MATCH(4879u, 4924u);
-  PLUTO_ATTN_MATCH(4902u, 4941u);
+  PLUTO_ATTN_MATCH(4879, 4924);
+  PLUTO_ATTN_MATCH(4902, 4941);
   return {42u, {}};
 n3266:
-  PLUTO_ATTN_MATCH(4880u, 4933u);
+  PLUTO_ATTN_MATCH(4880, 4933);
   goto n3265;
 n3265:
-  PLUTO_ATTN_MATCH(4885u, 4928u);
+  PLUTO_ATTN_MATCH(4885, 4928);
   return {220u, {}};
 n3264:
-  PLUTO_ATTN_END(4929u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4929);
+  switch (history[position++].value) {
+    case 4868:
       goto n3263;
-    case 4902u:
+    case 4902:
       goto n3202;
     default:
       return {kAttention4Done, {}};
   }
 n3263:
-  PLUTO_ATTN_END(4923u);
-  switch (history[position++]) {
-    case 4891u:
+  PLUTO_ATTN_END(4923);
+  switch (history[position++].value) {
+    case 4891:
       goto n3262;
-    case 4893u:
+    case 4893:
       goto n3252;
-    case 4902u:
+    case 4902:
       goto n3241;
     default:
       return {kAttention4Done, {}};
@@ -8799,15 +8812,15 @@ n3252:
   PLUTO_ATTN_RUN(kAttention4Sequence362);
   return {141u, {}};
 n3241:
-  PLUTO_ATTN_END(4924u);
-  switch (history[position++]) {
-    case 4874u:
+  PLUTO_ATTN_END(4924);
+  switch (history[position++].value) {
+    case 4874:
       goto n3240;
-    case 4900u:
+    case 4900:
       goto n3231;
-    case 4902u:
+    case 4902:
       goto n3222;
-    case 4904u:
+    case 4904:
       goto n3212;
     default:
       return {kAttention4Done, {}};
@@ -8822,50 +8835,50 @@ n3222:
   PLUTO_ATTN_RUN(kAttention4Sequence365);
   goto n3213;
 n3213:
-  PLUTO_ATTN_MATCH(4902u, 4915u);
+  PLUTO_ATTN_MATCH(4902, 4915);
   return {14u, {}};
 n3212:
   PLUTO_ATTN_RUN(kAttention4Sequence366);
   goto n3203;
 n3203:
-  PLUTO_ATTN_MATCH(4868u, 4915u);
+  PLUTO_ATTN_MATCH(4868, 4915);
   return {197u, {}};
 n3202:
   PLUTO_ATTN_RUN(kAttention4Sequence367);
   goto n3195;
 n3195:
-  PLUTO_ATTN_MATCH(4868u, 4929u);
+  PLUTO_ATTN_MATCH(4868, 4929);
   return {160u, {}};
 n3194:
-  PLUTO_ATTN_END(4952u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4952);
+  switch (history[position++].value) {
+    case 4868:
       goto n3193;
-    case 4898u:
+    case 4898:
       goto n3170;
-    case 4902u:
+    case 4902:
       goto n3161;
     default:
       return {kAttention4Done, {}};
   }
 n3193:
-  PLUTO_ATTN_END(4923u);
-  switch (history[position++]) {
-    case 4893u:
+  PLUTO_ATTN_END(4923);
+  switch (history[position++].value) {
+    case 4893:
       goto n3192;
-    case 4898u:
+    case 4898:
       goto n3172;
     default:
       return {kAttention4Done, {}};
   }
 n3192:
-  PLUTO_ATTN_END(4913u);
-  switch (history[position++]) {
-    case 4885u:
+  PLUTO_ATTN_END(4913);
+  switch (history[position++].value) {
+    case 4885:
       goto n3191;
-    case 4893u:
+    case 4893:
       goto n3186;
-    case 4902u:
+    case 4902:
       goto n3178;
     default:
       return {kAttention4Done, {}};
@@ -8880,8 +8893,8 @@ n3178:
   PLUTO_ATTN_RUN(kAttention4Sequence370);
   return {1494u, {}};
 n3172:
-  PLUTO_ATTN_MATCH(4872u, 4953u);
-  PLUTO_ATTN_MATCH(4902u, 4929u);
+  PLUTO_ATTN_MATCH(4872, 4953);
+  PLUTO_ATTN_MATCH(4902, 4929);
   return {990u, {}};
 n3170:
   PLUTO_ATTN_RUN(kAttention4Sequence371);
@@ -8890,16 +8903,16 @@ n3161:
   PLUTO_ATTN_RUN(kAttention4Sequence372);
   return {700u, {}};
 n3153:
-  PLUTO_ATTN_MATCH(4868u, 4929u);
-  PLUTO_ATTN_END(4924u);
-  switch (history[position++]) {
-    case 4880u:
+  PLUTO_ATTN_MATCH(4868, 4929);
+  PLUTO_ATTN_END(4924);
+  switch (history[position++].value) {
+    case 4880:
       goto n3151;
-    case 4886u:
+    case 4886:
       goto n3143;
-    case 4896u:
+    case 4896:
       goto n3108;
-    case 4902u:
+    case 4902:
       goto n3103;
     default:
       return {kAttention4Done, {}};
@@ -8908,17 +8921,17 @@ n3151:
   PLUTO_ATTN_RUN(kAttention4Sequence373);
   return {2650u, {}};
 n3143:
-  PLUTO_ATTN_END(4924u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4924);
+  switch (history[position++].value) {
+    case 4868:
       goto n3142;
-    case 4870u:
+    case 4870:
       goto n3134;
-    case 4897u:
+    case 4897:
       goto n3131;
-    case 4902u:
+    case 4902:
       goto n3126;
-    case 4904u:
+    case 4904:
       goto n3113;
     default:
       return {kAttention4Done, {}};
@@ -8927,20 +8940,20 @@ n3142:
   PLUTO_ATTN_RUN(kAttention4Sequence374);
   return {1846u, {}};
 n3134:
-  PLUTO_ATTN_MATCH(4868u, 4950u);
-  PLUTO_ATTN_MATCH(4868u, 4950u);
-  PLUTO_ATTN_MATCH(4868u, 4924u);
+  PLUTO_ATTN_MATCH(4868, 4950);
+  PLUTO_ATTN_MATCH(4868, 4950);
+  PLUTO_ATTN_MATCH(4868, 4924);
   return {2723u, {}};
 n3131:
-  PLUTO_ATTN_MATCH(4904u, 4916u);
-  PLUTO_ATTN_MATCH(4868u, 4924u);
+  PLUTO_ATTN_MATCH(4904, 4916);
+  PLUTO_ATTN_MATCH(4868, 4924);
   goto n3129;
 n3129:
-  PLUTO_ATTN_MATCH(4907u, 4924u);
-  PLUTO_ATTN_MATCH(4868u, 4953u);
+  PLUTO_ATTN_MATCH(4907, 4924);
+  PLUTO_ATTN_MATCH(4868, 4953);
   goto n3127;
 n3127:
-  PLUTO_ATTN_MATCH(4902u, 4913u);
+  PLUTO_ATTN_MATCH(4902, 4913);
   return {291u, {}};
 n3126:
   PLUTO_ATTN_RUN(kAttention4Sequence375);
@@ -8952,13 +8965,13 @@ n3108:
   PLUTO_ATTN_RUN(kAttention4Sequence377);
   return {763u, {}};
 n3103:
-  PLUTO_ATTN_END(4953u);
-  switch (history[position++]) {
-    case 4874u:
+  PLUTO_ATTN_END(4953);
+  switch (history[position++].value) {
+    case 4874:
       goto n3102;
-    case 4886u:
+    case 4886:
       goto n3091;
-    case 4904u:
+    case 4904:
       goto n3082;
     default:
       return {kAttention4Done, {}};
@@ -8973,13 +8986,14 @@ n3082:
   PLUTO_ATTN_RUN(kAttention4Sequence380);
   return {319u, {}};
 n3074:
-  PLUTO_ATTN_MATCH(4902u, 4928u);
-  PLUTO_ATTN_MATCH(4900u, 4924u);
-  PLUTO_ATTN_MATCH(4874u, 4953u);
+  PLUTO_ATTN_MATCH(4902, 4928);
+  PLUTO_ATTN_MATCH(4900, 4924);
+  PLUTO_ATTN_MATCH(4874, 4953);
   return {3071u, {}};
 }
 Attention4Step Attention4Part13(
-    std::uint32_t node, [[maybe_unused]] absl::Span<const StateId> history,
+    std::uint32_t node,
+    [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
   switch (node) {
     case 3583u:
@@ -9025,25 +9039,25 @@ n3569:
   PLUTO_ATTN_RUN(kAttention4Sequence383);
   return {14u, {}};
 n3555:
-  PLUTO_ATTN_END(4953u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4953);
+  switch (history[position++].value) {
+    case 4868:
       goto n3554;
-    case 4874u:
+    case 4874:
       goto n3548;
-    case 4875u:
+    case 4875:
       goto n3542;
-    case 4876u:
+    case 4876:
       goto n3537;
-    case 4886u:
+    case 4886:
       goto n3528;
-    case 4887u:
+    case 4887:
       goto n3521;
-    case 4889u:
+    case 4889:
       goto n3511;
-    case 4899u:
+    case 4899:
       goto n3500;
-    case 4902u:
+    case 4902:
       goto n3493;
     default:
       return {kAttention4Done, {}};
@@ -9052,7 +9066,7 @@ n3554:
   PLUTO_ATTN_RUN(kAttention4Sequence384);
   goto n3549;
 n3549:
-  PLUTO_ATTN_MATCH(4868u, 4929u);
+  PLUTO_ATTN_MATCH(4868, 4929);
   return {307u, {}};
 n3548:
   PLUTO_ATTN_RUN(kAttention4Sequence385);
@@ -9070,7 +9084,7 @@ n3521:
   PLUTO_ATTN_RUN(kAttention4Sequence389);
   goto n3512;
 n3512:
-  PLUTO_ATTN_MATCH(4868u, 4953u);
+  PLUTO_ATTN_MATCH(4868, 4953);
   return {1494u, {}};
 n3511:
   PLUTO_ATTN_RUN(kAttention4Sequence390);
@@ -9079,7 +9093,7 @@ n3500:
   PLUTO_ATTN_RUN(kAttention4Sequence391);
   goto n3494;
 n3494:
-  PLUTO_ATTN_MATCH(4902u, 4953u);
+  PLUTO_ATTN_MATCH(4902, 4953);
   return {1306u, {}};
 n3493:
   PLUTO_ATTN_RUN(kAttention4Sequence392);
@@ -9088,43 +9102,43 @@ n3486:
   PLUTO_ATTN_RUN(kAttention4Sequence393);
   return {1037u, {}};
 n3479:
-  PLUTO_ATTN_END(4953u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4953);
+  switch (history[position++].value) {
+    case 4868:
       goto n3478;
-    case 4870u:
+    case 4870:
       goto n3442;
-    case 4873u:
+    case 4873:
       goto n3420;
-    case 4876u:
+    case 4876:
       goto n3407;
-    case 4885u:
+    case 4885:
       goto n3395;
-    case 4887u:
+    case 4887:
       goto n3389;
-    case 4891u:
+    case 4891:
       goto n3383;
-    case 4902u:
+    case 4902:
       goto n3375;
-    case 4904u:
+    case 4904:
       goto n3355;
     default:
       return {kAttention4Done, {}};
   }
 n3478:
-  PLUTO_ATTN_END(4923u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4923);
+  switch (history[position++].value) {
+    case 4868:
       goto n3477;
-    case 4876u:
+    case 4876:
       goto n3467;
-    case 4885u:
+    case 4885:
       goto n3462;
-    case 4886u:
+    case 4886:
       goto n3458;
-    case 4898u:
+    case 4898:
       goto n3450;
-    case 4903u:
+    case 4903:
       goto n3447;
     default:
       return {kAttention4Done, {}};
@@ -9142,23 +9156,23 @@ n3458:
   PLUTO_ATTN_RUN(kAttention4Sequence397);
   return {1147u, {}};
 n3450:
-  PLUTO_ATTN_MATCH(4868u, 4953u);
-  PLUTO_ATTN_MATCH(4868u, 4943u);
+  PLUTO_ATTN_MATCH(4868, 4953);
+  PLUTO_ATTN_MATCH(4868, 4943);
   goto n3448;
 n3448:
-  PLUTO_ATTN_MATCH(4907u, 4924u);
+  PLUTO_ATTN_MATCH(4907, 4924);
   goto n3328;
 n3447:
   PLUTO_ATTN_RUN(kAttention4Sequence398);
   return {946u, {}};
 n3442:
-  PLUTO_ATTN_END(4926u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4926);
+  switch (history[position++].value) {
+    case 4868:
       goto n3441;
-    case 4875u:
+    case 4875:
       goto n3434;
-    case 4886u:
+    case 4886:
       goto n3428;
     default:
       return {kAttention4Done, {}};
@@ -9173,11 +9187,11 @@ n3428:
   PLUTO_ATTN_RUN(kAttention4Sequence401);
   return {14u, {}};
 n3420:
-  PLUTO_ATTN_END(4952u);
-  switch (history[position++]) {
-    case 4876u:
+  PLUTO_ATTN_END(4952);
+  switch (history[position++].value) {
+    case 4876:
       goto n3419;
-    case 4896u:
+    case 4896:
       goto n3411;
     default:
       return {kAttention4Done, {}};
@@ -9186,19 +9200,19 @@ n3419:
   PLUTO_ATTN_RUN(kAttention4Sequence402);
   return {575u, {}};
 n3411:
-  PLUTO_ATTN_MATCH(4874u, 4943u);
-  PLUTO_ATTN_MATCH(4903u, 4913u);
-  PLUTO_ATTN_MATCH(4876u, 4950u);
+  PLUTO_ATTN_MATCH(4874, 4943);
+  PLUTO_ATTN_MATCH(4903, 4913);
+  PLUTO_ATTN_MATCH(4876, 4950);
   goto n3408;
 n3408:
-  PLUTO_ATTN_MATCH(4902u, 4929u);
+  PLUTO_ATTN_MATCH(4902, 4929);
   return {114u, {}};
 n3407:
-  PLUTO_ATTN_END(4929u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4929);
+  switch (history[position++].value) {
+    case 4868:
       goto n3406;
-    case 4879u:
+    case 4879:
       goto n3400;
     default:
       return {kAttention4Done, {}};
@@ -9219,16 +9233,16 @@ n3383:
   PLUTO_ATTN_RUN(kAttention4Sequence407);
   goto n3376;
 n3376:
-  PLUTO_ATTN_MATCH(4902u, 4953u);
+  PLUTO_ATTN_MATCH(4902, 4953);
   return {291u, {}};
 n3375:
-  PLUTO_ATTN_END(4933u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4933);
+  switch (history[position++].value) {
+    case 4868:
       goto n3374;
-    case 4898u:
+    case 4898:
       goto n3368;
-    case 4903u:
+    case 4903:
       goto n3366;
     default:
       return {kAttention4Done, {}};
@@ -9237,11 +9251,11 @@ n3374:
   PLUTO_ATTN_RUN(kAttention4Sequence408);
   goto n3369;
 n3369:
-  PLUTO_ATTN_MATCH(4868u, 4923u);
+  PLUTO_ATTN_MATCH(4868, 4923);
   return {132u, {}};
 n3368:
-  PLUTO_ATTN_MATCH(4868u, 4953u);
-  PLUTO_ATTN_MATCH(4868u, 4924u);
+  PLUTO_ATTN_MATCH(4868, 4953);
+  PLUTO_ATTN_MATCH(4868, 4924);
   return {1057u, {}};
 n3366:
   PLUTO_ATTN_RUN(kAttention4Sequence409);
@@ -9250,25 +9264,25 @@ n3355:
   PLUTO_ATTN_RUN(kAttention4Sequence410);
   return {1021u, {}};
 n3345:
-  PLUTO_ATTN_END(4920u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4920);
+  switch (history[position++].value) {
+    case 4868:
       goto n3344;
-    case 4876u:
+    case 4876:
       goto n3330;
-    case 4886u:
+    case 4886:
       return {3320u, {}};
-    case 4902u:
+    case 4902:
       return {3285u, {}};
     default:
       return {kAttention4Done, {}};
   }
 n3344:
-  PLUTO_ATTN_END(4924u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4924);
+  switch (history[position++].value) {
+    case 4868:
       goto n3343;
-    case 4874u:
+    case 4874:
       goto n3338;
     default:
       return {kAttention4Done, {}};
@@ -9277,30 +9291,31 @@ n3343:
   PLUTO_ATTN_RUN(kAttention4Sequence411);
   goto n3339;
 n3339:
-  PLUTO_ATTN_MATCH(4868u, 4929u);
+  PLUTO_ATTN_MATCH(4868, 4929);
   return {2185u, {}};
 n3338:
   PLUTO_ATTN_RUN(kAttention4Sequence412);
   return {1179u, {}};
 n3330:
-  PLUTO_ATTN_END(4929u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4929);
+  switch (history[position++].value) {
+    case 4868:
       goto n3329;
-    case 4874u:
+    case 4874:
       return {3327u, {}};
     default:
       return {kAttention4Done, {}};
   }
 n3329:
-  PLUTO_ATTN_MATCH(4898u, 4953u);
+  PLUTO_ATTN_MATCH(4898, 4953);
   goto n3328;
 n3328:
-  PLUTO_ATTN_MATCH(4876u, 4953u);
+  PLUTO_ATTN_MATCH(4876, 4953);
   return {2362u, {}};
 }
 Attention4Step Attention4Part14(
-    std::uint32_t node, [[maybe_unused]] absl::Span<const StateId> history,
+    std::uint32_t node,
+    [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
   switch (node) {
     case 3839u:
@@ -9359,7 +9374,7 @@ Attention4Step Attention4Part14(
       return {kAttention4Done, {}};
   }
 n3839:
-  PLUTO_ATTN_MATCH(4902u, 4953u);
+  PLUTO_ATTN_MATCH(4902, 4953);
   return {1998u, {}};
 n3838:
   PLUTO_ATTN_RUN(kAttention4Sequence413);
@@ -9368,7 +9383,7 @@ n3832:
   PLUTO_ATTN_RUN(kAttention4Sequence414);
   goto n3823;
 n3823:
-  PLUTO_ATTN_MATCH(4868u, 4925u);
+  PLUTO_ATTN_MATCH(4868, 4925);
   return {1u, {}};
 n3822:
   PLUTO_ATTN_RUN(kAttention4Sequence415);
@@ -9383,11 +9398,11 @@ n3794:
   PLUTO_ATTN_RUN(kAttention4Sequence418);
   goto n3790;
 n3790:
-  PLUTO_ATTN_MATCH(4902u, 4923u);
+  PLUTO_ATTN_MATCH(4902, 4923);
   return {1u, {}};
 n3789:
-  PLUTO_ATTN_MATCH(4873u, 4913u);
-  PLUTO_ATTN_MATCH(4901u, 4953u);
+  PLUTO_ATTN_MATCH(4873, 4913);
+  PLUTO_ATTN_MATCH(4901, 4953);
   return {260u, {}};
 n3787:
   PLUTO_ATTN_RUN(kAttention4Sequence419);
@@ -9399,11 +9414,11 @@ n3776:
   PLUTO_ATTN_RUN(kAttention4Sequence421);
   return {1870u, {}};
 n3769:
-  PLUTO_ATTN_END(4926u);
-  switch (history[position++]) {
-    case 4876u:
+  PLUTO_ATTN_END(4926);
+  switch (history[position++].value) {
+    case 4876:
       goto n3768;
-    case 4879u:
+    case 4879:
       goto n3762;
     default:
       return {kAttention4Done, {}};
@@ -9412,21 +9427,21 @@ n3768:
   PLUTO_ATTN_RUN(kAttention4Sequence422);
   goto n3763;
 n3763:
-  PLUTO_ATTN_MATCH(4868u, 4928u);
+  PLUTO_ATTN_MATCH(4868, 4928);
   return {2u, {}};
 n3762:
   PLUTO_ATTN_RUN(kAttention4Sequence423);
   return {14u, {}};
 n3755:
-  PLUTO_ATTN_END(4950u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4950);
+  switch (history[position++].value) {
+    case 4868:
       goto n3754;
-    case 4876u:
+    case 4876:
       goto n3746;
-    case 4885u:
+    case 4885:
       goto n3740;
-    case 4886u:
+    case 4886:
       goto n3733;
     default:
       return {kAttention4Done, {}};
@@ -9444,15 +9459,15 @@ n3733:
   PLUTO_ATTN_RUN(kAttention4Sequence427);
   return {2381u, {}};
 n3725:
-  PLUTO_ATTN_END(4923u);
-  switch (history[position++]) {
-    case 4874u:
+  PLUTO_ATTN_END(4923);
+  switch (history[position++].value) {
+    case 4874:
       goto n3724;
-    case 4875u:
+    case 4875:
       goto n3714;
-    case 4891u:
+    case 4891:
       goto n3709;
-    case 4902u:
+    case 4902:
       goto n3704;
     default:
       return {kAttention4Done, {}};
@@ -9467,18 +9482,18 @@ n3709:
   PLUTO_ATTN_RUN(kAttention4Sequence430);
   return {763u, {}};
 n3704:
-  PLUTO_ATTN_MATCH(4880u, 4924u);
-  PLUTO_ATTN_MATCH(4876u, 4928u);
-  PLUTO_ATTN_MATCH(4873u, 4929u);
+  PLUTO_ATTN_MATCH(4880, 4924);
+  PLUTO_ATTN_MATCH(4876, 4928);
+  PLUTO_ATTN_MATCH(4873, 4929);
   return {2723u, {}};
 n3701:
-  PLUTO_ATTN_END(4929u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4929);
+  switch (history[position++].value) {
+    case 4868:
       goto n3700;
-    case 4886u:
+    case 4886:
       goto n3682;
-    case 4904u:
+    case 4904:
       goto n3676;
     default:
       return {kAttention4Done, {}};
@@ -9490,19 +9505,19 @@ n3682:
   PLUTO_ATTN_RUN(kAttention4Sequence432);
   return {1545u, {}};
 n3676:
-  PLUTO_ATTN_MATCH(4868u, 4953u);
-  PLUTO_ATTN_MATCH(4868u, 4923u);
+  PLUTO_ATTN_MATCH(4868, 4953);
+  PLUTO_ATTN_MATCH(4868, 4923);
   goto n3674;
 n3674:
-  PLUTO_ATTN_MATCH(4898u, 4924u);
-  PLUTO_ATTN_MATCH(4902u, 4953u);
+  PLUTO_ATTN_MATCH(4898, 4924);
+  PLUTO_ATTN_MATCH(4902, 4953);
   return {549u, {}};
 n3672:
-  PLUTO_ATTN_END(4953u);
-  switch (history[position++]) {
-    case 4870u:
+  PLUTO_ATTN_END(4953);
+  switch (history[position++].value) {
+    case 4870:
       goto n3671;
-    case 4886u:
+    case 4886:
       goto n3665;
     default:
       return {kAttention4Done, {}};
@@ -9514,15 +9529,15 @@ n3665:
   PLUTO_ATTN_RUN(kAttention4Sequence434);
   return {372u, {}};
 n3656:
-  PLUTO_ATTN_END(4929u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4929);
+  switch (history[position++].value) {
+    case 4868:
       goto n3655;
-    case 4886u:
+    case 4886:
       goto n3647;
-    case 4902u:
+    case 4902:
       goto n3644;
-    case 4903u:
+    case 4903:
       goto n3635;
     default:
       return {kAttention4Done, {}};
@@ -9531,31 +9546,31 @@ n3655:
   PLUTO_ATTN_RUN(kAttention4Sequence435);
   return {731u, {}};
 n3647:
-  PLUTO_ATTN_MATCH(4898u, 4922u);
-  PLUTO_ATTN_MATCH(4885u, 4953u);
+  PLUTO_ATTN_MATCH(4898, 4922);
+  PLUTO_ATTN_MATCH(4885, 4953);
   goto n3645;
 n3645:
-  PLUTO_ATTN_MATCH(4868u, 4929u);
+  PLUTO_ATTN_MATCH(4868, 4929);
   return {575u, {}};
 n3644:
   PLUTO_ATTN_RUN(kAttention4Sequence436);
   return {1323u, {}};
 n3635:
-  PLUTO_ATTN_MATCH(4898u, 4952u);
+  PLUTO_ATTN_MATCH(4898, 4952);
   return {1257u, {}};
 n3634:
   PLUTO_ATTN_RUN(kAttention4Sequence437);
   return {197u, {}};
 n3625:
-  PLUTO_ATTN_END(4925u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4925);
+  switch (history[position++].value) {
+    case 4868:
       goto n3624;
-    case 4876u:
+    case 4876:
       goto n3611;
-    case 4885u:
+    case 4885:
       goto n3605;
-    case 4886u:
+    case 4886:
       goto n3594;
     default:
       return {kAttention4Done, {}};
@@ -9570,24 +9585,25 @@ n3605:
   PLUTO_ATTN_RUN(kAttention4Sequence440);
   goto n3595;
 n3595:
-  PLUTO_ATTN_MATCH(4893u, 4952u);
+  PLUTO_ATTN_MATCH(4893, 4952);
   return {1u, {}};
 n3594:
   PLUTO_ATTN_RUN(kAttention4Sequence441);
   return {3369u, {}};
 n3584:
-  PLUTO_ATTN_END(4913u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4913);
+  switch (history[position++].value) {
+    case 4868:
       return {3583u, {}};
-    case 4902u:
+    case 4902:
       return {3576u, {}};
     default:
       return {kAttention4Done, {}};
   }
 }
 Attention4Step Attention4Part15(
-    std::uint32_t node, [[maybe_unused]] absl::Span<const StateId> history,
+    std::uint32_t node,
+    [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
   switch (node) {
     case 4095u:
@@ -9633,7 +9649,7 @@ n4095:
   PLUTO_ATTN_RUN(kAttention4Sequence442);
   goto n4089;
 n4089:
-  PLUTO_ATTN_MATCH(4902u, 4929u);
+  PLUTO_ATTN_MATCH(4902, 4929);
   return {763u, {}};
 n4088:
   PLUTO_ATTN_RUN(kAttention4Sequence443);
@@ -9648,40 +9664,40 @@ n4074:
   PLUTO_ATTN_RUN(kAttention4Sequence446);
   return {1487u, {}};
 n4065:
-  PLUTO_ATTN_END(4953u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4953);
+  switch (history[position++].value) {
+    case 4868:
       goto n4064;
-    case 4885u:
+    case 4885:
       goto n4060;
     default:
       return {kAttention4Done, {}};
   }
 n4064:
-  PLUTO_ATTN_MATCH(4898u, 4923u);
+  PLUTO_ATTN_MATCH(4898, 4923);
   goto n4063;
 n4063:
-  PLUTO_ATTN_MATCH(4902u, 4953u);
+  PLUTO_ATTN_MATCH(4902, 4953);
   goto n4062;
 n4062:
-  PLUTO_ATTN_MATCH(4880u, 4952u);
-  PLUTO_ATTN_MATCH(4893u, 4928u);
+  PLUTO_ATTN_MATCH(4880, 4952);
+  PLUTO_ATTN_MATCH(4893, 4928);
   return {132u, {}};
 n4060:
   PLUTO_ATTN_RUN(kAttention4Sequence447);
   return {2917u, {}};
 n4054:
-  PLUTO_ATTN_END(4921u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4921);
+  switch (history[position++].value) {
+    case 4868:
       goto n4053;
-    case 4886u:
+    case 4886:
       goto n4049;
-    case 4893u:
+    case 4893:
       goto n4040;
-    case 4902u:
+    case 4902:
       goto n4032;
-    case 4904u:
+    case 4904:
       goto n4028;
     default:
       return {kAttention4Done, {}};
@@ -9693,7 +9709,7 @@ n4049:
   PLUTO_ATTN_RUN(kAttention4Sequence449);
   goto n4041;
 n4041:
-  PLUTO_ATTN_MATCH(4873u, 4924u);
+  PLUTO_ATTN_MATCH(4873, 4924);
   return {1012u, {}};
 n4040:
   PLUTO_ATTN_RUN(kAttention4Sequence450);
@@ -9705,52 +9721,52 @@ n4028:
   PLUTO_ATTN_RUN(kAttention4Sequence452);
   return {2086u, {}};
 n4017:
-  PLUTO_ATTN_END(4952u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4952);
+  switch (history[position++].value) {
+    case 4868:
       goto n4016;
-    case 4870u:
+    case 4870:
       goto n4014;
-    case 4871u:
+    case 4871:
       goto n4011;
-    case 4873u:
+    case 4873:
       goto n4008;
-    case 4874u:
+    case 4874:
       goto n4002;
-    case 4875u:
+    case 4875:
       goto n3993;
-    case 4881u:
+    case 4881:
       goto n3988;
-    case 4886u:
+    case 4886:
       goto n3982;
-    case 4887u:
+    case 4887:
       goto n3980;
-    case 4893u:
+    case 4893:
       goto n3972;
-    case 4898u:
+    case 4898:
       goto n3969;
-    case 4902u:
+    case 4902:
       goto n3965;
-    case 4904u:
+    case 4904:
       goto n3959;
     default:
       return {kAttention4Done, {}};
   }
 n4016:
-  PLUTO_ATTN_MATCH(4883u, 4924u);
-  PLUTO_ATTN_MATCH(4900u, 4920u);
+  PLUTO_ATTN_MATCH(4883, 4924);
+  PLUTO_ATTN_MATCH(4900, 4920);
   return {487u, {}};
 n4014:
-  PLUTO_ATTN_MATCH(4868u, 4926u);
-  PLUTO_ATTN_MATCH(4876u, 4953u);
-  PLUTO_ATTN_MATCH(4897u, 4929u);
+  PLUTO_ATTN_MATCH(4868, 4926);
+  PLUTO_ATTN_MATCH(4876, 4953);
+  PLUTO_ATTN_MATCH(4897, 4929);
   return {126u, {}};
 n4011:
-  PLUTO_ATTN_MATCH(4868u, 4913u);
-  PLUTO_ATTN_MATCH(4898u, 4953u);
+  PLUTO_ATTN_MATCH(4868, 4913);
+  PLUTO_ATTN_MATCH(4898, 4953);
   goto n4009;
 n4009:
-  PLUTO_ATTN_MATCH(4868u, 4953u);
+  PLUTO_ATTN_MATCH(4868, 4953);
   return {175u, {}};
 n4008:
   PLUTO_ATTN_RUN(kAttention4Sequence453);
@@ -9765,16 +9781,16 @@ n3988:
   PLUTO_ATTN_RUN(kAttention4Sequence456);
   return {132u, {}};
 n3982:
-  PLUTO_ATTN_MATCH(4880u, 4923u);
-  PLUTO_ATTN_MATCH(4893u, 4928u);
+  PLUTO_ATTN_MATCH(4880, 4923);
+  PLUTO_ATTN_MATCH(4893, 4928);
   return {397u, {}};
 n3980:
   PLUTO_ATTN_RUN(kAttention4Sequence457);
   return {716u, {}};
 n3972:
-  PLUTO_ATTN_MATCH(4875u, 4945u);
-  PLUTO_ATTN_MATCH(4900u, 4952u);
-  PLUTO_ATTN_MATCH(4868u, 4942u);
+  PLUTO_ATTN_MATCH(4875, 4945);
+  PLUTO_ATTN_MATCH(4900, 4952);
+  PLUTO_ATTN_MATCH(4868, 4942);
   goto n3960;
 n3969:
   PLUTO_ATTN_RUN(kAttention4Sequence458);
@@ -9783,25 +9799,25 @@ n3965:
   PLUTO_ATTN_RUN(kAttention4Sequence459);
   goto n3960;
 n3960:
-  PLUTO_ATTN_MATCH(4902u, 4924u);
+  PLUTO_ATTN_MATCH(4902, 4924);
   return {198u, {}};
 n3959:
   PLUTO_ATTN_RUN(kAttention4Sequence460);
   return {1880u, {}};
 n3951:
-  PLUTO_ATTN_END(4913u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4913);
+  switch (history[position++].value) {
+    case 4868:
       goto n3950;
-    case 4873u:
+    case 4873:
       goto n3941;
-    case 4874u:
+    case 4874:
       goto n3932;
-    case 4880u:
+    case 4880:
       goto n3922;
-    case 4885u:
+    case 4885:
       goto n3917;
-    case 4902u:
+    case 4902:
       goto n3909;
     default:
       return {kAttention4Done, {}};
@@ -9825,17 +9841,17 @@ n3909:
   PLUTO_ATTN_RUN(kAttention4Sequence466);
   goto n3903;
 n3903:
-  PLUTO_ATTN_MATCH(4902u, 4952u);
+  PLUTO_ATTN_MATCH(4902, 4952);
   return {114u, {}};
 n3902:
   PLUTO_ATTN_RUN(kAttention4Sequence467);
   return {1380u, {}};
 n3895:
-  PLUTO_ATTN_END(4953u);
-  switch (history[position++]) {
-    case 4876u:
+  PLUTO_ATTN_END(4953);
+  switch (history[position++].value) {
+    case 4876:
       goto n3894;
-    case 4902u:
+    case 4902:
       goto n3887;
     default:
       return {kAttention4Done, {}};
@@ -9847,71 +9863,71 @@ n3887:
   PLUTO_ATTN_RUN(kAttention4Sequence469);
   return {166u, {}};
 n3877:
-  PLUTO_ATTN_END(4950u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4950);
+  switch (history[position++].value) {
+    case 4868:
       goto n3876;
-    case 4870u:
+    case 4870:
       return {3769u, {}};
-    case 4873u:
+    case 4873:
       return {3755u, {}};
-    case 4874u:
+    case 4874:
       return {3725u, {}};
-    case 4876u:
+    case 4876:
       return {3701u, {}};
-    case 4877u:
+    case 4877:
       return {3672u, {}};
-    case 4885u:
+    case 4885:
       return {3656u, {}};
-    case 4887u:
+    case 4887:
       return {3634u, {}};
-    case 4891u:
+    case 4891:
       return {3625u, {}};
-    case 4893u:
+    case 4893:
       return {3584u, {}};
-    case 4900u:
+    case 4900:
       return {3569u, {}};
-    case 4902u:
+    case 4902:
       return {3555u, {}};
-    case 4907u:
+    case 4907:
       return {3486u, {}};
     default:
       return {kAttention4Done, {}};
   }
 n3876:
-  PLUTO_ATTN_END(4924u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4924);
+  switch (history[position++].value) {
+    case 4868:
       goto n3875;
-    case 4870u:
+    case 4870:
       goto n3868;
-    case 4873u:
+    case 4873:
       goto n3867;
-    case 4874u:
+    case 4874:
       goto n3860;
-    case 4875u:
+    case 4875:
       goto n3853;
-    case 4881u:
+    case 4881:
       goto n3845;
-    case 4883u:
+    case 4883:
       return {3838u, {}};
-    case 4885u:
+    case 4885:
       return {3832u, {}};
-    case 4891u:
+    case 4891:
       return {3822u, {}};
-    case 4895u:
+    case 4895:
       return {3815u, {}};
-    case 4900u:
+    case 4900:
       return {3804u, {}};
-    case 4902u:
+    case 4902:
       return {3794u, {}};
-    case 4903u:
+    case 4903:
       return {3789u, {}};
-    case 4904u:
+    case 4904:
       return {3787u, {}};
-    case 4905u:
+    case 4905:
       return {3780u, {}};
-    case 4907u:
+    case 4907:
       return {3776u, {}};
     default:
       return {kAttention4Done, {}};
@@ -9920,7 +9936,7 @@ n3875:
   PLUTO_ATTN_RUN(kAttention4Sequence470);
   return {377u, {}};
 n3868:
-  PLUTO_ATTN_MATCH(4868u, 4939u);
+  PLUTO_ATTN_MATCH(4868, 4939);
   return {3790u, {}};
 n3867:
   PLUTO_ATTN_RUN(kAttention4Sequence471);
@@ -9936,7 +9952,8 @@ n3845:
   return {3839u, {}};
 }
 Attention4Step Attention4Part16(
-    std::uint32_t node, [[maybe_unused]] absl::Span<const StateId> history,
+    std::uint32_t node,
+    [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
   switch (node) {
     case 4351u:
@@ -9980,17 +9997,17 @@ n4351:
   PLUTO_ATTN_RUN(kAttention4Sequence475);
   goto n4346;
 n4346:
-  PLUTO_ATTN_MATCH(4868u, 4929u);
+  PLUTO_ATTN_MATCH(4868, 4929);
   return {1494u, {}};
 n4345:
   PLUTO_ATTN_RUN(kAttention4Sequence476);
   return {946u, {}};
 n4332:
-  PLUTO_ATTN_END(4950u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4950);
+  switch (history[position++].value) {
+    case 4868:
       goto n4331;
-    case 4885u:
+    case 4885:
       goto n4322;
     default:
       return {kAttention4Done, {}};
@@ -10002,11 +10019,11 @@ n4322:
   PLUTO_ATTN_RUN(kAttention4Sequence478);
   return {1u, {}};
 n4317:
-  PLUTO_ATTN_END(4934u);
-  switch (history[position++]) {
-    case 4870u:
+  PLUTO_ATTN_END(4934);
+  switch (history[position++].value) {
+    case 4870:
       goto n4316;
-    case 4873u:
+    case 4873:
       goto n4311;
     default:
       return {kAttention4Done, {}};
@@ -10018,13 +10035,13 @@ n4311:
   PLUTO_ATTN_RUN(kAttention4Sequence480);
   return {3203u, {}};
 n4307:
-  PLUTO_ATTN_END(4929u);
-  switch (history[position++]) {
-    case 4870u:
+  PLUTO_ATTN_END(4929);
+  switch (history[position++].value) {
+    case 4870:
       goto n4306;
-    case 4886u:
+    case 4886:
       goto n4302;
-    case 4902u:
+    case 4902:
       goto n4296;
     default:
       return {kAttention4Done, {}};
@@ -10039,47 +10056,47 @@ n4296:
   PLUTO_ATTN_RUN(kAttention4Sequence483);
   return {716u, {}};
 n4287:
-  PLUTO_ATTN_END(4933u);
-  switch (history[position++]) {
-    case 4865u:
+  PLUTO_ATTN_END(4933);
+  switch (history[position++].value) {
+    case 4865:
       goto n4286;
-    case 4868u:
+    case 4868:
       goto n4283;
-    case 4870u:
+    case 4870:
       goto n4275;
-    case 4873u:
+    case 4873:
       goto n4268;
-    case 4879u:
+    case 4879:
       goto n4267;
-    case 4887u:
+    case 4887:
       goto n4264;
-    case 4891u:
+    case 4891:
       goto n4257;
-    case 4893u:
+    case 4893:
       goto n4250;
-    case 4896u:
+    case 4896:
       goto n4242;
-    case 4897u:
+    case 4897:
       goto n4233;
-    case 4898u:
+    case 4898:
       goto n4228;
-    case 4900u:
+    case 4900:
       goto n4223;
-    case 4902u:
+    case 4902:
       goto n4218;
-    case 4903u:
+    case 4903:
       goto n4211;
-    case 4907u:
+    case 4907:
       goto n4200;
     default:
       return {kAttention4Done, {}};
   }
 n4286:
-  PLUTO_ATTN_MATCH(4907u, 4952u);
-  PLUTO_ATTN_MATCH(4868u, 4953u);
+  PLUTO_ATTN_MATCH(4907, 4952);
+  PLUTO_ATTN_MATCH(4868, 4953);
   goto n4284;
 n4284:
-  PLUTO_ATTN_MATCH(4898u, 4924u);
+  PLUTO_ATTN_MATCH(4898, 4924);
   return {3494u, {}};
 n4283:
   PLUTO_ATTN_RUN(kAttention4Sequence484);
@@ -10088,17 +10105,17 @@ n4275:
   PLUTO_ATTN_RUN(kAttention4Sequence485);
   goto n4269;
 n4269:
-  PLUTO_ATTN_MATCH(4868u, 4929u);
+  PLUTO_ATTN_MATCH(4868, 4929);
   return {3790u, {}};
 n4268:
-  PLUTO_ATTN_MATCH(4893u, 4951u);
+  PLUTO_ATTN_MATCH(4893, 4951);
   return {870u, {}};
 n4267:
-  PLUTO_ATTN_MATCH(4902u, 4915u);
-  PLUTO_ATTN_MATCH(4904u, 4952u);
+  PLUTO_ATTN_MATCH(4902, 4915);
+  PLUTO_ATTN_MATCH(4904, 4952);
   goto n4265;
 n4265:
-  PLUTO_ATTN_MATCH(4907u, 4953u);
+  PLUTO_ATTN_MATCH(4907, 4953);
   return {37u, {}};
 n4264:
   PLUTO_ATTN_RUN(kAttention4Sequence486);
@@ -10110,13 +10127,13 @@ n4250:
   PLUTO_ATTN_RUN(kAttention4Sequence488);
   goto n4243;
 n4243:
-  PLUTO_ATTN_MATCH(4868u, 4924u);
+  PLUTO_ATTN_MATCH(4868, 4924);
   return {1545u, {}};
 n4242:
   PLUTO_ATTN_RUN(kAttention4Sequence489);
   goto n4234;
 n4234:
-  PLUTO_ATTN_MATCH(4868u, 4933u);
+  PLUTO_ATTN_MATCH(4868, 4933);
   return {1u, {}};
 n4233:
   PLUTO_ATTN_RUN(kAttention4Sequence490);
@@ -10134,30 +10151,30 @@ n4211:
   PLUTO_ATTN_RUN(kAttention4Sequence494);
   return {114u, {}};
 n4200:
-  PLUTO_ATTN_MATCH(4868u, 4920u);
-  PLUTO_ATTN_MATCH(4903u, 4952u);
+  PLUTO_ATTN_MATCH(4868, 4920);
+  PLUTO_ATTN_MATCH(4903, 4952);
   return {1889u, {}};
 n4198:
-  PLUTO_ATTN_END(4938u);
-  switch (history[position++]) {
-    case 4865u:
+  PLUTO_ATTN_END(4938);
+  switch (history[position++].value) {
+    case 4865:
       goto n4197;
-    case 4875u:
+    case 4875:
       goto n4193;
-    case 4899u:
+    case 4899:
       goto n4187;
     default:
       return {kAttention4Done, {}};
   }
 n4197:
-  PLUTO_ATTN_MATCH(4902u, 4924u);
-  PLUTO_ATTN_MATCH(4898u, 4924u);
+  PLUTO_ATTN_MATCH(4902, 4924);
+  PLUTO_ATTN_MATCH(4898, 4924);
   goto n4195;
 n4195:
-  PLUTO_ATTN_MATCH(4868u, 4953u);
+  PLUTO_ATTN_MATCH(4868, 4953);
   goto n4194;
 n4194:
-  PLUTO_ATTN_MATCH(4868u, 4924u);
+  PLUTO_ATTN_MATCH(4868, 4924);
   return {575u, {}};
 n4193:
   PLUTO_ATTN_RUN(kAttention4Sequence495);
@@ -10166,23 +10183,23 @@ n4187:
   PLUTO_ATTN_RUN(kAttention4Sequence496);
   return {3376u, {}};
 n4180:
-  PLUTO_ATTN_END(4934u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4934);
+  switch (history[position++].value) {
+    case 4868:
       goto n4179;
-    case 4874u:
+    case 4874:
       goto n4172;
-    case 4875u:
+    case 4875:
       goto n4165;
-    case 4879u:
+    case 4879:
       goto n4162;
-    case 4885u:
+    case 4885:
       goto n4156;
-    case 4886u:
+    case 4886:
       goto n4148;
-    case 4893u:
+    case 4893:
       goto n4136;
-    case 4897u:
+    case 4897:
       goto n4128;
     default:
       return {kAttention4Done, {}};
@@ -10194,9 +10211,9 @@ n4172:
   PLUTO_ATTN_RUN(kAttention4Sequence498);
   return {1380u, {}};
 n4165:
-  PLUTO_ATTN_MATCH(4902u, 4952u);
-  PLUTO_ATTN_MATCH(4907u, 4940u);
-  PLUTO_ATTN_MATCH(4902u, 4950u);
+  PLUTO_ATTN_MATCH(4902, 4952);
+  PLUTO_ATTN_MATCH(4907, 4940);
+  PLUTO_ATTN_MATCH(4902, 4950);
   return {2u, {}};
 n4162:
   PLUTO_ATTN_RUN(kAttention4Sequence499);
@@ -10214,21 +10231,21 @@ n4128:
   PLUTO_ATTN_RUN(kAttention4Sequence503);
   return {372u, {}};
 n4123:
-  PLUTO_ATTN_END(4937u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4937);
+  switch (history[position++].value) {
+    case 4868:
       goto n4122;
-    case 4873u:
+    case 4873:
       goto n4115;
-    case 4874u:
+    case 4874:
       goto n4109;
-    case 4892u:
+    case 4892:
       goto n4101;
-    case 4898u:
+    case 4898:
       return {4088u, {}};
-    case 4902u:
+    case 4902:
       return {4083u, {}};
-    case 4903u:
+    case 4903:
       return {4079u, {}};
     default:
       return {kAttention4Done, {}};
@@ -10247,7 +10264,8 @@ n4101:
   return {4095u, {}};
 }
 Attention4Step Attention4Part17(
-    std::uint32_t node, [[maybe_unused]] absl::Span<const StateId> history,
+    std::uint32_t node,
+    [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
   switch (node) {
     case 4607u:
@@ -10282,8 +10300,8 @@ Attention4Step Attention4Part17(
       return {kAttention4Done, {}};
   }
 n4607:
-  PLUTO_ATTN_MATCH(4907u, 4924u);
-  PLUTO_ATTN_MATCH(4902u, 4953u);
+  PLUTO_ATTN_MATCH(4907, 4924);
+  PLUTO_ATTN_MATCH(4902, 4953);
   return {132u, {}};
 n4605:
   PLUTO_ATTN_RUN(kAttention4Sequence508);
@@ -10316,95 +10334,95 @@ n4538:
   PLUTO_ATTN_RUN(kAttention4Sequence517);
   return {247u, {}};
 n4525:
-  PLUTO_ATTN_END(4924u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4924);
+  switch (history[position++].value) {
+    case 4868:
       goto n4524;
-    case 4869u:
+    case 4869:
       goto n4415;
-    case 4870u:
+    case 4870:
       goto n4399;
-    case 4874u:
+    case 4874:
       goto n4397;
-    case 4875u:
+    case 4875:
       goto n4372;
-    case 4876u:
+    case 4876:
       goto n4360;
-    case 4877u:
+    case 4877:
       return {4351u, {}};
-    case 4879u:
+    case 4879:
       return {4345u, {}};
-    case 4881u:
+    case 4881:
       return {4332u, {}};
-    case 4883u:
+    case 4883:
       return {4317u, {}};
-    case 4885u:
+    case 4885:
       return {4307u, {}};
-    case 4886u:
+    case 4886:
       return {4287u, {}};
-    case 4887u:
+    case 4887:
       return {4198u, {}};
-    case 4891u:
+    case 4891:
       return {4180u, {}};
-    case 4893u:
+    case 4893:
       return {4123u, {}};
-    case 4895u:
+    case 4895:
       return {4074u, {}};
-    case 4898u:
+    case 4898:
       return {4065u, {}};
-    case 4900u:
+    case 4900:
       return {4054u, {}};
-    case 4902u:
+    case 4902:
       return {4017u, {}};
-    case 4904u:
+    case 4904:
       return {3951u, {}};
-    case 4905u:
+    case 4905:
       return {3902u, {}};
-    case 4907u:
+    case 4907:
       return {3895u, {}};
     default:
       return {kAttention4Done, {}};
   }
 n4524:
-  PLUTO_ATTN_END(4923u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4923);
+  switch (history[position++].value) {
+    case 4868:
       goto n4523;
-    case 4870u:
+    case 4870:
       goto n4519;
-    case 4873u:
+    case 4873:
       goto n4514;
-    case 4874u:
+    case 4874:
       goto n4509;
-    case 4875u:
+    case 4875:
       goto n4504;
-    case 4876u:
+    case 4876:
       goto n4498;
-    case 4880u:
+    case 4880:
       goto n4495;
-    case 4885u:
+    case 4885:
       goto n4488;
-    case 4886u:
+    case 4886:
       goto n4482;
-    case 4887u:
+    case 4887:
       goto n4479;
-    case 4891u:
+    case 4891:
       goto n4473;
-    case 4893u:
+    case 4893:
       goto n4465;
-    case 4895u:
+    case 4895:
       goto n4461;
-    case 4897u:
+    case 4897:
       goto n4455;
-    case 4898u:
+    case 4898:
       goto n4453;
-    case 4902u:
+    case 4902:
       goto n4445;
-    case 4903u:
+    case 4903:
       goto n4433;
-    case 4904u:
+    case 4904:
       goto n4429;
-    case 4907u:
+    case 4907:
       goto n4422;
     default:
       return {kAttention4Done, {}};
@@ -10425,9 +10443,9 @@ n4504:
   PLUTO_ATTN_RUN(kAttention4Sequence522);
   return {3823u, {}};
 n4498:
-  PLUTO_ATTN_MATCH(4886u, 4929u);
-  PLUTO_ATTN_MATCH(4868u, 4952u);
-  PLUTO_ATTN_MATCH(4898u, 4924u);
+  PLUTO_ATTN_MATCH(4886, 4929);
+  PLUTO_ATTN_MATCH(4868, 4952);
+  PLUTO_ATTN_MATCH(4898, 4924);
   return {3512u, {}};
 n4495:
   PLUTO_ATTN_RUN(kAttention4Sequence523);
@@ -10436,15 +10454,15 @@ n4488:
   PLUTO_ATTN_RUN(kAttention4Sequence524);
   return {3127u, {}};
 n4482:
-  PLUTO_ATTN_MATCH(4907u, 4923u);
-  PLUTO_ATTN_MATCH(4876u, 4928u);
-  PLUTO_ATTN_MATCH(4868u, 4929u);
+  PLUTO_ATTN_MATCH(4907, 4923);
+  PLUTO_ATTN_MATCH(4876, 4928);
+  PLUTO_ATTN_MATCH(4868, 4929);
   return {2604u, {}};
 n4479:
   PLUTO_ATTN_RUN(kAttention4Sequence525);
   goto n4474;
 n4474:
-  PLUTO_ATTN_MATCH(4907u, 4940u);
+  PLUTO_ATTN_MATCH(4907, 4940);
   return {372u, {}};
 n4473:
   PLUTO_ATTN_RUN(kAttention4Sequence526);
@@ -10456,8 +10474,8 @@ n4461:
   PLUTO_ATTN_RUN(kAttention4Sequence528);
   return {1763u, {}};
 n4455:
-  PLUTO_ATTN_MATCH(4902u, 4916u);
-  PLUTO_ATTN_MATCH(4907u, 4952u);
+  PLUTO_ATTN_MATCH(4902, 4916);
+  PLUTO_ATTN_MATCH(4907, 4952);
   return {700u, {}};
 n4453:
   PLUTO_ATTN_RUN(kAttention4Sequence529);
@@ -10475,11 +10493,11 @@ n4422:
   PLUTO_ATTN_RUN(kAttention4Sequence533);
   return {1889u, {}};
 n4415:
-  PLUTO_ATTN_END(4926u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4926);
+  switch (history[position++].value) {
+    case 4868:
       goto n4414;
-    case 4902u:
+    case 4902:
       goto n4406;
     default:
       return {kAttention4Done, {}};
@@ -10491,21 +10509,21 @@ n4406:
   PLUTO_ATTN_RUN(kAttention4Sequence535);
   return {37u, {}};
 n4399:
-  PLUTO_ATTN_MATCH(4874u, 4953u);
-  PLUTO_ATTN_MATCH(4868u, 4953u);
+  PLUTO_ATTN_MATCH(4874, 4953);
+  PLUTO_ATTN_MATCH(4868, 4953);
   return {1870u, {}};
 n4397:
-  PLUTO_ATTN_END(4953u);
-  switch (history[position++]) {
-    case 4870u:
+  PLUTO_ATTN_END(4953);
+  switch (history[position++].value) {
+    case 4870:
       goto n4396;
-    case 4873u:
+    case 4873:
       goto n4390;
-    case 4875u:
+    case 4875:
       goto n4385;
-    case 4880u:
+    case 4880:
       goto n4384;
-    case 4902u:
+    case 4902:
       goto n4376;
     default:
       return {kAttention4Done, {}};
@@ -10517,7 +10535,7 @@ n4390:
   PLUTO_ATTN_RUN(kAttention4Sequence537);
   return {635u, {}};
 n4385:
-  PLUTO_ATTN_MATCH(4898u, 4933u);
+  PLUTO_ATTN_MATCH(4898, 4933);
   return {375u, {}};
 n4384:
   PLUTO_ATTN_RUN(kAttention4Sequence538);
@@ -10526,11 +10544,11 @@ n4376:
   PLUTO_ATTN_RUN(kAttention4Sequence539);
   return {2362u, {}};
 n4372:
-  PLUTO_ATTN_END(4924u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4924);
+  switch (history[position++].value) {
+    case 4868:
       goto n4371;
-    case 4904u:
+    case 4904:
       goto n4366;
     default:
       return {kAttention4Done, {}};
@@ -10539,17 +10557,17 @@ n4371:
   PLUTO_ATTN_RUN(kAttention4Sequence540);
   goto n4367;
 n4367:
-  PLUTO_ATTN_MATCH(4902u, 4942u);
+  PLUTO_ATTN_MATCH(4902, 4942);
   return {197u, {}};
 n4366:
   PLUTO_ATTN_RUN(kAttention4Sequence541);
   return {3129u, {}};
 n4360:
-  PLUTO_ATTN_END(4935u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4935);
+  switch (history[position++].value) {
+    case 4868:
       return {1595u, {}};
-    case 4902u:
+    case 4902:
       goto n4359;
     default:
       return {kAttention4Done, {}};
@@ -10559,7 +10577,8 @@ n4359:
   return {396u, {}};
 }
 Attention4Step Attention4Part18(
-    std::uint32_t node, [[maybe_unused]] absl::Span<const StateId> history,
+    std::uint32_t node,
+    [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
   switch (node) {
     case 4863u:
@@ -10648,17 +10667,17 @@ n4772:
   PLUTO_ATTN_RUN(kAttention4Sequence556);
   return {483u, {}};
 n4760:
-  PLUTO_ATTN_END(4953u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4953);
+  switch (history[position++].value) {
+    case 4868:
       goto n4759;
-    case 4893u:
+    case 4893:
       goto n4749;
-    case 4898u:
+    case 4898:
       goto n4743;
-    case 4899u:
+    case 4899:
       goto n4739;
-    case 4902u:
+    case 4902:
       goto n4734;
     default:
       return {kAttention4Done, {}};
@@ -10667,7 +10686,7 @@ n4759:
   PLUTO_ATTN_RUN(kAttention4Sequence557);
   goto n4750;
 n4750:
-  PLUTO_ATTN_MATCH(4908u, 4933u);
+  PLUTO_ATTN_MATCH(4908, 4933);
   return {0u, {}};
 n4749:
   PLUTO_ATTN_RUN(kAttention4Sequence558);
@@ -10682,19 +10701,19 @@ n4734:
   PLUTO_ATTN_RUN(kAttention4Sequence561);
   return {42u, {}};
 n4729:
-  PLUTO_ATTN_END(4950u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4950);
+  switch (history[position++].value) {
+    case 4868:
       goto n4728;
-    case 4873u:
+    case 4873:
       goto n4722;
-    case 4874u:
+    case 4874:
       goto n4718;
-    case 4876u:
+    case 4876:
       goto n4710;
-    case 4889u:
+    case 4889:
       goto n4705;
-    case 4902u:
+    case 4902:
       goto n4695;
     default:
       return {kAttention4Done, {}};
@@ -10703,7 +10722,7 @@ n4728:
   PLUTO_ATTN_RUN(kAttention4Sequence562);
   goto n4723;
 n4723:
-  PLUTO_ATTN_MATCH(4907u, 4952u);
+  PLUTO_ATTN_MATCH(4907, 4952);
   return {372u, {}};
 n4722:
   PLUTO_ATTN_RUN(kAttention4Sequence563);
@@ -10724,21 +10743,21 @@ n4690:
   PLUTO_ATTN_RUN(kAttention4Sequence568);
   return {2u, {}};
 n4681:
-  PLUTO_ATTN_END(4921u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4921);
+  switch (history[position++].value) {
+    case 4868:
       goto n4680;
-    case 4876u:
+    case 4876:
       goto n4672;
-    case 4886u:
+    case 4886:
       goto n4666;
-    case 4898u:
+    case 4898:
       goto n4633;
-    case 4902u:
+    case 4902:
       goto n4629;
-    case 4904u:
+    case 4904:
       return {4545u, {}};
-    case 4907u:
+    case 4907:
       return {4538u, {}};
     default:
       return {kAttention4Done, {}};
@@ -10750,21 +10769,21 @@ n4672:
   PLUTO_ATTN_RUN(kAttention4Sequence570);
   return {2283u, {}};
 n4666:
-  PLUTO_ATTN_END(4923u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4923);
+  switch (history[position++].value) {
+    case 4868:
       goto n4665;
-    case 4870u:
+    case 4870:
       goto n4660;
-    case 4873u:
+    case 4873:
       goto n4655;
-    case 4875u:
+    case 4875:
       goto n4654;
-    case 4879u:
+    case 4879:
       goto n4649;
-    case 4891u:
+    case 4891:
       goto n4645;
-    case 4904u:
+    case 4904:
       goto n4639;
     default:
       return {kAttention4Done, {}};
@@ -10776,7 +10795,7 @@ n4660:
   PLUTO_ATTN_RUN(kAttention4Sequence572);
   return {356u, {}};
 n4655:
-  PLUTO_ATTN_MATCH(4885u, 4926u);
+  PLUTO_ATTN_MATCH(4885, 4926);
   return {1148u, {}};
 n4654:
   PLUTO_ATTN_RUN(kAttention4Sequence573);
@@ -10794,29 +10813,29 @@ n4633:
   PLUTO_ATTN_RUN(kAttention4Sequence577);
   return {4041u, {}};
 n4629:
-  PLUTO_ATTN_END(4924u);
-  switch (history[position++]) {
-    case 4867u:
+  PLUTO_ATTN_END(4924);
+  switch (history[position++].value) {
+    case 4867:
       goto n4628;
-    case 4868u:
+    case 4868:
       goto n4618;
-    case 4870u:
+    case 4870:
       goto n4612;
-    case 4873u:
+    case 4873:
       return {4605u, {}};
-    case 4876u:
+    case 4876:
       return {4600u, {}};
-    case 4880u:
+    case 4880:
       return {4589u, {}};
-    case 4886u:
+    case 4886:
       return {4581u, {}};
-    case 4893u:
+    case 4893:
       return {4577u, {}};
-    case 4902u:
+    case 4902:
       return {4570u, {}};
-    case 4903u:
+    case 4903:
       return {4560u, {}};
-    case 4904u:
+    case 4904:
       return {4555u, {}};
     default:
       return {kAttention4Done, {}};
@@ -10832,7 +10851,8 @@ n4612:
   return {4607u, {}};
 }
 Attention4Step Attention4Part19(
-    std::uint32_t node, [[maybe_unused]] absl::Span<const StateId> history,
+    std::uint32_t node,
+    [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
   switch (node) {
     case 5119u:
@@ -10853,12 +10873,12 @@ Attention4Step Attention4Part19(
       return {kAttention4Done, {}};
   }
 n5119:
-  PLUTO_ATTN_MATCH(4885u, 4953u);
-  PLUTO_ATTN_MATCH(4904u, 4929u);
-  PLUTO_ATTN_MATCH(4886u, 4913u);
+  PLUTO_ATTN_MATCH(4885, 4953);
+  PLUTO_ATTN_MATCH(4904, 4929);
+  PLUTO_ATTN_MATCH(4886, 4913);
   goto n5116;
 n5116:
-  PLUTO_ATTN_MATCH(4873u, 4953u);
+  PLUTO_ATTN_MATCH(4873, 4953);
   return {372u, {}};
 n5115:
   PLUTO_ATTN_RUN(kAttention4Sequence581);
@@ -10870,57 +10890,57 @@ n5103:
   PLUTO_ATTN_RUN(kAttention4Sequence583);
   return {14u, {}};
 n5094:
-  PLUTO_ATTN_END(4940u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4940);
+  switch (history[position++].value) {
+    case 4868:
       goto n5093;
-    case 4875u:
+    case 4875:
       goto n5046;
-    case 4876u:
+    case 4876:
       goto n5013;
-    case 4877u:
+    case 4877:
       goto n5006;
-    case 4880u:
+    case 4880:
       goto n4987;
-    case 4883u:
+    case 4883:
       goto n4968;
-    case 4886u:
+    case 4886:
       goto n4960;
-    case 4891u:
+    case 4891:
       goto n4956;
-    case 4893u:
+    case 4893:
       goto n4950;
-    case 4895u:
+    case 4895:
       goto n4896;
-    case 4896u:
+    case 4896:
       goto n4894;
-    case 4897u:
+    case 4897:
       goto n4891;
-    case 4898u:
+    case 4898:
       return {4760u, {}};
-    case 4902u:
+    case 4902:
       return {4729u, {}};
-    case 4907u:
+    case 4907:
       return {4690u, {}};
     default:
       return {kAttention4Done, {}};
   }
 n5093:
-  PLUTO_ATTN_END(4924u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4924);
+  switch (history[position++].value) {
+    case 4868:
       goto n5092;
-    case 4872u:
+    case 4872:
       goto n5085;
-    case 4873u:
+    case 4873:
       goto n5076;
-    case 4879u:
+    case 4879:
       goto n5073;
-    case 4891u:
+    case 4891:
       goto n5067;
-    case 4893u:
+    case 4893:
       goto n5058;
-    case 4902u:
+    case 4902:
       goto n5052;
     default:
       return {kAttention4Done, {}};
@@ -10932,9 +10952,9 @@ n5085:
   PLUTO_ATTN_RUN(kAttention4Sequence585);
   return {2318u, {}};
 n5076:
-  PLUTO_ATTN_MATCH(4876u, 4953u);
-  PLUTO_ATTN_MATCH(4868u, 4929u);
-  PLUTO_ATTN_MATCH(4907u, 4924u);
+  PLUTO_ATTN_MATCH(4876, 4953);
+  PLUTO_ATTN_MATCH(4868, 4929);
+  PLUTO_ATTN_MATCH(4907, 4924);
   return {591u, {}};
 n5073:
   PLUTO_ATTN_RUN(kAttention4Sequence586);
@@ -10949,19 +10969,19 @@ n5052:
   PLUTO_ATTN_RUN(kAttention4Sequence589);
   return {2301u, {}};
 n5046:
-  PLUTO_ATTN_END(4915u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4915);
+  switch (history[position++].value) {
+    case 4868:
       goto n5045;
-    case 4876u:
+    case 4876:
       goto n5040;
-    case 4885u:
+    case 4885:
       goto n5033;
-    case 4897u:
+    case 4897:
       goto n5028;
-    case 4900u:
+    case 4900:
       goto n5025;
-    case 4902u:
+    case 4902:
       goto n5019;
     default:
       return {kAttention4Done, {}};
@@ -10973,15 +10993,15 @@ n5040:
   PLUTO_ATTN_RUN(kAttention4Sequence591);
   goto n5034;
 n5034:
-  PLUTO_ATTN_MATCH(4902u, 4913u);
+  PLUTO_ATTN_MATCH(4902, 4913);
   return {2u, {}};
 n5033:
   PLUTO_ATTN_RUN(kAttention4Sequence592);
   return {1155u, {}};
 n5028:
-  PLUTO_ATTN_MATCH(4868u, 4933u);
-  PLUTO_ATTN_MATCH(4873u, 4953u);
-  PLUTO_ATTN_MATCH(4886u, 4924u);
+  PLUTO_ATTN_MATCH(4868, 4933);
+  PLUTO_ATTN_MATCH(4873, 4953);
+  PLUTO_ATTN_MATCH(4886, 4924);
   return {1837u, {}};
 n5025:
   PLUTO_ATTN_RUN(kAttention4Sequence593);
@@ -10993,11 +11013,11 @@ n5013:
   PLUTO_ATTN_RUN(kAttention4Sequence595);
   return {14u, {}};
 n5006:
-  PLUTO_ATTN_END(4927u);
-  switch (history[position++]) {
-    case 4895u:
+  PLUTO_ATTN_END(4927);
+  switch (history[position++].value) {
+    case 4895:
       goto n5005;
-    case 4903u:
+    case 4903:
       goto n4997;
     default:
       return {kAttention4Done, {}};
@@ -11009,20 +11029,20 @@ n4997:
   PLUTO_ATTN_RUN(kAttention4Sequence597);
   return {1u, {}};
 n4987:
-  PLUTO_ATTN_END(4928u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4928);
+  switch (history[position++].value) {
+    case 4868:
       goto n4986;
-    case 4893u:
+    case 4893:
       goto n4984;
-    case 4898u:
+    case 4898:
       goto n4974;
     default:
       return {kAttention4Done, {}};
   }
 n4986:
-  PLUTO_ATTN_MATCH(4903u, 4923u);
-  PLUTO_ATTN_MATCH(4902u, 4915u);
+  PLUTO_ATTN_MATCH(4903, 4923);
+  PLUTO_ATTN_MATCH(4902, 4915);
   return {1147u, {}};
 n4984:
   PLUTO_ATTN_RUN(kAttention4Sequence598);
@@ -11037,11 +11057,11 @@ n4960:
   PLUTO_ATTN_RUN(kAttention4Sequence601);
   return {591u, {}};
 n4956:
-  PLUTO_ATTN_END(4953u);
-  switch (history[position++]) {
-    case 4876u:
+  PLUTO_ATTN_END(4953);
+  switch (history[position++].value) {
+    case 4876:
       goto n4955;
-    case 4885u:
+    case 4885:
       goto n4951;
     default:
       return {kAttention4Done, {}};
@@ -11050,24 +11070,24 @@ n4955:
   PLUTO_ATTN_RUN(kAttention4Sequence602);
   return {838u, {}};
 n4951:
-  PLUTO_ATTN_MATCH(4868u, 4935u);
+  PLUTO_ATTN_MATCH(4868, 4935);
   goto n4910;
 n4950:
-  PLUTO_ATTN_END(4952u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4952);
+  switch (history[position++].value) {
+    case 4868:
       goto n4949;
-    case 4870u:
+    case 4870:
       goto n4940;
-    case 4885u:
+    case 4885:
       goto n4937;
-    case 4891u:
+    case 4891:
       goto n4935;
-    case 4898u:
+    case 4898:
       goto n4930;
-    case 4899u:
+    case 4899:
       goto n4916;
-    case 4904u:
+    case 4904:
       goto n4909;
     default:
       return {kAttention4Done, {}};
@@ -11076,13 +11096,13 @@ n4949:
   PLUTO_ATTN_RUN(kAttention4Sequence603);
   return {16u, {}};
 n4940:
-  PLUTO_ATTN_MATCH(4875u, 4950u);
-  PLUTO_ATTN_MATCH(4868u, 4924u);
-  PLUTO_ATTN_MATCH(4907u, 4953u);
+  PLUTO_ATTN_MATCH(4875, 4950);
+  PLUTO_ATTN_MATCH(4868, 4924);
+  PLUTO_ATTN_MATCH(4907, 4953);
   return {880u, {}};
 n4937:
-  PLUTO_ATTN_MATCH(4870u, 4929u);
-  PLUTO_ATTN_MATCH(4868u, 4950u);
+  PLUTO_ATTN_MATCH(4870, 4929);
+  PLUTO_ATTN_MATCH(4868, 4950);
   return {1487u, {}};
 n4935:
   PLUTO_ATTN_RUN(kAttention4Sequence604);
@@ -11094,58 +11114,58 @@ n4916:
   PLUTO_ATTN_RUN(kAttention4Sequence606);
   goto n4910;
 n4910:
-  PLUTO_ATTN_MATCH(4868u, 4924u);
+  PLUTO_ATTN_MATCH(4868, 4924);
   return {2650u, {}};
 n4909:
   PLUTO_ATTN_RUN(kAttention4Sequence607);
   return {1936u, {}};
 n4896:
-  PLUTO_ATTN_MATCH(4898u, 4944u);
-  PLUTO_ATTN_MATCH(4874u, 4953u);
+  PLUTO_ATTN_MATCH(4898, 4944);
+  PLUTO_ATTN_MATCH(4874, 4953);
   return {114u, {}};
 n4894:
-  PLUTO_ATTN_MATCH(4902u, 4943u);
-  PLUTO_ATTN_MATCH(4868u, 4924u);
-  PLUTO_ATTN_MATCH(4907u, 4924u);
+  PLUTO_ATTN_MATCH(4902, 4943);
+  PLUTO_ATTN_MATCH(4868, 4924);
+  PLUTO_ATTN_MATCH(4907, 4924);
   return {4u, {}};
 n4891:
-  PLUTO_ATTN_END(4916u);
-  switch (history[position++]) {
-    case 4866u:
+  PLUTO_ATTN_END(4916);
+  switch (history[position++].value) {
+    case 4866:
       goto n4890;
-    case 4868u:
+    case 4868:
       goto n4883;
-    case 4870u:
+    case 4870:
       goto n4879;
-    case 4873u:
+    case 4873:
       goto n4871;
-    case 4874u:
+    case 4874:
       return {4863u, {}};
-    case 4878u:
+    case 4878:
       return {4857u, {}};
-    case 4880u:
+    case 4880:
       return {4853u, {}};
-    case 4883u:
+    case 4883:
       return {4848u, {}};
-    case 4884u:
+    case 4884:
       return {4840u, {}};
-    case 4889u:
+    case 4889:
       return {4836u, {}};
-    case 4891u:
+    case 4891:
       return {4828u, {}};
-    case 4894u:
+    case 4894:
       return {4822u, {}};
-    case 4896u:
+    case 4896:
       return {4815u, {}};
-    case 4897u:
+    case 4897:
       return {4808u, {}};
-    case 4898u:
+    case 4898:
       return {4793u, {}};
-    case 4899u:
+    case 4899:
       return {4786u, {}};
-    case 4902u:
+    case 4902:
       return {4778u, {}};
-    case 4904u:
+    case 4904:
       return {4772u, {}};
     default:
       return {kAttention4Done, {}};
@@ -11164,7 +11184,8 @@ n4871:
   return {1472u, {}};
 }
 Attention4Step Attention4Part20(
-    std::uint32_t node, [[maybe_unused]] absl::Span<const StateId> history,
+    std::uint32_t node,
+    [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
   switch (node) {
     case 5375u:
@@ -11193,8 +11214,8 @@ Attention4Step Attention4Part20(
       return {kAttention4Done, {}};
   }
 n5375:
-  PLUTO_ATTN_MATCH(4868u, 4924u);
-  PLUTO_ATTN_MATCH(4902u, 4915u);
+  PLUTO_ATTN_MATCH(4868, 4924);
+  PLUTO_ATTN_MATCH(4902, 4915);
   return {86u, {}};
 n5373:
   PLUTO_ATTN_RUN(kAttention4Sequence612);
@@ -11206,15 +11227,15 @@ n5361:
   PLUTO_ATTN_RUN(kAttention4Sequence614);
   return {946u, {}};
 n5354:
-  PLUTO_ATTN_END(4923u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4923);
+  switch (history[position++].value) {
+    case 4868:
       goto n5353;
-    case 4886u:
+    case 4886:
       goto n5345;
-    case 4900u:
+    case 4900:
       goto n5343;
-    case 4902u:
+    case 4902:
       goto n5335;
     default:
       return {kAttention4Done, {}};
@@ -11223,8 +11244,8 @@ n5353:
   PLUTO_ATTN_RUN(kAttention4Sequence615);
   return {343u, {}};
 n5345:
-  PLUTO_ATTN_MATCH(4903u, 4922u);
-  PLUTO_ATTN_MATCH(4902u, 4952u);
+  PLUTO_ATTN_MATCH(4903, 4922);
+  PLUTO_ATTN_MATCH(4902, 4952);
   return {985u, {}};
 n5343:
   PLUTO_ATTN_RUN(kAttention4Sequence616);
@@ -11233,27 +11254,27 @@ n5335:
   PLUTO_ATTN_RUN(kAttention4Sequence617);
   return {197u, {}};
 n5324:
-  PLUTO_ATTN_END(4924u);
-  switch (history[position++]) {
-    case 4902u:
+  PLUTO_ATTN_END(4924);
+  switch (history[position++].value) {
+    case 4902:
       goto n5323;
-    case 4904u:
+    case 4904:
       goto n5293;
     default:
       return {kAttention4Done, {}};
   }
 n5323:
-  PLUTO_ATTN_END(4940u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4940);
+  switch (history[position++].value) {
+    case 4868:
       goto n5322;
-    case 4873u:
+    case 4873:
       goto n5317;
-    case 4886u:
+    case 4886:
       goto n5312;
-    case 4897u:
+    case 4897:
       goto n5307;
-    case 4903u:
+    case 4903:
       goto n5301;
     default:
       return {kAttention4Done, {}};
@@ -11262,13 +11283,13 @@ n5322:
   PLUTO_ATTN_RUN(kAttention4Sequence618);
   goto n5318;
 n5318:
-  PLUTO_ATTN_MATCH(4868u, 4924u);
+  PLUTO_ATTN_MATCH(4868, 4924);
   return {1147u, {}};
 n5317:
   PLUTO_ATTN_RUN(kAttention4Sequence619);
   goto n5313;
 n5313:
-  PLUTO_ATTN_MATCH(4902u, 4953u);
+  PLUTO_ATTN_MATCH(4902, 4953);
   return {404u, {}};
 n5312:
   PLUTO_ATTN_RUN(kAttention4Sequence620);
@@ -11283,37 +11304,37 @@ n5293:
   PLUTO_ATTN_RUN(kAttention4Sequence623);
   return {2991u, {}};
 n5289:
-  PLUTO_ATTN_END(4944u);
-  switch (history[position++]) {
-    case 4870u:
+  PLUTO_ATTN_END(4944);
+  switch (history[position++].value) {
+    case 4870:
       goto n5288;
-    case 4880u:
+    case 4880:
       goto n5277;
-    case 4885u:
+    case 4885:
       goto n5267;
-    case 4886u:
+    case 4886:
       goto n5256;
-    case 4898u:
+    case 4898:
       goto n5247;
-    case 4904u:
+    case 4904:
       goto n5240;
     default:
       return {kAttention4Done, {}};
   }
 n5288:
-  PLUTO_ATTN_END(4924u);
-  switch (history[position++]) {
-    case 4870u:
+  PLUTO_ATTN_END(4924);
+  switch (history[position++].value) {
+    case 4870:
       goto n5287;
-    case 4902u:
+    case 4902:
       goto n5284;
     default:
       return {kAttention4Done, {}};
   }
 n5287:
-  PLUTO_ATTN_MATCH(4876u, 4952u);
-  PLUTO_ATTN_MATCH(4868u, 4929u);
-  PLUTO_ATTN_MATCH(4868u, 4952u);
+  PLUTO_ATTN_MATCH(4876, 4952);
+  PLUTO_ATTN_MATCH(4868, 4929);
+  PLUTO_ATTN_MATCH(4868, 4952);
   return {4723u, {}};
 n5284:
   PLUTO_ATTN_RUN(kAttention4Sequence624);
@@ -11325,11 +11346,11 @@ n5267:
   PLUTO_ATTN_RUN(kAttention4Sequence626);
   return {86u, {}};
 n5256:
-  PLUTO_ATTN_END(4952u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4952);
+  switch (history[position++].value) {
+    case 4868:
       goto n5255;
-    case 4898u:
+    case 4898:
       goto n5251;
     default:
       return {kAttention4Done, {}};
@@ -11341,11 +11362,11 @@ n5251:
   PLUTO_ATTN_RUN(kAttention4Sequence628);
   return {575u, {}};
 n5247:
-  PLUTO_ATTN_END(4953u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4953);
+  switch (history[position++].value) {
+    case 4868:
       goto n5246;
-    case 4886u:
+    case 4886:
       return {472u, {}};
     default:
       return {kAttention4Done, {}};
@@ -11357,41 +11378,41 @@ n5240:
   PLUTO_ATTN_RUN(kAttention4Sequence630);
   return {2u, {}};
 n5233:
-  PLUTO_ATTN_END(4953u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4953);
+  switch (history[position++].value) {
+    case 4868:
       goto n5232;
-    case 4870u:
+    case 4870:
       goto n5201;
-    case 4872u:
+    case 4872:
       goto n5193;
-    case 4874u:
+    case 4874:
       goto n5180;
-    case 4875u:
+    case 4875:
       goto n5142;
-    case 4876u:
+    case 4876:
       goto n5135;
-    case 4885u:
+    case 4885:
       goto n5127;
-    case 4902u:
+    case 4902:
       return {5109u, {}};
-    case 4903u:
+    case 4903:
       return {5103u, {}};
     default:
       return {kAttention4Done, {}};
   }
 n5232:
-  PLUTO_ATTN_END(4913u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4913);
+  switch (history[position++].value) {
+    case 4868:
       goto n5231;
-    case 4874u:
+    case 4874:
       goto n5224;
-    case 4886u:
+    case 4886:
       goto n5220;
-    case 4891u:
+    case 4891:
       goto n5214;
-    case 4902u:
+    case 4902:
       goto n5206;
     default:
       return {kAttention4Done, {}};
@@ -11418,19 +11439,19 @@ n5193:
   PLUTO_ATTN_RUN(kAttention4Sequence637);
   return {599u, {}};
 n5180:
-  PLUTO_ATTN_END(4923u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4923);
+  switch (history[position++].value) {
+    case 4868:
       goto n5179;
-    case 4874u:
+    case 4874:
       goto n5173;
-    case 4878u:
+    case 4878:
       goto n5163;
-    case 4893u:
+    case 4893:
       goto n5156;
-    case 4897u:
+    case 4897:
       goto n5151;
-    case 4899u:
+    case 4899:
       goto n5145;
     default:
       return {kAttention4Done, {}};
@@ -11451,9 +11472,9 @@ n5151:
   PLUTO_ATTN_RUN(kAttention4Sequence642);
   return {3763u, {}};
 n5145:
-  PLUTO_ATTN_MATCH(4891u, 4940u);
-  PLUTO_ATTN_MATCH(4898u, 4925u);
-  PLUTO_ATTN_MATCH(4868u, 4953u);
+  PLUTO_ATTN_MATCH(4891, 4940);
+  PLUTO_ATTN_MATCH(4898, 4925);
+  PLUTO_ATTN_MATCH(4868, 4953);
   return {3203u, {}};
 n5142:
   PLUTO_ATTN_RUN(kAttention4Sequence643);
@@ -11462,14 +11483,14 @@ n5135:
   PLUTO_ATTN_RUN(kAttention4Sequence644);
   goto n5128;
 n5128:
-  PLUTO_ATTN_MATCH(4901u, 4929u);
+  PLUTO_ATTN_MATCH(4901, 4929);
   return {42u, {}};
 n5127:
-  PLUTO_ATTN_END(4929u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4929);
+  switch (history[position++].value) {
+    case 4868:
       goto n5126;
-    case 4886u:
+    case 4886:
       return {5115u, {}};
     default:
       return {kAttention4Done, {}};
@@ -11479,7 +11500,8 @@ n5126:
   return {5119u, {}};
 }
 Attention4Step Attention4Part21(
-    std::uint32_t node, [[maybe_unused]] absl::Span<const StateId> history,
+    std::uint32_t node,
+    [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
   switch (node) {
     case 5631u:
@@ -11510,30 +11532,30 @@ Attention4Step Attention4Part21(
       return {kAttention4Done, {}};
   }
 n5631:
-  PLUTO_ATTN_MATCH(4868u, 4924u);
-  PLUTO_ATTN_MATCH(4883u, 4924u);
-  PLUTO_ATTN_MATCH(4899u, 4920u);
+  PLUTO_ATTN_MATCH(4868, 4924);
+  PLUTO_ATTN_MATCH(4883, 4924);
+  PLUTO_ATTN_MATCH(4899, 4920);
   return {1669u, {}};
 n5628:
-  PLUTO_ATTN_END(4929u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4929);
+  switch (history[position++].value) {
+    case 4868:
       goto n5627;
-    case 4899u:
+    case 4899:
       goto n5600;
     default:
       return {kAttention4Done, {}};
   }
 n5627:
-  PLUTO_ATTN_END(4940u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4940);
+  switch (history[position++].value) {
+    case 4868:
       goto n5626;
-    case 4874u:
+    case 4874:
       goto n5620;
-    case 4900u:
+    case 4900:
       goto n5614;
-    case 4902u:
+    case 4902:
       goto n5607;
     default:
       return {kAttention4Done, {}};
@@ -11542,8 +11564,8 @@ n5626:
   PLUTO_ATTN_RUN(kAttention4Sequence646);
   goto n5622;
 n5622:
-  PLUTO_ATTN_MATCH(4885u, 4953u);
-  PLUTO_ATTN_MATCH(4902u, 4929u);
+  PLUTO_ATTN_MATCH(4885, 4953);
+  PLUTO_ATTN_MATCH(4902, 4929);
   return {318u, {}};
 n5620:
   PLUTO_ATTN_RUN(kAttention4Sequence647);
@@ -11558,15 +11580,15 @@ n5600:
   PLUTO_ATTN_RUN(kAttention4Sequence650);
   return {282u, {}};
 n5595:
-  PLUTO_ATTN_END(4938u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4938);
+  switch (history[position++].value) {
+    case 4868:
       goto n5594;
-    case 4898u:
+    case 4898:
       goto n5584;
-    case 4902u:
+    case 4902:
       goto n5576;
-    case 4904u:
+    case 4904:
       goto n5541;
     default:
       return {kAttention4Done, {}};
@@ -11578,17 +11600,17 @@ n5584:
   PLUTO_ATTN_RUN(kAttention4Sequence652);
   return {291u, {}};
 n5576:
-  PLUTO_ATTN_END(4952u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4952);
+  switch (history[position++].value) {
+    case 4868:
       goto n5575;
-    case 4874u:
+    case 4874:
       goto n5570;
-    case 4886u:
+    case 4886:
       goto n5563;
-    case 4893u:
+    case 4893:
       goto n5554;
-    case 4902u:
+    case 4902:
       goto n5552;
     default:
       return {kAttention4Done, {}};
@@ -11600,28 +11622,28 @@ n5570:
   PLUTO_ATTN_RUN(kAttention4Sequence654);
   goto n5564;
 n5564:
-  PLUTO_ATTN_MATCH(4868u, 4926u);
+  PLUTO_ATTN_MATCH(4868, 4926);
   return {1u, {}};
 n5563:
   PLUTO_ATTN_RUN(kAttention4Sequence655);
   return {5034u, {}};
 n5554:
-  PLUTO_ATTN_MATCH(4868u, 4913u);
-  PLUTO_ATTN_MATCH(4898u, 4952u);
+  PLUTO_ATTN_MATCH(4868, 4913);
+  PLUTO_ATTN_MATCH(4898, 4952);
   return {821u, {}};
 n5552:
   PLUTO_ATTN_RUN(kAttention4Sequence656);
   return {42u, {}};
 n5541:
-  PLUTO_ATTN_END(4940u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4940);
+  switch (history[position++].value) {
+    case 4868:
       goto n5540;
-    case 4872u:
+    case 4872:
       goto n5534;
-    case 4899u:
+    case 4899:
       goto n5529;
-    case 4902u:
+    case 4902:
       goto n5519;
     default:
       return {kAttention4Done, {}};
@@ -11639,39 +11661,39 @@ n5519:
   PLUTO_ATTN_RUN(kAttention4Sequence660);
   return {487u, {}};
 n5509:
-  PLUTO_ATTN_END(4934u);
-  switch (history[position++]) {
-    case 4870u:
+  PLUTO_ATTN_END(4934);
+  switch (history[position++].value) {
+    case 4870:
       goto n5508;
-    case 4872u:
+    case 4872:
       goto n5476;
-    case 4876u:
+    case 4876:
       goto n5459;
-    case 4885u:
+    case 4885:
       goto n5424;
-    case 4886u:
+    case 4886:
       return {5361u, {}};
-    case 4902u:
+    case 4902:
       return {5354u, {}};
     default:
       return {kAttention4Done, {}};
   }
 n5508:
-  PLUTO_ATTN_END(4952u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4952);
+  switch (history[position++].value) {
+    case 4868:
       goto n5507;
-    case 4874u:
+    case 4874:
       goto n5500;
-    case 4881u:
+    case 4881:
       goto n5498;
-    case 4893u:
+    case 4893:
       goto n5491;
-    case 4902u:
+    case 4902:
       goto n5487;
-    case 4903u:
+    case 4903:
       goto n5484;
-    case 4907u:
+    case 4907:
       goto n5480;
     default:
       return {kAttention4Done, {}};
@@ -11680,8 +11702,8 @@ n5507:
   PLUTO_ATTN_RUN(kAttention4Sequence661);
   return {575u, {}};
 n5500:
-  PLUTO_ATTN_MATCH(4898u, 4924u);
-  PLUTO_ATTN_MATCH(4872u, 4953u);
+  PLUTO_ATTN_MATCH(4898, 4924);
+  PLUTO_ATTN_MATCH(4872, 4953);
   return {1256u, {}};
 n5498:
   PLUTO_ATTN_RUN(kAttention4Sequence662);
@@ -11690,29 +11712,29 @@ n5491:
   PLUTO_ATTN_RUN(kAttention4Sequence663);
   return {198u, {}};
 n5487:
-  PLUTO_ATTN_MATCH(4903u, 4916u);
-  PLUTO_ATTN_MATCH(4876u, 4950u);
-  PLUTO_ATTN_MATCH(4902u, 4929u);
+  PLUTO_ATTN_MATCH(4903, 4916);
+  PLUTO_ATTN_MATCH(4876, 4950);
+  PLUTO_ATTN_MATCH(4902, 4929);
   return {195u, {}};
 n5484:
   PLUTO_ATTN_RUN(kAttention4Sequence664);
   return {2970u, {}};
 n5480:
-  PLUTO_ATTN_MATCH(4902u, 4953u);
+  PLUTO_ATTN_MATCH(4902, 4953);
   goto n5479;
 n5479:
-  PLUTO_ATTN_MATCH(4904u, 4924u);
-  PLUTO_ATTN_MATCH(4902u, 4953u);
-  PLUTO_ATTN_MATCH(4904u, 4913u);
+  PLUTO_ATTN_MATCH(4904, 4924);
+  PLUTO_ATTN_MATCH(4902, 4953);
+  PLUTO_ATTN_MATCH(4904, 4913);
   return {1748u, {}};
 n5476:
-  PLUTO_ATTN_END(4929u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4929);
+  switch (history[position++].value) {
+    case 4868:
       goto n5475;
-    case 4875u:
+    case 4875:
       goto n5470;
-    case 4893u:
+    case 4893:
       goto n5464;
     default:
       return {kAttention4Done, {}};
@@ -11721,7 +11743,7 @@ n5475:
   PLUTO_ATTN_RUN(kAttention4Sequence665);
   goto n5471;
 n5471:
-  PLUTO_ATTN_MATCH(4873u, 4953u);
+  PLUTO_ATTN_MATCH(4873, 4953);
   return {1u, {}};
 n5470:
   PLUTO_ATTN_RUN(kAttention4Sequence666);
@@ -11730,21 +11752,21 @@ n5464:
   PLUTO_ATTN_RUN(kAttention4Sequence667);
   return {1365u, {}};
 n5459:
-  PLUTO_ATTN_END(4929u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4929);
+  switch (history[position++].value) {
+    case 4868:
       goto n5458;
-    case 4870u:
+    case 4870:
       goto n5448;
-    case 4873u:
+    case 4873:
       goto n5443;
-    case 4874u:
+    case 4874:
       goto n5438;
-    case 4898u:
+    case 4898:
       goto n5431;
-    case 4902u:
+    case 4902:
       goto n5426;
-    case 4903u:
+    case 4903:
       goto n5425;
     default:
       return {kAttention4Done, {}};
@@ -11753,18 +11775,18 @@ n5458:
   PLUTO_ATTN_RUN(kAttention4Sequence668);
   goto n5449;
 n5449:
-  PLUTO_ATTN_MATCH(4873u, 4924u);
+  PLUTO_ATTN_MATCH(4873, 4924);
   return {1u, {}};
 n5448:
-  PLUTO_ATTN_MATCH(4902u, 4926u);
-  PLUTO_ATTN_MATCH(4907u, 4953u);
-  PLUTO_ATTN_MATCH(4868u, 4928u);
+  PLUTO_ATTN_MATCH(4902, 4926);
+  PLUTO_ATTN_MATCH(4907, 4953);
+  PLUTO_ATTN_MATCH(4868, 4928);
   goto n5445;
 n5445:
-  PLUTO_ATTN_MATCH(4898u, 4924u);
+  PLUTO_ATTN_MATCH(4898, 4924);
   goto n5444;
 n5444:
-  PLUTO_ATTN_MATCH(4893u, 4953u);
+  PLUTO_ATTN_MATCH(4893, 4953);
   return {1u, {}};
 n5443:
   PLUTO_ATTN_RUN(kAttention4Sequence669);
@@ -11776,35 +11798,35 @@ n5431:
   PLUTO_ATTN_RUN(kAttention4Sequence671);
   return {1953u, {}};
 n5426:
-  PLUTO_ATTN_MATCH(4898u, 4949u);
+  PLUTO_ATTN_MATCH(4898, 4949);
   return {2416u, {}};
 n5425:
-  PLUTO_ATTN_MATCH(4868u, 4916u);
+  PLUTO_ATTN_MATCH(4868, 4916);
   return {2591u, {}};
 n5424:
-  PLUTO_ATTN_END(4929u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4929);
+  switch (history[position++].value) {
+    case 4868:
       goto n5423;
-    case 4870u:
+    case 4870:
       goto n5418;
-    case 4871u:
+    case 4871:
       goto n5409;
-    case 4873u:
+    case 4873:
       goto n5405;
-    case 4874u:
+    case 4874:
       goto n5398;
-    case 4875u:
+    case 4875:
       goto n5390;
-    case 4886u:
+    case 4886:
       goto n5386;
-    case 4893u:
+    case 4893:
       goto n5384;
-    case 4901u:
+    case 4901:
       goto n5380;
-    case 4902u:
+    case 4902:
       return {5373u, {}};
-    case 4904u:
+    case 4904:
       return {5366u, {}};
     default:
       return {kAttention4Done, {}};
@@ -11813,7 +11835,7 @@ n5423:
   PLUTO_ATTN_RUN(kAttention4Sequence672);
   goto n5419;
 n5419:
-  PLUTO_ATTN_MATCH(4900u, 4913u);
+  PLUTO_ATTN_MATCH(4900, 4913);
   return {37u, {}};
 n5418:
   PLUTO_ATTN_RUN(kAttention4Sequence673);
@@ -11831,8 +11853,8 @@ n5390:
   PLUTO_ATTN_RUN(kAttention4Sequence677);
   return {880u, {}};
 n5386:
-  PLUTO_ATTN_MATCH(4902u, 4921u);
-  PLUTO_ATTN_MATCH(4886u, 4924u);
+  PLUTO_ATTN_MATCH(4902, 4921);
+  PLUTO_ATTN_MATCH(4886, 4924);
   return {701u, {}};
 n5384:
   PLUTO_ATTN_RUN(kAttention4Sequence678);
@@ -11842,7 +11864,8 @@ n5380:
   return {5375u, {}};
 }
 Attention4Step Attention4Part22(
-    std::uint32_t node, [[maybe_unused]] absl::Span<const StateId> history,
+    std::uint32_t node,
+    [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
   switch (node) {
     case 5887u:
@@ -11891,9 +11914,9 @@ Attention4Step Attention4Part22(
       return {kAttention4Done, {}};
   }
 n5887:
-  PLUTO_ATTN_MATCH(4902u, 4920u);
-  PLUTO_ATTN_MATCH(4868u, 4952u);
-  PLUTO_ATTN_MATCH(4868u, 4953u);
+  PLUTO_ATTN_MATCH(4902, 4920);
+  PLUTO_ATTN_MATCH(4868, 4952);
+  PLUTO_ATTN_MATCH(4868, 4953);
   return {1538u, {}};
 n5884:
   PLUTO_ATTN_RUN(kAttention4Sequence680);
@@ -11923,9 +11946,9 @@ n5828:
   PLUTO_ATTN_RUN(kAttention4Sequence688);
   return {0u, {}};
 n5815:
-  PLUTO_ATTN_MATCH(4876u, 4928u);
-  PLUTO_ATTN_MATCH(4868u, 4929u);
-  PLUTO_ATTN_MATCH(4898u, 4953u);
+  PLUTO_ATTN_MATCH(4876, 4928);
+  PLUTO_ATTN_MATCH(4868, 4929);
+  PLUTO_ATTN_MATCH(4898, 4953);
   return {4063u, {}};
 n5812:
   PLUTO_ATTN_RUN(kAttention4Sequence689);
@@ -11934,26 +11957,26 @@ n5806:
   PLUTO_ATTN_RUN(kAttention4Sequence690);
   return {575u, {}};
 n5799:
-  PLUTO_ATTN_MATCH(4902u, 4947u);
-  PLUTO_ATTN_MATCH(4880u, 4924u);
-  PLUTO_ATTN_MATCH(4874u, 4928u);
+  PLUTO_ATTN_MATCH(4902, 4947);
+  PLUTO_ATTN_MATCH(4880, 4924);
+  PLUTO_ATTN_MATCH(4874, 4928);
   return {195u, {}};
 n5796:
-  PLUTO_ATTN_END(4921u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4921);
+  switch (history[position++].value) {
+    case 4868:
       goto n5795;
-    case 4873u:
+    case 4873:
       goto n5791;
-    case 4874u:
+    case 4874:
       goto n5788;
-    case 4876u:
+    case 4876:
       goto n5782;
-    case 4893u:
+    case 4893:
       goto n5778;
-    case 4898u:
+    case 4898:
       goto n5772;
-    case 4902u:
+    case 4902:
       goto n5761;
     default:
       return {kAttention4Done, {}};
@@ -11962,9 +11985,9 @@ n5795:
   PLUTO_ATTN_RUN(kAttention4Sequence691);
   return {838u, {}};
 n5791:
-  PLUTO_ATTN_MATCH(4868u, 4921u);
-  PLUTO_ATTN_MATCH(4868u, 4921u);
-  PLUTO_ATTN_MATCH(4902u, 4924u);
+  PLUTO_ATTN_MATCH(4868, 4921);
+  PLUTO_ATTN_MATCH(4868, 4921);
+  PLUTO_ATTN_MATCH(4902, 4924);
   return {2471u, {}};
 n5788:
   PLUTO_ATTN_RUN(kAttention4Sequence692);
@@ -11982,17 +12005,17 @@ n5761:
   PLUTO_ATTN_RUN(kAttention4Sequence696);
   return {1678u, {}};
 n5751:
-  PLUTO_ATTN_END(4915u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4915);
+  switch (history[position++].value) {
+    case 4868:
       goto n5750;
-    case 4870u:
+    case 4870:
       goto n5743;
-    case 4873u:
+    case 4873:
       goto n5735;
-    case 4880u:
+    case 4880:
       goto n5728;
-    case 4903u:
+    case 4903:
       goto n5720;
     default:
       return {kAttention4Done, {}};
@@ -12004,7 +12027,7 @@ n5743:
   PLUTO_ATTN_RUN(kAttention4Sequence698);
   goto n5736;
 n5736:
-  PLUTO_ATTN_MATCH(4902u, 4950u);
+  PLUTO_ATTN_MATCH(4902, 4950);
   return {86u, {}};
 n5735:
   PLUTO_ATTN_RUN(kAttention4Sequence699);
@@ -12013,18 +12036,18 @@ n5728:
   PLUTO_ATTN_RUN(kAttention4Sequence700);
   return {1486u, {}};
 n5720:
-  PLUTO_ATTN_MATCH(4898u, 4924u);
-  PLUTO_ATTN_MATCH(4876u, 4953u);
-  PLUTO_ATTN_MATCH(4902u, 4929u);
+  PLUTO_ATTN_MATCH(4898, 4924);
+  PLUTO_ATTN_MATCH(4876, 4953);
+  PLUTO_ATTN_MATCH(4902, 4929);
   return {2769u, {}};
 n5717:
-  PLUTO_ATTN_END(4950u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4950);
+  switch (history[position++].value) {
+    case 4868:
       goto n5716;
-    case 4873u:
+    case 4873:
       goto n5711;
-    case 4899u:
+    case 4899:
       goto n5709;
     default:
       return {kAttention4Done, {}};
@@ -12033,24 +12056,24 @@ n5716:
   PLUTO_ATTN_RUN(kAttention4Sequence701);
   return {197u, {}};
 n5711:
-  PLUTO_ATTN_MATCH(4902u, 4924u);
-  PLUTO_ATTN_MATCH(4898u, 4952u);
+  PLUTO_ATTN_MATCH(4902, 4924);
+  PLUTO_ATTN_MATCH(4898, 4952);
   return {1773u, {}};
 n5709:
   PLUTO_ATTN_RUN(kAttention4Sequence702);
   return {1936u, {}};
 n5704:
-  PLUTO_ATTN_END(4925u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4925);
+  switch (history[position++].value) {
+    case 4868:
       goto n5703;
-    case 4873u:
+    case 4873:
       goto n5692;
-    case 4879u:
+    case 4879:
       goto n5688;
-    case 4898u:
+    case 4898:
       goto n5681;
-    case 4902u:
+    case 4902:
       goto n5674;
     default:
       return {kAttention4Done, {}};
@@ -12068,16 +12091,16 @@ n5681:
   PLUTO_ATTN_RUN(kAttention4Sequence706);
   return {2u, {}};
 n5674:
-  PLUTO_ATTN_MATCH(4868u, 4950u);
-  PLUTO_ATTN_MATCH(4868u, 4940u);
+  PLUTO_ATTN_MATCH(4868, 4950);
+  PLUTO_ATTN_MATCH(4868, 4940);
   return {160u, {}};
 n5672:
-  PLUTO_ATTN_MATCH(4902u, 4929u);
-  PLUTO_ATTN_END(4923u);
-  switch (history[position++]) {
-    case 4878u:
+  PLUTO_ATTN_MATCH(4902, 4929);
+  PLUTO_ATTN_END(4923);
+  switch (history[position++].value) {
+    case 4878:
       goto n5670;
-    case 4902u:
+    case 4902:
       goto n5657;
     default:
       return {kAttention4Done, {}};
@@ -12089,13 +12112,13 @@ n5657:
   PLUTO_ATTN_RUN(kAttention4Sequence708);
   return {198u, {}};
 n5649:
-  PLUTO_ATTN_END(4915u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4915);
+  switch (history[position++].value) {
+    case 4868:
       goto n5648;
-    case 4874u:
+    case 4874:
       goto n5644;
-    case 4902u:
+    case 4902:
       goto n5634;
     default:
       return {kAttention4Done, {}};
@@ -12107,13 +12130,14 @@ n5644:
   PLUTO_ATTN_RUN(kAttention4Sequence710);
   return {198u, {}};
 n5634:
-  PLUTO_ATTN_MATCH(4873u, 4952u);
-  PLUTO_ATTN_MATCH(4876u, 4924u);
-  PLUTO_ATTN_MATCH(4868u, 4929u);
+  PLUTO_ATTN_MATCH(4873, 4952);
+  PLUTO_ATTN_MATCH(4876, 4924);
+  PLUTO_ATTN_MATCH(4868, 4929);
   return {5631u, {}};
 }
 Attention4Step Attention4Part23(
-    std::uint32_t node, [[maybe_unused]] absl::Span<const StateId> history,
+    std::uint32_t node,
+    [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
   switch (node) {
     case 6143u:
@@ -12147,103 +12171,103 @@ n6110:
   PLUTO_ATTN_RUN(kAttention4Sequence715);
   return {301u, {}};
 n6103:
-  PLUTO_ATTN_END(4916u);
-  switch (history[position++]) {
-    case 4863u:
+  PLUTO_ATTN_END(4916);
+  switch (history[position++].value) {
+    case 4863:
       goto n6102;
-    case 4864u:
+    case 4864:
       goto n6095;
-    case 4865u:
+    case 4865:
       goto n6086;
-    case 4866u:
+    case 4866:
       goto n6082;
-    case 4867u:
+    case 4867:
       goto n6076;
-    case 4868u:
+    case 4868:
       goto n6072;
-    case 4869u:
+    case 4869:
       goto n6068;
-    case 4870u:
+    case 4870:
       goto n6062;
-    case 4871u:
+    case 4871:
       goto n6059;
-    case 4872u:
+    case 4872:
       goto n6056;
-    case 4873u:
+    case 4873:
       goto n6048;
-    case 4874u:
+    case 4874:
       goto n6040;
-    case 4875u:
+    case 4875:
       goto n6034;
-    case 4876u:
+    case 4876:
       goto n6027;
-    case 4877u:
+    case 4877:
       goto n6020;
-    case 4878u:
+    case 4878:
       goto n6013;
-    case 4879u:
+    case 4879:
       goto n6007;
-    case 4880u:
+    case 4880:
       goto n6000;
-    case 4881u:
+    case 4881:
       goto n5996;
-    case 4882u:
+    case 4882:
       goto n5989;
-    case 4883u:
+    case 4883:
       goto n5984;
-    case 4884u:
+    case 4884:
       goto n5978;
-    case 4885u:
+    case 4885:
       goto n5971;
-    case 4886u:
+    case 4886:
       goto n5964;
-    case 4887u:
+    case 4887:
       goto n5959;
-    case 4888u:
+    case 4888:
       goto n5950;
-    case 4889u:
+    case 4889:
       goto n5942;
-    case 4890u:
+    case 4890:
       goto n5934;
-    case 4891u:
+    case 4891:
       goto n5926;
-    case 4892u:
+    case 4892:
       goto n5917;
-    case 4893u:
+    case 4893:
       goto n5914;
-    case 4894u:
+    case 4894:
       goto n5907;
-    case 4895u:
+    case 4895:
       goto n5906;
-    case 4896u:
+    case 4896:
       goto n5900;
-    case 4897u:
+    case 4897:
       goto n5893;
-    case 4898u:
+    case 4898:
       return {5884u, {}};
-    case 4899u:
+    case 4899:
       return {5874u, {}};
-    case 4900u:
+    case 4900:
       return {5869u, {}};
-    case 4901u:
+    case 4901:
       return {5864u, {}};
-    case 4902u:
+    case 4902:
       return {5859u, {}};
-    case 4903u:
+    case 4903:
       return {5852u, {}};
-    case 4904u:
+    case 4904:
       return {5844u, {}};
-    case 4905u:
+    case 4905:
       return {5837u, {}};
-    case 4906u:
+    case 4906:
       return {5828u, {}};
-    case 4907u:
+    case 4907:
       return {5815u, {}};
-    case 4908u:
+    case 4908:
       return {5812u, {}};
-    case 4909u:
+    case 4909:
       return {5806u, {}};
-    case 4910u:
+    case 4910:
       return {5799u, {}};
     default:
       return {kAttention4Done, {}};
@@ -12270,14 +12294,14 @@ n6068:
   PLUTO_ATTN_RUN(kAttention4Sequence722);
   return {78u, {}};
 n6062:
-  PLUTO_ATTN_MATCH(4873u, 4939u);
-  PLUTO_ATTN_MATCH(4876u, 4933u);
-  PLUTO_ATTN_MATCH(4868u, 4929u);
+  PLUTO_ATTN_MATCH(4873, 4939);
+  PLUTO_ATTN_MATCH(4876, 4933);
+  PLUTO_ATTN_MATCH(4868, 4929);
   return {731u, {}};
 n6059:
-  PLUTO_ATTN_MATCH(4907u, 4948u);
-  PLUTO_ATTN_MATCH(4876u, 4928u);
-  PLUTO_ATTN_MATCH(4868u, 4929u);
+  PLUTO_ATTN_MATCH(4907, 4948);
+  PLUTO_ATTN_MATCH(4876, 4928);
+  PLUTO_ATTN_MATCH(4868, 4929);
   return {2327u, {}};
 n6056:
   PLUTO_ATTN_RUN(kAttention4Sequence723);
@@ -12340,15 +12364,15 @@ n5926:
   PLUTO_ATTN_RUN(kAttention4Sequence742);
   return {5449u, {}};
 n5917:
-  PLUTO_ATTN_MATCH(4870u, 4922u);
-  PLUTO_ATTN_MATCH(4876u, 4926u);
-  PLUTO_ATTN_MATCH(4868u, 4929u);
+  PLUTO_ATTN_MATCH(4870, 4922);
+  PLUTO_ATTN_MATCH(4876, 4926);
+  PLUTO_ATTN_MATCH(4868, 4929);
   return {2417u, {}};
 n5914:
   PLUTO_ATTN_RUN(kAttention4Sequence743);
   return {2274u, {}};
 n5907:
-  PLUTO_ATTN_MATCH(4873u, 4940u);
+  PLUTO_ATTN_MATCH(4873, 4940);
   return {731u, {}};
 n5906:
   PLUTO_ATTN_RUN(kAttention4Sequence744);
@@ -12361,7 +12385,8 @@ n5893:
   return {5887u, {}};
 }
 Attention4Step Attention4Part24(
-    std::uint32_t node, [[maybe_unused]] absl::Span<const StateId> history,
+    std::uint32_t node,
+    [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
   switch (node) {
     case 6399u:
@@ -12407,8 +12432,8 @@ n6399:
   PLUTO_ATTN_RUN(kAttention4Sequence747);
   return {5313u, {}};
 n6391:
-  PLUTO_ATTN_MATCH(4874u, 4920u);
-  PLUTO_ATTN_MATCH(4898u, 4924u);
+  PLUTO_ATTN_MATCH(4874, 4920);
+  PLUTO_ATTN_MATCH(4898, 4924);
   return {472u, {}};
 n6389:
   PLUTO_ATTN_RUN(kAttention4Sequence748);
@@ -12426,9 +12451,9 @@ n6360:
   PLUTO_ATTN_RUN(kAttention4Sequence752);
   return {1306u, {}};
 n6356:
-  PLUTO_ATTN_MATCH(4903u, 4940u);
-  PLUTO_ATTN_MATCH(4885u, 4950u);
-  PLUTO_ATTN_MATCH(4868u, 4929u);
+  PLUTO_ATTN_MATCH(4903, 4940);
+  PLUTO_ATTN_MATCH(4885, 4950);
+  PLUTO_ATTN_MATCH(4868, 4929);
   return {700u, {}};
 n6353:
   PLUTO_ATTN_RUN(kAttention4Sequence753);
@@ -12437,13 +12462,13 @@ n6343:
   PLUTO_ATTN_RUN(kAttention4Sequence754);
   return {338u, {}};
 n6334:
-  PLUTO_ATTN_END(4928u);
-  switch (history[position++]) {
-    case 4876u:
+  PLUTO_ATTN_END(4928);
+  switch (history[position++].value) {
+    case 4876:
       goto n6333;
-    case 4885u:
+    case 4885:
       goto n6326;
-    case 4902u:
+    case 4902:
       goto n6318;
     default:
       return {kAttention4Done, {}};
@@ -12458,11 +12483,11 @@ n6318:
   PLUTO_ATTN_RUN(kAttention4Sequence757);
   return {2151u, {}};
 n6311:
-  PLUTO_ATTN_END(4920u);
-  switch (history[position++]) {
-    case 4874u:
+  PLUTO_ATTN_END(4920);
+  switch (history[position++].value) {
+    case 4874:
       goto n6310;
-    case 4876u:
+    case 4876:
       goto n6306;
     default:
       return {kAttention4Done, {}};
@@ -12474,13 +12499,13 @@ n6306:
   PLUTO_ATTN_RUN(kAttention4Sequence759);
   return {366u, {}};
 n6301:
-  PLUTO_ATTN_END(4929u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4929);
+  switch (history[position++].value) {
+    case 4868:
       goto n6300;
-    case 4874u:
+    case 4874:
       goto n6294;
-    case 4897u:
+    case 4897:
       goto n6290;
     default:
       return {kAttention4Done, {}};
@@ -12495,23 +12520,23 @@ n6290:
   PLUTO_ATTN_RUN(kAttention4Sequence762);
   return {114u, {}};
 n6285:
-  PLUTO_ATTN_END(4938u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4938);
+  switch (history[position++].value) {
+    case 4868:
       goto n6284;
-    case 4873u:
+    case 4873:
       goto n6275;
-    case 4874u:
+    case 4874:
       goto n6274;
-    case 4879u:
+    case 4879:
       goto n6269;
-    case 4886u:
+    case 4886:
       goto n6262;
-    case 4898u:
+    case 4898:
       goto n6257;
-    case 4899u:
+    case 4899:
       goto n6251;
-    case 4902u:
+    case 4902:
       goto n6239;
     default:
       return {kAttention4Done, {}};
@@ -12520,7 +12545,7 @@ n6284:
   PLUTO_ATTN_RUN(kAttention4Sequence763);
   return {1021u, {}};
 n6275:
-  PLUTO_ATTN_MATCH(4893u, 4952u);
+  PLUTO_ATTN_MATCH(4893, 4952);
   return {372u, {}};
 n6274:
   PLUTO_ATTN_RUN(kAttention4Sequence764);
@@ -12529,7 +12554,7 @@ n6269:
   PLUTO_ATTN_RUN(kAttention4Sequence765);
   goto n6263;
 n6263:
-  PLUTO_ATTN_MATCH(4898u, 4952u);
+  PLUTO_ATTN_MATCH(4898, 4952);
   return {385u, {}};
 n6262:
   PLUTO_ATTN_RUN(kAttention4Sequence766);
@@ -12544,15 +12569,15 @@ n6239:
   PLUTO_ATTN_RUN(kAttention4Sequence769);
   return {2991u, {}};
 n6235:
-  PLUTO_ATTN_END(4934u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4934);
+  switch (history[position++].value) {
+    case 4868:
       goto n6234;
-    case 4876u:
+    case 4876:
       goto n6230;
-    case 4885u:
+    case 4885:
       goto n6223;
-    case 4886u:
+    case 4886:
       goto n6216;
     default:
       return {kAttention4Done, {}};
@@ -12570,15 +12595,15 @@ n6216:
   PLUTO_ATTN_RUN(kAttention4Sequence773);
   return {1870u, {}};
 n6207:
-  PLUTO_ATTN_END(4923u);
-  switch (history[position++]) {
-    case 4880u:
+  PLUTO_ATTN_END(4923);
+  switch (history[position++].value) {
+    case 4880:
       goto n6206;
-    case 4883u:
+    case 4883:
       goto n6196;
-    case 4891u:
+    case 4891:
       goto n6188;
-    case 4902u:
+    case 4902:
       goto n6180;
     default:
       return {kAttention4Done, {}};
@@ -12596,33 +12621,33 @@ n6180:
   PLUTO_ATTN_RUN(kAttention4Sequence777);
   return {86u, {}};
 n6171:
-  PLUTO_ATTN_END(4955u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4955);
+  switch (history[position++].value) {
+    case 4868:
       goto n6170;
-    case 4872u:
+    case 4872:
       goto n6167;
-    case 4878u:
+    case 4878:
       goto n6161;
-    case 4886u:
+    case 4886:
       goto n6153;
-    case 4887u:
+    case 4887:
       return {6143u, {}};
-    case 4891u:
+    case 4891:
       return {6139u, {}};
-    case 4893u:
+    case 4893:
       return {6131u, {}};
-    case 4902u:
+    case 4902:
       return {6123u, {}};
-    case 4907u:
+    case 4907:
       return {6110u, {}};
     default:
       return {kAttention4Done, {}};
   }
 n6170:
-  PLUTO_ATTN_MATCH(4870u, 4923u);
-  PLUTO_ATTN_MATCH(4875u, 4950u);
-  PLUTO_ATTN_MATCH(4876u, 4915u);
+  PLUTO_ATTN_MATCH(4870, 4923);
+  PLUTO_ATTN_MATCH(4875, 4950);
+  PLUTO_ATTN_MATCH(4876, 4915);
   return {1782u, {}};
 n6167:
   PLUTO_ATTN_RUN(kAttention4Sequence778);
@@ -12635,7 +12660,8 @@ n6153:
   return {731u, {}};
 }
 Attention4Step Attention4Part25(
-    std::uint32_t node, [[maybe_unused]] absl::Span<const StateId> history,
+    std::uint32_t node,
+    [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
   switch (node) {
     case 6655u:
@@ -12668,7 +12694,7 @@ Attention4Step Attention4Part25(
       return {kAttention4Done, {}};
   }
 n6655:
-  PLUTO_ATTN_MATCH(4908u, 4933u);
+  PLUTO_ATTN_MATCH(4908, 4933);
   return {4474u, {}};
 n6654:
   PLUTO_ATTN_RUN(kAttention4Sequence781);
@@ -12695,65 +12721,65 @@ n6607:
   PLUTO_ATTN_RUN(kAttention4Sequence788);
   return {1889u, {}};
 n6602:
-  PLUTO_ATTN_END(4952u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4952);
+  switch (history[position++].value) {
+    case 4868:
       goto n6601;
-    case 4870u:
+    case 4870:
       goto n6598;
-    case 4872u:
+    case 4872:
       goto n6592;
-    case 4873u:
+    case 4873:
       goto n6586;
-    case 4874u:
+    case 4874:
       goto n6584;
-    case 4875u:
+    case 4875:
       goto n6579;
-    case 4878u:
+    case 4878:
       goto n6572;
-    case 4879u:
+    case 4879:
       goto n6566;
-    case 4880u:
+    case 4880:
       return {338u, {}};
-    case 4881u:
+    case 4881:
       goto n6559;
-    case 4885u:
+    case 4885:
       goto n6549;
-    case 4886u:
+    case 4886:
       goto n6544;
-    case 4887u:
+    case 4887:
       goto n6541;
-    case 4889u:
+    case 4889:
       goto n6534;
-    case 4891u:
+    case 4891:
       goto n6529;
-    case 4895u:
+    case 4895:
       goto n6526;
-    case 4897u:
+    case 4897:
       goto n6518;
-    case 4898u:
+    case 4898:
       goto n6513;
-    case 4899u:
+    case 4899:
       goto n6508;
-    case 4902u:
+    case 4902:
       goto n6503;
-    case 4903u:
+    case 4903:
       goto n6500;
-    case 4904u:
+    case 4904:
       goto n6499;
-    case 4905u:
+    case 4905:
       goto n6491;
-    case 4907u:
+    case 4907:
       goto n6483;
-    case 4908u:
+    case 4908:
       goto n6477;
     default:
       return {kAttention4Done, {}};
   }
 n6601:
-  PLUTO_ATTN_MATCH(4876u, 4934u);
-  PLUTO_ATTN_MATCH(4868u, 4929u);
-  PLUTO_ATTN_MATCH(4868u, 4913u);
+  PLUTO_ATTN_MATCH(4876, 4934);
+  PLUTO_ATTN_MATCH(4868, 4929);
+  PLUTO_ATTN_MATCH(4868, 4913);
   return {4284u, {}};
 n6598:
   PLUTO_ATTN_RUN(kAttention4Sequence789);
@@ -12762,8 +12788,8 @@ n6592:
   PLUTO_ATTN_RUN(kAttention4Sequence790);
   return {1494u, {}};
 n6586:
-  PLUTO_ATTN_MATCH(4893u, 4940u);
-  PLUTO_ATTN_MATCH(4907u, 4913u);
+  PLUTO_ATTN_MATCH(4893, 4940);
+  PLUTO_ATTN_MATCH(4907, 4913);
   return {1486u, {}};
 n6584:
   PLUTO_ATTN_RUN(kAttention4Sequence791);
@@ -12784,9 +12810,9 @@ n6549:
   PLUTO_ATTN_RUN(kAttention4Sequence796);
   return {2626u, {}};
 n6544:
-  PLUTO_ATTN_MATCH(4907u, 4923u);
-  PLUTO_ATTN_MATCH(4872u, 4953u);
-  PLUTO_ATTN_MATCH(4868u, 4929u);
+  PLUTO_ATTN_MATCH(4907, 4923);
+  PLUTO_ATTN_MATCH(4872, 4953);
+  PLUTO_ATTN_MATCH(4868, 4929);
   return {820u, {}};
 n6541:
   PLUTO_ATTN_RUN(kAttention4Sequence797);
@@ -12795,9 +12821,9 @@ n6534:
   PLUTO_ATTN_RUN(kAttention4Sequence798);
   return {160u, {}};
 n6529:
-  PLUTO_ATTN_MATCH(4886u, 4925u);
-  PLUTO_ATTN_MATCH(4907u, 4924u);
-  PLUTO_ATTN_MATCH(4885u, 4953u);
+  PLUTO_ATTN_MATCH(4886, 4925);
+  PLUTO_ATTN_MATCH(4907, 4924);
+  PLUTO_ATTN_MATCH(4885, 4953);
   return {387u, {}};
 n6526:
   PLUTO_ATTN_RUN(kAttention4Sequence799);
@@ -12812,12 +12838,12 @@ n6508:
   PLUTO_ATTN_RUN(kAttention4Sequence802);
   return {5444u, {}};
 n6503:
-  PLUTO_ATTN_MATCH(4886u, 4922u);
-  PLUTO_ATTN_MATCH(4880u, 4924u);
-  PLUTO_ATTN_MATCH(4876u, 4928u);
+  PLUTO_ATTN_MATCH(4886, 4922);
+  PLUTO_ATTN_MATCH(4880, 4924);
+  PLUTO_ATTN_MATCH(4876, 4928);
   return {4346u, {}};
 n6500:
-  PLUTO_ATTN_MATCH(4902u, 4926u);
+  PLUTO_ATTN_MATCH(4902, 4926);
   return {114u, {}};
 n6499:
   PLUTO_ATTN_RUN(kAttention4Sequence803);
@@ -12832,19 +12858,19 @@ n6477:
   PLUTO_ATTN_RUN(kAttention4Sequence806);
   return {2718u, {}};
 n6469:
-  PLUTO_ATTN_END(4935u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4935);
+  switch (history[position++].value) {
+    case 4868:
       goto n6468;
-    case 4873u:
+    case 4873:
       goto n6464;
-    case 4874u:
+    case 4874:
       goto n6455;
-    case 4875u:
+    case 4875:
       goto n6452;
-    case 4889u:
+    case 4889:
       goto n6449;
-    case 4902u:
+    case 4902:
       goto n6440;
     default:
       return {kAttention4Done, {}};
@@ -12856,17 +12882,17 @@ n6464:
   PLUTO_ATTN_RUN(kAttention4Sequence808);
   goto n6456;
 n6456:
-  PLUTO_ATTN_MATCH(4893u, 4913u);
+  PLUTO_ATTN_MATCH(4893, 4913);
   return {114u, {}};
 n6455:
-  PLUTO_ATTN_MATCH(4907u, 4923u);
-  PLUTO_ATTN_MATCH(4868u, 4953u);
-  PLUTO_ATTN_MATCH(4874u, 4924u);
+  PLUTO_ATTN_MATCH(4907, 4923);
+  PLUTO_ATTN_MATCH(4868, 4953);
+  PLUTO_ATTN_MATCH(4874, 4924);
   return {6263u, {}};
 n6452:
-  PLUTO_ATTN_MATCH(4880u, 4944u);
-  PLUTO_ATTN_MATCH(4868u, 4928u);
-  PLUTO_ATTN_MATCH(4898u, 4921u);
+  PLUTO_ATTN_MATCH(4880, 4944);
+  PLUTO_ATTN_MATCH(4868, 4928);
+  PLUTO_ATTN_MATCH(4898, 4921);
   return {435u, {}};
 n6449:
   PLUTO_ATTN_RUN(kAttention4Sequence809);
@@ -12875,35 +12901,35 @@ n6440:
   PLUTO_ATTN_RUN(kAttention4Sequence810);
   return {339u, {}};
 n6433:
-  PLUTO_ATTN_END(4953u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4953);
+  switch (history[position++].value) {
+    case 4868:
       goto n6432;
-    case 4870u:
+    case 4870:
       goto n6425;
-    case 4873u:
+    case 4873:
       goto n6418;
-    case 4874u:
+    case 4874:
       goto n6406;
-    case 4876u:
+    case 4876:
       goto n6400;
-    case 4883u:
+    case 4883:
       return {6391u, {}};
-    case 4885u:
+    case 4885:
       return {6389u, {}};
-    case 4891u:
+    case 4891:
       return {6383u, {}};
-    case 4893u:
+    case 4893:
       return {6376u, {}};
-    case 4895u:
+    case 4895:
       return {6366u, {}};
-    case 4898u:
+    case 4898:
       return {6360u, {}};
-    case 4902u:
+    case 4902:
       return {6356u, {}};
-    case 4903u:
+    case 4903:
       return {6353u, {}};
-    case 4904u:
+    case 4904:
       return {6343u, {}};
     default:
       return {kAttention4Done, {}};
@@ -12921,11 +12947,12 @@ n6406:
   PLUTO_ATTN_RUN(kAttention4Sequence814);
   return {1067u, {}};
 n6400:
-  PLUTO_ATTN_MATCH(4868u, 4929u);
+  PLUTO_ATTN_MATCH(4868, 4929);
   return {6399u, {}};
 }
 Attention4Step Attention4Part26(
-    std::uint32_t node, [[maybe_unused]] absl::Span<const StateId> history,
+    std::uint32_t node,
+    [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
   switch (node) {
     case 6911u:
@@ -12943,116 +12970,116 @@ n6911:
   PLUTO_ATTN_RUN(kAttention4Sequence815);
   return {3339u, {}};
 n6907:
-  PLUTO_ATTN_END(4913u);
-  switch (history[position++]) {
-    case 4863u:
+  PLUTO_ATTN_END(4913);
+  switch (history[position++].value) {
+    case 4863:
       goto n6906;
-    case 4868u:
+    case 4868:
       goto n6896;
-    case 4869u:
+    case 4869:
       goto n6746;
-    case 4870u:
+    case 4870:
       goto n6686;
-    case 4873u:
+    case 4873:
       goto n6673;
-    case 4875u:
+    case 4875:
       return {6602u, {}};
-    case 4876u:
+    case 4876:
       return {6469u, {}};
-    case 4879u:
+    case 4879:
       return {6433u, {}};
-    case 4880u:
+    case 4880:
       return {6334u, {}};
-    case 4883u:
+    case 4883:
       return {6311u, {}};
-    case 4885u:
+    case 4885:
       return {6301u, {}};
-    case 4887u:
+    case 4887:
       return {6285u, {}};
-    case 4891u:
+    case 4891:
       return {6235u, {}};
-    case 4893u:
+    case 4893:
       return {6207u, {}};
-    case 4897u:
+    case 4897:
       return {6171u, {}};
-    case 4898u:
+    case 4898:
       return {6103u, {}};
-    case 4900u:
+    case 4900:
       return {5796u, {}};
-    case 4902u:
+    case 4902:
       return {5751u, {}};
-    case 4903u:
+    case 4903:
       return {5717u, {}};
-    case 4904u:
+    case 4904:
       return {5704u, {}};
     default:
       return {kAttention4Done, {}};
   }
 n6906:
-  PLUTO_ATTN_END(4922u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4922);
+  switch (history[position++].value) {
+    case 4868:
       goto n6905;
-    case 4876u:
+    case 4876:
       goto n6904;
-    case 4902u:
+    case 4902:
       goto n6901;
     default:
       return {kAttention4Done, {}};
   }
 n6905:
-  PLUTO_ATTN_MATCH(4902u, 4924u);
+  PLUTO_ATTN_MATCH(4902, 4924);
   return {1005u, {}};
 n6904:
-  PLUTO_ATTN_MATCH(4868u, 4929u);
-  PLUTO_ATTN_MATCH(4898u, 4953u);
-  PLUTO_ATTN_MATCH(4898u, 4953u);
+  PLUTO_ATTN_MATCH(4868, 4929);
+  PLUTO_ATTN_MATCH(4898, 4953);
+  PLUTO_ATTN_MATCH(4898, 4953);
   return {4062u, {}};
 n6901:
   PLUTO_ATTN_RUN(kAttention4Sequence816);
   return {2723u, {}};
 n6896:
-  PLUTO_ATTN_END(4924u);
-  switch (history[position++]) {
-    case 4866u:
+  PLUTO_ATTN_END(4924);
+  switch (history[position++].value) {
+    case 4866:
       goto n6895;
-    case 4868u:
+    case 4868:
       goto n6887;
-    case 4870u:
+    case 4870:
       goto n6881;
-    case 4873u:
+    case 4873:
       goto n6872;
-    case 4874u:
+    case 4874:
       goto n6867;
-    case 4879u:
+    case 4879:
       goto n6860;
-    case 4885u:
+    case 4885:
       goto n6852;
-    case 4886u:
+    case 4886:
       goto n6846;
-    case 4888u:
+    case 4888:
       goto n6841;
-    case 4891u:
+    case 4891:
       goto n6832;
-    case 4893u:
+    case 4893:
       goto n6825;
-    case 4895u:
+    case 4895:
       goto n6819;
-    case 4896u:
+    case 4896:
       goto n6815;
-    case 4897u:
+    case 4897:
       goto n6800;
-    case 4898u:
+    case 4898:
       goto n6792;
-    case 4900u:
+    case 4900:
       goto n6788;
-    case 4902u:
+    case 4902:
       goto n6781;
-    case 4903u:
+    case 4903:
       goto n6773;
-    case 4904u:
+    case 4904:
       goto n6770;
-    case 4906u:
+    case 4906:
       goto n6761;
     default:
       return {kAttention4Done, {}};
@@ -13100,7 +13127,7 @@ n6800:
   PLUTO_ATTN_RUN(kAttention4Sequence830);
   goto n6793;
 n6793:
-  PLUTO_ATTN_MATCH(4902u, 4915u);
+  PLUTO_ATTN_MATCH(4902, 4915);
   return {2u, {}};
 n6792:
   PLUTO_ATTN_RUN(kAttention4Sequence831);
@@ -13112,9 +13139,9 @@ n6781:
   PLUTO_ATTN_RUN(kAttention4Sequence833);
   return {635u, {}};
 n6773:
-  PLUTO_ATTN_MATCH(4902u, 4950u);
-  PLUTO_ATTN_MATCH(4902u, 4943u);
-  PLUTO_ATTN_MATCH(4902u, 4933u);
+  PLUTO_ATTN_MATCH(4902, 4950);
+  PLUTO_ATTN_MATCH(4902, 4943);
+  PLUTO_ATTN_MATCH(4902, 4933);
   return {373u, {}};
 n6770:
   PLUTO_ATTN_RUN(kAttention4Sequence834);
@@ -13123,25 +13150,25 @@ n6761:
   PLUTO_ATTN_RUN(kAttention4Sequence835);
   return {3790u, {}};
 n6746:
-  PLUTO_ATTN_END(4926u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4926);
+  switch (history[position++].value) {
+    case 4868:
       goto n6745;
-    case 4874u:
+    case 4874:
       goto n6739;
-    case 4875u:
+    case 4875:
       goto n6732;
-    case 4886u:
+    case 4886:
       goto n6725;
-    case 4893u:
+    case 4893:
       goto n6720;
-    case 4896u:
+    case 4896:
       goto n6712;
-    case 4897u:
+    case 4897:
       goto n6708;
-    case 4902u:
+    case 4902:
       goto n6702;
-    case 4903u:
+    case 4903:
       goto n6694;
     default:
       return {kAttention4Done, {}};
@@ -13174,44 +13201,44 @@ n6694:
   PLUTO_ATTN_RUN(kAttention4Sequence844);
   return {372u, {}};
 n6686:
-  PLUTO_ATTN_END(4953u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4953);
+  switch (history[position++].value) {
+    case 4868:
       goto n6685;
-    case 4893u:
+    case 4893:
       goto n6683;
     default:
       return {kAttention4Done, {}};
   }
 n6685:
-  PLUTO_ATTN_MATCH(4902u, 4924u);
-  PLUTO_ATTN_MATCH(4897u, 4913u);
+  PLUTO_ATTN_MATCH(4902, 4924);
+  PLUTO_ATTN_MATCH(4897, 4913);
   return {635u, {}};
 n6683:
   PLUTO_ATTN_RUN(kAttention4Sequence845);
   return {2u, {}};
 n6673:
-  PLUTO_ATTN_END(4941u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4941);
+  switch (history[position++].value) {
+    case 4868:
       goto n6672;
-    case 4873u:
+    case 4873:
       goto n6661;
-    case 4874u:
+    case 4874:
       return {6654u, {}};
-    case 4875u:
+    case 4875:
       return {6650u, {}};
-    case 4886u:
+    case 4886:
       return {6644u, {}};
-    case 4891u:
+    case 4891:
       return {6633u, {}};
-    case 4895u:
+    case 4895:
       return {6627u, {}};
-    case 4896u:
+    case 4896:
       return {6619u, {}};
-    case 4898u:
+    case 4898:
       return {6614u, {}};
-    case 4902u:
+    case 4902:
       return {6607u, {}};
     default:
       return {kAttention4Done, {}};
@@ -13224,7 +13251,8 @@ n6661:
   return {6655u, {}};
 }
 Attention4Step Attention4Part27(
-    std::uint32_t node, [[maybe_unused]] absl::Span<const StateId> history,
+    std::uint32_t node,
+    [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
   switch (node) {
     case 7167u:
@@ -13243,21 +13271,21 @@ Attention4Step Attention4Part27(
       return {kAttention4Done, {}};
   }
 n7167:
-  PLUTO_ATTN_MATCH(4896u, 4940u);
-  PLUTO_ATTN_MATCH(4886u, 4916u);
-  PLUTO_ATTN_MATCH(4903u, 4940u);
+  PLUTO_ATTN_MATCH(4896, 4940);
+  PLUTO_ATTN_MATCH(4886, 4916);
+  PLUTO_ATTN_MATCH(4903, 4940);
   return {1773u, {}};
 n7164:
   PLUTO_ATTN_RUN(kAttention4Sequence848);
   return {559u, {}};
 n7154:
-  PLUTO_ATTN_END(4913u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4913);
+  switch (history[position++].value) {
+    case 4868:
       goto n7153;
-    case 4874u:
+    case 4874:
       goto n7149;
-    case 4891u:
+    case 4891:
       goto n7145;
     default:
       return {kAttention4Done, {}};
@@ -13272,39 +13300,39 @@ n7145:
   PLUTO_ATTN_RUN(kAttention4Sequence851);
   return {2917u, {}};
 n7138:
-  PLUTO_ATTN_END(4941u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4941);
+  switch (history[position++].value) {
+    case 4868:
       goto n7137;
-    case 4874u:
+    case 4874:
       goto n7112;
-    case 4876u:
+    case 4876:
       goto n7104;
-    case 4887u:
+    case 4887:
       goto n7080;
-    case 4902u:
+    case 4902:
       goto n7072;
-    case 4903u:
+    case 4903:
       goto n7057;
-    case 4904u:
+    case 4904:
       goto n7048;
     default:
       return {kAttention4Done, {}};
   }
 n7137:
-  PLUTO_ATTN_END(4923u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4923);
+  switch (history[position++].value) {
+    case 4868:
       goto n7136;
-    case 4870u:
+    case 4870:
       goto n7132;
-    case 4873u:
+    case 4873:
       goto n7129;
-    case 4874u:
+    case 4874:
       goto n7123;
-    case 4898u:
+    case 4898:
       goto n7122;
-    case 4902u:
+    case 4902:
       goto n7114;
     default:
       return {kAttention4Done, {}};
@@ -13313,38 +13341,38 @@ n7136:
   PLUTO_ATTN_RUN(kAttention4Sequence852);
   return {821u, {}};
 n7132:
-  PLUTO_ATTN_MATCH(4886u, 4926u);
-  PLUTO_ATTN_MATCH(4880u, 4916u);
-  PLUTO_ATTN_MATCH(4868u, 4928u);
+  PLUTO_ATTN_MATCH(4886, 4926);
+  PLUTO_ATTN_MATCH(4880, 4916);
+  PLUTO_ATTN_MATCH(4868, 4928);
   return {1545u, {}};
 n7129:
   PLUTO_ATTN_RUN(kAttention4Sequence853);
   return {6793u, {}};
 n7123:
-  PLUTO_ATTN_MATCH(4908u, 4937u);
+  PLUTO_ATTN_MATCH(4908, 4937);
   return {0u, {}};
 n7122:
   PLUTO_ATTN_RUN(kAttention4Sequence854);
   return {2991u, {}};
 n7114:
-  PLUTO_ATTN_MATCH(4870u, 4953u);
-  PLUTO_ATTN_MATCH(4868u, 4926u);
+  PLUTO_ATTN_MATCH(4870, 4953);
+  PLUTO_ATTN_MATCH(4868, 4926);
   return {2047u, {}};
 n7112:
   PLUTO_ATTN_RUN(kAttention4Sequence855);
   return {197u, {}};
 n7104:
-  PLUTO_ATTN_END(4929u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4929);
+  switch (history[position++].value) {
+    case 4868:
       goto n7103;
-    case 4870u:
+    case 4870:
       goto n7098;
-    case 4873u:
+    case 4873:
       goto n7094;
-    case 4874u:
+    case 4874:
       goto n7087;
-    case 4886u:
+    case 4886:
       goto n7083;
     default:
       return {kAttention4Done, {}};
@@ -13362,21 +13390,21 @@ n7087:
   PLUTO_ATTN_RUN(kAttention4Sequence859);
   return {2917u, {}};
 n7083:
-  PLUTO_ATTN_MATCH(4902u, 4921u);
-  PLUTO_ATTN_MATCH(4898u, 4953u);
-  PLUTO_ATTN_MATCH(4902u, 4953u);
+  PLUTO_ATTN_MATCH(4902, 4921);
+  PLUTO_ATTN_MATCH(4898, 4953);
+  PLUTO_ATTN_MATCH(4902, 4953);
   return {282u, {}};
 n7080:
   PLUTO_ATTN_RUN(kAttention4Sequence860);
   return {372u, {}};
 n7072:
-  PLUTO_ATTN_END(4950u);
-  switch (history[position++]) {
-    case 4870u:
+  PLUTO_ATTN_END(4950);
+  switch (history[position++].value) {
+    case 4870:
       goto n7071;
-    case 4873u:
+    case 4873:
       goto n7065;
-    case 4876u:
+    case 4876:
       goto n7061;
     default:
       return {kAttention4Done, {}};
@@ -13394,13 +13422,13 @@ n7057:
   PLUTO_ATTN_RUN(kAttention4Sequence864);
   return {1317u, {}};
 n7048:
-  PLUTO_ATTN_END(4925u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4925);
+  switch (history[position++].value) {
+    case 4868:
       goto n7047;
-    case 4872u:
+    case 4872:
       goto n7037;
-    case 4891u:
+    case 4891:
       goto n7026;
     default:
       return {kAttention4Done, {}};
@@ -13412,16 +13440,16 @@ n7037:
   PLUTO_ATTN_RUN(kAttention4Sequence866);
   return {565u, {}};
 n7026:
-  PLUTO_ATTN_MATCH(4904u, 4925u);
-  PLUTO_ATTN_MATCH(4868u, 4953u);
-  PLUTO_ATTN_MATCH(4870u, 4913u);
+  PLUTO_ATTN_MATCH(4904, 4925);
+  PLUTO_ATTN_MATCH(4868, 4953);
+  PLUTO_ATTN_MATCH(4870, 4913);
   return {5736u, {}};
 n7023:
-  PLUTO_ATTN_END(4914u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4914);
+  switch (history[position++].value) {
+    case 4868:
       goto n7022;
-    case 4886u:
+    case 4886:
       goto n7013;
     default:
       return {kAttention4Done, {}};
@@ -13430,11 +13458,11 @@ n7022:
   PLUTO_ATTN_RUN(kAttention4Sequence867);
   return {86u, {}};
 n7013:
-  PLUTO_ATTN_END(4933u);
-  switch (history[position++]) {
-    case 4900u:
+  PLUTO_ATTN_END(4933);
+  switch (history[position++].value) {
+    case 4900:
       goto n7012;
-    case 4902u:
+    case 4902:
       goto n7001;
     default:
       return {kAttention4Done, {}};
@@ -13446,33 +13474,33 @@ n7001:
   PLUTO_ATTN_RUN(kAttention4Sequence869);
   return {6905u, {}};
 n6997:
-  PLUTO_ATTN_END(4952u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4952);
+  switch (history[position++].value) {
+    case 4868:
       goto n6996;
-    case 4876u:
+    case 4876:
       goto n6982;
-    case 4880u:
+    case 4880:
       goto n6971;
-    case 4891u:
+    case 4891:
       goto n6964;
-    case 4893u:
+    case 4893:
       goto n6956;
-    case 4902u:
+    case 4902:
       goto n6913;
     default:
       return {kAttention4Done, {}};
   }
 n6996:
-  PLUTO_ATTN_END(4941u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4941);
+  switch (history[position++].value) {
+    case 4868:
       goto n6995;
-    case 4873u:
+    case 4873:
       goto n6990;
-    case 4898u:
+    case 4898:
       goto n6984;
-    case 4902u:
+    case 4902:
       goto n6983;
     default:
       return {kAttention4Done, {}};
@@ -13484,17 +13512,17 @@ n6990:
   PLUTO_ATTN_RUN(kAttention4Sequence871);
   return {2007u, {}};
 n6984:
-  PLUTO_ATTN_MATCH(4872u, 4950u);
+  PLUTO_ATTN_MATCH(4872, 4950);
   return {2301u, {}};
 n6983:
-  PLUTO_ATTN_MATCH(4898u, 4952u);
+  PLUTO_ATTN_MATCH(4898, 4952);
   return {1100u, {}};
 n6982:
-  PLUTO_ATTN_END(4929u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4929);
+  switch (history[position++].value) {
+    case 4868:
       goto n6981;
-    case 4893u:
+    case 4893:
       goto n6977;
     default:
       return {kAttention4Done, {}};
@@ -13512,21 +13540,21 @@ n6964:
   PLUTO_ATTN_RUN(kAttention4Sequence875);
   return {5419u, {}};
 n6956:
-  PLUTO_ATTN_END(4913u);
-  switch (history[position++]) {
-    case 4870u:
+  PLUTO_ATTN_END(4913);
+  switch (history[position++].value) {
+    case 4870:
       goto n6955;
-    case 4873u:
+    case 4873:
       goto n6950;
-    case 4876u:
+    case 4876:
       goto n6947;
-    case 4880u:
+    case 4880:
       goto n6941;
-    case 4892u:
+    case 4892:
       goto n6934;
-    case 4902u:
+    case 4902:
       goto n6929;
-    case 4907u:
+    case 4907:
       goto n6922;
     default:
       return {kAttention4Done, {}};
@@ -13535,9 +13563,9 @@ n6955:
   PLUTO_ATTN_RUN(kAttention4Sequence876);
   return {731u, {}};
 n6950:
-  PLUTO_ATTN_MATCH(4886u, 4952u);
-  PLUTO_ATTN_MATCH(4907u, 4924u);
-  PLUTO_ATTN_MATCH(4897u, 4953u);
+  PLUTO_ATTN_MATCH(4886, 4952);
+  PLUTO_ATTN_MATCH(4907, 4924);
+  PLUTO_ATTN_MATCH(4897, 4953);
   return {2702u, {}};
 n6947:
   PLUTO_ATTN_RUN(kAttention4Sequence877);
@@ -13555,12 +13583,13 @@ n6922:
   PLUTO_ATTN_RUN(kAttention4Sequence881);
   return {386u, {}};
 n6913:
-  PLUTO_ATTN_MATCH(4907u, 4952u);
-  PLUTO_ATTN_MATCH(4876u, 4953u);
+  PLUTO_ATTN_MATCH(4907, 4952);
+  PLUTO_ATTN_MATCH(4876, 4953);
   return {6911u, {}};
 }
 Attention4Step Attention4Part28(
-    std::uint32_t node, [[maybe_unused]] absl::Span<const StateId> history,
+    std::uint32_t node,
+    [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
   switch (node) {
     case 7228u:
@@ -13570,23 +13599,23 @@ Attention4Step Attention4Part28(
   }
 n7228:
   PLUTO_ATTN_MORE();
-  switch (history[position++]) {
-    case 4868u:
+  switch (history[position++].value) {
+    case 4868:
       goto n7227;
-    case 4874u:
+    case 4874:
       goto n7198;
     default:
       return {kAttention4Done, {}};
   }
 n7227:
-  PLUTO_ATTN_MATCH(4868u, 4923u);
-  PLUTO_ATTN_END(4923u);
-  switch (history[position++]) {
-    case 4875u:
+  PLUTO_ATTN_MATCH(4868, 4923);
+  PLUTO_ATTN_END(4923);
+  switch (history[position++].value) {
+    case 4875:
       goto n7225;
-    case 4891u:
+    case 4891:
       goto n7211;
-    case 4902u:
+    case 4902:
       goto n7204;
     default:
       return {kAttention4Done, {}};
@@ -13601,107 +13630,107 @@ n7204:
   PLUTO_ATTN_RUN(kAttention4Sequence884);
   return {4u, {}};
 n7198:
-  PLUTO_ATTN_END(4923u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4923);
+  switch (history[position++].value) {
+    case 4868:
       goto n7197;
-    case 4870u:
+    case 4870:
       return {3273u, {}};
-    case 4872u:
+    case 4872:
       return {3264u, {}};
-    case 4875u:
+    case 4875:
       return {3194u, {}};
-    case 4876u:
+    case 4876:
       return {3153u, {}};
-    case 4880u:
+    case 4880:
       return {3074u, {}};
-    case 4885u:
+    case 4885:
       return {3063u, {}};
-    case 4887u:
+    case 4887:
       return {2858u, {}};
-    case 4891u:
+    case 4891:
       return {2446u, {}};
-    case 4893u:
+    case 4893:
       return {2378u, {}};
-    case 4898u:
+    case 4898:
       return {1668u, {}};
-    case 4900u:
+    case 4900:
       return {1291u, {}};
-    case 4902u:
+    case 4902:
       return {1225u, {}};
-    case 4904u:
+    case 4904:
       return {229u, {}};
-    case 4907u:
+    case 4907:
       return {11u, {}};
     default:
       return {kAttention4Done, {}};
   }
 n7197:
-  PLUTO_ATTN_END(4923u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4923);
+  switch (history[position++].value) {
+    case 4868:
       goto n7196;
-    case 4870u:
+    case 4870:
       return {7138u, {}};
-    case 4872u:
+    case 4872:
       return {7023u, {}};
-    case 4873u:
+    case 4873:
       return {6997u, {}};
-    case 4874u:
+    case 4874:
       return {6907u, {}};
-    case 4876u:
+    case 4876:
       return {5672u, {}};
-    case 4879u:
+    case 4879:
       return {5649u, {}};
-    case 4885u:
+    case 4885:
       return {5628u, {}};
-    case 4887u:
+    case 4887:
       return {5595u, {}};
-    case 4891u:
+    case 4891:
       return {5509u, {}};
-    case 4893u:
+    case 4893:
       return {5324u, {}};
-    case 4895u:
+    case 4895:
       return {5289u, {}};
-    case 4898u:
+    case 4898:
       return {5233u, {}};
-    case 4899u:
+    case 4899:
       return {5094u, {}};
-    case 4900u:
+    case 4900:
       return {4681u, {}};
-    case 4902u:
+    case 4902:
       return {4525u, {}};
-    case 4903u:
+    case 4903:
       return {3877u, {}};
-    case 4904u:
+    case 4904:
       return {3479u, {}};
-    case 4907u:
+    case 4907:
       return {3345u, {}};
     default:
       return {kAttention4Done, {}};
   }
 n7196:
-  PLUTO_ATTN_END(4923u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4923);
+  switch (history[position++].value) {
+    case 4868:
       goto n7195;
-    case 4870u:
+    case 4870:
       goto n7178;
-    case 4891u:
+    case 4891:
       goto n7170;
-    case 4898u:
+    case 4898:
       return {7164u, {}};
-    case 4902u:
+    case 4902:
       return {7154u, {}};
     default:
       return {kAttention4Done, {}};
   }
 n7195:
-  PLUTO_ATTN_END(4923u);
-  switch (history[position++]) {
-    case 4868u:
+  PLUTO_ATTN_END(4923);
+  switch (history[position++].value) {
+    case 4868:
       goto n7194;
-    case 4897u:
+    case 4897:
       goto n7187;
     default:
       return {kAttention4Done, {}};
@@ -13716,9 +13745,9 @@ n7178:
   PLUTO_ATTN_RUN(kAttention4Sequence887);
   return {377u, {}};
 n7170:
-  PLUTO_ATTN_MATCH(4885u, 4925u);
-  PLUTO_ATTN_MATCH(4902u, 4935u);
-  PLUTO_ATTN_MATCH(4902u, 4924u);
+  PLUTO_ATTN_MATCH(4885, 4925);
+  PLUTO_ATTN_MATCH(4902, 4935);
+  PLUTO_ATTN_MATCH(4902, 4924);
   return {7167u, {}};
 }
 #undef PLUTO_ATTN_END
@@ -13728,7 +13757,7 @@ n7170:
 #undef PLUTO_ATTN_RUN
 }  // namespace
 
-TransitionResult Attention4(absl::Span<const StateId> history) {
+TransitionResult Attention4(absl::Span<const DiscreteHiddenState> history) {
   std::size_t position = 0;
   std::uint32_t node = 7228u;
   for (;;) {

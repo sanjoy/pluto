@@ -42,8 +42,8 @@ class AttentionProgram:
 
 
 def _state(value):
-    if type(value) is not int or not 0 <= value <= 0xffffffff:
-        raise ValueError("attention symbols and outputs must be uint32 integers")
+    if type(value) is not int or not 0 <= value <= 0x7fffffff:
+        raise ValueError("attention symbols and outputs must be nonnegative int32 integers")
     return value
 
 
@@ -99,7 +99,7 @@ def evaluate(program, prefix):
     """Return the exact output state, or None for any unsupported history."""
     node = program.root
     for symbol in prefix:
-        if type(symbol) is not int or not 0 <= symbol <= 0xffffffff:
+        if type(symbol) is not int or not 0 <= symbol <= 0x7fffffff:
             return None
         edges = program.nodes[node].edges
         index = bisect_left(edges, (symbol, -1))
@@ -131,8 +131,8 @@ def render_attention(name, rows, *, chunk_size=256, strategy="hybrid"):
     """Return (C++ definitions, statistics) for an exact attention callback.
 
     The public signature is:
-      TransitionResult name(absl::Span<const StateId> history)
-    TransitionResult contains std::optional<StateId> output: a value (including
+      TransitionResult name(absl::Span<const DiscreteHiddenState> history)
+    TransitionResult contains std::optional<DiscreteHiddenState> output: a value (including
     zero) is a supported output, and std::nullopt is an unsupported history. The
     caller supplies its declaration and standard size/integer types via runtime.h.
 
@@ -164,13 +164,13 @@ def render_attention(name, rows, *, chunk_size=256, strategy="hybrid"):
         f"constexpr std::uint32_t {done} = 0xffffffffu;",
         f"struct {result_type} {{ std::uint32_t next; TransitionResult result; }};",
         "#define PLUTO_ATTN_END(output) \\",
-        f"  do {{ if (position == history.size()) return {{{done}, {{StateId{{output}}}}}}; }} while (false)",
+        f"  do {{ if (position == history.size()) return {{{done}, {{DiscreteHiddenState{{output}}}}}}; }} while (false)",
         "#define PLUTO_ATTN_MORE() \\",
         f"  do {{ if (position == history.size()) return {{{done}, {{}}}}; }} while (false)",
         "#define PLUTO_ATTN_MATCH(symbol, output) \\",
-        f"  do {{ PLUTO_ATTN_END(output); if (history[position++] != symbol) return {{{done}, {{}}}}; }} while (false)",
+        f"  do {{ PLUTO_ATTN_END(output); if (history[position++].value != symbol) return {{{done}, {{}}}}; }} while (false)",
         "#define PLUTO_ATTN_SKIP(symbol) \\",
-        f"  do {{ PLUTO_ATTN_MORE(); if (history[position++] != symbol) return {{{done}, {{}}}}; }} while (false)",
+        f"  do {{ PLUTO_ATTN_MORE(); if (history[position++].value != symbol) return {{{done}, {{}}}}; }} while (false)",
     ]
 
     def jump(target, chunk):
@@ -183,7 +183,7 @@ def render_attention(name, rows, *, chunk_size=256, strategy="hybrid"):
     visited = set()
     for chunk, entry_nodes in sorted(entries.items()):
         lines += [f"{result_type} {name}Part{chunk}(std::uint32_t node,",
-                  "    [[maybe_unused]] absl::Span<const StateId> history,",
+                  "    [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,",
                   "    [[maybe_unused]] std::size_t& position) {",
                   "  switch (node) {"]
         lines += [f"    case {node}u: goto n{node};" for node in sorted(entry_nodes, reverse=True)]
@@ -227,26 +227,26 @@ def render_attention(name, rows, *, chunk_size=256, strategy="hybrid"):
                 node = program.nodes[node_id]
                 if not node.edges:
                     if node.output is not None:
-                        lines.append(f"  PLUTO_ATTN_END({node.output}u);")
+                        lines.append(f"  PLUTO_ATTN_END({node.output});")
                     lines.append(f"  return {{{done}, {{}}}};")
                     break
                 if len(node.edges) == 1:
                     symbol, target = node.edges[0]
-                    lines.append(f"  PLUTO_ATTN_SKIP({symbol}u);" if node.output is None else
-                                 f"  PLUTO_ATTN_MATCH({symbol}u, {node.output}u);")
+                    lines.append(f"  PLUTO_ATTN_SKIP({symbol});" if node.output is None else
+                                 f"  PLUTO_ATTN_MATCH({symbol}, {node.output});")
                     if target not in starts and target // chunk_size == chunk:
                         node_id = target
                         continue
                     lines.append("  " + jump(target, chunk))
                     break
                 lines.append("  PLUTO_ATTN_MORE();" if node.output is None else
-                             f"  PLUTO_ATTN_END({node.output}u);")
-                lines.append("  switch (history[position++]) {")
+                             f"  PLUTO_ATTN_END({node.output});")
+                lines.append("  switch (history[position++].value) {")
                 targets = {}
                 for symbol, target in node.edges:
                     targets.setdefault(target, []).append(symbol)
                 for target, symbols in targets.items():
-                    lines.append("    " + " ".join(f"case {symbol}u:" for symbol in symbols))
+                    lines.append("    " + " ".join(f"case {symbol}:" for symbol in symbols))
                     lines.append("      " + jump(target, chunk))
                 lines += [f"    default: return {{{done}, {{}}}};", "  }"]
                 break
@@ -266,10 +266,10 @@ def render_attention(name, rows, *, chunk_size=256, strategy="hybrid"):
             f"struct {sequence_type} {{ std::uint{sequence_bits}_t symbol, output; }};",
             "[[gnu::noinline]]",
             f"{result_type} {name}MatchSequence(const {sequence_type}* steps,",
-            "    std::size_t count, absl::Span<const StateId> history, std::size_t& position) {",
+            "    std::size_t count, absl::Span<const DiscreteHiddenState> history, std::size_t& position) {",
             "  for (std::size_t index = 0; index < count; ++index) {",
-            f"    if (position == history.size()) return {{{done}, {{StateId{{steps[index].output}}}}}};",
-            f"    if (history[position++] != steps[index].symbol) return {{{done}, {{}}}};",
+            f"    if (position == history.size()) return {{{done}, {{DiscreteHiddenState{{static_cast<int>(steps[index].output)}}}}}};",
+            f"    if (history[position++].value != static_cast<int>(steps[index].symbol)) return {{{done}, {{}}}};",
             "  }",
             "  return {0u, {}};  // The literal run matched; continue at its shared tail.",
             "}",
@@ -284,7 +284,7 @@ def render_attention(name, rows, *, chunk_size=256, strategy="hybrid"):
     lines += ["#undef PLUTO_ATTN_END", "#undef PLUTO_ATTN_MORE",
               "#undef PLUTO_ATTN_MATCH", "#undef PLUTO_ATTN_SKIP", "#undef PLUTO_ATTN_RUN",
               "}  // namespace", "",
-              f"TransitionResult {name}(absl::Span<const StateId> history) {{",
+              f"TransitionResult {name}(absl::Span<const DiscreteHiddenState> history) {{",
               "  std::size_t position = 0;",
               f"  std::uint32_t node = {program.root}u;",
               "  for (;;) {",
