@@ -2,28 +2,30 @@
 // Integer network in original boundary order: entry -> (attention residual ->
 // MLP residual) per block -> language modeling head. All attention and MLP
 // boundaries remain separate. State IDs never identify corpus lines.
+#include "model.h"
+
 #include "tables.h"
 #include "vocabulary_tokens.h"
 
-namespace pluto::llm::discretized {
+namespace pluto::llm::discretized::gen {
 const DiscreteModel& GeneratedModel() {
   static const Transformer kTransformers[] = {
-      {GeneratedAttention0(), GeneratedMlp0()},
-      {GeneratedAttention1(), GeneratedMlp1()},
-      {GeneratedAttention2(), GeneratedMlp2()},
-      {GeneratedAttention3(), GeneratedMlp3()},
-      {GeneratedAttention4(), GeneratedMlp4()},
-      {GeneratedAttention5(), GeneratedMlp5()},
-      {GeneratedAttention6(), GeneratedMlp6()},
-      {GeneratedAttention7(), GeneratedMlp7()},
+      {internal::GeneratedAttention0(), internal::GeneratedMlp0()},
+      {internal::GeneratedAttention1(), internal::GeneratedMlp1()},
+      {internal::GeneratedAttention2(), internal::GeneratedMlp2()},
+      {internal::GeneratedAttention3(), internal::GeneratedMlp3()},
+      {internal::GeneratedAttention4(), internal::GeneratedMlp4()},
+      {internal::GeneratedAttention5(), internal::GeneratedMlp5()},
+      {internal::GeneratedAttention6(), internal::GeneratedMlp6()},
+      {internal::GeneratedAttention7(), internal::GeneratedMlp7()},
   };
   static const DiscreteModel model{1024,
                                    5,
-                                   vocab::kEos_4474,
-                                   GeneratedVocabulary(),
+                                   internal::vocab::kEos_4474,
+                                   internal::GeneratedVocabulary(),
                                    {kTransformers, 8},
-                                   GeneratedLanguageModelingHead(),
-                                   GeneratedPositionEmbedding()};
+                                   internal::GeneratedLanguageModelingHead(),
+                                   internal::GeneratedPositionEmbedding()};
   return model;
 }
-}  // namespace pluto::llm::discretized
+}  // namespace pluto::llm::discretized::gen

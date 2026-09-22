@@ -4,7 +4,7 @@
 // No neighboring layer, sentence identity or future token is consulted.
 #include "tables.h"
 
-namespace pluto::llm::discretized {
+namespace pluto::llm::discretized::gen::internal {
 namespace {
 // Exact ordered-history recognizer; unknown paths are rejected.
 // Control labels share identical suffix programs, not neural states.
@@ -14047,4 +14047,4 @@ CausalAttention& GeneratedAttention3() {
   return instance;
 }
 
-}  // namespace pluto::llm::discretized
+}  // namespace pluto::llm::discretized::gen::internal
