@@ -4,7 +4,7 @@
 namespace pluto::llm::discretized {
 TransitionResult GeneratedEntryFunction(DiscreteToken, uint32_t);
 absl::Span<const VocabularyRow> GeneratedVocabulary();
-StateTable GeneratedSnap();
+StateTable GeneratedLanguageModelingHead();
 AttentionTable GeneratedAttention0();
 StateTable GeneratedMlp0();
 AttentionTable GeneratedAttention1();

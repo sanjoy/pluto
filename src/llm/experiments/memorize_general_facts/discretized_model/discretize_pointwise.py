@@ -38,9 +38,9 @@ def relabel_mlp_outputs(model):
     Mapping rows cover every state, including identities: [old_id,new_id,stage].
     Original member IDs, vectors, statistics and boundary ownership survive.
     No vocabulary token or original membership ID is renamed. When the complete
-    final MLP and snap are bijections, their last two alphabets use disjoint
-    vocabulary-sized ID ranges. These labels encode token IDs; their arithmetic
-    is a presentation choice, not a discovery of neural-head linearity.
+    final MLP and language modeling head are bijections, their last two alphabets
+    use disjoint vocabulary-sized ID ranges. These labels encode token IDs; their
+    arithmetic is a presentation choice, not a discovery of neural-head linearity.
     """
     result = copy.deepcopy(model)
     states = {row["id"]: row for row in model["states"]}
@@ -65,10 +65,10 @@ def relabel_mlp_outputs(model):
         before = {state for state, row in states.items() if row["stage"] == last_stage - 1}
         after = {state for state, row in states.items() if row["stage"] == last_stage}
         last_mlp = _mapping(model["mlp"][-1])
-        snap = _mapping(model["snap"])
-        labels = set(snap.values())
+        language_modeling_head = _mapping(model["language_modeling_head"])
+        labels = set(language_modeling_head.values())
         complete = (before and set(last_mlp) == before and set(last_mlp.values()) == after
-                    and len(before) == len(after) and set(snap) == after
+                    and len(before) == len(after) and set(language_modeling_head) == after
                     and len(labels) == len(after)
                     and all(type(token) is int and 0 <= token < model["vocab_size"] for token in labels))
         prefix_max = max([model["vocab_size"] - 1] +
@@ -77,8 +77,8 @@ def relabel_mlp_outputs(model):
         final_base = attention_base + model["vocab_size"]
         if complete and final_base + model["vocab_size"] - 1 <= _MAX_ID:
             for state, output in last_mlp.items():
-                renaming[state] = attention_base + snap[output]
-            for state, token in snap.items():
+                renaming[state] = attention_base + language_modeling_head[output]
+            for state, token in language_modeling_head.items():
                 renaming[state] = final_base + token
             alignment = {"vocabulary_aligned_final_boundaries": True,
                          "last_attention_base": attention_base,
@@ -92,7 +92,7 @@ def relabel_mlp_outputs(model):
                                      for prefix, out in table]) for table in model["attention"]]
     result["mlp"] = [sorted([[renaming[source], renaming[out]] for source, out in table])
                      for table in model["mlp"]]
-    result["snap"] = sorted([[renaming[state], token] for state, token in model["snap"]])
+    result["language_modeling_head"] = sorted([[renaming[state], token] for state, token in model["language_modeling_head"]])
     result.setdefault("stats", {})["pointwise_relabeling"] = {
         "eligible_layers": eligible, "skipped_layers": skipped,
         "changed_states": sum(old != new for old, new in renaming.items()),

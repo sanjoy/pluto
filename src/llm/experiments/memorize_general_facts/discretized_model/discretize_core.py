@@ -64,7 +64,7 @@ def build_model(capture_path, *, expected_samples=None):
                 raise ModelError("invalid vocabulary token bytes") from error
         states, samples = [], []
         intern = [{} for _ in range(2 * layers + 1)]
-        entry, snap = {}, {}
+        entry, language_modeling_head = {}, {}
         attention = [{} for _ in range(layers)]
         mlp = [{} for _ in range(layers)]
         targets = 0
@@ -118,7 +118,8 @@ def build_model(capture_path, *, expected_samples=None):
                     _put(mlp[layer], encoded[2 * layer + 1][position],
                          encoded[2 * layer + 2][position], "MLP")
                 if position >= prompt_tokens - 1:
-                    _put(snap, encoded[-1][position], predictions[position], "snap")
+                    _put(language_modeling_head, encoded[-1][position],
+                         predictions[position], "language modeling head")
             targets += len(required)
             samples.append({"tokens": tokens})
     if not samples or (expected_samples is not None and len(samples) != expected_samples):
@@ -129,7 +130,7 @@ def build_model(capture_path, *, expected_samples=None):
                  entry=[[token, position, out] for (token, position), out in sorted(entry.items())],
                  attention=[[[list(key), out] for key, out in sorted(table.items())] for table in attention],
                  mlp=[[[key, out] for key, out in sorted(table.items())] for table in mlp],
-                 snap=[[key, out] for key, out in sorted(snap.items())],
+                 language_modeling_head=[[key, out] for key, out in sorted(language_modeling_head.items())],
                  stats={"captured_samples": len(samples), "scored_targets": targets,
                         "exact_states": len(states), "capture_sha256": _file_hash(source)})
     model["stats"]["verification"] = evaluate_model(model)
@@ -152,7 +153,7 @@ class IntegerModel:
         self.entry = {}
         self.attention = [{} for _ in range(model["layers"])]
         self.mlp = [{} for _ in range(model["layers"])]
-        self.snap = {}
+        self.language_modeling_head = {}
         for token, position, state in model["entry"]:
             _put(self.entry, (token, position), state, "entry")
         for layer in range(model["layers"]):
@@ -160,8 +161,8 @@ class IntegerModel:
                 _put(self.attention[layer], tuple(prefix), output, "attention")
             for source, output in model["mlp"][layer]:
                 _put(self.mlp[layer], source, output, "MLP")
-        for state, token in model["snap"]:
-            _put(self.snap, state, token, "snap")
+        for state, token in model["language_modeling_head"]:
+            _put(self.language_modeling_head, state, token, "language modeling head")
 
     def predict(self, tokens):
         if not tokens:
@@ -172,7 +173,7 @@ class IntegerModel:
                 after_attention = [attention[tuple(current[:position + 1])]
                                    for position in range(len(current))]
                 current = [mlp[state] for state in after_attention]
-            return self.snap[current[-1]]
+            return self.language_modeling_head[current[-1]]
         except KeyError as error:
             raise ModelError(f"undefined discrete transition for prefix {list(tokens)}: {error}") from error
 
@@ -243,8 +244,8 @@ def restore_membership(model, original_model):
                 _put(mapping, output, quotient.attention[layer][transformed], "state membership")
             for source, output in original_model["mlp"][layer]:
                 _put(mapping, output, quotient.mlp[layer][mapping[source]], "state membership")
-        for state, token in original_model["snap"]:
-            if quotient.snap[mapping[state]] != token:
+        for state, token in original_model["language_modeling_head"]:
+            if quotient.language_modeling_head[mapping[state]] != token:
                 raise ModelError("membership source disagrees on a required token label")
     except KeyError as error:
         raise ModelError(f"model is not a complete quotient of the membership source: {error}") from error
@@ -299,10 +300,10 @@ class QuotientReducer:
                 self._add_term(2 * layer + 1, inputs, output)
             for source, output in model["mlp"][layer]:
                 self._add_term(2 * layer + 2, [source], output)
-        for state, token in model["snap"]:
+        for state, token in model["language_modeling_head"]:
             index = self.index[state]
             if self.label[index] not in (-1, token):
-                raise ModelError("conflicting snap labels")
+                raise ModelError("conflicting language modeling head labels")
             self.label[index] = token
 
     def _add_term(self, stage, inputs, output):
@@ -463,10 +464,12 @@ class QuotientReducer:
                 _put(mlp, state_id(source), state_id(output), "quotient MLP")
             result["attention"].append([[list(key), output] for key, output in sorted(attn.items())])
             result["mlp"].append([[key, output] for key, output in sorted(mlp.items())])
-        snap = {}
-        for state, token in self.model["snap"]:
-            _put(snap, state_id(state), token, "quotient snap")
-        result["snap"] = [[key, output] for key, output in sorted(snap.items())]
+        language_modeling_head = {}
+        for state, token in self.model["language_modeling_head"]:
+            _put(language_modeling_head, state_id(state), token,
+                 "quotient language modeling head")
+        result["language_modeling_head"] = [
+            [key, output] for key, output in sorted(language_modeling_head.items())]
         result["stats"] = dict(self.model.get("stats", {}))
         previous = self.model.get("stats", {})
         result["stats"].update(states=len(roots),

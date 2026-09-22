@@ -33,7 +33,7 @@ def fixture():
         "entry": [[0, 0, 4], [1, 0, 7], [1, 1, 5], [2, 1, 6]],
         "attention": [[[[4], 8], [[4, 5], 9], [[4, 6], 10], [[7], 11]]],
         "mlp": [[[8, 12], [9, 13], [10, 14], [11, 15]]],
-        "snap": [[12, 1], [13, 3], [14, 0], [15, 3]],
+        "language_modeling_head": [[12, 1], [13, 3], [14, 0], [15, 3]],
         "stats": {},
     }
 
@@ -127,7 +127,7 @@ emit_model(json.loads(Path(sys.argv[2]).read_text()), Path(sys.argv[3]),
     def test_plain_split_sources_reproducible_under_input_table_order(self):
         first, manifest = self.emit("first")
         reordered = copy.deepcopy(self.model)
-        for field in ("states", "entry", "snap"):
+        for field in ("states", "entry", "language_modeling_head"):
             reordered[field].reverse()
         reordered["attention"][0].reverse()
         reordered["mlp"][0].reverse()
@@ -155,9 +155,9 @@ emit_model(json.loads(Path(sys.argv[2]).read_text()), Path(sys.argv[3]),
         self.assertNotIn("GeneratedEntry()", header)
         self.assertIn("TransitionResult GeneratedEntryFunction(DiscreteToken, uint32_t);", header)
         model = (destination / "model.cc").read_text()
-        self.assertIn("GeneratedSnap(), GeneratedEntryFunction", model)
+        self.assertIn("GeneratedLanguageModelingHead(), GeneratedEntryFunction", model)
         self.assertNotIn("GeneratedEntry()", model)
-        for name in ("entry.cc", "attention_0.cc", "mlp_0.cc", "snap.cc"):
+        for name in ("entry.cc", "attention_0.cc", "mlp_0.cc", "language_modeling_head.cc"):
             text = (destination / name).read_text()
             self.assertRegex(text, r"namespace \{\nstruct (Entry|Attention|State)Row")
             self.assertIn("TransitionResult", text)
@@ -210,7 +210,7 @@ struct Model {
   absl::Span<const VocabularyRow> vocabulary;
   absl::Span<const AttentionTable> attention;
   absl::Span<const StateTable> mlp;
-  StateTable snap;
+  StateTable language_modeling_head;
   TransitionResult (*entry_function)(DiscreteToken, uint32_t) = nullptr;
 };
 const Model& GeneratedModel();
@@ -231,7 +231,7 @@ const Model& GeneratedModel();
                 check(f"model.entry_function(DiscreteToken{{{token}}}, {position}u)", entries.get((token, position)))
         pointwise = [(f"model.mlp[{block}].function", dict(rows))
                      for block, rows in enumerate(model["mlp"])]
-        pointwise.append(("model.snap.function", dict(model["snap"])))
+        pointwise.append(("model.language_modeling_head.function", dict(model["language_modeling_head"])))
         for function, rows in pointwise:
             for state in [-2147483648, -1, *range(20), *rows, 2147483646, 2147483647]:
                 check(f"{function}(DiscreteHiddenState{{{state}}})", rows.get(state))
@@ -253,11 +253,11 @@ const Model& GeneratedModel();
 using namespace pluto::llm::discretized;
 int main() {
   const Model& model = GeneratedModel();
-''' + f'''  if (!model.entry_function || !model.snap.function ||
+''' + f'''  if (!model.entry_function || !model.language_modeling_head.function ||
       model.attention.size() != {model["layers"]} || model.mlp.size() != {model["layers"]})
     return 1;
 ''' + "\n".join(checks) + "\nreturn 0;\n}\n")
-        sources = [directory / name for name in ("entry.cc", "model.cc", "snap.cc", "vocabulary.cc")]
+        sources = [directory / name for name in ("entry.cc", "model.cc", "language_modeling_head.cc", "vocabulary.cc")]
         sources += [directory / f"{kind}_{block}.cc" for kind in ("attention", "mlp")
                     for block in range(model["layers"])]
         executable = directory / "partial_functions_test"
@@ -275,7 +275,7 @@ int main() {
         self.model["entry"].reverse()
         self.model["attention"][0].reverse()
         self.model["mlp"][0].reverse()
-        self.model["snap"].reverse()
+        self.model["language_modeling_head"].reverse()
         self._compile_and_check_partial_functions(self.model, compact=False)
 
     @unittest.skipUnless(shutil.which("c++"), "C++ compiler unavailable")
@@ -293,7 +293,7 @@ int main() {
         self.model.update(layers=0,
                           states=[{"id": 2147483647, "stage": 0, "bits": [0, 0]}],
                           entry=[[0, 0, 2147483647]], attention=[], mlp=[],
-                          snap=[[2147483647, 0]], samples=[{"tokens": [0]}])
+                          language_modeling_head=[[2147483647, 0]], samples=[{"tokens": [0]}])
         self._compile_and_check_partial_functions(self.model, compact=False)
 
     def test_expected_suffixes_never_enter_production_model_sources(self):
@@ -302,7 +302,7 @@ int main() {
         alternate["samples"] = [{"tokens": [0, 2]}, {"tokens": [1]}]
         second, _ = self.emit("second", alternate)
         production = ["tables.h", "vocabulary_tokens.h", "model.cc", "entry.cc", "attention_0.cc",
-                      "mlp_0.cc", "snap.cc", "vocabulary.cc"]
+                      "mlp_0.cc", "language_modeling_head.cc", "vocabulary.cc"]
         for name in production:
             self.assertEqual((first / name).read_bytes(), (second / name).read_bytes())
             text = (first / name).read_text()
@@ -322,9 +322,9 @@ int main() {
         entry = (destination / "entry.cc").read_text()
         for token, position, state in self.model["entry"]:
             self.assertIn(f"{{vocab::{names[token]}, {position}, {{{state}}}}}", entry)
-        snap = (destination / "snap.cc").read_text()
-        for state, token in self.model["snap"]:
-            self.assertIn(f"{{{{{state}}}, static_cast<DiscreteHiddenState>(vocab::{names[token]})}}", snap)
+        language_modeling_head = (destination / "language_modeling_head.cc").read_text()
+        for state, token in self.model["language_modeling_head"]:
+            self.assertIn(f"{{{{{state}}}, static_cast<DiscreteHiddenState>(vocab::{names[token]})}}", language_modeling_head)
         self.assertIn("1024, 1, vocab::kEos_3", (destination / "model.cc").read_text())
         for filename, array, expected in (
                 ("prompt_encoder.cc", "kTokens", ["kA_0", "kA_0", "kB_1", "kB_1"]),
@@ -421,7 +421,7 @@ int main() {
     def test_index_examples_are_capped_and_long_text_is_explicitly_truncated(self):
         self.model.update(layers=0, states=[{"id": 4, "stage": 0, "bits": [4, 0]}],
                           entry=[[0, 0, 4], [0, 1, 4], [1, 0, 4], [2, 0, 4]],
-                          attention=[], mlp=[], snap=[[4, 3]],
+                          attention=[], mlp=[], language_modeling_head=[[4, 3]],
                           samples=[{"tokens": [0]}, {"tokens": [1]}, {"tokens": [2]}, {"tokens": [0, 0]}])
         self.model["vocabulary"][0]["hex"] = (b"A" * 200).hex()
         destination, _ = self.emit(include_state_index=True)
@@ -491,7 +491,7 @@ int main() {
         model["attention"][0][1][0][0] = 8  # Wrong boundary.
         invalid.append(model)
         model = fixture()
-        model["snap"][0][1] = 4
+        model["language_modeling_head"][0][1] = 4
         invalid.append(model)
         model = fixture()
         model["states"][0]["bits"][0] = 65536

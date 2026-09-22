@@ -47,9 +47,9 @@ def render_compact(model, token_names, files, source):
                 f"Block {block}: pointwise MLP residual transition.\n"
                 "Symbol renaming may expose a guarded offset. This function and\n"
                 "both boundary alphabets remain separate; it is not a layer bypass.")
-    body, stats = render_pointwise("Snap", model["snap"], names)
-    body = "namespace {\n" + body + "}\nStateTable GeneratedSnap() { return {Snap}; }\n"
-    install("snap.cc", body, stats,
+    body, stats = render_pointwise("LanguageModelingHead", model["language_modeling_head"], names)
+    body = "namespace {\n" + body + "}\nStateTable GeneratedLanguageModelingHead() { return {LanguageModelingHead}; }\n"
+    install("language_modeling_head.cc", body, stats,
             "Final residual symbol -> named vocabulary token.\n"
             "No unobserved input is assigned a default prediction.", True)
     files["transition_patterns.json"] = json.dumps({

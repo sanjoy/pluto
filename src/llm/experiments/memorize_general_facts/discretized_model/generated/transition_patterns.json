@@ -351,16 +351,16 @@
       "unformatted_source_bytes_before": 61657
     },
     {
-      "file": "snap.cc",
-      "formatted_source_bytes": 5067,
+      "file": "language_modeling_head.cc",
+      "formatted_source_bytes": 5115,
       "named_anchor": true,
       "representation": "sparse_affine_support_mask",
       "rows": 2900,
-      "source_bytes": 4502,
+      "source_bytes": 4518,
       "supported_span": 4475,
       "table_bytes": 560,
-      "unformatted_source_bytes_after": 4849,
-      "unformatted_source_bytes_before": 210374
+      "unformatted_source_bytes_after": 4897,
+      "unformatted_source_bytes_before": 210390
     }
   ]
 }

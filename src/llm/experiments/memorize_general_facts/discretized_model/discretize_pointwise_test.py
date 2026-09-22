@@ -23,7 +23,7 @@ def fixture():
             "attention": [[[[100], 102], [[100, 101], 103], [[101], 103]],
                           [[[105], 106], [[105, 104], 107], [[104], 107]]],
             "mlp": [[[102, 105], [103, 104]], [[106, 109], [107, 108]]],
-            "snap": [[108, 2], [109, 1]], "samples": [{"tokens": [0, 1]}, {"tokens": [1]}],
+            "language_modeling_head": [[108, 2], [109, 1]], "samples": [{"tokens": [0, 1]}, {"tokens": [1]}],
             "stats": {"membership_complete": True}}
 
 
@@ -44,7 +44,7 @@ class PointwiseTest(unittest.TestCase):
                              {key: value for key, value in after[target].items() if key != "id"})
         self.assertEqual(model["stats"]["pointwise_relabeling"]["changed_states"], 6)
         self.assertTrue(model["stats"]["pointwise_relabeling"]["vocabulary_aligned_final_boundaries"])
-        self.assertEqual(model["snap"], [[110, 1], [111, 2]])
+        self.assertEqual(model["language_modeling_head"], [[110, 1], [111, 2]])
         again, _ = relabel_mlp_outputs(model)
         self.assertEqual(again["mlp"], model["mlp"])
         self.assertEqual(again["attention"], model["attention"])
@@ -60,9 +60,9 @@ class PointwiseTest(unittest.TestCase):
         for defect in ("incomplete", "nonbijective"):
             model = fixture()
             if defect == "incomplete":
-                model["snap"].pop()
+                model["language_modeling_head"].pop()
             else:
-                model["snap"][1][1] = model["snap"][0][1]
+                model["language_modeling_head"][1][1] = model["language_modeling_head"][0][1]
             renamed, _ = relabel_mlp_outputs(model)
             self.assertFalse(renamed["stats"]["pointwise_relabeling"]["vocabulary_aligned_final_boundaries"])
         model, _ = relabel_mlp_outputs(fixture())
@@ -85,7 +85,7 @@ class PointwiseTest(unittest.TestCase):
 
     def test_large_sparse_affine_named_map_uses_exact_bitset(self):
         rows = [[1000 + i, i] for i in range(128) if i % 3 != 1]
-        body, stats = render_pointwise("Snap", rows, {i: f"vocab::Token{i}" for i in range(128)})
+        body, stats = render_pointwise("LanguageModelingHead", rows, {i: f"vocab::Token{i}" for i in range(128)})
         self.assertEqual(stats["representation"], "sparse_affine_support_mask")
         self.assertEqual(stats["table_bytes"], 16)
         self.assertIn("vocab::Token0", body)
@@ -103,13 +103,13 @@ class PointwiseTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             render_entry("Bad", [[1, 2, 3], [1, 2, 4]], {1: "vocab::B"})
 
-    def test_affine_function_is_guarded_and_named_snap_stays_named(self):
+    def test_affine_function_is_guarded_and_named_language_modeling_head_stays_named(self):
         body, stats = render_pointwise("Mlp", [[10, 20], [11, 21], [12, 22]])
         self.assertEqual(stats["representation"], "guarded_affine")
         self.assertEqual(stats["table_bytes"], 0)
         self.assertIn("state.value < 10 || state.value > 12", body)
         self.assertIn("return {DiscreteHiddenState{state.value + 10}};", body)
-        named, stats = render_pointwise("Snap", [[10 + i, (i * 7) % 20] for i in range(20)],
+        named, stats = render_pointwise("LanguageModelingHead", [[10 + i, (i * 7) % 20] for i in range(20)],
                                         {i: f"vocab::Token{i}" for i in range(20)})
         self.assertIn("vocab::Token19", named)
         self.assertEqual(stats["representation"], "guarded_output_array")
