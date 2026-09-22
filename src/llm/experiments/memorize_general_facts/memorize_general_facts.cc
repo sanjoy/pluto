@@ -307,11 +307,10 @@ float LearningRate(int step) {
 // Unlike Train's scalar loss threshold, this experiment stops on exact
 // top-1 accuracy over the entire finite corpus. The update itself uses the
 // same native forward/loss/backward/AdamW wiring as Train.
-absl::StatusOr<bool> TrainDepth(cuda::Executor& executor,
-                                const tokenizer::Tokenizer& tokenizer,
-                                int eos_token, const TextCorpus& corpus,
-                                int layers,
-                                const CompactVocabularyTokenizer* vocabulary) {
+absl::StatusOr<bool> TrainUntilMemorized(
+    cuda::Executor& executor, const tokenizer::Tokenizer& tokenizer,
+    int eos_token, const TextCorpus& corpus, int layers,
+    const CompactVocabularyTokenizer* vocabulary) {
   const auto output = std::filesystem::path(absl::GetFlag(FLAGS_output_dir)) /
                       absl::StrCat("layers_", layers);
   const auto checkpoints =
@@ -730,8 +729,8 @@ absl::StatusOr<bool> Run() {
                             vocabulary.get());
   for (int layers = absl::GetFlag(FLAGS_layers); layers >= 0; --layers) {
     ASSIGN_OR_RETURN(bool success,
-                     TrainDepth(*executor, *model_tokenizer, eos_token, corpus,
-                                layers, vocabulary.get()));
+                     TrainUntilMemorized(*executor, *model_tokenizer, eos_token,
+                                         corpus, layers, vocabulary.get()));
     if (!success || !absl::GetFlag(FLAGS_search))
       return success;
   }
