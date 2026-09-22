@@ -56,10 +56,27 @@ class GenerateDriverTest(unittest.TestCase):
 
     def test_emitter_is_loaded_from_experiment_directory(self):
         import inspect
-        repository = Path(driver.__file__).resolve().parents[2]
+        repository = Path(driver.__file__).resolve().parents[5]
         self.assertEqual(Path(inspect.getfile(driver.emit_model)).resolve(),
-                         repository / "src/llm/experiments/memorize_general_facts/discretize_emit.py")
+                         Path(driver.__file__).resolve().with_name("discretize_emit.py"))
         self.assertFalse((repository / "scripts/memorize_general_facts/discretize_emit.py").exists())
+        self.assertFalse((Path(driver.__file__).resolve().parent.parent /
+                          "discretize_emit.py").exists())
+
+    def test_all_generator_modules_and_tests_are_colocated(self):
+        directory = Path(driver.__file__).resolve().parent
+        repository = directory.parents[4]
+        modules = ["generate_discretized_model", "discretize_core",
+                   "discretize_certificate", "discretize_emit", "discretize_logic",
+                   "discretize_attention_logic", "discretize_pointwise",
+                   "discretize_transition_tests"]
+        for module in modules:
+            with self.subTest(module=module):
+                self.assertTrue((directory / f"{module}.py").is_file())
+                if module != "discretize_logic":
+                    self.assertTrue((directory / f"{module}_test.py").is_file())
+                self.assertFalse((repository / "scripts/memorize_general_facts" /
+                                  f"{module}.py").exists())
 
     def test_generate_format_verify_and_record_hashes(self):
         args = self.arguments("--save_model", str(self.root / "model.json"))
