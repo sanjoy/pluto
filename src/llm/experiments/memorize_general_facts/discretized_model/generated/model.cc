@@ -23,7 +23,8 @@ const Model& GeneratedModel() {
                            GeneratedEntry(),
                            {kAttention, 8},
                            {kMlp, 8},
-                           GeneratedSnap()};
+                           GeneratedSnap(),
+                           GeneratedEntryFunction};
   return model;
 }
 }  // namespace pluto::llm::discretized
