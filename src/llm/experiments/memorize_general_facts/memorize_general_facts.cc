@@ -173,10 +173,15 @@ absl::Status SaveCheckpoint(cuda::Executor& executor, const Layer& model,
 }
 
 struct Metrics {
+  // Scored continuation/EOS targets, excluding prompt and padding.
   int64_t targets = 0;
+  // Scored targets whose top-1 predicted token is incorrect.
   int64_t errors = 0;
+  // Number of corpus sentences evaluated.
   int sentences = 0;
+  // Sentences with every scored teacher-forced prediction correct.
   int exact_sentences = 0;
+  // Sum of cross-entropy losses over scored targets, not their mean.
   double loss_sum = 0;
 };
 
