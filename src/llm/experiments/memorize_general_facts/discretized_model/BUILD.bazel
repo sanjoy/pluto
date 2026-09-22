@@ -7,9 +7,9 @@ load("@rules_cc//cc:cc_test.bzl", "cc_test")
 exports_files(["main.cc"])
 
 cc_library(
-    name = "capture",
-    srcs = ["capture.cc"],
-    hdrs = ["capture.h"],
+    name = "snapshot_checkpoint_lib",
+    srcs = ["snapshot_checkpoint.cc"],
+    hdrs = ["snapshot_checkpoint.h"],
     deps = [
         "//src/cuda:buffer",
         "//src/cuda:executor",
@@ -27,10 +27,10 @@ cc_library(
 )
 
 cc_binary(
-    name = "capture_checkpoint",
-    srcs = ["capture_main.cc"],
+    name = "snapshot_checkpoint",
+    srcs = ["snapshot_checkpoint_main.cc"],
     deps = [
-        ":capture",
+        ":snapshot_checkpoint_lib",
         "//src/cuda:executor",
         "//src/dataset",
         "//src/dataset:compact_vocabulary",
@@ -51,11 +51,11 @@ cc_binary(
 )
 
 cc_test(
-    name = "capture_test",
-    srcs = ["capture_test.cc"],
+    name = "snapshot_checkpoint_test",
+    srcs = ["snapshot_checkpoint_test.cc"],
     tags = ["requires-gpu"],
     deps = [
-        ":capture",
+        ":snapshot_checkpoint_lib",
         "//src/cuda:buffer",
         "//src/cuda:executor",
         "//src/cuda:page_locked_host_array",
