@@ -9,7 +9,7 @@ struct Sample {
   size_t offset;
   size_t length;
 };
-const TokenId kExpectedTokens[] = {
+const DiscreteToken kExpectedTokens[] = {
     vocab::kFemale_3711,
     vocab::kSpace_mammals_3502,
     vocab::kSpace_produce_1426,
@@ -14327,8 +14327,8 @@ absl::Status VerifyGeneratedModel(const Model& model, std::ostream& output) {
                               sample.length - model.prompt_tokens + 1);
     if (!generated.ok())
       return generated.status();
-    std::vector<TokenId> expected(original.begin() + model.prompt_tokens,
-                                  original.end());
+    std::vector<DiscreteToken> expected(original.begin() + model.prompt_tokens,
+                                        original.end());
     expected.push_back(model.eos_token);
     if (*generated != expected) {
       output << "mismatch at verification sentence " << sentences + 1 << "\n";

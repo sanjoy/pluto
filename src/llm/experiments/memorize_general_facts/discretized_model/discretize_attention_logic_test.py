@@ -33,11 +33,12 @@ class AttentionLogicTest(unittest.TestCase):
         self.assertEqual(evaluate(distinct, [3, 2]), 21)
 
     def test_exact_domain_rejects_truncations_extensions_and_wrong_order(self):
-        rows = [[[1, 2], 0], [[3, 2], 0xffffffff]]
+        rows = [[[1, 2], 0], [[3, 2], 0x7fffffff]]
         program = build_attention(rows)
         self.assertEqual(evaluate(program, [1, 2]), 0)
-        self.assertEqual(evaluate(program, [3, 2]), 0xffffffff)
-        for invalid in ([], [1], [3], [2, 1], [1, 2, 3], [9, 2], [-1], [True]):
+        self.assertEqual(evaluate(program, [3, 2]), 0x7fffffff)
+        for invalid in ([], [1], [3], [2, 1], [1, 2, 3], [9, 2], [-1],
+                        [0x80000000], [True]):
             with self.subTest(history=invalid):
                 self.assertIsNone(evaluate(program, invalid))
 
@@ -75,7 +76,8 @@ class AttentionLogicTest(unittest.TestCase):
 
     def test_malformed_rows_conflicts_and_cpp_names_are_rejected(self):
         for rows in ([[[1], 2], [[1], 3]], [[[], 0]], [[[-1], 1]],
-                     [[[True], 1]], [[[1], 0x100000000]], [["12", 4]], [[1]]):
+                     [[[True], 1]], [[[1], -1]], [[[1], 0x80000000]],
+                     [[[0x80000000], 1]], [["12", 4]], [[1]]):
             with self.subTest(rows=rows), self.assertRaises(ValueError):
                 build_attention(rows)
         for name in ("class", "Bad::Name", "1Bad", "_Reserved", "Bad__Name", "x;}"):
@@ -122,12 +124,12 @@ class AttentionLogicTest(unittest.TestCase):
         candidates = histories(range(3), 5)
         selected = randomizer.sample(candidates[1:], 80)
         table = {key: randomizer.randrange(20) for key in selected}
-        # Large StateIds and the supported zero output must survive emission.
-        table[(0xffffffff,)] = 0
-        table[(0xffffffff, 7)] = 0xffffffff
-        chain = (70000, 8, 9, 10, 11, 12, 13, 14, 0xffffffff)
+        # Largest valid hidden-state IDs and supported zero survive emission.
+        table[(0x7fffffff,)] = 0
+        table[(0x7fffffff, 7)] = 0x7fffffff
+        chain = (70000, 8, 9, 10, 11, 12, 13, 14, 0x7fffffff)
         for length in range(1, len(chain) + 1):
-            table[chain[:length]] = 0xfffffffe if length == 5 else length
+            table[chain[:length]] = 0x7ffffffe if length == 5 else length
         rows = [[list(key), output] for key, output in table.items()]
         generated, stats = render_attention("CompiledAttention", rows, chunk_size=7)
         pure, _ = render_attention("PureAttention", rows, chunk_size=7, strategy="control_flow")
@@ -140,39 +142,45 @@ class AttentionLogicTest(unittest.TestCase):
         self.assertGreater(stats["helpers"], 1)
         self.assertGreater(stats["literal_sequence_patterns"], 0)
         self.assertEqual(stats["literal_sequence_word_bits"], 32)
-        source = """#include <cstddef>
+        source = """#include <compare>
+#include <cstddef>
 #include <cstdint>
 #include <iostream>
 #include <optional>
 #include <span>
 #include <vector>
 namespace absl { template<class T> using Span = std::span<T>; }
-using StateId = std::uint32_t;
-struct TransitionResult { std::optional<StateId> output; };
+struct DiscreteHiddenState {
+  int value = 0;
+  constexpr auto operator<=>(const DiscreteHiddenState&) const = default;
+};
+struct TransitionResult { std::optional<DiscreteHiddenState> output; };
 """ + generated + pure + empty + narrow + """
 int main() {
-  std::vector<StateId> narrow_key;
+  std::vector<DiscreteHiddenState> narrow_key;
   if (NarrowAttention(narrow_key).output.has_value()) return 4;
-  for (StateId length = 1; length <= 8; ++length) {
-    narrow_key.push_back(length);
-    if (NarrowAttention(narrow_key).output != std::optional<StateId>{length - 1}) return 5;
+  for (int length = 1; length <= 8; ++length) {
+    narrow_key.push_back(DiscreteHiddenState{length});
+    if (NarrowAttention(narrow_key).output !=
+        std::optional<DiscreteHiddenState>{DiscreteHiddenState{length - 1}}) return 5;
   }
-  narrow_key.push_back(9);
+  narrow_key.push_back(DiscreteHiddenState{9});
   if (NarrowAttention(narrow_key).output.has_value()) return 6;
   std::size_t count;
   while (std::cin >> count) {
-    std::vector<StateId> key(count);
-    for (auto& symbol : key) std::cin >> symbol;
+    std::vector<DiscreteHiddenState> key(count);
+    for (auto& symbol : key) std::cin >> symbol.value;
     if (EmptyAttention(key).output.has_value()) return 2;
     auto result = CompiledAttention(key);
     auto original = PureAttention(key);
     if (result.output != original.output) return 3;
-    if (result.output.has_value()) std::cout << *result.output << '\\n';
+    if (result.output.has_value()) std::cout << result.output->value << '\\n';
     else std::cout << "unsupported\\n";
   }
 }
 """
-        checked = candidates + [(0xffffffff,), (0xffffffff, 7), (0xffffffff, 7, 1)]
+        checked = candidates + [(0x7fffffff,), (0x7fffffff, 7), (0x7fffffff, 7, 1)]
+        checked += [(-1,), (70000, -1), (-0x80000000,)]
         checked += [key + (99,) for key in selected]
         checked += [chain[:length] for length in range(1, len(chain) + 1)]
         checked += [key + (99,) for key in table]

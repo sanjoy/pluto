@@ -10,6 +10,9 @@ from collections import Counter, defaultdict
 import copy
 
 
+_MAX_ID = (1 << 31) - 1
+
+
 def _mapping(rows):
     result = {}
     for source, output in rows:
@@ -72,7 +75,7 @@ def relabel_mlp_outputs(model):
                          [state for state, row in states.items() if row["stage"] < last_stage - 1])
         attention_base = prefix_max + 1
         final_base = attention_base + model["vocab_size"]
-        if complete and final_base + model["vocab_size"] - 1 <= 0xffffffff:
+        if complete and final_base + model["vocab_size"] - 1 <= _MAX_ID:
             for state, output in last_mlp.items():
                 renaming[state] = attention_base + snap[output]
             for state, token in snap.items():
@@ -117,19 +120,15 @@ def _finish(lines, **stats):
 
 
 def _state_guard(low, high):
-    conditions = []
-    if low > 0:
-        conditions.append(f"state < {low}u")
-    if high < 0xffffffff:
-        conditions.append(f"state > {high}u")
-    return [] if not conditions else ["  if (" + " || ".join(conditions) + ") return {};"]
+    # Even a zero-based domain must reject negative strong IDs before indexing.
+    return [f"  if (state.value < {low} || state.value > {high}) return {{}};"]
 
 
 def _affine_expression(source, output, token_names):
     if token_names is not None:
-        return f"static_cast<StateId>({_name(output, token_names)}) + (state - {source}u)"
+        return f"{_name(output, token_names)}.value + (state.value - {source})"
     delta = output - source
-    return "state" if delta == 0 else f"state {'+' if delta > 0 else '-'} {abs(delta)}u"
+    return "state.value" if delta == 0 else f"state.value {'+' if delta > 0 else '-'} {abs(delta)}"
 
 
 def render_pointwise(name, rows, token_names=None):
@@ -143,10 +142,10 @@ def render_pointwise(name, rows, token_names=None):
     mapping = _mapping(rows)
     ordered = sorted(mapping.items())
     if any(type(source) is not int or type(output) is not int
-           or not 0 <= source <= 0xffffffff or not 0 <= output <= 0xffffffff
+           or not 0 <= source <= _MAX_ID or not 0 <= output <= _MAX_ID
            for source, output in ordered):
-        raise ValueError("pointwise IDs must fit uint32_t")
-    begin = [f"TransitionResult {name}(StateId state) {{"]
+        raise ValueError("pointwise IDs must be nonnegative and fit int")
+    begin = [f"TransitionResult {name}(DiscreteHiddenState state) {{"]
     if not ordered:
         return _finish(begin + ["  (void)state;", "  return {};", "}"],
                        representation="empty", rows=0, table_bytes=0)
@@ -158,7 +157,7 @@ def render_pointwise(name, rows, token_names=None):
         lines = begin + guard
         if token_names is not None:
             lines.append("  // State labels encode vocabulary IDs; no neural-head linearity is implied.")
-        lines += [f"  return {{{_affine_expression(low, ordered[0][1], token_names)}}};", "}"]
+        lines += [f"  return {{DiscreteHiddenState{{{_affine_expression(low, ordered[0][1], token_names)}}}}};", "}"]
         return _finish(lines, representation="guarded_affine", rows=len(ordered), affine_ranges=1,
                        table_bytes=0, named_anchor=token_names is not None)
     affine_candidate = None
@@ -172,9 +171,9 @@ def render_pointwise(name, rows, token_names=None):
         if token_names is not None:
             lines.append("  // State labels encode vocabulary IDs; no neural-head linearity is implied.")
         lines += _array("kSupport", "uint8_t", [f"0x{value:02x}u" for value in support], columns=16)
-        lines += [f"  const uint32_t offset = state - {low}u;",
+        lines += [f"  const uint32_t offset = state.value - {low};",
                   "  if ((kSupport[offset >> 3] & (uint32_t{1} << (offset & 7u))) == 0) return {};",
-                  f"  return {{{_affine_expression(low, ordered[0][1], token_names)}}};", "}"]
+                  f"  return {{DiscreteHiddenState{{{_affine_expression(low, ordered[0][1], token_names)}}}}};", "}"]
         affine_candidate = _finish(lines, representation="sparse_affine_support_mask", rows=len(ordered),
             table_bytes=support_bytes, supported_span=high - low + 1, named_anchor=token_names is not None)
     runs = []
@@ -190,17 +189,19 @@ def render_pointwise(name, rows, token_names=None):
     for first, last, delta in runs:
         if last - first >= 2:
             expression = _affine_expression(first, first + delta, None)
-            conditions = ([] if first == 0 else [f"state >= {first}u"])
-            if last < 0xffffffff:
-                conditions.append(f"state <= {last}u")
+            conditions = ([] if first == 0 else [f"state.value >= {first}"])
+            if last < _MAX_ID:
+                conditions.append(f"state.value <= {last}")
             condition = " && ".join(conditions) if conditions else "true"
-            branches.append(f"  if ({condition}) return {{{expression}}};")
+            branches.append(f"  if ({condition}) return {{DiscreteHiddenState{{{expression}}}}};")
         else:
             singletons.extend((state, mapping[state]) for state in range(first, last + 1))
     if singletons:
-        branches.append("  switch (state) {")
+        branches.append("  switch (state.value) {")
         for source, output in singletons:
-            branches.append(f"    case {source}: return {{{_name(output, token_names)}}};")
+            expression = (f"static_cast<DiscreteHiddenState>({_name(output, token_names)})"
+                          if token_names is not None else f"DiscreteHiddenState{{{output}}}")
+            branches.append(f"    case {source}: return {{{expression}}};")
         branches += ["    default: return {};", "  }"]
     else:
         branches.append("  return {};")
@@ -212,10 +213,11 @@ def render_pointwise(name, rows, token_names=None):
         return affine_candidate
     if dense:
         small = all(0 <= output <= 65535 for _, output in ordered)
-        ctype = "uint16_t" if small else "StateId"
+        ctype = "uint16_t" if small else "int"
         vector = begin + guard + _array("kOutputs", ctype,
-            [_name(output, token_names) for _, output in ordered])
-        vector += [f"  return {{kOutputs[state - {low}]}};", "}"]
+            [f"{_name(output, token_names)}.value" if token_names is not None else output
+             for _, output in ordered])
+        vector += [f"  return {{DiscreteHiddenState{{kOutputs[state.value - {low}]}}}};", "}"]
         vector_body, vector_stats = _finish(vector, representation="guarded_output_array",
             rows=len(ordered), table_bytes=len(ordered) * (2 if small else 4), named_outputs=token_names is not None)
         if len(vector_body) < len(branch_body):
@@ -231,13 +233,16 @@ def render_entry(name, rows, token_names):
     """
     entry = {}
     for token, position, output in rows:
-        if token < 0 or position < 0:
-            raise ValueError("entry token and position must be nonnegative")
+        if (type(token) is not int or type(output) is not int
+                or not 0 <= token <= _MAX_ID or not 0 <= output <= _MAX_ID):
+            raise ValueError("entry IDs must be nonnegative and fit int")
+        if type(position) is not int or not 0 <= position <= 0xffffffff:
+            raise ValueError("entry position must fit uint32_t")
         key = (token, position)
         if key in entry and entry[key] != output:
             raise ValueError("conflicting entry mapping")
         entry[key] = output
-    begin = [f"TransitionResult {name}(TokenId token, uint32_t position) {{"]
+    begin = [f"TransitionResult {name}(DiscreteToken token, uint32_t position) {{"]
     if not entry:
         return _finish(begin + ["  (void)token;", "  (void)position;", "  return {};", "}"],
                        representation="empty", rows=0, table_bytes=0)
@@ -251,10 +256,10 @@ def render_entry(name, rows, token_names):
     position_bits = max_position + 1
     state_bits = max(1, (len(states) - 1).bit_length())
     if position_bits + state_bits > 64 or high - low + 1 > max(64, 4 * len(tokens)):
-        result = begin + ["  switch (token) {"]
+        result = begin + ["  switch (token.value) {"]
         for token, positions in sorted(tokens.items()):
-            result += [f"    case {_name(token, token_names)}:", "      switch (position) {"]
-            result += [f"        case {position}: return {{{output}}};" for position, output in sorted(positions.items())]
+            result += [f"    case {_name(token, token_names)}.value:", "      switch (position) {"]
+            result += [f"        case {position}: return {{DiscreteHiddenState{{{output}}}}};" for position, output in sorted(positions.items())]
             result += ["        default: return {};", "      }"]
         result += ["    default: return {};", "  }", "}"]
         return _finish(result, representation="exact_token_position_switch", rows=len(entry),
@@ -280,29 +285,29 @@ def render_entry(name, rows, token_names):
     index_bytes = 1 if len(patterns) <= 256 else (2 if len(patterns) <= 65536 else 4)
     index_type = f"uint{index_bytes * 8}_t"
     suffix = "u" if word_bytes == 4 else "ull"
-    lines = begin + [f"  if (token < {low} || token > {high} || position > {max_position}) return {{}};"]
+    lines = begin + [f"  if (token.value < {low} || token.value > {high} || position > {max_position}) return {{}};"]
     lines += _array("kTokenPatterns", index_type, indices)
     lines += _array("kPatterns", word_type, [f"0x{value:x}{suffix}" for value in patterns], columns=8)
-    lines += [f"  const {word_type} packed = kPatterns[kTokenPatterns[token - {low}]];",
+    lines += [f"  const {word_type} packed = kPatterns[kTokenPatterns[token.value - {low}]];",
               f"  if ((packed & ({word_type}{{1}} << position)) == 0) return {{}};"]
     if exceptions:
-        lines.append("  switch (token) {")
+        lines.append("  switch (token.value) {")
         grouped = defaultdict(list)
         for token, position, output in exceptions:
             grouped[token].append((position, output))
         for token, exceptional_positions in sorted(grouped.items()):
-            lines.append(f"    case {_name(token, token_names)}:")
+            lines.append(f"    case {_name(token, token_names)}.value:")
             for position, output in exceptional_positions:
-                lines.append(f"      if (position == {position}) return {{{output}}};")
+                lines.append(f"      if (position == {position}) return {{DiscreteHiddenState{{{output}}}}};")
             lines.append("      break;")
         lines += ["    default: break;", "  }"]
     state_bytes = 0
     if len(states) == states[-1] - states[0] + 1:
-        lines.append(f"  return {{{states[0]}u + static_cast<StateId>(packed >> {position_bits})}};")
+        lines.append(f"  return {{DiscreteHiddenState{{{states[0]} + static_cast<int>(packed >> {position_bits})}}}};")
     else:
-        lines += _array("kStates", "StateId", states)
+        lines += _array("kStates", "int", states)
         state_bytes = 4 * len(states)
-        lines.append(f"  return {{kStates[packed >> {position_bits}]}};")
+        lines.append(f"  return {{DiscreteHiddenState{{kStates[packed >> {position_bits}]}}}};")
     lines.append("}")
     return _finish(lines, representation="packed_support_patterns_and_exceptions", rows=len(entry),
         tokens=len(tokens), patterns=len(patterns), position_bits=position_bits,

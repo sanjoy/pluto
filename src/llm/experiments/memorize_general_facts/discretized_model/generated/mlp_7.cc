@@ -6,8 +6,8 @@
 
 namespace pluto::llm::discretized {
 namespace {
-TransitionResult Mlp7(StateId state) {
-  if (state < 5189u || state > 9663u)
+TransitionResult Mlp7(DiscreteHiddenState state) {
+  if (state.value < 5189 || state.value > 9663)
     return {};
   static constexpr uint8_t kSupport[] = {
       0x27u, 0x02u, 0x00u, 0xc0u, 0x65u, 0xceu, 0x9du, 0xf9u, 0xfeu, 0xffu,
@@ -67,10 +67,10 @@ TransitionResult Mlp7(StateId state) {
       0x7du, 0x33u, 0x89u, 0x6du, 0xd4u, 0x54u, 0x52u, 0x82u, 0xb1u, 0xd9u,
       0xcau, 0x9bu, 0x94u, 0x43u, 0x23u, 0x07u, 0x0au, 0xbdu, 0xf7u, 0x05u,
   };
-  const uint32_t offset = state - 5189u;
+  const uint32_t offset = state.value - 5189;
   if ((kSupport[offset >> 3] & (uint32_t{1} << (offset & 7u))) == 0)
     return {};
-  return {state + 4475u};
+  return {DiscreteHiddenState{state.value + 4475}};
 }
 }  // namespace
 StateTable GeneratedMlp7() { return {Mlp7}; }

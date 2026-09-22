@@ -9,20 +9,22 @@
 namespace pluto::llm::discretized {
 // Separate generated targets. Neither is visible to the integer model.
 absl::Status VerifyGeneratedModel(const Model& model, std::ostream& output);
-absl::StatusOr<std::vector<TokenId>> EncodeGeneratedPrompt(
+absl::StatusOr<std::vector<DiscreteToken>> EncodeGeneratedPrompt(
     absl::string_view text);
 }  // namespace pluto::llm::discretized
 
 namespace {
 namespace dm = pluto::llm::discretized;
 
-absl::StatusOr<std::vector<dm::TokenId>> ParseIds(absl::string_view text) {
-  std::vector<dm::TokenId> ids;
+absl::StatusOr<std::vector<dm::DiscreteToken>> ParseIds(
+    absl::string_view text) {
+  std::vector<dm::DiscreteToken> ids;
   while (!text.empty()) {
     const size_t separator = text.find(',');
     const auto item = text.substr(0, separator);
-    dm::TokenId id;
-    auto result = std::from_chars(item.data(), item.data() + item.size(), id);
+    dm::DiscreteToken id;
+    auto result =
+        std::from_chars(item.data(), item.data() + item.size(), id.value);
     if (item.empty() || result.ec != std::errc() ||
         result.ptr != item.data() + item.size())
       return absl::InvalidArgumentError(
@@ -112,7 +114,7 @@ int Run(int argc, char** argv) {
     std::cerr << continuation.status() << "\n";
     return 1;
   }
-  for (dm::TokenId token : *continuation) {
+  for (dm::DiscreteToken token : *continuation) {
     if (token == model.eos_token)
       break;
     tokens->push_back(token);
