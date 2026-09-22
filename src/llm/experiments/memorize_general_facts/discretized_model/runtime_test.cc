@@ -72,7 +72,7 @@ TransitionResult Mlp(DiscreteHiddenState state) {
   return {};
 }
 
-TransitionResult Snap(DiscreteHiddenState state) {
+TransitionResult LanguageModelingHead(DiscreteHiddenState state) {
   switch (state.value) {
     case 12:
       return {DiscreteHiddenState{1}};
@@ -91,8 +91,8 @@ Model Fixture() {
       {10, "A"}, {11, "B"}, {12, "C"}, {13, "<eos>"}};
   static const AttentionTable attention[] = {{Attention}};
   static const StateTable mlp[] = {{Mlp}};
-  return Model{1024,      1,   DiscreteToken{3}, vocabulary,
-               attention, mlp, {Snap},           Entry};
+  return Model{1024,      1,   DiscreteToken{3},       vocabulary,
+               attention, mlp, {LanguageModelingHead}, Entry};
 }
 
 TEST(IntegerRuntime, FunctionsMatchEntireFiniteDomain) {
@@ -141,7 +141,7 @@ TEST(IntegerRuntime, RejectsMissingRequiredFunctionsBeforeCallingThem) {
         model.mlp = missing_mlp;
         break;
       case 3:
-        model.snap.function = nullptr;
+        model.language_modeling_head.function = nullptr;
         break;
     }
     EXPECT_EQ(ValidateModel(model).code(), absl::StatusCode::kInvalidArgument);
@@ -192,12 +192,12 @@ TEST(IntegerRuntime, RejectsInvalidFunctionOutputs) {
   EXPECT_EQ(PredictNext(model, Tokens({0})).status().code(),
             absl::StatusCode::kDataLoss);
   model = Fixture();
-  model.snap = {[](DiscreteHiddenState) -> TransitionResult {
+  model.language_modeling_head = {[](DiscreteHiddenState) -> TransitionResult {
     return {DiscreteHiddenState{4}};
   }};
   EXPECT_EQ(PredictNext(model, Tokens({0})).status().code(),
             absl::StatusCode::kDataLoss);
-  model.snap = {[](DiscreteHiddenState) -> TransitionResult {
+  model.language_modeling_head = {[](DiscreteHiddenState) -> TransitionResult {
     return {DiscreteHiddenState{std::numeric_limits<int>::max()}};
   }};
   EXPECT_EQ(PredictNext(model, Tokens({0})).status().code(),
@@ -206,10 +206,13 @@ TEST(IntegerRuntime, RejectsInvalidFunctionOutputs) {
 
 TEST(IntegerRuntime, OptionalTransitionsDistinguishZeroFromUnsupported) {
   auto model = Fixture();
-  const auto zero = model.snap.function(DiscreteHiddenState{14});
+  const auto zero =
+      model.language_modeling_head.function(DiscreteHiddenState{14});
   ASSERT_TRUE(zero.output.has_value());
   EXPECT_EQ(*zero.output, DiscreteHiddenState{0});
-  EXPECT_EQ(model.snap.function(DiscreteHiddenState{16}).output, std::nullopt);
+  EXPECT_EQ(
+      model.language_modeling_head.function(DiscreteHiddenState{16}).output,
+      std::nullopt);
   const auto prediction = PredictNext(model, Tokens({0, 2}));
   ASSERT_TRUE(prediction.ok());
   EXPECT_EQ(*prediction, DiscreteToken{0});
@@ -236,7 +239,8 @@ TEST(IntegerRuntime, OptionalTransitionsDistinguishZeroFromUnsupported) {
   EXPECT_EQ(PredictNext(model, Tokens({0})).status().code(),
             absl::StatusCode::kNotFound);
   model = Fixture();
-  model.snap = {[](DiscreteHiddenState) -> TransitionResult { return {}; }};
+  model.language_modeling_head = {
+      [](DiscreteHiddenState) -> TransitionResult { return {}; }};
   EXPECT_EQ(PredictNext(model, Tokens({0})).status().code(),
             absl::StatusCode::kNotFound);
 }
@@ -260,7 +264,7 @@ TEST(IntegerRuntime, RejectsNegativeLabelsAtEveryBoundary) {
     else if (boundary == 2)
       model.mlp = pointwise;
     else
-      model.snap = pointwise[0];
+      model.language_modeling_head = pointwise[0];
     EXPECT_EQ(PredictNext(model, Tokens({0})).status().code(),
               absl::StatusCode::kDataLoss);
   }
@@ -297,13 +301,14 @@ TEST(IntegerRuntime, EachBlockConsumesThePreviousBlocksWholeOutput) {
                             }}};
   model.attention = attention;
   model.mlp = mlp;
-  model.snap = {[](DiscreteHiddenState state) -> TransitionResult {
-    if (state.value == 20)
-      return {DiscreteHiddenState{1}};
-    if (state.value == 21)
-      return {DiscreteHiddenState{3}};
-    return {};
-  }};
+  model.language_modeling_head = {
+      [](DiscreteHiddenState state) -> TransitionResult {
+        if (state.value == 20)
+          return {DiscreteHiddenState{1}};
+        if (state.value == 21)
+          return {DiscreteHiddenState{3}};
+        return {};
+      }};
   const auto generated = Generate(model, Tokens({0}), 9);
   ASSERT_TRUE(generated.ok()) << generated.status();
   EXPECT_EQ(*generated, (Tokens({1, 3})));
@@ -322,10 +327,11 @@ TEST(IntegerRuntime, CompleteHistoryMattersEvenWithIdenticalLastState) {
 
 TEST(IntegerRuntime, FunctionsDetermineAnswersWithoutCorpusOrSuffixCache) {
   auto model = Fixture();
-  model.snap = {[](DiscreteHiddenState state) -> TransitionResult {
-    return state.value == 13 ? TransitionResult{DiscreteHiddenState{2}}
-                             : Snap(state);
-  }};
+  model.language_modeling_head = {
+      [](DiscreteHiddenState state) -> TransitionResult {
+        return state.value == 13 ? TransitionResult{DiscreteHiddenState{2}}
+                                 : LanguageModelingHead(state);
+      }};
   auto changed = PredictNext(model, Tokens({0, 1}));
   ASSERT_TRUE(changed.ok());
   EXPECT_EQ(*changed, DiscreteToken{2});
@@ -443,17 +449,19 @@ TEST(IntegerRuntime, RejectsInvalidModelDimensionsBeforeInference) {
   }
 }
 
-TEST(IntegerRuntime, ZeroTransformerBlocksStillRunEntryAndSnap) {
+TEST(IntegerRuntime,
+     ZeroTransformerBlocksStillRunEntryAndLanguageModelingHead) {
   auto model = Fixture();
   model.attention = {};
   model.mlp = {};
-  model.snap = {[](DiscreteHiddenState state) -> TransitionResult {
-    if (state.value == 4)
-      return {DiscreteHiddenState{1}};
-    if (state.value == 5)
-      return {DiscreteHiddenState{3}};
-    return {};
-  }};
+  model.language_modeling_head = {
+      [](DiscreteHiddenState state) -> TransitionResult {
+        if (state.value == 4)
+          return {DiscreteHiddenState{1}};
+        if (state.value == 5)
+          return {DiscreteHiddenState{3}};
+        return {};
+      }};
   ASSERT_TRUE(ValidateModel(model).ok());
   const auto generated = Generate(model, Tokens({0}), 9);
   ASSERT_TRUE(generated.ok()) << generated.status();

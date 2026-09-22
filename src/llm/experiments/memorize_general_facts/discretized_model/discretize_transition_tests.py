@@ -21,7 +21,7 @@ def _replay_samples(model):
     attention = [{tuple(prefix): output for prefix, output in rows}
                  for rows in model["attention"]]
     mlp = [dict(rows) for rows in model["mlp"]]
-    snap = dict(model["snap"])
+    language_modeling_head = dict(model["language_modeling_head"])
     tokens, states, samples = [], [], []
     for number, sample in enumerate(model["samples"]):
         original = sample["tokens"]
@@ -41,7 +41,7 @@ def _replay_samples(model):
             for position in range(model["prompt_tokens"] - 1, len(original)):
                 expected = (original[position + 1] if position + 1 < len(original)
                             else model["eos_token"])
-                if snap[boundary[position]] != expected:
+                if language_modeling_head[boundary[position]] != expected:
                     raise ValueError(f"sample {number}, position {position}: "
                                      "source readout disagrees with sample target")
         except KeyError as error:
@@ -176,7 +176,7 @@ def render_transition_test(model, token_names):
         pointwise_rows.extend(
             f"{{{block}, {{{state}}}, {_result(supported, output)}}}"
             for state, supported, output in _pointwise_probes(model["mlp"][block]))
-    snap_probes = _pointwise_probes(model["snap"])
+    language_modeling_head_probes = _pointwise_probes(model["language_modeling_head"])
     entry_probes = _entry_probes(model)
     body = f'''// Generated independent boundary fixtures; test-only, never inference input.
 // Expectations replay the source JSON, independently of compiled control flow.
@@ -192,7 +192,7 @@ constexpr size_t kLayers = {layers};
 constexpr size_t kSampleCount = {len(samples)};
 struct Sample {{ size_t token_offset; size_t state_offset; size_t length; }};
 // Independent readout expectations; not part of the production model interface.
-struct SnapRow {{ DiscreteHiddenState input; DiscreteHiddenState output; }};
+struct LanguageModelingHeadRow {{ DiscreteHiddenState input; DiscreteHiddenState output; }};
 struct AttentionProbe {{
   size_t block; size_t offset; size_t length; TransitionResult expected;
 }};
@@ -203,15 +203,15 @@ struct EntryProbe {{ DiscreteToken token; uint32_t position; TransitionResult ex
     body += _array("DiscreteToken", "kSampleTokens", (token_names[t] for t in tokens), 4)
     body += _array("DiscreteHiddenState", "kExpectedStates", (f"{{{state}}}" for state in states), 16)
     body += _array("Sample", "kSamples", (f"{{{a}, {b}, {c}}}" for a, b, c in samples))
-    body += _array("SnapRow", "kSnapRows",
+    body += _array("LanguageModelingHeadRow", "kLanguageModelingHeadRows",
                    (f"{{{{{state}}}, static_cast<DiscreteHiddenState>({token_names[token]})}}"
-                    for state, token in sorted(model["snap"])))
+                    for state, token in sorted(model["language_modeling_head"])))
     body += _array("DiscreteHiddenState", "kAttentionProbeKeys", (f"{{{state}}}" for state in attention_keys), 16)
     body += _array("AttentionProbe", "kAttentionProbes", attention_rows)
     body += _array("PointwiseProbe", "kMlpProbes", pointwise_rows)
-    body += _array("StateProbe", "kSnapProbes",
+    body += _array("StateProbe", "kLanguageModelingHeadProbes",
                    (f"{{{{{state}}}, {_result(supported, token_names[output] if supported else 0)}}}"
-                    for state, supported, output in snap_probes))
+                    for state, supported, output in language_modeling_head_probes))
     body += _array("EntryProbe", "kEntryProbes",
                    (f"{{{token_names[token] if 0 <= token < len(token_names) else 'DiscreteToken{' + str(token) + '}'}, "
                     f"{position}, {_result(supported, output)}}}"
@@ -224,7 +224,7 @@ void ExpectTransition(TransitionResult actual, TransitionResult expected) {{
 TEST(GeneratedTransitionBoundaries, EverySamplePositionAtEveryBoundary) {{
   const auto& model = GeneratedModel();
   ASSERT_NE(model.entry_function, nullptr);
-  ASSERT_NE(model.snap.function, nullptr);
+  ASSERT_NE(model.language_modeling_head.function, nullptr);
   ASSERT_EQ(model.attention.size(), kLayers);
   ASSERT_EQ(model.mlp.size(), kLayers);
   for (size_t block = 0; block < kLayers; ++block) {{
@@ -260,22 +260,22 @@ TEST(GeneratedTransitionBoundaries, EverySamplePositionAtEveryBoundary) {{
     const auto* final_states = expected + (2 * kLayers) * sample.length;
     for (size_t position = {model['prompt_tokens'] - 1}; position < sample.length;
          ++position) {{
-      SCOPED_TRACE(::testing::Message() << "snap position " << position);
+      SCOPED_TRACE(::testing::Message() << "language modeling head position " << position);
       const DiscreteToken target = position + 1 < sample.length
           ? tokens[position + 1] : {token_names[model['eos_token']]};
-      ExpectTransition(model.snap.function(final_states[position]),
+      ExpectTransition(model.language_modeling_head.function(final_states[position]),
                        {{static_cast<DiscreteHiddenState>(target)}});
     }}
   }}
 }}
 
-TEST(GeneratedTransitionBoundaries, EverySourceSnapConstraint) {{
+TEST(GeneratedTransitionBoundaries, EverySourceLanguageModelingHeadConstraint) {{
   const auto& model = GeneratedModel();
-  ASSERT_NE(model.snap.function, nullptr);
-  for (size_t index = 0; index < {len(model['snap'])}; ++index) {{
-    const auto& row = kSnapRows[index];
-    SCOPED_TRACE(::testing::Message() << "snap state " << row.input.value);
-    ExpectTransition(model.snap.function(row.input), {{row.output}});
+  ASSERT_NE(model.language_modeling_head.function, nullptr);
+  for (size_t index = 0; index < {len(model['language_modeling_head'])}; ++index) {{
+    const auto& row = kLanguageModelingHeadRows[index];
+    SCOPED_TRACE(::testing::Message() << "language modeling head state " << row.input.value);
+    ExpectTransition(model.language_modeling_head.function(row.input), {{row.output}});
   }}
 }}
 
@@ -295,7 +295,7 @@ TEST(GeneratedTransitionBoundaries, ExactAttentionDomainMutationProbes) {{
 TEST(GeneratedTransitionBoundaries, EntryAndPointwiseDomainProbes) {{
   const auto& model = GeneratedModel();
   ASSERT_NE(model.entry_function, nullptr);
-  ASSERT_NE(model.snap.function, nullptr);
+  ASSERT_NE(model.language_modeling_head.function, nullptr);
   ASSERT_EQ(model.mlp.size(), kLayers);
   for (size_t index = 0; index < {len(entry_probes)}; ++index) {{
     const auto& probe = kEntryProbes[index];
@@ -308,10 +308,10 @@ TEST(GeneratedTransitionBoundaries, EntryAndPointwiseDomainProbes) {{
     ASSERT_NE(model.mlp[probe.block].function, nullptr);
     ExpectTransition(model.mlp[probe.block].function(probe.input), probe.expected);
   }}
-  for (size_t index = 0; index < {len(snap_probes)}; ++index) {{
-    const auto& probe = kSnapProbes[index];
-    SCOPED_TRACE(::testing::Message() << "snap probe " << index);
-    ExpectTransition(model.snap.function(probe.input), probe.expected);
+  for (size_t index = 0; index < {len(language_modeling_head_probes)}; ++index) {{
+    const auto& probe = kLanguageModelingHeadProbes[index];
+    SCOPED_TRACE(::testing::Message() << "language modeling head probe " << index);
+    ExpectTransition(model.language_modeling_head.function(probe.input), probe.expected);
   }}
 }}
 }}  // namespace

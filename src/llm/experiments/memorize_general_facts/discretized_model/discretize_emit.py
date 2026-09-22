@@ -105,14 +105,14 @@ def _validate(model):
             keys.add(key)
             state_at(key, 2*block+1)
             state_at(output, 2*block+2)
-    snaps = set()
-    for key, output in model["snap"]:
-        if key in snaps:
-            raise ValueError("duplicate snap key")
-        snaps.add(key)
+    language_modeling_head_inputs = set()
+    for key, output in model["language_modeling_head"]:
+        if key in language_modeling_head_inputs:
+            raise ValueError("duplicate language modeling head key")
+        language_modeling_head_inputs.add(key)
         state_at(key, 2*layers)
-        _integer(output, "snap token", maximum=vocabulary_size-1)
-    if not snaps or not model["samples"]:
+        _integer(output, "language modeling head token", maximum=vocabulary_size-1)
+    if not language_modeling_head_inputs or not model["samples"]:
         raise ValueError("missing readout or verification samples")
     for sample in model["samples"]:
         if not prompt <= len(sample["tokens"]) < 1024:
@@ -234,7 +234,7 @@ def _render(model, include_state_index=False, compact_transitions=False):
     vocab = model["vocabulary"]
     token_names = [_token_name(bytes.fromhex(row["hex"]), token, model["eos_token"])
                    for token, row in enumerate(vocab)]
-    declarations = ["TransitionResult GeneratedEntryFunction(DiscreteToken, uint32_t);", "absl::Span<const VocabularyRow> GeneratedVocabulary();", "StateTable GeneratedSnap();"]
+    declarations = ["TransitionResult GeneratedEntryFunction(DiscreteToken, uint32_t);", "absl::Span<const VocabularyRow> GeneratedVocabulary();", "StateTable GeneratedLanguageModelingHead();"]
     for block in range(layers):
         declarations += [f"AttentionTable GeneratedAttention{block}();", f"StateTable GeneratedMlp{block}();"]
     files = {"tables.h": f'// Generated declarations.\n#pragma once\n#include "{RUNTIME}"\nnamespace {NAMESPACE} {{\n' + "\n".join(declarations) + f"\n}}  // namespace {NAMESPACE}\n"}
@@ -327,16 +327,16 @@ TransitionResult Lookup(absl::Span<const DiscreteHiddenState> prefix) {{
         files[f"mlp_{block}.cc"] = _state_source(f"GeneratedMlp{block}", model["mlp"][block],
             f"Block {block} pointwise MLP boundary: {_boundary_name(2*block+1)}\n"
             f"-> {_boundary_name(2*block+2)}. This preserves the MLP residual boundary.")
-    files["snap.cc"] = _state_source("GeneratedSnap", model["snap"],
+    files["language_modeling_head.cc"] = _state_source("GeneratedLanguageModelingHead", model["language_modeling_head"],
         f"Readout: final {_boundary_name(2*layers)} state -> compact next-token ID.\n"
         "Outputs are token IDs, including EOS; no continuation sequence is stored here.",
         token_names=token_names)
     body = "const Model& GeneratedModel() {\n"
     body += "  static " + _array("AttentionTable", "kAttention", (f"GeneratedAttention{i}()" for i in range(layers)))
     body += "  static " + _array("StateTable", "kMlp", (f"GeneratedMlp{i}()" for i in range(layers)))
-    body += f"  static const Model model{{1024, {model['prompt_tokens']}, vocab::{token_names[model['eos_token']]}, GeneratedVocabulary(), {_span('kAttention', layers)}, {_span('kMlp', layers)}, GeneratedSnap(), GeneratedEntryFunction}};\n  return model;\n}}"
+    body += f"  static const Model model{{1024, {model['prompt_tokens']}, vocab::{token_names[model['eos_token']]}, GeneratedVocabulary(), {_span('kAttention', layers)}, {_span('kMlp', layers)}, GeneratedLanguageModelingHead(), GeneratedEntryFunction}};\n  return model;\n}}"
     files["model.cc"] = _source(body, vocabulary=True, description=
-        "Integer network in original boundary order: entry -> (attention residual -> MLP residual) per block -> snap.\n"
+        "Integer network in original boundary order: entry -> (attention residual -> MLP residual) per block -> language modeling head.\n"
         "All attention and MLP boundaries remain separate. State IDs never identify corpus lines.")
     files["prompt_encoder.cc"] = _render_encoder(model, token_names)
     files["verification.cc"] = _render_verification(model, token_names)
@@ -502,7 +502,7 @@ def _render_verification(model, token_names):
 
 
 def _render_build(layers, compact_transitions=False):
-    sources = ["entry.cc", "model.cc", "snap.cc", "vocabulary.cc"]
+    sources = ["entry.cc", "model.cc", "language_modeling_head.cc", "vocabulary.cc"]
     sources += [f"attention_{i}.cc" for i in range(layers)]
     sources += [f"mlp_{i}.cc" for i in range(layers)]
     source_text = "\n".join(f'        "{name}",' for name in sorted(sources))

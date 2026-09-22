@@ -44,8 +44,10 @@ absl::Status ValidateModel(const Model& model) {
       static_cast<size_t>(model.eos_token.value) >= model.vocabulary.size() ||
       model.attention.size() != model.mlp.size())
     return absl::InvalidArgumentError("invalid integer model dimensions");
-  if (model.entry_function == nullptr || model.snap.function == nullptr)
-    return absl::InvalidArgumentError("missing entry or snap lookup function");
+  if (model.entry_function == nullptr ||
+      model.language_modeling_head.function == nullptr)
+    return absl::InvalidArgumentError(
+        "missing entry or language modeling head lookup function");
   for (size_t block = 0; block < model.attention.size(); ++block)
     if (model.attention[block].function == nullptr ||
         model.mlp[block].function == nullptr)
@@ -95,13 +97,14 @@ absl::StatusOr<DiscreteToken> PredictNext(
     }
     states.swap(next);
   }
-  auto token =
-      LookupState(model.snap, states.back(), "snap", model.attention.size());
+  auto token = LookupState(model.language_modeling_head, states.back(),
+                           "language modeling head", model.attention.size());
   if (!token.ok())
     return token.status();
   if (token->value < 0 ||
       static_cast<size_t>(token->value) >= model.vocabulary.size())
-    return absl::DataLossError("snap produced an invalid compact token ID");
+    return absl::DataLossError(
+        "language modeling head produced an invalid compact token ID");
   return static_cast<DiscreteToken>(*token);
 }
 

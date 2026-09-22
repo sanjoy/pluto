@@ -17,7 +17,7 @@ struct Sample {
   size_t length;
 };
 // Independent readout expectations; not part of the production model interface.
-struct SnapRow {
+struct LanguageModelingHeadRow {
   DiscreteHiddenState input;
   DiscreteHiddenState output;
 };
@@ -44446,7 +44446,7 @@ constexpr Sample kSamples[] = {
     {14051, 238867, 13}, {14064, 239088, 13}, {14077, 239309, 10},
     {14087, 239479, 11},
 };
-constexpr SnapRow kSnapRows[] = {
+constexpr LanguageModelingHeadRow kLanguageModelingHeadRows[] = {
     {{9664}, static_cast<DiscreteHiddenState>(vocab::kComma_0)},
     {{9665}, static_cast<DiscreteHiddenState>(vocab::kHyphen_1)},
     {{9666}, static_cast<DiscreteHiddenState>(vocab::kPeriod_2)},
@@ -49108,7 +49108,7 @@ constexpr PointwiseProbe kMlpProbes[] = {
     {7, {6417}, {std::nullopt}},
     {7, {6419}, {DiscreteHiddenState{10894}}},
 };
-constexpr StateProbe kSnapProbes[] = {
+constexpr StateProbe kLanguageModelingHeadProbes[] = {
     {{0}, {std::nullopt}},
     {{-1}, {std::nullopt}},
     {{2147483647}, {std::nullopt}},
@@ -49249,7 +49249,7 @@ void ExpectTransition(TransitionResult actual, TransitionResult expected) {
 TEST(GeneratedTransitionBoundaries, EverySamplePositionAtEveryBoundary) {
   const auto& model = GeneratedModel();
   ASSERT_NE(model.entry_function, nullptr);
-  ASSERT_NE(model.snap.function, nullptr);
+  ASSERT_NE(model.language_modeling_head.function, nullptr);
   ASSERT_EQ(model.attention.size(), kLayers);
   ASSERT_EQ(model.mlp.size(), kLayers);
   for (size_t block = 0; block < kLayers; ++block) {
@@ -49285,23 +49285,27 @@ TEST(GeneratedTransitionBoundaries, EverySamplePositionAtEveryBoundary) {
     }
     const auto* final_states = expected + (2 * kLayers) * sample.length;
     for (size_t position = 4; position < sample.length; ++position) {
-      SCOPED_TRACE(::testing::Message() << "snap position " << position);
+      SCOPED_TRACE(::testing::Message()
+                   << "language modeling head position " << position);
       const DiscreteToken target = position + 1 < sample.length
                                        ? tokens[position + 1]
                                        : vocab::kEos_4474;
-      ExpectTransition(model.snap.function(final_states[position]),
-                       {static_cast<DiscreteHiddenState>(target)});
+      ExpectTransition(
+          model.language_modeling_head.function(final_states[position]),
+          {static_cast<DiscreteHiddenState>(target)});
     }
   }
 }
 
-TEST(GeneratedTransitionBoundaries, EverySourceSnapConstraint) {
+TEST(GeneratedTransitionBoundaries, EverySourceLanguageModelingHeadConstraint) {
   const auto& model = GeneratedModel();
-  ASSERT_NE(model.snap.function, nullptr);
+  ASSERT_NE(model.language_modeling_head.function, nullptr);
   for (size_t index = 0; index < 2900; ++index) {
-    const auto& row = kSnapRows[index];
-    SCOPED_TRACE(::testing::Message() << "snap state " << row.input.value);
-    ExpectTransition(model.snap.function(row.input), {row.output});
+    const auto& row = kLanguageModelingHeadRows[index];
+    SCOPED_TRACE(::testing::Message()
+                 << "language modeling head state " << row.input.value);
+    ExpectTransition(model.language_modeling_head.function(row.input),
+                     {row.output});
   }
 }
 
@@ -49322,7 +49326,7 @@ TEST(GeneratedTransitionBoundaries, ExactAttentionDomainMutationProbes) {
 TEST(GeneratedTransitionBoundaries, EntryAndPointwiseDomainProbes) {
   const auto& model = GeneratedModel();
   ASSERT_NE(model.entry_function, nullptr);
-  ASSERT_NE(model.snap.function, nullptr);
+  ASSERT_NE(model.language_modeling_head.function, nullptr);
   ASSERT_EQ(model.mlp.size(), kLayers);
   for (size_t index = 0; index < 64; ++index) {
     const auto& probe = kEntryProbes[index];
@@ -49339,9 +49343,11 @@ TEST(GeneratedTransitionBoundaries, EntryAndPointwiseDomainProbes) {
                      probe.expected);
   }
   for (size_t index = 0; index < 64; ++index) {
-    const auto& probe = kSnapProbes[index];
-    SCOPED_TRACE(::testing::Message() << "snap probe " << index);
-    ExpectTransition(model.snap.function(probe.input), probe.expected);
+    const auto& probe = kLanguageModelingHeadProbes[index];
+    SCOPED_TRACE(::testing::Message()
+                 << "language modeling head probe " << index);
+    ExpectTransition(model.language_modeling_head.function(probe.input),
+                     probe.expected);
   }
 }
 }  // namespace

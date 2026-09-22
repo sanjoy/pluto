@@ -109,16 +109,16 @@ def _validate(model):
             table[source] = output
         mlp.append(table)
 
-    snap = {}
-    for row in _list(model.get("snap"), "snap"):
-        state, token = _list(row, "snap row", 2)
+    language_modeling_head = {}
+    for row in _list(model.get("language_modeling_head"), "language modeling head"):
+        state, token = _list(row, "language modeling head row", 2)
         state_at(state, 2 * layers)
-        if _integer(token, "snap token") >= vocabulary:
-            raise CertificateError("snap token is outside vocabulary")
-        if state in snap:
-            raise CertificateError("duplicate snap key")
-        snap[state] = token
-    return by_stage, attention, mlp, snap
+        if _integer(token, "language modeling head token") >= vocabulary:
+            raise CertificateError("language modeling head token is outside vocabulary")
+        if state in language_modeling_head:
+            raise CertificateError("duplicate language modeling head key")
+        language_modeling_head[state] = token
+    return by_stage, attention, mlp, language_modeling_head
 
 
 def _duplicate_output(table):
@@ -171,7 +171,7 @@ def certify_model(model):
     repeated output label, or attention pair without a collision leaves this
     backward proof incomplete. No search metadata is read.
     """
-    by_stage, attention, mlp, snap = _validate(model)
+    by_stage, attention, mlp, language_modeling_head = _validate(model)
     pair_count = lambda states: len(states) * (len(states) - 1) // 2
     report = {
         "certificate_schema": 1,
@@ -200,9 +200,9 @@ def certify_model(model):
                                   "pairs": count, "argument": argument})
 
     final_stage = len(by_stage) - 1
-    if set(snap) != set(by_stage[final_stage]):
+    if set(language_modeling_head) != set(by_stage[final_stage]):
         return inconclusive("not every final state has a fixed readout label", final_stage)
-    duplicate = _duplicate_output(snap)
+    duplicate = _duplicate_output(language_modeling_head)
     if duplicate is not None:
         return inconclusive("two final states have the same fixed token label", final_stage, duplicate)
     proven(final_stage, "distinct fixed token labels")

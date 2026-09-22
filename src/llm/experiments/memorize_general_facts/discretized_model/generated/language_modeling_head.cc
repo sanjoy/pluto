@@ -6,7 +6,7 @@
 
 namespace pluto::llm::discretized {
 namespace {
-TransitionResult Snap(DiscreteHiddenState state) {
+TransitionResult LanguageModelingHead(DiscreteHiddenState state) {
   if (state.value < 9664 || state.value > 14138)
     return {};
   // State labels encode vocabulary IDs; no neural-head linearity is implied.
@@ -74,6 +74,6 @@ TransitionResult Snap(DiscreteHiddenState state) {
   return {DiscreteHiddenState{vocab::kComma_0.value + (state.value - 9664)}};
 }
 }  // namespace
-StateTable GeneratedSnap() { return {Snap}; }
+StateTable GeneratedLanguageModelingHead() { return {LanguageModelingHead}; }
 
 }  // namespace pluto::llm::discretized

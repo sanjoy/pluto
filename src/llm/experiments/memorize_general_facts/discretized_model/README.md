@@ -145,16 +145,17 @@ The input/position boundary has 52 states. Subsequent boundaries are:
 | 7 | 2,900 | 2,900 |
 
 There are 2,900 distinct required next-token labels. Both final boundaries have
-reached that lower bound: the final MLP and snap are pointwise functions, so
-different required labels cannot share an input state. Earlier attention tables
-can expand a small alphabet into many outputs by inspecting ordered histories.
+reached that lower bound: the final MLP and language modeling head are pointwise
+functions, so different required labels cannot share an input state. Earlier
+attention tables can expand a small alphabet into many outputs by inspecting
+ordered histories.
 These counts measure state alphabets, not the information or bytes in the
 history-keyed tables; reducing states is not the same as compressing the model.
 
 All original 221,558 states are accounted for by the quotient membership map.
 The generator preserves all eight attention transitions, all eight MLP transitions,
-the position-entry function, and the final vocabulary snap. The generated code has
-boundary/row-layout comments and readable, byte-exact vocabulary literals.
+the position-entry function, and the language modeling head. The generated code
+has boundary/row-layout comments and readable, byte-exact vocabulary literals.
 
 Two files support inspection without affecting inference:
 
@@ -211,11 +212,12 @@ Patterns found:
   output names in input order makes each MLP a range check plus a constant
   addition. For example, block 0 accepts 4527–4574 and returns `state + 48`.
   The separate MLP function is still called at every position.
-- **The final MLP and snap are bijective onto their required token labels.**
+- **The final MLP and language modeling head are bijective onto their required token labels.**
   Name the last attention states `5189 + token_id` and final states
-  `9664 + token_id`. The final MLP adds 4475; the snap subtracts 9664. Each has
-  its own 560-byte support mask to reject the 1,575 unused labels. These masks
-  are essential: a range check alone would accept states that never existed.
+  `9664 + token_id`. The final MLP adds 4475; the language modeling head subtracts
+  9664. Each has its own 560-byte support mask to reject the 1,575 unused labels.
+  These masks are essential: a range check alone would accept states that never
+  existed.
 - **Entry is nearly token-only on this quotient.** Of 4,474 input tokens, 4,466
   have the same entry symbol at all observed positions. Only eight need one
   positional exception each. Deduplicated `(position-support mask, default
@@ -259,7 +261,7 @@ or the test fixtures. All amounts are bytes.
 | MLP 4–5, each | 432 | 132 | 69.4% |
 | MLP 6 | 416 | 132 | 68.3% |
 | MLP 7 | 23,256 | 744 | 96.8% |
-| Snap | 23,256 | 728 | 96.9% |
+| Language modeling head | 23,256 | 728 | 96.9% |
 | **All transition objects** | **4,343,116** | **1,254,974** | **71.1%** |
 
 The corresponding formatted production transition source shrinks from
@@ -280,7 +282,8 @@ In addition to all 1,024 autonomous completions, a separate C++ test reconstruct
 histories from 239,666 independently computed expected boundary states. Every
 callback receives the **source table's** inputs, not the preceding callback's
 actual outputs, so compensating mistakes cannot pass. Distinct-key coverage was
-checked against all 98,497 source entry, attention, MLP, and snap records.
+checked against all 98,497 source entry, attention, MLP, and language modeling
+head records.
 Additional tests exercise unsupported histories, sparse-domain holes, truncated
 and extended sequences, zero outputs, and 32-bit limits. These fixtures are in a
 dedicated test target, not linked by the production model or CLI.
@@ -289,7 +292,7 @@ To reproduce the current representation from the saved reduced model:
 
 ```sh
 python3 -B src/llm/experiments/memorize_general_facts/discretized_model/generate_discretized_model.py \
-  --model=/tmp/pluto-discretize.AcuKzZ/search-final.json \
+  --model=/path/to/reduced-model.json \
   --compact_transitions --state_index \
   --save_model=/tmp/facts-compact.json --output=/tmp/facts-compact-generated
 ```
@@ -297,10 +300,11 @@ python3 -B src/llm/experiments/memorize_general_facts/discretized_model/generate
 The output path must be fresh. Omit `--compact_transitions` to emit private
 per-boundary tables behind binary-search lookup functions. Both modes expose
 the same compiled-function-only runtime interface: entry, attention, MLP, and
-snap must each provide a pure lookup returning `TransitionResult`. The runtime
-has no table storage or alternate dispatch path. Missing functions are rejected
-before inference; unsupported inputs still fail explicitly. Generation validates
-table structure, and tests compare lookup outputs against the source records.
+language modeling head must each provide a pure lookup returning
+`TransitionResult`. The runtime has no table storage or alternate dispatch path.
+Missing functions are rejected before inference; unsupported inputs still fail
+explicitly. Generation validates table structure, and tests compare lookup
+outputs against the source records.
 
 All generation logic and its Python tests
 live alongside this README: the driver, C++ emitter, state reduction,
