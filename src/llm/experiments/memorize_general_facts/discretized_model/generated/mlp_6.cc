@@ -9,7 +9,7 @@ namespace {
 TransitionResult Mlp6(StateId state) {
   if (state < 5099u || state > 5143u)
     return {};
-  return state + 45u;
+  return {state + 45u};
 }
 }  // namespace
 StateTable GeneratedMlp6() { return {{}, Mlp6}; }
