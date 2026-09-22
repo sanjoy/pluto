@@ -4,6 +4,8 @@ import contextlib
 import io
 import json
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -33,6 +35,31 @@ class GenerateDriverTest(unittest.TestCase):
         return driver.parser().parse_args([
             "--capture", str(self.capture), "--output", str(self.root / "generated"),
             "--expected_samples=1", *extra])
+
+    def test_cli_uses_relocated_emitter_outside_repository(self):
+        # A fresh process cannot inherit an import path from test discovery.
+        # Exercise both the base emitter and its optional compact dependencies.
+        for compact in (False, True):
+            with self.subTest(compact=compact):
+                output = self.root / ("compact" if compact else "tables")
+                command = [sys.executable, "-B", str(Path(driver.__file__).resolve()),
+                           "--capture", str(self.capture), "--output", str(output),
+                           "--expected_samples=1"]
+                if compact:
+                    command.extend(["--reduce", "--compact_transitions"])
+                result = subprocess.run(command, cwd=self.root, capture_output=True,
+                                        text=True, timeout=60)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                manifest = json.loads((output / "manifest.json").read_text())
+                self.assertEqual(manifest["transition_representation"],
+                                 "control_flow" if compact else "tables")
+
+    def test_emitter_is_loaded_from_experiment_directory(self):
+        import inspect
+        repository = Path(driver.__file__).resolve().parents[2]
+        self.assertEqual(Path(inspect.getfile(driver.emit_model)).resolve(),
+                         repository / "src/llm/experiments/memorize_general_facts/discretize_emit.py")
+        self.assertFalse((repository / "scripts/memorize_general_facts/discretize_emit.py").exists())
 
     def test_generate_format_verify_and_record_hashes(self):
         args = self.arguments("--save_model", str(self.root / "model.json"))

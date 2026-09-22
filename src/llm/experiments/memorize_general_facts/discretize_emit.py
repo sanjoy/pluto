@@ -308,7 +308,7 @@ TEST(GeneratedIntegerModel, IndependentAutoregressiveCorpusVerification) {{
                 lines.append(f"{row['id']}\t{_boundary_name(row['stage'])}\t{members}")
             files["state_members.tsv"] = "\n".join(lines) + "\n"
     if compact_transitions:
-        from discretize_logic import render_compact
+        from scripts.memorize_general_facts.discretize_logic import render_compact
         render_compact(model, token_names, files, _source)
     manifest = {
         "schema": 1, "generator": "discretize_emit.py", "layers": layers,

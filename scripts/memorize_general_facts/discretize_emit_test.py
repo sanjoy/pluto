@@ -7,11 +7,16 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest import mock
 
-import discretize_emit
+# Keep direct test execution and discovery independent of the current directory.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from src.llm.experiments.memorize_general_facts import discretize_emit
 
 
 def fixture():
@@ -93,6 +98,29 @@ class EmitModelTest(unittest.TestCase):
         destination = self.root / name
         manifest = discretize_emit.emit_model(self.model if model is None else model, destination, **options)
         return destination, manifest
+
+    def test_compact_emission_without_scripts_on_import_path(self):
+        # Importing the experiment module directly must also resolve the compact
+        # helpers, without a driver or test discovery supplying their directory.
+        model_path = self.root / "model.json"
+        model_path.write_text(json.dumps(self.model))
+        output = self.root / "compact"
+        command = """
+import json
+from pathlib import Path
+import sys
+sys.path.insert(0, sys.argv[1])
+from src.llm.experiments.memorize_general_facts.discretize_emit import emit_model
+emit_model(json.loads(Path(sys.argv[2]).read_text()), Path(sys.argv[3]),
+           compact_transitions=True)
+"""
+        result = subprocess.run(
+            [sys.executable, "-B", "-c", command,
+             str(Path(__file__).resolve().parents[2]), str(model_path), str(output)],
+            cwd=self.root, capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads((output / "manifest.json").read_text())[
+            "transition_representation"], "control_flow")
 
     def test_plain_split_sources_reproducible_under_input_table_order(self):
         first, manifest = self.emit("first")
