@@ -16,10 +16,14 @@ import shutil
 import subprocess
 import sys
 
+# The emitter lives with the experiment. Resolve its package from this file,
+# not the caller's working directory, including for direct CLI invocations.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
 from discretize_core import (build_model, evaluate_model, load_model, reduce_model,
                              restore_membership, save_model)
 from discretize_certificate import certify_model
-from discretize_emit import emit_model
+from src.llm.experiments.memorize_general_facts.discretize_emit import emit_model
 
 
 def sha256(path):

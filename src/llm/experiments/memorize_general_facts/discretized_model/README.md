@@ -295,8 +295,10 @@ python3 -B scripts/memorize_general_facts/generate_discretized_model.py \
 ```
 
 The output path must be fresh. Omit `--compact_transitions` to emit the original
-per-boundary tables for comparison. Generator utilities and their tests remain
-in `scripts/memorize_general_facts/`; generated C++ stays here.
+per-boundary tables for comparison. The C++ emitter is
+`src/llm/experiments/memorize_general_facts/discretize_emit.py`. The driver,
+reduction utilities, and Python tests remain in `scripts/memorize_general_facts/`;
+generated C++ stays here.
 
 ## Reproduce capture and code generation
 

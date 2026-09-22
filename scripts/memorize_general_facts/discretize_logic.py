@@ -7,9 +7,9 @@ a separate target and never become inputs to the production functions.
 
 import json
 
-from discretize_attention_logic import render_attention
-from discretize_pointwise import render_entry, render_pointwise
-from discretize_transition_tests import render_transition_test
+from .discretize_attention_logic import render_attention
+from .discretize_pointwise import render_entry, render_pointwise
+from .discretize_transition_tests import render_transition_test
 
 
 def render_compact(model, token_names, files, source):
