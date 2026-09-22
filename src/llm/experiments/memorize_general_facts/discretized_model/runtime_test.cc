@@ -141,13 +141,13 @@ struct Fixture {
   TestMap language_modeling_head;
   TestPositionEmbedding position_embedding;
   const Transformer transformers[1] = {{attention, mlp}};
-  Model model{1024,
-              1,
-              DiscreteToken{3},
-              vocabulary,
-              transformers,
-              language_modeling_head,
-              position_embedding};
+  DiscreteModel model{1024,
+                      1,
+                      DiscreteToken{3},
+                      vocabulary,
+                      transformers,
+                      language_modeling_head,
+                      position_embedding};
 };
 
 TEST(IntegerRuntime, FunctionsMatchEntireFiniteDomain) {
@@ -430,10 +430,10 @@ TEST(IntegerRuntime, RejectsInvalidModelDimensionsBeforeInference) {
         model.context_length = 0;
         break;
       case 1:
-        model.prompt_tokens = 0;
+        model.prompt_token_count = 0;
         break;
       case 2:
-        model.prompt_tokens = model.context_length + 1;
+        model.prompt_token_count = model.context_length + 1;
         break;
       case 3:
         model.vocabulary = {};

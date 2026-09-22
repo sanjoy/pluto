@@ -14317,18 +14317,19 @@ const Sample kSamples[] = {
     {14051, 13}, {14064, 13}, {14077, 10}, {14087, 11},
 };
 }  // namespace
-absl::Status VerifyGeneratedModel(const Model& model, std::ostream& output) {
+absl::Status VerifyGeneratedModel(const DiscreteModel& model,
+                                  std::ostream& output) {
   size_t targets = 0;
   size_t sentences = 0;
   for (const auto& sample : kSamples) {
     const auto original =
         absl::MakeConstSpan(kExpectedTokens + sample.offset, sample.length);
-    auto generated = Generate(model, original.first(model.prompt_tokens),
-                              sample.length - model.prompt_tokens + 1);
+    auto generated = Generate(model, original.first(model.prompt_token_count),
+                              sample.length - model.prompt_token_count + 1);
     if (!generated.ok())
       return generated.status();
-    std::vector<DiscreteToken> expected(original.begin() + model.prompt_tokens,
-                                        original.end());
+    std::vector<DiscreteToken> expected(
+        original.begin() + model.prompt_token_count, original.end());
     expected.push_back(model.eos_token);
     if (*generated != expected) {
       output << "mismatch at verification sentence " << sentences + 1 << "\n";

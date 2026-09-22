@@ -4,7 +4,7 @@
 #include "src/llm/experiments/memorize_general_facts/discretized_model/runtime.h"
 #include "vocabulary_tokens.h"
 namespace pluto::llm::discretized {
-absl::Status VerifyGeneratedModel(const Model&, std::ostream&);
+absl::Status VerifyGeneratedModel(const DiscreteModel&, std::ostream&);
 TEST(GeneratedIntegerModel, NamedVocabularyCoversEveryCompactId) {
   constexpr DiscreteToken kTokens[] = {vocab::kComma_0,
                                        vocab::kHyphen_1,

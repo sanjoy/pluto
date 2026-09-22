@@ -158,9 +158,13 @@ emit_model(json.loads(Path(sys.argv[2]).read_text()), Path(sys.argv[3]),
         self.assertIn("Map& GeneratedMlp0();", header)
         self.assertIn("Map& GeneratedLanguageModelingHead();", header)
         model = (destination / "model.cc").read_text()
+        self.assertIn("const DiscreteModel& GeneratedModel()", model)
         self.assertIn("GeneratedLanguageModelingHead(), GeneratedPositionEmbedding()", model)
         self.assertIn("{GeneratedAttention0(), GeneratedMlp0()}", model)
         self.assertNotIn("GeneratedEntry()", model)
+        verification = (destination / "verification.cc").read_text()
+        self.assertIn("model.prompt_token_count", verification)
+        self.assertNotIn("model.prompt_tokens", verification)
         for name in ("entry.cc", "attention_0.cc", "mlp_0.cc", "language_modeling_head.cc"):
             text = (destination / name).read_text()
             self.assertRegex(text, r"namespace \{\nstruct (Entry|Attention|State)Row")
@@ -226,16 +230,16 @@ struct Transformer {
   CausalAttention& attention;
   Map& mlp;
 };
-struct Model {
+struct DiscreteModel {
   uint32_t context_length;
-  uint32_t prompt_tokens;
+  uint32_t prompt_token_count;
   DiscreteToken eos_token;
   absl::Span<const VocabularyRow> vocabulary;
   absl::Span<const Transformer> transformers;
   Map& language_modeling_head;
   PositionEmbedding& position_embedding;
 };
-const Model& GeneratedModel();
+const DiscreteModel& GeneratedModel();
 }
 ''')
         checks = []
@@ -276,7 +280,7 @@ const Model& GeneratedModel();
 #include "tables.h"
 using namespace pluto::llm::discretized;
 int main() {
-  const Model& model = GeneratedModel();
+  const DiscreteModel& model = GeneratedModel();
 ''' + f'''  if (model.transformers.size() != {model["layers"]})
     return 1;
   if (&model.position_embedding != &GeneratedPositionEmbedding() ||
