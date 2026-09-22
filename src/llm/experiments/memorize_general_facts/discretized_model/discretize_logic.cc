@@ -1,6 +1,8 @@
 #include "src/llm/experiments/memorize_general_facts/discretized_model/discretize_logic.h"
 
+#include <optional>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
@@ -13,23 +15,85 @@
 namespace pluto::llm::discretized::generator {
 namespace {
 
-// Reports deliberately use plain text. The in-memory JSON representation is
-// an implementation detail, not another generated interchange artifact.
-std::string ReportValue(const Json& value) {
-  if (value.is_string())
-    return value.get<std::string>();
-  if (value.is_array()) {
-    std::vector<std::string> parts;
-    for (const auto& item : value)
-      parts.push_back(ReportValue(item));
-    return parts.empty() ? "(none)" : absl::StrJoin(parts, ", ");
+absl::string_view RepresentationName(TransitionRepresentation representation) {
+  switch (representation) {
+    case TransitionRepresentation::kEmpty:
+      return "empty";
+    case TransitionRepresentation::kGuardedAffine:
+      return "guarded_affine";
+    case TransitionRepresentation::kSparseAffineSupportMask:
+      return "sparse_affine_support_mask";
+    case TransitionRepresentation::kAffineRangesAndSwitch:
+      return "affine_ranges_and_switch";
+    case TransitionRepresentation::kGuardedOutputArray:
+      return "guarded_output_array";
+    case TransitionRepresentation::kExactTokenPositionSwitch:
+      return "exact_token_position_switch";
+    case TransitionRepresentation::kPackedSupportPatternsAndExceptions:
+      return "packed_support_patterns_and_exceptions";
+    case TransitionRepresentation::kSharedSuffixControlFlow:
+      return "shared_suffix_control_flow";
   }
-  return value.dump();
+  return "unknown";
+}
+
+template <class T>
+void AppendOptional(std::string& report, absl::string_view name,
+                    const std::optional<T>& value) {
+  if (!value)
+    return;
+  if constexpr (std::is_same_v<T, bool>)
+    absl::StrAppend(&report, "  ", name, ": ", *value ? "true" : "false", "\n");
+  else
+    absl::StrAppend(&report, "  ", name, ": ", *value, "\n");
+}
+
+void AppendStatistics(std::string& report, const TransitionStatistics& stats) {
+  absl::StrAppend(
+      &report, "  representation: ", RepresentationName(stats.representation),
+      "\n  rows: ", stats.rows, "\n  source_bytes: ", stats.source_bytes, "\n");
+#define APPEND_MEASUREMENT(field) AppendOptional(report, #field, stats.field)
+  if (stats.strategy)
+    absl::StrAppend(&report, "  strategy: ",
+                    *stats.strategy == AttentionStrategy::kHybrid
+                        ? "hybrid"
+                        : "control_flow",
+                    "\n");
+  APPEND_MEASUREMENT(table_bytes);
+  APPEND_MEASUREMENT(affine_ranges);
+  APPEND_MEASUREMENT(switch_cases);
+  APPEND_MEASUREMENT(supported_span);
+  APPEND_MEASUREMENT(named_anchor);
+  APPEND_MEASUREMENT(named_outputs);
+  APPEND_MEASUREMENT(tokens);
+  APPEND_MEASUREMENT(patterns);
+  APPEND_MEASUREMENT(position_bits);
+  APPEND_MEASUREMENT(token_only_defaults);
+  APPEND_MEASUREMENT(position_exceptions);
+  APPEND_MEASUREMENT(named_exception_tokens);
+  APPEND_MEASUREMENT(flat_key_scalars);
+  APPEND_MEASUREMENT(flat_scalars);
+  APPEND_MEASUREMENT(trie_nodes);
+  APPEND_MEASUREMENT(nodes);
+  APPEND_MEASUREMENT(edges);
+  APPEND_MEASUREMENT(unary_nodes);
+  APPEND_MEASUREMENT(branch_nodes);
+  APPEND_MEASUREMENT(branch_edges);
+  APPEND_MEASUREMENT(control_blocks);
+  APPEND_MEASUREMENT(helpers);
+  APPEND_MEASUREMENT(helper_node_limit);
+  APPEND_MEASUREMENT(entry_cases);
+  APPEND_MEASUREMENT(scalar_estimate);
+  APPEND_MEASUREMENT(literal_sequence_patterns);
+  APPEND_MEASUREMENT(literal_sequence_steps);
+  APPEND_MEASUREMENT(literal_sequence_calls);
+  APPEND_MEASUREMENT(literal_sequence_word_bits);
+#undef APPEND_MEASUREMENT
 }
 
 }  // namespace
 
-absl::Status RenderCompact(const Json& model,
+absl::Status RenderCompact(const SymbolicModel& model,
                            const std::vector<std::string>& token_names,
                            FileMap& files) {
   TokenNames names;
@@ -55,23 +119,23 @@ absl::Status RenderCompact(const Json& model,
         Source(TransitionObject(rendered.source, interface, factory),
                "\"tables.h\"", description, vocabulary);
     absl::StrAppend(&report, "\n", filename, "\n");
-    for (const auto& [key, value] : rendered.stats.items())
-      absl::StrAppend(&report, "  ", key, ": ", ReportValue(value), "\n");
+    AppendStatistics(report, rendered.stats);
     absl::StrAppend(
         &report, "  unformatted_source_bytes_before: ", before,
         "\n  unformatted_source_bytes_after: ", found->second.size(), "\n");
     return absl::OkStatus();
   };
-  ASSIGN_OR_RETURN(auto entry, RenderEntry("Lookup", model["entry"], names));
+  ASSIGN_OR_RETURN(auto entry, RenderEntry("Lookup", model.entry, names));
   RETURN_IF_ERROR(install(
       "entry.cc", entry, "PositionEmbedding", "GeneratedPositionEmbedding",
       "Entry: compact token and absolute position -> residual symbol.\n"
       "A default symbol plus exceptional positions describes each token;\n"
       "support masks reject every token/position absent from the source.",
       true));
-  for (size_t block = 0; block < model["attention"].size(); ++block) {
-    ASSIGN_OR_RETURN(auto attention,
-                     RenderAttention("Lookup", model["attention"][block]));
+  for (size_t block = 0; block < model.transformers.size(); ++block) {
+    ASSIGN_OR_RETURN(
+        auto attention,
+        RenderAttention("Lookup", model.transformers[block].attention));
     RETURN_IF_ERROR(
         install(absl::StrCat("attention_", block, ".cc"), attention,
                 "CausalAttention", absl::StrCat("GeneratedAttention", block),
@@ -81,7 +145,8 @@ absl::Status RenderCompact(const Json& model,
                              "this boundary only.\n",
                              "No neighboring layer, sentence identity or "
                              "future token is consulted.")));
-    ASSIGN_OR_RETURN(auto mlp, RenderPointwise("Lookup", model["mlp"][block]));
+    ASSIGN_OR_RETURN(auto mlp,
+                     RenderPointwise("Lookup", model.transformers[block].mlp));
     RETURN_IF_ERROR(install(
         absl::StrCat("mlp_", block, ".cc"), mlp, "Map",
         absl::StrCat("GeneratedMlp", block),
@@ -93,26 +158,36 @@ absl::Status RenderCompact(const Json& model,
   }
   ASSIGN_OR_RETURN(
       auto head,
-      RenderPointwise("Lookup", model["language_modeling_head"], &names));
+      RenderPointwise("Lookup", model.language_modeling_head, &names));
   RETURN_IF_ERROR(install(
       "language_modeling_head.cc", head, "Map", "GeneratedLanguageModelingHead",
       "Final residual symbol -> named vocabulary token.\n"
       "No unobserved input is assigned a default prediction.",
       true));
   absl::StrAppend(&report, "\nWithin-boundary relabeling\n");
-  if (model.contains("stats") &&
-      model["stats"].contains("pointwise_relabeling"))
-    for (const auto& [key, value] :
-         model["stats"]["pointwise_relabeling"].items())
-      absl::StrAppend(&report, "  ", key, ": ", ReportValue(value), "\n");
+  if (model.stats.pointwise_relabeling) {
+    const auto& stats = *model.stats.pointwise_relabeling;
+    absl::StrAppend(
+        &report,
+        "  eligible_layers: ", absl::StrJoin(stats.eligible_layers, ", "),
+        "\n  skipped_layers: ", absl::StrJoin(stats.skipped_layers, ", "),
+        "\n  changed_states: ", stats.changed_states,
+        "\n  layer_boundaries_preserved: ",
+        stats.layer_boundaries_preserved ? "true" : "false",
+        "\n  vocabulary_aligned_final_boundaries: ",
+        stats.vocabulary_aligned_final_boundaries ? "true" : "false", "\n");
+    AppendOptional(report, "last_attention_base", stats.last_attention_base);
+    AppendOptional(report, "final_state_base", stats.final_state_base);
+    AppendOptional(report, "reserved_range_size", stats.reserved_range_size);
+  }
   files["transition_patterns.txt"] = std::move(report);
-  if (model.contains("state_relabeling")) {
+  if (!model.state_relabeling.empty()) {
     std::string mapping =
         "# Pure within-boundary renaming relative to generator input.\n"
         "old_state_id\tnew_state_id\tboundary_index\n";
-    for (const auto& row : model["state_relabeling"])
-      absl::StrAppend(&mapping, row[0].get<int>(), "\t", row[1].get<int>(),
-                      "\t", row[2].get<int>(), "\n");
+    for (const auto& row : model.state_relabeling)
+      absl::StrAppend(&mapping, row.old_id, "\t", row.new_id, "\t",
+                      row.boundary, "\n");
     files["state_relabeling.tsv"] = std::move(mapping);
   }
   ASSIGN_OR_RETURN(files["generated_transition_test.cc"],

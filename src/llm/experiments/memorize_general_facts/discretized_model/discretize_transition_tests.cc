@@ -22,7 +22,7 @@ constexpr size_t kProbeLimit = 64;
 constexpr int kMax = std::numeric_limits<int32_t>::max();
 constexpr int kMin = std::numeric_limits<int32_t>::min();
 
-struct Sample {
+struct ReplaySample {
   size_t token_offset;
   size_t state_offset;
   size_t length;
@@ -34,29 +34,29 @@ struct Sample {
 struct Replay {
   std::vector<int> tokens;
   std::vector<int> states;
-  std::vector<Sample> samples;
+  std::vector<ReplaySample> samples;
 };
 
-absl::StatusOr<Replay> ReplaySamples(const Json& model) {
+absl::StatusOr<Replay> ReplaySamples(const SymbolicModel& model) {
   std::map<std::pair<int, int>, int> entry;
-  for (const auto& row : model["entry"])
-    entry[{row[0], row[1]}] = row[2];
-  const int layers = model["layers"];
+  for (const auto& row : model.entry)
+    entry[{row.token, row.position}] = row.output;
+  const int layers = model.metadata.layers;
   std::vector<std::map<std::vector<int>, int>> attention(layers);
   std::vector<std::map<int, int>> mlp(layers);
   for (int block = 0; block < layers; ++block) {
-    for (const auto& row : model["attention"][block])
-      attention[block][row[0].get<std::vector<int>>()] = row[1];
-    for (const auto& row : model["mlp"][block])
-      mlp[block][row[0]] = row[1];
+    for (const auto& row : model.transformers[block].attention)
+      attention[block][row.prefix] = row.output;
+    for (const auto& row : model.transformers[block].mlp)
+      mlp[block][row.input] = row.output;
   }
   std::map<int, int> head;
-  for (const auto& row : model["language_modeling_head"])
-    head[row[0]] = row[1];
+  for (const auto& row : model.language_modeling_head)
+    head[row.input] = row.output;
   Replay replay;
   size_t number = 0;
-  for (const auto& sample : model["samples"]) {
-    const auto original = sample["tokens"].get<std::vector<int>>();
+  for (const auto& sample : model.samples) {
+    const auto& original = sample.tokens;
     replay.samples.push_back(
         {replay.tokens.size(), replay.states.size(), original.size()});
     replay.tokens.insert(replay.tokens.end(), original.begin(), original.end());
@@ -92,11 +92,12 @@ absl::StatusOr<Replay> ReplaySamples(const Json& model) {
       replay.states.insert(replay.states.end(), boundary.begin(),
                            boundary.end());
     }
-    for (size_t position = model["prompt_tokens"].get<size_t>() - 1;
+    for (size_t position =
+             static_cast<size_t>(model.metadata.prompt_tokens) - 1;
          position < original.size(); ++position) {
       const int target = position + 1 < original.size()
                              ? original[position + 1]
-                             : model["eos_token"].get<int>();
+                             : model.metadata.eos_token;
       auto row = head.find(boundary[position]);
       if (row == head.end() || row->second != target)
         return absl::InvalidArgumentError(
@@ -123,10 +124,11 @@ struct AttentionProbe {
   std::optional<int> output;
 };
 
-std::vector<AttentionProbe> AttentionProbes(const Json& rows) {
+std::vector<AttentionProbe> AttentionProbes(
+    const std::vector<AttentionTransition>& rows) {
   std::map<std::vector<int>, int> table;
   for (const auto& row : rows)
-    table[row[0].get<std::vector<int>>()] = row[1];
+    table[row.prefix] = row.output;
   std::vector<std::vector<int>> keys;
   for (const auto& [prefix, ignored] : table)
     keys.push_back(prefix);
@@ -187,10 +189,11 @@ struct StateProbe {
   std::optional<int> output;
 };
 
-std::vector<StateProbe> PointwiseProbes(const Json& rows) {
+std::vector<StateProbe> PointwiseProbes(
+    const std::vector<StateTransition>& rows) {
   std::map<int, int> table;
   for (const auto& row : rows)
-    table[row[0]] = row[1];
+    table[row.input] = row.output;
   std::set<int> seen;
   std::vector<StateProbe> probes;
   auto add = [&](int64_t state) {
@@ -226,10 +229,10 @@ struct EntryProbe {
   std::optional<int> output;
 };
 
-std::vector<EntryProbe> EntryProbes(const Json& model) {
+std::vector<EntryProbe> EntryProbes(const SymbolicModel& model) {
   std::map<std::pair<int, int>, int> table;
-  for (const auto& row : model["entry"])
-    table[{row[0], row[1]}] = row[2];
+  for (const auto& row : model.entry)
+    table[{row.token, row.position}] = row.output;
   std::vector<EntryProbe> probes;
   std::set<std::pair<int, int>> seen;
   auto add = [&](int64_t token, int64_t position) {
@@ -244,7 +247,7 @@ std::vector<EntryProbe> EntryProbes(const Json& model) {
         {key.first, key.second,
          it == table.end() ? std::nullopt : std::optional<int>(it->second)});
   };
-  for (int token : {-1, model["vocab_size"].get<int>(), kMax})
+  for (int token : {-1, model.metadata.vocab_size, kMax})
     add(token, 0);
   std::vector<std::pair<int, int>> keys;
   for (const auto& [key, ignored] : table)
@@ -288,23 +291,24 @@ std::string Result(std::optional<int> output,
 }  // namespace
 
 absl::StatusOr<std::string> RenderTransitionTest(
-    const Json& model, const std::vector<std::string>& token_names) {
+    const SymbolicModel& model, const std::vector<std::string>& token_names) {
   RETURN_IF_ERROR(ValidateModel(model));
-  if (token_names.size() != model["vocab_size"].get<size_t>())
+  if (token_names.size() != static_cast<size_t>(model.metadata.vocab_size))
     return absl::InvalidArgumentError(
         "token_names must cover the compact vocabulary");
   ASSIGN_OR_RETURN(auto replay, ReplaySamples(model));
-  const int layers = model["layers"];
+  const int layers = model.metadata.layers;
   std::vector<std::string> attention_keys, attention_rows, pointwise_rows;
   for (int block = 0; block < layers; ++block) {
-    for (const auto& probe : AttentionProbes(model["attention"][block])) {
+    for (const auto& probe :
+         AttentionProbes(model.transformers[block].attention)) {
       attention_rows.push_back(
           absl::StrCat("{", block, ", ", attention_keys.size(), ", ",
                        probe.prefix.size(), ", ", Result(probe.output), "}"));
       for (int state : probe.prefix)
         attention_keys.push_back(absl::StrCat("{", state, "}"));
     }
-    for (const auto& probe : PointwiseProbes(model["mlp"][block]))
+    for (const auto& probe : PointwiseProbes(model.transformers[block].mlp))
       pointwise_rows.push_back(absl::StrCat("{", block, ", {", probe.state,
                                             "}, ", Result(probe.output), "}"));
   }
@@ -371,8 +375,8 @@ absl::StatusOr<std::string> RenderTransitionTest(
                                   "}"));
   body += Array("Sample", "kSamples", values);
   std::map<int, int> head;
-  for (const auto& row : model["language_modeling_head"])
-    head[row[0]] = row[1];
+  for (const auto& row : model.language_modeling_head)
+    head[row.input] = row.output;
   values.clear();
   for (const auto& [state, token] : head)
     values.push_back(absl::StrCat("{{", state,
@@ -384,7 +388,7 @@ absl::StatusOr<std::string> RenderTransitionTest(
   body += Array("AttentionProbe", "kAttentionProbes", attention_rows);
   body += Array("PointwiseProbe", "kMlpProbes", pointwise_rows);
   values.clear();
-  const auto head_probes = PointwiseProbes(model["language_modeling_head"]);
+  const auto head_probes = PointwiseProbes(model.language_modeling_head);
   for (const auto& probe : head_probes)
     values.push_back(absl::StrCat("{{", probe.state, "}, ",
                                   Result(probe.output, &token_names), "}"));
@@ -441,14 +445,13 @@ absl::StatusOr<std::string> RenderTransitionTest(
         const auto* final_states = expected + (2 * kLayers) * sample.length;
   )cpp";
   absl::StrAppend(
-      &body,
-      "    for (size_t position = ", model["prompt_tokens"].get<int>() - 1,
+      &body, "    for (size_t position = ", model.metadata.prompt_tokens - 1,
       "; position < sample.length; ++position) {\n",
       "      SCOPED_TRACE(::testing::Message() << \"language modeling head "
       "position \" << position);\n",
       "      const DiscreteToken target = position + 1 < sample.length ? "
       "tokens[position + 1] : ",
-      token_names[model["eos_token"].get<int>()], ";\n",
+      token_names[model.metadata.eos_token], ";\n",
       "      "
       "ExpectTransition(model.language_modeling_head(final_states[position]),"
       "\n",

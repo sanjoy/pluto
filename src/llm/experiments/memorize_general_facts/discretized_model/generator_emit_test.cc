@@ -9,33 +9,29 @@
 #include "gtest/gtest.h"
 #include "src/llm/experiments/memorize_general_facts/discretized_model/discretize_emit.h"
 #include "src/llm/experiments/memorize_general_facts/discretized_model/discretize_transition_tests.h"
+#include "src/llm/experiments/memorize_general_facts/discretized_model/generator_io.h"
 
 namespace pluto::llm::discretized::generator {
 namespace {
 
-Json Fixture() {
-  Json model = {
-      {"schema", 1},
-      {"width", 2},
-      {"layers", 1},
-      {"vocab_size", 4},
-      {"eos_token", 3},
-      {"prompt_tokens", 1},
-      {"vocabulary",
-       {{{"original_id", 10}, {"hex", "41"}},
-        {{"original_id", 11}, {"hex", "42"}},
-        {{"original_id", 12}, {"hex", "43"}},
-        {{"original_id", 13}, {"hex", "3c656f733e"}}}},
-      {"samples", {{{"tokens", {0, 1}}}, {{"tokens", {1}}}}},
-      {"states", Json::array()},
-      {"entry", {{0, 0, 4}, {1, 0, 7}, {1, 1, 5}, {2, 1, 6}}},
-      {"attention", {{{{4}, 8}, {{4, 5}, 9}, {{4, 6}, 10}, {{7}, 11}}}},
-      {"mlp", {{{8, 12}, {9, 13}, {10, 14}, {11, 15}}}},
-      {"language_modeling_head", {{12, 1}, {13, 3}, {14, 0}, {15, 3}}},
-      {"stats", Json::object()}};
+SymbolicModel Fixture() {
+  SymbolicModel model;
+  model.metadata = {
+      .width = 2,
+      .layers = 1,
+      .vocab_size = 4,
+      .eos_token = 3,
+      .prompt_tokens = 1,
+      .vocabulary = {{10, "A"}, {11, "B"}, {12, "C"}, {13, "<eos>"}}};
+  model.samples = {{{0, 1}}, {{1}}};
+  model.entry = {{0, 0, 4}, {1, 0, 7}, {1, 1, 5}, {2, 1, 6}};
+  model.transformers = {{{{{4}, 8}, {{4, 5}, 9}, {{4, 6}, 10}, {{7}, 11}},
+                         {{8, 12}, {9, 13}, {10, 14}, {11, 15}}}};
+  model.language_modeling_head = {{12, 1}, {13, 3}, {14, 0}, {15, 3}};
   for (int i = 4; i < 16; ++i)
-    model["states"].push_back(
-        {{"id", i}, {"stage", (i - 4) / 4}, {"bits", {i, 0}}});
+    model.states.push_back({.id = i,
+                            .boundary = (i - 4) / 4,
+                            .bits = {static_cast<uint16_t>(i), 0}});
   return model;
 }
 
@@ -108,7 +104,7 @@ TEST_F(EmitTest, PlainSourcesExposeOnlyModelFactoryAndSeparateFixtures) {
   EXPECT_EQ(files.at("model.cc").find("ExpectedTokens"), std::string::npos);
   EXPECT_NE(files.at("verification.cc").find("kExpectedTokens"),
             std::string::npos);
-  EXPECT_NE(files.at("state_index.tsv").find("empirical_prefix_examples_json"),
+  EXPECT_NE(files.at("state_index.tsv").find("empirical_prefix_examples"),
             std::string::npos);
   for (const auto& [name, ignored] : files)
     EXPECT_NE(std::filesystem::path(name).extension(), ".json");
@@ -117,13 +113,16 @@ TEST_F(EmitTest, PlainSourcesExposeOnlyModelFactoryAndSeparateFixtures) {
 }
 
 TEST_F(EmitTest, TablePermutationDoesNotChangeOutput) {
-  const Json model = Fixture();
-  Json permuted = model;
-  for (const char* name : {"entry", "language_modeling_head", "states"})
-    std::reverse(permuted[name].begin(), permuted[name].end());
-  std::reverse(permuted["attention"][0].begin(),
-               permuted["attention"][0].end());
-  std::reverse(permuted["mlp"][0].begin(), permuted["mlp"][0].end());
+  const SymbolicModel model = Fixture();
+  SymbolicModel permuted = model;
+  std::reverse(permuted.entry.begin(), permuted.entry.end());
+  std::reverse(permuted.language_modeling_head.begin(),
+               permuted.language_modeling_head.end());
+  std::reverse(permuted.states.begin(), permuted.states.end());
+  std::reverse(permuted.transformers[0].attention.begin(),
+               permuted.transformers[0].attention.end());
+  std::reverse(permuted.transformers[0].mlp.begin(),
+               permuted.transformers[0].mlp.end());
   auto a = RenderModel(model, true), b = RenderModel(permuted, true);
   ASSERT_TRUE(a.ok()) << a.status();
   ASSERT_TRUE(b.ok()) << b.status();
@@ -200,25 +199,23 @@ TEST_F(EmitTest, ConcurrentPublishHasExactlyOneCompleteWinner) {
 }
 
 TEST_F(EmitTest, InvalidModelCannotLeaveOutput) {
-  Json model = Fixture();
-  model["entry"].push_back(model["entry"][0]);
+  SymbolicModel model = Fixture();
+  model.entry.push_back(model.entry[0]);
   EXPECT_FALSE(EmitModel(model, directory_ / "output").ok());
   EXPECT_FALSE(std::filesystem::exists(directory_ / "output"));
-  EXPECT_FALSE(RenderModel(Json::array()).ok());
+  EXPECT_FALSE(RenderModel(SymbolicModel{}).ok());
   model = Fixture();
-  model["vocabulary"][0]["hex"] = "FF";
+  model.metadata.vocabulary[0].bytes.clear();
   EXPECT_FALSE(RenderModel(model).ok());
   model = Fixture();
-  model["states"][0]["id"] = -1;
+  model.states[0].id = -1;
   EXPECT_FALSE(RenderModel(model).ok());
 }
 
 TEST_F(EmitTest, StateMembershipIsInspectionOnly) {
-  Json model = Fixture();
-  for (auto& row : model["states"]) {
-    row["members"] = Json::array({row["id"]});
-    row["member_count"] = 1;
-  }
+  SymbolicModel model = Fixture();
+  for (auto& row : model.states)
+    row.members = std::vector<int>{row.id};
   auto result = RenderModel(model, true);
   ASSERT_TRUE(result.ok()) << result.status();
   EXPECT_NE(result->at("state_members.tsv")
@@ -237,22 +234,22 @@ TEST(TransitionFixtures, ValidateSourceIndependentlyAndPreserveZeroToken) {
   EXPECT_NE(result->find("std::nullopt"), std::string::npos);
   EXPECT_NE(result->find("2147483647"), std::string::npos);
   EXPECT_NE(result->find("-2147483648"), std::string::npos);
-  Json wrong = Fixture();
-  wrong["language_modeling_head"][0][1] = 0;
+  SymbolicModel wrong = Fixture();
+  wrong.language_modeling_head[0].output = 0;
   EXPECT_FALSE(RenderTransitionTest(wrong, names).ok());
-  Json missing = Fixture();
-  missing["attention"][0].erase(missing["attention"][0].begin());
+  SymbolicModel missing = Fixture();
+  missing.transformers[0].attention.erase(
+      missing.transformers[0].attention.begin());
   EXPECT_FALSE(RenderTransitionTest(missing, names).ok());
   EXPECT_FALSE(RenderTransitionTest(Fixture(), {"only_one"}).ok());
 }
 
 TEST(TransitionFixtures, SupportsModelsWithoutTransformerBlocks) {
-  Json model = Fixture();
-  model["layers"] = 0;
-  model["attention"] = Json::array();
-  model["mlp"] = Json::array();
-  model["states"].erase(model["states"].begin() + 4, model["states"].end());
-  model["language_modeling_head"] = {{4, 1}, {5, 3}, {6, 0}, {7, 3}};
+  SymbolicModel model = Fixture();
+  model.metadata.layers = 0;
+  model.transformers.clear();
+  model.states.erase(model.states.begin() + 4, model.states.end());
+  model.language_modeling_head = {{4, 1}, {5, 3}, {6, 0}, {7, 3}};
   auto plain = RenderModel(model);
   ASSERT_TRUE(plain.ok()) << plain.status();
   EXPECT_EQ(plain->at("model.cc").find("kTransformers"), std::string::npos);
@@ -260,6 +257,20 @@ TEST(TransitionFixtures, SupportsModelsWithoutTransformerBlocks) {
   ASSERT_TRUE(compact.ok()) << compact.status();
   EXPECT_NE(compact->at("generated_transition_test.cc").find("kLayers = 0"),
             std::string::npos);
+}
+
+TEST_F(EmitTest, ArbitraryTokenBytesRemainEscapedInSourceAndInspectionFields) {
+  auto model = Fixture();
+  model.metadata.vocabulary[0].bytes = std::string("A\0\t\n\xff", 5);
+  auto result = RenderModel(model, true);
+  ASSERT_TRUE(result.ok()) << result.status();
+  EXPECT_NE(result->at("vocabulary.cc").find("A\\000\\t\\n\\377"),
+            std::string::npos);
+  const auto& index = result->at("state_index.tsv");
+  EXPECT_NE(index.find("tokens=[0]; text=\"A\\000\\t\\n\\377\""),
+            std::string::npos);
+  EXPECT_EQ(index.find('\0'), std::string::npos);
+  EXPECT_EQ(index.find(static_cast<char>(0xff)), std::string::npos);
 }
 
 }  // namespace

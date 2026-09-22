@@ -155,37 +155,6 @@ absl::Status WriteFile(const std::filesystem::path& path,
   return absl::OkStatus();
 }
 
-std::string TextReport(const Json& value) {
-  std::string result;
-  auto append = [&](auto& self, const Json& item, int indent) -> void {
-    if (item.is_object()) {
-      for (const auto& [key, child] : item.items()) {
-        absl::StrAppend(&result, std::string(indent, ' '), key, ":");
-        if (child.is_structured()) {
-          result += '\n';
-          self(self, child, indent + 2);
-        } else {
-          absl::StrAppend(&result, " ", child.dump(), "\n");
-        }
-      }
-    } else if (item.is_array()) {
-      for (const auto& child : item) {
-        if (child.is_structured()) {
-          absl::StrAppend(&result, std::string(indent, ' '), "-\n");
-          self(self, child, indent + 2);
-        } else {
-          absl::StrAppend(&result, std::string(indent, ' '), "- ", child.dump(),
-                          "\n");
-        }
-      }
-    } else {
-      absl::StrAppend(&result, std::string(indent, ' '), item.dump(), "\n");
-    }
-  };
-  append(append, value, 0);
-  return result;
-}
-
 std::string Sha256(absl::string_view data) {
   Sha256Digest digest;
   digest.Add(data);

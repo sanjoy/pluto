@@ -8,16 +8,20 @@
 #include <cstring>
 #include <filesystem>
 #include <mutex>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <utility>
 #include <vector>
 
+#include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "src/llm/experiments/memorize_general_facts/discretized_model/discretize_certificate.h"
 #include "src/llm/experiments/memorize_general_facts/discretized_model/discretize_emit.h"
 #include "src/llm/experiments/memorize_general_facts/discretized_model/discretize_pointwise.h"
 #include "src/llm/experiments/memorize_general_facts/discretized_model/generator_capture.h"
+#include "src/llm/experiments/memorize_general_facts/discretized_model/generator_io.h"
+#include "src/llm/experiments/memorize_general_facts/discretized_model/generator_report.h"
 #include "src/util/status_macros.h"
 
 namespace pluto::llm::discretized::generator {
@@ -122,37 +126,27 @@ absl::Status FormatSources(FileMap& files, const fs::path& style) {
   return absl::OkStatus();
 }
 
-absl::StatusOr<Json> Provenance(const GeneratorOptions& options,
-                                const Json& model) {
-  Json stats = model.value("stats", Json::object());
-  Json merges = stats.value("accepted_merges", Json::array());
-  stats.erase("accepted_merges");
-  if (!merges.empty()) {
-    stats["accepted_merges_sha256"] = Sha256(merges.dump());
-    stats["accepted_merge_records"] = merges.size();
-    double minimum = merges[0]["euclidean_distance"].get<double>();
-    double maximum = minimum;
-    int64_t induced = 0;
-    for (const auto& merge : merges) {
-      minimum = std::min(minimum, merge["euclidean_distance"].get<double>());
-      maximum = std::max(maximum, merge["euclidean_distance"].get<double>());
-      induced += merge["induced_unions"].get<int64_t>();
-    }
-    stats["merge_distance_summary"] = {{"minimum", minimum},
-                                       {"maximum", maximum},
-                                       {"induced_unions", induced}};
-  }
+void AppendSection(std::string& report, absl::string_view name,
+                   const std::string& section) {
+  absl::StrAppend(&report, name, ":\n");
+  std::istringstream lines(section);
+  for (std::string line; std::getline(lines, line);)
+    absl::StrAppend(&report, "  ", line, "\n");
+}
+
+absl::StatusOr<std::string> Provenance(const GeneratorOptions& options,
+                                       const SymbolicModel& model) {
   ASSIGN_OR_RETURN(auto verification, EvaluateModel(model));
-  Json result = {
-      {"schema", 1},
-      {"protocol", absl::StrCat("first ", model["prompt_tokens"].get<int>(),
-                                " tokens; autonomous suffix and explicit EOS")},
-      {"verification", verification},
-      {"stats", stats}};
-  result["source"] = "in-memory GPU execution trace";
-  if (stats.value("search", Json::object())
-          .value("pairwise_irreducible", false)) {
-    ASSIGN_OR_RETURN(result["irreducibility_certificate"], CertifyModel(model));
+  std::string result =
+      absl::StrCat("protocol: first ", model.metadata.prompt_tokens,
+                   " tokens; autonomous suffix and explicit EOS\n",
+                   "source: in-memory GPU execution trace\n");
+  AppendSection(result, "verification", FormatVerification(verification));
+  AppendSection(result, "stats", FormatStatistics(model.stats));
+  if (model.stats.search && model.stats.search->pairwise_irreducible) {
+    ASSIGN_OR_RETURN(auto certificate, CertifyModel(model));
+    AppendSection(result, "irreducibility_certificate",
+                  FormatCertificate(certificate));
   }
   if (!options.checkpoint.empty()) {
     std::error_code error;
@@ -174,11 +168,13 @@ absl::StatusOr<Json> Provenance(const GeneratorOptions& options,
           "checkpoint must contain weights and compact_vocabulary.tsv");
     std::sort(weights.begin(), weights.end());
     weights.push_back(options.checkpoint / "compact_vocabulary.tsv");
-    result["checkpoint"] = options.checkpoint.string();
+    absl::StrAppend(&result,
+                    "checkpoint: ", absl::CEscape(options.checkpoint.string()),
+                    "\ncheckpoint_files_sha256:\n");
     for (const auto& path : weights) {
-      ASSIGN_OR_RETURN(
-          result["checkpoint_files_sha256"][path.filename().string()],
-          Sha256File(path));
+      ASSIGN_OR_RETURN(auto hash, Sha256File(path));
+      absl::StrAppend(&result, "  ", absl::CEscape(path.filename().string()),
+                      ": ", hash, "\n");
     }
   }
   for (auto [name, path] : std::vector<std::pair<std::string, fs::path>>{
@@ -187,42 +183,41 @@ absl::StatusOr<Json> Provenance(const GeneratorOptions& options,
                              ? fs::path{}
                              : options.tokenizer / "tokenizer.json"}})
     if (!path.empty()) {
-      result[name] = path.string();
-      ASSIGN_OR_RETURN(result[name + "_sha256"], Sha256File(path));
+      ASSIGN_OR_RETURN(auto hash, Sha256File(path));
+      absl::StrAppend(&result, name, ": ", absl::CEscape(path.string()), "\n",
+                      name, "_sha256: ", hash, "\n");
     }
   return result;
 }
 
-void Report(const GeneratorOptions& options, Json verification,
-            const Json& model, const char* phase) {
+void Report(const GeneratorOptions& options, VerificationResult verification,
+            const SymbolicModel& model, GenerationPhase phase) {
   if (!options.progress)
     return;
-  verification["phase"] = phase;
-  verification["states"] = model["states"].size();
-  if (std::string_view(phase) == "generated")
-    verification["output"] = options.output.string();
-  options.progress(verification);
-}
-}  // namespace
-
-absl::StatusOr<Json> Generate(const GeneratorOptions& options) {
-  RETURN_IF_ERROR(CheckOptions(options));
-  ASSIGN_OR_RETURN(auto model, CaptureCheckpoint(options));
-  return GenerateFromModel(std::move(model), options);
+  options.progress(GenerationProgress{
+      .phase = phase,
+      .states = static_cast<int64_t>(model.states.size()),
+      .verification = verification,
+      .output = phase == GenerationPhase::kGenerated ? options.output.string()
+                                                     : std::string{}});
 }
 
-absl::StatusOr<Json> GenerateFromModel(Json model,
-                                       const GeneratorOptions& options) {
-  RETURN_IF_ERROR(CheckOptions(options));
+// Internal pipeline continuation: only Generate can enter after checking the
+// destination/tooling and capturing a valid checkpoint on the GPU.
+absl::StatusOr<SymbolicModel> GenerateFromModel(
+    SymbolicModel model, const GeneratorOptions& options) {
   RETURN_IF_ERROR(ValidateModel(model));
-  if (model["samples"].size() != static_cast<size_t>(options.expected_samples))
+  if (model.samples.size() != static_cast<size_t>(options.expected_samples))
     return absl::InvalidArgumentError(
-        "saved model has the wrong number of samples");
+        "captured model has the wrong number of samples");
   ASSIGN_OR_RETURN(auto verification, EvaluateModel(model));
-  Report(options, verification, model, "baseline");
+  Report(options, verification, model, GenerationPhase::kBaseline);
   if (options.reduce) {
     auto reduction = options.reduction;
-    reduction.progress = options.progress;
+    if (options.progress)
+      reduction.progress = [&](const ReductionProgress& progress) {
+        options.progress(progress);
+      };
     ASSIGN_OR_RETURN(model, ReduceModel(model, reduction));
   }
   if (options.compact_transitions) {
@@ -233,22 +228,30 @@ absl::StatusOr<Json> GenerateFromModel(Json model,
   ASSIGN_OR_RETURN(auto files, RenderModel(model, options.state_index,
                                            options.compact_transitions));
   RETURN_IF_ERROR(FormatSources(files, options.clang_format_config));
-  provenance["generator"] = "generate_discretized_model (C++)";
-  provenance["transition_representation"] =
-      options.compact_transitions ? "control_flow" : "tables";
-  provenance["states"] = model["states"].size();
-  provenance["layers"] = model["layers"];
-  provenance["vocabulary_size"] = model["vocab_size"];
-  provenance["integer_only_inference"] = true;
-  provenance["generated_sources_sha256"] = Json::object();
-  for (const auto& [name, content] : files) {
-    provenance["generated_sources_sha256"][name] = Sha256(content);
-    provenance["formatted_source_bytes"][name] = content.size();
-  }
-  files["generation_report.txt"] = TextReport(provenance);
+  absl::StrAppend(
+      &provenance, "generator: generate_discretized_model (C++)\n",
+      "transition_representation: ",
+      options.compact_transitions ? "control_flow" : "tables",
+      "\nstates: ", model.states.size(), "\nlayers: ", model.metadata.layers,
+      "\nvocabulary_size: ", model.metadata.vocab_size,
+      "\ninteger_only_inference: true\ngenerated_sources_sha256:\n");
+  for (const auto& [name, content] : files)
+    absl::StrAppend(&provenance, "  ", name, ": ", Sha256(content), "\n");
+  provenance += "formatted_source_bytes:\n";
+  for (const auto& [name, content] : files)
+    absl::StrAppend(&provenance, "  ", name, ": ", content.size(), "\n");
+  files["generation_report.txt"] = std::move(provenance);
   RETURN_IF_ERROR(PublishFiles(files, options.output));
-  Report(options, verification, model, "generated");
+  Report(options, verification, model, GenerationPhase::kGenerated);
   return model;
+}
+
+}  // namespace
+
+absl::StatusOr<SymbolicModel> Generate(const GeneratorOptions& options) {
+  RETURN_IF_ERROR(CheckOptions(options));
+  ASSIGN_OR_RETURN(auto model, CaptureCheckpoint(options));
+  return GenerateFromModel(std::move(model), options);
 }
 
 }  // namespace pluto::llm::discretized::generator

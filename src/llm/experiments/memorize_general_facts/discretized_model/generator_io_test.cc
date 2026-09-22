@@ -41,13 +41,6 @@ TEST(GeneratorIoTest, RoundTripAndErrors) {
   std::filesystem::remove_all(directory);
 }
 
-TEST(GeneratorIoTest, TextReportIsSortedAndReadable) {
-  Json record = {{"stage", {{"states", 6}, {"verified", true}}},
-                 {"source", "GPU"}};
-  EXPECT_EQ(TextReport(record),
-            "source: \"GPU\"\nstage:\n  states: 6\n  verified: true\n");
-}
-
 TEST(GeneratorIoTest, RunsWithoutShellInterpretation) {
   EXPECT_TRUE(FindExecutable("clang-format").ok());
   EXPECT_FALSE(FindExecutable("pluto-nonexistent-executable-99887").ok());

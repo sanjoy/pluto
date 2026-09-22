@@ -41,48 +41,41 @@ bool Covers(const StateTable& table, const std::vector<int>& states) {
 }
 }  // namespace
 
-absl::StatusOr<Json> CertifyModel(const Json& model) {
+absl::StatusOr<CertificateResult> CertifyModel(const SymbolicModel& model) {
   RETURN_IF_ERROR(internal::ValidateTables(model, false));
-  const int layers = model["layers"];
+  const int layers = model.metadata.layers;
   std::vector<std::vector<int>> by_stage(2 * layers + 1);
-  for (const auto& row : model["states"])
-    by_stage[row["stage"].get<int>()].push_back(row["id"]);
+  for (const auto& row : model.states)
+    by_stage[row.boundary].push_back(row.id);
   int64_t pairs = 0;
   for (auto& states : by_stage) {
     std::sort(states.begin(), states.end());
     pairs += PairCount(states);
   }
-  Json report = {{"certificate_schema", 1},
-                 {"status", "inconclusive"},
-                 {"method", "independent_backward_table_collisions"},
-                 {"states", model["states"].size()},
-                 {"boundaries", by_stage.size()},
-                 {"same_boundary_pairs", pairs},
-                 {"proven_pairs", 0},
-                 {"attention_pairs_checked", 0},
-                 {"pairwise_irreducible_proven", false},
-                 {"global_minimum_proven", false},
-                 {"stages", Json::array()}};
+  CertificateResult report{.states = static_cast<int64_t>(model.states.size()),
+                           .boundaries = static_cast<int64_t>(by_stage.size()),
+                           .same_boundary_pairs = pairs};
   auto inconclusive = [&](const std::string& reason, int stage,
                           std::optional<std::pair<int, int>> pair =
                               std::nullopt) {
-    report["reason"] = reason;
-    report["unresolved_stage"] = stage;
+    report.reason = reason;
+    report.unresolved_stage = stage;
     if (pair)
-      report["unresolved_pair"] = {pair->first, pair->second};
+      report.unresolved_pair = std::array<int, 2>{pair->first, pair->second};
     return report;
   };
   auto proven = [&](int stage, const std::string& argument) {
     const int64_t count = PairCount(by_stage[stage]);
-    report["proven_pairs"] = report["proven_pairs"].get<int64_t>() + count;
-    report["stages"].push_back({{"stage", stage},
-                                {"states", by_stage[stage].size()},
-                                {"pairs", count},
-                                {"argument", argument}});
+    report.proven_pairs += count;
+    report.stages.push_back(
+        {.stage = stage,
+         .states = static_cast<int64_t>(by_stage[stage].size()),
+         .pairs = count,
+         .argument = argument});
   };
   StateTable head;
-  for (const auto& row : model["language_modeling_head"])
-    head.emplace(row[0], row[1]);
+  for (const auto& row : model.language_modeling_head)
+    head.emplace(row.input, row.output);
   const int final = by_stage.size() - 1;
   if (!Covers(head, by_stage[final]))
     return inconclusive("not every final state has a fixed readout label",
@@ -94,8 +87,8 @@ absl::StatusOr<Json> CertifyModel(const Json& model) {
   for (int layer = layers - 1; layer >= 0; --layer) {
     int stage = 2 * layer + 1;
     StateTable mlp;
-    for (const auto& row : model["mlp"][layer])
-      mlp.emplace(row[0], row[1]);
+    for (const auto& row : model.transformers[layer].mlp)
+      mlp.emplace(row.input, row.output);
     if (!Covers(mlp, by_stage[stage]))
       return inconclusive("MLP table does not cover every input state", stage);
     if (auto duplicate = DuplicateOutput(mlp))
@@ -105,8 +98,8 @@ absl::StatusOr<Json> CertifyModel(const Json& model) {
            "injective MLP into already-distinguishable downstream states");
     --stage;
     AttentionTable table;
-    for (const auto& row : model["attention"][layer])
-      table.emplace(row[0].get<std::vector<int>>(), row[1]);
+    for (const auto& row : model.transformers[layer].attention)
+      table.emplace(row.prefix, row.output);
     std::map<int, std::vector<const AttentionTable::value_type*>> uses;
     for (const auto& row : table) {
       const std::set<int> unique(row.first.begin(), row.first.end());
@@ -120,8 +113,7 @@ absl::StatusOr<Json> CertifyModel(const Json& model) {
         const int first = states[first_index], second = states[second_index];
         AttentionTable rewritten;
         bool witnessed = false;
-        report["attention_pairs_checked"] =
-            report["attention_pairs_checked"].get<int64_t>() + 1;
+        ++report.attention_pairs_checked;
         // Only histories containing first change under first->second. Check
         // both unchanged histories and other rewritten histories; either can
         // witness a contradiction. Length and order always remain significant.
@@ -148,8 +140,8 @@ absl::StatusOr<Json> CertifyModel(const Json& model) {
     proven(stage,
            "every pair collides on already-distinguishable attention outputs");
   }
-  report["status"] = "proven";
-  report["pairwise_irreducible_proven"] = true;
+  report.status = CertificateStatus::kProven;
+  report.pairwise_irreducible_proven = true;
   return report;
 }
 }  // namespace pluto::llm::discretized::generator

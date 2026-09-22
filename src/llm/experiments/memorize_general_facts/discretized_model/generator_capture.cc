@@ -2,9 +2,9 @@
 
 #include <filesystem>
 #include <string>
+#include <utility>
 #include <vector>
 
-#include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "src/cuda/executor.h"
 #include "src/dataset/compact_vocabulary.h"
@@ -13,6 +13,7 @@
 #include "src/dataset/padded_line_dataset.h"
 #include "src/llm/checkpoint.h"
 #include "src/llm/experiments/memorize_general_facts/discretized_model/discretize_core.h"
+#include "src/llm/experiments/memorize_general_facts/discretized_model/generator_io.h"
 #include "src/llm/experiments/memorize_general_facts/discretized_model/snapshot_execution_trace.h"
 #include "src/llm/gpt2.h"
 #include "src/util/status_macros.h"
@@ -20,7 +21,8 @@
 namespace pluto::llm::discretized::generator {
 namespace capture = pluto::llm::memorize_general_facts::discretized_model;
 
-absl::StatusOr<Json> CaptureCheckpoint(const GeneratorOptions& options) {
+absl::StatusOr<SymbolicModel> CaptureCheckpoint(
+    const GeneratorOptions& options) {
   if (options.checkpoint.empty() || options.tokenizer.empty() ||
       options.corpus.empty())
     return absl::InvalidArgumentError(
@@ -70,19 +72,16 @@ absl::StatusOr<Json> CaptureCheckpoint(const GeneratorOptions& options) {
   RETURN_IF_ERROR(ReadFromDirectory(*executor, *model,
                                     options.checkpoint.string(),
                                     /*allow_prefix=*/false));
-  Json header = {{"schema", 1},
-                 {"width", capture::kCaptureWidth},
-                 {"layers", options.layers},
-                 {"vocab_size", vocabulary->vocab_size()},
-                 {"eos_token", vocabulary->eos_token_id()},
-                 {"prompt_tokens", options.prompt_tokens},
-                 {"vocabulary", Json::array()}};
+  ModelMetadata metadata{.width = capture::kCaptureWidth,
+                         .layers = options.layers,
+                         .vocab_size = vocabulary->vocab_size(),
+                         .eos_token = vocabulary->eos_token_id(),
+                         .prompt_tokens = options.prompt_tokens};
   for (int id : vocabulary->original_token_ids()) {
     ASSIGN_OR_RETURN(auto bytes, detokenizer->Decode({&id, 1}));
-    header["vocabulary"].push_back(
-        {{"original_id", id}, {"hex", absl::BytesToHexString(bytes)}});
+    metadata.vocabulary.push_back({id, std::move(bytes)});
   }
-  std::vector<Json> samples;
+  std::vector<ExecutionSample> samples;
   samples.reserve(data->sample_count());
   size_t rows = 0;
   for (size_t index = 0; index < data->sample_count(); ++index) {
@@ -98,18 +97,25 @@ absl::StatusOr<Json> CaptureCheckpoint(const GeneratorOptions& options) {
       return absl::Status(status.code(), absl::StrCat("sample ", index, ": ",
                                                       status.message()));
     rows += sample.tokens.size();
-    samples.push_back({{"tokens", sample.tokens},
-                       {"predictions", sample.predictions},
-                       {"boundaries", sample.boundaries}});
+    ExecutionSample observed{.tokens = std::move(sample.tokens),
+                             .predictions = std::move(sample.predictions)};
+    observed.boundaries.reserve(sample.boundaries.size());
+    for (const auto& boundary : sample.boundaries) {
+      auto& observed_rows = observed.boundaries.emplace_back();
+      observed_rows.reserve(boundary.size());
+      for (const auto& row : boundary)
+        observed_rows.emplace_back(row.begin(), row.end());
+    }
+    samples.push_back(std::move(observed));
     if (options.progress &&
         ((index + 1) % 32 == 0 || index + 1 == data->sample_count()))
-      options.progress({{"phase", "capture"},
-                        {"samples", index + 1},
-                        {"total_samples", data->sample_count()},
-                        {"rows", rows},
-                        {"greedy_verified", options.verify_greedy}});
+      options.progress(CaptureProgress{
+          .samples = static_cast<int64_t>(index + 1),
+          .total_samples = static_cast<int64_t>(data->sample_count()),
+          .rows = static_cast<int64_t>(rows),
+          .greedy_verified = options.verify_greedy});
   }
   RETURN_IF_ERROR(executor->Synchronize());
-  return BuildModel(header, samples, options.expected_samples);
+  return BuildModel(metadata, samples, options.expected_samples);
 }
 }  // namespace pluto::llm::discretized::generator

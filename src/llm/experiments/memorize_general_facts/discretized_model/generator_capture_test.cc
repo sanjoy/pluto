@@ -1,124 +1,46 @@
 #include "src/llm/experiments/memorize_general_facts/discretized_model/generator_capture.h"
 
-#include <cuda_runtime_api.h>
-#include <unistd.h>
-
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "src/cuda/executor.h"
-#include "src/dataset/compact_vocabulary.h"
-#include "src/dataset/gpt2_tokenizer.h"
-#include "src/llm/checkpoint.h"
 #include "src/llm/experiments/memorize_general_facts/discretized_model/discretize_core.h"
 #include "src/llm/experiments/memorize_general_facts/discretized_model/generate_discretized_model.h"
-#include "src/llm/gpt2.h"
+#include "src/llm/experiments/memorize_general_facts/discretized_model/generator_test_util.h"
 
 namespace pluto::llm::discretized::generator {
 namespace {
 
-// A real GPU model with zero weights predicts compact EOS (ID zero) on every
-// row. Thus the one-token corpus has a provably correct completion without
-// requiring a trained external checkpoint or the production tokenizer assets.
-class GeneratorCaptureTest : public ::testing::Test {
- protected:
-  void SetUp() override {
-    std::string name = ::testing::TempDir() + "generator-capture-XXXXXX";
-    ASSERT_NE(::mkdtemp(name.data()), nullptr);
-    directory_ = name;
-    options_.checkpoint = directory_ / "step_0";
-    options_.tokenizer = directory_ / "tokenizer";
-    options_.corpus = directory_ / "corpus.txt";
-    options_.output = directory_ / "generated";
-    options_.layers = 1;
-    options_.attention_heads = 1;
-    options_.feed_forward_width = 64;
-    options_.prompt_tokens = 1;
-    options_.expected_samples = 1;
-    options_.verify_greedy = true;
-    std::filesystem::create_directories(options_.tokenizer);
-    // The parser requires at least one merge. "xx" is deliberately omitted
-    // from the compact vocabulary, exercising retained-token encoding too.
-    ASSERT_TRUE(
-        WriteFile(
-            options_.tokenizer / "tokenizer.json",
-            R"json({"model":{"type":"BPE","vocab":{"<|endoftext|>":0,"x":1,"xx":2},"merges":["x x"]}})json")
-            .ok());
-    ASSERT_TRUE(WriteFile(options_.corpus, "x\n").ok());
-    auto original = tokenizer::Gpt2Tokenizer::Load(options_.tokenizer.string());
-    ASSERT_TRUE(original.ok()) << original.status();
-    auto compact = tokenizer::CompactVocabularyTokenizer::Create(
-        **original, {.compact_to_original = {0, 1},
-                     .original_to_compact = {0, 1, -1},
-                     .original_eos_id = 0});
-    ASSERT_TRUE(compact.ok()) << compact.status();
-    auto executor = cuda::Executor::Create();
-    ASSERT_TRUE(executor.ok()) << executor.status();
-    const Gpt2Config config{.transformer_block_count = 1,
-                            .model_width = 16,
-                            .attention_heads = 1,
-                            .feed_forward_width = 64,
-                            .vocabulary_size = 2,
-                            .pad_vocabulary = false};
-    auto model = CreateGpt2(**executor, DataType::BF16, 0, config);
-    ASSERT_TRUE(model.ok()) << model.status();
-    for (const auto& weight : (*model)->weights())
-      ASSERT_EQ(cudaMemsetAsync(weight.data(), 0, weight.size_bytes(),
-                                (*executor)->stream()),
-                cudaSuccess);
-    auto saved = WriteToDirectory(**executor, **model, options_.checkpoint);
-    ASSERT_TRUE(saved.ok()) << saved;
-    auto mapping =
-        (*compact)->SaveToFile(options_.checkpoint / "compact_vocabulary.tsv");
-    ASSERT_TRUE(mapping.ok()) << mapping;
-    ASSERT_TRUE((*executor)->Synchronize().ok());
-  }
-
-  void TearDown() override {
-    std::error_code ignored;
-    std::filesystem::remove_all(directory_, ignored);
-  }
-
-  void ExpectNoIntermediateFiles() {
-    for (const auto& entry :
-         std::filesystem::recursive_directory_iterator(directory_)) {
-      const auto extension = entry.path().extension();
-      if (entry.path() == options_.tokenizer / "tokenizer.json")
-        continue;
-      EXPECT_NE(extension, ".json") << entry.path();
-      EXPECT_NE(extension, ".jsonl") << entry.path();
-    }
-  }
-
-  std::filesystem::path directory_;
-  GeneratorOptions options_;
-};
+class GeneratorCaptureTest : public GeneratorTestBase {};
 
 TEST_F(GeneratorCaptureTest, GenuineGpuTraceBecomesVerifiedInMemoryModel) {
-  std::vector<Json> progress;
-  options_.progress = [&](const Json& report) { progress.push_back(report); };
+  std::vector<ProgressEvent> progress;
+  options_.progress = [&](const ProgressEvent& report) {
+    progress.push_back(report);
+  };
   auto model = CaptureCheckpoint(options_);
   ASSERT_TRUE(model.ok()) << model.status();
-  EXPECT_EQ((*model)["width"], 16);
-  EXPECT_EQ((*model)["layers"], 1);
-  EXPECT_EQ((*model)["vocab_size"], 2);
-  EXPECT_EQ((*model)["samples"].size(), 1u);
-  EXPECT_EQ((*model)["samples"][0]["tokens"], Json::array({1}));
+  EXPECT_EQ(model->metadata.width, 16);
+  EXPECT_EQ(model->metadata.layers, 1);
+  EXPECT_EQ(model->metadata.vocab_size, 2);
+  EXPECT_EQ(model->samples.size(), 1u);
+  EXPECT_EQ(model->samples[0].tokens, (std::vector<int>{1}));
   // Identical zero vectors remain different symbols at distinct boundaries.
-  EXPECT_EQ((*model)["states"].size(), 3u);
-  for (const auto& state : (*model)["states"])
-    EXPECT_EQ(state["bits"], Json(std::vector<int>(16, 0)));
+  EXPECT_EQ(model->states.size(), 3u);
+  for (const auto& state : model->states)
+    EXPECT_EQ(state.bits, std::vector<uint16_t>(16, 0));
   auto next = PredictNext(*model, {1});
   ASSERT_TRUE(next.ok()) << next.status();
   EXPECT_EQ(*next, 0);
   auto verification = EvaluateModel(*model);
   ASSERT_TRUE(verification.ok()) << verification.status();
   ASSERT_FALSE(progress.empty());
-  EXPECT_EQ(progress.back()["phase"], "capture");
-  EXPECT_EQ(progress.back()["greedy_verified"], true);
+  ASSERT_TRUE(std::holds_alternative<CaptureProgress>(progress.back()));
+  EXPECT_TRUE(std::get<CaptureProgress>(progress.back()).greedy_verified);
   EXPECT_FALSE(std::filesystem::exists(options_.output));
   ExpectNoIntermediateFiles();
 }
