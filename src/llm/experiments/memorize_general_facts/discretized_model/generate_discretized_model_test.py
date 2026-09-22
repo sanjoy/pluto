@@ -87,6 +87,7 @@ class GenerateDriverTest(unittest.TestCase):
         self.assertEqual(record["verification"], {
             "samples": 1, "targets": 2, "errors": 0, "explicit_eos": 1})
         self.assertTrue(any(args.output.glob("*.cc")))
+        self.assertTrue((args.output / "model.h").is_file())
         self.assertTrue(record["generated_sources_sha256"])
         manifest = json.loads((args.output / "manifest.json").read_text())
         for name, digest in manifest["files"].items():
@@ -122,6 +123,35 @@ class GenerateDriverTest(unittest.TestCase):
         self.assertIn("const DiscreteModel& GeneratedModel()", source)
         self.assertNotIn("const DiscreteModel &GeneratedModel()", source)
 
+    def test_generated_factory_is_not_part_of_runtime_public_api(self):
+        # The reusable runtime knows nothing about any particular generated
+        # network. Both emitters expose just its factory in the public header;
+        # all transition factories and vocabulary symbols are implementation-only.
+        runtime = Path(driver.__file__).with_name("runtime.h").read_text()
+        self.assertNotIn("GeneratedModel", runtime)
+        for compact in (False, True):
+            with self.subTest(compact=compact):
+                args = self.arguments(*(["--compact_transitions"] if compact else []))
+                args.output = self.root / ("compact_api" if compact else "tables_api")
+                with contextlib.redirect_stdout(io.StringIO()):
+                    driver.generate(args)
+                header = (args.output / "model.h").read_text()
+                self.assertIn("namespace pluto::llm::discretized::gen {", header)
+                self.assertIn("const DiscreteModel& GeneratedModel();", header)
+                self.assertNotIn("GeneratedPositionEmbedding", header)
+                self.assertNotIn("GeneratedAttention", header)
+                self.assertNotIn("GeneratedMlp", header)
+                self.assertNotIn("GeneratedLanguageModelingHead", header)
+                self.assertNotIn("vocab", header)
+                self.assertNotIn("tables.h", header)
+                self.assertNotIn("vocabulary_tokens.h", header)
+                internal = (args.output / "tables.h").read_text()
+                self.assertIn("namespace pluto::llm::discretized::gen::internal {", internal)
+                self.assertNotIn("GeneratedModel", internal)
+                source = (args.output / "model.cc").read_text()
+                self.assertIn('#include "model.h"', source)
+                self.assertIn("namespace pluto::llm::discretized::gen {", source)
+
     def test_completed_reduction_gets_independent_certificate(self):
         args = self.arguments("--reduce")
         with contextlib.redirect_stdout(io.StringIO()):
@@ -145,7 +175,8 @@ class GenerateDriverTest(unittest.TestCase):
         model_source = (args.output / "model.cc").read_text()
         self.assertIn("GeneratedPositionEmbedding()", model_source)
         self.assertIn("const Transformer kTransformers[]", model_source)
-        self.assertIn("{GeneratedAttention0(), GeneratedMlp0()}", model_source)
+        self.assertIn("{internal::GeneratedAttention0(), internal::GeneratedMlp0()}",
+                      model_source)
         self.assertIn("Mlp0", (args.output / "mlp_0.cc").read_text())
         self.assertNotIn("const StateRow kRows", (args.output / "mlp_0.cc").read_text())
         self.assertEqual(model["stats"]["verification"]["errors"], 0)

@@ -12,7 +12,6 @@ its control-flow construction algorithms.
 _INT32_MIN = -(2**31)
 _INT32_MAX = 2**31 - 1
 _PROBE_LIMIT = 64
-_RUNTIME = "src/llm/experiments/memorize_general_facts/discretized_model/runtime.h"
 
 
 def _replay_samples(model):
@@ -160,7 +159,7 @@ def render_transition_test(model, token_names):
     """Render a standalone gtest source; token_names are C++ token expressions.
 
     The caller must put this source in a dedicated cc_test, never the model or
-    CLI libraries. It needs runtime, generated model, vocabulary_tokens, and
+    CLI libraries. It needs the generated model, private vocabulary_tokens, and
     gtest_main dependencies. The source JSON is expected to be schema-validated
     by the caller; replay additionally rejects missing transitions/bad targets.
     """
@@ -184,12 +183,13 @@ def render_transition_test(model, token_names):
 // Expectations replay the source JSON, independently of compiled control flow.
 // Histories are reconstructed from boundary vectors at real positions only.
 #include <cstddef>
-#include "{_RUNTIME}"
+#include "model.h"
 #include "vocabulary_tokens.h"
 #include "gtest/gtest.h"
 
-namespace pluto::llm::discretized {{
+namespace pluto::llm::discretized::gen {{
 namespace {{
+namespace vocab = internal::vocab;
 constexpr size_t kLayers = {layers};
 constexpr size_t kSampleCount = {len(samples)};
 struct Sample {{ size_t token_offset; size_t state_offset; size_t length; }};
@@ -307,6 +307,6 @@ TEST(GeneratedTransitionBoundaries, EntryAndPointwiseDomainProbes) {{
   }}
 }}
 }}  // namespace
-}}  // namespace pluto::llm::discretized
+}}  // namespace pluto::llm::discretized::gen
 '''
     return body

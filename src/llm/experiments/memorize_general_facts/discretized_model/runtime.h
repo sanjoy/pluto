@@ -126,7 +126,4 @@ absl::StatusOr<std::vector<DiscreteToken>> Generate(
 absl::StatusOr<std::string> Decode(const DiscreteModel& model,
                                    absl::Span<const DiscreteToken> tokens);
 
-// Implemented by the generated production code; it does not link fixtures.
-const DiscreteModel& GeneratedModel();
-
 }  // namespace pluto::llm::discretized

@@ -4,7 +4,7 @@
 // preserve every original token byte.
 #include "tables.h"
 
-namespace pluto::llm::discretized {
+namespace pluto::llm::discretized::gen::internal {
 namespace {
 const VocabularyRow kRows[] = {
     {11, {",", 1}},                     // vocab::kComma_0
@@ -4485,4 +4485,4 @@ const VocabularyRow kRows[] = {
 };
 }
 absl::Span<const VocabularyRow> GeneratedVocabulary() { return {kRows, 4475}; }
-}  // namespace pluto::llm::discretized
+}  // namespace pluto::llm::discretized::gen::internal

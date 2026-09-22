@@ -159,8 +159,8 @@ emit_model(json.loads(Path(sys.argv[2]).read_text()), Path(sys.argv[3]),
         self.assertIn("Map& GeneratedLanguageModelingHead();", header)
         model = (destination / "model.cc").read_text()
         self.assertIn("const DiscreteModel& GeneratedModel()", model)
-        self.assertIn("GeneratedLanguageModelingHead(), GeneratedPositionEmbedding()", model)
-        self.assertIn("{GeneratedAttention0(), GeneratedMlp0()}", model)
+        self.assertIn("internal::GeneratedLanguageModelingHead(), internal::GeneratedPositionEmbedding()", model)
+        self.assertIn("{internal::GeneratedAttention0(), internal::GeneratedMlp0()}", model)
         self.assertNotIn("GeneratedEntry()", model)
         verification = (destination / "verification.cc").read_text()
         self.assertIn("model.prompt_token_count", verification)
@@ -172,6 +172,18 @@ emit_model(json.loads(Path(sys.argv[2]).read_text()), Path(sys.argv[3]),
             self.assertIn("operator()", text)
             self.assertIn("static ", text)
             self.assertNotIn("TransitionResult", text)
+
+    def test_public_header_exposes_only_the_model_factory(self):
+        destination, _ = self.emit()
+        header = (destination / "model.h").read_text()
+        self.assertIn("namespace pluto::llm::discretized::gen", header)
+        self.assertIn('[[gnu::visibility("default")]]', header)
+        self.assertIn("const DiscreteModel& GeneratedModel();", header)
+        self.assertEqual(re.findall(r"\bGenerated\w+\s*\(", header), ["GeneratedModel("])
+        for private_header in ("tables.h", "vocabulary_tokens.h", "cli_support.h"):
+            self.assertNotIn(private_header, header)
+            self.assertIn("namespace pluto::llm::discretized::gen::internal",
+                          (destination / private_header).read_text())
 
     def _compile_and_check_partial_functions(self, model, compact):
         """Run the actual emitted production TUs, independent of lookup strategy.
@@ -239,7 +251,6 @@ struct DiscreteModel {
   Map& language_modeling_head;
   PositionEmbedding& position_embedding;
 };
-const DiscreteModel& GeneratedModel();
 }
 ''')
         checks = []
@@ -262,8 +273,8 @@ const DiscreteModel& GeneratedModel();
             for state in [-2147483648, -1, *range(20), *rows, 2147483646, 2147483647]:
                 check(f"{function}(DiscreteHiddenState{{{state}}})", rows.get(state))
         for block, rows in enumerate(model["attention"]):
-            checks.append(f'''if (&model.transformers[{block}].attention != &GeneratedAttention{block}() ||
-    &model.transformers[{block}].mlp != &GeneratedMlp{block}()) return 1;''')
+            checks.append(f'''if (&model.transformers[{block}].attention != &gen::internal::GeneratedAttention{block}() ||
+    &model.transformers[{block}].mlp != &gen::internal::GeneratedMlp{block}()) return 1;''')
             by_key = {tuple(prefix): output for prefix, output in rows}
             alphabet = sorted({-1, 0, 4, 5, 6, 7, 2147483647} |
                               {state for prefix, _ in rows for state in prefix})
@@ -277,14 +288,15 @@ const DiscreteModel& GeneratedModel();
         source = directory / "partial_functions_test.cc"
         source.write_text('''#include <iostream>
 #include <vector>
+#include "model.h"
 #include "tables.h"
 using namespace pluto::llm::discretized;
 int main() {
-  const DiscreteModel& model = GeneratedModel();
+  const DiscreteModel& model = gen::GeneratedModel();
 ''' + f'''  if (model.transformers.size() != {model["layers"]})
     return 1;
-  if (&model.position_embedding != &GeneratedPositionEmbedding() ||
-      &model.language_modeling_head != &GeneratedLanguageModelingHead())
+  if (&model.position_embedding != &gen::internal::GeneratedPositionEmbedding() ||
+      &model.language_modeling_head != &gen::internal::GeneratedLanguageModelingHead())
     return 1;
 ''' + "\n".join(checks) + "\nreturn 0;\n}\n")
         sources = [directory / name for name in ("entry.cc", "model.cc", "language_modeling_head.cc", "vocabulary.cc")]
@@ -298,6 +310,38 @@ int main() {
         self.assertEqual(compiled.returncode, 0, compiled.stderr)
         ran = subprocess.run([str(executable)], capture_output=True, text=True, timeout=10)
         self.assertEqual(ran.returncode, 0, ran.stderr)
+
+        # A real shared-library build verifies symbol visibility, independently
+        # of header privacy. Internal factories must not leak into the ABI.
+        if shutil.which("nm") is not None:
+            shared_library = directory / "libmodel.so"
+            linked = subprocess.run(
+                ["c++", "-std=c++20", "-O1", "-fPIC", "-shared",
+                 "-fvisibility=hidden", "-fvisibility-inlines-hidden",
+                 "-I", str(include), *map(str, sources), "-o", str(shared_library)],
+                capture_output=True, text=True, timeout=60)
+            self.assertEqual(linked.returncode, 0, linked.stderr)
+            symbols = subprocess.run(
+                ["nm", "-D", "--defined-only", "--demangle", str(shared_library)],
+                capture_output=True, text=True, check=True, timeout=10)
+            exported = [line.split(maxsplit=2)[-1] for line in symbols.stdout.splitlines()
+                        if "pluto::llm::discretized::gen::" in line]
+            self.assertEqual(exported, ["pluto::llm::discretized::gen::GeneratedModel()"])
+            consumer = directory / "public_api_test.cc"
+            consumer.write_text('''#include "model.h"
+int main() {
+  const auto& model = pluto::llm::discretized::gen::GeneratedModel();
+  return model.context_length == 1024 ? 0 : 1;
+}
+''')
+            public_executable = directory / "public_api_test"
+            linked = subprocess.run(
+                ["c++", "-std=c++20", "-I", str(include), str(consumer),
+                 str(shared_library), "-o", str(public_executable)],
+                capture_output=True, text=True, timeout=60)
+            self.assertEqual(linked.returncode, 0, linked.stderr)
+            ran = subprocess.run([str(public_executable)], capture_output=True, text=True, timeout=10)
+            self.assertEqual(ran.returncode, 0, ran.stderr)
 
     @unittest.skipUnless(shutil.which("c++"), "C++ compiler unavailable")
     def test_plain_compiled_functions_match_exact_domains_and_supported_zero(self):
@@ -339,7 +383,7 @@ int main() {
         alternate = copy.deepcopy(self.model)
         alternate["samples"] = [{"tokens": [0, 2]}, {"tokens": [1]}]
         second, _ = self.emit("second", alternate)
-        production = ["tables.h", "vocabulary_tokens.h", "model.cc", "entry.cc", "attention_0.cc",
+        production = ["model.h", "tables.h", "vocabulary_tokens.h", "model.cc", "entry.cc", "attention_0.cc",
                       "mlp_0.cc", "language_modeling_head.cc", "vocabulary.cc"]
         for name in production:
             self.assertEqual((first / name).read_bytes(), (second / name).read_bytes())
@@ -354,7 +398,7 @@ int main() {
         header = (destination / "vocabulary_tokens.h").read_text()
         declarations = dict(re.findall(r"inline\s+constexpr\s+DiscreteToken\s+(\w+)\s*\{(\d+)\}\s*;", header))
         self.assertEqual(declarations, {"kA_0": "0", "kB_1": "1", "kC_2": "2", "kEos_3": "3"})
-        self.assertIn(discretize_emit.NAMESPACE + "::vocab", header)
+        self.assertIn(discretize_emit.NAMESPACE + "::gen::internal::vocab", header)
         self.assertIn("vocabulary_tokens.h", manifest["files"])
         names = ["kA_0", "kB_1", "kC_2", "kEos_3"]
         entry = (destination / "entry.cc").read_text()
@@ -363,7 +407,7 @@ int main() {
         language_modeling_head = (destination / "language_modeling_head.cc").read_text()
         for state, token in self.model["language_modeling_head"]:
             self.assertIn(f"{{{{{state}}}, static_cast<DiscreteHiddenState>(vocab::{names[token]})}}", language_modeling_head)
-        self.assertIn("1024, 1, vocab::kEos_3", (destination / "model.cc").read_text())
+        self.assertIn("1024, 1, internal::vocab::kEos_3", (destination / "model.cc").read_text())
         for filename, array, expected in (
                 ("prompt_encoder.cc", "kTokens", ["kA_0", "kA_0", "kB_1", "kB_1"]),
                 ("verification.cc", "kExpectedTokens", ["kA_0", "kB_1", "kB_1"])):
@@ -389,6 +433,21 @@ int main() {
                           for keyword in node.value.keywords}
                 rules[fields["name"]] = fields
         self.assertEqual(rules["vocabulary_tokens"]["hdrs"], ["vocabulary_tokens.h"])
+        self.assertEqual(rules["vocabulary_tokens"]["visibility"], ["//visibility:private"])
+        self.assertEqual(rules["model"]["hdrs"], ["model.h"])
+        self.assertIn("tables.h", rules["model"]["srcs"])
+        self.assertEqual(rules["model"]["include_prefix"], "pluto/discretized/gen")
+        self.assertEqual(rules["model"]["strip_include_prefix"], ".")
+        self.assertIn("-fvisibility=hidden", rules["model"]["copts"])
+        self.assertIn("-fvisibility-inlines-hidden", rules["model"]["copts"])
+        self.assertEqual(rules["cli_support"]["hdrs"], ["cli_support.h"])
+        for target in ("cli_support", "prompt_encoder", "verification"):
+            self.assertEqual(rules[target]["visibility"], ["//visibility:private"])
+        # These helpers have hidden symbols, so they must be linked into their
+        # private consumers rather than exposed through shared-library ABIs.
+        for target in ("prompt_encoder", "verification"):
+            self.assertTrue(rules[target]["linkstatic"])
+        self.assertFalse(rules["model"].get("linkstatic", False))
         for target in ("model", "prompt_encoder", "verification"):
             self.assertIn(":vocabulary_tokens", rules[target]["deps"])
 

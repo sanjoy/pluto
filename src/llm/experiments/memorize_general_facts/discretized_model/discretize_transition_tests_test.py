@@ -162,6 +162,10 @@ class TransitionFixturesTest(unittest.TestCase):
 
     def test_generated_cpp_uses_independent_inputs_and_compact_stage_vectors(self):
         source = render_transition_test(fixture(), _NAMES)
+        self.assertIn('#include "model.h"', source)
+        self.assertIn('namespace pluto::llm::discretized::gen {', source)
+        self.assertIn('namespace vocab = internal::vocab;', source)
+        self.assertNotIn('runtime.h', source)
         values = re.search(r"constexpr DiscreteHiddenState kExpectedStates\[\] = \{(.*?)\};",
                            source, re.S).group(1)
         states = [int(value) for value in re.findall(r"\{(-?\d+)\}", values)]

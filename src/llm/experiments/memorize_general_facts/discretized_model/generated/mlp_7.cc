@@ -4,7 +4,7 @@
 // both boundary alphabets remain separate; it is not a layer bypass.
 #include "tables.h"
 
-namespace pluto::llm::discretized {
+namespace pluto::llm::discretized::gen::internal {
 namespace {
 std::optional<DiscreteHiddenState> Lookup(DiscreteHiddenState state) {
   if (state.value < 5189 || state.value > 9663)
@@ -87,4 +87,4 @@ Map& GeneratedMlp7() {
   return instance;
 }
 
-}  // namespace pluto::llm::discretized
+}  // namespace pluto::llm::discretized::gen::internal

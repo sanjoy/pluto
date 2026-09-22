@@ -19,7 +19,8 @@ corpus, not an exact replacement for the neural model on arbitrary text.
 
 Vocabulary symbols have their original token bytes and GPT-2 IDs as labels.
 `generated/vocabulary_tokens.h` gives every compact token an `inline constexpr
-DiscreteToken` name in the `vocab` namespace, such as `vocab::kThe_216`,
+DiscreteToken` name in the private `gen::internal::vocab` namespace. Generated
+implementations use names such as `vocab::kThe_216`,
 `vocab::kSpace_France_1516`, and `vocab::kEos_4474`. Names preserve case and spell
 out spaces/punctuation; other bytes use `ByteXX`. The compact-ID suffix makes
 names unique even when a long name is shortened. Comments retain the exact token
@@ -316,6 +317,27 @@ All operations are pure and return `std::optional<DiscreteHiddenState>`:
 ID. The model borrows its operations; generated implementations have static
 lifetime. Reference members cannot be null. Generation validates transition
 domains, and tests compare virtual calls against the source records.
+
+### Public generated API
+
+`generated/model.h` is the generated library's only public header. It declares
+only `pluto::llm::discretized::gen::GeneratedModel()`, which returns a reference
+to the static `DiscreteModel`. The generic `runtime.h` contains no generated
+factory declaration and does not depend on any particular generated model.
+
+Depend on the `generated:model` target and include its stable public header:
+
+```cpp
+#include "pluto/discretized/gen/model.h"
+
+const auto& model = pluto::llm::discretized::gen::GeneratedModel();
+```
+
+Boundary factories, named vocabulary constants, prompt encoding, and corpus
+verification live in `gen::internal`. Their headers and build targets are
+private to the generated package; only the model factory is exported by its
+shared library. The CLI links prompt encoding and verification separately, so
+production model inference cannot access those fixtures.
 
 All generation logic and its Python tests
 live alongside this README: the driver, C++ emitter, state reduction,
