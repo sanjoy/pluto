@@ -2,7 +2,7 @@
 #pragma once
 #include "src/llm/experiments/memorize_general_facts/discretized_model/runtime.h"
 
-namespace pluto::llm::discretized::vocab {
+namespace pluto::llm::discretized::gen::internal::vocab {
 // One constant per compact vocabulary token; values are not GPT-2 IDs.
 // Names retain token case, spell whitespace/punctuation, and end with
 // the compact ID to keep every spelling unique. Long stems are capped.
@@ -8958,4 +8958,4 @@ inline constexpr DiscreteToken kacan_4472{4472};
 inline constexpr DiscreteToken kSpace_kernels_4473{4473};
 // "<|endoftext|>"; original GPT-2 ID 50256.
 inline constexpr DiscreteToken kEos_4474{4474};
-}  // namespace pluto::llm::discretized::vocab
+}  // namespace pluto::llm::discretized::gen::internal::vocab

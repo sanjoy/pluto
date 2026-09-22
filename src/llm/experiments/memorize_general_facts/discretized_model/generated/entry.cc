@@ -5,7 +5,7 @@
 #include "tables.h"
 #include "vocabulary_tokens.h"
 
-namespace pluto::llm::discretized {
+namespace pluto::llm::discretized::gen::internal {
 namespace {
 std::optional<DiscreteHiddenState> Lookup(DiscreteToken token,
                                           int32_t position) {
@@ -716,4 +716,4 @@ PositionEmbedding& GeneratedPositionEmbedding() {
   return instance;
 }
 
-}  // namespace pluto::llm::discretized
+}  // namespace pluto::llm::discretized::gen::internal

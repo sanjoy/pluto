@@ -4,11 +4,12 @@
 #include <cstddef>
 
 #include "gtest/gtest.h"
-#include "src/llm/experiments/memorize_general_facts/discretized_model/runtime.h"
+#include "model.h"
 #include "vocabulary_tokens.h"
 
-namespace pluto::llm::discretized {
+namespace pluto::llm::discretized::gen {
 namespace {
+namespace vocab = internal::vocab;
 constexpr size_t kLayers = 8;
 constexpr size_t kSampleCount = 1024;
 struct Sample {
@@ -49340,4 +49341,4 @@ TEST(GeneratedTransitionBoundaries, EntryAndPointwiseDomainProbes) {
   }
 }
 }  // namespace
-}  // namespace pluto::llm::discretized
+}  // namespace pluto::llm::discretized::gen

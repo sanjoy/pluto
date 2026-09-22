@@ -6,7 +6,7 @@ load("@rules_cc//cc:cc_test.bzl", "cc_test")
 cc_library(
     name = "vocabulary_tokens",
     hdrs = ["vocabulary_tokens.h"],
-    visibility = ["//visibility:public"],
+    visibility = ["//visibility:private"],
     deps = ["//src/llm/experiments/memorize_general_facts/discretized_model:runtime"],
 )
 cc_library(
@@ -31,31 +31,51 @@ cc_library(
         "mlp_6.cc",
         "mlp_7.cc",
         "model.cc",
+        "tables.h",
         "vocabulary.cc",
     ],
-    hdrs = ["tables.h"],
+    hdrs = ["model.h"],
+    copts = ["-fvisibility=hidden", "-fvisibility-inlines-hidden"],
+    strip_include_prefix = ".",
+    include_prefix = "pluto/discretized/gen",
     visibility = ["//visibility:public"],
     deps = [":vocabulary_tokens", "//src/llm/experiments/memorize_general_facts/discretized_model:runtime"],
 )
 cc_library(
+    name = "cli_support",
+    hdrs = ["cli_support.h"],
+    strip_include_prefix = ".",
+    include_prefix = "pluto/discretized/gen/internal",
+    visibility = ["//visibility:private"],
+    deps = ["//src/llm/experiments/memorize_general_facts/discretized_model:runtime"],
+)
+cc_library(
     name = "prompt_encoder",
     srcs = ["prompt_encoder.cc"],
-    deps = [":vocabulary_tokens", "//src/llm/experiments/memorize_general_facts/discretized_model:runtime"],
+    copts = ["-fvisibility=hidden", "-fvisibility-inlines-hidden"],
+    # Private entry points must link into the caller, not a separate shared object.
+    linkstatic = True,
+    visibility = ["//visibility:private"],
+    deps = [":cli_support", ":vocabulary_tokens", "//src/llm/experiments/memorize_general_facts/discretized_model:runtime"],
 )
 cc_library(
     name = "verification",
     srcs = ["verification.cc"],
-    deps = [":vocabulary_tokens", "//src/llm/experiments/memorize_general_facts/discretized_model:runtime"],
+    copts = ["-fvisibility=hidden", "-fvisibility-inlines-hidden"],
+    # Private entry points must link into the caller, not a separate shared object.
+    linkstatic = True,
+    visibility = ["//visibility:private"],
+    deps = [":cli_support", ":vocabulary_tokens", "//src/llm/experiments/memorize_general_facts/discretized_model:runtime"],
 )
 cc_binary(
     name = "discretized_model",
     srcs = ["//src/llm/experiments/memorize_general_facts/discretized_model:main.cc"],
-    deps = [":model", ":prompt_encoder", ":verification", "//src/llm/experiments/memorize_general_facts/discretized_model:runtime"],
+    deps = [":cli_support", ":model", ":prompt_encoder", ":verification", "//src/llm/experiments/memorize_general_facts/discretized_model:runtime"],
 )
 cc_test(
     name = "generated_model_test",
     srcs = ["generated_model_test.cc"],
-    deps = [":model", ":verification", ":vocabulary_tokens", "//src/llm/experiments/memorize_general_facts/discretized_model:runtime", "@googletest//:gtest_main"],
+    deps = [":cli_support", ":model", ":verification", ":vocabulary_tokens", "//src/llm/experiments/memorize_general_facts/discretized_model:runtime", "@googletest//:gtest_main"],
 )
 
 # Independent per-boundary fixtures are test-only, never linked by the CLI.

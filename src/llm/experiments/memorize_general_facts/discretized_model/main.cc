@@ -4,15 +4,9 @@
 #include <system_error>
 #include <vector>
 
+#include "pluto/discretized/gen/internal/cli_support.h"
+#include "pluto/discretized/gen/model.h"
 #include "src/llm/experiments/memorize_general_facts/discretized_model/runtime.h"
-
-namespace pluto::llm::discretized {
-// Separate generated targets. Neither is visible to the integer model.
-absl::Status VerifyGeneratedModel(const DiscreteModel& model,
-                                  std::ostream& output);
-absl::StatusOr<std::vector<DiscreteToken>> EncodeGeneratedPrompt(
-    absl::string_view text);
-}  // namespace pluto::llm::discretized
 
 namespace {
 namespace dm = pluto::llm::discretized;
@@ -92,20 +86,20 @@ int Run(int argc, char** argv) {
     std::cerr << "choose exactly --verify, --prompt=TEXT, or --token_ids=IDS\n";
     return 2;
   }
-  const auto& model = dm::GeneratedModel();
+  const auto& model = dm::gen::GeneratedModel();
   auto valid = dm::ValidateModel(model);
   if (!valid.ok()) {
     std::cerr << valid << "\n";
     return 1;
   }
   if (verify) {
-    auto result = dm::VerifyGeneratedModel(model, std::cout);
+    auto result = dm::gen::internal::VerifyGeneratedModel(model, std::cout);
     if (!result.ok())
       std::cerr << result << "\n";
     return result.ok() ? 0 : 1;
   }
-  auto tokens =
-      have_ids ? ParseIds(raw_ids) : dm::EncodeGeneratedPrompt(prompt);
+  auto tokens = have_ids ? ParseIds(raw_ids)
+                         : dm::gen::internal::EncodeGeneratedPrompt(prompt);
   if (!tokens.ok()) {
     std::cerr << tokens.status() << "\n";
     return 2;

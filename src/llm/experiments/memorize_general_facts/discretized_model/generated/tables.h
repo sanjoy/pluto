@@ -1,7 +1,7 @@
-// Generated declarations.
+// Private generated boundary declarations.
 #pragma once
 #include "src/llm/experiments/memorize_general_facts/discretized_model/runtime.h"
-namespace pluto::llm::discretized {
+namespace pluto::llm::discretized::gen::internal {
 PositionEmbedding& GeneratedPositionEmbedding();
 absl::Span<const VocabularyRow> GeneratedVocabulary();
 Map& GeneratedLanguageModelingHead();
@@ -21,4 +21,4 @@ CausalAttention& GeneratedAttention6();
 Map& GeneratedMlp6();
 CausalAttention& GeneratedAttention7();
 Map& GeneratedMlp7();
-}  // namespace pluto::llm::discretized
+}  // namespace pluto::llm::discretized::gen::internal

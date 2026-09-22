@@ -4,7 +4,7 @@
 #include "tables.h"
 #include "vocabulary_tokens.h"
 
-namespace pluto::llm::discretized {
+namespace pluto::llm::discretized::gen::internal {
 namespace {
 std::optional<DiscreteHiddenState> Lookup(DiscreteHiddenState state) {
   if (state.value < 9664 || state.value > 14138)
@@ -88,4 +88,4 @@ Map& GeneratedLanguageModelingHead() {
   return instance;
 }
 
-}  // namespace pluto::llm::discretized
+}  // namespace pluto::llm::discretized::gen::internal
