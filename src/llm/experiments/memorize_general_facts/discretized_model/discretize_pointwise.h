@@ -6,7 +6,8 @@
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "src/llm/experiments/memorize_general_facts/discretized_model/discretize_attention_logic.h"
+#include "absl/types/span.h"
+#include "src/llm/experiments/memorize_general_facts/discretized_model/generator_model.h"
 
 namespace pluto::llm::discretized::generator {
 
@@ -24,11 +25,11 @@ absl::StatusOr<std::optional<int>> EvaluateEntry(
 
 // Chooses exact guarded affine maps, support masks, switches or narrow arrays.
 // All absent inputs stay unsupported, including negative strong IDs.
-absl::StatusOr<RenderedTransition> RenderPointwise(
+absl::StatusOr<std::string> RenderPointwise(
     absl::string_view name, absl::Span<const StateTransition> rows,
     const TokenNames* token_names = nullptr);
-absl::StatusOr<RenderedTransition> RenderEntry(
-    absl::string_view name, absl::Span<const EntryTransition> rows,
-    const TokenNames& token_names);
+absl::StatusOr<std::string> RenderEntry(absl::string_view name,
+                                        absl::Span<const EntryTransition> rows,
+                                        const TokenNames& token_names);
 
 }  // namespace pluto::llm::discretized::generator

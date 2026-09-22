@@ -69,7 +69,7 @@ TEST_F(GeneratorCaptureTest, OneStepGenerationWritesOnlyCppAndReadableReports) {
                                       "generated_transition_test.cc"));
   EXPECT_TRUE(
       std::filesystem::exists(options_.output / "generation_report.txt"));
-  EXPECT_TRUE(
+  EXPECT_FALSE(
       std::filesystem::exists(options_.output / "transition_patterns.txt"));
   EXPECT_TRUE(std::filesystem::exists(options_.output / "state_index.tsv"));
   EXPECT_EQ(Generate(options_).status().code(),
@@ -160,8 +160,7 @@ TEST_F(GeneratorCaptureTest,
                                                "generated_transition_test.cc"));
   EXPECT_TRUE(
       std::filesystem::is_regular_file(output / "generation_report.txt"));
-  EXPECT_TRUE(
-      std::filesystem::is_regular_file(output / "transition_patterns.txt"));
+  EXPECT_FALSE(std::filesystem::exists(output / "transition_patterns.txt"));
   auto report = ReadFile(output / "generation_report.txt");
   ASSERT_TRUE(report.ok()) << report.status();
   EXPECT_NE(report->find("compaction_search:"), std::string::npos);

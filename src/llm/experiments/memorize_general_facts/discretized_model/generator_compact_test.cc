@@ -42,7 +42,7 @@ SymbolicModel Fixture() {
 
 // Compile emitted programs independently of the neural runtime and exercise
 // their entire small input domains, including negative and missing symbols.
-// This catches emitter bugs that checking statistics or text alone cannot.
+// This catches emitter bugs that checking emitted text alone cannot.
 absl::Status CompileAndRun(absl::string_view source) {
   auto base =
       std::filesystem::temp_directory_path() / "pluto-compact-test-XXXXXX";
@@ -114,7 +114,6 @@ TEST(AttentionLogicTest, SharedSuffixesPreserveOutputsAndAllFutureEdges) {
       {{1}, 10}, {{1, 2}, 20}, {{3}, 10}, {{3, 2}, 20}};
   auto program = BuildAttention(rows);
   ASSERT_TRUE(program.ok()) << program.status();
-  EXPECT_EQ(program->trie_nodes, 5u);
   EXPECT_EQ(program->nodes.size(), 3u);
   EXPECT_EQ(EvaluateAttention(*program, {1, 2}), 20);
   EXPECT_EQ(EvaluateAttention(*program, {3, 2}), 20);
@@ -174,8 +173,7 @@ TEST(AttentionLogicTest, DuplicateRowsAndOrderingDoNotChangeEmission) {
   auto second = RenderAttention("Attention0", rows);
   ASSERT_TRUE(first.ok()) << first.status();
   ASSERT_TRUE(second.ok()) << second.status();
-  EXPECT_EQ(first->source, second->source);
-  EXPECT_EQ(first->stats, second->stats);
+  EXPECT_EQ(*first, *second);
   EXPECT_EQ(*BuildAttention(original), *BuildAttention(rows));
 }
 
@@ -206,12 +204,9 @@ TEST(AttentionLogicTest, HybridSharesNarrowRunsAndControlFlowDoesNot) {
   auto pure = RenderAttention("PureAttention", rows, 256, "control_flow");
   ASSERT_TRUE(hybrid.ok()) << hybrid.status();
   ASSERT_TRUE(pure.ok()) << pure.status();
-  EXPECT_GT(hybrid->stats.literal_sequence_steps, 4);
-  EXPECT_EQ(hybrid->stats.literal_sequence_word_bits, 16);
-  EXPECT_NE(hybrid->source.find("std::uint16_t symbol, output"),
-            std::string::npos);
-  EXPECT_EQ(pure->stats.literal_sequence_patterns, 0);
-  EXPECT_EQ(hybrid->stats.source_bytes, hybrid->source.size());
+  EXPECT_NE(hybrid->find("std::uint16_t symbol, output"), std::string::npos);
+  EXPECT_NE(hybrid->find("NarrowAttentionMatchSequence("), std::string::npos);
+  EXPECT_EQ(pure->find("PureAttentionMatchSequence("), std::string::npos);
 }
 
 TEST(AttentionLogicTest, EmittedCppMatchesAllSupportedAndUnsupportedHistories) {
@@ -243,13 +238,11 @@ TEST(AttentionLogicTest, EmittedCppMatchesAllSupportedAndUnsupportedHistories) {
   ASSERT_TRUE(pure.ok()) << pure.status();
   ASSERT_TRUE(empty.ok()) << empty.status();
   ASSERT_TRUE(narrow.ok()) << narrow.status();
-  EXPECT_GT(hybrid->stats.helpers, 1);
-  EXPECT_GT(hybrid->stats.literal_sequence_patterns, 0);
-  EXPECT_EQ(hybrid->stats.literal_sequence_word_bits, 32);
-  EXPECT_EQ(narrow->stats.literal_sequence_word_bits, 16);
-  EXPECT_GT(narrow->stats.literal_sequence_patterns, 0);
-  std::string source = StrCat(kDeclarations, hybrid->source, pure->source,
-                              empty->source, narrow->source, "int main() {\n");
+  EXPECT_NE(hybrid->find("CompiledAttentionPart1("), std::string::npos);
+  EXPECT_NE(hybrid->find("std::uint32_t symbol, output"), std::string::npos);
+  EXPECT_NE(narrow->find("std::uint16_t symbol, output"), std::string::npos);
+  std::string source =
+      StrCat(kDeclarations, *hybrid, *pure, *empty, *narrow, "int main() {\n");
   absl::StrAppend(&source, R"cpp(
     std::vector<DiscreteHiddenState> narrow;
     if (NarrowAttention(narrow).has_value())
@@ -381,12 +374,10 @@ TEST(PointwiseTest, SparseNamedAffineMapsUseExactMasks) {
   }
   auto result = RenderPointwise("Head", rows, &names);
   ASSERT_TRUE(result.ok()) << result.status();
-  EXPECT_EQ(result->stats.representation,
-            TransitionRepresentation::kSparseAffineSupportMask);
-  EXPECT_EQ(result->stats.table_bytes, 16);
-  EXPECT_NE(result->source.find("vocab::Token0"), std::string::npos);
-  EXPECT_EQ(result->source.find("kOutputs"), std::string::npos);
-  EXPECT_LT(result->source.size(), 1000u);
+  EXPECT_NE(result->find("kSupport[offset >> 3]"), std::string::npos);
+  EXPECT_NE(result->find("vocab::Token0"), std::string::npos);
+  EXPECT_EQ(result->find("kOutputs"), std::string::npos);
+  EXPECT_LT(result->size(), 1000u);
 }
 
 TEST(PointwiseTest, EvaluatorsDistinguishUnsupportedAndSupportedZero) {
@@ -402,10 +393,9 @@ TEST(PointwiseTest, EvaluatorsDistinguishUnsupportedAndSupportedZero) {
 TEST(PointwiseTest, DenseMapsChooseGuardedAffineOrNamedOutputArray) {
   auto affine = RenderPointwise("Mlp", {{10, 20}, {11, 21}, {12, 22}});
   ASSERT_TRUE(affine.ok()) << affine.status();
-  EXPECT_EQ(affine->stats.representation,
-            TransitionRepresentation::kGuardedAffine);
-  EXPECT_EQ(affine->stats.table_bytes, 0);
-  EXPECT_NE(affine->source.find("state.value < 10 || state.value > 12"),
+  EXPECT_EQ(affine->find("kOutputs"), std::string::npos);
+  EXPECT_EQ(affine->find("kSupport"), std::string::npos);
+  EXPECT_NE(affine->find("state.value < 10 || state.value > 12"),
             std::string::npos);
   std::vector<StateTransition> rows;
   TokenNames names;
@@ -415,10 +405,8 @@ TEST(PointwiseTest, DenseMapsChooseGuardedAffineOrNamedOutputArray) {
   }
   auto irregular = RenderPointwise("Head", rows, &names);
   ASSERT_TRUE(irregular.ok()) << irregular.status();
-  EXPECT_EQ(irregular->stats.representation,
-            TransitionRepresentation::kGuardedOutputArray);
-  EXPECT_EQ(irregular->stats.table_bytes, 40);
-  EXPECT_NE(irregular->source.find("vocab::Token19"), std::string::npos);
+  EXPECT_NE(irregular->find("kOutputs[state.value - 10]"), std::string::npos);
+  EXPECT_NE(irregular->find("vocab::Token19"), std::string::npos);
 }
 
 TEST(PointwiseTest, EntryRetainsPositionSupportAndNamedExceptions) {
@@ -426,11 +414,9 @@ TEST(PointwiseTest, EntryRetainsPositionSupportAndNamedExceptions) {
       "Entry", {{0, 0, 20}, {0, 2, 20}, {0, 3, 21}, {1, 1, 21}, {3, 0, 20}},
       {{0, "vocab::A"}, {1, "vocab::B"}, {3, "vocab::D"}});
   ASSERT_TRUE(result.ok()) << result.status();
-  EXPECT_EQ(result->stats.position_exceptions, 1);
   for (const char* text : {"case vocab::A.value:", "position == 3",
                            "position < 0", "position > 3", "return {};"})
-    EXPECT_NE(result->source.find(text), std::string::npos) << text;
-  EXPECT_EQ(result->stats.source_bytes, result->source.size());
+    EXPECT_NE(result->find(text), std::string::npos) << text;
 }
 
 TEST(PointwiseTest, InvalidIdsPositionsAndMissingNamesFailSafely) {
@@ -510,7 +496,7 @@ TEST(PointwiseTest, EmittedCppMatchesExactDomainsAndSignedBoundaries) {
                                      : name == "NamedSparseAffine" ? &numbered
                                                                    : nullptr);
     ASSERT_TRUE(generated.ok()) << generated.status();
-    absl::StrAppend(&source, generated->source);
+    absl::StrAppend(&source, *generated);
     for (int state : checked) {
       auto expected = EvaluatePointwise(rows, state);
       ASSERT_TRUE(expected.ok()) << expected.status();
@@ -535,7 +521,7 @@ TEST(PointwiseTest, EmittedCppMatchesExactDomainsAndSignedBoundaries) {
   for (const auto& [name, rows] : entries) {
     auto generated = RenderEntry(name, rows, names);
     ASSERT_TRUE(generated.ok()) << generated.status();
-    absl::StrAppend(&source, generated->source);
+    absl::StrAppend(&source, *generated);
     for (int token :
          {-2147483647 - 1, -1, 0, 1, 2, 3, 4, 1000000000, 2147483647})
       for (int position : {-2147483647 - 1, -1, 0, 1, 2, 3, 4, 31, 32, 63, 64,

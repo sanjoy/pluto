@@ -2,8 +2,8 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <limits>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -48,9 +48,7 @@ absl::StatusOr<AttentionProgram> BuildAttention(
 
   std::vector<std::map<int, int>> children(1);
   std::vector<std::optional<int>> outputs(1);
-  size_t key_scalars = 0;
   for (const auto& [key, output] : table) {
-    key_scalars += key.size();
     int node = 0;
     for (int symbol : key) {
       auto found = children[node].find(symbol);
@@ -80,8 +78,7 @@ absl::StatusOr<AttentionProgram> BuildAttention(
       nodes.push_back(std::move(signature));
     mapped[index] = it->second;
   }
-  return AttentionProgram{std::move(nodes), mapped[0], table.size(),
-                          key_scalars, children.size()};
+  return AttentionProgram{std::move(nodes), mapped[0]};
 }
 
 std::optional<int> EvaluateAttention(const AttentionProgram& program,
@@ -100,7 +97,7 @@ std::optional<int> EvaluateAttention(const AttentionProgram& program,
   return program.nodes[node].output;
 }
 
-absl::StatusOr<RenderedTransition> RenderAttention(
+absl::StatusOr<std::string> RenderAttention(
     absl::string_view name, absl::Span<const AttentionTransition> rows,
     int chunk_size, absl::string_view strategy) {
   RETURN_IF_ERROR(ValidateTransitionFunctionName(name));
@@ -165,7 +162,6 @@ absl::StatusOr<RenderedTransition> RenderAttention(
   using Pattern = std::vector<std::pair<int, int>>;
   std::map<Pattern, int> sequence_index;
   std::vector<Pattern> sequences;
-  int sequence_calls = 0;
   std::set<int> visited;
   for (const auto& [chunk, entry_nodes] : entries) {
     lines.push_back(
@@ -206,7 +202,6 @@ absl::StatusOr<RenderedTransition> RenderAttention(
               sequence_index.emplace(run, sequences.size());
           if (inserted)
             sequences.push_back(std::move(run));
-          ++sequence_calls;
           for (int consumed : run_nodes)
             if (!visited.insert(consumed).second)
               return absl::InternalError("attention sequence emitted twice");
@@ -274,9 +269,7 @@ absl::StatusOr<RenderedTransition> RenderAttention(
   if (visited.size() != program.nodes.size())
     return absl::InternalError("attention layout omitted a reachable node");
   int sequence_bits = 16;
-  size_t sequence_steps = 0;
   for (const auto& pattern : sequences) {
-    sequence_steps += pattern.size();
     for (auto [symbol, output] : pattern)
       if (symbol > 65535 || output > 65535)
         sequence_bits = 32;
@@ -345,43 +338,7 @@ absl::StatusOr<RenderedTransition> RenderAttention(
             "  }",
             "}"};
   lines.insert(lines.end(), footer.begin(), footer.end());
-  std::string source = StrCat(absl::StrJoin(lines, "\n"), "\n");
-  size_t edges = 0, branch_edges = 0, unary_nodes = 0, branch_nodes = 0;
-  size_t entry_cases = 0;
-  for (const auto& node : program.nodes) {
-    edges += node.edges.size();
-    unary_nodes += node.edges.size() == 1;
-    if (node.edges.size() > 1) {
-      ++branch_nodes;
-      branch_edges += node.edges.size();
-    }
-  }
-  for (const auto& [chunk, values] : entries)
-    entry_cases += values.size();
-  TransitionStatistics stats;
-  stats.representation = TransitionRepresentation::kSharedSuffixControlFlow;
-  stats.strategy = strategy == "hybrid" ? AttentionStrategy::kHybrid
-                                        : AttentionStrategy::kControlFlow;
-  stats.rows = program.rows;
-  stats.flat_key_scalars = program.key_scalars;
-  stats.flat_scalars = program.key_scalars + 3 * program.rows;
-  stats.trie_nodes = program.trie_nodes;
-  stats.nodes = program.nodes.size();
-  stats.edges = edges;
-  stats.unary_nodes = unary_nodes;
-  stats.branch_nodes = branch_nodes;
-  stats.branch_edges = branch_edges;
-  stats.control_blocks = starts.size();
-  stats.helpers = entries.size();
-  stats.helper_node_limit = chunk_size;
-  stats.entry_cases = entry_cases;
-  stats.scalar_estimate = 3 * program.nodes.size() + 2 * branch_edges;
-  stats.literal_sequence_patterns = sequences.size();
-  stats.literal_sequence_steps = sequence_steps;
-  stats.literal_sequence_calls = sequence_calls;
-  stats.literal_sequence_word_bits = sequence_bits;
-  stats.source_bytes = source.size();
-  return RenderedTransition{std::move(source), std::move(stats)};
+  return StrCat(absl::StrJoin(lines, "\n"), "\n");
 }
 
 }  // namespace pluto::llm::discretized::generator

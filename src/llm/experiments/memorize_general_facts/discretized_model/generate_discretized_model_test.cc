@@ -32,8 +32,7 @@ TEST_F(GeneratorTest, CompactionIsIndependentOfTransitionRepresentation) {
       EXPECT_EQ(result->stats.compaction_search.has_value(), compaction);
       EXPECT_TRUE(fs::exists(options_.output / "state_index.tsv"));
       EXPECT_EQ(fs::exists(options_.output / "state_members.tsv"), compaction);
-      EXPECT_EQ(fs::exists(options_.output / "transition_patterns.txt"),
-                compact);
+      EXPECT_FALSE(fs::exists(options_.output / "transition_patterns.txt"));
       EXPECT_EQ(fs::exists(options_.output / "generated_transition_test.cc"),
                 compact);
       ExpectNoIntermediateFiles();
@@ -70,7 +69,7 @@ TEST_F(GeneratorTest, RepeatConversionIsDeterministic) {
   ASSERT_TRUE(Generate(options_).ok());
   for (const auto& file : fs::directory_iterator(first)) {
     // Runtime measurements are deliberately not deterministic. Generated
-    // source, domain fixtures, and all state/transition reports must be.
+    // source, domain fixtures, and all state reports must be.
     if (file.path().filename() == "generation_report.txt")
       continue;
     auto expected = ReadFile(file.path());
