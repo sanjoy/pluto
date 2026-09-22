@@ -24,6 +24,26 @@ cc_test(
     ],
 )
 
+cc_library(
+    name = "naming_utils",
+    srcs = ["naming_utils.cc"],
+    hdrs = ["naming_utils.h"],
+    deps = [
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/strings",
+    ],
+)
+
+cc_test(
+    name = "naming_utils_test",
+    size = "small",
+    srcs = ["naming_utils_test.cc"],
+    deps = [
+        ":naming_utils",
+        "@googletest//:gtest_main",
+    ],
+)
+
 # CPU algorithms used by the GPU-backed conversion driver. All intermediate
 # state stays in memory as typed models, transitions, and statistics.
 cc_library(
@@ -53,6 +73,7 @@ cc_library(
     ],
     deps = [
         ":generator_io",
+        ":naming_utils",
         "//src/util:status_macros",
         "@abseil-cpp//absl/container:flat_hash_map",
         "@abseil-cpp//absl/container:flat_hash_set",
@@ -164,6 +185,7 @@ test_suite(
         ":generator_emit_test",
         ":generator_io_test",
         ":generator_report_test",
+        ":naming_utils_test",
     ],
 )
 
