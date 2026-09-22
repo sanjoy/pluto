@@ -29,16 +29,17 @@ struct TransitionResult {
   std::optional<StateId> output;  // Result symbol, or nullopt if unsupported.
 };
 
-// One attention residual boundary over the entire ordered causal prefix.
-// Any backing data and lookup algorithm are private to the compiled function.
+// Maps the complete ordered prefix of residual symbols, including the current
+// position, to that position's post-attention residual symbol.
 struct AttentionTable {
-  // Required pure lookup returning the current position's residual symbol.
+  // Required pure function; unsupported inputs produce an empty output.
   TransitionResult (*function)(absl::Span<const StateId>) = nullptr;
 };
 
-// A compiled pointwise MLP or snap boundary, including data-backed lookups.
+// Maps one residual symbol to a post-MLP residual symbol, or to a compact
+// vocabulary token ID for the final snap.
 struct StateTable {
-  // Required pure lookup: residual symbol (MLP) or compact token ID (snap).
+  // Required pure function; unsupported inputs produce an empty output.
   TransitionResult (*function)(StateId) = nullptr;
 };
 
