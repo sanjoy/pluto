@@ -5,6 +5,7 @@
 #include <tuple>
 
 #include "absl/strings/str_cat.h"
+#include "src/util/status_macros.h"
 
 namespace pluto::llm::discretized {
 namespace {
@@ -124,9 +125,7 @@ absl::Status ValidateModel(const Model& model) {
 
 absl::StatusOr<TokenId> PredictNext(const Model& model,
                                     absl::Span<const TokenId> tokens) {
-  auto status = CheckPrompt(model, tokens);
-  if (!status.ok())
-    return status;
+  RETURN_IF_ERROR(CheckPrompt(model, tokens));
   std::vector<StateId> states;
   states.reserve(tokens.size());
   for (size_t position = 0; position < tokens.size(); ++position) {
