@@ -1,0 +1,6 @@
+# Ship the repository's formatting policy with the Python generator's runfiles.
+filegroup(
+    name = "clang_format_config",
+    srcs = [".clang-format"],
+    visibility = ["//src/llm/experiments/memorize_general_facts/discretized_model:__pkg__"],
+)

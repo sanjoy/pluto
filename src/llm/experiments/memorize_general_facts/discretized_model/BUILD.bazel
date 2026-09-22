@@ -1,6 +1,98 @@
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
+load("@rules_python//python:py_binary.bzl", "py_binary")
+load("@rules_python//python:py_library.bzl", "py_library")
+load("@rules_python//python:py_test.bzl", "py_test")
+
+# Explicit source lists make the portable runfiles independent of the checkout.
+# The local import root preserves the modules' standalone Python interfaces.
+py_library(
+    name = "discretization",
+    srcs = [
+        "discretize_attention_logic.py",
+        "discretize_certificate.py",
+        "discretize_core.py",
+        "discretize_emit.py",
+        "discretize_logic.py",
+        "discretize_pointwise.py",
+        "discretize_transition_tests.py",
+    ],
+    imports = ["."],
+)
+
+# The driver is also a library so tests and other tools can call generate().
+py_library(
+    name = "generator",
+    srcs = ["generate_discretized_model.py"],
+    data = ["//:clang_format_config"],
+    imports = ["."],
+    deps = [":discretization"],
+)
+
+# Run explicitly with bazel run; generated C++ remains checked-in source, not a
+# genrule output. clang-format is the only required host tool at generation time.
+py_binary(
+    name = "generate_discretized_model",
+    srcs = ["generate_discretized_model.py"],
+    deps = [":generator"],
+)
+
+[
+    py_test(
+        name = name,
+        size = "small",
+        srcs = [name + ".py"],
+        deps = [":discretization"],
+    )
+    for name in [
+        "discretize_attention_logic_test",
+        "discretize_certificate_test",
+        "discretize_core_test",
+        "discretize_emit_test",
+        "discretize_pointwise_test",
+        "discretize_transition_tests_test",
+    ]
+]
+
+py_test(
+    name = "generate_discretized_model_test",
+    size = "small",
+    srcs = ["generate_discretized_model_test.py"],
+    # The driver tests also check source layout and the runtime/public API split.
+    data = [
+        "discretize_attention_logic_test.py",
+        "discretize_certificate_test.py",
+        "discretize_core_test.py",
+        "discretize_emit_test.py",
+        "discretize_pointwise_test.py",
+        "discretize_transition_tests_test.py",
+        "runtime.h",
+    ],
+    deps = [":generator"],
+)
+
+py_test(
+    name = "generate_discretized_model_bazel_test",
+    size = "medium",
+    srcs = ["generate_discretized_model_bazel_test.py"],
+    args = ["$(rootpath :generate_discretized_model)"],
+    data = [":generate_discretized_model"],
+)
+
+test_suite(
+    name = "generator_tests",
+    tests = [
+        ":discretize_attention_logic_test",
+        ":discretize_certificate_test",
+        ":discretize_core_test",
+        ":discretize_emit_test",
+        ":discretize_pointwise_test",
+        ":discretize_transition_tests_test",
+        ":generate_discretized_model_bazel_test",
+        ":generate_discretized_model_test",
+    ],
+)
 
 # Compile this entry point in each generated package, with that package's
 # public model header and package-private CLI support declarations.

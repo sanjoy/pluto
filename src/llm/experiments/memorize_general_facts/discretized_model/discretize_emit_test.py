@@ -16,7 +16,8 @@ import unittest
 from unittest import mock
 
 # Keep direct test execution and discovery independent of the current directory.
-sys.path.insert(0, str(Path(__file__).resolve().parents[5]))
+# Preserve runfiles symlinks so Bazel only sees declared Python dependencies.
+sys.path.insert(0, str(Path(__file__).absolute().parents[5]))
 
 from src.llm.experiments.memorize_general_facts.discretized_model import discretize_emit
 
@@ -118,7 +119,7 @@ emit_model(json.loads(Path(sys.argv[2]).read_text()), Path(sys.argv[3]),
 """
         result = subprocess.run(
             [sys.executable, "-B", "-c", command,
-             str(Path(__file__).resolve().parents[5]), str(model_path), str(output)],
+             str(Path(__file__).absolute().parents[5]), str(model_path), str(output)],
             cwd=self.root, capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads((output / "manifest.json").read_text())[
