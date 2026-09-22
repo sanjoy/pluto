@@ -351,7 +351,7 @@ absl::StatusOr<std::string> RenderStateIndex(const SymbolicModel& model) {
       "# Examples are empirical captured token-prefix contexts, not semantic "
       "labels.\n"
       "# A representative vector is only one original member, not the meaning "
-      "of a merged class; unknown membership counts are not guessed.\n"
+      "of a compacted class; unknown membership counts are not guessed.\n"
       "# Occurrences count each real sample position once at its named "
       "boundary, including prompt positions; no padding or repeated "
       "autoregressive passes.\n"
@@ -737,7 +737,7 @@ absl::StatusOr<FileMap> RenderModel(const SymbolicModel& model,
       for (const auto& row : model.states)
         states[row.id] = row;
       std::string members =
-          "# Inspection only: IDs refer to the exact, unreduced "
+          "# Inspection only: IDs refer to the exact, uncompacted "
           "baseline.\nstate_id\tboundary\toriginal_state_ids\n";
       for (const auto& [id, row] : states) {
         std::vector<int> original = *row.members;

@@ -37,11 +37,13 @@ absl::Status CheckOptions(const GeneratorOptions& options) {
   if (options.output.empty() || options.expected_samples <= 0)
     return absl::InvalidArgumentError(
         "output is required and expected_samples must be positive");
-  if (options.reduce &&
-      (options.reduction.neighbors < 1 || options.reduction.max_passes < 1 ||
-       options.reduction.exhaustive_pair_limit < 0 ||
-       (options.reduction.max_attempts && *options.reduction.max_attempts < 0)))
-    return absl::InvalidArgumentError("invalid reduction settings");
+  if (options.compaction &&
+      (options.compaction_options.neighbors < 1 ||
+       options.compaction_options.max_passes < 1 ||
+       options.compaction_options.exhaustive_pair_limit < 0 ||
+       (options.compaction_options.max_attempts &&
+        *options.compaction_options.max_attempts < 0)))
+    return absl::InvalidArgumentError("invalid compaction settings");
   std::error_code error;
   auto status = fs::symlink_status(options.output, error);
   if (error && error != std::errc::no_such_file_or_directory)
@@ -143,9 +145,10 @@ absl::StatusOr<std::string> Provenance(const GeneratorOptions& options,
                    "source: in-memory GPU execution trace\n");
   AppendSection(result, "verification", FormatVerification(verification));
   AppendSection(result, "stats", FormatStatistics(model.stats));
-  if (model.stats.search && model.stats.search->pairwise_irreducible) {
-    ASSIGN_OR_RETURN(auto certificate, CertifyModel(model));
-    AppendSection(result, "irreducibility_certificate",
+  if (model.stats.compaction_search &&
+      model.stats.compaction_search->pairwise_compaction_complete) {
+    ASSIGN_OR_RETURN(auto certificate, CertifyCompaction(model));
+    AppendSection(result, "compaction_certificate",
                   FormatCertificate(certificate));
   }
   if (!options.checkpoint.empty()) {
@@ -212,13 +215,13 @@ absl::StatusOr<SymbolicModel> GenerateFromModel(
         "captured model has the wrong number of samples");
   ASSIGN_OR_RETURN(auto verification, EvaluateModel(model));
   Report(options, verification, model, GenerationPhase::kBaseline);
-  if (options.reduce) {
-    auto reduction = options.reduction;
+  if (options.compaction) {
+    auto compaction = options.compaction_options;
     if (options.progress)
-      reduction.progress = [&](const ReductionProgress& progress) {
+      compaction.progress = [&](const CompactionProgress& progress) {
         options.progress(progress);
       };
-    ASSIGN_OR_RETURN(model, ReduceModel(model, reduction));
+    ASSIGN_OR_RETURN(model, CompactModel(model, compaction));
   }
   if (options.compact_transitions) {
     ASSIGN_OR_RETURN(model, RelabelMlpOutputs(model));

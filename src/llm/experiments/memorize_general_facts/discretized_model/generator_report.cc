@@ -43,58 +43,59 @@ class ReportWriter {
   std::ostringstream stream_;
 };
 
-const char* PhaseName(ReductionPhase phase) {
+const char* CompactionPhaseName(CompactionPhase phase) {
   switch (phase) {
-    case ReductionPhase::kNearest:
-      return "nearest";
-    case ReductionPhase::kNearestPassComplete:
-      return "nearest_pass_complete";
-    case ReductionPhase::kExhaustive:
-      return "exhaustive";
-    case ReductionPhase::kExhaustivePassComplete:
-      return "exhaustive_pass_complete";
+    case CompactionPhase::kNearest:
+      return "compaction_nearest";
+    case CompactionPhase::kNearestPassComplete:
+      return "compaction_nearest_pass_complete";
+    case CompactionPhase::kExhaustive:
+      return "compaction_exhaustive";
+    case CompactionPhase::kExhaustivePassComplete:
+      return "compaction_exhaustive_pass_complete";
   }
   return "unknown";
 }
 
-const char* StoppingReasonName(SearchStoppingReason reason) {
+const char* StoppingReasonName(CompactionStoppingReason reason) {
   switch (reason) {
-    case SearchStoppingReason::kPassLimit:
+    case CompactionStoppingReason::kPassLimit:
       return "pass_limit";
-    case SearchStoppingReason::kAttemptLimit:
+    case CompactionStoppingReason::kAttemptLimit:
       return "attempt_limit";
-    case SearchStoppingReason::kNearestCandidatesExhausted:
+    case CompactionStoppingReason::kNearestCandidatesExhausted:
       return "nearest_candidates_exhausted";
-    case SearchStoppingReason::kNoCompatiblePair:
+    case CompactionStoppingReason::kNoCompatiblePair:
       return "no_compatible_pair";
   }
   return "unknown";
 }
 
-std::string FormatReductionProgress(const ReductionProgress& progress) {
+std::string FormatCompactionProgress(const CompactionProgress& progress) {
   ReportWriter report;
-  report.Field("phase", PhaseName(progress.phase));
+  report.Field("phase", CompactionPhaseName(progress.phase));
   report.Field("pass", progress.pass);
   report.Field("states", progress.states);
   report.Sequence("states_per_stage", progress.states_per_stage);
   report.Field("attempted", progress.attempted);
   report.Field("accepted", progress.accepted);
-  report.Field("unions", progress.unions);
+  report.Field("compactions", progress.compactions);
   report.Field("seconds", progress.seconds);
   return report.Finish();
 }
 
-std::string FormatSearch(const SearchStatistics& stats) {
+std::string FormatCompactionSearch(const CompactionSearchStatistics& stats) {
   ReportWriter report;
   report.Field("stopping_reason", StoppingReasonName(stats.stopping_reason));
-  report.Field("pairwise_irreducible", stats.pairwise_irreducible);
+  report.Field("pairwise_compaction_complete",
+               stats.pairwise_compaction_complete);
   report.Field("global_minimum_proven", stats.global_minimum_proven);
   report.Field("nearest_neighbors", stats.nearest_neighbors);
   report.Field("exhaustive_pair_limit", stats.exhaustive_pair_limit);
   report.Field("remaining_pairs_before_sweep",
                stats.remaining_pairs_before_sweep);
   for (const auto& event : stats.history)
-    report.Section("pass", FormatReductionProgress(event));
+    report.Section("pass", FormatCompactionProgress(event));
   report.Field("seconds", stats.seconds);
   return report.Finish();
 }
@@ -131,8 +132,8 @@ std::string FormatProgress(const ProgressEvent& event) {
   return std::visit(
       [](const auto& value) -> std::string {
         using Event = std::decay_t<decltype(value)>;
-        if constexpr (std::is_same_v<Event, ReductionProgress>) {
-          return FormatReductionProgress(value);
+        if constexpr (std::is_same_v<Event, CompactionProgress>) {
+          return FormatCompactionProgress(value);
         } else {
           ReportWriter report;
           if constexpr (std::is_same_v<Event, CaptureProgress>) {
@@ -170,37 +171,39 @@ std::string FormatStatistics(const ModelStatistics& stats) {
   report.Sequence("states_per_stage", stats.states_per_stage);
   report.Field("attempted_seeds", stats.attempted_seeds);
   report.Field("accepted_seeds", stats.accepted_seeds);
-  report.Field("state_unions", stats.state_unions);
+  report.Field("state_compactions", stats.state_compactions);
   report.Field("cached_rejections", stats.cached_rejections);
   // Hash a canonical typed record encoding, not the human-readable summary.
   // The encoding is fixed-order decimal fields, with round-trippable doubles.
-  if (!stats.accepted_merges.empty()) {
+  if (!stats.accepted_compactions.empty()) {
     std::ostringstream records;
     records.imbue(std::locale::classic());
     records << std::setprecision(17);
-    double minimum = stats.accepted_merges.front().euclidean_distance;
+    double minimum = stats.accepted_compactions.front().euclidean_distance;
     double maximum = minimum;
     int64_t induced = 0;
-    for (const auto& merge : stats.accepted_merges) {
-      records << merge.boundary << '\t' << merge.seed_ids[0] << '\t'
-              << merge.seed_ids[1] << '\t' << merge.euclidean_distance << '\t'
-              << merge.induced_unions << '\n';
-      minimum = std::min(minimum, merge.euclidean_distance);
-      maximum = std::max(maximum, merge.euclidean_distance);
-      induced += merge.induced_unions;
+    for (const auto& compaction : stats.accepted_compactions) {
+      records << compaction.boundary << '\t' << compaction.seed_ids[0] << '\t'
+              << compaction.seed_ids[1] << '\t' << compaction.euclidean_distance
+              << '\t' << compaction.induced_compactions << '\n';
+      minimum = std::min(minimum, compaction.euclidean_distance);
+      maximum = std::max(maximum, compaction.euclidean_distance);
+      induced += compaction.induced_compactions;
     }
-    report.Field("accepted_merges_sha256", Sha256(records.str()));
-    report.Field("accepted_merge_records", stats.accepted_merges.size());
+    report.Field("accepted_compactions_sha256", Sha256(records.str()));
+    report.Field("accepted_compaction_records",
+                 stats.accepted_compactions.size());
     ReportWriter summary;
     summary.Field("minimum", minimum);
     summary.Field("maximum", maximum);
-    summary.Field("induced_unions", induced);
-    report.Section("merge_distance_summary", summary.Finish());
+    summary.Field("induced_compactions", induced);
+    report.Section("compaction_distance_summary", summary.Finish());
   }
   if (stats.verification)
     report.Section("verification", FormatVerification(*stats.verification));
-  if (stats.search)
-    report.Section("search", FormatSearch(*stats.search));
+  if (stats.compaction_search)
+    report.Section("compaction_search",
+                   FormatCompactionSearch(*stats.compaction_search));
   if (stats.pointwise_relabeling)
     report.Section("pointwise_relabeling",
                    FormatRelabeling(*stats.pointwise_relabeling));
@@ -218,8 +221,8 @@ std::string FormatCertificate(const CertificateResult& certificate) {
   report.Field("same_boundary_pairs", certificate.same_boundary_pairs);
   report.Field("proven_pairs", certificate.proven_pairs);
   report.Field("attention_pairs_checked", certificate.attention_pairs_checked);
-  report.Field("pairwise_irreducible_proven",
-               certificate.pairwise_irreducible_proven);
+  report.Field("pairwise_compaction_complete",
+               certificate.pairwise_compaction_complete);
   report.Field("global_minimum_proven", certificate.global_minimum_proven);
   for (const auto& stage : certificate.stages) {
     ReportWriter details;

@@ -17,47 +17,53 @@ namespace fs = std::filesystem;
 
 class GeneratorTest : public GeneratorTestBase {};
 
-TEST_F(GeneratorTest, BothRepresentationsGenerateWithoutIntermediateFiles) {
-  for (bool compact : {false, true}) {
-    options_.output = directory_ / (compact ? "compact" : "tables");
-    options_.compact_transitions = compact;
-    options_.state_index = true;
-    options_.reduce = compact;
-    auto result = Generate(options_);
-    ASSERT_TRUE(result.ok()) << result.status();
-    EXPECT_TRUE(EvaluateModel(*result).ok());
-    EXPECT_TRUE(fs::exists(options_.output / "state_index.tsv"));
-    EXPECT_EQ(fs::exists(options_.output / "state_members.tsv"), compact);
-    EXPECT_EQ(fs::exists(options_.output / "transition_patterns.txt"), compact);
-    EXPECT_EQ(fs::exists(options_.output / "generated_transition_test.cc"),
-              compact);
-    ExpectNoIntermediateFiles();
-    auto report = ReadFile(options_.output / "generation_report.txt");
-    ASSERT_TRUE(report.ok());
-    EXPECT_NE(report->find("errors: 0"), std::string::npos);
-    EXPECT_NE(report->find("explicit_eos: 1"), std::string::npos);
-    EXPECT_NE(report->find("targets: 1"), std::string::npos);
-    auto bytes = ReadFile(options_.output / "model.cc");
-    ASSERT_TRUE(bytes.ok());
-    EXPECT_NE(bytes->find("const DiscreteModel& GeneratedModel()"),
-              std::string::npos);
-    EXPECT_NE(report->find(Sha256(*bytes)), std::string::npos);
-    for (const auto& file : fs::directory_iterator(options_.output)) {
-      if (file.path().filename() == "generation_report.txt")
-        continue;
-      auto digest = Sha256File(file.path());
-      ASSERT_TRUE(digest.ok()) << digest.status();
-      EXPECT_NE(report->find(*digest), std::string::npos) << file.path();
+TEST_F(GeneratorTest, CompactionIsIndependentOfTransitionRepresentation) {
+  for (bool compaction : {false, true}) {
+    for (bool compact : {false, true}) {
+      options_.output =
+          directory_ / (std::string(compaction ? "compacted_" : "exact_") +
+                        (compact ? "compact_code" : "tables"));
+      options_.compact_transitions = compact;
+      options_.state_index = true;
+      options_.compaction = compaction;
+      auto result = Generate(options_);
+      ASSERT_TRUE(result.ok()) << result.status();
+      EXPECT_TRUE(EvaluateModel(*result).ok());
+      EXPECT_EQ(result->stats.compaction_search.has_value(), compaction);
+      EXPECT_TRUE(fs::exists(options_.output / "state_index.tsv"));
+      EXPECT_EQ(fs::exists(options_.output / "state_members.tsv"), compaction);
+      EXPECT_EQ(fs::exists(options_.output / "transition_patterns.txt"),
+                compact);
+      EXPECT_EQ(fs::exists(options_.output / "generated_transition_test.cc"),
+                compact);
+      ExpectNoIntermediateFiles();
+      auto report = ReadFile(options_.output / "generation_report.txt");
+      ASSERT_TRUE(report.ok());
+      EXPECT_NE(report->find("errors: 0"), std::string::npos);
+      EXPECT_NE(report->find("explicit_eos: 1"), std::string::npos);
+      EXPECT_NE(report->find("targets: 1"), std::string::npos);
+      auto bytes = ReadFile(options_.output / "model.cc");
+      ASSERT_TRUE(bytes.ok());
+      EXPECT_NE(bytes->find("const DiscreteModel& GeneratedModel()"),
+                std::string::npos);
+      EXPECT_NE(report->find(Sha256(*bytes)), std::string::npos);
+      for (const auto& file : fs::directory_iterator(options_.output)) {
+        if (file.path().filename() == "generation_report.txt")
+          continue;
+        auto digest = Sha256File(file.path());
+        ASSERT_TRUE(digest.ok()) << digest.status();
+        EXPECT_NE(report->find(*digest), std::string::npos) << file.path();
+      }
+      auto weights_digest = Sha256File(options_.checkpoint / "weight_0.bin");
+      ASSERT_TRUE(weights_digest.ok()) << weights_digest.status();
+      EXPECT_NE(report->find(*weights_digest), std::string::npos);
     }
-    auto weights_digest = Sha256File(options_.checkpoint / "weight_0.bin");
-    ASSERT_TRUE(weights_digest.ok()) << weights_digest.status();
-    EXPECT_NE(report->find(*weights_digest), std::string::npos);
   }
 }
 
 TEST_F(GeneratorTest, RepeatConversionIsDeterministic) {
   options_.compact_transitions = true;
-  options_.reduce = true;
+  options_.compaction = true;
   ASSERT_TRUE(Generate(options_).ok());
   const auto first = options_.output;
   options_.output = directory_ / "repeat";
@@ -144,7 +150,7 @@ TEST_F(GeneratorTest, MissingDeclaredStyleAndMissingCheckpointFail) {
 }
 
 TEST_F(GeneratorTest, ReportsProgressAndIndependentCertificate) {
-  options_.reduce = true;
+  options_.compaction = true;
   std::vector<ProgressEvent> progress;
   options_.progress = [&](const ProgressEvent& event) {
     progress.push_back(event);
@@ -155,14 +161,14 @@ TEST_F(GeneratorTest, ReportsProgressAndIndependentCertificate) {
   ASSERT_TRUE(std::holds_alternative<CaptureProgress>(progress.front()));
   EXPECT_EQ(std::get<CaptureProgress>(progress.front()).samples, 1);
   bool saw_baseline = false;
-  bool saw_reduction = false;
+  bool saw_compaction = false;
   for (const auto& event : progress) {
     if (const auto* phase = std::get_if<GenerationProgress>(&event))
       saw_baseline |= phase->phase == GenerationPhase::kBaseline;
-    saw_reduction |= std::holds_alternative<ReductionProgress>(event);
+    saw_compaction |= std::holds_alternative<CompactionProgress>(event);
   }
   EXPECT_TRUE(saw_baseline);
-  EXPECT_TRUE(saw_reduction);
+  EXPECT_TRUE(saw_compaction);
   ASSERT_TRUE(std::holds_alternative<GenerationProgress>(progress.back()));
   const auto& generated = std::get<GenerationProgress>(progress.back());
   EXPECT_EQ(generated.phase, GenerationPhase::kGenerated);
@@ -170,15 +176,15 @@ TEST_F(GeneratorTest, ReportsProgressAndIndependentCertificate) {
   EXPECT_EQ(generated.verification.explicit_eos, 1);
   auto report = ReadFile(options_.output / "generation_report.txt");
   ASSERT_TRUE(report.ok());
-  EXPECT_NE(report->find("irreducibility_certificate:"), std::string::npos);
+  EXPECT_NE(report->find("compaction_certificate:"), std::string::npos);
   EXPECT_NE(report->find("global_minimum_proven: false"), std::string::npos);
 }
 
-TEST_F(GeneratorTest, InvalidReductionSettingsFailBeforeCapture) {
-  options_.reduce = true;
-  options_.reduction.max_passes = 0;
+TEST_F(GeneratorTest, InvalidCompactionSettingsFailBeforeCapture) {
+  options_.compaction = true;
+  options_.compaction_options.max_passes = 0;
   EXPECT_NE(
-      std::string(Generate(options_).status().message()).find("reduction"),
+      std::string(Generate(options_).status().message()).find("compaction"),
       std::string::npos);
   EXPECT_FALSE(fs::exists(options_.output));
 }

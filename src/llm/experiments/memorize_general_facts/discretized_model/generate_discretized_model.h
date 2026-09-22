@@ -10,9 +10,9 @@
 namespace pluto::llm::discretized::generator {
 
 // Conversion loads native weights and captures the corpus on the GPU. All
-// intermediate traces and reduced models stay in memory; only C++ and readable
-// inspection reports are written. Generated inference needs neither CUDA nor
-// these input files.
+// intermediate traces and compacted models stay in memory; only C++ and
+// readable inspection reports are written. Generated inference needs neither
+// CUDA nor these input files.
 struct GeneratorOptions {
   std::filesystem::path output;
   std::filesystem::path checkpoint;
@@ -26,14 +26,15 @@ struct GeneratorOptions {
   int expected_samples = 1024;
   bool verify_greedy = true;
   bool state_index = false;
-  bool reduce = false;
+  bool compaction = false;  // Identify compatible states within each boundary.
+  // Only changes transition-code representation, not the state partition.
   bool compact_transitions = false;
-  ReductionOptions reduction;
+  CompactionOptions compaction_options;
   std::function<void(const ProgressEvent&)> progress;
 };
 
 // One-step GPU checkpoint -> native trace -> verified CPU-only generated C++.
-// Output is published atomically after capture, reduction, and verification.
+// Output is published atomically after capture, compaction, and verification.
 absl::StatusOr<SymbolicModel> Generate(const GeneratorOptions& options);
 
 }  // namespace pluto::llm::discretized::generator

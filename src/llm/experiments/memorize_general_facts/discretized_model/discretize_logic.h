@@ -9,7 +9,7 @@
 namespace pluto::llm::discretized::generator {
 
 // Replaces each boundary's plain implementation with an exact compact program.
-// Does not merge symbols or simplify across transformer boundaries.
+// Does not compaction symbols or simplify across transformer boundaries.
 absl::Status RenderCompact(const SymbolicModel& model,
                            const std::vector<std::string>& token_names,
                            FileMap& files);

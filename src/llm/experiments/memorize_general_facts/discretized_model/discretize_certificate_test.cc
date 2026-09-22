@@ -10,7 +10,7 @@ SymbolicModel DistinctOutputs(int size = 2) {
   int vocabulary = std::max(size, 3);
   SymbolicModel model;
   // A certificate needs only the typed transition system; it never accesses
-  // corpus samples, vocabulary spellings, or reduction/search metadata.
+  // corpus samples, vocabulary spellings, or compaction/search metadata.
   model.metadata = {.width = 1, .layers = 1, .vocab_size = vocabulary};
   model.transformers.resize(1);
   for (int stage = 0; stage < 3; ++stage)
@@ -31,9 +31,10 @@ SymbolicModel DistinctOutputs(int size = 2) {
 TEST(DiscretizeCertificateTest,
      ProvesWithoutTrustingSearchMetadataOrMutatingInput) {
   auto model = DistinctOutputs();
-  model.stats.search = SearchStatistics{.pairwise_irreducible = false};
+  model.stats.compaction_search =
+      CompactionSearchStatistics{.pairwise_compaction_complete = false};
   const auto before = model;
-  auto result = CertifyModel(model);
+  auto result = CertifyCompaction(model);
   ASSERT_TRUE(result.ok()) << result.status();
   EXPECT_EQ(result->status, CertificateStatus::kProven);
   EXPECT_EQ(result->proven_pairs, 3);
@@ -45,36 +46,37 @@ TEST(DiscretizeCertificateTest,
 TEST(DiscretizeCertificateTest, DuplicateOrMissingReadoutIsInconclusive) {
   auto model = DistinctOutputs();
   model.language_modeling_head[1].output = 0;
-  model.stats.search = SearchStatistics{.pairwise_irreducible = true};
-  auto result = CertifyModel(model);
+  model.stats.compaction_search =
+      CompactionSearchStatistics{.pairwise_compaction_complete = true};
+  auto result = CertifyCompaction(model);
   ASSERT_TRUE(result.ok());
   EXPECT_EQ(result->status, CertificateStatus::kInconclusive);
   EXPECT_EQ(result->unresolved_stage, 2);
   EXPECT_EQ(result->proven_pairs, 0);
   model.language_modeling_head.erase(model.language_modeling_head.begin() + 1);
-  result = CertifyModel(model);
+  result = CertifyCompaction(model);
   ASSERT_TRUE(result.ok());
   EXPECT_EQ(result->status, CertificateStatus::kInconclusive);
 }
 TEST(DiscretizeCertificateTest, ShapeAndBoundaryErrorsReturnStatus) {
   auto model = DistinctOutputs();
   model.states[0].bits = {0, 1};
-  EXPECT_FALSE(CertifyModel(model).ok());
+  EXPECT_FALSE(CertifyCompaction(model).ok());
   model = DistinctOutputs();
   model.transformers[0].attention[0].output = 7;
-  EXPECT_FALSE(CertifyModel(model).ok());
+  EXPECT_FALSE(CertifyCompaction(model).ok());
 }
 TEST(DiscretizeCertificateTest, ComparesTwoRewrittenHistories) {
   auto model = DistinctOutputs();
   model.transformers[0].attention = {{{3, 4}, 5}, {{4, 3}, 6}};
-  auto result = CertifyModel(model);
+  auto result = CertifyCompaction(model);
   ASSERT_TRUE(result.ok()) << result.status();
   EXPECT_EQ(result->status, CertificateStatus::kProven);
 }
 TEST(DiscretizeCertificateTest, DifferentHistoryLengthsDoNotCollide) {
   auto model = DistinctOutputs();
   model.transformers[0].attention = {{{3}, 5}, {{4, 3}, 6}};
-  auto result = CertifyModel(model);
+  auto result = CertifyCompaction(model);
   ASSERT_TRUE(result.ok()) << result.status();
   EXPECT_EQ(result->status, CertificateStatus::kInconclusive);
   EXPECT_EQ(result->unresolved_stage, 0);
@@ -83,17 +85,17 @@ TEST(DiscretizeCertificateTest, DifferentHistoryLengthsDoNotCollide) {
 TEST(DiscretizeCertificateTest, NonInjectiveOrMissingMlpIsInconclusive) {
   auto model = DistinctOutputs();
   model.transformers[0].mlp[1].output = model.transformers[0].mlp[0].output;
-  auto result = CertifyModel(model);
+  auto result = CertifyCompaction(model);
   ASSERT_TRUE(result.ok());
   EXPECT_EQ(result->status, CertificateStatus::kInconclusive);
   EXPECT_EQ(result->unresolved_stage, 1);
   model.transformers[0].mlp.erase(model.transformers[0].mlp.begin() + 1);
-  result = CertifyModel(model);
+  result = CertifyCompaction(model);
   ASSERT_TRUE(result.ok());
   EXPECT_EQ(result->status, CertificateStatus::kInconclusive);
 }
 TEST(DiscretizeCertificateTest, LargeAlphabetHasNoByteEncodingRestriction) {
-  auto result = CertifyModel(DistinctOutputs(257));
+  auto result = CertifyCompaction(DistinctOutputs(257));
   ASSERT_TRUE(result.ok()) << result.status();
   EXPECT_EQ(result->status, CertificateStatus::kProven);
   EXPECT_EQ(result->attention_pairs_checked, 257 * 256 / 2);
