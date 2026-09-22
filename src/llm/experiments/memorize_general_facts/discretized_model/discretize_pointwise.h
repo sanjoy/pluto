@@ -13,7 +13,7 @@ namespace pluto::llm::discretized::generator {
 using TokenNames = std::map<int, std::string>;
 
 // Renames symbols within boundaries to expose simple pointwise maps. No states
-// are merged and no layer is bypassed. Includes all original/new IDs in the
+// are compacted and no layer is bypassed. Includes all original/new IDs in the
 // returned model's state_relabeling field; the input remains unchanged.
 absl::StatusOr<SymbolicModel> RelabelMlpOutputs(const SymbolicModel& model);
 

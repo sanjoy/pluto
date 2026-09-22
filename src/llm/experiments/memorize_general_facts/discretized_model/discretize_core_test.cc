@@ -35,7 +35,7 @@ ExecutionSample Sample(const std::vector<int>& tokens,
   }
   return result;
 }
-SymbolicModel Mergeable() {
+SymbolicModel Compactable() {
   return BuildModel(Header(), {Sample({0}, {{100}, {200}, {300}}),
                                Sample({1}, {{101}, {201}, {301}})})
       .value();
@@ -139,7 +139,7 @@ TEST(DiscretizeCoreTest,
 
 TEST(DiscretizeCoreTest,
      OptionalRelabelingMustBeCompleteTypedAndBoundaryPreserving) {
-  auto model = Mergeable();
+  auto model = Compactable();
   for (const auto& state : model.states)
     model.state_relabeling.push_back({state.id, state.id, state.boundary});
   ASSERT_TRUE(ValidateModel(model).ok());
@@ -170,104 +170,106 @@ TEST(DiscretizeCoreTest, PromptOutputsAreNotReadoutConstraints) {
       {Sample({0, 1}, {{100, 101}, {200, 201}, {300, 301}}, {0, 2})});
   ASSERT_TRUE(model.ok()) << model.status();
   EXPECT_EQ(model->language_modeling_head.size(), 1u);
-  auto reducer = QuotientReducer::Create(*model);
-  ASSERT_TRUE(reducer.ok()) << reducer.status();
-  auto merged =
-      (*reducer)->TryMerge(State(*model, 2, 300), State(*model, 2, 301));
-  ASSERT_TRUE(merged.ok());
-  EXPECT_TRUE(*merged);
-  EXPECT_TRUE(EvaluateModel((*reducer)->Export()).ok());
+  auto compactor = StateCompactor::Create(*model);
+  ASSERT_TRUE(compactor.ok()) << compactor.status();
+  auto compacted =
+      (*compactor)->TryCompact(State(*model, 2, 300), State(*model, 2, 301));
+  ASSERT_TRUE(compacted.ok());
+  EXPECT_TRUE(*compacted);
+  EXPECT_TRUE(EvaluateModel((*compactor)->Export()).ok());
 }
 
-TEST(DiscretizeCoreTest, CongruenceClosureInducesAttentionAndMlpMerges) {
-  auto model = Mergeable();
-  auto reducer = QuotientReducer::Create(model);
-  ASSERT_TRUE(reducer.ok()) << reducer.status();
-  auto merged =
-      (*reducer)->TryMerge(State(model, 0, 100), State(model, 0, 101));
-  ASSERT_TRUE(merged.ok());
-  ASSERT_TRUE(*merged);
-  auto reduced = (*reducer)->Export();
-  EXPECT_EQ(reduced.states.size(), 3u);
-  EXPECT_EQ(reduced.stats.state_unions, 3);
-  EXPECT_EQ(reduced.stats.accepted_merges[0].induced_unions, 2);
-  EXPECT_EQ(reduced.transformers[0].attention.size(), 1u);
-  EXPECT_EQ(reduced.transformers[0].mlp.size(), 1u);
-  EXPECT_TRUE(EvaluateModel(reduced).ok());
+TEST(DiscretizeCoreTest, CongruenceClosureInducesAttentionAndMlpCompactions) {
+  auto model = Compactable();
+  auto compactor = StateCompactor::Create(model);
+  ASSERT_TRUE(compactor.ok()) << compactor.status();
+  auto compaction =
+      (*compactor)->TryCompact(State(model, 0, 100), State(model, 0, 101));
+  ASSERT_TRUE(compaction.ok());
+  ASSERT_TRUE(*compaction);
+  auto compacted = (*compactor)->Export();
+  EXPECT_EQ(compacted.states.size(), 3u);
+  EXPECT_EQ(compacted.stats.state_compactions, 3);
+  EXPECT_EQ(compacted.stats.accepted_compactions[0].induced_compactions, 2);
+  EXPECT_EQ(compacted.transformers[0].attention.size(), 1u);
+  EXPECT_EQ(compacted.transformers[0].mlp.size(), 1u);
+  EXPECT_TRUE(EvaluateModel(compacted).ok());
 }
 
 TEST(DiscretizeCoreTest,
      RejectedTrialRestoresAllTransitionsAndCachesRejection) {
   auto model = Branching();
-  auto reducer = QuotientReducer::Create(model);
-  ASSERT_TRUE(reducer.ok()) << reducer.status();
-  SymbolicModel before = (*reducer)->Export();
+  auto compactor = StateCompactor::Create(model);
+  ASSERT_TRUE(compactor.ok()) << compactor.status();
+  SymbolicModel before = (*compactor)->Export();
   for (int iteration = 0; iteration < 2; ++iteration) {
-    auto merged =
-        (*reducer)->TryMerge(State(model, 0, 100), State(model, 0, 101));
-    ASSERT_TRUE(merged.ok());
-    EXPECT_FALSE(*merged);
+    auto compacted =
+        (*compactor)->TryCompact(State(model, 0, 100), State(model, 0, 101));
+    ASSERT_TRUE(compacted.ok());
+    EXPECT_FALSE(*compacted);
   }
-  SymbolicModel after = (*reducer)->Export();
+  SymbolicModel after = (*compactor)->Export();
   EXPECT_EQ(after.stats.cached_rejections, 1);
   EXPECT_EQ(after.stats.attempted_seeds, 1);
   before.stats = {};
   after.stats = {};
   EXPECT_EQ(before, after);
-  auto merged =
-      (*reducer)->TryMerge(State(model, 2, 301), State(model, 2, 302));
-  ASSERT_TRUE(merged.ok());
-  EXPECT_TRUE(*merged);
-  EXPECT_TRUE(EvaluateModel((*reducer)->Export()).ok());
-  EXPECT_FALSE(
-      (*reducer)->TryMerge(State(model, 0, 100), State(model, 1, 200)).ok());
-  EXPECT_FALSE((*reducer)->TryMerge(-1, -1).ok());
+  auto compacted =
+      (*compactor)->TryCompact(State(model, 2, 301), State(model, 2, 302));
+  ASSERT_TRUE(compacted.ok());
+  EXPECT_TRUE(*compacted);
+  EXPECT_TRUE(EvaluateModel((*compactor)->Export()).ok());
+  EXPECT_FALSE((*compactor)
+                   ->TryCompact(State(model, 0, 100), State(model, 1, 200))
+                   .ok());
+  EXPECT_FALSE((*compactor)->TryCompact(-1, -1).ok());
 }
 
 TEST(DiscretizeCoreTest, SearchLimitsAreNotMisreportedAsMinimality) {
-  ReductionOptions options;
+  CompactionOptions options;
   options.neighbors = 1;
   options.max_passes = 3;
-  auto reduced = ReduceModel(Branching(), options);
-  ASSERT_TRUE(reduced.ok()) << reduced.status();
-  ASSERT_TRUE(reduced->stats.search.has_value());
-  EXPECT_TRUE(reduced->stats.search->pairwise_irreducible);
-  EXPECT_FALSE(reduced->stats.search->global_minimum_proven);
+  auto compacted = CompactModel(Branching(), options);
+  ASSERT_TRUE(compacted.ok()) << compacted.status();
+  ASSERT_TRUE(compacted->stats.compaction_search.has_value());
+  EXPECT_TRUE(compacted->stats.compaction_search->pairwise_compaction_complete);
+  EXPECT_FALSE(compacted->stats.compaction_search->global_minimum_proven);
   options.max_attempts = 0;
-  auto limited = ReduceModel(Branching(), options);
+  auto limited = CompactModel(Branching(), options);
   ASSERT_TRUE(limited.ok()) << limited.status();
-  ASSERT_TRUE(limited->stats.search.has_value());
-  EXPECT_EQ(limited->stats.search->stopping_reason,
-            SearchStoppingReason::kAttemptLimit);
-  EXPECT_FALSE(limited->stats.search->pairwise_irreducible);
+  ASSERT_TRUE(limited->stats.compaction_search.has_value());
+  EXPECT_EQ(limited->stats.compaction_search->stopping_reason,
+            CompactionStoppingReason::kAttemptLimit);
+  EXPECT_FALSE(limited->stats.compaction_search->pairwise_compaction_complete);
   options.max_attempts.reset();
   options.max_passes = 1;
   options.exhaustive_pair_limit = 0;
-  auto shortlist = ReduceModel(Branching(), options);
+  auto shortlist = CompactModel(Branching(), options);
   ASSERT_TRUE(shortlist.ok()) << shortlist.status();
-  ASSERT_TRUE(shortlist->stats.search.has_value());
-  EXPECT_FALSE(shortlist->stats.search->pairwise_irreducible);
+  ASSERT_TRUE(shortlist->stats.compaction_search.has_value());
+  EXPECT_FALSE(
+      shortlist->stats.compaction_search->pairwise_compaction_complete);
   options.neighbors = 0;
-  EXPECT_FALSE(ReduceModel(Branching(), options).ok());
+  EXPECT_FALSE(CompactModel(Branching(), options).ok());
 }
 
 TEST(DiscretizeCoreTest, MembershipIsPreservedAndCanBeRecovered) {
-  const auto original = Mergeable();
-  auto reducer = QuotientReducer::Create(original);
-  ASSERT_TRUE(reducer.ok()) << reducer.status();
-  ASSERT_TRUE((*reducer)
-                  ->TryMerge(State(original, 2, 300), State(original, 2, 301))
+  const auto original = Compactable();
+  auto compactor = StateCompactor::Create(original);
+  ASSERT_TRUE(compactor.ok()) << compactor.status();
+  ASSERT_TRUE((*compactor)
+                  ->TryCompact(State(original, 2, 300), State(original, 2, 301))
                   .value());
-  const auto partial = (*reducer)->Export();
+  const auto partial = (*compactor)->Export();
   auto legacy = partial;
   for (auto& row : legacy.states)
     row.members.reset();
   auto restored = RestoreMembership(legacy, original);
   ASSERT_TRUE(restored.ok()) << restored.status();
   EXPECT_EQ(restored->states, partial.states);
-  auto reduced = ReduceModel(*restored);
-  ASSERT_TRUE(reduced.ok()) << reduced.status();
-  for (const auto& row : reduced->states) {
+  auto compacted = CompactModel(*restored);
+  ASSERT_TRUE(compacted.ok()) << compacted.status();
+  for (const auto& row : compacted->states) {
     ASSERT_TRUE(row.members.has_value());
     EXPECT_EQ(row.members->size(), 2u);
   }
@@ -276,14 +278,14 @@ TEST(DiscretizeCoreTest, MembershipIsPreservedAndCanBeRecovered) {
 }
 
 TEST(DiscretizeCoreTest, CancellationIsCooperativeAndSignalHandlerRestored) {
-  ReductionOptions options;
+  CompactionOptions options;
   options.interrupted = [] { return true; };
-  auto cancelled = ReduceModel(Mergeable(), options);
+  auto cancelled = CompactModel(Compactable(), options);
   EXPECT_EQ(cancelled.status().code(), absl::StatusCode::kCancelled);
   void (*previous)(int) = std::signal(SIGINT, SIG_IGN);
   options.interrupted = {};
-  options.progress = [](const ReductionProgress&) { std::raise(SIGINT); };
-  cancelled = ReduceModel(Mergeable(), options);
+  options.progress = [](const CompactionProgress&) { std::raise(SIGINT); };
+  cancelled = CompactModel(Compactable(), options);
   EXPECT_EQ(cancelled.status().code(), absl::StatusCode::kCancelled);
   EXPECT_EQ(std::signal(SIGINT, previous), SIG_IGN);
 }
@@ -323,14 +325,14 @@ TEST(DiscretizeCoreTest, MalformedTypedModelsReturnStatusInsteadOfAborting) {
       [](auto& m) { m.language_modeling_head.clear(); },
       [](auto& m) { m.samples.clear(); },
       [](auto& m) { m.samples[0].tokens.clear(); },
-      [](auto& m) { m.stats.state_unions = -1; },
+      [](auto& m) { m.stats.state_compactions = -1; },
   };
   for (size_t index = 0; index < defects.size(); ++index) {
-    auto bad = Mergeable();
+    auto bad = Compactable();
     defects[index](bad);
     EXPECT_FALSE(ValidateModel(bad).ok()) << index;
   }
-  auto binary_vocabulary = Mergeable();
+  auto binary_vocabulary = Compactable();
   binary_vocabulary.metadata.vocabulary[0].bytes = std::string("\x80\0", 2);
   EXPECT_TRUE(ValidateModel(binary_vocabulary).ok());
 }
@@ -354,31 +356,32 @@ TEST(DiscretizeCoreTest, CapturedShapesAndRangesAreValidated) {
 }
 
 TEST(DiscretizeCoreTest, MalformedProvenanceStatsFailSafely) {
-  const auto original = Mergeable();
-  for (const auto& invalid : std::vector<MergeRecord>{
+  const auto original = Compactable();
+  for (const auto& invalid : std::vector<CompactionRecord>{
            {.euclidean_distance = -1},
            {.euclidean_distance = std::numeric_limits<double>::infinity()},
            {.euclidean_distance = std::numeric_limits<double>::quiet_NaN()},
-           {.euclidean_distance = 1.5, .induced_unions = -1}}) {
+           {.euclidean_distance = 1.5, .induced_compactions = -1}}) {
     auto model = original;
-    model.stats.accepted_merges = {invalid};
+    model.stats.accepted_compactions = {invalid};
     EXPECT_FALSE(ValidateModel(model).ok());
   }
   auto model = original;
-  model.stats.accepted_merges = {
-      {.euclidean_distance = 0, .induced_unions = INT64_MAX},
-      {.euclidean_distance = 1, .induced_unions = 1}};
+  model.stats.accepted_compactions = {
+      {.euclidean_distance = 0, .induced_compactions = INT64_MAX},
+      {.euclidean_distance = 1, .induced_compactions = 1}};
   EXPECT_FALSE(ValidateModel(model).ok());
   model = original;
-  model.stats.accepted_merges = {
-      {.euclidean_distance = 1.5, .induced_unions = 2}};
-  model.stats.search = SearchStatistics{.pairwise_irreducible = false};
+  model.stats.accepted_compactions = {
+      {.euclidean_distance = 1.5, .induced_compactions = 2}};
+  model.stats.compaction_search =
+      CompactionSearchStatistics{.pairwise_compaction_complete = false};
   EXPECT_TRUE(ValidateModel(model).ok());
 }
 
 TEST(DiscretizeCoreTest, IncrementalClosureMatchesIndependentFullRescan) {
   // Independent oracle repeatedly rescans every immutable equation after each
-  // tentative union. It shares no indexing, rollback, or rejection logic.
+  // tentative compaction. It shares no indexing, rollback, or rejection logic.
   std::mt19937 random(2917);
   for (int trial = 0; trial < 8; ++trial) {
     SymbolicModel model;
@@ -416,14 +419,14 @@ TEST(DiscretizeCoreTest, IncrementalClosureMatchesIndependentFullRescan) {
       model.language_modeling_head.push_back(
           {17 + i, static_cast<int>(random() % 3)});
     }
-    auto reducer = QuotientReducer::Create(model);
-    ASSERT_TRUE(reducer.ok()) << reducer.status();
+    auto compactor = StateCompactor::Create(model);
+    ASSERT_TRUE(compactor.ok()) << compactor.status();
     std::vector<int> equivalence(21);
     std::iota(equivalence.begin(), equivalence.end(), 0);
     auto oracle = [&](int first,
                       int second) -> std::optional<std::vector<int>> {
       auto candidate = equivalence;
-      auto unite = [&](int a, int b) {
+      auto compact_pair = [&](int a, int b) {
         a = candidate[a];
         b = candidate[b];
         if (a == b)
@@ -433,7 +436,7 @@ TEST(DiscretizeCoreTest, IncrementalClosureMatchesIndependentFullRescan) {
             root = std::min(a, b);
         return true;
       };
-      unite(first, second);
+      compact_pair(first, second);
       while (true) {
         bool changed = false;
         std::map<std::vector<int>, int> signatures;
@@ -443,7 +446,7 @@ TEST(DiscretizeCoreTest, IncrementalClosureMatchesIndependentFullRescan) {
             signature.push_back(candidate[argument]);
           auto [found, inserted] = signatures.emplace(signature, term.output);
           if (!inserted)
-            changed |= unite(term.output, found->second);
+            changed |= compact_pair(term.output, found->second);
         }
         std::map<int, int> labels;
         for (const auto& row : model.language_modeling_head) {
@@ -460,7 +463,7 @@ TEST(DiscretizeCoreTest, IncrementalClosureMatchesIndependentFullRescan) {
       const int stage = random() % 3, first = 7 * stage + random() % 7,
                 second = 7 * stage + random() % 7;
       auto expected = oracle(first, second);
-      auto actual = (*reducer)->TryMerge(first + 3, second + 3);
+      auto actual = (*compactor)->TryCompact(first + 3, second + 3);
       ASSERT_TRUE(actual.ok()) << actual.status();
       ASSERT_EQ(*actual, expected.has_value());
       if (expected)
@@ -468,8 +471,8 @@ TEST(DiscretizeCoreTest, IncrementalClosureMatchesIndependentFullRescan) {
       for (int a = 0; a < 21; ++a)
         for (int b = 0; b < 21; ++b)
           ASSERT_EQ(equivalence[a] == equivalence[b],
-                    (*reducer)->RootForState(a + 3) ==
-                        (*reducer)->RootForState(b + 3));
+                    (*compactor)->RootForState(a + 3) ==
+                        (*compactor)->RootForState(b + 3));
     }
   }
 }

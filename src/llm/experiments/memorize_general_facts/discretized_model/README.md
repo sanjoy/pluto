@@ -28,7 +28,7 @@ bytes and original GPT-2 IDs. Entry/readout tables, EOS configuration, and token
 arrays use these constants; vocabulary IDs are unchanged. The optional control-
 flow pass renames internal symbols, with a complete mapping recorded below.
 Initially, internal symbols are numeric IDs for exact native BF16 residual
-vectors. In the reduced model they identify equivalence classes of those states.
+vectors. In the compacted model they identify equivalence classes of those states.
 There are 17 internal boundaries: summed token/position embeddings, then the
 attention and MLP residual outputs of each of eight blocks. Each boundary has
 its own state alphabet; IDs are globally distinct.
@@ -58,28 +58,28 @@ Expected sentence suffixes
 are verification fixtures, never prediction tables consulted by the runtime.
 
 Tests cover table consistency, unknown keys, causal history ordering, EOS,
-code emission, and merge rollback. End-to-end validation checks both the native
+code emission, and compaction rollback. End-to-end validation checks both the native
 checkpoint and the compiled model with autonomous first-five-token generation.
 
-## State reduction
+## State compaction
 
 After the exact baseline passes, states at the same boundary are proposed for
-merging. Proximity orders the initial search but is not a restriction: any pair
-may merge if it preserves the required outputs. When rewritten attention or MLP
+compaction. Proximity orders the initial search but is not a restriction: any pair
+may be compacted if it preserves the required outputs. When rewritten attention or MLP
 keys collide, their output states
-must also merge. This congruence closure propagates downstream. A proposal is
+must also be compacted. This congruence closure propagates downstream. A proposal is
 rejected if it equates two different required vocabulary outputs; otherwise the
 quotient remains a deterministic lookup network. Original vectors provide
-distance/provenance, not floating-point inference after merging.
+distance/provenance, not floating-point inference after compaction.
 
-Only scored suffix/EOS readouts constrain the reduction: predictions inside the
+Only scored suffix/EOS readouts constrain the compaction: predictions inside the
 supplied five-token prompt are not part of the task. All prompt hidden states
-remain necessary as attention context. Every accepted merge decreases the state
-count. Search reports must distinguish exhaustive pairwise irreducibility from
+remain necessary as attention context. Every accepted compaction decreases the state
+count. Search reports must distinguish exhaustive pairwise compaction completeness from
 merely exhausting a nearest-neighbor candidate set; neither alone proves a
 globally smallest representation.
 
-No merge crosses a boundary, removes a layer, or bypasses an attention/MLP
+No compaction crosses a boundary, removes a layer, or bypasses an attention/MLP
 transition. This is a study of a layered symbolic representation, not a replacement
 of the whole model with a sentence-completion dictionary.
 
@@ -99,29 +99,29 @@ library list contain **no CUDA dependency**. It needs no checkpoint, tokenizer
 installation, or GPU at inference time. All 72 repository Bazel test targets and
 186 general-facts Python tests passed at this milestone.
 
-## Reduced result: 6,514 internal states
+## Compacted result: 6,514 internal states
 
 The checked-in generated package now has **6,514 internal states** (**97.06%
 fewer** than the exact baseline), with the same 4,475 vocabulary symbols. Its
 compiled CPU verifier still reports 0/10,002 errors, 1,024/1,024 exact sentences,
-and 1,024 explicit EOS predictions. The reduction accepted 89,345 seed merges,
-including their forced downstream merges, eliminating 215,044 original states.
+and 1,024 explicit EOS predictions. The compaction accepted 89,345 seed compactions,
+including their forced downstream compactions, eliminating 215,044 original states.
 
 The final exhaustive sweep found **no compatible within-boundary pair**. This
 includes distant pairs: nearest-neighbor search only ordered the initial work.
 Pairs whose terminal vocabulary labels already differ are provably incompatible
 and can be skipped. The historical certificate in `generated/generation_report.txt` records
-`no_compatible_pair`, `pairwise_irreducible: true`, and
-`global_minimum_proven: false`. A different earlier merge order could produce a
+`no_compatible_pair`, `pairwise_compaction_complete: true`, and
+`global_minimum_proven: false`. A different earlier compaction order could produce a
 different, potentially smaller quotient; this is not a global minimum claim.
 
-A separate checker, which imports no reducer code and trusts no cached search
+A separate checker, which imports no compactor code and trusts no cached search
 results, independently proves that **all 8,423,754 same-boundary pairs** are
 incompatible. It works backward from distinct vocabulary labels through
 injective MLP tables and 8,990 explicit attention-input pair collision checks.
 The complete argument summary is also recorded in the generation report.
 The C++ generator runs this independent checker directly on the in-memory
-quotient when reduction reports pairwise irreducibility. The checker
+quotient when compaction reports pairwise compaction completeness. The checker
 reports `inconclusive` if its sufficient backward argument cannot be completed;
 it never interprets a missing proof as success or proves corpus accuracy by
 itself. The separate autoregressive verifier establishes that accuracy.
@@ -145,7 +145,7 @@ functions, so different required labels cannot share an input state. Earlier
 attention tables can expand a small alphabet into many outputs by inspecting
 ordered histories.
 These counts measure state alphabets, not the information or bytes in the
-history-keyed tables; reducing states is not the same as compressing the model.
+history-keyed tables; state compaction is not the same as compressing the model.
 
 All original 221,558 states are accounted for by the quotient membership map.
 The generator preserves all eight attention transitions, all eight MLP transitions,
@@ -157,17 +157,17 @@ Two files support inspection without affecting inference:
 - `generated/state_index.tsv`: boundary name, representative BF16 vector,
   corpus occurrence count, up to three observed prefix examples, and original
   member count for each numeric symbol. Examples are observations, not asserted
-  semantic labels; a representative is just one member of a merged class.
+  semantic labels; a representative is just one member of a compacted class.
 - `generated/state_members.tsv`: the complete original-state ID membership of
   every class. Original IDs refer to the exact baseline, not to a different
-  layer or a vocabulary token. No merge crosses a boundary.
+  layer or a vocabulary token. No compaction crosses a boundary.
 
-Generate these with `--state_index`. Reduction preserves the complete quotient
+Generate these with `--state_index`. Compaction preserves the complete quotient
 mapping from the originally captured states in memory; it needs no saved
-baseline or intermediate model file. An unreduced model needs no membership
+baseline or intermediate model file. An uncompacted model needs no membership
 table because each symbol still represents exactly one original state.
 The inspection files are not compiled, linked, or read by the inference model.
-Merged states preserve the agreed corpus completions, not numerical vectors or
+Compacted states preserve the agreed corpus completions, not numerical vectors or
 all possible neural-model behavior. A class can group unrelated meanings; its
 example contexts are evidence for further interpretation, not semantic proof.
 The final result passes all 73 repository Bazel test targets and all 247
@@ -187,7 +187,7 @@ boundaries. It is intentionally not a general BPE tokenizer. Alternatively,
 `--token_ids=ID,ID,...` supplies compact IDs directly. The model's predictions do
 not consult this text encoder or the separately compiled verification fixtures.
 Unknown entries, attention histories, MLP inputs, and readouts are errors.
-After merging, a previously unseen raw-token prefix may map to known abstract
+After compaction, a previously unseen raw-token prefix may map to known abstract
 lookup keys; the lookup mechanism does not promise to reject every out-of-corpus
 token sequence. The text encoder deliberately accepts only recorded prefixes.
 
@@ -195,7 +195,7 @@ token sequence. The text encoder deliberately accepts only recorded prefixes.
 
 `--compact_transitions` compiles the same finite functions into smaller programs.
 It preserves their support and outputs under the recorded symbol renaming. It
-does **not** merge more states, remove layers, or use cross-layer prediction
+does **not** perform additional state compaction, remove layers, or use cross-layer prediction
 shortcuts. All 6,514 residual classes remain, with
 their BF16 representatives and original memberships. The generator records the
 within-boundary renaming in `generated/state_relabeling.tsv`; numeric IDs can now
@@ -242,7 +242,7 @@ Same machine and `bazel build -c opt`, comparing the named table version
 read-only constants and runtime data, **not** object-file metadata, debug symbols,
 or the test fixtures. All amounts are bytes.
 
-| Boundary | Tables | Compact logic | Reduction |
+| Boundary | Tables | Compact logic | Size savings |
 | --- | ---: | ---: | ---: |
 | Entry | 98,156 | 14,772 | 85.0% |
 | Attention 0 | 535,580 | 156,446 | 70.8% |
@@ -291,7 +291,7 @@ bazel run -c opt //src/llm/experiments/memorize_general_facts/discretized_model:
   --checkpoint=/path/to/run/layers_8/step_16128 \
   --tokenizer=/path/to/run/inputs/tokenizer \
   --corpus=testdata/general_facts_dataset.txt \
-  --reduce --compact_transitions --state_index \
+  --compaction --compact_transitions --state_index \
   --output=/tmp/facts-compact-generated
 ```
 
@@ -337,8 +337,8 @@ shared library. The CLI links prompt encoding and verification separately, so
 production model inference cannot access those fixtures.
 
 All generation logic and its C++ tests
-live alongside this README: the driver, C++ emitter, state reduction,
-irreducibility checker, and compact-transition helpers. Generated C++ stays in
+live alongside this README: the driver, C++ emitter, state compactor,
+compaction certificate checker, and compact-transition helpers. Generated C++ stays in
 `generated/`. Benchmarking and training-sweep utilities remain in
 `scripts/memorize_general_facts/`.
 
@@ -346,7 +346,7 @@ irreducibility checker, and compact-transition helpers. Generated C++ stays in
 
 Use a fresh output path. The C++ `generate_discretized_model` binary loads the
 checkpoint and tokenizer, captures exact BF16 activations on CUDA, constructs
-and optionally reduces the symbolic network in memory, then emits formatted
+and optionally compacts the symbolic network in memory, then emits formatted
 CPU-only C++ in a single process. The existing tokenizer's `tokenizer.json` is
 an input asset loaded by the tokenizer library.
 
@@ -354,7 +354,7 @@ an input asset loaded by the tokenizer library.
 continuation is private to the driver. `generator_model.h` defines the typed
 in-memory representation: `ExecutionSample` holds observed BF16 rows,
 `SymbolicModel` contains metadata and boundary-specific transition records, and
-dedicated structures describe verification, reduction, and relabeling results.
+dedicated structures describe verification, compaction, and relabeling results.
 Progress callbacks receive a `ProgressEvent` variant. Reports format these
 structures directly as text; the algorithms never parse report strings.
 
@@ -374,10 +374,14 @@ bazel run -c opt //src/llm/experiments/memorize_general_facts/discretized_model:
   --output=/tmp/facts-generated
 ```
 
-This command keeps all exact states. Add `--reduce` to search for compatible
-within-boundary merges; `--neighbors`, `--max_passes`, `--max_attempts`, and
-`--exhaustive_pair_limit` bound that search. No intermediate checkpoint is saved:
-an interrupted conversion must restart. The 6,514-state checked-in model and its
+This command keeps all exact states. Add `--compaction` to search for compatible
+within-boundary compactions. `--compaction_neighbors`,
+`--compaction_max_passes`, `--compaction_max_attempts`, and
+`--compaction_exhaustive_pair_limit` bound that search. State compaction and
+`--compact_transitions` are independent: the latter only changes how transition
+functions are encoded, without changing the state partition.
+No intermediate checkpoint is saved: an interrupted conversion must restart.
+The 6,514-state checked-in model and its
 historical measurements above are preserved; a new search can choose a different
 quotient depending on candidate order and search limits.
 
@@ -398,8 +402,13 @@ TSVs are optional.
 Copy a freshly generated package into the workspace to build it with Bazel.
 This is an explicit `cc_binary` invocation, not a genrule or an automatic rewrite
 of checked-in generated code. The `:discretization` C++ library contains the
-CPU reduction/emission algorithms; `:generator` adds the GPU capture and driver.
+CPU compaction/emission algorithms; `:generator` adds the GPU capture and driver.
 None of these dependencies enter the generated inference library.
+
+The compaction API consists of `CompactModel`, `CompactionOptions`, and
+`StateCompactor::TryCompact`. Progress and statistics use `CompactionProgress`
+and `CompactionRecord`; `CertifyCompaction` independently checks whether
+pairwise compaction is complete without claiming a globally minimal partition.
 
 Test the C++ libraries and real-GPU conversion with:
 

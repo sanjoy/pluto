@@ -27,16 +27,16 @@ ABSL_FLAG(bool, verify_greedy, true,
           "Check native autonomous completion and exact prefix BF16 states");
 ABSL_FLAG(bool, state_index, false,
           "Write inspection-only state membership and examples");
-ABSL_FLAG(bool, reduce, false,
-          "Merge compatible states within each residual boundary");
+ABSL_FLAG(bool, compaction, false,
+          "Compact compatible states within each residual boundary");
 ABSL_FLAG(bool, compact_transitions, false,
           "Emit compact transition programs instead of private tables");
-ABSL_FLAG(int, neighbors, 8,
+ABSL_FLAG(int, compaction_neighbors, 8,
           "Near-neighbor candidates per state in non-exhaustive search");
-ABSL_FLAG(int, max_passes, 100, "Maximum state reduction passes");
-ABSL_FLAG(int64_t, max_attempts, -1,
-          "Maximum merge attempts; -1 means unlimited");
-ABSL_FLAG(int64_t, exhaustive_pair_limit, 1000000,
+ABSL_FLAG(int, compaction_max_passes, 100, "Maximum state compaction passes");
+ABSL_FLAG(int64_t, compaction_max_attempts, -1,
+          "Maximum compaction attempts; -1 means unlimited");
+ABSL_FLAG(int64_t, compaction_exhaustive_pair_limit, 1000000,
           "Pair count threshold for exhaustive search");
 
 int main(int argc, char** argv) {
@@ -84,19 +84,21 @@ int main(int argc, char** argv) {
   options.expected_samples = absl::GetFlag(FLAGS_expected_samples);
   options.verify_greedy = absl::GetFlag(FLAGS_verify_greedy);
   options.state_index = absl::GetFlag(FLAGS_state_index);
-  options.reduce = absl::GetFlag(FLAGS_reduce);
+  options.compaction = absl::GetFlag(FLAGS_compaction);
   options.compact_transitions = absl::GetFlag(FLAGS_compact_transitions);
-  options.reduction.neighbors = absl::GetFlag(FLAGS_neighbors);
-  options.reduction.max_passes = absl::GetFlag(FLAGS_max_passes);
-  options.reduction.exhaustive_pair_limit =
-      absl::GetFlag(FLAGS_exhaustive_pair_limit);
-  int64_t attempts = absl::GetFlag(FLAGS_max_attempts);
+  options.compaction_options.neighbors =
+      absl::GetFlag(FLAGS_compaction_neighbors);
+  options.compaction_options.max_passes =
+      absl::GetFlag(FLAGS_compaction_max_passes);
+  options.compaction_options.exhaustive_pair_limit =
+      absl::GetFlag(FLAGS_compaction_exhaustive_pair_limit);
+  int64_t attempts = absl::GetFlag(FLAGS_compaction_max_attempts);
   if (attempts < -1) {
-    std::cerr << "max_attempts must be nonnegative or -1\n";
+    std::cerr << "compaction_max_attempts must be nonnegative or -1\n";
     return 1;
   }
   if (attempts >= 0)
-    options.reduction.max_attempts = attempts;
+    options.compaction_options.max_attempts = attempts;
   options.progress = [](const generator::ProgressEvent& progress) {
     std::cout << generator::FormatProgress(progress) << std::endl;
   };

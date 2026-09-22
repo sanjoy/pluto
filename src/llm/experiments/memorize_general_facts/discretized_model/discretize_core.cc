@@ -48,7 +48,7 @@ absl::Status Put(Map& table, const Key& key, int value, const char* name) {
   return absl::OkStatus();
 }
 
-// Ordered lookup indexes keep evaluation independent of reduction internals.
+// Ordered lookup indexes keep evaluation independent of compaction internals.
 struct IntegerModel {
   std::map<std::pair<int, int>, int> entry;
   std::vector<std::map<std::vector<int>, int>> attention;
@@ -219,19 +219,19 @@ absl::Status ValidateTables(const SymbolicModel& model, bool full) {
     }
   }
   const auto& stats = model.stats;
-  if (stats.state_unions < 0 || stats.attempted_seeds < 0 ||
+  if (stats.state_compactions < 0 || stats.attempted_seeds < 0 ||
       stats.accepted_seeds < 0 || stats.cached_rejections < 0)
-    return Error("reduction counters must not be negative");
+    return Error("compaction counters must not be negative");
   int64_t induced_total = 0;
-  for (const auto& merge : stats.accepted_merges) {
-    if (!std::isfinite(merge.euclidean_distance) ||
-        merge.euclidean_distance < 0)
-      return Error("accepted merge distance must be finite and nonnegative");
-    if (merge.induced_unions < 0 ||
-        merge.induced_unions > INT64_MAX - induced_total)
+  for (const auto& compaction : stats.accepted_compactions) {
+    if (!std::isfinite(compaction.euclidean_distance) ||
+        compaction.euclidean_distance < 0)
       return Error(
-          "accepted merge induced union count is invalid or overflows");
-    induced_total += merge.induced_unions;
+          "accepted compaction distance must be finite and nonnegative");
+    if (compaction.induced_compactions < 0 ||
+        compaction.induced_compactions > INT64_MAX - induced_total)
+      return Error("induced compaction count is invalid or overflows");
+    induced_total += compaction.induced_compactions;
   }
   return absl::OkStatus();
 }

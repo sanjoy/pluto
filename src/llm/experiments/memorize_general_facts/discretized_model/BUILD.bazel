@@ -35,7 +35,7 @@ cc_library(
         "discretize_emit.cc",
         "discretize_logic.cc",
         "discretize_pointwise.cc",
-        "discretize_reducer.cc",
+        "discretize_compactor.cc",
         "discretize_transition_tests.cc",
         "generator_report.cc",
     ],

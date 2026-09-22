@@ -24,7 +24,7 @@ namespace {
 double Distance(const std::vector<uint16_t>& first,
                 const std::vector<uint16_t>& second) {
   // BF16 values are search coordinates only. Runtime transitions remain exact
-  // integers, and even distant states can merge in the exhaustive phase.
+  // integers, and even distant states can be compacted in the exhaustive phase.
   long double sum = 0;
   for (size_t index = 0; index < first.size(); ++index) {
     const double a = std::bit_cast<float>(uint32_t(first[index]) << 16);
@@ -38,7 +38,8 @@ volatile std::sig_atomic_t interrupted = 0;
 void Interrupt(int) { interrupted = 1; }
 
 // The signal handler only records intent. All rollback work happens
-// synchronously after TryMerge has committed or completely restored its state.
+// synchronously after TryCompact has committed or completely restored its
+// state.
 class CooperativeInterrupt {
  public:
   CooperativeInterrupt()
@@ -58,14 +59,14 @@ class CooperativeInterrupt {
 };
 }  // namespace
 
-struct QuotientReducer::Impl {
+struct StateCompactor::Impl {
   struct Term {
     int stage;
     std::vector<int> inputs;
     int output;
   };
   struct Undo {
-    enum Kind { kDictionary, kTerm, kUses, kUnion } kind;
+    enum Kind { kDictionary, kTerm, kUses, kCompaction } kind;
     int first = 0, second = 0, size = 0, label = 0;
     std::vector<int> values;
   };
@@ -107,7 +108,8 @@ struct QuotientReducer::Impl {
   }
 
   int Find(int value) const {
-    // No path compression: union by size bounds depth while allowing rollback.
+    // Attach smaller classes to larger ones to bound depth without path
+    // compression, so every change can be rolled back.
     while (parent[value] != value)
       value = parent[value];
     return value;
@@ -147,7 +149,7 @@ struct QuotientReducer::Impl {
           for (int term : operation.values)
             uses[operation.first].erase(term);
           break;
-        case Undo::kUnion:
+        case Undo::kCompaction:
           parent[operation.second] = operation.second;
           size[operation.first] = operation.size;
           label[operation.first] = operation.label;
@@ -156,7 +158,7 @@ struct QuotientReducer::Impl {
     }
   }
 
-  bool Merge(int first, int second) {
+  bool Compact(int first, int second) {
     first = Find(first);
     second = Find(second);
     if (first == second)
@@ -198,7 +200,7 @@ struct QuotientReducer::Impl {
           signatures.erase(found);
         }
       }
-      undo.push_back({Undo::kUnion, a, b, size[a], label[a], {}});
+      undo.push_back({Undo::kCompaction, a, b, size[a], label[a], {}});
       parent[b] = a;
       size[a] += size[b];
       if (label[a] < 0)
@@ -221,7 +223,8 @@ struct QuotientReducer::Impl {
           signatures.emplace(std::move(signature), term);
         } else {
           // Chase an implication toward fixed token labels promptly. A BFS
-          // could otherwise expand thousands of doomed intermediate unions.
+          // could otherwise expand thousands of doomed intermediate
+          // compactions.
           pending.emplace_front(terms[term].output,
                                 terms[other->second].output);
         }
@@ -229,8 +232,9 @@ struct QuotientReducer::Impl {
     }
     if (count) {
       ++accepted;
-      unions += count;
-      accepted_merges.push_back({seed_stage, seed_ids, distance, count - 1});
+      compactions += count;
+      accepted_compactions.push_back(
+          {seed_stage, seed_ids, distance, count - 1});
     }
     return true;
   }
@@ -244,34 +248,34 @@ struct QuotientReducer::Impl {
   std::map<std::vector<int>, int> signatures;
   std::vector<std::vector<int>> term_signatures;
   std::set<std::pair<int, int>> rejected_pairs;
-  int64_t attempted = 0, accepted = 0, unions = 0, cached_rejections = 0;
-  std::vector<MergeRecord> accepted_merges;
+  int64_t attempted = 0, accepted = 0, compactions = 0, cached_rejections = 0;
+  std::vector<CompactionRecord> accepted_compactions;
 };
 
-QuotientReducer::QuotientReducer(std::unique_ptr<Impl> impl)
+StateCompactor::StateCompactor(std::unique_ptr<Impl> impl)
     : impl_(std::move(impl)) {}
-QuotientReducer::~QuotientReducer() = default;
-absl::StatusOr<std::unique_ptr<QuotientReducer>> QuotientReducer::Create(
+StateCompactor::~StateCompactor() = default;
+absl::StatusOr<std::unique_ptr<StateCompactor>> StateCompactor::Create(
     const SymbolicModel& model) {
   RETURN_IF_ERROR(internal::ValidateTables(model, false));
-  return absl::WrapUnique(new QuotientReducer(absl::make_unique<Impl>(model)));
+  return absl::WrapUnique(new StateCompactor(absl::make_unique<Impl>(model)));
 }
-absl::StatusOr<bool> QuotientReducer::TryMerge(int first_id, int second_id) {
+absl::StatusOr<bool> StateCompactor::TryCompact(int first_id, int second_id) {
   auto first = impl_->index.find(first_id),
        second = impl_->index.find(second_id);
   if (first == impl_->index.end() || second == impl_->index.end())
     return absl::InvalidArgumentError("unknown discrete state ID");
   if (impl_->stage[first->second] != impl_->stage[second->second])
     return absl::InvalidArgumentError(
-        "states from different boundaries cannot merge");
-  return impl_->Merge(first->second, second->second);
+        "compaction cannot identify states from different boundaries");
+  return impl_->Compact(first->second, second->second);
 }
-int QuotientReducer::RootForState(int state_id) const {
+int StateCompactor::RootForState(int state_id) const {
   auto found = impl_->index.find(state_id);
   return found == impl_->index.end() ? -1 : impl_->Find(found->second);
 }
 
-SymbolicModel QuotientReducer::Export() const {
+SymbolicModel StateCompactor::Export() const {
   const auto& r = *impl_;
   auto roots = r.Roots();
   std::sort(roots.begin(), roots.end(), [&](int a, int b) {
@@ -286,7 +290,7 @@ SymbolicModel QuotientReducer::Export() const {
   result.metadata = r.model.metadata;
   result.samples = r.model.samples;
   const ModelStatistics& previous = r.model.stats;
-  bool complete = previous.state_unions == 0;
+  bool complete = previous.state_compactions == 0;
   if (!complete)
     complete = std::all_of(
         r.states.begin(), r.states.end(),
@@ -350,17 +354,17 @@ SymbolicModel QuotientReducer::Export() const {
   stats.states_per_stage = counts;
   stats.attempted_seeds += r.attempted;
   stats.accepted_seeds += r.accepted;
-  stats.state_unions += r.unions;
+  stats.state_compactions += r.compactions;
   stats.cached_rejections += r.cached_rejections;
-  stats.accepted_merges.insert(stats.accepted_merges.end(),
-                               r.accepted_merges.begin(),
-                               r.accepted_merges.end());
+  stats.accepted_compactions.insert(stats.accepted_compactions.end(),
+                                    r.accepted_compactions.begin(),
+                                    r.accepted_compactions.end());
   return result;
 }
 
 namespace {
 using Candidate = std::tuple<double, int, int>;
-std::vector<Candidate> CandidatePairs(const QuotientReducer::Impl& r, int stage,
+std::vector<Candidate> CandidatePairs(const StateCompactor::Impl& r, int stage,
                                       int neighbors, bool exhaustive) {
   auto roots = r.Roots(stage);
   std::vector<int> labels;
@@ -420,7 +424,7 @@ std::vector<Candidate> CandidatePairs(const QuotientReducer::Impl& r, int stage,
   std::sort(result.begin(), result.end());
   return result;
 }
-int64_t EligiblePairCount(const QuotientReducer::Impl& r) {
+int64_t EligiblePairCount(const StateCompactor::Impl& r) {
   int64_t total = 0;
   for (int stage = 0; stage <= 2 * r.model.metadata.layers; ++stage) {
     std::map<int, int64_t> counts;
@@ -436,21 +440,21 @@ int64_t EligiblePairCount(const QuotientReducer::Impl& r) {
 }
 }  // namespace
 
-absl::StatusOr<SymbolicModel> ReduceModel(const SymbolicModel& model,
-                                          const ReductionOptions& options) {
+absl::StatusOr<SymbolicModel> CompactModel(const SymbolicModel& model,
+                                           const CompactionOptions& options) {
   RETURN_IF_ERROR(ValidateModel(model));
   if (options.neighbors < 1 || options.max_passes < 1 ||
       options.exhaustive_pair_limit < 0 ||
       (options.max_attempts && *options.max_attempts < 0))
-    return absl::InvalidArgumentError("invalid reduction search limits");
-  ASSIGN_OR_RETURN(auto reducer, QuotientReducer::Create(model));
-  const auto& r = reducer->impl();
+    return absl::InvalidArgumentError("invalid compaction search limits");
+  ASSIGN_OR_RETURN(auto compactor, StateCompactor::Create(model));
+  const auto& r = compactor->impl();
   CooperativeInterrupt interrupt;
   using Clock = std::chrono::steady_clock;
   const auto start = Clock::now();
   auto last_report = start;
   int64_t last_attempt = 0;
-  std::vector<ReductionProgress> history;
+  std::vector<CompactionProgress> history;
   auto elapsed = [](auto from) {
     return std::chrono::duration<double>(Clock::now() - from).count();
   };
@@ -459,19 +463,19 @@ absl::StatusOr<SymbolicModel> ReduceModel(const SymbolicModel& model,
         (!options.interrupted || !options.interrupted()))
       return absl::OkStatus();
     return absl::CancelledError(
-        "reduction interrupted at a safe trial boundary");
+        "compaction interrupted at a safe trial boundary");
   };
-  auto report = [&](ReductionPhase phase,
-                    int pass) -> absl::StatusOr<ReductionProgress> {
+  auto report = [&](CompactionPhase phase,
+                    int pass) -> absl::StatusOr<CompactionProgress> {
     RETURN_IF_ERROR(check_interrupt());
     auto roots = r.Roots();
     std::vector<int> counts(2 * model.metadata.layers + 1);
     for (int root : roots)
       ++counts[r.stage[root]];
-    ReductionProgress info{
-        phase,    pass,          static_cast<int64_t>(roots.size()),
-        counts,   r.attempted,   r.accepted,
-        r.unions, elapsed(start)};
+    CompactionProgress info{
+        phase,         pass,          static_cast<int64_t>(roots.size()),
+        counts,        r.attempted,   r.accepted,
+        r.compactions, elapsed(start)};
     if (options.progress)
       options.progress(info);
     last_attempt = r.attempted;
@@ -482,8 +486,8 @@ absl::StatusOr<SymbolicModel> ReduceModel(const SymbolicModel& model,
     return r.attempted >= last_attempt + 1000 || elapsed(last_report) >= 10;
   };
   auto run_pass = [&](bool exhaustive, int pass) -> absl::StatusOr<bool> {
-    const ReductionPhase phase =
-        exhaustive ? ReductionPhase::kExhaustive : ReductionPhase::kNearest;
+    const CompactionPhase phase =
+        exhaustive ? CompactionPhase::kExhaustive : CompactionPhase::kNearest;
     bool budget = false;
     for (int stage = 0; stage <= 2 * model.metadata.layers; ++stage) {
       for (const auto& [distance, first, second] :
@@ -493,8 +497,8 @@ absl::StatusOr<SymbolicModel> ReduceModel(const SymbolicModel& model,
           budget = true;
           break;
         }
-        if (reducer->RootForState(first) != reducer->RootForState(second))
-          RETURN_IF_ERROR(reducer->TryMerge(first, second).status());
+        if (compactor->RootForState(first) != compactor->RootForState(second))
+          RETURN_IF_ERROR(compactor->TryCompact(first, second).status());
         RETURN_IF_ERROR(check_interrupt());
         if (report_due())
           RETURN_IF_ERROR(report(phase, pass).status());
@@ -503,55 +507,56 @@ absl::StatusOr<SymbolicModel> ReduceModel(const SymbolicModel& model,
       if (budget)
         break;
     }
-    ASSIGN_OR_RETURN(auto info,
-                     report(exhaustive ? ReductionPhase::kExhaustivePassComplete
-                                       : ReductionPhase::kNearestPassComplete,
-                            pass));
+    ASSIGN_OR_RETURN(
+        auto info, report(exhaustive ? CompactionPhase::kExhaustivePassComplete
+                                     : CompactionPhase::kNearestPassComplete,
+                          pass));
     history.push_back(std::move(info));
     return budget;
   };
-  SearchStoppingReason stop = SearchStoppingReason::kPassLimit;
-  bool pairwise_irreducible = false;
+  CompactionStoppingReason stop = CompactionStoppingReason::kPassLimit;
+  bool pairwise_compaction_complete = false;
   for (int pass = 1; pass <= options.max_passes; ++pass) {
-    const int64_t previous = r.unions;
-    RETURN_IF_ERROR(report(ReductionPhase::kNearest, pass).status());
+    const int64_t previous = r.compactions;
+    RETURN_IF_ERROR(report(CompactionPhase::kNearest, pass).status());
     ASSIGN_OR_RETURN(bool budget, run_pass(false, pass));
     if (budget) {
-      stop = SearchStoppingReason::kAttemptLimit;
+      stop = CompactionStoppingReason::kAttemptLimit;
       break;
     }
-    if (r.unions == previous) {
-      stop = SearchStoppingReason::kNearestCandidatesExhausted;
+    if (r.compactions == previous) {
+      stop = CompactionStoppingReason::kNearestCandidatesExhausted;
       break;
     }
   }
   const int64_t remaining = EligiblePairCount(r);
   if (remaining <= options.exhaustive_pair_limit &&
-      stop != SearchStoppingReason::kAttemptLimit) {
+      stop != CompactionStoppingReason::kAttemptLimit) {
     for (int sweep = 1;; ++sweep) {
-      const int64_t previous = r.unions;
+      const int64_t previous = r.compactions;
       ASSIGN_OR_RETURN(bool budget, run_pass(true, sweep));
       if (budget) {
-        stop = SearchStoppingReason::kAttemptLimit;
+        stop = CompactionStoppingReason::kAttemptLimit;
         break;
       }
-      if (r.unions == previous) {
-        pairwise_irreducible = true;
-        stop = SearchStoppingReason::kNoCompatiblePair;
+      if (r.compactions == previous) {
+        pairwise_compaction_complete = true;
+        stop = CompactionStoppingReason::kNoCompatiblePair;
         break;
       }
     }
   }
-  SymbolicModel result = reducer->Export();
+  SymbolicModel result = compactor->Export();
   ASSIGN_OR_RETURN(result.stats.verification, EvaluateModel(result));
-  result.stats.search = SearchStatistics{stop,
-                                         pairwise_irreducible,
-                                         false,
-                                         options.neighbors,
-                                         options.exhaustive_pair_limit,
-                                         remaining,
-                                         history,
-                                         elapsed(start)};
+  result.stats.compaction_search =
+      CompactionSearchStatistics{stop,
+                                 pairwise_compaction_complete,
+                                 false,
+                                 options.neighbors,
+                                 options.exhaustive_pair_limit,
+                                 remaining,
+                                 history,
+                                 elapsed(start)};
   RETURN_IF_ERROR(check_interrupt());
   return result;
 }

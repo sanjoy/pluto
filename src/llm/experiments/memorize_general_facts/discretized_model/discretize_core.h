@@ -27,24 +27,26 @@ absl::StatusOr<int> PredictNext(const SymbolicModel& model,
                                 const std::vector<int>& tokens);
 
 // Search limits are explicit: exhausting a shortlist never proves minimality.
-struct ReductionOptions {
+struct CompactionOptions {
   int neighbors = 4;
   int max_passes = 10;
   std::optional<int64_t> max_attempts;
   int64_t exhaustive_pair_limit = 100000;
-  std::function<void(const ReductionProgress&)> progress;
+  std::function<void(const CompactionProgress&)> progress;
   // Optional cooperative cancellation, checked only between complete trials.
   std::function<bool()> interrupted;
 };
 
-// Incremental congruence closure. A rejected merge rolls back every index;
-// fixed vocabulary labels and distinct residual boundaries can never merge.
-class QuotientReducer {
+// Incremental congruence closure. A rejected compaction rolls back every index;
+// compaction never identifies distinct vocabulary labels or crosses boundaries.
+class StateCompactor {
  public:
-  static absl::StatusOr<std::unique_ptr<QuotientReducer>> Create(
+  static absl::StatusOr<std::unique_ptr<StateCompactor>> Create(
       const SymbolicModel& model);
-  ~QuotientReducer();
-  absl::StatusOr<bool> TryMerge(int first_id, int second_id);
+  ~StateCompactor();
+  // Tries one seed pair plus its forced downstream compactions. Returns false
+  // without changing the partition if the required outputs would conflict.
+  absl::StatusOr<bool> TryCompact(int first_id, int second_id);
   SymbolicModel Export() const;
   int RootForState(int state_id) const;
 
@@ -52,12 +54,12 @@ class QuotientReducer {
   const Impl& impl() const { return *impl_; }
 
  private:
-  explicit QuotientReducer(std::unique_ptr<Impl> impl);
+  explicit StateCompactor(std::unique_ptr<Impl> impl);
   std::unique_ptr<Impl> impl_;
 };
 
 // SIGINT and optional cancellation return Cancelled between atomic trials.
-absl::StatusOr<SymbolicModel> ReduceModel(const SymbolicModel& model,
-                                          const ReductionOptions& options = {});
+absl::StatusOr<SymbolicModel> CompactModel(
+    const SymbolicModel& model, const CompactionOptions& options = {});
 
 }  // namespace pluto::llm::discretized::generator
