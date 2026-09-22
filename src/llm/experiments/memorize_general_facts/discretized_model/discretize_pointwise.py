@@ -158,7 +158,7 @@ def render_pointwise(name, rows, token_names=None):
         lines = begin + guard
         if token_names is not None:
             lines.append("  // State labels encode vocabulary IDs; no neural-head linearity is implied.")
-        lines += [f"  return {_affine_expression(low, ordered[0][1], token_names)};", "}"]
+        lines += [f"  return {{{_affine_expression(low, ordered[0][1], token_names)}}};", "}"]
         return _finish(lines, representation="guarded_affine", rows=len(ordered), affine_ranges=1,
                        table_bytes=0, named_anchor=token_names is not None)
     affine_candidate = None
@@ -174,7 +174,7 @@ def render_pointwise(name, rows, token_names=None):
         lines += _array("kSupport", "uint8_t", [f"0x{value:02x}u" for value in support], columns=16)
         lines += [f"  const uint32_t offset = state - {low}u;",
                   "  if ((kSupport[offset >> 3] & (uint32_t{1} << (offset & 7u))) == 0) return {};",
-                  f"  return {_affine_expression(low, ordered[0][1], token_names)};", "}"]
+                  f"  return {{{_affine_expression(low, ordered[0][1], token_names)}}};", "}"]
         affine_candidate = _finish(lines, representation="sparse_affine_support_mask", rows=len(ordered),
             table_bytes=support_bytes, supported_span=high - low + 1, named_anchor=token_names is not None)
     runs = []
@@ -194,13 +194,13 @@ def render_pointwise(name, rows, token_names=None):
             if last < 0xffffffff:
                 conditions.append(f"state <= {last}u")
             condition = " && ".join(conditions) if conditions else "true"
-            branches.append(f"  if ({condition}) return {expression};")
+            branches.append(f"  if ({condition}) return {{{expression}}};")
         else:
             singletons.extend((state, mapping[state]) for state in range(first, last + 1))
     if singletons:
         branches.append("  switch (state) {")
         for source, output in singletons:
-            branches.append(f"    case {source}: return {_name(output, token_names)};")
+            branches.append(f"    case {source}: return {{{_name(output, token_names)}}};")
         branches += ["    default: return {};", "  }"]
     else:
         branches.append("  return {};")
@@ -215,7 +215,7 @@ def render_pointwise(name, rows, token_names=None):
         ctype = "uint16_t" if small else "StateId"
         vector = begin + guard + _array("kOutputs", ctype,
             [_name(output, token_names) for _, output in ordered])
-        vector += [f"  return kOutputs[state - {low}];", "}"]
+        vector += [f"  return {{kOutputs[state - {low}]}};", "}"]
         vector_body, vector_stats = _finish(vector, representation="guarded_output_array",
             rows=len(ordered), table_bytes=len(ordered) * (2 if small else 4), named_outputs=token_names is not None)
         if len(vector_body) < len(branch_body):
@@ -254,7 +254,7 @@ def render_entry(name, rows, token_names):
         result = begin + ["  switch (token) {"]
         for token, positions in sorted(tokens.items()):
             result += [f"    case {_name(token, token_names)}:", "      switch (position) {"]
-            result += [f"        case {position}: return {output};" for position, output in sorted(positions.items())]
+            result += [f"        case {position}: return {{{output}}};" for position, output in sorted(positions.items())]
             result += ["        default: return {};", "      }"]
         result += ["    default: return {};", "  }", "}"]
         return _finish(result, representation="exact_token_position_switch", rows=len(entry),
@@ -293,16 +293,16 @@ def render_entry(name, rows, token_names):
         for token, exceptional_positions in sorted(grouped.items()):
             lines.append(f"    case {_name(token, token_names)}:")
             for position, output in exceptional_positions:
-                lines.append(f"      if (position == {position}) return {output};")
+                lines.append(f"      if (position == {position}) return {{{output}}};")
             lines.append("      break;")
         lines += ["    default: break;", "  }"]
     state_bytes = 0
     if len(states) == states[-1] - states[0] + 1:
-        lines.append(f"  return {states[0]}u + static_cast<StateId>(packed >> {position_bits});")
+        lines.append(f"  return {{{states[0]}u + static_cast<StateId>(packed >> {position_bits})}};")
     else:
         lines += _array("kStates", "StateId", states)
         state_bytes = 4 * len(states)
-        lines.append(f"  return kStates[packed >> {position_bits}];")
+        lines.append(f"  return {{kStates[packed >> {position_bits}]}};")
     lines.append("}")
     return _finish(lines, representation="packed_support_patterns_and_exceptions", rows=len(entry),
         tokens=len(tokens), patterns=len(patterns), position_bits=position_bits,

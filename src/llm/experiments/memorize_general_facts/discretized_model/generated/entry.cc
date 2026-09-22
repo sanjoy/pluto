@@ -664,40 +664,40 @@ TransitionResult GeneratedEntryFunction(TokenId token, uint32_t position) {
   switch (token) {
     case vocab::kSpace_on_114:
       if (position == 22)
-        return 4521;
+        return {4521};
       break;
     case vocab::kov_351:
       if (position == 21)
-        return 4520;
+        return {4520};
       break;
     case vocab::kik_526:
       if (position == 20)
-        return 4517;
+        return {4517};
       break;
     case vocab::kSpace_six_896:
       if (position == 20)
-        return 4511;
+        return {4511};
       break;
     case vocab::kSpace_carries_2432:
       if (position == 4)
-        return 4520;
+        return {4520};
       break;
     case vocab::kSpace_digits_3240:
       if (position == 19)
-        return 4521;
+        return {4521};
       break;
     case vocab::kSpace_knight_3431:
       if (position == 22)
-        return 4520;
+        return {4520};
       break;
     case vocab::kSpace_bishop_3540:
       if (position == 19)
-        return 4521;
+        return {4521};
       break;
     default:
       break;
   }
-  return 4475u + static_cast<StateId>(packed >> 26);
+  return {4475u + static_cast<StateId>(packed >> 26)};
 }
 
 absl::Span<const EntryRow> GeneratedEntry() { return {}; }
