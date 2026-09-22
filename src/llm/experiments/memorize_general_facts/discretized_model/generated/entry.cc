@@ -6,8 +6,9 @@
 #include "vocabulary_tokens.h"
 
 namespace pluto::llm::discretized {
-TransitionResult GeneratedEntryFunction(TokenId token, uint32_t position) {
-  if (token < 0 || token > 4473 || position > 25)
+TransitionResult GeneratedEntryFunction(DiscreteToken token,
+                                        uint32_t position) {
+  if (token.value < 0 || token.value > 4473 || position > 25)
     return {};
   static constexpr uint16_t kTokenPatterns[] = {
       1,    2,    3,    4,    5,    6,    7,    7,    7,    8,    7,    7,
@@ -658,46 +659,46 @@ TransitionResult GeneratedEntryFunction(TokenId token, uint32_t position) {
       0xa80400a0u, 0xa8003000u, 0x6c000020u, 0xac001800u, 0xb8000054u,
       0x74000028u, 0x280006c0u, 0xb4000122u, 0xac002022u,
   };
-  const uint32_t packed = kPatterns[kTokenPatterns[token - 0]];
+  const uint32_t packed = kPatterns[kTokenPatterns[token.value - 0]];
   if ((packed & (uint32_t{1} << position)) == 0)
     return {};
-  switch (token) {
-    case vocab::kSpace_on_114:
+  switch (token.value) {
+    case vocab::kSpace_on_114.value:
       if (position == 22)
-        return {4521};
+        return {DiscreteHiddenState{4521}};
       break;
-    case vocab::kov_351:
+    case vocab::kov_351.value:
       if (position == 21)
-        return {4520};
+        return {DiscreteHiddenState{4520}};
       break;
-    case vocab::kik_526:
+    case vocab::kik_526.value:
       if (position == 20)
-        return {4517};
+        return {DiscreteHiddenState{4517}};
       break;
-    case vocab::kSpace_six_896:
+    case vocab::kSpace_six_896.value:
       if (position == 20)
-        return {4511};
+        return {DiscreteHiddenState{4511}};
       break;
-    case vocab::kSpace_carries_2432:
+    case vocab::kSpace_carries_2432.value:
       if (position == 4)
-        return {4520};
+        return {DiscreteHiddenState{4520}};
       break;
-    case vocab::kSpace_digits_3240:
+    case vocab::kSpace_digits_3240.value:
       if (position == 19)
-        return {4521};
+        return {DiscreteHiddenState{4521}};
       break;
-    case vocab::kSpace_knight_3431:
+    case vocab::kSpace_knight_3431.value:
       if (position == 22)
-        return {4520};
+        return {DiscreteHiddenState{4520}};
       break;
-    case vocab::kSpace_bishop_3540:
+    case vocab::kSpace_bishop_3540.value:
       if (position == 19)
-        return {4521};
+        return {DiscreteHiddenState{4521}};
       break;
     default:
       break;
   }
-  return {4475u + static_cast<StateId>(packed >> 26)};
+  return {DiscreteHiddenState{4475 + static_cast<int>(packed >> 26)}};
 }
 
 }  // namespace pluto::llm::discretized

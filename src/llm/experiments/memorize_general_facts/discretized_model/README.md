@@ -19,7 +19,7 @@ corpus, not an exact replacement for the neural model on arbitrary text.
 
 Vocabulary symbols have their original token bytes and GPT-2 IDs as labels.
 `generated/vocabulary_tokens.h` gives every compact token an `inline constexpr
-TokenId` name in the `vocab` namespace, such as `vocab::kThe_216`,
+DiscreteToken` name in the `vocab` namespace, such as `vocab::kThe_216`,
 `vocab::kSpace_France_1516`, and `vocab::kEos_4474`. Names preserve case and spell
 out spaces/punctuation; other bytes use `ByteXX`. The compact-ID suffix makes
 names unique even when a long name is shortened. Comments retain the exact token

@@ -11,7 +11,7 @@ struct PromptRow {
   size_t offset;
   size_t length;
 };
-const TokenId kTokens[] = {
+const DiscreteToken kTokens[] = {
     vocab::kA_6,
     vocab::kA_6,
     vocab::kSpace_54,
@@ -129661,7 +129661,7 @@ const PromptRow kPrompts[] = {
      11},
 };
 }  // namespace
-absl::StatusOr<std::vector<TokenId>> EncodeGeneratedPrompt(
+absl::StatusOr<std::vector<DiscreteToken>> EncodeGeneratedPrompt(
     absl::string_view text) {
   auto row = std::lower_bound(
       std::begin(kPrompts), std::end(kPrompts), text,
@@ -129670,7 +129670,7 @@ absl::StatusOr<std::vector<TokenId>> EncodeGeneratedPrompt(
     return absl::NotFoundError(
         "unsupported text encoding: use a captured corpus prefix at a token "
         "boundary, or --token_ids");
-  return std::vector<TokenId>(kTokens + row->offset,
-                              kTokens + row->offset + row->length);
+  return std::vector<DiscreteToken>(kTokens + row->offset,
+                                    kTokens + row->offset + row->length);
 }
 }  // namespace pluto::llm::discretized

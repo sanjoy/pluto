@@ -6,10 +6,10 @@
 
 namespace pluto::llm::discretized {
 namespace {
-TransitionResult Mlp1(StateId state) {
-  if (state < 4623u || state > 4670u)
+TransitionResult Mlp1(DiscreteHiddenState state) {
+  if (state.value < 4623 || state.value > 4670)
     return {};
-  return {state + 48u};
+  return {DiscreteHiddenState{state.value + 48}};
 }
 }  // namespace
 StateTable GeneratedMlp1() { return {Mlp1}; }

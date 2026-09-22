@@ -9,8953 +9,8953 @@ namespace pluto::llm::discretized::vocab {
 // Comments show token bytes and original GPT-2 IDs; Eos names the readout
 // terminator. Internal residual-state IDs intentionally remain numeric.
 // ","; original GPT-2 ID 11.
-inline constexpr TokenId kComma_0 = 0;
+inline constexpr DiscreteToken kComma_0{0};
 // "-"; original GPT-2 ID 12.
-inline constexpr TokenId kHyphen_1 = 1;
+inline constexpr DiscreteToken kHyphen_1{1};
 // "."; original GPT-2 ID 13.
-inline constexpr TokenId kPeriod_2 = 2;
+inline constexpr DiscreteToken kPeriod_2{2};
 // "4"; original GPT-2 ID 19.
-inline constexpr TokenId k4_3 = 3;
+inline constexpr DiscreteToken k4_3{3};
 // "6"; original GPT-2 ID 21.
-inline constexpr TokenId k6_4 = 4;
+inline constexpr DiscreteToken k6_4{4};
 // "8"; original GPT-2 ID 23.
-inline constexpr TokenId k8_5 = 5;
+inline constexpr DiscreteToken k8_5{5};
 // "A"; original GPT-2 ID 32.
-inline constexpr TokenId kA_6 = 6;
+inline constexpr DiscreteToken kA_6{6};
 // "B"; original GPT-2 ID 33.
-inline constexpr TokenId kB_7 = 7;
+inline constexpr DiscreteToken kB_7{7};
 // "C"; original GPT-2 ID 34.
-inline constexpr TokenId kC_8 = 8;
+inline constexpr DiscreteToken kC_8{8};
 // "D"; original GPT-2 ID 35.
-inline constexpr TokenId kD_9 = 9;
+inline constexpr DiscreteToken kD_9{9};
 // "E"; original GPT-2 ID 36.
-inline constexpr TokenId kE_10 = 10;
+inline constexpr DiscreteToken kE_10{10};
 // "F"; original GPT-2 ID 37.
-inline constexpr TokenId kF_11 = 11;
+inline constexpr DiscreteToken kF_11{11};
 // "G"; original GPT-2 ID 38.
-inline constexpr TokenId kG_12 = 12;
+inline constexpr DiscreteToken kG_12{12};
 // "H"; original GPT-2 ID 39.
-inline constexpr TokenId kH_13 = 13;
+inline constexpr DiscreteToken kH_13{13};
 // "I"; original GPT-2 ID 40.
-inline constexpr TokenId kI_14 = 14;
+inline constexpr DiscreteToken kI_14{14};
 // "J"; original GPT-2 ID 41.
-inline constexpr TokenId kJ_15 = 15;
+inline constexpr DiscreteToken kJ_15{15};
 // "K"; original GPT-2 ID 42.
-inline constexpr TokenId kK_16 = 16;
+inline constexpr DiscreteToken kK_16{16};
 // "L"; original GPT-2 ID 43.
-inline constexpr TokenId kL_17 = 17;
+inline constexpr DiscreteToken kL_17{17};
 // "M"; original GPT-2 ID 44.
-inline constexpr TokenId kM_18 = 18;
+inline constexpr DiscreteToken kM_18{18};
 // "N"; original GPT-2 ID 45.
-inline constexpr TokenId kN_19 = 19;
+inline constexpr DiscreteToken kN_19{19};
 // "O"; original GPT-2 ID 46.
-inline constexpr TokenId kO_20 = 20;
+inline constexpr DiscreteToken kO_20{20};
 // "P"; original GPT-2 ID 47.
-inline constexpr TokenId kP_21 = 21;
+inline constexpr DiscreteToken kP_21{21};
 // "R"; original GPT-2 ID 49.
-inline constexpr TokenId kR_22 = 22;
+inline constexpr DiscreteToken kR_22{22};
 // "S"; original GPT-2 ID 50.
-inline constexpr TokenId kS_23 = 23;
+inline constexpr DiscreteToken kS_23{23};
 // "T"; original GPT-2 ID 51.
-inline constexpr TokenId kT_24 = 24;
+inline constexpr DiscreteToken kT_24{24};
 // "U"; original GPT-2 ID 52.
-inline constexpr TokenId kU_25 = 25;
+inline constexpr DiscreteToken kU_25{25};
 // "V"; original GPT-2 ID 53.
-inline constexpr TokenId kV_26 = 26;
+inline constexpr DiscreteToken kV_26{26};
 // "W"; original GPT-2 ID 54.
-inline constexpr TokenId kW_27 = 27;
+inline constexpr DiscreteToken kW_27{27};
 // "X"; original GPT-2 ID 55.
-inline constexpr TokenId kX_28 = 28;
+inline constexpr DiscreteToken kX_28{28};
 // "Y"; original GPT-2 ID 56.
-inline constexpr TokenId kY_29 = 29;
+inline constexpr DiscreteToken kY_29{29};
 // "a"; original GPT-2 ID 64.
-inline constexpr TokenId ka_30 = 30;
+inline constexpr DiscreteToken ka_30{30};
 // "b"; original GPT-2 ID 65.
-inline constexpr TokenId kb_31 = 31;
+inline constexpr DiscreteToken kb_31{31};
 // "c"; original GPT-2 ID 66.
-inline constexpr TokenId kc_32 = 32;
+inline constexpr DiscreteToken kc_32{32};
 // "d"; original GPT-2 ID 67.
-inline constexpr TokenId kd_33 = 33;
+inline constexpr DiscreteToken kd_33{33};
 // "e"; original GPT-2 ID 68.
-inline constexpr TokenId ke_34 = 34;
+inline constexpr DiscreteToken ke_34{34};
 // "f"; original GPT-2 ID 69.
-inline constexpr TokenId kf_35 = 35;
+inline constexpr DiscreteToken kf_35{35};
 // "g"; original GPT-2 ID 70.
-inline constexpr TokenId kg_36 = 36;
+inline constexpr DiscreteToken kg_36{36};
 // "h"; original GPT-2 ID 71.
-inline constexpr TokenId kh_37 = 37;
+inline constexpr DiscreteToken kh_37{37};
 // "i"; original GPT-2 ID 72.
-inline constexpr TokenId ki_38 = 38;
+inline constexpr DiscreteToken ki_38{38};
 // "k"; original GPT-2 ID 74.
-inline constexpr TokenId kk_39 = 39;
+inline constexpr DiscreteToken kk_39{39};
 // "l"; original GPT-2 ID 75.
-inline constexpr TokenId kl_40 = 40;
+inline constexpr DiscreteToken kl_40{40};
 // "m"; original GPT-2 ID 76.
-inline constexpr TokenId km_41 = 41;
+inline constexpr DiscreteToken km_41{41};
 // "n"; original GPT-2 ID 77.
-inline constexpr TokenId kn_42 = 42;
+inline constexpr DiscreteToken kn_42{42};
 // "o"; original GPT-2 ID 78.
-inline constexpr TokenId ko_43 = 43;
+inline constexpr DiscreteToken ko_43{43};
 // "p"; original GPT-2 ID 79.
-inline constexpr TokenId kp_44 = 44;
+inline constexpr DiscreteToken kp_44{44};
 // "r"; original GPT-2 ID 81.
-inline constexpr TokenId kr_45 = 45;
+inline constexpr DiscreteToken kr_45{45};
 // "s"; original GPT-2 ID 82.
-inline constexpr TokenId ks_46 = 46;
+inline constexpr DiscreteToken ks_46{46};
 // "t"; original GPT-2 ID 83.
-inline constexpr TokenId kt_47 = 47;
+inline constexpr DiscreteToken kt_47{47};
 // "u"; original GPT-2 ID 84.
-inline constexpr TokenId ku_48 = 48;
+inline constexpr DiscreteToken ku_48{48};
 // "v"; original GPT-2 ID 85.
-inline constexpr TokenId kv_49 = 49;
+inline constexpr DiscreteToken kv_49{49};
 // "w"; original GPT-2 ID 86.
-inline constexpr TokenId kw_50 = 50;
+inline constexpr DiscreteToken kw_50{50};
 // "x"; original GPT-2 ID 87.
-inline constexpr TokenId kx_51 = 51;
+inline constexpr DiscreteToken kx_51{51};
 // "y"; original GPT-2 ID 88.
-inline constexpr TokenId ky_52 = 52;
+inline constexpr DiscreteToken ky_52{52};
 // "z"; original GPT-2 ID 89.
-inline constexpr TokenId kz_53 = 53;
+inline constexpr DiscreteToken kz_53{53};
 // " "; original GPT-2 ID 220.
-inline constexpr TokenId kSpace_54 = 54;
+inline constexpr DiscreteToken kSpace_54{54};
 // " t"; original GPT-2 ID 256.
-inline constexpr TokenId kSpace_t_55 = 55;
+inline constexpr DiscreteToken kSpace_t_55{55};
 // " a"; original GPT-2 ID 257.
-inline constexpr TokenId kSpace_a_56 = 56;
+inline constexpr DiscreteToken kSpace_a_56{56};
 // "he"; original GPT-2 ID 258.
-inline constexpr TokenId khe_57 = 57;
+inline constexpr DiscreteToken khe_57{57};
 // "in"; original GPT-2 ID 259.
-inline constexpr TokenId kin_58 = 58;
+inline constexpr DiscreteToken kin_58{58};
 // "re"; original GPT-2 ID 260.
-inline constexpr TokenId kre_59 = 59;
+inline constexpr DiscreteToken kre_59{59};
 // "on"; original GPT-2 ID 261.
-inline constexpr TokenId kon_60 = 60;
+inline constexpr DiscreteToken kon_60{60};
 // " the"; original GPT-2 ID 262.
-inline constexpr TokenId kSpace_the_61 = 61;
+inline constexpr DiscreteToken kSpace_the_61{61};
 // "er"; original GPT-2 ID 263.
-inline constexpr TokenId ker_62 = 62;
+inline constexpr DiscreteToken ker_62{62};
 // "at"; original GPT-2 ID 265.
-inline constexpr TokenId kat_63 = 63;
+inline constexpr DiscreteToken kat_63{63};
 // " w"; original GPT-2 ID 266.
-inline constexpr TokenId kSpace_w_64 = 64;
+inline constexpr DiscreteToken kSpace_w_64{64};
 // " o"; original GPT-2 ID 267.
-inline constexpr TokenId kSpace_o_65 = 65;
+inline constexpr DiscreteToken kSpace_o_65{65};
 // "en"; original GPT-2 ID 268.
-inline constexpr TokenId ken_66 = 66;
+inline constexpr DiscreteToken ken_66{66};
 // " c"; original GPT-2 ID 269.
-inline constexpr TokenId kSpace_c_67 = 67;
+inline constexpr DiscreteToken kSpace_c_67{67};
 // "it"; original GPT-2 ID 270.
-inline constexpr TokenId kit_68 = 68;
+inline constexpr DiscreteToken kit_68{68};
 // "is"; original GPT-2 ID 271.
-inline constexpr TokenId kis_69 = 69;
+inline constexpr DiscreteToken kis_69{69};
 // "an"; original GPT-2 ID 272.
-inline constexpr TokenId kan_70 = 70;
+inline constexpr DiscreteToken kan_70{70};
 // "or"; original GPT-2 ID 273.
-inline constexpr TokenId kor_71 = 71;
+inline constexpr DiscreteToken kor_71{71};
 // "es"; original GPT-2 ID 274.
-inline constexpr TokenId kes_72 = 72;
+inline constexpr DiscreteToken kes_72{72};
 // " b"; original GPT-2 ID 275.
-inline constexpr TokenId kSpace_b_73 = 73;
+inline constexpr DiscreteToken kSpace_b_73{73};
 // "ed"; original GPT-2 ID 276.
-inline constexpr TokenId ked_74 = 74;
+inline constexpr DiscreteToken ked_74{74};
 // "ing"; original GPT-2 ID 278.
-inline constexpr TokenId king_75 = 75;
+inline constexpr DiscreteToken king_75{75};
 // " p"; original GPT-2 ID 279.
-inline constexpr TokenId kSpace_p_76 = 76;
+inline constexpr DiscreteToken kSpace_p_76{76};
 // " an"; original GPT-2 ID 281.
-inline constexpr TokenId kSpace_an_77 = 77;
+inline constexpr DiscreteToken kSpace_an_77{77};
 // "al"; original GPT-2 ID 282.
-inline constexpr TokenId kal_78 = 78;
+inline constexpr DiscreteToken kal_78{78};
 // "ar"; original GPT-2 ID 283.
-inline constexpr TokenId kar_79 = 79;
+inline constexpr DiscreteToken kar_79{79};
 // " to"; original GPT-2 ID 284.
-inline constexpr TokenId kSpace_to_80 = 80;
+inline constexpr DiscreteToken kSpace_to_80{80};
 // " m"; original GPT-2 ID 285.
-inline constexpr TokenId kSpace_m_81 = 81;
+inline constexpr DiscreteToken kSpace_m_81{81};
 // " of"; original GPT-2 ID 286.
-inline constexpr TokenId kSpace_of_82 = 82;
+inline constexpr DiscreteToken kSpace_of_82{82};
 // " in"; original GPT-2 ID 287.
-inline constexpr TokenId kSpace_in_83 = 83;
+inline constexpr DiscreteToken kSpace_in_83{83};
 // " d"; original GPT-2 ID 288.
-inline constexpr TokenId kSpace_d_84 = 84;
+inline constexpr DiscreteToken kSpace_d_84{84};
 // " h"; original GPT-2 ID 289.
-inline constexpr TokenId kSpace_h_85 = 85;
+inline constexpr DiscreteToken kSpace_h_85{85};
 // " and"; original GPT-2 ID 290.
-inline constexpr TokenId kSpace_and_86 = 86;
+inline constexpr DiscreteToken kSpace_and_86{86};
 // "ic"; original GPT-2 ID 291.
-inline constexpr TokenId kic_87 = 87;
+inline constexpr DiscreteToken kic_87{87};
 // "as"; original GPT-2 ID 292.
-inline constexpr TokenId kas_88 = 88;
+inline constexpr DiscreteToken kas_88{88};
 // "le"; original GPT-2 ID 293.
-inline constexpr TokenId kle_89 = 89;
+inline constexpr DiscreteToken kle_89{89};
 // " th"; original GPT-2 ID 294.
-inline constexpr TokenId kSpace_th_90 = 90;
+inline constexpr DiscreteToken kSpace_th_90{90};
 // "ion"; original GPT-2 ID 295.
-inline constexpr TokenId kion_91 = 91;
+inline constexpr DiscreteToken kion_91{91};
 // "om"; original GPT-2 ID 296.
-inline constexpr TokenId kom_92 = 92;
+inline constexpr DiscreteToken kom_92{92};
 // "ll"; original GPT-2 ID 297.
-inline constexpr TokenId kll_93 = 93;
+inline constexpr DiscreteToken kll_93{93};
 // "ent"; original GPT-2 ID 298.
-inline constexpr TokenId kent_94 = 94;
+inline constexpr DiscreteToken kent_94{94};
 // " n"; original GPT-2 ID 299.
-inline constexpr TokenId kSpace_n_95 = 95;
+inline constexpr DiscreteToken kSpace_n_95{95};
 // " l"; original GPT-2 ID 300.
-inline constexpr TokenId kSpace_l_96 = 96;
+inline constexpr DiscreteToken kSpace_l_96{96};
 // "st"; original GPT-2 ID 301.
-inline constexpr TokenId kst_97 = 97;
+inline constexpr DiscreteToken kst_97{97};
 // " re"; original GPT-2 ID 302.
-inline constexpr TokenId kSpace_re_98 = 98;
+inline constexpr DiscreteToken kSpace_re_98{98};
 // "ve"; original GPT-2 ID 303.
-inline constexpr TokenId kve_99 = 99;
+inline constexpr DiscreteToken kve_99{99};
 // " e"; original GPT-2 ID 304.
-inline constexpr TokenId kSpace_e_100 = 100;
+inline constexpr DiscreteToken kSpace_e_100{100};
 // "ro"; original GPT-2 ID 305.
-inline constexpr TokenId kro_101 = 101;
+inline constexpr DiscreteToken kro_101{101};
 // "ly"; original GPT-2 ID 306.
-inline constexpr TokenId kly_102 = 102;
+inline constexpr DiscreteToken kly_102{102};
 // " be"; original GPT-2 ID 307.
-inline constexpr TokenId kSpace_be_103 = 103;
+inline constexpr DiscreteToken kSpace_be_103{103};
 // " g"; original GPT-2 ID 308.
-inline constexpr TokenId kSpace_g_104 = 104;
+inline constexpr DiscreteToken kSpace_g_104{104};
 // " T"; original GPT-2 ID 309.
-inline constexpr TokenId kSpace_T_105 = 105;
+inline constexpr DiscreteToken kSpace_T_105{105};
 // " S"; original GPT-2 ID 311.
-inline constexpr TokenId kSpace_S_106 = 106;
+inline constexpr DiscreteToken kSpace_S_106{106};
 // "id"; original GPT-2 ID 312.
-inline constexpr TokenId kid_107 = 107;
+inline constexpr DiscreteToken kid_107{107};
 // "ot"; original GPT-2 ID 313.
-inline constexpr TokenId kot_108 = 108;
+inline constexpr DiscreteToken kot_108{108};
 // " I"; original GPT-2 ID 314.
-inline constexpr TokenId kSpace_I_109 = 109;
+inline constexpr DiscreteToken kSpace_I_109{109};
 // "ut"; original GPT-2 ID 315.
-inline constexpr TokenId kut_110 = 110;
+inline constexpr DiscreteToken kut_110{110};
 // "et"; original GPT-2 ID 316.
-inline constexpr TokenId ket_111 = 111;
+inline constexpr DiscreteToken ket_111{111};
 // " A"; original GPT-2 ID 317.
-inline constexpr TokenId kSpace_A_112 = 112;
+inline constexpr DiscreteToken kSpace_A_112{112};
 // " is"; original GPT-2 ID 318.
-inline constexpr TokenId kSpace_is_113 = 113;
+inline constexpr DiscreteToken kSpace_is_113{113};
 // " on"; original GPT-2 ID 319.
-inline constexpr TokenId kSpace_on_114 = 114;
+inline constexpr DiscreteToken kSpace_on_114{114};
 // "im"; original GPT-2 ID 320.
-inline constexpr TokenId kim_115 = 115;
+inline constexpr DiscreteToken kim_115{115};
 // "am"; original GPT-2 ID 321.
-inline constexpr TokenId kam_116 = 116;
+inline constexpr DiscreteToken kam_116{116};
 // "ow"; original GPT-2 ID 322.
-inline constexpr TokenId kow_117 = 117;
+inline constexpr DiscreteToken kow_117{117};
 // "ay"; original GPT-2 ID 323.
-inline constexpr TokenId kay_118 = 118;
+inline constexpr DiscreteToken kay_118{118};
 // "ad"; original GPT-2 ID 324.
-inline constexpr TokenId kad_119 = 119;
+inline constexpr DiscreteToken kad_119{119};
 // "se"; original GPT-2 ID 325.
-inline constexpr TokenId kse_120 = 120;
+inline constexpr DiscreteToken kse_120{120};
 // " that"; original GPT-2 ID 326.
-inline constexpr TokenId kSpace_that_121 = 121;
+inline constexpr DiscreteToken kSpace_that_121{121};
 // " C"; original GPT-2 ID 327.
-inline constexpr TokenId kSpace_C_122 = 122;
+inline constexpr DiscreteToken kSpace_C_122{122};
 // "ig"; original GPT-2 ID 328.
-inline constexpr TokenId kig_123 = 123;
+inline constexpr DiscreteToken kig_123{123};
 // " for"; original GPT-2 ID 329.
-inline constexpr TokenId kSpace_for_124 = 124;
+inline constexpr DiscreteToken kSpace_for_124{124};
 // "ac"; original GPT-2 ID 330.
-inline constexpr TokenId kac_125 = 125;
+inline constexpr DiscreteToken kac_125{125};
 // "ur"; original GPT-2 ID 333.
-inline constexpr TokenId kur_126 = 126;
+inline constexpr DiscreteToken kur_126{126};
 // "ld"; original GPT-2 ID 335.
-inline constexpr TokenId kld_127 = 127;
+inline constexpr DiscreteToken kld_127{127};
 // " st"; original GPT-2 ID 336.
-inline constexpr TokenId kSpace_st_128 = 128;
+inline constexpr DiscreteToken kSpace_st_128{128};
 // " M"; original GPT-2 ID 337.
-inline constexpr TokenId kSpace_M_129 = 129;
+inline constexpr DiscreteToken kSpace_M_129{129};
 // "'s"; original GPT-2 ID 338.
-inline constexpr TokenId kApostrophe_s_130 = 130;
+inline constexpr DiscreteToken kApostrophe_s_130{130};
 // " it"; original GPT-2 ID 340.
-inline constexpr TokenId kSpace_it_131 = 131;
+inline constexpr DiscreteToken kSpace_it_131{131};
 // "ation"; original GPT-2 ID 341.
-inline constexpr TokenId kation_132 = 132;
+inline constexpr DiscreteToken kation_132{132};
 // "ith"; original GPT-2 ID 342.
-inline constexpr TokenId kith_133 = 133;
+inline constexpr DiscreteToken kith_133{133};
 // "ir"; original GPT-2 ID 343.
-inline constexpr TokenId kir_134 = 134;
+inline constexpr DiscreteToken kir_134{134};
 // "il"; original GPT-2 ID 346.
-inline constexpr TokenId kil_135 = 135;
+inline constexpr DiscreteToken kil_135{135};
 // " B"; original GPT-2 ID 347.
-inline constexpr TokenId kSpace_B_136 = 136;
+inline constexpr DiscreteToken kSpace_B_136{136};
 // "ol"; original GPT-2 ID 349.
-inline constexpr TokenId kol_137 = 137;
+inline constexpr DiscreteToken kol_137{137};
 // " P"; original GPT-2 ID 350.
-inline constexpr TokenId kSpace_P_138 = 138;
+inline constexpr DiscreteToken kSpace_P_138{138};
 // " with"; original GPT-2 ID 351.
-inline constexpr TokenId kSpace_with_139 = 139;
+inline constexpr DiscreteToken kSpace_with_139{139};
 // "ter"; original GPT-2 ID 353.
-inline constexpr TokenId kter_140 = 140;
+inline constexpr DiscreteToken kter_140{140};
 // "ch"; original GPT-2 ID 354.
-inline constexpr TokenId kch_141 = 141;
+inline constexpr DiscreteToken kch_141{141};
 // " as"; original GPT-2 ID 355.
-inline constexpr TokenId kSpace_as_142 = 142;
+inline constexpr DiscreteToken kSpace_as_142{142};
 // " we"; original GPT-2 ID 356.
-inline constexpr TokenId kSpace_we_143 = 143;
+inline constexpr DiscreteToken kSpace_we_143{143};
 // "ill"; original GPT-2 ID 359.
-inline constexpr TokenId kill_144 = 144;
+inline constexpr DiscreteToken kill_144{144};
 // " D"; original GPT-2 ID 360.
-inline constexpr TokenId kSpace_D_145 = 145;
+inline constexpr DiscreteToken kSpace_D_145{145};
 // "if"; original GPT-2 ID 361.
-inline constexpr TokenId kif_146 = 146;
+inline constexpr DiscreteToken kif_146{146};
 // "ag"; original GPT-2 ID 363.
-inline constexpr TokenId kag_147 = 147;
+inline constexpr DiscreteToken kag_147{147};
 // "ers"; original GPT-2 ID 364.
-inline constexpr TokenId kers_148 = 148;
+inline constexpr DiscreteToken kers_148{148};
 // "ke"; original GPT-2 ID 365.
-inline constexpr TokenId kke_149 = 149;
+inline constexpr DiscreteToken kke_149{149};
 // " H"; original GPT-2 ID 367.
-inline constexpr TokenId kSpace_H_150 = 150;
+inline constexpr DiscreteToken kSpace_H_150{150};
 // "em"; original GPT-2 ID 368.
-inline constexpr TokenId kem_151 = 151;
+inline constexpr DiscreteToken kem_151{151};
 // " con"; original GPT-2 ID 369.
-inline constexpr TokenId kSpace_con_152 = 152;
+inline constexpr DiscreteToken kSpace_con_152{152};
 // " W"; original GPT-2 ID 370.
-inline constexpr TokenId kSpace_W_153 = 153;
+inline constexpr DiscreteToken kSpace_W_153{153};
 // " R"; original GPT-2 ID 371.
-inline constexpr TokenId kSpace_R_154 = 154;
+inline constexpr DiscreteToken kSpace_R_154{154};
 // "her"; original GPT-2 ID 372.
-inline constexpr TokenId kher_155 = 155;
+inline constexpr DiscreteToken kher_155{155};
 // " was"; original GPT-2 ID 373.
-inline constexpr TokenId kSpace_was_156 = 156;
+inline constexpr DiscreteToken kSpace_was_156{156};
 // " r"; original GPT-2 ID 374.
-inline constexpr TokenId kSpace_r_157 = 157;
+inline constexpr DiscreteToken kSpace_r_157{157};
 // "od"; original GPT-2 ID 375.
-inline constexpr TokenId kod_158 = 158;
+inline constexpr DiscreteToken kod_158{158};
 // " F"; original GPT-2 ID 376.
-inline constexpr TokenId kSpace_F_159 = 159;
+inline constexpr DiscreteToken kSpace_F_159{159};
 // "ul"; original GPT-2 ID 377.
-inline constexpr TokenId kul_160 = 160;
+inline constexpr DiscreteToken kul_160{160};
 // "ate"; original GPT-2 ID 378.
-inline constexpr TokenId kate_161 = 161;
+inline constexpr DiscreteToken kate_161{161};
 // " at"; original GPT-2 ID 379.
-inline constexpr TokenId kSpace_at_162 = 162;
+inline constexpr DiscreteToken kSpace_at_162{162};
 // "pp"; original GPT-2 ID 381.
-inline constexpr TokenId kpp_163 = 163;
+inline constexpr DiscreteToken kpp_163{163};
 // "ore"; original GPT-2 ID 382.
-inline constexpr TokenId kore_164 = 164;
+inline constexpr DiscreteToken kore_164{164};
 // " The"; original GPT-2 ID 383.
-inline constexpr TokenId kSpace_The_165 = 165;
+inline constexpr DiscreteToken kSpace_The_165{165};
 // " se"; original GPT-2 ID 384.
-inline constexpr TokenId kSpace_se_166 = 166;
+inline constexpr DiscreteToken kSpace_se_166{166};
 // "us"; original GPT-2 ID 385.
-inline constexpr TokenId kus_167 = 167;
+inline constexpr DiscreteToken kus_167{167};
 // " pro"; original GPT-2 ID 386.
-inline constexpr TokenId kSpace_pro_168 = 168;
+inline constexpr DiscreteToken kSpace_pro_168{168};
 // "um"; original GPT-2 ID 388.
-inline constexpr TokenId kum_169 = 169;
+inline constexpr DiscreteToken kum_169{169};
 // " are"; original GPT-2 ID 389.
-inline constexpr TokenId kSpace_are_170 = 170;
+inline constexpr DiscreteToken kSpace_are_170{170};
 // " de"; original GPT-2 ID 390.
-inline constexpr TokenId kSpace_de_171 = 171;
+inline constexpr DiscreteToken kSpace_de_171{171};
 // "ain"; original GPT-2 ID 391.
-inline constexpr TokenId kain_172 = 172;
+inline constexpr DiscreteToken kain_172{172};
 // " or"; original GPT-2 ID 393.
-inline constexpr TokenId kSpace_or_173 = 173;
+inline constexpr DiscreteToken kSpace_or_173{173};
 // "est"; original GPT-2 ID 395.
-inline constexpr TokenId kest_174 = 174;
+inline constexpr DiscreteToken kest_174{174};
 // "ist"; original GPT-2 ID 396.
-inline constexpr TokenId kist_175 = 175;
+inline constexpr DiscreteToken kist_175{175};
 // "ab"; original GPT-2 ID 397.
-inline constexpr TokenId kab_176 = 176;
+inline constexpr DiscreteToken kab_176{176};
 // "rom"; original GPT-2 ID 398.
-inline constexpr TokenId krom_177 = 177;
+inline constexpr DiscreteToken krom_177{177};
 // " N"; original GPT-2 ID 399.
-inline constexpr TokenId kSpace_N_178 = 178;
+inline constexpr DiscreteToken kSpace_N_178{178};
 // "th"; original GPT-2 ID 400.
-inline constexpr TokenId kth_179 = 179;
+inline constexpr DiscreteToken kth_179{179};
 // " com"; original GPT-2 ID 401.
-inline constexpr TokenId kSpace_com_180 = 180;
+inline constexpr DiscreteToken kSpace_com_180{180};
 // " G"; original GPT-2 ID 402.
-inline constexpr TokenId kSpace_G_181 = 181;
+inline constexpr DiscreteToken kSpace_G_181{181};
 // "un"; original GPT-2 ID 403.
-inline constexpr TokenId kun_182 = 182;
+inline constexpr DiscreteToken kun_182{182};
 // "op"; original GPT-2 ID 404.
-inline constexpr TokenId kop_183 = 183;
+inline constexpr DiscreteToken kop_183{183};
 // " L"; original GPT-2 ID 406.
-inline constexpr TokenId kSpace_L_184 = 184;
+inline constexpr DiscreteToken kSpace_L_184{184};
 // " not"; original GPT-2 ID 407.
-inline constexpr TokenId kSpace_not_185 = 185;
+inline constexpr DiscreteToken kSpace_not_185{185};
 // " ex"; original GPT-2 ID 409.
-inline constexpr TokenId kSpace_ex_186 = 186;
+inline constexpr DiscreteToken kSpace_ex_186{186};
 // "res"; original GPT-2 ID 411.
-inline constexpr TokenId kres_187 = 187;
+inline constexpr DiscreteToken kres_187{187};
 // " E"; original GPT-2 ID 412.
-inline constexpr TokenId kSpace_E_188 = 188;
+inline constexpr DiscreteToken kSpace_E_188{188};
 // "ew"; original GPT-2 ID 413.
-inline constexpr TokenId kew_189 = 189;
+inline constexpr DiscreteToken kew_189{189};
 // "ity"; original GPT-2 ID 414.
-inline constexpr TokenId kity_190 = 190;
+inline constexpr DiscreteToken kity_190{190};
 // "ant"; original GPT-2 ID 415.
-inline constexpr TokenId kant_191 = 191;
+inline constexpr DiscreteToken kant_191{191};
 // " by"; original GPT-2 ID 416.
-inline constexpr TokenId kSpace_by_192 = 192;
+inline constexpr DiscreteToken kSpace_by_192{192};
 // "el"; original GPT-2 ID 417.
-inline constexpr TokenId kel_193 = 193;
+inline constexpr DiscreteToken kel_193{193};
 // "os"; original GPT-2 ID 418.
-inline constexpr TokenId kos_194 = 194;
+inline constexpr DiscreteToken kos_194{194};
 // "qu"; original GPT-2 ID 421.
-inline constexpr TokenId kqu_195 = 195;
+inline constexpr DiscreteToken kqu_195{195};
 // " from"; original GPT-2 ID 422.
-inline constexpr TokenId kSpace_from_196 = 196;
+inline constexpr DiscreteToken kSpace_from_196{196};
 // " have"; original GPT-2 ID 423.
-inline constexpr TokenId kSpace_have_197 = 197;
+inline constexpr DiscreteToken kSpace_have_197{197};
 // "ra"; original GPT-2 ID 430.
-inline constexpr TokenId kra_198 = 198;
+inline constexpr DiscreteToken kra_198{198};
 // "pe"; original GPT-2 ID 431.
-inline constexpr TokenId kpe_199 = 199;
+inline constexpr DiscreteToken kpe_199{199};
 // " al"; original GPT-2 ID 435.
-inline constexpr TokenId kSpace_al_200 = 200;
+inline constexpr DiscreteToken kSpace_al_200{200};
 // "ust"; original GPT-2 ID 436.
-inline constexpr TokenId kust_201 = 201;
+inline constexpr DiscreteToken kust_201{201};
 // "end"; original GPT-2 ID 437.
-inline constexpr TokenId kend_202 = 202;
+inline constexpr DiscreteToken kend_202{202};
 // "ies"; original GPT-2 ID 444.
-inline constexpr TokenId kies_203 = 203;
+inline constexpr DiscreteToken kies_203{203};
 // "out"; original GPT-2 ID 448.
-inline constexpr TokenId kout_204 = 204;
+inline constexpr DiscreteToken kout_204{204};
 // " J"; original GPT-2 ID 449.
-inline constexpr TokenId kSpace_J_205 = 205;
+inline constexpr DiscreteToken kSpace_J_205{205};
 // "iv"; original GPT-2 ID 452.
-inline constexpr TokenId kiv_206 = 206;
+inline constexpr DiscreteToken kiv_206{206};
 // "our"; original GPT-2 ID 454.
-inline constexpr TokenId kour_207 = 207;
+inline constexpr DiscreteToken kour_207{207};
 // "ost"; original GPT-2 ID 455.
-inline constexpr TokenId kost_208 = 208;
+inline constexpr DiscreteToken kost_208{208};
 // "gh"; original GPT-2 ID 456.
-inline constexpr TokenId kgh_209 = 209;
+inline constexpr DiscreteToken kgh_209{209};
 // " pl"; original GPT-2 ID 458.
-inline constexpr TokenId kSpace_pl_210 = 210;
+inline constexpr DiscreteToken kSpace_pl_210{210};
 // "ast"; original GPT-2 ID 459.
-inline constexpr TokenId kast_211 = 211;
+inline constexpr DiscreteToken kast_211{211};
 // " can"; original GPT-2 ID 460.
-inline constexpr TokenId kSpace_can_212 = 212;
+inline constexpr DiscreteToken kSpace_can_212{212};
 // "ak"; original GPT-2 ID 461.
-inline constexpr TokenId kak_213 = 213;
+inline constexpr DiscreteToken kak_213{213};
 // "ome"; original GPT-2 ID 462.
-inline constexpr TokenId kome_214 = 214;
+inline constexpr DiscreteToken kome_214{214};
 // "ud"; original GPT-2 ID 463.
-inline constexpr TokenId kud_215 = 215;
+inline constexpr DiscreteToken kud_215{215};
 // "The"; original GPT-2 ID 464.
-inline constexpr TokenId kThe_216 = 216;
+inline constexpr DiscreteToken kThe_216{216};
 // " his"; original GPT-2 ID 465.
-inline constexpr TokenId kSpace_his_217 = 217;
+inline constexpr DiscreteToken kSpace_his_217{217};
 // " do"; original GPT-2 ID 466.
-inline constexpr TokenId kSpace_do_218 = 218;
+inline constexpr DiscreteToken kSpace_do_218{218};
 // " has"; original GPT-2 ID 468.
-inline constexpr TokenId kSpace_has_219 = 219;
+inline constexpr DiscreteToken kSpace_has_219{219};
 // "ge"; original GPT-2 ID 469.
-inline constexpr TokenId kge_220 = 220;
+inline constexpr DiscreteToken kge_220{220};
 // "'t"; original GPT-2 ID 470.
-inline constexpr TokenId kApostrophe_t_221 = 221;
+inline constexpr DiscreteToken kApostrophe_t_221{221};
 // " U"; original GPT-2 ID 471.
-inline constexpr TokenId kSpace_U_222 = 222;
+inline constexpr DiscreteToken kSpace_U_222{222};
 // " j"; original GPT-2 ID 474.
-inline constexpr TokenId kSpace_j_223 = 223;
+inline constexpr DiscreteToken kSpace_j_223{223};
 // " but"; original GPT-2 ID 475.
-inline constexpr TokenId kSpace_but_224 = 224;
+inline constexpr DiscreteToken kSpace_but_224{224};
 // " all"; original GPT-2 ID 477.
-inline constexpr TokenId kSpace_all_225 = 225;
+inline constexpr DiscreteToken kSpace_all_225{225};
 // "ect"; original GPT-2 ID 478.
-inline constexpr TokenId kect_226 = 226;
+inline constexpr DiscreteToken kect_226{226};
 // " k"; original GPT-2 ID 479.
-inline constexpr TokenId kSpace_k_227 = 227;
+inline constexpr DiscreteToken kSpace_k_227{227};
 // "ame"; original GPT-2 ID 480.
-inline constexpr TokenId kame_228 = 228;
+inline constexpr DiscreteToken kame_228{228};
 // " will"; original GPT-2 ID 481.
-inline constexpr TokenId kSpace_will_229 = 229;
+inline constexpr DiscreteToken kSpace_will_229{229};
 // "ok"; original GPT-2 ID 482.
-inline constexpr TokenId kok_230 = 230;
+inline constexpr DiscreteToken kok_230{230};
 // " whe"; original GPT-2 ID 483.
-inline constexpr TokenId kSpace_whe_231 = 231;
+inline constexpr DiscreteToken kSpace_whe_231{231};
 // " they"; original GPT-2 ID 484.
-inline constexpr TokenId kSpace_they_232 = 232;
+inline constexpr DiscreteToken kSpace_they_232{232};
 // "ide"; original GPT-2 ID 485.
-inline constexpr TokenId kide_233 = 233;
+inline constexpr DiscreteToken kide_233{233};
 // "ich"; original GPT-2 ID 488.
-inline constexpr TokenId kich_234 = 234;
+inline constexpr DiscreteToken kich_234{234};
 // "pl"; original GPT-2 ID 489.
-inline constexpr TokenId kpl_235 = 235;
+inline constexpr DiscreteToken kpl_235{235};
 // "ther"; original GPT-2 ID 490.
-inline constexpr TokenId kther_236 = 236;
+inline constexpr DiscreteToken kther_236{236};
 // " tr"; original GPT-2 ID 491.
-inline constexpr TokenId kSpace_tr_237 = 237;
+inline constexpr DiscreteToken kSpace_tr_237{237};
 // "ure"; original GPT-2 ID 495.
-inline constexpr TokenId kure_238 = 238;
+inline constexpr DiscreteToken kure_238{238};
 // "age"; original GPT-2 ID 496.
-inline constexpr TokenId kage_239 = 239;
+inline constexpr DiscreteToken kage_239{239};
 // "ial"; original GPT-2 ID 498.
-inline constexpr TokenId kial_240 = 240;
+inline constexpr DiscreteToken kial_240{240};
 // "ap"; original GPT-2 ID 499.
-inline constexpr TokenId kap_241 = 241;
+inline constexpr DiscreteToken kap_241{241};
 // "ine"; original GPT-2 ID 500.
-inline constexpr TokenId kine_242 = 242;
+inline constexpr DiscreteToken kine_242{242};
 // "ice"; original GPT-2 ID 501.
-inline constexpr TokenId kice_243 = 243;
+inline constexpr DiscreteToken kice_243{243};
 // " out"; original GPT-2 ID 503.
-inline constexpr TokenId kSpace_out_244 = 244;
+inline constexpr DiscreteToken kSpace_out_244{244};
 // "ans"; original GPT-2 ID 504.
-inline constexpr TokenId kans_245 = 245;
+inline constexpr DiscreteToken kans_245{245};
 // "ong"; original GPT-2 ID 506.
-inline constexpr TokenId kong_246 = 246;
+inline constexpr DiscreteToken kong_246{246};
 // "ions"; original GPT-2 ID 507.
-inline constexpr TokenId kions_247 = 247;
+inline constexpr DiscreteToken kions_247{247};
 // " K"; original GPT-2 ID 509.
-inline constexpr TokenId kSpace_K_248 = 248;
+inline constexpr DiscreteToken kSpace_K_248{248};
 // " up"; original GPT-2 ID 510.
-inline constexpr TokenId kSpace_up_249 = 249;
+inline constexpr DiscreteToken kSpace_up_249{249};
 // " their"; original GPT-2 ID 511.
-inline constexpr TokenId kSpace_their_250 = 250;
+inline constexpr DiscreteToken kSpace_their_250{250};
 // "ated"; original GPT-2 ID 515.
-inline constexpr TokenId kated_251 = 251;
+inline constexpr DiscreteToken kated_251{251};
 // "ous"; original GPT-2 ID 516.
-inline constexpr TokenId kous_252 = 252;
+inline constexpr DiscreteToken kous_252{252};
 // " more"; original GPT-2 ID 517.
-inline constexpr TokenId kSpace_more_253 = 253;
+inline constexpr DiscreteToken kSpace_more_253{253};
 // "og"; original GPT-2 ID 519.
-inline constexpr TokenId kog_254 = 254;
+inline constexpr DiscreteToken kog_254{254};
 // "ind"; original GPT-2 ID 521.
-inline constexpr TokenId kind_255 = 255;
+inline constexpr DiscreteToken kind_255{255};
 // " so"; original GPT-2 ID 523.
-inline constexpr TokenId kSpace_so_256 = 256;
+inline constexpr DiscreteToken kSpace_so_256{256};
 // "per"; original GPT-2 ID 525.
-inline constexpr TokenId kper_257 = 257;
+inline constexpr DiscreteToken kper_257{257};
 // "ber"; original GPT-2 ID 527.
-inline constexpr TokenId kber_258 = 258;
+inline constexpr DiscreteToken kber_258{258};
 // "iz"; original GPT-2 ID 528.
-inline constexpr TokenId kiz_259 = 259;
+inline constexpr DiscreteToken kiz_259{259};
 // "act"; original GPT-2 ID 529.
-inline constexpr TokenId kact_260 = 260;
+inline constexpr DiscreteToken kact_260{260};
 // " one"; original GPT-2 ID 530.
-inline constexpr TokenId kSpace_one_261 = 261;
+inline constexpr DiscreteToken kSpace_one_261{261};
 // "cc"; original GPT-2 ID 535.
-inline constexpr TokenId kcc_262 = 262;
+inline constexpr DiscreteToken kcc_262{262};
 // " cl"; original GPT-2 ID 537.
-inline constexpr TokenId kSpace_cl_263 = 263;
+inline constexpr DiscreteToken kSpace_cl_263{263};
 // "ep"; original GPT-2 ID 538.
-inline constexpr TokenId kep_264 = 264;
+inline constexpr DiscreteToken kep_264{264};
 // "able"; original GPT-2 ID 540.
-inline constexpr TokenId kable_265 = 265;
+inline constexpr DiscreteToken kable_265{265};
 // "ip"; original GPT-2 ID 541.
-inline constexpr TokenId kip_266 = 266;
+inline constexpr DiscreteToken kip_266{266};
 // " which"; original GPT-2 ID 543.
-inline constexpr TokenId kSpace_which_267 = 267;
+inline constexpr DiscreteToken kSpace_which_267{267};
 // "ia"; original GPT-2 ID 544.
-inline constexpr TokenId kia_268 = 268;
+inline constexpr DiscreteToken kia_268{268};
 // " about"; original GPT-2 ID 546.
-inline constexpr TokenId kSpace_about_269 = 269;
+inline constexpr DiscreteToken kSpace_about_269{269};
 // " were"; original GPT-2 ID 547.
-inline constexpr TokenId kSpace_were_270 = 270;
+inline constexpr DiscreteToken kSpace_were_270{270};
 // "ub"; original GPT-2 ID 549.
-inline constexpr TokenId kub_271 = 271;
+inline constexpr DiscreteToken kub_271{271};
 // " comp"; original GPT-2 ID 552.
-inline constexpr TokenId kSpace_comp_272 = 272;
+inline constexpr DiscreteToken kSpace_comp_272{272};
 // " un"; original GPT-2 ID 555.
-inline constexpr TokenId kSpace_un_273 = 273;
+inline constexpr DiscreteToken kSpace_un_273{273};
 // "ace"; original GPT-2 ID 558.
-inline constexpr TokenId kace_274 = 274;
+inline constexpr DiscreteToken kace_274{274};
 // "au"; original GPT-2 ID 559.
-inline constexpr TokenId kau_275 = 275;
+inline constexpr DiscreteToken kau_275{275};
 // "ary"; original GPT-2 ID 560.
-inline constexpr TokenId kary_276 = 276;
+inline constexpr DiscreteToken kary_276{276};
 // "ass"; original GPT-2 ID 562.
-inline constexpr TokenId kass_277 = 277;
+inline constexpr DiscreteToken kass_277{277};
 // "ry"; original GPT-2 ID 563.
-inline constexpr TokenId kry_278 = 278;
+inline constexpr DiscreteToken kry_278{278};
 // "cl"; original GPT-2 ID 565.
-inline constexpr TokenId kcl_279 = 279;
+inline constexpr DiscreteToken kcl_279{279};
 // " V"; original GPT-2 ID 569.
-inline constexpr TokenId kSpace_V_280 = 280;
+inline constexpr DiscreteToken kSpace_V_280{280};
 // "ib"; original GPT-2 ID 571.
-inline constexpr TokenId kib_281 = 281;
+inline constexpr DiscreteToken kib_281{281};
 // " off"; original GPT-2 ID 572.
-inline constexpr TokenId kSpace_off_282 = 282;
+inline constexpr DiscreteToken kSpace_off_282{282};
 // " Y"; original GPT-2 ID 575.
-inline constexpr TokenId kSpace_Y_283 = 283;
+inline constexpr DiscreteToken kSpace_Y_283{283};
 // "ile"; original GPT-2 ID 576.
-inline constexpr TokenId kile_284 = 284;
+inline constexpr DiscreteToken kile_284{284};
 // "ose"; original GPT-2 ID 577.
-inline constexpr TokenId kose_285 = 285;
+inline constexpr DiscreteToken kose_285{285};
 // "ite"; original GPT-2 ID 578.
-inline constexpr TokenId kite_286 = 286;
+inline constexpr DiscreteToken kite_286{286};
 // " other"; original GPT-2 ID 584.
-inline constexpr TokenId kSpace_other_287 = 287;
+inline constexpr DiscreteToken kSpace_other_287{287};
 // " been"; original GPT-2 ID 587.
-inline constexpr TokenId kSpace_been_288 = 288;
+inline constexpr DiscreteToken kSpace_been_288{288};
 // "ance"; original GPT-2 ID 590.
-inline constexpr TokenId kance_289 = 289;
+inline constexpr DiscreteToken kance_289{289};
 // "ks"; original GPT-2 ID 591.
-inline constexpr TokenId kks_290 = 290;
+inline constexpr DiscreteToken kks_290{290};
 // "ction"; original GPT-2 ID 596.
-inline constexpr TokenId kction_291 = 291;
+inline constexpr DiscreteToken kction_291{291};
 // " any"; original GPT-2 ID 597.
-inline constexpr TokenId kSpace_any_292 = 292;
+inline constexpr DiscreteToken kSpace_any_292{292};
 // " sp"; original GPT-2 ID 599.
-inline constexpr TokenId kSpace_sp_293 = 293;
+inline constexpr DiscreteToken kSpace_sp_293{293};
 // "int"; original GPT-2 ID 600.
-inline constexpr TokenId kint_294 = 294;
+inline constexpr DiscreteToken kint_294{294};
 // "ress"; original GPT-2 ID 601.
-inline constexpr TokenId kress_295 = 295;
+inline constexpr DiscreteToken kress_295{295};
 // "ations"; original GPT-2 ID 602.
-inline constexpr TokenId kations_296 = 296;
+inline constexpr DiscreteToken kations_296{296};
 // "ail"; original GPT-2 ID 603.
-inline constexpr TokenId kail_297 = 297;
+inline constexpr DiscreteToken kail_297{297};
 // "ical"; original GPT-2 ID 605.
-inline constexpr TokenId kical_298 = 298;
+inline constexpr DiscreteToken kical_298{298};
 // " them"; original GPT-2 ID 606.
-inline constexpr TokenId kSpace_them_299 = 299;
+inline constexpr DiscreteToken kSpace_them_299{299};
 // " her"; original GPT-2 ID 607.
-inline constexpr TokenId kSpace_her_300 = 300;
+inline constexpr DiscreteToken kSpace_her_300{300};
 // " ar"; original GPT-2 ID 610.
-inline constexpr TokenId kSpace_ar_301 = 301;
+inline constexpr DiscreteToken kSpace_ar_301{301};
 // " if"; original GPT-2 ID 611.
-inline constexpr TokenId kSpace_if_302 = 302;
+inline constexpr DiscreteToken kSpace_if_302{302};
 // " year"; original GPT-2 ID 614.
-inline constexpr TokenId kSpace_year_303 = 303;
+inline constexpr DiscreteToken kSpace_year_303{303};
 // "av"; original GPT-2 ID 615.
-inline constexpr TokenId kav_304 = 304;
+inline constexpr DiscreteToken kav_304{304};
 // " some"; original GPT-2 ID 617.
-inline constexpr TokenId kSpace_some_305 = 305;
+inline constexpr DiscreteToken kSpace_some_305{305};
 // " when"; original GPT-2 ID 618.
-inline constexpr TokenId kSpace_when_306 = 306;
+inline constexpr DiscreteToken kSpace_when_306{306};
 // "ough"; original GPT-2 ID 619.
-inline constexpr TokenId kough_307 = 307;
+inline constexpr DiscreteToken kough_307{307};
 // "ach"; original GPT-2 ID 620.
-inline constexpr TokenId kach_308 = 308;
+inline constexpr DiscreteToken kach_308{308};
 // " than"; original GPT-2 ID 621.
-inline constexpr TokenId kSpace_than_309 = 309;
+inline constexpr DiscreteToken kSpace_than_309{309};
 // "ick"; original GPT-2 ID 624.
-inline constexpr TokenId kick_310 = 310;
+inline constexpr DiscreteToken kick_310{310};
 // " over"; original GPT-2 ID 625.
-inline constexpr TokenId kSpace_over_311 = 311;
+inline constexpr DiscreteToken kSpace_over_311{311};
 // " qu"; original GPT-2 ID 627.
-inline constexpr TokenId kSpace_qu_312 = 312;
+inline constexpr DiscreteToken kSpace_qu_312{312};
 // " sc"; original GPT-2 ID 629.
-inline constexpr TokenId kSpace_sc_313 = 313;
+inline constexpr DiscreteToken kSpace_sc_313{313};
 // " It"; original GPT-2 ID 632.
-inline constexpr TokenId kSpace_It_314 = 314;
+inline constexpr DiscreteToken kSpace_It_314{314};
 // "port"; original GPT-2 ID 634.
-inline constexpr TokenId kport_315 = 315;
+inline constexpr DiscreteToken kport_315{315};
 // " also"; original GPT-2 ID 635.
-inline constexpr TokenId kSpace_also_316 = 316;
+inline constexpr DiscreteToken kSpace_also_316{316};
 // " part"; original GPT-2 ID 636.
-inline constexpr TokenId kSpace_part_317 = 317;
+inline constexpr DiscreteToken kSpace_part_317{317};
 // " time"; original GPT-2 ID 640.
-inline constexpr TokenId kSpace_time_318 = 318;
+inline constexpr DiscreteToken kSpace_time_318{318};
 // "ens"; original GPT-2 ID 641.
-inline constexpr TokenId kens_319 = 319;
+inline constexpr DiscreteToken kens_319{319};
 // "ople"; original GPT-2 ID 643.
-inline constexpr TokenId kople_320 = 320;
+inline constexpr DiscreteToken kople_320{320};
 // " what"; original GPT-2 ID 644.
-inline constexpr TokenId kSpace_what_321 = 321;
+inline constexpr DiscreteToken kSpace_what_321{321};
 // " no"; original GPT-2 ID 645.
-inline constexpr TokenId kSpace_no_322 = 322;
+inline constexpr DiscreteToken kSpace_no_322{322};
 // "ang"; original GPT-2 ID 648.
-inline constexpr TokenId kang_323 = 323;
+inline constexpr DiscreteToken kang_323{323};
 // " new"; original GPT-2 ID 649.
-inline constexpr TokenId kSpace_new_324 = 324;
+inline constexpr DiscreteToken kSpace_new_324{324};
 // "ings"; original GPT-2 ID 654.
-inline constexpr TokenId kings_325 = 325;
+inline constexpr DiscreteToken kings_325{325};
 // " into"; original GPT-2 ID 656.
-inline constexpr TokenId kSpace_into_326 = 326;
+inline constexpr DiscreteToken kSpace_into_326{326};
 // "te"; original GPT-2 ID 660.
-inline constexpr TokenId kte_327 = 327;
+inline constexpr DiscreteToken kte_327{327};
 // " its"; original GPT-2 ID 663.
-inline constexpr TokenId kSpace_its_328 = 328;
+inline constexpr DiscreteToken kSpace_its_328{328};
 // "ian"; original GPT-2 ID 666.
-inline constexpr TokenId kian_329 = 329;
+inline constexpr DiscreteToken kian_329{329};
 // "ors"; original GPT-2 ID 669.
-inline constexpr TokenId kors_330 = 330;
+inline constexpr DiscreteToken kors_330{330};
 // " work"; original GPT-2 ID 670.
-inline constexpr TokenId kSpace_work_331 = 331;
+inline constexpr DiscreteToken kSpace_work_331{331};
 // "ade"; original GPT-2 ID 671.
-inline constexpr TokenId kade_332 = 332;
+inline constexpr DiscreteToken kade_332{332};
 // "ob"; original GPT-2 ID 672.
-inline constexpr TokenId kob_333 = 333;
+inline constexpr DiscreteToken kob_333{333};
 // " our"; original GPT-2 ID 674.
-inline constexpr TokenId kSpace_our_334 = 334;
+inline constexpr DiscreteToken kSpace_our_334{334};
 // "wn"; original GPT-2 ID 675.
-inline constexpr TokenId kwn_335 = 335;
+inline constexpr DiscreteToken kwn_335{335};
 // "ink"; original GPT-2 ID 676.
-inline constexpr TokenId kink_336 = 336;
+inline constexpr DiscreteToken kink_336{336};
 // "ish"; original GPT-2 ID 680.
-inline constexpr TokenId kish_337 = 337;
+inline constexpr DiscreteToken kish_337{337};
 // "ons"; original GPT-2 ID 684.
-inline constexpr TokenId kons_338 = 338;
+inline constexpr DiscreteToken kons_338{338};
 // "form"; original GPT-2 ID 687.
-inline constexpr TokenId kform_339 = 339;
+inline constexpr DiscreteToken kform_339{339};
 // "ates"; original GPT-2 ID 689.
-inline constexpr TokenId kates_340 = 340;
+inline constexpr DiscreteToken kates_340{340};
 // " only"; original GPT-2 ID 691.
-inline constexpr TokenId kSpace_only_341 = 341;
+inline constexpr DiscreteToken kSpace_only_341{341};
 // "oll"; original GPT-2 ID 692.
-inline constexpr TokenId koll_342 = 342;
+inline constexpr DiscreteToken koll_342{342};
 // "ck"; original GPT-2 ID 694.
-inline constexpr TokenId kck_343 = 343;
+inline constexpr DiscreteToken kck_343{343};
 // "amp"; original GPT-2 ID 696.
-inline constexpr TokenId kamp_344 = 344;
+inline constexpr DiscreteToken kamp_344{344};
 // "urn"; original GPT-2 ID 700.
-inline constexpr TokenId kurn_345 = 345;
+inline constexpr DiscreteToken kurn_345{345};
 // "ft"; original GPT-2 ID 701.
-inline constexpr TokenId kft_346 = 346;
+inline constexpr DiscreteToken kft_346{346};
 // " how"; original GPT-2 ID 703.
-inline constexpr TokenId kSpace_how_347 = 347;
+inline constexpr DiscreteToken kSpace_how_347{347};
 // "hed"; original GPT-2 ID 704.
-inline constexpr TokenId khed_348 = 348;
+inline constexpr DiscreteToken khed_348{348};
 // " after"; original GPT-2 ID 706.
-inline constexpr TokenId kSpace_after_349 = 349;
+inline constexpr DiscreteToken kSpace_after_349{349};
 // "aw"; original GPT-2 ID 707.
-inline constexpr TokenId kaw_350 = 350;
+inline constexpr DiscreteToken kaw_350{350};
 // "ov"; original GPT-2 ID 709.
-inline constexpr TokenId kov_351 = 351;
+inline constexpr DiscreteToken kov_351{351};
 // "ne"; original GPT-2 ID 710.
-inline constexpr TokenId kne_352 = 352;
+inline constexpr DiscreteToken kne_352{352};
 // " play"; original GPT-2 ID 711.
-inline constexpr TokenId kSpace_play_353 = 353;
+inline constexpr DiscreteToken kSpace_play_353{353};
 // "erv"; original GPT-2 ID 712.
-inline constexpr TokenId kerv_354 = 354;
+inline constexpr DiscreteToken kerv_354{354};
 // " am"; original GPT-2 ID 716.
-inline constexpr TokenId kSpace_am_355 = 355;
+inline constexpr DiscreteToken kSpace_am_355{355};
 // " first"; original GPT-2 ID 717.
-inline constexpr TokenId kSpace_first_356 = 356;
+inline constexpr DiscreteToken kSpace_first_356{356};
 // "ec"; original GPT-2 ID 721.
-inline constexpr TokenId kec_357 = 357;
+inline constexpr DiscreteToken kec_357{357};
 // "hing"; original GPT-2 ID 722.
-inline constexpr TokenId khing_358 = 358;
+inline constexpr DiscreteToken khing_358{358};
 // "ual"; original GPT-2 ID 723.
-inline constexpr TokenId kual_359 = 359;
+inline constexpr DiscreteToken kual_359{359};
 // "ull"; original GPT-2 ID 724.
-inline constexpr TokenId kull_360 = 360;
+inline constexpr DiscreteToken kull_360{360};
 // "oy"; original GPT-2 ID 726.
-inline constexpr TokenId koy_361 = 361;
+inline constexpr DiscreteToken koy_361{361};
 // "ces"; original GPT-2 ID 728.
-inline constexpr TokenId kces_362 = 362;
+inline constexpr DiscreteToken kces_362{362};
 // "ater"; original GPT-2 ID 729.
-inline constexpr TokenId kater_363 = 363;
+inline constexpr DiscreteToken kater_363{363};
 // " fe"; original GPT-2 ID 730.
-inline constexpr TokenId kSpace_fe_364 = 364;
+inline constexpr DiscreteToken kSpace_fe_364{364};
 // "iff"; original GPT-2 ID 733.
-inline constexpr TokenId kiff_365 = 365;
+inline constexpr DiscreteToken kiff_365{365};
 // " two"; original GPT-2 ID 734.
-inline constexpr TokenId kSpace_two_366 = 366;
+inline constexpr DiscreteToken kSpace_two_366{366};
 // "ock"; original GPT-2 ID 735.
-inline constexpr TokenId kock_367 = 367;
+inline constexpr DiscreteToken kock_367{367};
 // " back"; original GPT-2 ID 736.
-inline constexpr TokenId kSpace_back_368 = 368;
+inline constexpr DiscreteToken kSpace_back_368{368};
 // " under"; original GPT-2 ID 739.
-inline constexpr TokenId kSpace_under_369 = 369;
+inline constexpr DiscreteToken kSpace_under_369{369};
 // " may"; original GPT-2 ID 743.
-inline constexpr TokenId kSpace_may_370 = 370;
+inline constexpr DiscreteToken kSpace_may_370{370};
 // "ph"; original GPT-2 ID 746.
-inline constexpr TokenId kph_371 = 371;
+inline constexpr DiscreteToken kph_371{371};
 // " most"; original GPT-2 ID 749.
-inline constexpr TokenId kSpace_most_372 = 372;
+inline constexpr DiscreteToken kSpace_most_372{372};
 // " add"; original GPT-2 ID 751.
-inline constexpr TokenId kSpace_add_373 = 373;
+inline constexpr DiscreteToken kSpace_add_373{373};
 // " inc"; original GPT-2 ID 753.
-inline constexpr TokenId kSpace_inc_374 = 374;
+inline constexpr DiscreteToken kSpace_inc_374{374};
 // " co"; original GPT-2 ID 763.
-inline constexpr TokenId kSpace_co_375 = 375;
+inline constexpr DiscreteToken kSpace_co_375{375};
 // "ning"; original GPT-2 ID 768.
-inline constexpr TokenId kning_376 = 376;
+inline constexpr DiscreteToken kning_376{376};
 // " even"; original GPT-2 ID 772.
-inline constexpr TokenId kSpace_even_377 = 377;
+inline constexpr DiscreteToken kSpace_even_377{377};
 // "ath"; original GPT-2 ID 776.
-inline constexpr TokenId kath_378 = 378;
+inline constexpr DiscreteToken kath_378{378};
 // " use"; original GPT-2 ID 779.
-inline constexpr TokenId kSpace_use_379 = 379;
+inline constexpr DiscreteToken kSpace_use_379{379};
 // " because"; original GPT-2 ID 780.
-inline constexpr TokenId kSpace_because_380 = 380;
+inline constexpr DiscreteToken kSpace_because_380{380};
 // " fl"; original GPT-2 ID 781.
-inline constexpr TokenId kSpace_fl_381 = 381;
+inline constexpr DiscreteToken kSpace_fl_381{381};
 // " now"; original GPT-2 ID 783.
-inline constexpr TokenId kSpace_now_382 = 382;
+inline constexpr DiscreteToken kSpace_now_382{382};
 // "ise"; original GPT-2 ID 786.
-inline constexpr TokenId kise_383 = 383;
+inline constexpr DiscreteToken kise_383{383};
 // " make"; original GPT-2 ID 787.
-inline constexpr TokenId kSpace_make_384 = 384;
+inline constexpr DiscreteToken kSpace_make_384{384};
 // " every"; original GPT-2 ID 790.
-inline constexpr TokenId kSpace_every_385 = 385;
+inline constexpr DiscreteToken kSpace_every_385{385};
 // "oss"; original GPT-2 ID 793.
-inline constexpr TokenId koss_386 = 386;
+inline constexpr DiscreteToken koss_386{386};
 // " em"; original GPT-2 ID 795.
-inline constexpr TokenId kSpace_em_387 = 387;
+inline constexpr DiscreteToken kSpace_em_387{387};
 // "ied"; original GPT-2 ID 798.
-inline constexpr TokenId kied_388 = 388;
+inline constexpr DiscreteToken kied_388{388};
 // " inv"; original GPT-2 ID 800.
-inline constexpr TokenId kSpace_inv_389 = 389;
+inline constexpr DiscreteToken kSpace_inv_389{389};
 // "lect"; original GPT-2 ID 801.
-inline constexpr TokenId klect_390 = 390;
+inline constexpr DiscreteToken klect_390{390};
 // "ating"; original GPT-2 ID 803.
-inline constexpr TokenId kating_391 = 391;
+inline constexpr DiscreteToken kating_391{391};
 // " where"; original GPT-2 ID 810.
-inline constexpr TokenId kSpace_where_392 = 392;
+inline constexpr DiscreteToken kSpace_where_392{392};
 // " years"; original GPT-2 ID 812.
-inline constexpr TokenId kSpace_years_393 = 393;
+inline constexpr DiscreteToken kSpace_years_393{393};
 // " should"; original GPT-2 ID 815.
-inline constexpr TokenId kSpace_should_394 = 394;
+inline constexpr DiscreteToken kSpace_should_394{394};
 // "In"; original GPT-2 ID 818.
-inline constexpr TokenId kIn_395 = 395;
+inline constexpr DiscreteToken kIn_395{395};
 // "day"; original GPT-2 ID 820.
-inline constexpr TokenId kday_396 = 396;
+inline constexpr DiscreteToken kday_396{396};
 // " right"; original GPT-2 ID 826.
-inline constexpr TokenId kSpace_right_397 = 397;
+inline constexpr DiscreteToken kSpace_right_397{397};
 // "les"; original GPT-2 ID 829.
-inline constexpr TokenId kles_398 = 398;
+inline constexpr DiscreteToken kles_398{398};
 // "hen"; original GPT-2 ID 831.
-inline constexpr TokenId khen_399 = 399;
+inline constexpr DiscreteToken khen_399{399};
 // " through"; original GPT-2 ID 832.
-inline constexpr TokenId kSpace_through_400 = 400;
+inline constexpr DiscreteToken kSpace_through_400{400};
 // " don"; original GPT-2 ID 836.
-inline constexpr TokenId kSpace_don_401 = 401;
+inline constexpr DiscreteToken kSpace_don_401{401};
 // " 10"; original GPT-2 ID 838.
-inline constexpr TokenId kSpace_10_402 = 402;
+inline constexpr DiscreteToken kSpace_10_402{402};
 // " reg"; original GPT-2 ID 842.
-inline constexpr TokenId kSpace_reg_403 = 403;
+inline constexpr DiscreteToken kSpace_reg_403{403};
 // " And"; original GPT-2 ID 843.
-inline constexpr TokenId kSpace_And_404 = 404;
+inline constexpr DiscreteToken kSpace_And_404{404};
 // "ix"; original GPT-2 ID 844.
-inline constexpr TokenId kix_405 = 405;
+inline constexpr DiscreteToken kix_405{405};
 // " very"; original GPT-2 ID 845.
-inline constexpr TokenId kSpace_very_406 = 406;
+inline constexpr DiscreteToken kSpace_very_406{406};
 // "other"; original GPT-2 ID 847.
-inline constexpr TokenId kother_407 = 407;
+inline constexpr DiscreteToken kother_407{407};
 // " sub"; original GPT-2 ID 850.
-inline constexpr TokenId kSpace_sub_408 = 408;
+inline constexpr DiscreteToken kSpace_sub_408{408};
 // " being"; original GPT-2 ID 852.
-inline constexpr TokenId kSpace_being_409 = 409;
+inline constexpr DiscreteToken kSpace_being_409{409};
 // "ible"; original GPT-2 ID 856.
-inline constexpr TokenId kible_410 = 410;
+inline constexpr DiscreteToken kible_410{410};
 // " does"; original GPT-2 ID 857.
-inline constexpr TokenId kSpace_does_411 = 411;
+inline constexpr DiscreteToken kSpace_does_411{411};
 // "ram"; original GPT-2 ID 859.
-inline constexpr TokenId kram_412 = 412;
+inline constexpr DiscreteToken kram_412{412};
 // "ert"; original GPT-2 ID 861.
-inline constexpr TokenId kert_413 = 413;
+inline constexpr DiscreteToken kert_413{413};
 // "ps"; original GPT-2 ID 862.
-inline constexpr TokenId kps_414 = 414;
+inline constexpr DiscreteToken kps_414{414};
 // "ited"; original GPT-2 ID 863.
-inline constexpr TokenId kited_415 = 415;
+inline constexpr DiscreteToken kited_415{415};
 // "ational"; original GPT-2 ID 864.
-inline constexpr TokenId kational_416 = 416;
+inline constexpr DiscreteToken kational_416{416};
 // " down"; original GPT-2 ID 866.
-inline constexpr TokenId kSpace_down_417 = 417;
+inline constexpr DiscreteToken kSpace_down_417{417};
 // " many"; original GPT-2 ID 867.
-inline constexpr TokenId kSpace_many_418 = 418;
+inline constexpr DiscreteToken kSpace_many_418{418};
 // "aking"; original GPT-2 ID 868.
-inline constexpr TokenId kaking_419 = 419;
+inline constexpr DiscreteToken kaking_419{419};
 // " ph"; original GPT-2 ID 872.
-inline constexpr TokenId kSpace_ph_420 = 420;
+inline constexpr DiscreteToken kSpace_ph_420{420};
 // "ics"; original GPT-2 ID 873.
-inline constexpr TokenId kics_421 = 421;
+inline constexpr DiscreteToken kics_421{421};
 // "als"; original GPT-2 ID 874.
-inline constexpr TokenId kals_422 = 422;
+inline constexpr DiscreteToken kals_422{422};
 // " dec"; original GPT-2 ID 875.
-inline constexpr TokenId kSpace_dec_423 = 423;
+inline constexpr DiscreteToken kSpace_dec_423{423};
 // "ative"; original GPT-2 ID 876.
-inline constexpr TokenId kative_424 = 424;
+inline constexpr DiscreteToken kative_424{424};
 // " before"; original GPT-2 ID 878.
-inline constexpr TokenId kSpace_before_425 = 425;
+inline constexpr DiscreteToken kSpace_before_425{425};
 // " well"; original GPT-2 ID 880.
-inline constexpr TokenId kSpace_well_426 = 426;
+inline constexpr DiscreteToken kSpace_well_426{426};
 // " much"; original GPT-2 ID 881.
-inline constexpr TokenId kSpace_much_427 = 427;
+inline constexpr DiscreteToken kSpace_much_427{427};
 // " those"; original GPT-2 ID 883.
-inline constexpr TokenId kSpace_those_428 = 428;
+inline constexpr DiscreteToken kSpace_those_428{428};
 // " such"; original GPT-2 ID 884.
-inline constexpr TokenId kSpace_such_429 = 429;
+inline constexpr DiscreteToken kSpace_such_429{429};
 // " ke"; original GPT-2 ID 885.
-inline constexpr TokenId kSpace_ke_430 = 430;
+inline constexpr DiscreteToken kSpace_ke_430{430};
 // " end"; original GPT-2 ID 886.
-inline constexpr TokenId kSpace_end_431 = 431;
+inline constexpr DiscreteToken kSpace_end_431{431};
 // "ting"; original GPT-2 ID 889.
-inline constexpr TokenId kting_432 = 432;
+inline constexpr DiscreteToken kting_432{432};
 // " long"; original GPT-2 ID 890.
-inline constexpr TokenId kSpace_long_433 = 433;
+inline constexpr DiscreteToken kSpace_long_433{433};
 // "ef"; original GPT-2 ID 891.
-inline constexpr TokenId kef_434 = 434;
+inline constexpr DiscreteToken kef_434{434};
 // "ys"; original GPT-2 ID 893.
-inline constexpr TokenId kys_435 = 435;
+inline constexpr DiscreteToken kys_435{435};
 // " own"; original GPT-2 ID 898.
-inline constexpr TokenId kSpace_own_436 = 436;
+inline constexpr DiscreteToken kSpace_own_436{436};
 // " set"; original GPT-2 ID 900.
-inline constexpr TokenId kSpace_set_437 = 437;
+inline constexpr DiscreteToken kSpace_set_437{437};
 // "ments"; original GPT-2 ID 902.
-inline constexpr TokenId kments_438 = 438;
+inline constexpr DiscreteToken kments_438{438};
 // "ble"; original GPT-2 ID 903.
-inline constexpr TokenId kble_439 = 439;
+inline constexpr DiscreteToken kble_439{439};
 // "ward"; original GPT-2 ID 904.
-inline constexpr TokenId kward_440 = 440;
+inline constexpr DiscreteToken kward_440{440};
 // " show"; original GPT-2 ID 905.
-inline constexpr TokenId kSpace_show_441 = 441;
+inline constexpr DiscreteToken kSpace_show_441{441};
 // "ms"; original GPT-2 ID 907.
-inline constexpr TokenId kms_442 = 442;
+inline constexpr DiscreteToken kms_442{442};
 // " Sh"; original GPT-2 ID 911.
-inline constexpr TokenId kSpace_Sh_443 = 443;
+inline constexpr DiscreteToken kSpace_Sh_443{443};
 // "ts"; original GPT-2 ID 912.
-inline constexpr TokenId kts_444 = 444;
+inline constexpr DiscreteToken kts_444{444};
 // " made"; original GPT-2 ID 925.
-inline constexpr TokenId kSpace_made_445 = 445;
+inline constexpr DiscreteToken kSpace_made_445{445};
 // "up"; original GPT-2 ID 929.
-inline constexpr TokenId kup_446 = 446;
+inline constexpr DiscreteToken kup_446{446};
 // "vern"; original GPT-2 ID 933.
-inline constexpr TokenId kvern_447 = 447;
+inline constexpr DiscreteToken kvern_447{447};
 // "ular"; original GPT-2 ID 934.
-inline constexpr TokenId kular_448 = 448;
+inline constexpr DiscreteToken kular_448{448};
 // " ac"; original GPT-2 ID 936.
-inline constexpr TokenId kSpace_ac_449 = 449;
+inline constexpr DiscreteToken kSpace_ac_449{449};
 // "ars"; original GPT-2 ID 945.
-inline constexpr TokenId kars_450 = 450;
+inline constexpr DiscreteToken kars_450{450};
 // "meric"; original GPT-2 ID 946.
-inline constexpr TokenId kmeric_451 = 451;
+inline constexpr DiscreteToken kmeric_451{451};
 // "cy"; original GPT-2 ID 948.
-inline constexpr TokenId kcy_452 = 452;
+inline constexpr DiscreteToken kcy_452{452};
 // " count"; original GPT-2 ID 954.
-inline constexpr TokenId kSpace_count_453 = 453;
+inline constexpr DiscreteToken kSpace_count_453{453};
 // "hes"; original GPT-2 ID 956.
-inline constexpr TokenId khes_454 = 454;
+inline constexpr DiscreteToken khes_454{454};
 // "ier"; original GPT-2 ID 959.
-inline constexpr TokenId kier_455 = 455;
+inline constexpr DiscreteToken kier_455{455};
 // "ank"; original GPT-2 ID 962.
-inline constexpr TokenId kank_456 = 456;
+inline constexpr DiscreteToken kank_456{456};
 // " point"; original GPT-2 ID 966.
-inline constexpr TokenId kSpace_point_457 = 457;
+inline constexpr DiscreteToken kSpace_point_457{457};
 // "ork"; original GPT-2 ID 967.
-inline constexpr TokenId kork_458 = 458;
+inline constexpr DiscreteToken kork_458{458};
 // " New"; original GPT-2 ID 968.
-inline constexpr TokenId kSpace_New_459 = 459;
+inline constexpr DiscreteToken kSpace_New_459{459};
 // " used"; original GPT-2 ID 973.
-inline constexpr TokenId kSpace_used_460 = 460;
+inline constexpr DiscreteToken kSpace_used_460{460};
 // "ract"; original GPT-2 ID 974.
-inline constexpr TokenId kract_461 = 461;
+inline constexpr DiscreteToken kract_461{461};
 // " same"; original GPT-2 ID 976.
-inline constexpr TokenId kSpace_same_462 = 462;
+inline constexpr DiscreteToken kSpace_same_462{462};
 // " Al"; original GPT-2 ID 978.
-inline constexpr TokenId kSpace_Al_463 = 463;
+inline constexpr DiscreteToken kSpace_Al_463{463};
 // "ci"; original GPT-2 ID 979.
-inline constexpr TokenId kci_464 = 464;
+inline constexpr DiscreteToken kci_464{464};
 // " while"; original GPT-2 ID 981.
-inline constexpr TokenId kSpace_while_465 = 465;
+inline constexpr DiscreteToken kSpace_while_465{465};
 // " game"; original GPT-2 ID 983.
-inline constexpr TokenId kSpace_game_466 = 466;
+inline constexpr DiscreteToken kSpace_game_466{466};
 // " inter"; original GPT-2 ID 987.
-inline constexpr TokenId kSpace_inter_467 = 467;
+inline constexpr DiscreteToken kSpace_inter_467{467};
 // "led"; original GPT-2 ID 992.
-inline constexpr TokenId kled_468 = 468;
+inline constexpr DiscreteToken kled_468{468};
 // "ah"; original GPT-2 ID 993.
-inline constexpr TokenId kah_469 = 469;
+inline constexpr DiscreteToken kah_469{469};
 // " though"; original GPT-2 ID 996.
-inline constexpr TokenId kSpace_though_470 = 470;
+inline constexpr DiscreteToken kSpace_though_470{470};
 // "ale"; original GPT-2 ID 1000.
-inline constexpr TokenId kale_471 = 471;
+inline constexpr DiscreteToken kale_471{471};
 // " Se"; original GPT-2 ID 1001.
-inline constexpr TokenId kSpace_Se_472 = 472;
+inline constexpr DiscreteToken kSpace_Se_472{472};
 // " Le"; original GPT-2 ID 1004.
-inline constexpr TokenId kSpace_Le_473 = 473;
+inline constexpr DiscreteToken kSpace_Le_473{473};
 // " ref"; original GPT-2 ID 1006.
-inline constexpr TokenId kSpace_ref_474 = 474;
+inline constexpr DiscreteToken kSpace_ref_474{474};
 // " trans"; original GPT-2 ID 1007.
-inline constexpr TokenId kSpace_trans_475 = 475;
+inline constexpr DiscreteToken kSpace_trans_475{475};
 // "ters"; original GPT-2 ID 1010.
-inline constexpr TokenId kters_476 = 476;
+inline constexpr DiscreteToken kters_476{476};
 // " take"; original GPT-2 ID 1011.
-inline constexpr TokenId kSpace_take_477 = 477;
+inline constexpr DiscreteToken kSpace_take_477{477};
 // "way"; original GPT-2 ID 1014.
-inline constexpr TokenId kway_478 = 478;
+inline constexpr DiscreteToken kway_478{478};
 // "ave"; original GPT-2 ID 1015.
-inline constexpr TokenId kave_479 = 479;
+inline constexpr DiscreteToken kave_479{479};
 // " hand"; original GPT-2 ID 1021.
-inline constexpr TokenId kSpace_hand_480 = 480;
+inline constexpr DiscreteToken kSpace_hand_480{480};
 // " between"; original GPT-2 ID 1022.
-inline constexpr TokenId kSpace_between_481 = 481;
+inline constexpr DiscreteToken kSpace_between_481{481};
 // " De"; original GPT-2 ID 1024.
-inline constexpr TokenId kSpace_De_482 = 482;
+inline constexpr DiscreteToken kSpace_De_482{482};
 // " ear"; original GPT-2 ID 1027.
-inline constexpr TokenId kSpace_ear_483 = 483;
+inline constexpr DiscreteToken kSpace_ear_483{483};
 // " against"; original GPT-2 ID 1028.
-inline constexpr TokenId kSpace_against_484 = 484;
+inline constexpr DiscreteToken kSpace_against_484{484};
 // " high"; original GPT-2 ID 1029.
-inline constexpr TokenId kSpace_high_485 = 485;
+inline constexpr DiscreteToken kSpace_high_485{485};
 // "az"; original GPT-2 ID 1031.
-inline constexpr TokenId kaz_486 = 486;
+inline constexpr DiscreteToken kaz_486{486};
 // "ather"; original GPT-2 ID 1032.
-inline constexpr TokenId kather_487 = 487;
+inline constexpr DiscreteToken kather_487{487};
 // " ins"; original GPT-2 ID 1035.
-inline constexpr TokenId kSpace_ins_488 = 488;
+inline constexpr DiscreteToken kSpace_ins_488{488};
 // " gr"; original GPT-2 ID 1036.
-inline constexpr TokenId kSpace_gr_489 = 489;
+inline constexpr DiscreteToken kSpace_gr_489{489};
 // " help"; original GPT-2 ID 1037.
-inline constexpr TokenId kSpace_help_490 = 490;
+inline constexpr DiscreteToken kSpace_help_490{490};
 // "ets"; original GPT-2 ID 1039.
-inline constexpr TokenId kets_491 = 491;
+inline constexpr DiscreteToken kets_491{491};
 // "ins"; original GPT-2 ID 1040.
-inline constexpr TokenId kins_492 = 492;
+inline constexpr DiscreteToken kins_492{492};
 // "ism"; original GPT-2 ID 1042.
-inline constexpr TokenId kism_493 = 493;
+inline constexpr DiscreteToken kism_493{493};
 // " found"; original GPT-2 ID 1043.
-inline constexpr TokenId kSpace_found_494 = 494;
+inline constexpr DiscreteToken kSpace_found_494{494};
 // "ata"; original GPT-2 ID 1045.
-inline constexpr TokenId kata_495 = 495;
+inline constexpr DiscreteToken kata_495{495};
 // " person"; original GPT-2 ID 1048.
-inline constexpr TokenId kSpace_person_496 = 496;
+inline constexpr DiscreteToken kSpace_person_496{496};
 // " great"; original GPT-2 ID 1049.
-inline constexpr TokenId kSpace_great_497 = 497;
+inline constexpr DiscreteToken kSpace_great_497{497};
 // " sign"; original GPT-2 ID 1051.
-inline constexpr TokenId kSpace_sign_498 = 498;
+inline constexpr DiscreteToken kSpace_sign_498{498};
 // " run"; original GPT-2 ID 1057.
-inline constexpr TokenId kSpace_run_499 = 499;
+inline constexpr DiscreteToken kSpace_run_499{499};
 // "irect"; original GPT-2 ID 1060.
-inline constexpr TokenId kirect_500 = 500;
+inline constexpr DiscreteToken kirect_500{500};
 // "ices"; original GPT-2 ID 1063.
-inline constexpr TokenId kices_501 = 501;
+inline constexpr DiscreteToken kices_501{501};
 // " cr"; original GPT-2 ID 1067.
-inline constexpr TokenId kSpace_cr_502 = 502;
+inline constexpr DiscreteToken kSpace_cr_502{502};
 // "ex"; original GPT-2 ID 1069.
-inline constexpr TokenId kex_503 = 503;
+inline constexpr DiscreteToken kex_503{503};
 // "co"; original GPT-2 ID 1073.
-inline constexpr TokenId kco_504 = 504;
+inline constexpr DiscreteToken kco_504{504};
 // "ving"; original GPT-2 ID 1075.
-inline constexpr TokenId kving_505 = 505;
+inline constexpr DiscreteToken kving_505{505};
 // " system"; original GPT-2 ID 1080.
-inline constexpr TokenId kSpace_system_506 = 506;
+inline constexpr DiscreteToken kSpace_system_506{506};
 // "min"; original GPT-2 ID 1084.
-inline constexpr TokenId kmin_507 = 507;
+inline constexpr DiscreteToken kmin_507{507};
 // " around"; original GPT-2 ID 1088.
-inline constexpr TokenId kSpace_around_508 = 508;
+inline constexpr DiscreteToken kSpace_around_508{508};
 // " cur"; original GPT-2 ID 1090.
-inline constexpr TokenId kSpace_cur_509 = 509;
+inline constexpr DiscreteToken kSpace_cur_509{509};
 // "ize"; original GPT-2 ID 1096.
-inline constexpr TokenId kize_510 = 510;
+inline constexpr DiscreteToken kize_510{510};
 // "ode"; original GPT-2 ID 1098.
-inline constexpr TokenId kode_511 = 511;
+inline constexpr DiscreteToken kode_511{511};
 // " real"; original GPT-2 ID 1103.
-inline constexpr TokenId kSpace_real_512 = 512;
+inline constexpr DiscreteToken kSpace_real_512{512};
 // " support"; original GPT-2 ID 1104.
-inline constexpr TokenId kSpace_support_513 = 513;
+inline constexpr DiscreteToken kSpace_support_513{513};
 // " 12"; original GPT-2 ID 1105.
-inline constexpr TokenId kSpace_12_514 = 514;
+inline constexpr DiscreteToken kSpace_12_514{514};
 // "ness"; original GPT-2 ID 1108.
-inline constexpr TokenId kness_515 = 515;
+inline constexpr DiscreteToken kness_515{515};
 // " fact"; original GPT-2 ID 1109.
-inline constexpr TokenId kSpace_fact_516 = 516;
+inline constexpr DiscreteToken kSpace_fact_516{516};
 // " day"; original GPT-2 ID 1110.
-inline constexpr TokenId kSpace_day_517 = 517;
+inline constexpr DiscreteToken kSpace_day_517{517};
 // " both"; original GPT-2 ID 1111.
-inline constexpr TokenId kSpace_both_518 = 518;
+inline constexpr DiscreteToken kSpace_both_518{518};
 // " three"; original GPT-2 ID 1115.
-inline constexpr TokenId kSpace_three_519 = 519;
+inline constexpr DiscreteToken kSpace_three_519{519};
 // "ton"; original GPT-2 ID 1122.
-inline constexpr TokenId kton_520 = 520;
+inline constexpr DiscreteToken kton_520{520};
 // " each"; original GPT-2 ID 1123.
-inline constexpr TokenId kSpace_each_521 = 521;
+inline constexpr DiscreteToken kSpace_each_521{521};
 // "akes"; original GPT-2 ID 1124.
-inline constexpr TokenId kakes_522 = 522;
+inline constexpr DiscreteToken kakes_522{522};
 // "ines"; original GPT-2 ID 1127.
-inline constexpr TokenId kines_523 = 523;
+inline constexpr DiscreteToken kines_523{523};
 // " rep"; original GPT-2 ID 1128.
-inline constexpr TokenId kSpace_rep_524 = 524;
+inline constexpr DiscreteToken kSpace_rep_524{524};
 // "ute"; original GPT-2 ID 1133.
-inline constexpr TokenId kute_525 = 525;
+inline constexpr DiscreteToken kute_525{525};
 // "ik"; original GPT-2 ID 1134.
-inline constexpr TokenId kik_526 = 526;
+inline constexpr DiscreteToken kik_526{526};
 // "We"; original GPT-2 ID 1135.
-inline constexpr TokenId kWe_527 = 527;
+inline constexpr DiscreteToken kWe_527{527};
 // " met"; original GPT-2 ID 1138.
-inline constexpr TokenId kSpace_met_528 = 528;
+inline constexpr DiscreteToken kSpace_met_528{528};
 // "ox"; original GPT-2 ID 1140.
-inline constexpr TokenId kox_529 = 529;
+inline constexpr DiscreteToken kox_529{529};
 // " during"; original GPT-2 ID 1141.
-inline constexpr TokenId kSpace_during_530 = 530;
+inline constexpr DiscreteToken kSpace_during_530{530};
 // "ern"; original GPT-2 ID 1142.
-inline constexpr TokenId kern_531 = 531;
+inline constexpr DiscreteToken kern_531{531};
 // "ized"; original GPT-2 ID 1143.
-inline constexpr TokenId kized_532 = 532;
+inline constexpr DiscreteToken kized_532{532};
 // "ically"; original GPT-2 ID 1146.
-inline constexpr TokenId kically_533 = 533;
+inline constexpr DiscreteToken kically_533{533};
 // "ves"; original GPT-2 ID 1158.
-inline constexpr TokenId kves_534 = 534;
+inline constexpr DiscreteToken kves_534{534};
 // " cor"; original GPT-2 ID 1162.
-inline constexpr TokenId kSpace_cor_535 = 535;
+inline constexpr DiscreteToken kSpace_cor_535{535};
 // "ision"; original GPT-2 ID 1166.
-inline constexpr TokenId kision_536 = 536;
+inline constexpr DiscreteToken kision_536{536};
 // " public"; original GPT-2 ID 1171.
-inline constexpr TokenId kSpace_public_537 = 537;
+inline constexpr DiscreteToken kSpace_public_537{537};
 // "ric"; original GPT-2 ID 1173.
-inline constexpr TokenId kric_538 = 538;
+inline constexpr DiscreteToken kric_538{538};
 // " war"; original GPT-2 ID 1175.
-inline constexpr TokenId kSpace_war_539 = 539;
+inline constexpr DiscreteToken kSpace_war_539{539};
 // " power"; original GPT-2 ID 1176.
-inline constexpr TokenId kSpace_power_540 = 540;
+inline constexpr DiscreteToken kSpace_power_540{540};
 // " different"; original GPT-2 ID 1180.
-inline constexpr TokenId kSpace_different_541 = 541;
+inline constexpr DiscreteToken kSpace_different_541{541};
 // " head"; original GPT-2 ID 1182.
-inline constexpr TokenId kSpace_head_542 = 542;
+inline constexpr DiscreteToken kSpace_head_542{542};
 // "ants"; original GPT-2 ID 1187.
-inline constexpr TokenId kants_543 = 543;
+inline constexpr DiscreteToken kants_543{543};
 // " cle"; original GPT-2 ID 1190.
-inline constexpr TokenId kSpace_cle_544 = 544;
+inline constexpr DiscreteToken kSpace_cle_544{544};
 // " another"; original GPT-2 ID 1194.
-inline constexpr TokenId kSpace_another_545 = 545;
+inline constexpr DiscreteToken kSpace_another_545{545};
 // " child"; original GPT-2 ID 1200.
-inline constexpr TokenId kSpace_child_546 = 546;
+inline constexpr DiscreteToken kSpace_child_546{546};
 // "less"; original GPT-2 ID 1203.
-inline constexpr TokenId kless_547 = 547;
+inline constexpr DiscreteToken kless_547{547};
 // " life"; original GPT-2 ID 1204.
-inline constexpr TokenId kSpace_life_548 = 548;
+inline constexpr DiscreteToken kSpace_life_548{548};
 // " develop"; original GPT-2 ID 1205.
-inline constexpr TokenId kSpace_develop_549 = 549;
+inline constexpr DiscreteToken kSpace_develop_549{549};
 // " pass"; original GPT-2 ID 1208.
-inline constexpr TokenId kSpace_pass_550 = 550;
+inline constexpr DiscreteToken kSpace_pass_550{550};
 // " turn"; original GPT-2 ID 1210.
-inline constexpr TokenId kSpace_turn_551 = 551;
+inline constexpr DiscreteToken kSpace_turn_551{551};
 // "orn"; original GPT-2 ID 1211.
-inline constexpr TokenId korn_552 = 552;
+inline constexpr DiscreteToken korn_552{552};
 // " second"; original GPT-2 ID 1218.
-inline constexpr TokenId kSpace_second_553 = 553;
+inline constexpr DiscreteToken kSpace_second_553{553};
 // "oh"; original GPT-2 ID 1219.
-inline constexpr TokenId koh_554 = 554;
+inline constexpr DiscreteToken koh_554{554};
 // " disc"; original GPT-2 ID 1221.
-inline constexpr TokenId kSpace_disc_555 = 555;
+inline constexpr DiscreteToken kSpace_disc_555{555};
 // " something"; original GPT-2 ID 1223.
-inline constexpr TokenId kSpace_something_556 = 556;
+inline constexpr DiscreteToken kSpace_something_556{556};
 // "aj"; original GPT-2 ID 1228.
-inline constexpr TokenId kaj_557 = 557;
+inline constexpr DiscreteToken kaj_557{557};
 // "uc"; original GPT-2 ID 1229.
-inline constexpr TokenId kuc_558 = 558;
+inline constexpr DiscreteToken kuc_558{558};
 // " without"; original GPT-2 ID 1231.
-inline constexpr TokenId kSpace_without_559 = 559;
+inline constexpr DiscreteToken kSpace_without_559{559};
 // " leg"; original GPT-2 ID 1232.
-inline constexpr TokenId kSpace_leg_560 = 560;
+inline constexpr DiscreteToken kSpace_leg_560{560};
 // " dist"; original GPT-2 ID 1233.
-inline constexpr TokenId kSpace_dist_561 = 561;
+inline constexpr DiscreteToken kSpace_dist_561{561};
 // "ann"; original GPT-2 ID 1236.
-inline constexpr TokenId kann_562 = 562;
+inline constexpr DiscreteToken kann_562{562};
 // " prot"; original GPT-2 ID 1237.
-inline constexpr TokenId kSpace_prot_563 = 563;
+inline constexpr DiscreteToken kSpace_prot_563{563};
 // " never"; original GPT-2 ID 1239.
-inline constexpr TokenId kSpace_never_564 = 564;
+inline constexpr DiscreteToken kSpace_never_564{564};
 // " level"; original GPT-2 ID 1241.
-inline constexpr TokenId kSpace_level_565 = 565;
+inline constexpr DiscreteToken kSpace_level_565{565};
 // " art"; original GPT-2 ID 1242.
-inline constexpr TokenId kSpace_art_566 = 566;
+inline constexpr DiscreteToken kSpace_art_566{566};
 // " effect"; original GPT-2 ID 1245.
-inline constexpr TokenId kSpace_effect_567 = 567;
+inline constexpr DiscreteToken kSpace_effect_567{567};
 // " cent"; original GPT-2 ID 1247.
-inline constexpr TokenId kSpace_cent_568 = 568;
+inline constexpr DiscreteToken kSpace_cent_568{568};
 // " allow"; original GPT-2 ID 1249.
-inline constexpr TokenId kSpace_allow_569 = 569;
+inline constexpr DiscreteToken kSpace_allow_569{569};
 // " feel"; original GPT-2 ID 1254.
-inline constexpr TokenId kSpace_feel_570 = 570;
+inline constexpr DiscreteToken kSpace_feel_570{570};
 // " result"; original GPT-2 ID 1255.
-inline constexpr TokenId kSpace_result_571 = 571;
+inline constexpr DiscreteToken kSpace_result_571{571};
 // "ote"; original GPT-2 ID 1258.
-inline constexpr TokenId kote_572 = 572;
+inline constexpr DiscreteToken kote_572{572};
 // " using"; original GPT-2 ID 1262.
-inline constexpr TokenId kSpace_using_573 = 573;
+inline constexpr DiscreteToken kSpace_using_573{573};
 // " number"; original GPT-2 ID 1271.
-inline constexpr TokenId kSpace_number_574 = 574;
+inline constexpr DiscreteToken kSpace_number_574{574};
 // "St"; original GPT-2 ID 1273.
-inline constexpr TokenId kSt_575 = 575;
+inline constexpr DiscreteToken kSt_575{575};
 // " ca"; original GPT-2 ID 1275.
-inline constexpr TokenId kSpace_ca_576 = 576;
+inline constexpr DiscreteToken kSpace_ca_576{576};
 // " must"; original GPT-2 ID 1276.
-inline constexpr TokenId kSpace_must_577 = 577;
+inline constexpr DiscreteToken kSpace_must_577{577};
 // " direct"; original GPT-2 ID 1277.
-inline constexpr TokenId kSpace_direct_578 = 578;
+inline constexpr DiscreteToken kSpace_direct_578{578};
 // " gl"; original GPT-2 ID 1278.
-inline constexpr TokenId kSpace_gl_579 = 579;
+inline constexpr DiscreteToken kSpace_gl_579{579};
 // " open"; original GPT-2 ID 1280.
-inline constexpr TokenId kSpace_open_580 = 580;
+inline constexpr DiscreteToken kSpace_open_580{580};
 // " come"; original GPT-2 ID 1282.
-inline constexpr TokenId kSpace_come_581 = 581;
+inline constexpr DiscreteToken kSpace_come_581{581};
 // "ately"; original GPT-2 ID 1286.
-inline constexpr TokenId kately_582 = 582;
+inline constexpr DiscreteToken kately_582{582};
 // " place"; original GPT-2 ID 1295.
-inline constexpr TokenId kSpace_place_583 = 583;
+inline constexpr DiscreteToken kSpace_place_583{583};
 // " form"; original GPT-2 ID 1296.
-inline constexpr TokenId kSpace_form_584 = 584;
+inline constexpr DiscreteToken kSpace_form_584{584};
 // "ider"; original GPT-2 ID 1304.
-inline constexpr TokenId kider_585 = 585;
+inline constexpr DiscreteToken kider_585{585};
 // " next"; original GPT-2 ID 1306.
-inline constexpr TokenId kSpace_next_586 = 586;
+inline constexpr DiscreteToken kSpace_next_586{586};
 // " hum"; original GPT-2 ID 1311.
-inline constexpr TokenId kSpace_hum_587 = 587;
+inline constexpr DiscreteToken kSpace_hum_587{587};
 // "ron"; original GPT-2 ID 1313.
-inline constexpr TokenId kron_588 = 588;
+inline constexpr DiscreteToken kron_588{588};
 // "15"; original GPT-2 ID 1314.
-inline constexpr TokenId k15_589 = 589;
+inline constexpr DiscreteToken k15_589{589};
 // " 15"; original GPT-2 ID 1315.
-inline constexpr TokenId kSpace_15_590 = 590;
+inline constexpr DiscreteToken kSpace_15_590{590};
 // " mark"; original GPT-2 ID 1317.
-inline constexpr TokenId kSpace_mark_591 = 591;
+inline constexpr DiscreteToken kSpace_mark_591{591};
 // " information"; original GPT-2 ID 1321.
-inline constexpr TokenId kSpace_information_592 = 592;
+inline constexpr DiscreteToken kSpace_information_592{592};
 // "me"; original GPT-2 ID 1326.
-inline constexpr TokenId kme_593 = 593;
+inline constexpr DiscreteToken kme_593{593};
 // " hard"; original GPT-2 ID 1327.
-inline constexpr TokenId kSpace_hard_594 = 594;
+inline constexpr DiscreteToken kSpace_hard_594{594};
 // "ained"; original GPT-2 ID 1328.
-inline constexpr TokenId kained_595 = 595;
+inline constexpr DiscreteToken kained_595{595};
 // " test"; original GPT-2 ID 1332.
-inline constexpr TokenId kSpace_test_596 = 596;
+inline constexpr DiscreteToken kSpace_test_596{596};
 // " tri"; original GPT-2 ID 1333.
-inline constexpr TokenId kSpace_tri_597 = 597;
+inline constexpr DiscreteToken kSpace_tri_597{597};
 // " rest"; original GPT-2 ID 1334.
-inline constexpr TokenId kSpace_rest_598 = 598;
+inline constexpr DiscreteToken kSpace_rest_598{598};
 // " full"; original GPT-2 ID 1336.
-inline constexpr TokenId kSpace_full_599 = 599;
+inline constexpr DiscreteToken kSpace_full_599{599};
 // " case"; original GPT-2 ID 1339.
-inline constexpr TokenId kSpace_case_600 = 600;
+inline constexpr DiscreteToken kSpace_case_600{600};
 // " less"; original GPT-2 ID 1342.
-inline constexpr TokenId kSpace_less_601 = 601;
+inline constexpr DiscreteToken kSpace_less_601{601};
 // "uck"; original GPT-2 ID 1347.
-inline constexpr TokenId kuck_602 = 602;
+inline constexpr DiscreteToken kuck_602{602};
 // "be"; original GPT-2 ID 1350.
-inline constexpr TokenId kbe_603 = 603;
+inline constexpr DiscreteToken kbe_603{603};
 // " list"; original GPT-2 ID 1351.
-inline constexpr TokenId kSpace_list_604 = 604;
+inline constexpr DiscreteToken kSpace_list_604{604};
 // "ator"; original GPT-2 ID 1352.
-inline constexpr TokenId kator_605 = 605;
+inline constexpr DiscreteToken kator_605{605};
 // "ling"; original GPT-2 ID 1359.
-inline constexpr TokenId kling_606 = 606;
+inline constexpr DiscreteToken kling_606{606};
 // " home"; original GPT-2 ID 1363.
-inline constexpr TokenId kSpace_home_607 = 607;
+inline constexpr DiscreteToken kSpace_home_607{607};
 // " left"; original GPT-2 ID 1364.
-inline constexpr TokenId kSpace_left_608 = 608;
+inline constexpr DiscreteToken kSpace_left_608{608};
 // " data"; original GPT-2 ID 1366.
-inline constexpr TokenId kSpace_data_609 = 609;
+inline constexpr DiscreteToken kSpace_data_609{609};
 // " attack"; original GPT-2 ID 1368.
-inline constexpr TokenId kSpace_attack_610 = 610;
+inline constexpr DiscreteToken kSpace_attack_610{610};
 // "ards"; original GPT-2 ID 1371.
-inline constexpr TokenId kards_611 = 611;
+inline constexpr DiscreteToken kards_611{611};
 // " Ph"; original GPT-2 ID 1380.
-inline constexpr TokenId kSpace_Ph_612 = 612;
+inline constexpr DiscreteToken kSpace_Ph_612{612};
 // "ats"; original GPT-2 ID 1381.
-inline constexpr TokenId kats_613 = 613;
+inline constexpr DiscreteToken kats_613{613};
 // " build"; original GPT-2 ID 1382.
-inline constexpr TokenId kSpace_build_614 = 614;
+inline constexpr DiscreteToken kSpace_build_614{614};
 // "ided"; original GPT-2 ID 1384.
-inline constexpr TokenId kided_615 = 615;
+inline constexpr DiscreteToken kided_615{615};
 // "ency"; original GPT-2 ID 1387.
-inline constexpr TokenId kency_616 = 616;
+inline constexpr DiscreteToken kency_616{616};
 // " main"; original GPT-2 ID 1388.
-inline constexpr TokenId kSpace_main_617 = 617;
+inline constexpr DiscreteToken kSpace_main_617{617};
 // "ined"; original GPT-2 ID 1389.
-inline constexpr TokenId kined_618 = 618;
+inline constexpr DiscreteToken kined_618{618};
 // " including"; original GPT-2 ID 1390.
-inline constexpr TokenId kSpace_including_619 = 619;
+inline constexpr DiscreteToken kSpace_including_619{619};
 // " X"; original GPT-2 ID 1395.
-inline constexpr TokenId kSpace_X_620 = 620;
+inline constexpr DiscreteToken kSpace_X_620{620};
 // " small"; original GPT-2 ID 1402.
-inline constexpr TokenId kSpace_small_621 = 621;
+inline constexpr DiscreteToken kSpace_small_621{621};
 // " mov"; original GPT-2 ID 1409.
-inline constexpr TokenId kSpace_mov_622 = 622;
+inline constexpr DiscreteToken kSpace_mov_622{622};
 // " percent"; original GPT-2 ID 1411.
-inline constexpr TokenId kSpace_percent_623 = 623;
+inline constexpr DiscreteToken kSpace_percent_623{623};
 // "sc"; original GPT-2 ID 1416.
-inline constexpr TokenId ksc_624 = 624;
+inline constexpr DiscreteToken ksc_624{624};
 // "oney"; original GPT-2 ID 1419.
-inline constexpr TokenId koney_625 = 625;
+inline constexpr DiscreteToken koney_625{625};
 // " Ind"; original GPT-2 ID 1423.
-inline constexpr TokenId kSpace_Ind_626 = 626;
+inline constexpr DiscreteToken kSpace_Ind_626{626};
 // "els"; original GPT-2 ID 1424.
-inline constexpr TokenId kels_627 = 627;
+inline constexpr DiscreteToken kels_627{627};
 // "iver"; original GPT-2 ID 1428.
-inline constexpr TokenId kiver_628 = 628;
+inline constexpr DiscreteToken kiver_628{628};
 // " process"; original GPT-2 ID 1429.
-inline constexpr TokenId kSpace_process_629 = 629;
+inline constexpr DiscreteToken kSpace_process_629{629};
 // " program"; original GPT-2 ID 1430.
-inline constexpr TokenId kSpace_program_630 = 630;
+inline constexpr DiscreteToken kSpace_program_630{630};
 // "ified"; original GPT-2 ID 1431.
-inline constexpr TokenId kified_631 = 631;
+inline constexpr DiscreteToken kified_631{631};
 // "uro"; original GPT-2 ID 1434.
-inline constexpr TokenId kuro_632 = 632;
+inline constexpr DiscreteToken kuro_632{632};
 // "ina"; original GPT-2 ID 1437.
-inline constexpr TokenId kina_633 = 633;
+inline constexpr DiscreteToken kina_633{633};
 // " name"; original GPT-2 ID 1438.
-inline constexpr TokenId kSpace_name_634 = 634;
+inline constexpr DiscreteToken kSpace_name_634{634};
 // " four"; original GPT-2 ID 1440.
-inline constexpr TokenId kSpace_four_635 = 635;
+inline constexpr DiscreteToken kSpace_four_635{635};
 // " return"; original GPT-2 ID 1441.
-inline constexpr TokenId kSpace_return_636 = 636;
+inline constexpr DiscreteToken kSpace_return_636{636};
 // "bs"; original GPT-2 ID 1443.
-inline constexpr TokenId kbs_637 = 637;
+inline constexpr DiscreteToken kbs_637{637};
 // " called"; original GPT-2 ID 1444.
-inline constexpr TokenId kSpace_called_638 = 638;
+inline constexpr DiscreteToken kSpace_called_638{638};
 // " move"; original GPT-2 ID 1445.
-inline constexpr TokenId kSpace_move_639 = 639;
+inline constexpr DiscreteToken kSpace_move_639{639};
 // " Sc"; original GPT-2 ID 1446.
-inline constexpr TokenId kSpace_Sc_640 = 640;
+inline constexpr DiscreteToken kSpace_Sc_640{640};
 // " group"; original GPT-2 ID 1448.
-inline constexpr TokenId kSpace_group_641 = 641;
+inline constexpr DiscreteToken kSpace_group_641{641};
 // "ten"; original GPT-2 ID 1452.
-inline constexpr TokenId kten_642 = 642;
+inline constexpr DiscreteToken kten_642{642};
 // "ee"; original GPT-2 ID 1453.
-inline constexpr TokenId kee_643 = 643;
+inline constexpr DiscreteToken kee_643{643};
 // " pat"; original GPT-2 ID 1458.
-inline constexpr TokenId kSpace_pat_644 = 644;
+inline constexpr DiscreteToken kSpace_pat_644{644};
 // " current"; original GPT-2 ID 1459.
-inline constexpr TokenId kSpace_current_645 = 645;
+inline constexpr DiscreteToken kSpace_current_645{645};
 // "ides"; original GPT-2 ID 1460.
-inline constexpr TokenId kides_646 = 646;
+inline constexpr DiscreteToken kides_646{646};
 // " always"; original GPT-2 ID 1464.
-inline constexpr TokenId kSpace_always_647 = 647;
+inline constexpr DiscreteToken kSpace_always_647{647};
 // " Or"; original GPT-2 ID 1471.
-inline constexpr TokenId kSpace_Or_648 = 648;
+inline constexpr DiscreteToken kSpace_Or_648{648};
 // " near"; original GPT-2 ID 1474.
-inline constexpr TokenId kSpace_near_649 = 649;
+inline constexpr DiscreteToken kSpace_near_649{649};
 // " 14"; original GPT-2 ID 1478.
-inline constexpr TokenId kSpace_14_650 = 650;
+inline constexpr DiscreteToken kSpace_14_650{650};
 // " free"; original GPT-2 ID 1479.
-inline constexpr TokenId kSpace_free_651 = 651;
+inline constexpr DiscreteToken kSpace_free_651{651};
 // " design"; original GPT-2 ID 1486.
-inline constexpr TokenId kSpace_design_652 = 652;
+inline constexpr DiscreteToken kSpace_design_652{652};
 // " change"; original GPT-2 ID 1487.
-inline constexpr TokenId kSpace_change_653 = 653;
+inline constexpr DiscreteToken kSpace_change_653{653};
 // " book"; original GPT-2 ID 1492.
-inline constexpr TokenId kSpace_book_654 = 654;
+inline constexpr DiscreteToken kSpace_book_654{654};
 // " away"; original GPT-2 ID 1497.
-inline constexpr TokenId kSpace_away_655 = 655;
+inline constexpr DiscreteToken kSpace_away_655{655};
 // " country"; original GPT-2 ID 1499.
-inline constexpr TokenId kSpace_country_656 = 656;
+inline constexpr DiscreteToken kSpace_country_656{656};
 // "arn"; original GPT-2 ID 1501.
-inline constexpr TokenId karn_657 = 657;
+inline constexpr DiscreteToken karn_657{657};
 // " order"; original GPT-2 ID 1502.
-inline constexpr TokenId kSpace_order_658 = 658;
+inline constexpr DiscreteToken kSpace_order_658{658};
 // "ium"; original GPT-2 ID 1505.
-inline constexpr TokenId kium_659 = 659;
+inline constexpr DiscreteToken kium_659{659};
 // "orth"; original GPT-2 ID 1506.
-inline constexpr TokenId korth_660 = 660;
+inline constexpr DiscreteToken korth_660{660};
 // " million"; original GPT-2 ID 1510.
-inline constexpr TokenId kSpace_million_661 = 661;
+inline constexpr DiscreteToken kSpace_million_661{661};
 // " Go"; original GPT-2 ID 1514.
-inline constexpr TokenId kSpace_Go_662 = 662;
+inline constexpr DiscreteToken kSpace_Go_662{662};
 // "ural"; original GPT-2 ID 1523.
-inline constexpr TokenId kural_663 = 663;
+inline constexpr DiscreteToken kural_663{663};
 // "by"; original GPT-2 ID 1525.
-inline constexpr TokenId kby_664 = 664;
+inline constexpr DiscreteToken kby_664{664};
 // " Mar"; original GPT-2 ID 1526.
-inline constexpr TokenId kSpace_Mar_665 = 665;
+inline constexpr DiscreteToken kSpace_Mar_665{665};
 // "ane"; original GPT-2 ID 1531.
-inline constexpr TokenId kane_666 = 666;
+inline constexpr DiscreteToken kane_666{666};
 // "ional"; original GPT-2 ID 1538.
-inline constexpr TokenId kional_667 = 667;
+inline constexpr DiscreteToken kional_667{667};
 // " sol"; original GPT-2 ID 1540.
-inline constexpr TokenId kSpace_sol_668 = 668;
+inline constexpr DiscreteToken kSpace_sol_668{668};
 // "He"; original GPT-2 ID 1544.
-inline constexpr TokenId kHe_669 = 669;
+inline constexpr DiscreteToken kHe_669{669};
 // "ians"; original GPT-2 ID 1547.
-inline constexpr TokenId kians_670 = 670;
+inline constexpr DiscreteToken kians_670{670};
 // " est"; original GPT-2 ID 1556.
-inline constexpr TokenId kSpace_est_671 = 671;
+inline constexpr DiscreteToken kSpace_est_671{671};
 // " later"; original GPT-2 ID 1568.
-inline constexpr TokenId kSpace_later_672 = 672;
+inline constexpr DiscreteToken kSpace_later_672{672};
 // " view"; original GPT-2 ID 1570.
-inline constexpr TokenId kSpace_view_673 = 673;
+inline constexpr DiscreteToken kSpace_view_673{673};
 // " word"; original GPT-2 ID 1573.
-inline constexpr TokenId kSpace_word_674 = 674;
+inline constexpr DiscreteToken kSpace_word_674{674};
 // " give"; original GPT-2 ID 1577.
-inline constexpr TokenId kSpace_give_675 = 675;
+inline constexpr DiscreteToken kSpace_give_675{675};
 // " United"; original GPT-2 ID 1578.
-inline constexpr TokenId kSpace_United_676 = 676;
+inline constexpr DiscreteToken kSpace_United_676{676};
 // " large"; original GPT-2 ID 1588.
-inline constexpr TokenId kSpace_large_677 = 677;
+inline constexpr DiscreteToken kSpace_large_677{677};
 // "ury"; original GPT-2 ID 1601.
-inline constexpr TokenId kury_678 = 678;
+inline constexpr DiscreteToken kury_678{678};
 // " equ"; original GPT-2 ID 1602.
-inline constexpr TokenId kSpace_equ_679 = 679;
+inline constexpr DiscreteToken kSpace_equ_679{679};
 // "aster"; original GPT-2 ID 1603.
-inline constexpr TokenId kaster_680 = 680;
+inline constexpr DiscreteToken kaster_680{680};
 // " kind"; original GPT-2 ID 1611.
-inline constexpr TokenId kSpace_kind_681 = 681;
+inline constexpr DiscreteToken kSpace_kind_681{681};
 // " mean"; original GPT-2 ID 1612.
-inline constexpr TokenId kSpace_mean_682 = 682;
+inline constexpr DiscreteToken kSpace_mean_682{682};
 // " past"; original GPT-2 ID 1613.
-inline constexpr TokenId kSpace_past_683 = 683;
+inline constexpr DiscreteToken kSpace_past_683{683};
 // "let"; original GPT-2 ID 1616.
-inline constexpr TokenId klet_684 = 684;
+inline constexpr DiscreteToken klet_684{684};
 // "raft"; original GPT-2 ID 1617.
-inline constexpr TokenId kraft_685 = 685;
+inline constexpr DiscreteToken kraft_685{685};
 // " del"; original GPT-2 ID 1619.
-inline constexpr TokenId kSpace_del_686 = 686;
+inline constexpr DiscreteToken kSpace_del_686{686};
 // " perform"; original GPT-2 ID 1620.
-inline constexpr TokenId kSpace_perform_687 = 687;
+inline constexpr DiscreteToken kSpace_perform_687{687};
 // " season"; original GPT-2 ID 1622.
-inline constexpr TokenId kSpace_season_688 = 688;
+inline constexpr DiscreteToken kSpace_season_688{688};
 // " Col"; original GPT-2 ID 1623.
-inline constexpr TokenId kSpace_Col_689 = 689;
+inline constexpr DiscreteToken kSpace_Col_689{689};
 // " within"; original GPT-2 ID 1626.
-inline constexpr TokenId kSpace_within_690 = 690;
+inline constexpr DiscreteToken kSpace_within_690{690};
 // " line"; original GPT-2 ID 1627.
-inline constexpr TokenId kSpace_line_691 = 691;
+inline constexpr DiscreteToken kSpace_line_691{691};
 // " project"; original GPT-2 ID 1628.
-inline constexpr TokenId kSpace_project_692 = 692;
+inline constexpr DiscreteToken kSpace_project_692{692};
 // " At"; original GPT-2 ID 1629.
-inline constexpr TokenId kSpace_At_693 = 693;
+inline constexpr DiscreteToken kSpace_At_693{693};
 // " control"; original GPT-2 ID 1630.
-inline constexpr TokenId kSpace_control_694 = 694;
+inline constexpr DiscreteToken kSpace_control_694{694};
 // " air"; original GPT-2 ID 1633.
-inline constexpr TokenId kSpace_air_695 = 695;
+inline constexpr DiscreteToken kSpace_air_695{695};
 // "ization"; original GPT-2 ID 1634.
-inline constexpr TokenId kization_696 = 696;
+inline constexpr DiscreteToken kization_696{696};
 // "ley"; original GPT-2 ID 1636.
-inline constexpr TokenId kley_697 = 697;
+inline constexpr DiscreteToken kley_697{697};
 // " family"; original GPT-2 ID 1641.
-inline constexpr TokenId kSpace_family_698 = 698;
+inline constexpr DiscreteToken kSpace_family_698{698};
 // " bit"; original GPT-2 ID 1643.
-inline constexpr TokenId kSpace_bit_699 = 699;
+inline constexpr DiscreteToken kSpace_bit_699{699};
 // " appear"; original GPT-2 ID 1656.
-inline constexpr TokenId kSpace_appear_700 = 700;
+inline constexpr DiscreteToken kSpace_appear_700{700};
 // " light"; original GPT-2 ID 1657.
-inline constexpr TokenId kSpace_light_701 = 701;
+inline constexpr DiscreteToken kSpace_light_701{701};
 // " es"; original GPT-2 ID 1658.
-inline constexpr TokenId kSpace_es_702 = 702;
+inline constexpr DiscreteToken kSpace_es_702{702};
 // "of"; original GPT-2 ID 1659.
-inline constexpr TokenId kof_703 = 703;
+inline constexpr DiscreteToken kof_703{703};
 // " water"; original GPT-2 ID 1660.
-inline constexpr TokenId kSpace_water_704 = 704;
+inline constexpr DiscreteToken kSpace_water_704{704};
 // " times"; original GPT-2 ID 1661.
-inline constexpr TokenId kSpace_times_705 = 705;
+inline constexpr DiscreteToken kSpace_times_705{705};
 // " grow"; original GPT-2 ID 1663.
-inline constexpr TokenId kSpace_grow_706 = 706;
+inline constexpr DiscreteToken kSpace_grow_706{706};
 // " Te"; original GPT-2 ID 1665.
-inline constexpr TokenId kSpace_Te_707 = 707;
+inline constexpr DiscreteToken kSpace_Te_707{707};
 // "iol"; original GPT-2 ID 1669.
-inline constexpr TokenId kiol_708 = 708;
+inline constexpr DiscreteToken kiol_708{708};
 // " fore"; original GPT-2 ID 1674.
-inline constexpr TokenId kSpace_fore_709 = 709;
+inline constexpr DiscreteToken kSpace_fore_709{709};
 // "ries"; original GPT-2 ID 1678.
-inline constexpr TokenId kries_710 = 710;
+inline constexpr DiscreteToken kries_710{710};
 // " ever"; original GPT-2 ID 1683.
-inline constexpr TokenId kSpace_ever_711 = 711;
+inline constexpr DiscreteToken kSpace_ever_711{711};
 // " major"; original GPT-2 ID 1688.
-inline constexpr TokenId kSpace_major_712 = 712;
+inline constexpr DiscreteToken kSpace_major_712{712};
 // "ama"; original GPT-2 ID 1689.
-inline constexpr TokenId kama_713 = 713;
+inline constexpr DiscreteToken kama_713{713};
 // " often"; original GPT-2 ID 1690.
-inline constexpr TokenId kSpace_often_714 = 714;
+inline constexpr DiscreteToken kSpace_often_714{714};
 // " human"; original GPT-2 ID 1692.
-inline constexpr TokenId kSpace_human_715 = 715;
+inline constexpr DiscreteToken kSpace_human_715{715};
 // "ivid"; original GPT-2 ID 1699.
-inline constexpr TokenId kivid_716 = 716;
+inline constexpr DiscreteToken kivid_716{716};
 // " record"; original GPT-2 ID 1700.
-inline constexpr TokenId kSpace_record_717 = 717;
+inline constexpr DiscreteToken kSpace_record_717{717};
 // "ster"; original GPT-2 ID 1706.
-inline constexpr TokenId kster_718 = 718;
+inline constexpr DiscreteToken kster_718{718};
 // "ising"; original GPT-2 ID 1710.
-inline constexpr TokenId kising_719 = 719;
+inline constexpr DiscreteToken kising_719{719};
 // " hour"; original GPT-2 ID 1711.
-inline constexpr TokenId kSpace_hour_720 = 720;
+inline constexpr DiscreteToken kSpace_hour_720{720};
 // "most"; original GPT-2 ID 1712.
-inline constexpr TokenId kmost_721 = 721;
+inline constexpr DiscreteToken kmost_721{721};
 // " desc"; original GPT-2 ID 1715.
-inline constexpr TokenId kSpace_desc_722 = 722;
+inline constexpr DiscreteToken kSpace_desc_722{722};
 // " become"; original GPT-2 ID 1716.
-inline constexpr TokenId kSpace_become_723 = 723;
+inline constexpr DiscreteToken kSpace_become_723{723};
 // " Ed"; original GPT-2 ID 1717.
-inline constexpr TokenId kSpace_Ed_724 = 724;
+inline constexpr DiscreteToken kSpace_Ed_724{724};
 // " having"; original GPT-2 ID 1719.
-inline constexpr TokenId kSpace_having_725 = 725;
+inline constexpr DiscreteToken kSpace_having_725{725};
 // " product"; original GPT-2 ID 1720.
-inline constexpr TokenId kSpace_product_726 = 726;
+inline constexpr DiscreteToken kSpace_product_726{726};
 // "As"; original GPT-2 ID 1722.
-inline constexpr TokenId kAs_727 = 727;
+inline constexpr DiscreteToken kAs_727{727};
 // "aring"; original GPT-2 ID 1723.
-inline constexpr TokenId karing_728 = 728;
+inline constexpr DiscreteToken karing_728{728};
 // " means"; original GPT-2 ID 1724.
-inline constexpr TokenId kSpace_means_729 = 729;
+inline constexpr DiscreteToken kSpace_means_729{729};
 // "une"; original GPT-2 ID 1726.
-inline constexpr TokenId kune_730 = 730;
+inline constexpr DiscreteToken kune_730{730};
 // " certain"; original GPT-2 ID 1728.
-inline constexpr TokenId kSpace_certain_731 = 731;
+inline constexpr DiscreteToken kSpace_certain_731{731};
 // " non"; original GPT-2 ID 1729.
-inline constexpr TokenId kSpace_non_732 = 732;
+inline constexpr DiscreteToken kSpace_non_732{732};
 // "ene"; original GPT-2 ID 1734.
-inline constexpr TokenId kene_733 = 733;
+inline constexpr DiscreteToken kene_733{733};
 // " side"; original GPT-2 ID 1735.
-inline constexpr TokenId kSpace_side_734 = 734;
+inline constexpr DiscreteToken kSpace_side_734{734};
 // " Pr"; original GPT-2 ID 1736.
-inline constexpr TokenId kSpace_Pr_735 = 735;
+inline constexpr DiscreteToken kSpace_Pr_735{735};
 // " possible"; original GPT-2 ID 1744.
-inline constexpr TokenId kSpace_possible_736 = 736;
+inline constexpr DiscreteToken kSpace_possible_736{736};
 // " hold"; original GPT-2 ID 1745.
-inline constexpr TokenId kSpace_hold_737 = 737;
+inline constexpr DiscreteToken kSpace_hold_737{737};
 // "ots"; original GPT-2 ID 1747.
-inline constexpr TokenId kots_738 = 738;
+inline constexpr DiscreteToken kots_738{738};
 // " city"; original GPT-2 ID 1748.
-inline constexpr TokenId kSpace_city_739 = 739;
+inline constexpr DiscreteToken kSpace_city_739{739};
 // " children"; original GPT-2 ID 1751.
-inline constexpr TokenId kSpace_children_740 = 740;
+inline constexpr DiscreteToken kSpace_children_740{740};
 // " once"; original GPT-2 ID 1752.
-inline constexpr TokenId kSpace_once_741 = 741;
+inline constexpr DiscreteToken kSpace_once_741{741};
 // "ler"; original GPT-2 ID 1754.
-inline constexpr TokenId kler_742 = 742;
+inline constexpr DiscreteToken kler_742{742};
 // " night"; original GPT-2 ID 1755.
-inline constexpr TokenId kSpace_night_743 = 743;
+inline constexpr DiscreteToken kSpace_night_743{743};
 // " John"; original GPT-2 ID 1757.
-inline constexpr TokenId kSpace_John_744 = 744;
+inline constexpr DiscreteToken kSpace_John_744{744};
 // " done"; original GPT-2 ID 1760.
-inline constexpr TokenId kSpace_done_745 = 745;
+inline constexpr DiscreteToken kSpace_done_745{745};
 // " body"; original GPT-2 ID 1767.
-inline constexpr TokenId kSpace_body_746 = 746;
+inline constexpr DiscreteToken kSpace_body_746{746};
 // "ails"; original GPT-2 ID 1768.
-inline constexpr TokenId kails_747 = 747;
+inline constexpr DiscreteToken kails_747{747};
 // "utes"; original GPT-2 ID 1769.
-inline constexpr TokenId kutes_748 = 748;
+inline constexpr DiscreteToken kutes_748{748};
 // " whether"; original GPT-2 ID 1771.
-inline constexpr TokenId kSpace_whether_749 = 749;
+inline constexpr DiscreteToken kSpace_whether_749{749};
 // " fac"; original GPT-2 ID 1777.
-inline constexpr TokenId kSpace_fac_750 = 750;
+inline constexpr DiscreteToken kSpace_fac_750{750};
 // " cond"; original GPT-2 ID 1779.
-inline constexpr TokenId kSpace_cond_751 = 751;
+inline constexpr DiscreteToken kSpace_cond_751{751};
 // "iting"; original GPT-2 ID 1780.
-inline constexpr TokenId kiting_752 = 752;
+inline constexpr DiscreteToken kiting_752{752};
 // " event"; original GPT-2 ID 1785.
-inline constexpr TokenId kSpace_event_753 = 753;
+inline constexpr DiscreteToken kSpace_event_753{753};
 // " eng"; original GPT-2 ID 1786.
-inline constexpr TokenId kSpace_eng_754 = 754;
+inline constexpr DiscreteToken kSpace_eng_754{754};
 // " pot"; original GPT-2 ID 1787.
-inline constexpr TokenId kSpace_pot_755 = 755;
+inline constexpr DiscreteToken kSpace_pot_755{755};
 // "iam"; original GPT-2 ID 1789.
-inline constexpr TokenId kiam_756 = 756;
+inline constexpr DiscreteToken kiam_756{756};
 // " press"; original GPT-2 ID 1803.
-inline constexpr TokenId kSpace_press_757 = 757;
+inline constexpr DiscreteToken kSpace_press_757{757};
 // " protect"; original GPT-2 ID 1805.
-inline constexpr TokenId kSpace_protect_758 = 758;
+inline constexpr DiscreteToken kSpace_protect_758{758};
 // "ring"; original GPT-2 ID 1806.
-inline constexpr TokenId kring_759 = 759;
+inline constexpr DiscreteToken kring_759{759};
 // " question"; original GPT-2 ID 1808.
-inline constexpr TokenId kSpace_question_760 = 760;
+inline constexpr DiscreteToken kSpace_question_760{760};
 // " War"; original GPT-2 ID 1810.
-inline constexpr TokenId kSpace_War_761 = 761;
+inline constexpr DiscreteToken kSpace_War_761{761};
 // " several"; original GPT-2 ID 1811.
-inline constexpr TokenId kSpace_several_762 = 762;
+inline constexpr DiscreteToken kSpace_several_762{762};
 // "ances"; original GPT-2 ID 1817.
-inline constexpr TokenId kances_763 = 763;
+inline constexpr DiscreteToken kances_763{763};
 // "work"; original GPT-2 ID 1818.
-inline constexpr TokenId kwork_764 = 764;
+inline constexpr DiscreteToken kwork_764{764};
 // " States"; original GPT-2 ID 1829.
-inline constexpr TokenId kSpace_States_765 = 765;
+inline constexpr DiscreteToken kSpace_States_765{765};
 // " makes"; original GPT-2 ID 1838.
-inline constexpr TokenId kSpace_makes_766 = 766;
+inline constexpr DiscreteToken kSpace_makes_766{766};
 // " won"; original GPT-2 ID 1839.
-inline constexpr TokenId kSpace_won_767 = 767;
+inline constexpr DiscreteToken kSpace_won_767{767};
 // "agon"; original GPT-2 ID 1840.
-inline constexpr TokenId kagon_768 = 768;
+inline constexpr DiscreteToken kagon_768{768};
 // " complete"; original GPT-2 ID 1844.
-inline constexpr TokenId kSpace_complete_769 = 769;
+inline constexpr DiscreteToken kSpace_complete_769{769};
 // "par"; original GPT-2 ID 1845.
-inline constexpr TokenId kpar_770 = 770;
+inline constexpr DiscreteToken kpar_770{770};
 // " Min"; original GPT-2 ID 1855.
-inline constexpr TokenId kSpace_Min_771 = 771;
+inline constexpr DiscreteToken kSpace_Min_771{771};
 // "iber"; original GPT-2 ID 1856.
-inline constexpr TokenId kiber_772 = 772;
+inline constexpr DiscreteToken kiber_772{772};
 // "There"; original GPT-2 ID 1858.
-inline constexpr TokenId kThere_773 = 773;
+inline constexpr DiscreteToken kThere_773{773};
 // " young"; original GPT-2 ID 1862.
-inline constexpr TokenId kSpace_young_774 = 774;
+inline constexpr DiscreteToken kSpace_young_774{774};
 // " along"; original GPT-2 ID 1863.
-inline constexpr TokenId kSpace_along_775 = 775;
+inline constexpr DiscreteToken kSpace_along_775{775};
 // " according"; original GPT-2 ID 1864.
-inline constexpr TokenId kSpace_according_776 = 776;
+inline constexpr DiscreteToken kSpace_according_776{776};
 // " members"; original GPT-2 ID 1866.
-inline constexpr TokenId kSpace_members_777 = 777;
+inline constexpr DiscreteToken kSpace_members_777{777};
 // "oid"; original GPT-2 ID 1868.
-inline constexpr TokenId koid_778 = 778;
+inline constexpr DiscreteToken koid_778{778};
 // " among"; original GPT-2 ID 1871.
-inline constexpr TokenId kSpace_among_779 = 779;
+inline constexpr DiscreteToken kSpace_among_779{779};
 // "ai"; original GPT-2 ID 1872.
-inline constexpr TokenId kai_780 = 780;
+inline constexpr DiscreteToken kai_780{780};
 // " low"; original GPT-2 ID 1877.
-inline constexpr TokenId kSpace_low_781 = 781;
+inline constexpr DiscreteToken kSpace_low_781{781};
 // " One"; original GPT-2 ID 1881.
-inline constexpr TokenId kSpace_One_782 = 782;
+inline constexpr DiscreteToken kSpace_One_782{782};
 // "ination"; original GPT-2 ID 1883.
-inline constexpr TokenId kination_783 = 783;
+inline constexpr DiscreteToken kination_783{783};
 // "For"; original GPT-2 ID 1890.
-inline constexpr TokenId kFor_784 = 784;
+inline constexpr DiscreteToken kFor_784{784};
 // "back"; original GPT-2 ID 1891.
-inline constexpr TokenId kback_785 = 785;
+inline constexpr DiscreteToken kback_785{785};
 // " president"; original GPT-2 ID 1893.
-inline constexpr TokenId kSpace_president_786 = 786;
+inline constexpr DiscreteToken kSpace_president_786{786};
 // " access"; original GPT-2 ID 1895.
-inline constexpr TokenId kSpace_access_787 = 787;
+inline constexpr DiscreteToken kSpace_access_787{787};
 // " Dem"; original GPT-2 ID 1897.
-inline constexpr TokenId kSpace_Dem_788 = 788;
+inline constexpr DiscreteToken kSpace_Dem_788{788};
 // " known"; original GPT-2 ID 1900.
-inline constexpr TokenId kSpace_known_789 = 789;
+inline constexpr DiscreteToken kSpace_known_789{789};
 // " early"; original GPT-2 ID 1903.
-inline constexpr TokenId kSpace_early_790 = 790;
+inline constexpr DiscreteToken kSpace_early_790{790};
 // "use"; original GPT-2 ID 1904.
-inline constexpr TokenId kuse_791 = 791;
+inline constexpr DiscreteToken kuse_791{791};
 // " strong"; original GPT-2 ID 1913.
-inline constexpr TokenId kSpace_strong_792 = 792;
+inline constexpr DiscreteToken kSpace_strong_792{792};
 // " problem"; original GPT-2 ID 1917.
-inline constexpr TokenId kSpace_problem_793 = 793;
+inline constexpr DiscreteToken kSpace_problem_793{793};
 // " social"; original GPT-2 ID 1919.
-inline constexpr TokenId kSpace_social_794 = 794;
+inline constexpr DiscreteToken kSpace_social_794{794};
 // "ery"; original GPT-2 ID 1924.
-inline constexpr TokenId kery_795 = 795;
+inline constexpr DiscreteToken kery_795{795};
 // "Ch"; original GPT-2 ID 1925.
-inline constexpr TokenId kCh_796 = 796;
+inline constexpr DiscreteToken kCh_796{796};
 // " mus"; original GPT-2 ID 1928.
-inline constexpr TokenId kSpace_mus_797 = 797;
+inline constexpr DiscreteToken kSpace_mus_797{797};
 // "pos"; original GPT-2 ID 1930.
-inline constexpr TokenId kpos_798 = 798;
+inline constexpr DiscreteToken kpos_798{798};
 // " viol"; original GPT-2 ID 1935.
-inline constexpr TokenId kSpace_viol_799 = 799;
+inline constexpr DiscreteToken kSpace_viol_799{799};
 // " five"; original GPT-2 ID 1936.
-inline constexpr TokenId kSpace_five_800 = 800;
+inline constexpr DiscreteToken kSpace_five_800{800};
 // " players"; original GPT-2 ID 1938.
-inline constexpr TokenId kSpace_players_801 = 801;
+inline constexpr DiscreteToken kSpace_players_801{801};
 // "inc"; original GPT-2 ID 1939.
-inline constexpr TokenId kinc_802 = 802;
+inline constexpr DiscreteToken kinc_802{802};
 // "year"; original GPT-2 ID 1941.
-inline constexpr TokenId kyear_803 = 803;
+inline constexpr DiscreteToken kyear_803{803};
 // " present"; original GPT-2 ID 1944.
-inline constexpr TokenId kSpace_present_804 = 804;
+inline constexpr DiscreteToken kSpace_present_804{804};
 // " suggest"; original GPT-2 ID 1950.
-inline constexpr TokenId kSpace_suggest_805 = 805;
+inline constexpr DiscreteToken kSpace_suggest_805{805};
 // "ones"; original GPT-2 ID 1952.
-inline constexpr TokenId kones_806 = 806;
+inline constexpr DiscreteToken kones_806{806};
 // " land"; original GPT-2 ID 1956.
-inline constexpr TokenId kSpace_land_807 = 807;
+inline constexpr DiscreteToken kSpace_land_807{807};
 // " local"; original GPT-2 ID 1957.
-inline constexpr TokenId kSpace_local_808 = 808;
+inline constexpr DiscreteToken kSpace_local_808{808};
 // " Gu"; original GPT-2 ID 1962.
-inline constexpr TokenId kSpace_Gu_809 = 809;
+inline constexpr DiscreteToken kSpace_Gu_809{809};
 // " close"; original GPT-2 ID 1969.
-inline constexpr TokenId kSpace_close_810 = 810;
+inline constexpr DiscreteToken kSpace_close_810{810};
 // " across"; original GPT-2 ID 1973.
-inline constexpr TokenId kSpace_across_811 = 811;
+inline constexpr DiscreteToken kSpace_across_811{811};
 // " z"; original GPT-2 ID 1976.
-inline constexpr TokenId kSpace_z_812 = 812;
+inline constexpr DiscreteToken kSpace_z_812{812};
 // " together"; original GPT-2 ID 1978.
-inline constexpr TokenId kSpace_together_813 = 813;
+inline constexpr DiscreteToken kSpace_together_813{813};
 // "irc"; original GPT-2 ID 1980.
-inline constexpr TokenId kirc_814 = 814;
+inline constexpr DiscreteToken kirc_814{814};
 // " individual"; original GPT-2 ID 1981.
-inline constexpr TokenId kSpace_individual_815 = 815;
+inline constexpr DiscreteToken kSpace_individual_815{815};
 // " face"; original GPT-2 ID 1986.
-inline constexpr TokenId kSpace_face_816 = 816;
+inline constexpr DiscreteToken kSpace_face_816{816};
 // " value"; original GPT-2 ID 1988.
-inline constexpr TokenId kSpace_value_817 = 817;
+inline constexpr DiscreteToken kSpace_value_817{817};
 // " area"; original GPT-2 ID 1989.
-inline constexpr TokenId kSpace_area_818 = 818;
+inline constexpr DiscreteToken kSpace_area_818{818};
 // "ev"; original GPT-2 ID 1990.
-inline constexpr TokenId kev_819 = 819;
+inline constexpr DiscreteToken kev_819{819};
 // " key"; original GPT-2 ID 1994.
-inline constexpr TokenId kSpace_key_820 = 820;
+inline constexpr DiscreteToken kSpace_key_820{820};
 // " experience"; original GPT-2 ID 1998.
-inline constexpr TokenId kSpace_experience_821 = 821;
+inline constexpr DiscreteToken kSpace_experience_821{821};
 // "aff"; original GPT-2 ID 2001.
-inline constexpr TokenId kaff_822 = 822;
+inline constexpr DiscreteToken kaff_822{822};
 // " cut"; original GPT-2 ID 2005.
-inline constexpr TokenId kSpace_cut_823 = 823;
+inline constexpr DiscreteToken kSpace_cut_823{823};
 // " net"; original GPT-2 ID 2010.
-inline constexpr TokenId kSpace_net_824 = 824;
+inline constexpr DiscreteToken kSpace_net_824{824};
 // " My"; original GPT-2 ID 2011.
-inline constexpr TokenId kSpace_My_825 = 825;
+inline constexpr DiscreteToken kSpace_My_825{825};
 // " connect"; original GPT-2 ID 2018.
-inline constexpr TokenId kSpace_connect_826 = 826;
+inline constexpr DiscreteToken kSpace_connect_826{826};
 // "mb"; original GPT-2 ID 2022.
-inline constexpr TokenId kmb_827 = 827;
+inline constexpr DiscreteToken kmb_827{827};
 // "ators"; original GPT-2 ID 2024.
-inline constexpr TokenId kators_828 = 828;
+inline constexpr DiscreteToken kators_828{828};
 // "An"; original GPT-2 ID 2025.
-inline constexpr TokenId kAn_829 = 829;
+inline constexpr DiscreteToken kAn_829{829};
 // " above"; original GPT-2 ID 2029.
-inline constexpr TokenId kSpace_above_830 = 830;
+inline constexpr DiscreteToken kSpace_above_830{830};
 // " Europe"; original GPT-2 ID 2031.
-inline constexpr TokenId kSpace_Europe_831 = 831;
+inline constexpr DiscreteToken kSpace_Europe_831{831};
 // " amount"; original GPT-2 ID 2033.
-inline constexpr TokenId kSpace_amount_832 = 832;
+inline constexpr DiscreteToken kSpace_amount_832{832};
 // "ales"; original GPT-2 ID 2040.
-inline constexpr TokenId kales_833 = 833;
+inline constexpr DiscreteToken kales_833{833};
 // " black"; original GPT-2 ID 2042.
-inline constexpr TokenId kSpace_black_834 = 834;
+inline constexpr DiscreteToken kSpace_black_834{834};
 // " almost"; original GPT-2 ID 2048.
-inline constexpr TokenId kSpace_almost_835 = 835;
+inline constexpr DiscreteToken kSpace_almost_835{835};
 // "oon"; original GPT-2 ID 2049.
-inline constexpr TokenId koon_836 = 836;
+inline constexpr DiscreteToken koon_836{836};
 // " study"; original GPT-2 ID 2050.
-inline constexpr TokenId kSpace_study_837 = 837;
+inline constexpr DiscreteToken kSpace_study_837{837};
 // " tre"; original GPT-2 ID 2054.
-inline constexpr TokenId kSpace_tre_838 = 838;
+inline constexpr DiscreteToken kSpace_tre_838{838};
 // " food"; original GPT-2 ID 2057.
-inline constexpr TokenId kSpace_food_839 = 839;
+inline constexpr DiscreteToken kSpace_food_839{839};
 // " comes"; original GPT-2 ID 2058.
-inline constexpr TokenId kSpace_comes_840 = 840;
+inline constexpr DiscreteToken kSpace_comes_840{840};
 // " single"; original GPT-2 ID 2060.
-inline constexpr TokenId kSpace_single_841 = 841;
+inline constexpr DiscreteToken kSpace_single_841{841};
 // " half"; original GPT-2 ID 2063.
-inline constexpr TokenId kSpace_half_842 = 842;
+inline constexpr DiscreteToken kSpace_half_842{842};
 // "ague"; original GPT-2 ID 2064.
-inline constexpr TokenId kague_843 = 843;
+inline constexpr DiscreteToken kague_843{843};
 // " Republic"; original GPT-2 ID 2066.
-inline constexpr TokenId kSpace_Republic_844 = 844;
+inline constexpr DiscreteToken kSpace_Republic_844{844};
 // " else"; original GPT-2 ID 2073.
-inline constexpr TokenId kSpace_else_845 = 845;
+inline constexpr DiscreteToken kSpace_else_845{845};
 // " true"; original GPT-2 ID 2081.
-inline constexpr TokenId kSpace_true_846 = 846;
+inline constexpr DiscreteToken kSpace_true_846{846};
 // " mess"; original GPT-2 ID 2085.
-inline constexpr TokenId kSpace_mess_847 = 847;
+inline constexpr DiscreteToken kSpace_mess_847{847};
 // "ief"; original GPT-2 ID 2086.
-inline constexpr TokenId kief_848 = 848;
+inline constexpr DiscreteToken kief_848{848};
 // " added"; original GPT-2 ID 2087.
-inline constexpr TokenId kSpace_added_849 = 849;
+inline constexpr DiscreteToken kSpace_added_849{849};
 // " similar"; original GPT-2 ID 2092.
-inline constexpr TokenId kSpace_similar_850 = 850;
+inline constexpr DiscreteToken kSpace_similar_850{850};
 // "ask"; original GPT-2 ID 2093.
-inline constexpr TokenId kask_851 = 851;
+inline constexpr DiscreteToken kask_851{851};
 // " Don"; original GPT-2 ID 2094.
-inline constexpr TokenId kSpace_Don_852 = 852;
+inline constexpr DiscreteToken kSpace_Don_852{852};
 // " character"; original GPT-2 ID 2095.
-inline constexpr TokenId kSpace_character_853 = 853;
+inline constexpr DiscreteToken kSpace_character_853{853};
 // " House"; original GPT-2 ID 2097.
-inline constexpr TokenId kSpace_House_854 = 854;
+inline constexpr DiscreteToken kSpace_House_854{854};
 // "val"; original GPT-2 ID 2100.
-inline constexpr TokenId kval_855 = 855;
+inline constexpr DiscreteToken kval_855{855};
 // " live"; original GPT-2 ID 2107.
-inline constexpr TokenId kSpace_live_856 = 856;
+inline constexpr DiscreteToken kSpace_live_856{856};
 // " trying"; original GPT-2 ID 2111.
-inline constexpr TokenId kSpace_trying_857 = 857;
+inline constexpr DiscreteToken kSpace_trying_857{857};
 // "aces"; original GPT-2 ID 2114.
-inline constexpr TokenId kaces_858 = 858;
+inline constexpr DiscreteToken kaces_858{858};
 // " self"; original GPT-2 ID 2116.
-inline constexpr TokenId kSpace_self_859 = 859;
+inline constexpr DiscreteToken kSpace_self_859{859};
 // "osp"; original GPT-2 ID 2117.
-inline constexpr TokenId kosp_860 = 860;
+inline constexpr DiscreteToken kosp_860{860};
 // " room"; original GPT-2 ID 2119.
-inline constexpr TokenId kSpace_room_861 = 861;
+inline constexpr DiscreteToken kSpace_room_861{861};
 // " x"; original GPT-2 ID 2124.
-inline constexpr TokenId kSpace_x_862 = 862;
+inline constexpr DiscreteToken kSpace_x_862{862};
 // "bo"; original GPT-2 ID 2127.
-inline constexpr TokenId kbo_863 = 863;
+inline constexpr DiscreteToken kbo_863{863};
 // " sound"; original GPT-2 ID 2128.
-inline constexpr TokenId kSpace_sound_864 = 864;
+inline constexpr DiscreteToken kSpace_sound_864{864};
 // " object"; original GPT-2 ID 2134.
-inline constexpr TokenId kSpace_object_865 = 865;
+inline constexpr DiscreteToken kSpace_object_865{865};
 // " player"; original GPT-2 ID 2137.
-inline constexpr TokenId kSpace_player_866 = 866;
+inline constexpr DiscreteToken kSpace_player_866{866};
 // " rather"; original GPT-2 ID 2138.
-inline constexpr TokenId kSpace_rather_867 = 867;
+inline constexpr DiscreteToken kSpace_rather_867{867};
 // " service"; original GPT-2 ID 2139.
-inline constexpr TokenId kSpace_service_868 = 868;
+inline constexpr DiscreteToken kSpace_service_868{868};
 // " Do"; original GPT-2 ID 2141.
-inline constexpr TokenId kSpace_Do_869 = 869;
+inline constexpr DiscreteToken kSpace_Do_869{869};
 // " Part"; original GPT-2 ID 2142.
-inline constexpr TokenId kSpace_Part_870 = 870;
+inline constexpr DiscreteToken kSpace_Part_870{870};
 // "rug"; original GPT-2 ID 2143.
-inline constexpr TokenId krug_871 = 871;
+inline constexpr DiscreteToken krug_871{871};
 // " provide"; original GPT-2 ID 2148.
-inline constexpr TokenId kSpace_provide_872 = 872;
+inline constexpr DiscreteToken kSpace_provide_872{872};
 // "ung"; original GPT-2 ID 2150.
-inline constexpr TokenId kung_873 = 873;
+inline constexpr DiscreteToken kung_873{873};
 // " mag"; original GPT-2 ID 2153.
-inline constexpr TokenId kSpace_mag_874 = 874;
+inline constexpr DiscreteToken kSpace_mag_874{874};
 // " behind"; original GPT-2 ID 2157.
-inline constexpr TokenId kSpace_behind_875 = 875;
+inline constexpr DiscreteToken kSpace_behind_875{875};
 // " World"; original GPT-2 ID 2159.
-inline constexpr TokenId kSpace_World_876 = 876;
+inline constexpr DiscreteToken kSpace_World_876{876};
 // " sum"; original GPT-2 ID 2160.
-inline constexpr TokenId kSpace_sum_877 = 877;
+inline constexpr DiscreteToken kSpace_sum_877{877};
 // "gr"; original GPT-2 ID 2164.
-inline constexpr TokenId kgr_878 = 878;
+inline constexpr DiscreteToken kgr_878{878};
 // " front"; original GPT-2 ID 2166.
-inline constexpr TokenId kSpace_front_879 = 879;
+inline constexpr DiscreteToken kSpace_front_879{879};
 // " series"; original GPT-2 ID 2168.
-inline constexpr TokenId kSpace_series_880 = 880;
+inline constexpr DiscreteToken kSpace_series_880{880};
 // "ills"; original GPT-2 ID 2171.
-inline constexpr TokenId kills_881 = 881;
+inline constexpr DiscreteToken kills_881{881};
 // " points"; original GPT-2 ID 2173.
-inline constexpr TokenId kSpace_points_882 = 882;
+inline constexpr DiscreteToken kSpace_points_882{882};
 // " below"; original GPT-2 ID 2174.
-inline constexpr TokenId kSpace_below_883 = 883;
+inline constexpr DiscreteToken kSpace_below_883{883};
 // " whole"; original GPT-2 ID 2187.
-inline constexpr TokenId kSpace_whole_884 = 884;
+inline constexpr DiscreteToken kSpace_whole_884{884};
 // "go"; original GPT-2 ID 2188.
-inline constexpr TokenId kgo_885 = 885;
+inline constexpr DiscreteToken kgo_885{885};
 // "On"; original GPT-2 ID 2202.
-inline constexpr TokenId kOn_886 = 886;
+inline constexpr DiscreteToken kOn_886{886};
 // " enc"; original GPT-2 ID 2207.
-inline constexpr TokenId kSpace_enc_887 = 887;
+inline constexpr DiscreteToken kSpace_enc_887{887};
 // " super"; original GPT-2 ID 2208.
-inline constexpr TokenId kSpace_super_888 = 888;
+inline constexpr DiscreteToken kSpace_super_888{888};
 // " address"; original GPT-2 ID 2209.
-inline constexpr TokenId kSpace_address_889 = 889;
+inline constexpr DiscreteToken kSpace_address_889{889};
 // " field"; original GPT-2 ID 2214.
-inline constexpr TokenId kSpace_field_890 = 890;
+inline constexpr DiscreteToken kSpace_field_890{890};
 // "When"; original GPT-2 ID 2215.
-inline constexpr TokenId kWhen_891 = 891;
+inline constexpr DiscreteToken kWhen_891{891};
 // " common"; original GPT-2 ID 2219.
-inline constexpr TokenId kSpace_common_892 = 892;
+inline constexpr DiscreteToken kSpace_common_892{892};
 // " bring"; original GPT-2 ID 2222.
-inline constexpr TokenId kSpace_bring_893 = 893;
+inline constexpr DiscreteToken kSpace_bring_893{893};
 // "erman"; original GPT-2 ID 2224.
-inline constexpr TokenId kerman_894 = 894;
+inline constexpr DiscreteToken kerman_894{894};
 // "ression"; original GPT-2 ID 2234.
-inline constexpr TokenId kression_895 = 895;
+inline constexpr DiscreteToken kression_895{895};
 // " six"; original GPT-2 ID 2237.
-inline constexpr TokenId kSpace_six_896 = 896;
+inline constexpr DiscreteToken kSpace_six_896{896};
 // "ibility"; original GPT-2 ID 2247.
-inline constexpr TokenId kibility_897 = 897;
+inline constexpr DiscreteToken kibility_897{897};
 // " create"; original GPT-2 ID 2251.
-inline constexpr TokenId kSpace_create_898 = 898;
+inline constexpr DiscreteToken kSpace_create_898{898};
 // " America"; original GPT-2 ID 2253.
-inline constexpr TokenId kSpace_America_899 = 899;
+inline constexpr DiscreteToken kSpace_America_899{899};
 // " City"; original GPT-2 ID 2254.
-inline constexpr TokenId kSpace_City_900 = 900;
+inline constexpr DiscreteToken kSpace_City_900{900};
 // " North"; original GPT-2 ID 2258.
-inline constexpr TokenId kSpace_North_901 = 901;
+inline constexpr DiscreteToken kSpace_North_901{901};
 // " national"; original GPT-2 ID 2260.
-inline constexpr TokenId kSpace_national_902 = 902;
+inline constexpr DiscreteToken kSpace_national_902{902};
 // "ule"; original GPT-2 ID 2261.
-inline constexpr TokenId kule_903 = 903;
+inline constexpr DiscreteToken kule_903{903};
 // " Qu"; original GPT-2 ID 2264.
-inline constexpr TokenId kSpace_Qu_904 = 904;
+inline constexpr DiscreteToken kSpace_Qu_904{904};
 // " red"; original GPT-2 ID 2266.
-inline constexpr TokenId kSpace_red_905 = 905;
+inline constexpr DiscreteToken kSpace_red_905{905};
 // " break"; original GPT-2 ID 2270.
-inline constexpr TokenId kSpace_break_906 = 906;
+inline constexpr DiscreteToken kSpace_break_906{906};
 // "ana"; original GPT-2 ID 2271.
-inline constexpr TokenId kana_907 = 907;
+inline constexpr DiscreteToken kana_907{907};
 // " space"; original GPT-2 ID 2272.
-inline constexpr TokenId kSpace_space_908 = 908;
+inline constexpr DiscreteToken kSpace_space_908{908};
 // " period"; original GPT-2 ID 2278.
-inline constexpr TokenId kSpace_period_909 = 909;
+inline constexpr DiscreteToken kSpace_period_909{909};
 // "ively"; original GPT-2 ID 2280.
-inline constexpr TokenId kively_910 = 910;
+inline constexpr DiscreteToken kively_910{910};
 // " include"; original GPT-2 ID 2291.
-inline constexpr TokenId kSpace_include_911 = 911;
+inline constexpr DiscreteToken kSpace_include_911{911};
 // " position"; original GPT-2 ID 2292.
-inline constexpr TokenId kSpace_position_912 = 912;
+inline constexpr DiscreteToken kSpace_position_912{912};
 // " imm"; original GPT-2 ID 2296.
-inline constexpr TokenId kSpace_imm_913 = 913;
+inline constexpr DiscreteToken kSpace_imm_913{913};
 // " Red"; original GPT-2 ID 2297.
-inline constexpr TokenId kSpace_Red_914 = 914;
+inline constexpr DiscreteToken kSpace_Red_914{914};
 // " matter"; original GPT-2 ID 2300.
-inline constexpr TokenId kSpace_matter_915 = 915;
+inline constexpr DiscreteToken kSpace_matter_915{915};
 // "isc"; original GPT-2 ID 2304.
-inline constexpr TokenId kisc_916 = 916;
+inline constexpr DiscreteToken kisc_916{916};
 // "ole"; original GPT-2 ID 2305.
-inline constexpr TokenId kole_917 = 917;
+inline constexpr DiscreteToken kole_917{917};
 // "aut"; original GPT-2 ID 2306.
-inline constexpr TokenId kaut_918 = 918;
+inline constexpr DiscreteToken kaut_918{918};
 // "asing"; original GPT-2 ID 2313.
-inline constexpr TokenId kasing_919 = 919;
+inline constexpr DiscreteToken kasing_919{919};
 // " cannot"; original GPT-2 ID 2314.
-inline constexpr TokenId kSpace_cannot_920 = 920;
+inline constexpr DiscreteToken kSpace_cannot_920{920};
 // " bar"; original GPT-2 ID 2318.
-inline constexpr TokenId kSpace_bar_921 = 921;
+inline constexpr DiscreteToken kSpace_bar_921{921};
 // " ground"; original GPT-2 ID 2323.
-inline constexpr TokenId kSpace_ground_922 = 922;
+inline constexpr DiscreteToken kSpace_ground_922{922};
 // " white"; original GPT-2 ID 2330.
-inline constexpr TokenId kSpace_white_923 = 923;
+inline constexpr DiscreteToken kSpace_white_923{923};
 // " fig"; original GPT-2 ID 2336.
-inline constexpr TokenId kSpace_fig_924 = 924;
+inline constexpr DiscreteToken kSpace_fig_924{924};
 // "like"; original GPT-2 ID 2339.
-inline constexpr TokenId klike_925 = 925;
+inline constexpr DiscreteToken klike_925{925};
 // "ids"; original GPT-2 ID 2340.
-inline constexpr TokenId kids_926 = 926;
+inline constexpr DiscreteToken kids_926{926};
 // " wind"; original GPT-2 ID 2344.
-inline constexpr TokenId kSpace_wind_927 = 927;
+inline constexpr DiscreteToken kSpace_wind_927{927};
 // " itself"; original GPT-2 ID 2346.
-inline constexpr TokenId kSpace_itself_928 = 928;
+inline constexpr DiscreteToken kSpace_itself_928{928};
 // " mass"; original GPT-2 ID 2347.
-inline constexpr TokenId kSpace_mass_929 = 929;
+inline constexpr DiscreteToken kSpace_mass_929{929};
 // "yle"; original GPT-2 ID 2349.
-inline constexpr TokenId kyle_930 = 930;
+inline constexpr DiscreteToken kyle_930{930};
 // " outside"; original GPT-2 ID 2354.
-inline constexpr TokenId kSpace_outside_931 = 931;
+inline constexpr DiscreteToken kSpace_outside_931{931};
 // " pain"; original GPT-2 ID 2356.
-inline constexpr TokenId kSpace_pain_932 = 932;
+inline constexpr DiscreteToken kSpace_pain_932{932};
 // "off"; original GPT-2 ID 2364.
-inline constexpr TokenId koff_933 = 933;
+inline constexpr DiscreteToken koff_933{933};
 // "ades"; original GPT-2 ID 2367.
-inline constexpr TokenId kades_934 = 934;
+inline constexpr DiscreteToken kades_934{934};
 // " third"; original GPT-2 ID 2368.
-inline constexpr TokenId kSpace_third_935 = 935;
+inline constexpr DiscreteToken kSpace_third_935{935};
 // " evidence"; original GPT-2 ID 2370.
-inline constexpr TokenId kSpace_evidence_936 = 936;
+inline constexpr DiscreteToken kSpace_evidence_936{936};
 // " lo"; original GPT-2 ID 2376.
-inline constexpr TokenId kSpace_lo_937 = 937;
+inline constexpr DiscreteToken kSpace_lo_937{937};
 // " item"; original GPT-2 ID 2378.
-inline constexpr TokenId kSpace_item_938 = 938;
+inline constexpr DiscreteToken kSpace_item_938{938};
 // " represent"; original GPT-2 ID 2380.
-inline constexpr TokenId kSpace_represent_939 = 939;
+inline constexpr DiscreteToken kSpace_represent_939{939};
 // "su"; original GPT-2 ID 2385.
-inline constexpr TokenId ksu_940 = 940;
+inline constexpr DiscreteToken ksu_940{940};
 // " simply"; original GPT-2 ID 2391.
-inline constexpr TokenId kSpace_simply_941 = 941;
+inline constexpr DiscreteToken kSpace_simply_941{941};
 // " longer"; original GPT-2 ID 2392.
-inline constexpr TokenId kSpace_longer_942 = 942;
+inline constexpr DiscreteToken kSpace_longer_942{942};
 // " file"; original GPT-2 ID 2393.
-inline constexpr TokenId kSpace_file_943 = 943;
+inline constexpr DiscreteToken kSpace_file_943{943};
 // "che"; original GPT-2 ID 2395.
-inline constexpr TokenId kche_944 = 944;
+inline constexpr DiscreteToken kche_944{944};
 // " dom"; original GPT-2 ID 2401.
-inline constexpr TokenId kSpace_dom_945 = 945;
+inline constexpr DiscreteToken kSpace_dom_945{945};
 // "ends"; original GPT-2 ID 2412.
-inline constexpr TokenId kends_946 = 946;
+inline constexpr DiscreteToken kends_946{946};
 // " text"; original GPT-2 ID 2420.
-inline constexpr TokenId kSpace_text_947 = 947;
+inline constexpr DiscreteToken kSpace_text_947{947};
 // " instead"; original GPT-2 ID 2427.
-inline constexpr TokenId kSpace_instead_948 = 948;
+inline constexpr DiscreteToken kSpace_instead_948{948};
 // " minutes"; original GPT-2 ID 2431.
-inline constexpr TokenId kSpace_minutes_949 = 949;
+inline constexpr DiscreteToken kSpace_minutes_949{949};
 // "ray"; original GPT-2 ID 2433.
-inline constexpr TokenId kray_950 = 950;
+inline constexpr DiscreteToken kray_950{950};
 // "bl"; original GPT-2 ID 2436.
-inline constexpr TokenId kbl_951 = 951;
+inline constexpr DiscreteToken kbl_951{951};
 // " code"; original GPT-2 ID 2438.
-inline constexpr TokenId kSpace_code_952 = 952;
+inline constexpr DiscreteToken kSpace_code_952{952};
 // " higher"; original GPT-2 ID 2440.
-inline constexpr TokenId kSpace_higher_953 = 953;
+inline constexpr DiscreteToken kSpace_higher_953{953};
 // "ris"; original GPT-2 ID 2442.
-inline constexpr TokenId kris_954 = 954;
+inline constexpr DiscreteToken kris_954{954};
 // " page"; original GPT-2 ID 2443.
-inline constexpr TokenId kSpace_page_955 = 955;
+inline constexpr DiscreteToken kSpace_page_955{955};
 // "ume"; original GPT-2 ID 2454.
-inline constexpr TokenId kume_956 = 956;
+inline constexpr DiscreteToken kume_956{956};
 // " words"; original GPT-2 ID 2456.
-inline constexpr TokenId kSpace_words_957 = 957;
+inline constexpr DiscreteToken kSpace_words_957{957};
 // " changes"; original GPT-2 ID 2458.
-inline constexpr TokenId kSpace_changes_958 = 958;
+inline constexpr DiscreteToken kSpace_changes_958{958};
 // " ep"; original GPT-2 ID 2462.
-inline constexpr TokenId kSpace_ep_959 = 959;
+inline constexpr DiscreteToken kSpace_ep_959{959};
 // " neg"; original GPT-2 ID 2469.
-inline constexpr TokenId kSpace_neg_960 = 960;
+inline constexpr DiscreteToken kSpace_neg_960{960};
 // "ental"; original GPT-2 ID 2470.
-inline constexpr TokenId kental_961 = 961;
+inline constexpr DiscreteToken kental_961{961};
 // " total"; original GPT-2 ID 2472.
-inline constexpr TokenId kSpace_total_962 = 962;
+inline constexpr DiscreteToken kSpace_total_962{962};
 // " development"; original GPT-2 ID 2478.
-inline constexpr TokenId kSpace_development_963 = 963;
+inline constexpr DiscreteToken kSpace_development_963{963};
 // "21"; original GPT-2 ID 2481.
-inline constexpr TokenId k21_964 = 964;
+inline constexpr DiscreteToken k21_964{964};
 // " results"; original GPT-2 ID 2482.
-inline constexpr TokenId kSpace_results_965 = 965;
+inline constexpr DiscreteToken kSpace_results_965{965};
 // "Sh"; original GPT-2 ID 2484.
-inline constexpr TokenId kSh_966 = 966;
+inline constexpr DiscreteToken kSh_966{966};
 // " rate"; original GPT-2 ID 2494.
-inline constexpr TokenId kSpace_rate_967 = 967;
+inline constexpr DiscreteToken kSpace_rate_967{967};
 // " works"; original GPT-2 ID 2499.
-inline constexpr TokenId kSpace_works_968 = 968;
+inline constexpr DiscreteToken kSpace_works_968{968};
 // "alt"; original GPT-2 ID 2501.
-inline constexpr TokenId kalt_969 = 969;
+inline constexpr DiscreteToken kalt_969{969};
 // "ude"; original GPT-2 ID 2507.
-inline constexpr TokenId kude_970 = 970;
+inline constexpr DiscreteToken kude_970{970};
 // " rad"; original GPT-2 ID 2511.
-inline constexpr TokenId kSpace_rad_971 = 971;
+inline constexpr DiscreteToken kSpace_rad_971{971};
 // " block"; original GPT-2 ID 2512.
-inline constexpr TokenId kSpace_block_972 = 972;
+inline constexpr DiscreteToken kSpace_block_972{972};
 // "To"; original GPT-2 ID 2514.
-inline constexpr TokenId kTo_973 = 973;
+inline constexpr DiscreteToken kTo_973{973};
 // " Aust"; original GPT-2 ID 2517.
-inline constexpr TokenId kSpace_Aust_974 = 974;
+inline constexpr DiscreteToken kSpace_Aust_974{974};
 // "rote"; original GPT-2 ID 2519.
-inline constexpr TokenId krote_975 = 975;
+inline constexpr DiscreteToken krote_975{975};
 // " South"; original GPT-2 ID 2520.
-inline constexpr TokenId kSpace_South_976 = 976;
+inline constexpr DiscreteToken kSpace_South_976{976};
 // "oph"; original GPT-2 ID 2522.
-inline constexpr TokenId koph_977 = 977;
+inline constexpr DiscreteToken koph_977{977};
 // " shows"; original GPT-2 ID 2523.
-inline constexpr TokenId kSpace_shows_978 = 978;
+inline constexpr DiscreteToken kSpace_shows_978{978};
 // " site"; original GPT-2 ID 2524.
-inline constexpr TokenId kSpace_site_979 = 979;
+inline constexpr DiscreteToken kSpace_site_979{979};
 // "itting"; original GPT-2 ID 2535.
-inline constexpr TokenId kitting_980 = 980;
+inline constexpr DiscreteToken kitting_980{980};
 // "key"; original GPT-2 ID 2539.
-inline constexpr TokenId kkey_981 = 981;
+inline constexpr DiscreteToken kkey_981{981};
 // " began"; original GPT-2 ID 2540.
-inline constexpr TokenId kSpace_began_982 = 982;
+inline constexpr DiscreteToken kSpace_began_982{982};
 // "lam"; original GPT-2 ID 2543.
-inline constexpr TokenId klam_983 = 983;
+inline constexpr DiscreteToken klam_983{983};
 // "bit"; original GPT-2 ID 2545.
-inline constexpr TokenId kbit_984 = 984;
+inline constexpr DiscreteToken kbit_984{984};
 // " size"; original GPT-2 ID 2546.
-inline constexpr TokenId kSpace_size_985 = 985;
+inline constexpr DiscreteToken kSpace_size_985{985};
 // " di"; original GPT-2 ID 2566.
-inline constexpr TokenId kSpace_di_986 = 986;
+inline constexpr DiscreteToken kSpace_di_986{986};
 // " energy"; original GPT-2 ID 2568.
-inline constexpr TokenId kSpace_energy_987 = 987;
+inline constexpr DiscreteToken kSpace_energy_987{987};
 // " El"; original GPT-2 ID 2574.
-inline constexpr TokenId kSpace_El_988 = 988;
+inline constexpr DiscreteToken kSpace_El_988{988};
 // "oe"; original GPT-2 ID 2577.
-inline constexpr TokenId koe_989 = 989;
+inline constexpr DiscreteToken koe_989{989};
 // " Che"; original GPT-2 ID 2580.
-inline constexpr TokenId kSpace_Che_990 = 990;
+inline constexpr DiscreteToken kSpace_Che_990{990};
 // " host"; original GPT-2 ID 2583.
-inline constexpr TokenId kSpace_host_991 = 991;
+inline constexpr DiscreteToken kSpace_host_991{991};
 // "omes"; original GPT-2 ID 2586.
-inline constexpr TokenId komes_992 = 992;
+inline constexpr DiscreteToken komes_992{992};
 // " material"; original GPT-2 ID 2587.
-inline constexpr TokenId kSpace_material_993 = 993;
+inline constexpr DiscreteToken kSpace_material_993{993};
 // "ran"; original GPT-2 ID 2596.
-inline constexpr TokenId kran_994 = 994;
+inline constexpr DiscreteToken kran_994{994};
 // "Cl"; original GPT-2 ID 2601.
-inline constexpr TokenId kCl_995 = 995;
+inline constexpr DiscreteToken kCl_995{995};
 // "ma"; original GPT-2 ID 2611.
-inline constexpr TokenId kma_996 = 996;
+inline constexpr DiscreteToken kma_996{996};
 // " heart"; original GPT-2 ID 2612.
-inline constexpr TokenId kSpace_heart_997 = 997;
+inline constexpr DiscreteToken kSpace_heart_997{997};
 // " building"; original GPT-2 ID 2615.
-inline constexpr TokenId kSpace_building_998 = 998;
+inline constexpr DiscreteToken kSpace_building_998{998};
 // "na"; original GPT-2 ID 2616.
-inline constexpr TokenId kna_999 = 999;
+inline constexpr DiscreteToken kna_999{999};
 // "body"; original GPT-2 ID 2618.
-inline constexpr TokenId kbody_1000 = 1000;
+inline constexpr DiscreteToken kbody_1000{1000};
 // " Black"; original GPT-2 ID 2619.
-inline constexpr TokenId kSpace_Black_1001 = 1001;
+inline constexpr DiscreteToken kSpace_Black_1001{1001};
 // " increase"; original GPT-2 ID 2620.
-inline constexpr TokenId kSpace_increase_1002 = 1002;
+inline constexpr DiscreteToken kSpace_increase_1002{1002};
 // " needed"; original GPT-2 ID 2622.
-inline constexpr TokenId kSpace_needed_1003 = 1003;
+inline constexpr DiscreteToken kSpace_needed_1003{1003};
 // " became"; original GPT-2 ID 2627.
-inline constexpr TokenId kSpace_became_1004 = 1004;
+inline constexpr DiscreteToken kSpace_became_1004{1004};
 // " groups"; original GPT-2 ID 2628.
-inline constexpr TokenId kSpace_groups_1005 = 1005;
+inline constexpr DiscreteToken kSpace_groups_1005{1005};
 // " wrote"; original GPT-2 ID 2630.
-inline constexpr TokenId kSpace_wrote_1006 = 1006;
+inline constexpr DiscreteToken kSpace_wrote_1006{1006};
 // " dead"; original GPT-2 ID 2636.
-inline constexpr TokenId kSpace_dead_1007 = 1007;
+inline constexpr DiscreteToken kSpace_dead_1007{1007};
 // " inside"; original GPT-2 ID 2641.
-inline constexpr TokenId kSpace_inside_1008 = 1008;
+inline constexpr DiscreteToken kSpace_inside_1008{1008};
 // "yl"; original GPT-2 ID 2645.
-inline constexpr TokenId kyl_1009 = 1009;
+inline constexpr DiscreteToken kyl_1009{1009};
 // " music"; original GPT-2 ID 2647.
-inline constexpr TokenId kSpace_music_1010 = 1010;
+inline constexpr DiscreteToken kSpace_music_1010{1010};
 // " share"; original GPT-2 ID 2648.
-inline constexpr TokenId kSpace_share_1011 = 1011;
+inline constexpr DiscreteToken kSpace_share_1011{1011};
 // "ification"; original GPT-2 ID 2649.
-inline constexpr TokenId kification_1012 = 1012;
+inline constexpr DiscreteToken kification_1012{1012};
 // " forward"; original GPT-2 ID 2651.
-inline constexpr TokenId kSpace_forward_1013 = 1013;
+inline constexpr DiscreteToken kSpace_forward_1013{1013};
 // " original"; original GPT-2 ID 2656.
-inline constexpr TokenId kSpace_original_1014 = 1014;
+inline constexpr DiscreteToken kSpace_original_1014{1014};
 // " cand"; original GPT-2 ID 2658.
-inline constexpr TokenId kSpace_cand_1015 = 1015;
+inline constexpr DiscreteToken kSpace_cand_1015{1015};
 // " div"; original GPT-2 ID 2659.
-inline constexpr TokenId kSpace_div_1016 = 1016;
+inline constexpr DiscreteToken kSpace_div_1016{1016};
 // "uses"; original GPT-2 ID 2664.
-inline constexpr TokenId kuses_1017 = 1017;
+inline constexpr DiscreteToken kuses_1017{1017};
 // " required"; original GPT-2 ID 2672.
-inline constexpr TokenId kSpace_required_1018 = 1018;
+inline constexpr DiscreteToken kSpace_required_1018{1018};
 // "iter"; original GPT-2 ID 2676.
-inline constexpr TokenId kiter_1019 = 1019;
+inline constexpr DiscreteToken kiter_1019{1019};
 // " King"; original GPT-2 ID 2677.
-inline constexpr TokenId kSpace_King_1020 = 1020;
+inline constexpr DiscreteToken kSpace_King_1020{1020};
 // " countries"; original GPT-2 ID 2678.
-inline constexpr TokenId kSpace_countries_1021 = 1021;
+inline constexpr DiscreteToken kSpace_countries_1021{1021};
 // " German"; original GPT-2 ID 2679.
-inline constexpr TokenId kSpace_German_1022 = 1022;
+inline constexpr DiscreteToken kSpace_German_1022{1022};
 // " cell"; original GPT-2 ID 2685.
-inline constexpr TokenId kSpace_cell_1023 = 1023;
+inline constexpr DiscreteToken kSpace_cell_1023{1023};
 // " West"; original GPT-2 ID 2688.
-inline constexpr TokenId kSpace_West_1024 = 1024;
+inline constexpr DiscreteToken kSpace_West_1024{1024};
 // " content"; original GPT-2 ID 2695.
-inline constexpr TokenId kSpace_content_1025 = 1025;
+inline constexpr DiscreteToken kSpace_content_1025{1025};
 // "ises"; original GPT-2 ID 2696.
-inline constexpr TokenId kises_1026 = 1026;
+inline constexpr DiscreteToken kises_1026{1026};
 // " force"; original GPT-2 ID 2700.
-inline constexpr TokenId kSpace_force_1027 = 1027;
+inline constexpr DiscreteToken kSpace_force_1027{1027};
 // "aving"; original GPT-2 ID 2703.
-inline constexpr TokenId kaving_1028 = 1028;
+inline constexpr DiscreteToken kaving_1028{1028};
 // "fl"; original GPT-2 ID 2704.
-inline constexpr TokenId kfl_1029 = 1029;
+inline constexpr DiscreteToken kfl_1029{1029};
 // " playing"; original GPT-2 ID 2712.
-inline constexpr TokenId kSpace_playing_1030 = 1030;
+inline constexpr DiscreteToken kSpace_playing_1030{1030};
 // " held"; original GPT-2 ID 2714.
-inline constexpr TokenId kSpace_held_1031 = 1031;
+inline constexpr DiscreteToken kSpace_held_1031{1031};
 // " received"; original GPT-2 ID 2722.
-inline constexpr TokenId kSpace_received_1032 = 1032;
+inline constexpr DiscreteToken kSpace_received_1032{1032};
 // " source"; original GPT-2 ID 2723.
-inline constexpr TokenId kSpace_source_1033 = 1033;
+inline constexpr DiscreteToken kSpace_source_1033{1033};
 // "uk"; original GPT-2 ID 2724.
-inline constexpr TokenId kuk_1034 = 1034;
+inline constexpr DiscreteToken kuk_1034{1034};
 // "Ph"; original GPT-2 ID 2725.
-inline constexpr TokenId kPh_1035 = 1035;
+inline constexpr DiscreteToken kPh_1035{1035};
 // " created"; original GPT-2 ID 2727.
-inline constexpr TokenId kSpace_created_1036 = 1036;
+inline constexpr DiscreteToken kSpace_created_1036{1036};
 // " cause"; original GPT-2 ID 2728.
-inline constexpr TokenId kSpace_cause_1037 = 1037;
+inline constexpr DiscreteToken kSpace_cause_1037{1037};
 // "uel"; original GPT-2 ID 2731.
-inline constexpr TokenId kuel_1038 = 1038;
+inline constexpr DiscreteToken kuel_1038{1038};
 // "ze"; original GPT-2 ID 2736.
-inline constexpr TokenId kze_1039 = 1039;
+inline constexpr DiscreteToken kze_1039{1039};
 // "ites"; original GPT-2 ID 2737.
-inline constexpr TokenId kites_1040 = 1040;
+inline constexpr DiscreteToken kites_1040{1040};
 // " legal"; original GPT-2 ID 2742.
-inline constexpr TokenId kSpace_legal_1041 = 1041;
+inline constexpr DiscreteToken kSpace_legal_1041{1041};
 // " Cor"; original GPT-2 ID 2744.
-inline constexpr TokenId kSpace_Cor_1042 = 1042;
+inline constexpr DiscreteToken kSpace_Cor_1042{1042};
 // " model"; original GPT-2 ID 2746.
-inline constexpr TokenId kSpace_model_1043 = 1043;
+inline constexpr DiscreteToken kSpace_model_1043{1043};
 // " takes"; original GPT-2 ID 2753.
-inline constexpr TokenId kSpace_takes_1044 = 1044;
+inline constexpr DiscreteToken kSpace_takes_1044{1044};
 // "ham"; original GPT-2 ID 2763.
-inline constexpr TokenId kham_1045 = 1045;
+inline constexpr DiscreteToken kham_1045{1045};
 // " Count"; original GPT-2 ID 2764.
-inline constexpr TokenId kSpace_Count_1046 = 1046;
+inline constexpr DiscreteToken kSpace_Count_1046{1046};
 // " relationship"; original GPT-2 ID 2776.
-inline constexpr TokenId kSpace_relationship_1047 = 1047;
+inline constexpr DiscreteToken kSpace_relationship_1047{1047};
 // "sp"; original GPT-2 ID 2777.
-inline constexpr TokenId ksp_1048 = 1048;
+inline constexpr DiscreteToken ksp_1048{1048};
 // " base"; original GPT-2 ID 2779.
-inline constexpr TokenId kSpace_base_1049 = 1049;
+inline constexpr DiscreteToken kSpace_base_1049{1049};
 // " potential"; original GPT-2 ID 2785.
-inline constexpr TokenId kSpace_potential_1050 = 1050;
+inline constexpr DiscreteToken kSpace_potential_1050{1050};
 // "eth"; original GPT-2 ID 2788.
-inline constexpr TokenId keth_1051 = 1051;
+inline constexpr DiscreteToken keth_1051{1051};
 // "66"; original GPT-2 ID 2791.
-inline constexpr TokenId k66_1052 = 1052;
+inline constexpr DiscreteToken k66_1052{1052};
 // " lower"; original GPT-2 ID 2793.
-inline constexpr TokenId kSpace_lower_1053 = 1053;
+inline constexpr DiscreteToken kSpace_lower_1053{1053};
 // " fem"; original GPT-2 ID 2796.
-inline constexpr TokenId kSpace_fem_1054 = 1054;
+inline constexpr DiscreteToken kSpace_fem_1054{1054};
 // " contact"; original GPT-2 ID 2800.
-inline constexpr TokenId kSpace_contact_1055 = 1055;
+inline constexpr DiscreteToken kSpace_contact_1055{1055};
 // " mother"; original GPT-2 ID 2802.
-inline constexpr TokenId kSpace_mother_1056 = 1056;
+inline constexpr DiscreteToken kSpace_mother_1056{1056};
 // " China"; original GPT-2 ID 2807.
-inline constexpr TokenId kSpace_China_1057 = 1057;
+inline constexpr DiscreteToken kSpace_China_1057{1057};
 // " average"; original GPT-2 ID 2811.
-inline constexpr TokenId kSpace_average_1058 = 1058;
+inline constexpr DiscreteToken kSpace_average_1058{1058};
 // "lin"; original GPT-2 ID 2815.
-inline constexpr TokenId klin_1059 = 1059;
+inline constexpr DiscreteToken klin_1059{1059};
 // " perfect"; original GPT-2 ID 2818.
-inline constexpr TokenId kSpace_perfect_1060 = 1060;
+inline constexpr DiscreteToken kSpace_perfect_1060{1060};
 // "ux"; original GPT-2 ID 2821.
-inline constexpr TokenId kux_1061 = 1061;
+inline constexpr DiscreteToken kux_1061{1061};
 // " collect"; original GPT-2 ID 2824.
-inline constexpr TokenId kSpace_collect_1062 = 1062;
+inline constexpr DiscreteToken kSpace_collect_1062{1062};
 // " phot"; original GPT-2 ID 2825.
-inline constexpr TokenId kSpace_phot_1063 = 1063;
+inline constexpr DiscreteToken kSpace_phot_1063{1063};
 // " played"; original GPT-2 ID 2826.
-inline constexpr TokenId kSpace_played_1064 = 1064;
+inline constexpr DiscreteToken kSpace_played_1064{1064};
 // " simple"; original GPT-2 ID 2829.
-inline constexpr TokenId kSpace_simple_1065 = 1065;
+inline constexpr DiscreteToken kSpace_simple_1065{1065};
 // " pull"; original GPT-2 ID 2834.
-inline constexpr TokenId kSpace_pull_1066 = 1066;
+inline constexpr DiscreteToken kSpace_pull_1066{1066};
 // "uary"; original GPT-2 ID 2838.
-inline constexpr TokenId kuary_1067 = 1067;
+inline constexpr DiscreteToken kuary_1067{1067};
 // " private"; original GPT-2 ID 2839.
-inline constexpr TokenId kSpace_private_1068 = 1068;
+inline constexpr DiscreteToken kSpace_private_1068{1068};
 // " terms"; original GPT-2 ID 2846.
-inline constexpr TokenId kSpace_terms_1069 = 1069;
+inline constexpr DiscreteToken kSpace_terms_1069{1069};
 // "pper"; original GPT-2 ID 2848.
-inline constexpr TokenId kpper_1070 = 1070;
+inline constexpr DiscreteToken kpper_1070{1070};
 // "ores"; original GPT-2 ID 2850.
-inline constexpr TokenId kores_1071 = 1071;
+inline constexpr DiscreteToken kores_1071{1071};
 // "oul"; original GPT-2 ID 2852.
-inline constexpr TokenId koul_1072 = 1072;
+inline constexpr DiscreteToken koul_1072{1072};
 // "cil"; original GPT-2 ID 2856.
-inline constexpr TokenId kcil_1073 = 1073;
+inline constexpr DiscreteToken kcil_1073{1073};
 // " environment"; original GPT-2 ID 2858.
-inline constexpr TokenId kSpace_environment_1074 = 1074;
+inline constexpr DiscreteToken kSpace_environment_1074{1074};
 // " speed"; original GPT-2 ID 2866.
-inline constexpr TokenId kSpace_speed_1075 = 1075;
+inline constexpr DiscreteToken kSpace_speed_1075{1075};
 // " Japan"; original GPT-2 ID 2869.
-inline constexpr TokenId kSpace_Japan_1076 = 1076;
+inline constexpr DiscreteToken kSpace_Japan_1076{1076};
 // "atory"; original GPT-2 ID 2870.
-inline constexpr TokenId katory_1077 = 1077;
+inline constexpr DiscreteToken katory_1077{1077};
 // " ste"; original GPT-2 ID 2876.
-inline constexpr TokenId kSpace_ste_1078 = 1078;
+inline constexpr DiscreteToken kSpace_ste_1078{1078};
 // " living"; original GPT-2 ID 2877.
-inline constexpr TokenId kSpace_living_1079 = 1079;
+inline constexpr DiscreteToken kSpace_living_1079{1079};
 // "ino"; original GPT-2 ID 2879.
-inline constexpr TokenId kino_1080 = 1080;
+inline constexpr DiscreteToken kino_1080{1080};
 // " response"; original GPT-2 ID 2882.
-inline constexpr TokenId kSpace_response_1081 = 1081;
+inline constexpr DiscreteToken kSpace_response_1081{1081};
 // " member"; original GPT-2 ID 2888.
-inline constexpr TokenId kSpace_member_1082 = 1082;
+inline constexpr DiscreteToken kSpace_member_1082{1082};
 // "izing"; original GPT-2 ID 2890.
-inline constexpr TokenId kizing_1083 = 1083;
+inline constexpr DiscreteToken kizing_1083{1083};
 // " Mon"; original GPT-2 ID 2892.
-inline constexpr TokenId kSpace_Mon_1084 = 1084;
+inline constexpr DiscreteToken kSpace_Mon_1084{1084};
 // " Def"; original GPT-2 ID 2896.
-inline constexpr TokenId kSpace_Def_1085 = 1085;
+inline constexpr DiscreteToken kSpace_Def_1085{1085};
 // " recently"; original GPT-2 ID 2904.
-inline constexpr TokenId kSpace_recently_1086 = 1086;
+inline constexpr DiscreteToken kSpace_recently_1086{1086};
 // " Ear"; original GPT-2 ID 2905.
-inline constexpr TokenId kSpace_Ear_1087 = 1087;
+inline constexpr DiscreteToken kSpace_Ear_1087{1087};
 // " Star"; original GPT-2 ID 2907.
-inline constexpr TokenId kSpace_Star_1088 = 1088;
+inline constexpr DiscreteToken kSpace_Star_1088{1088};
 // " blood"; original GPT-2 ID 2910.
-inline constexpr TokenId kSpace_blood_1089 = 1089;
+inline constexpr DiscreteToken kSpace_blood_1089{1089};
 // "iles"; original GPT-2 ID 2915.
-inline constexpr TokenId kiles_1090 = 1090;
+inline constexpr DiscreteToken kiles_1090{1090};
 // " expected"; original GPT-2 ID 2938.
-inline constexpr TokenId kSpace_expected_1091 = 1091;
+inline constexpr DiscreteToken kSpace_expected_1091{1091};
 // " image"; original GPT-2 ID 2939.
-inline constexpr TokenId kSpace_image_1092 = 1092;
+inline constexpr DiscreteToken kSpace_image_1092{1092};
 // " Mag"; original GPT-2 ID 2944.
-inline constexpr TokenId kSpace_Mag_1093 = 1093;
+inline constexpr DiscreteToken kSpace_Mag_1093{1093};
 // "ened"; original GPT-2 ID 2945.
-inline constexpr TokenId kened_1094 = 1094;
+inline constexpr DiscreteToken kened_1094{1094};
 // " involved"; original GPT-2 ID 2950.
-inline constexpr TokenId kSpace_involved_1095 = 1095;
+inline constexpr DiscreteToken kSpace_involved_1095{1095};
 // " eyes"; original GPT-2 ID 2951.
-inline constexpr TokenId kSpace_eyes_1096 = 1096;
+inline constexpr DiscreteToken kSpace_eyes_1096{1096};
 // "At"; original GPT-2 ID 2953.
-inline constexpr TokenId kAt_1097 = 1097;
+inline constexpr DiscreteToken kAt_1097{1097};
 // "ey"; original GPT-2 ID 2959.
-inline constexpr TokenId key_1098 = 1098;
+inline constexpr DiscreteToken key_1098{1098};
 // " focus"; original GPT-2 ID 2962.
-inline constexpr TokenId kSpace_focus_1099 = 1099;
+inline constexpr DiscreteToken kSpace_focus_1099{1099};
 // "Pro"; original GPT-2 ID 2964.
-inline constexpr TokenId kPro_1100 = 1100;
+inline constexpr DiscreteToken kPro_1100{1100};
 // "illed"; original GPT-2 ID 2967.
-inline constexpr TokenId killed_1101 = 1101;
+inline constexpr DiscreteToken killed_1101{1101};
 // "light"; original GPT-2 ID 2971.
-inline constexpr TokenId klight_1102 = 1102;
+inline constexpr DiscreteToken klight_1102{1102};
 // "ables"; original GPT-2 ID 2977.
-inline constexpr TokenId kables_1103 = 1103;
+inline constexpr DiscreteToken kables_1103{1103};
 // "hel"; original GPT-2 ID 2978.
-inline constexpr TokenId khel_1104 = 1104;
+inline constexpr DiscreteToken khel_1104{1104};
 // " search"; original GPT-2 ID 2989.
-inline constexpr TokenId kSpace_search_1105 = 1105;
+inline constexpr DiscreteToken kSpace_search_1105{1105};
 // " loss"; original GPT-2 ID 2994.
-inline constexpr TokenId kSpace_loss_1106 = 1106;
+inline constexpr DiscreteToken kSpace_loss_1106{1106};
 // " events"; original GPT-2 ID 2995.
-inline constexpr TokenId kSpace_events_1107 = 1107;
+inline constexpr DiscreteToken kSpace_events_1107{1107};
 // " cover"; original GPT-2 ID 3002.
-inline constexpr TokenId kSpace_cover_1108 = 1108;
+inline constexpr DiscreteToken kSpace_cover_1108{1108};
 // " areas"; original GPT-2 ID 3006.
-inline constexpr TokenId kSpace_areas_1109 = 1109;
+inline constexpr DiscreteToken kSpace_areas_1109{1109};
 // " gets"; original GPT-2 ID 3011.
-inline constexpr TokenId kSpace_gets_1110 = 1110;
+inline constexpr DiscreteToken kSpace_gets_1110{1110};
 // " included"; original GPT-2 ID 3017.
-inline constexpr TokenId kSpace_included_1111 = 1111;
+inline constexpr DiscreteToken kSpace_included_1111{1111};
 // " hot"; original GPT-2 ID 3024.
-inline constexpr TokenId kSpace_hot_1112 = 1112;
+inline constexpr DiscreteToken kSpace_hot_1112{1112};
 // " whose"; original GPT-2 ID 3025.
-inline constexpr TokenId kSpace_whose_1113 = 1113;
+inline constexpr DiscreteToken kSpace_whose_1113{1113};
 // " respond"; original GPT-2 ID 3031.
-inline constexpr TokenId kSpace_respond_1114 = 1114;
+inline constexpr DiscreteToken kSpace_respond_1114{1114};
 // " features"; original GPT-2 ID 3033.
-inline constexpr TokenId kSpace_features_1115 = 1115;
+inline constexpr DiscreteToken kSpace_features_1115{1115};
 // "Re"; original GPT-2 ID 3041.
-inline constexpr TokenId kRe_1116 = 1116;
+inline constexpr DiscreteToken kRe_1116{1116};
 // "uf"; original GPT-2 ID 3046.
-inline constexpr TokenId kuf_1117 = 1117;
+inline constexpr DiscreteToken kuf_1117{1117};
 // " effects"; original GPT-2 ID 3048.
-inline constexpr TokenId kSpace_effects_1118 = 1118;
+inline constexpr DiscreteToken kSpace_effects_1118{1118};
 // " occur"; original GPT-2 ID 3051.
-inline constexpr TokenId kSpace_occur_1119 = 1119;
+inline constexpr DiscreteToken kSpace_occur_1119{1119};
 // " email"; original GPT-2 ID 3053.
-inline constexpr TokenId kSpace_email_1120 = 1120;
+inline constexpr DiscreteToken kSpace_email_1120{1120};
 // " oil"; original GPT-2 ID 3056.
-inline constexpr TokenId kSpace_oil_1121 = 1121;
+inline constexpr DiscreteToken kSpace_oil_1121{1121};
 // " travel"; original GPT-2 ID 3067.
-inline constexpr TokenId kSpace_travel_1122 = 1122;
+inline constexpr DiscreteToken kSpace_travel_1122{1122};
 // " situation"; original GPT-2 ID 3074.
-inline constexpr TokenId kSpace_situation_1123 = 1123;
+inline constexpr DiscreteToken kSpace_situation_1123{1123};
 // "aves"; original GPT-2 ID 3080.
-inline constexpr TokenId kaves_1124 = 1124;
+inline constexpr DiscreteToken kaves_1124{1124};
 // " table"; original GPT-2 ID 3084.
-inline constexpr TokenId kSpace_table_1125 = 1125;
+inline constexpr DiscreteToken kSpace_table_1125{1125};
 // " staff"; original GPT-2 ID 3085.
-inline constexpr TokenId kSpace_staff_1126 = 1126;
+inline constexpr DiscreteToken kSpace_staff_1126{1126};
 // "ett"; original GPT-2 ID 3087.
-inline constexpr TokenId kett_1127 = 1127;
+inline constexpr DiscreteToken kett_1127{1127};
 // " addition"; original GPT-2 ID 3090.
-inline constexpr TokenId kSpace_addition_1128 = 1128;
+inline constexpr DiscreteToken kSpace_addition_1128{1128};
 // " box"; original GPT-2 ID 3091.
-inline constexpr TokenId kSpace_box_1129 = 1129;
+inline constexpr DiscreteToken kSpace_box_1129{1129};
 // " lack"; original GPT-2 ID 3092.
-inline constexpr TokenId kSpace_lack_1130 = 1130;
+inline constexpr DiscreteToken kSpace_lack_1130{1130};
 // " mid"; original GPT-2 ID 3095.
-inline constexpr TokenId kSpace_mid_1131 = 1131;
+inline constexpr DiscreteToken kSpace_mid_1131{1131};
 // " board"; original GPT-2 ID 3096.
-inline constexpr TokenId kSpace_board_1132 = 1132;
+inline constexpr DiscreteToken kSpace_board_1132{1132};
 // "ening"; original GPT-2 ID 3101.
-inline constexpr TokenId kening_1133 = 1133;
+inline constexpr DiscreteToken kening_1133{1133};
 // " dro"; original GPT-2 ID 3102.
-inline constexpr TokenId kSpace_dro_1134 = 1134;
+inline constexpr DiscreteToken kSpace_dro_1134{1134};
 // "Con"; original GPT-2 ID 3103.
-inline constexpr TokenId kCon_1135 = 1135;
+inline constexpr DiscreteToken kCon_1135{1135};
 // " slow"; original GPT-2 ID 3105.
-inline constexpr TokenId kSpace_slow_1136 = 1136;
+inline constexpr DiscreteToken kSpace_slow_1136{1136};
 // "based"; original GPT-2 ID 3106.
-inline constexpr TokenId kbased_1137 = 1137;
+inline constexpr DiscreteToken kbased_1137{1137};
 // " path"; original GPT-2 ID 3108.
-inline constexpr TokenId kSpace_path_1138 = 1138;
+inline constexpr DiscreteToken kSpace_path_1138{1138};
 // "aker"; original GPT-2 ID 3110.
-inline constexpr TokenId kaker_1139 = 1139;
+inline constexpr DiscreteToken kaker_1139{1139};
 // " pen"; original GPT-2 ID 3112.
-inline constexpr TokenId kSpace_pen_1140 = 1140;
+inline constexpr DiscreteToken kSpace_pen_1140{1140};
 // "Un"; original GPT-2 ID 3118.
-inline constexpr TokenId kUn_1141 = 1141;
+inline constexpr DiscreteToken kUn_1141{1141};
 // "Le"; original GPT-2 ID 3123.
-inline constexpr TokenId kLe_1142 = 1142;
+inline constexpr DiscreteToken kLe_1142{1142};
 // " color"; original GPT-2 ID 3124.
-inline constexpr TokenId kSpace_color_1143 = 1143;
+inline constexpr DiscreteToken kSpace_color_1143{1143};
 // " network"; original GPT-2 ID 3127.
-inline constexpr TokenId kSpace_network_1144 = 1144;
+inline constexpr DiscreteToken kSpace_network_1144{1144};
 // " capital"; original GPT-2 ID 3139.
-inline constexpr TokenId kSpace_capital_1145 = 1145;
+inline constexpr DiscreteToken kSpace_capital_1145{1145};
 // " numbers"; original GPT-2 ID 3146.
-inline constexpr TokenId kSpace_numbers_1146 = 1146;
+inline constexpr DiscreteToken kSpace_numbers_1146{1146};
 // "oms"; original GPT-2 ID 3150.
-inline constexpr TokenId koms_1147 = 1147;
+inline constexpr DiscreteToken koms_1147{1147};
 // " reach"; original GPT-2 ID 3151.
-inline constexpr TokenId kSpace_reach_1148 = 1148;
+inline constexpr DiscreteToken kSpace_reach_1148{1148};
 // " broad"; original GPT-2 ID 3154.
-inline constexpr TokenId kSpace_broad_1149 = 1149;
+inline constexpr DiscreteToken kSpace_broad_1149{1149};
 // "lying"; original GPT-2 ID 3157.
-inline constexpr TokenId klying_1150 = 1150;
+inline constexpr DiscreteToken klying_1150{1150};
 // "Ar"; original GPT-2 ID 3163.
-inline constexpr TokenId kAr_1151 = 1151;
+inline constexpr DiscreteToken kAr_1151{1151};
 // "aries"; original GPT-2 ID 3166.
-inline constexpr TokenId karies_1152 = 1152;
+inline constexpr DiscreteToken karies_1152{1152};
 // " built"; original GPT-2 ID 3170.
-inline constexpr TokenId kSpace_built_1153 = 1153;
+inline constexpr DiscreteToken kSpace_built_1153{1153};
 // "iers"; original GPT-2 ID 3183.
-inline constexpr TokenId kiers_1154 = 1154;
+inline constexpr DiscreteToken kiers_1154{1154};
 // " document"; original GPT-2 ID 3188.
-inline constexpr TokenId kSpace_document_1155 = 1155;
+inline constexpr DiscreteToken kSpace_document_1155{1155};
 // " completely"; original GPT-2 ID 3190.
-inline constexpr TokenId kSpace_completely_1156 = 1156;
+inline constexpr DiscreteToken kSpace_completely_1156{1156};
 // " written"; original GPT-2 ID 3194.
-inline constexpr TokenId kSpace_written_1157 = 1157;
+inline constexpr DiscreteToken kSpace_written_1157{1157};
 // " draw"; original GPT-2 ID 3197.
-inline constexpr TokenId kSpace_draw_1158 = 1158;
+inline constexpr DiscreteToken kSpace_draw_1158{1158};
 // "One"; original GPT-2 ID 3198.
-inline constexpr TokenId kOne_1159 = 1159;
+inline constexpr DiscreteToken kOne_1159{1159};
 // " standard"; original GPT-2 ID 3210.
-inline constexpr TokenId kSpace_standard_1160 = 1160;
+inline constexpr DiscreteToken kSpace_standard_1160{1160};
 // "ges"; original GPT-2 ID 3212.
-inline constexpr TokenId kges_1161 = 1161;
+inline constexpr DiscreteToken kges_1161{1161};
 // "ani"; original GPT-2 ID 3216.
-inline constexpr TokenId kani_1162 = 1162;
+inline constexpr DiscreteToken kani_1162{1162};
 // " regular"; original GPT-2 ID 3218.
-inline constexpr TokenId kSpace_regular_1163 = 1163;
+inline constexpr DiscreteToken kSpace_regular_1163{1163};
 // "inary"; original GPT-2 ID 3219.
-inline constexpr TokenId kinary_1164 = 1164;
+inline constexpr DiscreteToken kinary_1164{1164};
 // " increased"; original GPT-2 ID 3220.
-inline constexpr TokenId kSpace_increased_1165 = 1165;
+inline constexpr DiscreteToken kSpace_increased_1165{1165};
 // " usually"; original GPT-2 ID 3221.
-inline constexpr TokenId kSpace_usually_1166 = 1166;
+inline constexpr DiscreteToken kSpace_usually_1166{1166};
 // " dark"; original GPT-2 ID 3223.
-inline constexpr TokenId kSpace_dark_1167 = 1167;
+inline constexpr DiscreteToken kSpace_dark_1167{1167};
 // " production"; original GPT-2 ID 3227.
-inline constexpr TokenId kSpace_production_1168 = 1168;
+inline constexpr DiscreteToken kSpace_production_1168{1168};
 // "All"; original GPT-2 ID 3237.
-inline constexpr TokenId kAll_1169 = 1169;
+inline constexpr DiscreteToken kAll_1169{1169};
 // " town"; original GPT-2 ID 3240.
-inline constexpr TokenId kSpace_town_1170 = 1170;
+inline constexpr DiscreteToken kSpace_town_1170{1170};
 // " workers"; original GPT-2 ID 3259.
-inline constexpr TokenId kSpace_workers_1171 = 1171;
+inline constexpr DiscreteToken kSpace_workers_1171{1171};
 // "After"; original GPT-2 ID 3260.
-inline constexpr TokenId kAfter_1172 = 1172;
+inline constexpr DiscreteToken kAfter_1172{1172};
 // " directly"; original GPT-2 ID 3264.
-inline constexpr TokenId kSpace_directly_1173 = 1173;
+inline constexpr DiscreteToken kSpace_directly_1173{1173};
 // " population"; original GPT-2 ID 3265.
-inline constexpr TokenId kSpace_population_1174 = 1174;
+inline constexpr DiscreteToken kSpace_population_1174{1174};
 // "ube"; original GPT-2 ID 3266.
-inline constexpr TokenId kube_1175 = 1175;
+inline constexpr DiscreteToken kube_1175{1175};
 // " David"; original GPT-2 ID 3271.
-inline constexpr TokenId kSpace_David_1176 = 1176;
+inline constexpr DiscreteToken kSpace_David_1176{1176};
 // " cross"; original GPT-2 ID 3272.
-inline constexpr TokenId kSpace_cross_1177 = 1177;
+inline constexpr DiscreteToken kSpace_cross_1177{1177};
 // " carry"; original GPT-2 ID 3283.
-inline constexpr TokenId kSpace_carry_1178 = 1178;
+inline constexpr DiscreteToken kSpace_carry_1178{1178};
 // " Russia"; original GPT-2 ID 3284.
-inline constexpr TokenId kSpace_Russia_1179 = 1179;
+inline constexpr DiscreteToken kSpace_Russia_1179{1179};
 // " natural"; original GPT-2 ID 3288.
-inline constexpr TokenId kSpace_natural_1180 = 1180;
+inline constexpr DiscreteToken kSpace_natural_1180{1180};
 // " trade"; original GPT-2 ID 3292.
-inline constexpr TokenId kSpace_trade_1181 = 1181;
+inline constexpr DiscreteToken kSpace_trade_1181{1181};
 // " multiple"; original GPT-2 ID 3294.
-inline constexpr TokenId kSpace_multiple_1182 = 1182;
+inline constexpr DiscreteToken kSpace_multiple_1182{1182};
 // "ication"; original GPT-2 ID 3299.
-inline constexpr TokenId kication_1183 = 1183;
+inline constexpr DiscreteToken kication_1183{1183};
 // " language"; original GPT-2 ID 3303.
-inline constexpr TokenId kSpace_language_1184 = 1184;
+inline constexpr DiscreteToken kSpace_language_1184{1184};
 // "unch"; original GPT-2 ID 3316.
-inline constexpr TokenId kunch_1185 = 1185;
+inline constexpr DiscreteToken kunch_1185{1185};
 // " und"; original GPT-2 ID 3318.
-inline constexpr TokenId kSpace_und_1186 = 1186;
+inline constexpr DiscreteToken kSpace_und_1186{1186};
 // "urt"; original GPT-2 ID 3325.
-inline constexpr TokenId kurt_1187 = 1187;
+inline constexpr DiscreteToken kurt_1187{1187};
 // " receive"; original GPT-2 ID 3328.
-inline constexpr TokenId kSpace_receive_1188 = 1188;
+inline constexpr DiscreteToken kSpace_receive_1188{1188};
 // " Canada"; original GPT-2 ID 3340.
-inline constexpr TokenId kSpace_Canada_1189 = 1189;
+inline constexpr DiscreteToken kSpace_Canada_1189{1189};
 // " systems"; original GPT-2 ID 3341.
-inline constexpr TokenId kSpace_systems_1190 = 1190;
+inline constexpr DiscreteToken kSpace_systems_1190{1190};
 // " assist"; original GPT-2 ID 3342.
-inline constexpr TokenId kSpace_assist_1191 = 1191;
+inline constexpr DiscreteToken kSpace_assist_1191{1191};
 // "She"; original GPT-2 ID 3347.
-inline constexpr TokenId kShe_1192 = 1192;
+inline constexpr DiscreteToken kShe_1192{1192};
 // " paper"; original GPT-2 ID 3348.
-inline constexpr TokenId kSpace_paper_1193 = 1193;
+inline constexpr DiscreteToken kSpace_paper_1193{1193};
 // " growth"; original GPT-2 ID 3349.
-inline constexpr TokenId kSpace_growth_1194 = 1194;
+inline constexpr DiscreteToken kSpace_growth_1194{1194};
 // " cast"; original GPT-2 ID 3350.
-inline constexpr TokenId kSpace_cast_1195 = 1195;
+inline constexpr DiscreteToken kSpace_cast_1195{1195};
 // " parts"; original GPT-2 ID 3354.
-inline constexpr TokenId kSpace_parts_1196 = 1196;
+inline constexpr DiscreteToken kSpace_parts_1196{1196};
 // " movement"; original GPT-2 ID 3356.
-inline constexpr TokenId kSpace_movement_1197 = 1197;
+inline constexpr DiscreteToken kSpace_movement_1197{1197};
 // " practice"; original GPT-2 ID 3357.
-inline constexpr TokenId kSpace_practice_1198 = 1198;
+inline constexpr DiscreteToken kSpace_practice_1198{1198};
 // " sometimes"; original GPT-2 ID 3360.
-inline constexpr TokenId kSpace_sometimes_1199 = 1199;
+inline constexpr DiscreteToken kSpace_sometimes_1199{1199};
 // "okes"; original GPT-2 ID 3369.
-inline constexpr TokenId kokes_1200 = 1200;
+inline constexpr DiscreteToken kokes_1200{1200};
 // "asc"; original GPT-2 ID 3372.
-inline constexpr TokenId kasc_1201 = 1201;
+inline constexpr DiscreteToken kasc_1201{1201};
 // "icks"; original GPT-2 ID 3378.
-inline constexpr TokenId kicks_1202 = 1202;
+inline constexpr DiscreteToken kicks_1202{1202};
 // " term"; original GPT-2 ID 3381.
-inline constexpr TokenId kSpace_term_1203 = 1203;
+inline constexpr DiscreteToken kSpace_term_1203{1203};
 // " forces"; original GPT-2 ID 3386.
-inline constexpr TokenId kSpace_forces_1204 = 1204;
+inline constexpr DiscreteToken kSpace_forces_1204{1204};
 // " Met"; original GPT-2 ID 3395.
-inline constexpr TokenId kSpace_Met_1205 = 1205;
+inline constexpr DiscreteToken kSpace_Met_1205{1205};
 // " conditions"; original GPT-2 ID 3403.
-inline constexpr TokenId kSpace_conditions_1206 = 1206;
+inline constexpr DiscreteToken kSpace_conditions_1206{1206};
 // " includes"; original GPT-2 ID 3407.
-inline constexpr TokenId kSpace_includes_1207 = 1207;
+inline constexpr DiscreteToken kSpace_includes_1207{1207};
 // " Sam"; original GPT-2 ID 3409.
-inline constexpr TokenId kSpace_Sam_1208 = 1208;
+inline constexpr DiscreteToken kSpace_Sam_1208{1208};
 // " described"; original GPT-2 ID 3417.
-inline constexpr TokenId kSpace_described_1209 = 1209;
+inline constexpr DiscreteToken kSpace_described_1209{1209};
 // " characters"; original GPT-2 ID 3435.
-inline constexpr TokenId kSpace_characters_1210 = 1210;
+inline constexpr DiscreteToken kSpace_characters_1210{1210};
 // " alone"; original GPT-2 ID 3436.
-inline constexpr TokenId kSpace_alone_1211 = 1211;
+inline constexpr DiscreteToken kSpace_alone_1211{1211};
 // " exactly"; original GPT-2 ID 3446.
-inline constexpr TokenId kSpace_exactly_1212 = 1212;
+inline constexpr DiscreteToken kSpace_exactly_1212{1212};
 // " Inc"; original GPT-2 ID 3457.
-inline constexpr TokenId kSpace_Inc_1213 = 1213;
+inline constexpr DiscreteToken kSpace_Inc_1213{1213};
 // " weight"; original GPT-2 ID 3463.
-inline constexpr TokenId kSpace_weight_1214 = 1214;
+inline constexpr DiscreteToken kSpace_weight_1214{1214};
 // " note"; original GPT-2 ID 3465.
-inline constexpr TokenId kSpace_note_1215 = 1215;
+inline constexpr DiscreteToken kSpace_note_1215{1215};
 // " hundred"; original GPT-2 ID 3470.
-inline constexpr TokenId kSpace_hundred_1216 = 1216;
+inline constexpr DiscreteToken kSpace_hundred_1216{1216};
 // " consist"; original GPT-2 ID 3473.
-inline constexpr TokenId kSpace_consist_1217 = 1217;
+inline constexpr DiscreteToken kSpace_consist_1217{1217};
 // "icated"; original GPT-2 ID 3474.
-inline constexpr TokenId kicated_1218 = 1218;
+inline constexpr DiscreteToken kicated_1218{1218};
 // " lic"; original GPT-2 ID 3476.
-inline constexpr TokenId kSpace_lic_1219 = 1219;
+inline constexpr DiscreteToken kSpace_lic_1219{1219};
 // " hom"; original GPT-2 ID 3488.
-inline constexpr TokenId kSpace_hom_1220 = 1220;
+inline constexpr DiscreteToken kSpace_hom_1220{1220};
 // " star"; original GPT-2 ID 3491.
-inline constexpr TokenId kSpace_star_1221 = 1221;
+inline constexpr DiscreteToken kSpace_star_1221{1221};
 // " middle"; original GPT-2 ID 3504.
-inline constexpr TokenId kSpace_middle_1222 = 1222;
+inline constexpr DiscreteToken kSpace_middle_1222{1222};
 // " British"; original GPT-2 ID 3517.
-inline constexpr TokenId kSpace_British_1223 = 1223;
+inline constexpr DiscreteToken kSpace_British_1223{1223};
 // " related"; original GPT-2 ID 3519.
-inline constexpr TokenId kSpace_related_1224 = 1224;
+inline constexpr DiscreteToken kSpace_related_1224{1224};
 // " remain"; original GPT-2 ID 3520.
-inline constexpr TokenId kSpace_remain_1225 = 1225;
+inline constexpr DiscreteToken kSpace_remain_1225{1225};
 // "board"; original GPT-2 ID 3526.
-inline constexpr TokenId kboard_1226 = 1226;
+inline constexpr DiscreteToken kboard_1226{1226};
 // "iny"; original GPT-2 ID 3541.
-inline constexpr TokenId kiny_1227 = 1227;
+inline constexpr DiscreteToken kiny_1227{1227};
 // " uses"; original GPT-2 ID 3544.
-inline constexpr TokenId kSpace_uses_1228 = 1228;
+inline constexpr DiscreteToken kSpace_uses_1228{1228};
 // " write"; original GPT-2 ID 3551.
-inline constexpr TokenId kSpace_write_1229 = 1229;
+inline constexpr DiscreteToken kSpace_write_1229{1229};
 // " reading"; original GPT-2 ID 3555.
-inline constexpr TokenId kSpace_reading_1230 = 1230;
+inline constexpr DiscreteToken kSpace_reading_1230{1230};
 // " designed"; original GPT-2 ID 3562.
-inline constexpr TokenId kSpace_designed_1231 = 1231;
+inline constexpr DiscreteToken kSpace_designed_1231{1231};
 // " Tex"; original GPT-2 ID 3567.
-inline constexpr TokenId kSpace_Tex_1232 = 1232;
+inline constexpr DiscreteToken kSpace_Tex_1232{1232};
 // " appears"; original GPT-2 ID 3568.
-inline constexpr TokenId kSpace_appears_1233 = 1233;
+inline constexpr DiscreteToken kSpace_appears_1233{1233};
 // " London"; original GPT-2 ID 3576.
-inline constexpr TokenId kSpace_London_1234 = 1234;
+inline constexpr DiscreteToken kSpace_London_1234{1234};
 // " allows"; original GPT-2 ID 3578.
-inline constexpr TokenId kSpace_allows_1235 = 1235;
+inline constexpr DiscreteToken kSpace_allows_1235{1235};
 // " difference"; original GPT-2 ID 3580.
-inline constexpr TokenId kSpace_difference_1236 = 1236;
+inline constexpr DiscreteToken kSpace_difference_1236{1236};
 // " although"; original GPT-2 ID 3584.
-inline constexpr TokenId kSpace_although_1237 = 1237;
+inline constexpr DiscreteToken kSpace_although_1237{1237};
 // " relative"; original GPT-2 ID 3585.
-inline constexpr TokenId kSpace_relative_1238 = 1238;
+inline constexpr DiscreteToken kSpace_relative_1238{1238};
 // " application"; original GPT-2 ID 3586.
-inline constexpr TokenId kSpace_application_1239 = 1239;
+inline constexpr DiscreteToken kSpace_application_1239{1239};
 // " English"; original GPT-2 ID 3594.
-inline constexpr TokenId kSpace_English_1240 = 1240;
+inline constexpr DiscreteToken kSpace_English_1240{1240};
 // " writing"; original GPT-2 ID 3597.
-inline constexpr TokenId kSpace_writing_1241 = 1241;
+inline constexpr DiscreteToken kSpace_writing_1241{1241};
 // " seven"; original GPT-2 ID 3598.
-inline constexpr TokenId kSpace_seven_1242 = 1242;
+inline constexpr DiscreteToken kSpace_seven_1242{1242};
 // " print"; original GPT-2 ID 3601.
-inline constexpr TokenId kSpace_print_1243 = 1243;
+inline constexpr DiscreteToken kSpace_print_1243{1243};
 // " gives"; original GPT-2 ID 3607.
-inline constexpr TokenId kSpace_gives_1244 = 1244;
+inline constexpr DiscreteToken kSpace_gives_1244{1244};
 // " cool"; original GPT-2 ID 3608.
-inline constexpr TokenId kSpace_cool_1245 = 1245;
+inline constexpr DiscreteToken kSpace_cool_1245{1245};
 // "ae"; original GPT-2 ID 3609.
-inline constexpr TokenId kae_1246 = 1246;
+inline constexpr DiscreteToken kae_1246{1246};
 // " meaning"; original GPT-2 ID 3616.
-inline constexpr TokenId kSpace_meaning_1247 = 1247;
+inline constexpr DiscreteToken kSpace_meaning_1247{1247};
 // "owers"; original GPT-2 ID 3618.
-inline constexpr TokenId kowers_1248 = 1248;
+inline constexpr DiscreteToken kowers_1248{1248};
 // " gas"; original GPT-2 ID 3623.
-inline constexpr TokenId kSpace_gas_1249 = 1249;
+inline constexpr DiscreteToken kSpace_gas_1249{1249};
 // " eight"; original GPT-2 ID 3624.
-inline constexpr TokenId kSpace_eight_1250 = 1250;
+inline constexpr DiscreteToken kSpace_eight_1250{1250};
 // " feet"; original GPT-2 ID 3625.
-inline constexpr TokenId kSpace_feet_1251 = 1251;
+inline constexpr DiscreteToken kSpace_feet_1251{1251};
 // " brain"; original GPT-2 ID 3632.
-inline constexpr TokenId kSpace_brain_1252 = 1252;
+inline constexpr DiscreteToken kSpace_brain_1252{1252};
 // "hest"; original GPT-2 ID 3634.
-inline constexpr TokenId khest_1253 = 1253;
+inline constexpr DiscreteToken khest_1253{1253};
 // "lements"; original GPT-2 ID 3639.
-inline constexpr TokenId klements_1254 = 1254;
+inline constexpr DiscreteToken klements_1254{1254};
 // " studies"; original GPT-2 ID 3640.
-inline constexpr TokenId kSpace_studies_1255 = 1255;
+inline constexpr DiscreteToken kSpace_studies_1255{1255};
 // " center"; original GPT-2 ID 3641.
-inline constexpr TokenId kSpace_center_1256 = 1256;
+inline constexpr DiscreteToken kSpace_center_1256{1256};
 // "cont"; original GPT-2 ID 3642.
-inline constexpr TokenId kcont_1257 = 1257;
+inline constexpr DiscreteToken kcont_1257{1257};
 // "orge"; original GPT-2 ID 3643.
-inline constexpr TokenId korge_1258 = 1258;
+inline constexpr DiscreteToken korge_1258{1258};
 // " computer"; original GPT-2 ID 3644.
-inline constexpr TokenId kSpace_computer_1259 = 1259;
+inline constexpr DiscreteToken kSpace_computer_1259{1259};
 // "Pl"; original GPT-2 ID 3646.
-inline constexpr TokenId kPl_1260 = 1260;
+inline constexpr DiscreteToken kPl_1260{1260};
 // " increasing"; original GPT-2 ID 3649.
-inline constexpr TokenId kSpace_increasing_1261 = 1261;
+inline constexpr DiscreteToken kSpace_increasing_1261{1261};
 // " store"; original GPT-2 ID 3650.
-inline constexpr TokenId kSpace_store_1262 = 1262;
+inline constexpr DiscreteToken kSpace_store_1262{1262};
 // " wife"; original GPT-2 ID 3656.
-inline constexpr TokenId kSpace_wife_1263 = 1263;
+inline constexpr DiscreteToken kSpace_wife_1263{1263};
 // " modern"; original GPT-2 ID 3660.
-inline constexpr TokenId kSpace_modern_1264 = 1264;
+inline constexpr DiscreteToken kSpace_modern_1264{1264};
 // " sal"; original GPT-2 ID 3664.
-inline constexpr TokenId kSpace_sal_1265 = 1265;
+inline constexpr DiscreteToken kSpace_sal_1265{1265};
 // " powerful"; original GPT-2 ID 3665.
-inline constexpr TokenId kSpace_powerful_1266 = 1266;
+inline constexpr DiscreteToken kSpace_powerful_1266{1266};
 // "My"; original GPT-2 ID 3666.
-inline constexpr TokenId kMy_1267 = 1267;
+inline constexpr DiscreteToken kMy_1267{1267};
 // " Earth"; original GPT-2 ID 3668.
-inline constexpr TokenId kSpace_Earth_1268 = 1268;
+inline constexpr DiscreteToken kSpace_Earth_1268{1268};
 // "iment"; original GPT-2 ID 3681.
-inline constexpr TokenId kiment_1269 = 1269;
+inline constexpr DiscreteToken kiment_1269{1269};
 // " East"; original GPT-2 ID 3687.
-inline constexpr TokenId kSpace_East_1270 = 1270;
+inline constexpr DiscreteToken kSpace_East_1270{1270};
 // " compared"; original GPT-2 ID 3688.
-inline constexpr TokenId kSpace_compared_1271 = 1271;
+inline constexpr DiscreteToken kSpace_compared_1271{1271};
 // " throughout"; original GPT-2 ID 3690.
-inline constexpr TokenId kSpace_throughout_1272 = 1272;
+inline constexpr DiscreteToken kSpace_throughout_1272{1272};
 // " files"; original GPT-2 ID 3696.
-inline constexpr TokenId kSpace_files_1273 = 1273;
+inline constexpr DiscreteToken kSpace_files_1273{1273};
 // "anch"; original GPT-2 ID 3702.
-inline constexpr TokenId kanch_1274 = 1274;
+inline constexpr DiscreteToken kanch_1274{1274};
 // " detail"; original GPT-2 ID 3703.
-inline constexpr TokenId kSpace_detail_1275 = 1275;
+inline constexpr DiscreteToken kSpace_detail_1275{1275};
 // " piece"; original GPT-2 ID 3704.
-inline constexpr TokenId kSpace_piece_1276 = 1276;
+inline constexpr DiscreteToken kSpace_piece_1276{1276};
 // " named"; original GPT-2 ID 3706.
-inline constexpr TokenId kSpace_named_1277 = 1277;
+inline constexpr DiscreteToken kSpace_named_1277{1277};
 // " complex"; original GPT-2 ID 3716.
-inline constexpr TokenId kSpace_complex_1278 = 1278;
+inline constexpr DiscreteToken kSpace_complex_1278{1278};
 // "aming"; original GPT-2 ID 3723.
-inline constexpr TokenId kaming_1279 = 1279;
+inline constexpr DiscreteToken kaming_1279{1279};
 // " beginning"; original GPT-2 ID 3726.
-inline constexpr TokenId kSpace_beginning_1280 = 1280;
+inline constexpr DiscreteToken kSpace_beginning_1280{1280};
 // " fine"; original GPT-2 ID 3734.
-inline constexpr TokenId kSpace_fine_1281 = 1281;
+inline constexpr DiscreteToken kSpace_fine_1281{1281};
 // " fat"; original GPT-2 ID 3735.
-inline constexpr TokenId kSpace_fat_1282 = 1282;
+inline constexpr DiscreteToken kSpace_fat_1282{1282};
 // " Ant"; original GPT-2 ID 3738.
-inline constexpr TokenId kSpace_Ant_1283 = 1283;
+inline constexpr DiscreteToken kSpace_Ant_1283{1283};
 // " feed"; original GPT-2 ID 3745.
-inline constexpr TokenId kSpace_feed_1284 = 1284;
+inline constexpr DiscreteToken kSpace_feed_1284{1284};
 // "ius"; original GPT-2 ID 3754.
-inline constexpr TokenId kius_1285 = 1285;
+inline constexpr DiscreteToken kius_1285{1285};
 // "ida"; original GPT-2 ID 3755.
-inline constexpr TokenId kida_1286 = 1286;
+inline constexpr DiscreteToken kida_1286{1286};
 // " provides"; original GPT-2 ID 3769.
-inline constexpr TokenId kSpace_provides_1287 = 1287;
+inline constexpr DiscreteToken kSpace_provides_1287{1287};
 // " Pre"; original GPT-2 ID 3771.
-inline constexpr TokenId kSpace_Pre_1288 = 1288;
+inline constexpr DiscreteToken kSpace_Pre_1288{1288};
 // " figure"; original GPT-2 ID 3785.
-inline constexpr TokenId kSpace_figure_1289 = 1289;
+inline constexpr DiscreteToken kSpace_figure_1289{1289};
 // " software"; original GPT-2 ID 3788.
-inline constexpr TokenId kSpace_software_1290 = 1290;
+inline constexpr DiscreteToken kSpace_software_1290{1290};
 // "New"; original GPT-2 ID 3791.
-inline constexpr TokenId kNew_1291 = 1291;
+inline constexpr DiscreteToken kNew_1291{1291};
 // "Is"; original GPT-2 ID 3792.
-inline constexpr TokenId kIs_1292 = 1292;
+inline constexpr DiscreteToken kIs_1292{1292};
 // " remains"; original GPT-2 ID 3793.
-inline constexpr TokenId kSpace_remains_1293 = 1293;
+inline constexpr DiscreteToken kSpace_remains_1293{1293};
 // " India"; original GPT-2 ID 3794.
-inline constexpr TokenId kSpace_India_1294 = 1294;
+inline constexpr DiscreteToken kSpace_India_1294{1294};
 // " stage"; original GPT-2 ID 3800.
-inline constexpr TokenId kSpace_stage_1295 = 1295;
+inline constexpr DiscreteToken kSpace_stage_1295{1295};
 // " despite"; original GPT-2 ID 3805.
-inline constexpr TokenId kSpace_despite_1296 = 1296;
+inline constexpr DiscreteToken kSpace_despite_1296{1296};
 // "rs"; original GPT-2 ID 3808.
-inline constexpr TokenId krs_1297 = 1297;
+inline constexpr DiscreteToken krs_1297{1297};
 // " toward"; original GPT-2 ID 3812.
-inline constexpr TokenId kSpace_toward_1298 = 1298;
+inline constexpr DiscreteToken kSpace_toward_1298{1298};
 // " Ter"; original GPT-2 ID 3813.
-inline constexpr TokenId kSpace_Ter_1299 = 1299;
+inline constexpr DiscreteToken kSpace_Ter_1299{1299};
 // " values"; original GPT-2 ID 3815.
-inline constexpr TokenId kSpace_values_1300 = 1300;
+inline constexpr DiscreteToken kSpace_values_1300{1300};
 // "ban"; original GPT-2 ID 3820.
-inline constexpr TokenId kban_1301 = 1301;
+inline constexpr DiscreteToken kban_1301{1301};
 // "wood"; original GPT-2 ID 3822.
-inline constexpr TokenId kwood_1302 = 1302;
+inline constexpr DiscreteToken kwood_1302{1302};
 // " Sun"; original GPT-2 ID 3825.
-inline constexpr TokenId kSpace_Sun_1303 = 1303;
+inline constexpr DiscreteToken kSpace_Sun_1303{1303};
 // " lay"; original GPT-2 ID 3830.
-inline constexpr TokenId kSpace_lay_1304 = 1304;
+inline constexpr DiscreteToken kSpace_lay_1304{1304};
 // " pressure"; original GPT-2 ID 3833.
-inline constexpr TokenId kSpace_pressure_1305 = 1305;
+inline constexpr DiscreteToken kSpace_pressure_1305{1305};
 // "ago"; original GPT-2 ID 3839.
-inline constexpr TokenId kago_1306 = 1306;
+inline constexpr DiscreteToken kago_1306{1306};
 // " letter"; original GPT-2 ID 3850.
-inline constexpr TokenId kSpace_letter_1307 = 1307;
+inline constexpr DiscreteToken kSpace_letter_1307{1307};
 // " quarter"; original GPT-2 ID 3860.
-inline constexpr TokenId kSpace_quarter_1308 = 1308;
+inline constexpr DiscreteToken kSpace_quarter_1308{1308};
 // " moving"; original GPT-2 ID 3867.
-inline constexpr TokenId kSpace_moving_1309 = 1309;
+inline constexpr DiscreteToken kSpace_moving_1309{1309};
 // " truth"; original GPT-2 ID 3872.
-inline constexpr TokenId kSpace_truth_1310 = 1310;
+inline constexpr DiscreteToken kSpace_truth_1310{1310};
 // " charge"; original GPT-2 ID 3877.
-inline constexpr TokenId kSpace_charge_1311 = 1311;
+inline constexpr DiscreteToken kSpace_charge_1311{1311};
 // " Great"; original GPT-2 ID 3878.
-inline constexpr TokenId kSpace_Great_1312 = 1312;
+inline constexpr DiscreteToken kSpace_Great_1312{1312};
 // " rock"; original GPT-2 ID 3881.
-inline constexpr TokenId kSpace_rock_1313 = 1313;
+inline constexpr DiscreteToken kSpace_rock_1313{1313};
 // "ancy"; original GPT-2 ID 3883.
-inline constexpr TokenId kancy_1314 = 1314;
+inline constexpr DiscreteToken kancy_1314{1314};
 // "inger"; original GPT-2 ID 3889.
-inline constexpr TokenId kinger_1315 = 1315;
+inline constexpr DiscreteToken kinger_1315{1315};
 // " names"; original GPT-2 ID 3891.
-inline constexpr TokenId kSpace_names_1316 = 1316;
+inline constexpr DiscreteToken kSpace_names_1316{1316};
 // "inated"; original GPT-2 ID 3898.
-inline constexpr TokenId kinated_1317 = 1317;
+inline constexpr DiscreteToken kinated_1317{1317};
 // " pattern"; original GPT-2 ID 3912.
-inline constexpr TokenId kSpace_pattern_1318 = 1318;
+inline constexpr DiscreteToken kSpace_pattern_1318{1318};
 // " associated"; original GPT-2 ID 3917.
-inline constexpr TokenId kSpace_associated_1319 = 1319;
+inline constexpr DiscreteToken kSpace_associated_1319{1319};
 // "ilies"; original GPT-2 ID 3922.
-inline constexpr TokenId kilies_1320 = 1320;
+inline constexpr DiscreteToken kilies_1320{1320};
 // " stories"; original GPT-2 ID 3923.
-inline constexpr TokenId kSpace_stories_1321 = 1321;
+inline constexpr DiscreteToken kSpace_stories_1321{1321};
 // " arch"; original GPT-2 ID 3934.
-inline constexpr TokenId kSpace_arch_1322 = 1322;
+inline constexpr DiscreteToken kSpace_arch_1322{1322};
 // " fully"; original GPT-2 ID 3938.
-inline constexpr TokenId kSpace_fully_1323 = 1323;
+inline constexpr DiscreteToken kSpace_fully_1323{1323};
 // " mill"; original GPT-2 ID 3939.
-inline constexpr TokenId kSpace_mill_1324 = 1324;
+inline constexpr DiscreteToken kSpace_mill_1324{1324};
 // " Indian"; original GPT-2 ID 3942.
-inline constexpr TokenId kSpace_Indian_1325 = 1325;
+inline constexpr DiscreteToken kSpace_Indian_1325{1325};
 // " lines"; original GPT-2 ID 3951.
-inline constexpr TokenId kSpace_lines_1326 = 1326;
+inline constexpr DiscreteToken kSpace_lines_1326{1326};
 // " growing"; original GPT-2 ID 3957.
-inline constexpr TokenId kSpace_growing_1327 = 1327;
+inline constexpr DiscreteToken kSpace_growing_1327{1327};
 // " positive"; original GPT-2 ID 3967.
-inline constexpr TokenId kSpace_positive_1328 = 1328;
+inline constexpr DiscreteToken kSpace_positive_1328{1328};
 // " culture"; original GPT-2 ID 3968.
-inline constexpr TokenId kSpace_culture_1329 = 1329;
+inline constexpr DiscreteToken kSpace_culture_1329{1329};
 // "ica"; original GPT-2 ID 3970.
-inline constexpr TokenId kica_1330 = 1330;
+inline constexpr DiscreteToken kica_1330{1330};
 // " har"; original GPT-2 ID 3971.
-inline constexpr TokenId kSpace_har_1331 = 1331;
+inline constexpr DiscreteToken kSpace_har_1331{1331};
 // "itely"; original GPT-2 ID 3973.
-inline constexpr TokenId kitely_1332 = 1332;
+inline constexpr DiscreteToken kitely_1332{1332};
 // "II"; original GPT-2 ID 3978.
-inline constexpr TokenId kII_1333 = 1333;
+inline constexpr DiscreteToken kII_1333{1333};
 // "itude"; original GPT-2 ID 3984.
-inline constexpr TokenId kitude_1334 = 1334;
+inline constexpr DiscreteToken kitude_1334{1334};
 // " false"; original GPT-2 ID 3991.
-inline constexpr TokenId kSpace_false_1335 = 1335;
+inline constexpr DiscreteToken kSpace_false_1335{1335};
 // " web"; original GPT-2 ID 3992.
-inline constexpr TokenId kSpace_web_1336 = 1336;
+inline constexpr DiscreteToken kSpace_web_1336{1336};
 // " contain"; original GPT-2 ID 3994.
-inline constexpr TokenId kSpace_contain_1337 = 1337;
+inline constexpr DiscreteToken kSpace_contain_1337{1337};
 // " Ac"; original GPT-2 ID 4013.
-inline constexpr TokenId kSpace_Ac_1338 = 1338;
+inline constexpr DiscreteToken kSpace_Ac_1338{1338};
 // "unes"; original GPT-2 ID 4015.
-inline constexpr TokenId kunes_1339 = 1339;
+inline constexpr DiscreteToken kunes_1339{1339};
 // "uclear"; original GPT-2 ID 4016.
-inline constexpr TokenId kuclear_1340 = 1340;
+inline constexpr DiscreteToken kuclear_1340{1340};
 // " larger"; original GPT-2 ID 4025.
-inline constexpr TokenId kSpace_larger_1341 = 1341;
+inline constexpr DiscreteToken kSpace_larger_1341{1341};
 // " International"; original GPT-2 ID 4037.
-inline constexpr TokenId kSpace_International_1342 = 1342;
+inline constexpr DiscreteToken kSpace_International_1342{1342};
 // " adult"; original GPT-2 ID 4044.
-inline constexpr TokenId kSpace_adult_1343 = 1343;
+inline constexpr DiscreteToken kSpace_adult_1343{1343};
 // " overall"; original GPT-2 ID 4045.
-inline constexpr TokenId kSpace_overall_1344 = 1344;
+inline constexpr DiscreteToken kSpace_overall_1344{1344};
 // " speech"; original GPT-2 ID 4046.
-inline constexpr TokenId kSpace_speech_1345 = 1345;
+inline constexpr DiscreteToken kSpace_speech_1345{1345};
 // " female"; original GPT-2 ID 4048.
-inline constexpr TokenId kSpace_female_1346 = 1346;
+inline constexpr DiscreteToken kSpace_female_1346{1346};
 // " conserv"; original GPT-2 ID 4055.
-inline constexpr TokenId kSpace_conserv_1347 = 1347;
+inline constexpr DiscreteToken kSpace_conserv_1347{1347};
 // " programs"; original GPT-2 ID 4056.
-inline constexpr TokenId kSpace_programs_1348 = 1348;
+inline constexpr DiscreteToken kSpace_programs_1348{1348};
 // " location"; original GPT-2 ID 4067.
-inline constexpr TokenId kSpace_location_1349 = 1349;
+inline constexpr DiscreteToken kSpace_location_1349{1349};
 // " behavior"; original GPT-2 ID 4069.
-inline constexpr TokenId kSpace_behavior_1350 = 1350;
+inline constexpr DiscreteToken kSpace_behavior_1350{1350};
 // " caused"; original GPT-2 ID 4073.
-inline constexpr TokenId kSpace_caused_1351 = 1351;
+inline constexpr DiscreteToken kSpace_caused_1351{1351};
 // " green"; original GPT-2 ID 4077.
-inline constexpr TokenId kSpace_green_1352 = 1352;
+inline constexpr DiscreteToken kSpace_green_1352{1352};
 // " birth"; original GPT-2 ID 4082.
-inline constexpr TokenId kSpace_birth_1353 = 1353;
+inline constexpr DiscreteToken kSpace_birth_1353{1353};
 // " memory"; original GPT-2 ID 4088.
-inline constexpr TokenId kSpace_memory_1354 = 1354;
+inline constexpr DiscreteToken kSpace_memory_1354{1354};
 // " basic"; original GPT-2 ID 4096.
-inline constexpr TokenId kSpace_basic_1355 = 1355;
+inline constexpr DiscreteToken kSpace_basic_1355{1355};
 // " Mac"; original GPT-2 ID 4100.
-inline constexpr TokenId kSpace_Mac_1356 = 1356;
+inline constexpr DiscreteToken kSpace_Mac_1356{1356};
 // " spread"; original GPT-2 ID 4104.
-inline constexpr TokenId kSpace_spread_1357 = 1357;
+inline constexpr DiscreteToken kSpace_spread_1357{1357};
 // "ams"; original GPT-2 ID 4105.
-inline constexpr TokenId kams_1358 = 1358;
+inline constexpr DiscreteToken kams_1358{1358};
 // "ki"; original GPT-2 ID 4106.
-inline constexpr TokenId kki_1359 = 1359;
+inline constexpr DiscreteToken kki_1359{1359};
 // " absolute"; original GPT-2 ID 4112.
-inline constexpr TokenId kSpace_absolute_1360 = 1360;
+inline constexpr DiscreteToken kSpace_absolute_1360{1360};
 // " cards"; original GPT-2 ID 4116.
-inline constexpr TokenId kSpace_cards_1361 = 1361;
+inline constexpr DiscreteToken kSpace_cards_1361{1361};
 // "ears"; original GPT-2 ID 4127.
-inline constexpr TokenId kears_1362 = 1362;
+inline constexpr DiscreteToken kears_1362{1362};
 // " length"; original GPT-2 ID 4129.
-inline constexpr TokenId kSpace_length_1363 = 1363;
+inline constexpr DiscreteToken kSpace_length_1363{1363};
 // " resources"; original GPT-2 ID 4133.
-inline constexpr TokenId kSpace_resources_1364 = 1364;
+inline constexpr DiscreteToken kSpace_resources_1364{1364};
 // " thousands"; original GPT-2 ID 4138.
-inline constexpr TokenId kSpace_thousands_1365 = 1365;
+inline constexpr DiscreteToken kSpace_thousands_1365{1365};
 // " French"; original GPT-2 ID 4141.
-inline constexpr TokenId kSpace_French_1366 = 1366;
+inline constexpr DiscreteToken kSpace_French_1366{1366};
 // " generally"; original GPT-2 ID 4143.
-inline constexpr TokenId kSpace_generally_1367 = 1367;
+inline constexpr DiscreteToken kSpace_generally_1367{1367};
 // " drink"; original GPT-2 ID 4144.
-inline constexpr TokenId kSpace_drink_1368 = 1368;
+inline constexpr DiscreteToken kSpace_drink_1368{1368};
 // "odes"; original GPT-2 ID 4147.
-inline constexpr TokenId kodes_1369 = 1369;
+inline constexpr DiscreteToken kodes_1369{1369};
 // " eye"; original GPT-2 ID 4151.
-inline constexpr TokenId kSpace_eye_1370 = 1370;
+inline constexpr DiscreteToken kSpace_eye_1370{1370};
 // " apparent"; original GPT-2 ID 4156.
-inline constexpr TokenId kSpace_apparent_1371 = 1371;
+inline constexpr DiscreteToken kSpace_apparent_1371{1371};
 // "iders"; original GPT-2 ID 4157.
-inline constexpr TokenId kiders_1372 = 1372;
+inline constexpr DiscreteToken kiders_1372{1372};
 // "met"; original GPT-2 ID 4164.
-inline constexpr TokenId kmet_1373 = 1373;
+inline constexpr DiscreteToken kmet_1373{1373};
 // " primary"; original GPT-2 ID 4165.
-inline constexpr TokenId kSpace_primary_1374 = 1374;
+inline constexpr DiscreteToken kSpace_primary_1374{1374};
 // " developed"; original GPT-2 ID 4166.
-inline constexpr TokenId kSpace_developed_1375 = 1375;
+inline constexpr DiscreteToken kSpace_developed_1375{1375};
 // " skin"; original GPT-2 ID 4168.
-inline constexpr TokenId kSpace_skin_1376 = 1376;
+inline constexpr DiscreteToken kSpace_skin_1376{1376};
 // " blue"; original GPT-2 ID 4171.
-inline constexpr TokenId kSpace_blue_1377 = 1377;
+inline constexpr DiscreteToken kSpace_blue_1377{1377};
 // " ir"; original GPT-2 ID 4173.
-inline constexpr TokenId kSpace_ir_1378 = 1378;
+inline constexpr DiscreteToken kSpace_ir_1378{1378};
 // "ii"; original GPT-2 ID 4178.
-inline constexpr TokenId kii_1379 = 1379;
+inline constexpr DiscreteToken kii_1379{1379};
 // " resist"; original GPT-2 ID 4180.
-inline constexpr TokenId kSpace_resist_1380 = 1380;
+inline constexpr DiscreteToken kSpace_resist_1380{1380};
 // " liter"; original GPT-2 ID 4187.
-inline constexpr TokenId kSpace_liter_1381 = 1381;
+inline constexpr DiscreteToken kSpace_liter_1381{1381};
 // "que"; original GPT-2 ID 4188.
-inline constexpr TokenId kque_1382 = 1382;
+inline constexpr DiscreteToken kque_1382{1382};
 // "bon"; original GPT-2 ID 4189.
-inline constexpr TokenId kbon_1383 = 1383;
+inline constexpr DiscreteToken kbon_1383{1383};
 // " hair"; original GPT-2 ID 4190.
-inline constexpr TokenId kSpace_hair_1384 = 1384;
+inline constexpr DiscreteToken kSpace_hair_1384{1384};
 // " helped"; original GPT-2 ID 4193.
-inline constexpr TokenId kSpace_helped_1385 = 1385;
+inline constexpr DiscreteToken kSpace_helped_1385{1385};
 // " seconds"; original GPT-2 ID 4201.
-inline constexpr TokenId kSpace_seconds_1386 = 1386;
+inline constexpr DiscreteToken kSpace_seconds_1386{1386};
 // " mode"; original GPT-2 ID 4235.
-inline constexpr TokenId kSpace_mode_1387 = 1387;
+inline constexpr DiscreteToken kSpace_mode_1387{1387};
 // " sources"; original GPT-2 ID 4237.
-inline constexpr TokenId kSpace_sources_1388 = 1388;
+inline constexpr DiscreteToken kSpace_sources_1388{1388};
 // " nor"; original GPT-2 ID 4249.
-inline constexpr TokenId kSpace_nor_1389 = 1389;
+inline constexpr DiscreteToken kSpace_nor_1389{1389};
 // " sun"; original GPT-2 ID 4252.
-inline constexpr TokenId kSpace_sun_1390 = 1390;
+inline constexpr DiscreteToken kSpace_sun_1390{1390};
 // " male"; original GPT-2 ID 4257.
-inline constexpr TokenId kSpace_male_1391 = 1391;
+inline constexpr DiscreteToken kSpace_male_1391{1391};
 // " images"; original GPT-2 ID 4263.
-inline constexpr TokenId kSpace_images_1392 = 1392;
+inline constexpr DiscreteToken kSpace_images_1392{1392};
 // "ota"; original GPT-2 ID 4265.
-inline constexpr TokenId kota_1393 = 1393;
+inline constexpr DiscreteToken kota_1393{1393};
 // " stream"; original GPT-2 ID 4269.
-inline constexpr TokenId kSpace_stream_1394 = 1394;
+inline constexpr DiscreteToken kSpace_stream_1394{1394};
 // " double"; original GPT-2 ID 4274.
-inline constexpr TokenId kSpace_double_1395 = 1395;
+inline constexpr DiscreteToken kSpace_double_1395{1395};
 // " rank"; original GPT-2 ID 4279.
-inline constexpr TokenId kSpace_rank_1396 = 1396;
+inline constexpr DiscreteToken kSpace_rank_1396{1396};
 // " picture"; original GPT-2 ID 4286.
-inline constexpr TokenId kSpace_picture_1397 = 1397;
+inline constexpr DiscreteToken kSpace_picture_1397{1397};
 // " century"; original GPT-2 ID 4289.
-inline constexpr TokenId kSpace_century_1398 = 1398;
+inline constexpr DiscreteToken kSpace_century_1398{1398};
 // " onto"; original GPT-2 ID 4291.
-inline constexpr TokenId kSpace_onto_1399 = 1399;
+inline constexpr DiscreteToken kSpace_onto_1399{1399};
 // " expand"; original GPT-2 ID 4292.
-inline constexpr TokenId kSpace_expand_1400 = 1400;
+inline constexpr DiscreteToken kSpace_expand_1400{1400};
 // " Sol"; original GPT-2 ID 4294.
-inline constexpr TokenId kSpace_Sol_1401 = 1401;
+inline constexpr DiscreteToken kSpace_Sol_1401{1401};
 // " Christian"; original GPT-2 ID 4302.
-inline constexpr TokenId kSpace_Christian_1402 = 1402;
+inline constexpr DiscreteToken kSpace_Christian_1402{1402};
 // " leaving"; original GPT-2 ID 4305.
-inline constexpr TokenId kSpace_leaving_1403 = 1403;
+inline constexpr DiscreteToken kSpace_leaving_1403{1403};
 // "53"; original GPT-2 ID 4310.
-inline constexpr TokenId k53_1404 = 1404;
+inline constexpr DiscreteToken k53_1404{1404};
 // " central"; original GPT-2 ID 4318.
-inline constexpr TokenId kSpace_central_1405 = 1405;
+inline constexpr DiscreteToken kSpace_central_1405{1405};
 // " dream"; original GPT-2 ID 4320.
-inline constexpr TokenId kSpace_dream_1406 = 1406;
+inline constexpr DiscreteToken kSpace_dream_1406{1406};
 // " unit"; original GPT-2 ID 4326.
-inline constexpr TokenId kSpace_unit_1407 = 1407;
+inline constexpr DiscreteToken kSpace_unit_1407{1407};
 // " tend"; original GPT-2 ID 4327.
-inline constexpr TokenId kSpace_tend_1408 = 1408;
+inline constexpr DiscreteToken kSpace_tend_1408{1408};
 // " becomes"; original GPT-2 ID 4329.
-inline constexpr TokenId kSpace_becomes_1409 = 1409;
+inline constexpr DiscreteToken kSpace_becomes_1409{1409};
 // " predict"; original GPT-2 ID 4331.
-inline constexpr TokenId kSpace_predict_1410 = 1410;
+inline constexpr DiscreteToken kSpace_predict_1410{1410};
 // " transfer"; original GPT-2 ID 4351.
-inline constexpr TokenId kSpace_transfer_1411 = 1411;
+inline constexpr DiscreteToken kSpace_transfer_1411{1411};
 // " bur"; original GPT-2 ID 4356.
-inline constexpr TokenId kSpace_bur_1412 = 1412;
+inline constexpr DiscreteToken kSpace_bur_1412{1412};
 // "Some"; original GPT-2 ID 4366.
-inline constexpr TokenId kSome_1413 = 1413;
+inline constexpr DiscreteToken kSome_1413{1413};
 // " adding"; original GPT-2 ID 4375.
-inline constexpr TokenId kSpace_adding_1414 = 1414;
+inline constexpr DiscreteToken kSpace_adding_1414{1414};
 // " raised"; original GPT-2 ID 4376.
-inline constexpr TokenId kSpace_raised_1415 = 1415;
+inline constexpr DiscreteToken kSpace_raised_1415{1415};
 // " largest"; original GPT-2 ID 4387.
-inline constexpr TokenId kSpace_largest_1416 = 1416;
+inline constexpr DiscreteToken kSpace_largest_1416{1416};
 // " jump"; original GPT-2 ID 4391.
-inline constexpr TokenId kSpace_jump_1417 = 1417;
+inline constexpr DiscreteToken kSpace_jump_1417{1417};
 // "imal"; original GPT-2 ID 4402.
-inline constexpr TokenId kimal_1418 = 1418;
+inline constexpr DiscreteToken kimal_1418{1418};
 // " records"; original GPT-2 ID 4406.
-inline constexpr TokenId kSpace_records_1419 = 1419;
+inline constexpr DiscreteToken kSpace_records_1419{1419};
 // " surface"; original GPT-2 ID 4417.
-inline constexpr TokenId kSpace_surface_1420 = 1420;
+inline constexpr DiscreteToken kSpace_surface_1420{1420};
 // " Cur"; original GPT-2 ID 4424.
-inline constexpr TokenId kSpace_Cur_1421 = 1421;
+inline constexpr DiscreteToken kSpace_Cur_1421{1421};
 // " lose"; original GPT-2 ID 4425.
-inline constexpr TokenId kSpace_lose_1422 = 1422;
+inline constexpr DiscreteToken kSpace_lose_1422{1422};
 // " requires"; original GPT-2 ID 4433.
-inline constexpr TokenId kSpace_requires_1423 = 1423;
+inline constexpr DiscreteToken kSpace_requires_1423{1423};
 // " Mal"; original GPT-2 ID 4434.
-inline constexpr TokenId kSpace_Mal_1424 = 1424;
+inline constexpr DiscreteToken kSpace_Mal_1424{1424};
 // " spirit"; original GPT-2 ID 4437.
-inline constexpr TokenId kSpace_spirit_1425 = 1425;
+inline constexpr DiscreteToken kSpace_spirit_1425{1425};
 // " produce"; original GPT-2 ID 4439.
-inline constexpr TokenId kSpace_produce_1426 = 1426;
+inline constexpr DiscreteToken kSpace_produce_1426{1426};
 // "lands"; original GPT-2 ID 4447.
-inline constexpr TokenId klands_1427 = 1427;
+inline constexpr DiscreteToken klands_1427{1427};
 // "ona"; original GPT-2 ID 4450.
-inline constexpr TokenId kona_1428 = 1428;
+inline constexpr DiscreteToken kona_1428{1428};
 // " extremely"; original GPT-2 ID 4457.
-inline constexpr TokenId kSpace_extremely_1429 = 1429;
+inline constexpr DiscreteToken kSpace_extremely_1429{1429};
 // " gain"; original GPT-2 ID 4461.
-inline constexpr TokenId kSpace_gain_1430 = 1430;
+inline constexpr DiscreteToken kSpace_gain_1430{1430};
 // "yp"; original GPT-2 ID 4464.
-inline constexpr TokenId kyp_1431 = 1431;
+inline constexpr DiscreteToken kyp_1431{1431};
 // " background"; original GPT-2 ID 4469.
-inline constexpr TokenId kSpace_background_1432 = 1432;
+inline constexpr DiscreteToken kSpace_background_1432{1432};
 // " continues"; original GPT-2 ID 4477.
-inline constexpr TokenId kSpace_continues_1433 = 1433;
+inline constexpr DiscreteToken kSpace_continues_1433{1433};
 // " System"; original GPT-2 ID 4482.
-inline constexpr TokenId kSpace_System_1434 = 1434;
+inline constexpr DiscreteToken kSpace_System_1434{1434};
 // " eat"; original GPT-2 ID 4483.
-inline constexpr TokenId kSpace_eat_1435 = 1435;
+inline constexpr DiscreteToken kSpace_eat_1435{1435};
 // " rise"; original GPT-2 ID 4485.
-inline constexpr TokenId kSpace_rise_1436 = 1436;
+inline constexpr DiscreteToken kSpace_rise_1436{1436};
 // " Germany"; original GPT-2 ID 4486.
-inline constexpr TokenId kSpace_Germany_1437 = 1437;
+inline constexpr DiscreteToken kSpace_Germany_1437{1437};
 // "ils"; original GPT-2 ID 4487.
-inline constexpr TokenId kils_1438 = 1438;
+inline constexpr DiscreteToken kils_1438{1438};
 // " England"; original GPT-2 ID 4492.
-inline constexpr TokenId kSpace_England_1439 = 1439;
+inline constexpr DiscreteToken kSpace_England_1439{1439};
 // "za"; original GPT-2 ID 4496.
-inline constexpr TokenId kza_1440 = 1440;
+inline constexpr DiscreteToken kza_1440{1440};
 // " Australia"; original GPT-2 ID 4505.
-inline constexpr TokenId kSpace_Australia_1441 = 1441;
+inline constexpr DiscreteToken kSpace_Australia_1441{1441};
 // "Qu"; original GPT-2 ID 4507.
-inline constexpr TokenId kQu_1442 = 1442;
+inline constexpr DiscreteToken kQu_1442{1442};
 // "illing"; original GPT-2 ID 4509.
-inline constexpr TokenId killing_1443 = 1443;
+inline constexpr DiscreteToken killing_1443{1443};
 // "li"; original GPT-2 ID 4528.
-inline constexpr TokenId kli_1444 = 1444;
+inline constexpr DiscreteToken kli_1444{1444};
 // " charges"; original GPT-2 ID 4530.
-inline constexpr TokenId kSpace_charges_1445 = 1445;
+inline constexpr DiscreteToken kSpace_charges_1445{1445};
 // " earth"; original GPT-2 ID 4534.
-inline constexpr TokenId kSpace_earth_1446 = 1446;
+inline constexpr DiscreteToken kSpace_earth_1446{1446};
 // "enses"; original GPT-2 ID 4541.
-inline constexpr TokenId kenses_1447 = 1447;
+inline constexpr DiscreteToken kenses_1447{1447};
 // " Ep"; original GPT-2 ID 4551.
-inline constexpr TokenId kSpace_Ep_1448 = 1448;
+inline constexpr DiscreteToken kSpace_Ep_1448{1448};
 // " separate"; original GPT-2 ID 4553.
-inline constexpr TokenId kSpace_separate_1449 = 1449;
+inline constexpr DiscreteToken kSpace_separate_1449{1449};
 // " eth"; original GPT-2 ID 4555.
-inline constexpr TokenId kSpace_eth_1450 = 1450;
+inline constexpr DiscreteToken kSpace_eth_1450{1450};
 // " unless"; original GPT-2 ID 4556.
-inline constexpr TokenId kSpace_unless_1451 = 1451;
+inline constexpr DiscreteToken kSpace_unless_1451{1451};
 // "Sp"; original GPT-2 ID 4561.
-inline constexpr TokenId kSp_1452 = 1452;
+inline constexpr DiscreteToken kSp_1452{1452};
 // "gar"; original GPT-2 ID 4563.
-inline constexpr TokenId kgar_1453 = 1453;
+inline constexpr DiscreteToken kgar_1453{1453};
 // " direction"; original GPT-2 ID 4571.
-inline constexpr TokenId kSpace_direction_1454 = 1454;
+inline constexpr DiscreteToken kSpace_direction_1454{1454};
 // " easier"; original GPT-2 ID 4577.
-inline constexpr TokenId kSpace_easier_1455 = 1455;
+inline constexpr DiscreteToken kSpace_easier_1455{1455};
 // " micro"; original GPT-2 ID 4580.
-inline constexpr TokenId kSpace_micro_1456 = 1456;
+inline constexpr DiscreteToken kSpace_micro_1456{1456};
 // "aste"; original GPT-2 ID 4594.
-inline constexpr TokenId kaste_1457 = 1457;
+inline constexpr DiscreteToken kaste_1457{1457};
 // " disp"; original GPT-2 ID 4596.
-inline constexpr TokenId kSpace_disp_1458 = 1458;
+inline constexpr DiscreteToken kSpace_disp_1458{1458};
 // " solution"; original GPT-2 ID 4610.
-inline constexpr TokenId kSpace_solution_1459 = 1459;
+inline constexpr DiscreteToken kSpace_solution_1459{1459};
 // " removed"; original GPT-2 ID 4615.
-inline constexpr TokenId kSpace_removed_1460 = 1460;
+inline constexpr DiscreteToken kSpace_removed_1460{1460};
 // " plant"; original GPT-2 ID 4618.
-inline constexpr TokenId kSpace_plant_1461 = 1461;
+inline constexpr DiscreteToken kSpace_plant_1461{1461};
 // " placed"; original GPT-2 ID 4624.
-inline constexpr TokenId kSpace_placed_1462 = 1462;
+inline constexpr DiscreteToken kSpace_placed_1462{1462};
 // " mostly"; original GPT-2 ID 4632.
-inline constexpr TokenId kSpace_mostly_1463 = 1463;
+inline constexpr DiscreteToken kSpace_mostly_1463{1463};
 // " negative"; original GPT-2 ID 4633.
-inline constexpr TokenId kSpace_negative_1464 = 1464;
+inline constexpr DiscreteToken kSpace_negative_1464{1464};
 // " produced"; original GPT-2 ID 4635.
-inline constexpr TokenId kSpace_produced_1465 = 1465;
+inline constexpr DiscreteToken kSpace_produced_1465{1465};
 // " mur"; original GPT-2 ID 4636.
-inline constexpr TokenId kSpace_mur_1466 = 1466;
+inline constexpr DiscreteToken kSpace_mur_1466{1466};
 // " connection"; original GPT-2 ID 4637.
-inline constexpr TokenId kSpace_connection_1467 = 1467;
+inline constexpr DiscreteToken kSpace_connection_1467{1467};
 // " Ver"; original GPT-2 ID 4643.
-inline constexpr TokenId kSpace_Ver_1468 = 1468;
+inline constexpr DiscreteToken kSpace_Ver_1468{1468};
 // " structure"; original GPT-2 ID 4645.
-inline constexpr TokenId kSpace_structure_1469 = 1469;
+inline constexpr DiscreteToken kSpace_structure_1469{1469};
 // "Se"; original GPT-2 ID 4653.
-inline constexpr TokenId kSe_1470 = 1470;
+inline constexpr DiscreteToken kSe_1470{1470};
 // " die"; original GPT-2 ID 4656.
-inline constexpr TokenId kSpace_die_1471 = 1471;
+inline constexpr DiscreteToken kSpace_die_1471{1471};
 // " camera"; original GPT-2 ID 4676.
-inline constexpr TokenId kSpace_camera_1472 = 1472;
+inline constexpr DiscreteToken kSpace_camera_1472{1472};
 // " existing"; original GPT-2 ID 4683.
-inline constexpr TokenId kSpace_existing_1473 = 1473;
+inline constexpr DiscreteToken kSpace_existing_1473{1473};
 // "lor"; original GPT-2 ID 4685.
-inline constexpr TokenId klor_1474 = 1474;
+inline constexpr DiscreteToken klor_1474{1474};
 // " species"; original GPT-2 ID 4693.
-inline constexpr TokenId kSpace_species_1475 = 1475;
+inline constexpr DiscreteToken kSpace_species_1475{1475};
 // " animals"; original GPT-2 ID 4695.
-inline constexpr TokenId kSpace_animals_1476 = 1476;
+inline constexpr DiscreteToken kSpace_animals_1476{1476};
 // " Bay"; original GPT-2 ID 4696.
-inline constexpr TokenId kSpace_Bay_1477 = 1477;
+inline constexpr DiscreteToken kSpace_Bay_1477{1477};
 // " Under"; original GPT-2 ID 4698.
-inline constexpr TokenId kSpace_Under_1478 = 1478;
+inline constexpr DiscreteToken kSpace_Under_1478{1478};
 // " thread"; original GPT-2 ID 4704.
-inline constexpr TokenId kSpace_thread_1479 = 1479;
+inline constexpr DiscreteToken kSpace_thread_1479{1479};
 // " Vol"; original GPT-2 ID 4709.
-inline constexpr TokenId kSpace_Vol_1480 = 1480;
+inline constexpr DiscreteToken kSpace_Vol_1480{1480};
 // "ula"; original GPT-2 ID 4712.
-inline constexpr TokenId kula_1481 = 1481;
+inline constexpr DiscreteToken kula_1481{1481};
 // " explain"; original GPT-2 ID 4727.
-inline constexpr TokenId kSpace_explain_1482 = 1482;
+inline constexpr DiscreteToken kSpace_explain_1482{1482};
 // " attract"; original GPT-2 ID 4729.
-inline constexpr TokenId kSpace_attract_1483 = 1483;
+inline constexpr DiscreteToken kSpace_attract_1483{1483};
 // "aks"; original GPT-2 ID 4730.
-inline constexpr TokenId kaks_1484 = 1484;
+inline constexpr DiscreteToken kaks_1484{1484};
 // " string"; original GPT-2 ID 4731.
-inline constexpr TokenId kSpace_string_1485 = 1485;
+inline constexpr DiscreteToken kSpace_string_1485{1485};
 // " solid"; original GPT-2 ID 4735.
-inline constexpr TokenId kSpace_solid_1486 = 1486;
+inline constexpr DiscreteToken kSpace_solid_1486{1486};
 // " cities"; original GPT-2 ID 4736.
-inline constexpr TokenId kSpace_cities_1487 = 1487;
+inline constexpr DiscreteToken kSpace_cities_1487{1487};
 // " depend"; original GPT-2 ID 4745.
-inline constexpr TokenId kSpace_depend_1488 = 1488;
+inline constexpr DiscreteToken kSpace_depend_1488{1488};
 // " core"; original GPT-2 ID 4755.
-inline constexpr TokenId kSpace_core_1489 = 1489;
+inline constexpr DiscreteToken kSpace_core_1489{1489};
 // " opening"; original GPT-2 ID 4756.
-inline constexpr TokenId kSpace_opening_1490 = 1490;
+inline constexpr DiscreteToken kSpace_opening_1490{1490};
 // "ada"; original GPT-2 ID 4763.
-inline constexpr TokenId kada_1491 = 1491;
+inline constexpr DiscreteToken kada_1491{1491};
 // " ice"; original GPT-2 ID 4771.
-inline constexpr TokenId kSpace_ice_1492 = 1492;
+inline constexpr DiscreteToken kSpace_ice_1492{1492};
 // " cells"; original GPT-2 ID 4778.
-inline constexpr TokenId kSpace_cells_1493 = 1493;
+inline constexpr DiscreteToken kSpace_cells_1493{1493};
 // " remove"; original GPT-2 ID 4781.
-inline constexpr TokenId kSpace_remove_1494 = 1494;
+inline constexpr DiscreteToken kSpace_remove_1494{1494};
 // "uct"; original GPT-2 ID 4782.
-inline constexpr TokenId kuct_1495 = 1495;
+inline constexpr DiscreteToken kuct_1495{1495};
 // " concerns"; original GPT-2 ID 4786.
-inline constexpr TokenId kSpace_concerns_1496 = 1496;
+inline constexpr DiscreteToken kSpace_concerns_1496{1496};
 // " hus"; original GPT-2 ID 4791.
-inline constexpr TokenId kSpace_hus_1497 = 1497;
+inline constexpr DiscreteToken kSpace_hus_1497{1497};
 // " independent"; original GPT-2 ID 4795.
-inline constexpr TokenId kSpace_independent_1498 = 1498;
+inline constexpr DiscreteToken kSpace_independent_1498{1498};
 // " sudden"; original GPT-2 ID 4802.
-inline constexpr TokenId kSpace_sudden_1499 = 1499;
+inline constexpr DiscreteToken kSpace_sudden_1499{1499};
 // " graph"; original GPT-2 ID 4823.
-inline constexpr TokenId kSpace_graph_1500 = 1500;
+inline constexpr DiscreteToken kSpace_graph_1500{1500};
 // "TC"; original GPT-2 ID 4825.
-inline constexpr TokenId kTC_1501 = 1501;
+inline constexpr DiscreteToken kTC_1501{1501};
 // " steps"; original GPT-2 ID 4831.
-inline constexpr TokenId kSpace_steps_1502 = 1502;
+inline constexpr DiscreteToken kSpace_steps_1502{1502};
 // " smaller"; original GPT-2 ID 4833.
-inline constexpr TokenId kSpace_smaller_1503 = 1503;
+inline constexpr DiscreteToken kSpace_smaller_1503{1503};
 // "En"; original GPT-2 ID 4834.
-inline constexpr TokenId kEn_1504 = 1504;
+inline constexpr DiscreteToken kEn_1504{1504};
 // " closed"; original GPT-2 ID 4838.
-inline constexpr TokenId kSpace_closed_1505 = 1505;
+inline constexpr DiscreteToken kSpace_closed_1505{1505};
 // " transport"; original GPT-2 ID 4839.
-inline constexpr TokenId kSpace_transport_1506 = 1506;
+inline constexpr DiscreteToken kSpace_transport_1506{1506};
 // " elements"; original GPT-2 ID 4847.
-inline constexpr TokenId kSpace_elements_1507 = 1507;
+inline constexpr DiscreteToken kSpace_elements_1507{1507};
 // " Sal"; original GPT-2 ID 4849.
-inline constexpr TokenId kSpace_Sal_1508 = 1508;
+inline constexpr DiscreteToken kSpace_Sal_1508{1508};
 // " hearing"; original GPT-2 ID 4854.
-inline constexpr TokenId kSpace_hearing_1509 = 1509;
+inline constexpr DiscreteToken kSpace_hearing_1509{1509};
 // " supported"; original GPT-2 ID 4855.
-inline constexpr TokenId kSpace_supported_1510 = 1510;
+inline constexpr DiscreteToken kSpace_supported_1510{1510};
 // " massive"; original GPT-2 ID 4858.
-inline constexpr TokenId kSpace_massive_1511 = 1511;
+inline constexpr DiscreteToken kSpace_massive_1511{1511};
 // " border"; original GPT-2 ID 4865.
-inline constexpr TokenId kSpace_border_1512 = 1512;
+inline constexpr DiscreteToken kSpace_border_1512{1512};
 // "ography"; original GPT-2 ID 4867.
-inline constexpr TokenId kography_1513 = 1513;
+inline constexpr DiscreteToken kography_1513{1513};
 // " task"; original GPT-2 ID 4876.
-inline constexpr TokenId kSpace_task_1514 = 1514;
+inline constexpr DiscreteToken kSpace_task_1514{1514};
 // "tes"; original GPT-2 ID 4879.
-inline constexpr TokenId ktes_1515 = 1515;
+inline constexpr DiscreteToken ktes_1515{1515};
 // " France"; original GPT-2 ID 4881.
-inline constexpr TokenId kSpace_France_1516 = 1516;
+inline constexpr DiscreteToken kSpace_France_1516{1516};
 // " detect"; original GPT-2 ID 4886.
-inline constexpr TokenId kSpace_detect_1517 = 1517;
+inline constexpr DiscreteToken kSpace_detect_1517{1517};
 // " shared"; original GPT-2 ID 4888.
-inline constexpr TokenId kSpace_shared_1518 = 1518;
+inline constexpr DiscreteToken kSpace_shared_1518{1518};
 // "ache"; original GPT-2 ID 4891.
-inline constexpr TokenId kache_1519 = 1519;
+inline constexpr DiscreteToken kache_1519{1519};
 // " heat"; original GPT-2 ID 4894.
-inline constexpr TokenId kSpace_heat_1520 = 1520;
+inline constexpr DiscreteToken kSpace_heat_1520{1520};
 // " Book"; original GPT-2 ID 4897.
-inline constexpr TokenId kSpace_Book_1521 = 1521;
+inline constexpr DiscreteToken kSpace_Book_1521{1521};
 // " wood"; original GPT-2 ID 4898.
-inline constexpr TokenId kSpace_wood_1522 = 1522;
+inline constexpr DiscreteToken kSpace_wood_1522{1522};
 // " tools"; original GPT-2 ID 4899.
-inline constexpr TokenId kSpace_tools_1523 = 1523;
+inline constexpr DiscreteToken kSpace_tools_1523{1523};
 // " ge"; original GPT-2 ID 4903.
-inline constexpr TokenId kSpace_ge_1524 = 1524;
+inline constexpr DiscreteToken kSpace_ge_1524{1524};
 // " operation"; original GPT-2 ID 4905.
-inline constexpr TokenId kSpace_operation_1525 = 1525;
+inline constexpr DiscreteToken kSpace_operation_1525{1525};
 // "type"; original GPT-2 ID 4906.
-inline constexpr TokenId ktype_1526 = 1526;
+inline constexpr DiscreteToken ktype_1526{1526};
 // "ga"; original GPT-2 ID 4908.
-inline constexpr TokenId kga_1527 = 1527;
+inline constexpr DiscreteToken kga_1527{1527};
 // " contains"; original GPT-2 ID 4909.
-inline constexpr TokenId kSpace_contains_1528 = 1528;
+inline constexpr DiscreteToken kSpace_contains_1528{1528};
 // "anta"; original GPT-2 ID 4910.
-inline constexpr TokenId kanta_1529 = 1529;
+inline constexpr DiscreteToken kanta_1529{1529};
 // " church"; original GPT-2 ID 4928.
-inline constexpr TokenId kSpace_church_1530 = 1530;
+inline constexpr DiscreteToken kSpace_church_1530{1530};
 // " Two"; original GPT-2 ID 4930.
-inline constexpr TokenId kSpace_Two_1531 = 1531;
+inline constexpr DiscreteToken kSpace_Two_1531{1531};
 // " reference"; original GPT-2 ID 4941.
-inline constexpr TokenId kSpace_reference_1532 = 1532;
+inline constexpr DiscreteToken kSpace_reference_1532{1532};
 // "ros"; original GPT-2 ID 4951.
-inline constexpr TokenId kros_1533 = 1533;
+inline constexpr DiscreteToken kros_1533{1533};
 // " tells"; original GPT-2 ID 4952.
-inline constexpr TokenId kSpace_tells_1534 = 1534;
+inline constexpr DiscreteToken kSpace_tells_1534{1534};
 // " daughter"; original GPT-2 ID 4957.
-inline constexpr TokenId kSpace_daughter_1535 = 1535;
+inline constexpr DiscreteToken kSpace_daughter_1535{1535};
 // " Japanese"; original GPT-2 ID 4960.
-inline constexpr TokenId kSpace_Japanese_1536 = 1536;
+inline constexpr DiscreteToken kSpace_Japanese_1536{1536};
 // " equal"; original GPT-2 ID 4961.
-inline constexpr TokenId kSpace_equal_1537 = 1537;
+inline constexpr DiscreteToken kSpace_equal_1537{1537};
 // " turns"; original GPT-2 ID 4962.
-inline constexpr TokenId kSpace_turns_1538 = 1538;
+inline constexpr DiscreteToken kSpace_turns_1538{1538};
 // " documents"; original GPT-2 ID 4963.
-inline constexpr TokenId kSpace_documents_1539 = 1539;
+inline constexpr DiscreteToken kSpace_documents_1539{1539};
 // "Res"; original GPT-2 ID 4965.
-inline constexpr TokenId kRes_1540 = 1540;
+inline constexpr DiscreteToken kRes_1540{1540};
 // " Korea"; original GPT-2 ID 4969.
-inline constexpr TokenId kSpace_Korea_1541 = 1541;
+inline constexpr DiscreteToken kSpace_Korea_1541{1541};
 // " served"; original GPT-2 ID 4983.
-inline constexpr TokenId kSpace_served_1542 = 1542;
+inline constexpr DiscreteToken kSpace_served_1542{1542};
 // " units"; original GPT-2 ID 4991.
-inline constexpr TokenId kSpace_units_1543 = 1543;
+inline constexpr DiscreteToken kSpace_units_1543{1543};
 // " entirely"; original GPT-2 ID 5000.
-inline constexpr TokenId kSpace_entirely_1544 = 1544;
+inline constexpr DiscreteToken kSpace_entirely_1544{1544};
 // " element"; original GPT-2 ID 5002.
-inline constexpr TokenId kSpace_element_1545 = 1545;
+inline constexpr DiscreteToken kSpace_element_1545{1545};
 // " Wall"; original GPT-2 ID 5007.
-inline constexpr TokenId kSpace_Wall_1546 = 1546;
+inline constexpr DiscreteToken kSpace_Wall_1546{1546};
 // " covered"; original GPT-2 ID 5017.
-inline constexpr TokenId kSpace_covered_1547 = 1547;
+inline constexpr DiscreteToken kSpace_covered_1547{1547};
 // " sem"; original GPT-2 ID 5026.
-inline constexpr TokenId kSpace_sem_1548 = 1548;
+inline constexpr DiscreteToken kSpace_sem_1548{1548};
 // " Gal"; original GPT-2 ID 5027.
-inline constexpr TokenId kSpace_Gal_1549 = 1549;
+inline constexpr DiscreteToken kSpace_Gal_1549{1549};
 // "ules"; original GPT-2 ID 5028.
-inline constexpr TokenId kules_1550 = 1550;
+inline constexpr DiscreteToken kules_1550{1550};
 // "la"; original GPT-2 ID 5031.
-inline constexpr TokenId kla_1551 = 1551;
+inline constexpr DiscreteToken kla_1551{1551};
 // " becoming"; original GPT-2 ID 5033.
-inline constexpr TokenId kSpace_becoming_1552 = 1552;
+inline constexpr DiscreteToken kSpace_becoming_1552{1552};
 // " sites"; original GPT-2 ID 5043.
-inline constexpr TokenId kSpace_sites_1553 = 1553;
+inline constexpr DiscreteToken kSpace_sites_1553{1553};
 // " animal"; original GPT-2 ID 5044.
-inline constexpr TokenId kSpace_animal_1554 = 1554;
+inline constexpr DiscreteToken kSpace_animal_1554{1554};
 // " scale"; original GPT-2 ID 5046.
-inline constexpr TokenId kSpace_scale_1555 = 1555;
+inline constexpr DiscreteToken kSpace_scale_1555{1555};
 // " charged"; original GPT-2 ID 5047.
-inline constexpr TokenId kSpace_charged_1556 = 1556;
+inline constexpr DiscreteToken kSpace_charged_1556{1556};
 // " instruct"; original GPT-2 ID 5048.
-inline constexpr TokenId kSpace_instruct_1557 = 1557;
+inline constexpr DiscreteToken kSpace_instruct_1557{1557};
 // " standing"; original GPT-2 ID 5055.
-inline constexpr TokenId kSpace_standing_1558 = 1558;
+inline constexpr DiscreteToken kSpace_standing_1558{1558};
 // " Sum"; original GPT-2 ID 5060.
-inline constexpr TokenId kSpace_Sum_1559 = 1559;
+inline constexpr DiscreteToken kSpace_Sum_1559{1559};
 // " Carol"; original GPT-2 ID 5074.
-inline constexpr TokenId kSpace_Carol_1560 = 1560;
+inline constexpr DiscreteToken kSpace_Carol_1560{1560};
 // " allowing"; original GPT-2 ID 5086.
-inline constexpr TokenId kSpace_allowing_1561 = 1561;
+inline constexpr DiscreteToken kSpace_allowing_1561{1561};
 // " north"; original GPT-2 ID 5093.
-inline constexpr TokenId kSpace_north_1562 = 1562;
+inline constexpr DiscreteToken kSpace_north_1562{1562};
 // " injury"; original GPT-2 ID 5095.
-inline constexpr TokenId kSpace_injury_1563 = 1563;
+inline constexpr DiscreteToken kSpace_injury_1563{1563};
 // " repeated"; original GPT-2 ID 5100.
-inline constexpr TokenId kSpace_repeated_1564 = 1564;
+inline constexpr DiscreteToken kSpace_repeated_1564{1564};
 // " arms"; original GPT-2 ID 5101.
-inline constexpr TokenId kSpace_arms_1565 = 1565;
+inline constexpr DiscreteToken kSpace_arms_1565{1565};
 // " forms"; original GPT-2 ID 5107.
-inline constexpr TokenId kSpace_forms_1566 = 1566;
+inline constexpr DiscreteToken kSpace_forms_1566{1566};
 // "Our"; original GPT-2 ID 5122.
-inline constexpr TokenId kOur_1567 = 1567;
+inline constexpr DiscreteToken kOur_1567{1567};
 // "asp"; original GPT-2 ID 5126.
-inline constexpr TokenId kasp_1568 = 1568;
+inline constexpr DiscreteToken kasp_1568{1568};
 // " supply"; original GPT-2 ID 5127.
-inline constexpr TokenId kSpace_supply_1569 = 1569;
+inline constexpr DiscreteToken kSpace_supply_1569{1569};
 // "orial"; original GPT-2 ID 5132.
-inline constexpr TokenId korial_1570 = 1570;
+inline constexpr DiscreteToken korial_1570{1570};
 // "hens"; original GPT-2 ID 5135.
-inline constexpr TokenId khens_1571 = 1571;
+inline constexpr DiscreteToken khens_1571{1571};
 // "etic"; original GPT-2 ID 5139.
-inline constexpr TokenId ketic_1572 = 1572;
+inline constexpr DiscreteToken ketic_1572{1572};
 // " located"; original GPT-2 ID 5140.
-inline constexpr TokenId kSpace_located_1573 = 1573;
+inline constexpr DiscreteToken kSpace_located_1573{1573};
 // " exchange"; original GPT-2 ID 5163.
-inline constexpr TokenId kSpace_exchange_1574 = 1574;
+inline constexpr DiscreteToken kSpace_exchange_1574{1574};
 // " pair"; original GPT-2 ID 5166.
-inline constexpr TokenId kSpace_pair_1575 = 1575;
+inline constexpr DiscreteToken kSpace_pair_1575{1575};
 // "onym"; original GPT-2 ID 5177.
-inline constexpr TokenId konym_1576 = 1576;
+inline constexpr DiscreteToken konym_1576{1576};
 // " electric"; original GPT-2 ID 5186.
-inline constexpr TokenId kSpace_electric_1577 = 1577;
+inline constexpr DiscreteToken kSpace_electric_1577{1577};
 // "Of"; original GPT-2 ID 5189.
-inline constexpr TokenId kOf_1578 = 1578;
+inline constexpr DiscreteToken kOf_1578{1578};
 // " nine"; original GPT-2 ID 5193.
-inline constexpr TokenId kSpace_nine_1579 = 1579;
+inline constexpr DiscreteToken kSpace_nine_1579{1579};
 // " flow"; original GPT-2 ID 5202.
-inline constexpr TokenId kSpace_flow_1580 = 1580;
+inline constexpr DiscreteToken kSpace_flow_1580{1580};
 // " photos"; original GPT-2 ID 5205.
-inline constexpr TokenId kSpace_photos_1581 = 1581;
+inline constexpr DiscreteToken kSpace_photos_1581{1581};
 // " pieces"; original GPT-2 ID 5207.
-inline constexpr TokenId kSpace_pieces_1582 = 1582;
+inline constexpr DiscreteToken kSpace_pieces_1582{1582};
 // " partner"; original GPT-2 ID 5212.
-inline constexpr TokenId kSpace_partner_1583 = 1583;
+inline constexpr DiscreteToken kSpace_partner_1583{1583};
 // " Gen"; original GPT-2 ID 5215.
-inline constexpr TokenId kSpace_Gen_1584 = 1584;
+inline constexpr DiscreteToken kSpace_Gen_1584{1584};
 // "state"; original GPT-2 ID 5219.
-inline constexpr TokenId kstate_1585 = 1585;
+inline constexpr DiscreteToken kstate_1585{1585};
 // "ooth"; original GPT-2 ID 5226.
-inline constexpr TokenId kooth_1586 = 1586;
+inline constexpr DiscreteToken kooth_1586{1586};
 // " internet"; original GPT-2 ID 5230.
-inline constexpr TokenId kSpace_internet_1587 = 1587;
+inline constexpr DiscreteToken kSpace_internet_1587{1587};
 // "gen"; original GPT-2 ID 5235.
-inline constexpr TokenId kgen_1588 = 1588;
+inline constexpr DiscreteToken kgen_1588{1588};
 // " balance"; original GPT-2 ID 5236.
-inline constexpr TokenId kSpace_balance_1589 = 1589;
+inline constexpr DiscreteToken kSpace_balance_1589{1589};
 // " sounds"; original GPT-2 ID 5238.
-inline constexpr TokenId kSpace_sounds_1590 = 1590;
+inline constexpr DiscreteToken kSpace_sounds_1590{1590};
 // " arr"; original GPT-2 ID 5240.
-inline constexpr TokenId kSpace_arr_1591 = 1591;
+inline constexpr DiscreteToken kSpace_arr_1591{1591};
 // "oves"; original GPT-2 ID 5241.
-inline constexpr TokenId koves_1592 = 1592;
+inline constexpr DiscreteToken koves_1592{1592};
 // "Go"; original GPT-2 ID 5247.
-inline constexpr TokenId kGo_1593 = 1593;
+inline constexpr DiscreteToken kGo_1593{1593};
 // "rant"; original GPT-2 ID 5250.
-inline constexpr TokenId krant_1594 = 1594;
+inline constexpr DiscreteToken krant_1594{1594};
 // " fuel"; original GPT-2 ID 5252.
-inline constexpr TokenId kSpace_fuel_1595 = 1595;
+inline constexpr DiscreteToken kSpace_fuel_1595{1595};
 // " distance"; original GPT-2 ID 5253.
-inline constexpr TokenId kSpace_distance_1596 = 1596;
+inline constexpr DiscreteToken kSpace_distance_1596{1596};
 // " measures"; original GPT-2 ID 5260.
-inline constexpr TokenId kSpace_measures_1597 = 1597;
+inline constexpr DiscreteToken kSpace_measures_1597{1597};
 // " Night"; original GPT-2 ID 5265.
-inline constexpr TokenId kSpace_Night_1598 = 1598;
+inline constexpr DiscreteToken kSpace_Night_1598{1598};
 // "active"; original GPT-2 ID 5275.
-inline constexpr TokenId kactive_1599 = 1599;
+inline constexpr DiscreteToken kactive_1599{1599};
 // " carried"; original GPT-2 ID 5281.
-inline constexpr TokenId kSpace_carried_1600 = 1600;
+inline constexpr DiscreteToken kSpace_carried_1600{1600};
 // "lets"; original GPT-2 ID 5289.
-inline constexpr TokenId klets_1601 = 1601;
+inline constexpr DiscreteToken klets_1601{1601};
 // " intended"; original GPT-2 ID 5292.
-inline constexpr TokenId kSpace_intended_1602 = 1602;
+inline constexpr DiscreteToken kSpace_intended_1602{1602};
 // "real"; original GPT-2 ID 5305.
-inline constexpr TokenId kreal_1603 = 1603;
+inline constexpr DiscreteToken kreal_1603{1603};
 // "Me"; original GPT-2 ID 5308.
-inline constexpr TokenId kMe_1604 = 1604;
+inline constexpr DiscreteToken kMe_1604{1604};
 // " Kh"; original GPT-2 ID 5311.
-inline constexpr TokenId kSpace_Kh_1605 = 1605;
+inline constexpr DiscreteToken kSpace_Kh_1605{1605};
 // " Web"; original GPT-2 ID 5313.
-inline constexpr TokenId kSpace_Web_1606 = 1606;
+inline constexpr DiscreteToken kSpace_Web_1606{1606};
 // "emic"; original GPT-2 ID 5314.
-inline constexpr TokenId kemic_1607 = 1607;
+inline constexpr DiscreteToken kemic_1607{1607};
 // " novel"; original GPT-2 ID 5337.
-inline constexpr TokenId kSpace_novel_1608 = 1608;
+inline constexpr DiscreteToken kSpace_novel_1608{1608};
 // " communities"; original GPT-2 ID 5348.
-inline constexpr TokenId kSpace_communities_1609 = 1609;
+inline constexpr DiscreteToken kSpace_communities_1609{1609};
 // "ita"; original GPT-2 ID 5350.
-inline constexpr TokenId kita_1610 = 1610;
+inline constexpr DiscreteToken kita_1610{1610};
 // "mas"; original GPT-2 ID 5356.
-inline constexpr TokenId kmas_1611 = 1611;
+inline constexpr DiscreteToken kmas_1611{1611};
 // " AND"; original GPT-2 ID 5357.
-inline constexpr TokenId kSpace_AND_1612 = 1612;
+inline constexpr DiscreteToken kSpace_AND_1612{1612};
 // " operating"; original GPT-2 ID 5361.
-inline constexpr TokenId kSpace_operating_1613 = 1613;
+inline constexpr DiscreteToken kSpace_operating_1613{1613};
 // " relatively"; original GPT-2 ID 5365.
-inline constexpr TokenId kSpace_relatively_1614 = 1614;
+inline constexpr DiscreteToken kSpace_relatively_1614{1614};
 // " south"; original GPT-2 ID 5366.
-inline constexpr TokenId kSpace_south_1615 = 1615;
+inline constexpr DiscreteToken kSpace_south_1615{1615};
 // " identity"; original GPT-2 ID 5369.
-inline constexpr TokenId kSpace_identity_1616 = 1616;
+inline constexpr DiscreteToken kSpace_identity_1616{1616};
 // "och"; original GPT-2 ID 5374.
-inline constexpr TokenId koch_1617 = 1617;
+inline constexpr DiscreteToken koch_1617{1617};
 // "eds"; original GPT-2 ID 5379.
-inline constexpr TokenId keds_1618 = 1618;
+inline constexpr DiscreteToken keds_1618{1618};
 // " familiar"; original GPT-2 ID 5385.
-inline constexpr TokenId kSpace_familiar_1619 = 1619;
+inline constexpr DiscreteToken kSpace_familiar_1619{1619};
 // " internal"; original GPT-2 ID 5387.
-inline constexpr TokenId kSpace_internal_1620 = 1620;
+inline constexpr DiscreteToken kSpace_internal_1620{1620};
 // " sides"; original GPT-2 ID 5389.
-inline constexpr TokenId kSpace_sides_1621 = 1621;
+inline constexpr DiscreteToken kSpace_sides_1621{1621};
 // " joined"; original GPT-2 ID 5399.
-inline constexpr TokenId kSpace_joined_1622 = 1622;
+inline constexpr DiscreteToken kSpace_joined_1622{1622};
 // " differences"; original GPT-2 ID 5400.
-inline constexpr TokenId kSpace_differences_1623 = 1623;
+inline constexpr DiscreteToken kSpace_differences_1623{1623};
 // " twice"; original GPT-2 ID 5403.
-inline constexpr TokenId kSpace_twice_1624 = 1624;
+inline constexpr DiscreteToken kSpace_twice_1624{1624};
 // " glass"; original GPT-2 ID 5405.
-inline constexpr TokenId kSpace_glass_1625 = 1625;
+inline constexpr DiscreteToken kSpace_glass_1625{1625};
 // " Army"; original GPT-2 ID 5407.
-inline constexpr TokenId kSpace_Army_1626 = 1626;
+inline constexpr DiscreteToken kSpace_Army_1626{1626};
 // " handle"; original GPT-2 ID 5412.
-inline constexpr TokenId kSpace_handle_1627 = 1627;
+inline constexpr DiscreteToken kSpace_handle_1627{1627};
 // " sea"; original GPT-2 ID 5417.
-inline constexpr TokenId kSpace_sea_1628 = 1628;
+inline constexpr DiscreteToken kSpace_sea_1628{1628};
 // " helps"; original GPT-2 ID 5419.
-inline constexpr TokenId kSpace_helps_1629 = 1629;
+inline constexpr DiscreteToken kSpace_helps_1629{1629};
 // " bound"; original GPT-2 ID 5421.
-inline constexpr TokenId kSpace_bound_1630 = 1630;
+inline constexpr DiscreteToken kSpace_bound_1630{1630};
 // " mouth"; original GPT-2 ID 5422.
-inline constexpr TokenId kSpace_mouth_1631 = 1631;
+inline constexpr DiscreteToken kSpace_mouth_1631{1631};
 // "cles"; original GPT-2 ID 5427.
-inline constexpr TokenId kcles_1632 = 1632;
+inline constexpr DiscreteToken kcles_1632{1632};
 // "xy"; original GPT-2 ID 5431.
-inline constexpr TokenId kxy_1633 = 1633;
+inline constexpr DiscreteToken kxy_1633{1633};
 // "lo"; original GPT-2 ID 5439.
-inline constexpr TokenId klo_1634 = 1634;
+inline constexpr DiscreteToken klo_1634{1634};
 // " planet"; original GPT-2 ID 5440.
-inline constexpr TokenId kSpace_planet_1635 = 1635;
+inline constexpr DiscreteToken kSpace_planet_1635{1635};
 // " faster"; original GPT-2 ID 5443.
-inline constexpr TokenId kSpace_faster_1636 = 1636;
+inline constexpr DiscreteToken kSpace_faster_1636{1636};
 // " spect"; original GPT-2 ID 5444.
-inline constexpr TokenId kSpace_spect_1637 = 1637;
+inline constexpr DiscreteToken kSpace_spect_1637{1637};
 // " broken"; original GPT-2 ID 5445.
-inline constexpr TokenId kSpace_broken_1638 = 1638;
+inline constexpr DiscreteToken kSpace_broken_1638{1638};
 // " defined"; original GPT-2 ID 5447.
-inline constexpr TokenId kSpace_defined_1639 = 1639;
+inline constexpr DiscreteToken kSpace_defined_1639{1639};
 // " Island"; original GPT-2 ID 5451.
-inline constexpr TokenId kSpace_Island_1640 = 1640;
+inline constexpr DiscreteToken kSpace_Island_1640{1640};
 // " numer"; original GPT-2 ID 5470.
-inline constexpr TokenId kSpace_numer_1641 = 1641;
+inline constexpr DiscreteToken kSpace_numer_1641{1641};
 // " flight"; original GPT-2 ID 5474.
-inline constexpr TokenId kSpace_flight_1642 = 1642;
+inline constexpr DiscreteToken kSpace_flight_1642{1642};
 // " apart"; original GPT-2 ID 5475.
-inline constexpr TokenId kSpace_apart_1643 = 1643;
+inline constexpr DiscreteToken kSpace_apart_1643{1643};
 // " Africa"; original GPT-2 ID 5478.
-inline constexpr TokenId kSpace_Africa_1644 = 1644;
+inline constexpr DiscreteToken kSpace_Africa_1644{1644};
 // " applications"; original GPT-2 ID 5479.
-inline constexpr TokenId kSpace_applications_1645 = 1645;
+inline constexpr DiscreteToken kSpace_applications_1645{1645};
 // " gar"; original GPT-2 ID 5482.
-inline constexpr TokenId kSpace_gar_1646 = 1646;
+inline constexpr DiscreteToken kSpace_gar_1646{1646};
 // " shape"; original GPT-2 ID 5485.
-inline constexpr TokenId kSpace_shape_1647 = 1647;
+inline constexpr DiscreteToken kSpace_shape_1647{1647};
 // "ao"; original GPT-2 ID 5488.
-inline constexpr TokenId kao_1648 = 1648;
+inline constexpr DiscreteToken kao_1648{1648};
 // " Britain"; original GPT-2 ID 5491.
-inline constexpr TokenId kSpace_Britain_1649 = 1649;
+inline constexpr DiscreteToken kSpace_Britain_1649{1649};
 // " diet"; original GPT-2 ID 5496.
-inline constexpr TokenId kSpace_diet_1650 = 1650;
+inline constexpr DiscreteToken kSpace_diet_1650{1650};
 // "uts"; original GPT-2 ID 5500.
-inline constexpr TokenId kuts_1651 = 1651;
+inline constexpr DiscreteToken kuts_1651{1651};
 // " tree"; original GPT-2 ID 5509.
-inline constexpr TokenId kSpace_tree_1652 = 1652;
+inline constexpr DiscreteToken kSpace_tree_1652{1652};
 // " fif"; original GPT-2 ID 5515.
-inline constexpr TokenId kSpace_fif_1653 = 1653;
+inline constexpr DiscreteToken kSpace_fif_1653{1653};
 // " maintain"; original GPT-2 ID 5529.
-inline constexpr TokenId kSpace_maintain_1654 = 1654;
+inline constexpr DiscreteToken kSpace_maintain_1654{1654};
 // " Dead"; original GPT-2 ID 5542.
-inline constexpr TokenId kSpace_Dead_1655 = 1655;
+inline constexpr DiscreteToken kSpace_Dead_1655{1655};
 // " presented"; original GPT-2 ID 5545.
-inline constexpr TokenId kSpace_presented_1656 = 1656;
+inline constexpr DiscreteToken kSpace_presented_1656{1656};
 // "ato"; original GPT-2 ID 5549.
-inline constexpr TokenId kato_1657 = 1657;
+inline constexpr DiscreteToken kato_1657{1657};
 // " objects"; original GPT-2 ID 5563.
-inline constexpr TokenId kSpace_objects_1658 = 1658;
+inline constexpr DiscreteToken kSpace_objects_1658{1658};
 // "Or"; original GPT-2 ID 5574.
-inline constexpr TokenId kOr_1659 = 1659;
+inline constexpr DiscreteToken kOr_1659{1659};
 // " motor"; original GPT-2 ID 5584.
-inline constexpr TokenId kSpace_motor_1660 = 1660;
+inline constexpr DiscreteToken kSpace_motor_1660{1660};
 // " appearance"; original GPT-2 ID 5585.
-inline constexpr TokenId kSpace_appearance_1661 = 1661;
+inline constexpr DiscreteToken kSpace_appearance_1661{1661};
 // " strike"; original GPT-2 ID 5587.
-inline constexpr TokenId kSpace_strike_1662 = 1662;
+inline constexpr DiscreteToken kSpace_strike_1662{1662};
 // " Louis"; original GPT-2 ID 5593.
-inline constexpr TokenId kSpace_Louis_1663 = 1663;
+inline constexpr DiscreteToken kSpace_Louis_1663{1663};
 // " belong"; original GPT-2 ID 5594.
-inline constexpr TokenId kSpace_belong_1664 = 1664;
+inline constexpr DiscreteToken kSpace_belong_1664{1664};
 // " prepared"; original GPT-2 ID 5597.
-inline constexpr TokenId kSpace_prepared_1665 = 1665;
+inline constexpr DiscreteToken kSpace_prepared_1665{1665};
 // "ourney"; original GPT-2 ID 5604.
-inline constexpr TokenId kourney_1666 = 1666;
+inline constexpr DiscreteToken kourney_1666{1666};
 // "Su"; original GPT-2 ID 5606.
-inline constexpr TokenId kSu_1667 = 1667;
+inline constexpr DiscreteToken kSu_1667{1667};
 // " changing"; original GPT-2 ID 5609.
-inline constexpr TokenId kSpace_changing_1668 = 1668;
+inline constexpr DiscreteToken kSpace_changing_1668{1668};
 // " lived"; original GPT-2 ID 5615.
-inline constexpr TokenId kSpace_lived_1669 = 1669;
+inline constexpr DiscreteToken kSpace_lived_1669{1669};
 // " sets"; original GPT-2 ID 5621.
-inline constexpr TokenId kSpace_sets_1670 = 1670;
+inline constexpr DiscreteToken kSpace_sets_1670{1670};
 // "uous"; original GPT-2 ID 5623.
-inline constexpr TokenId kuous_1671 = 1671;
+inline constexpr DiscreteToken kuous_1671{1671};
 // " Mount"; original GPT-2 ID 5628.
-inline constexpr TokenId kSpace_Mount_1672 = 1672;
+inline constexpr DiscreteToken kSpace_Mount_1672{1672};
 // " odd"; original GPT-2 ID 5629.
-inline constexpr TokenId kSpace_odd_1673 = 1673;
+inline constexpr DiscreteToken kSpace_odd_1673{1673};
 // " causes"; original GPT-2 ID 5640.
-inline constexpr TokenId kSpace_causes_1674 = 1674;
+inline constexpr DiscreteToken kSpace_causes_1674{1674};
 // "ads"; original GPT-2 ID 5643.
-inline constexpr TokenId kads_1675 = 1675;
+inline constexpr DiscreteToken kads_1675{1675};
 // " ends"; original GPT-2 ID 5645.
-inline constexpr TokenId kSpace_ends_1676 = 1676;
+inline constexpr DiscreteToken kSpace_ends_1676{1676};
 // " minute"; original GPT-2 ID 5664.
-inline constexpr TokenId kSpace_minute_1677 = 1677;
+inline constexpr DiscreteToken kSpace_minute_1677{1677};
 // " leaves"; original GPT-2 ID 5667.
-inline constexpr TokenId kSpace_leaves_1678 = 1678;
+inline constexpr DiscreteToken kSpace_leaves_1678{1678};
 // " Grand"; original GPT-2 ID 5675.
-inline constexpr TokenId kSpace_Grand_1679 = 1679;
+inline constexpr DiscreteToken kSpace_Grand_1679{1679};
 // " construct"; original GPT-2 ID 5678.
-inline constexpr TokenId kSpace_construct_1680 = 1680;
+inline constexpr DiscreteToken kSpace_construct_1680{1680};
 // " follows"; original GPT-2 ID 5679.
-inline constexpr TokenId kSpace_follows_1681 = 1681;
+inline constexpr DiscreteToken kSpace_follows_1681{1681};
 // " largely"; original GPT-2 ID 5688.
-inline constexpr TokenId kSpace_largely_1682 = 1682;
+inline constexpr DiscreteToken kSpace_largely_1682{1682};
 // " materials"; original GPT-2 ID 5696.
-inline constexpr TokenId kSpace_materials_1683 = 1683;
+inline constexpr DiscreteToken kSpace_materials_1683{1683};
 // " closer"; original GPT-2 ID 5699.
-inline constexpr TokenId kSpace_closer_1684 = 1684;
+inline constexpr DiscreteToken kSpace_closer_1684{1684};
 // " van"; original GPT-2 ID 5719.
-inline constexpr TokenId kSpace_van_1685 = 1685;
+inline constexpr DiscreteToken kSpace_van_1685{1685};
 // " column"; original GPT-2 ID 5721.
-inline constexpr TokenId kSpace_column_1686 = 1686;
+inline constexpr DiscreteToken kSpace_column_1686{1686};
 // " rot"; original GPT-2 ID 5724.
-inline constexpr TokenId kSpace_rot_1687 = 1687;
+inline constexpr DiscreteToken kSpace_rot_1687{1687};
 // " increases"; original GPT-2 ID 5732.
-inline constexpr TokenId kSpace_increases_1688 = 1688;
+inline constexpr DiscreteToken kSpace_increases_1688{1688};
 // "ano"; original GPT-2 ID 5733.
-inline constexpr TokenId kano_1689 = 1689;
+inline constexpr DiscreteToken kano_1689{1689};
 // " frame"; original GPT-2 ID 5739.
-inline constexpr TokenId kSpace_frame_1690 = 1690;
+inline constexpr DiscreteToken kSpace_frame_1690{1690};
 // " edge"; original GPT-2 ID 5743.
-inline constexpr TokenId kSpace_edge_1691 = 1691;
+inline constexpr DiscreteToken kSpace_edge_1691{1691};
 // " row"; original GPT-2 ID 5752.
-inline constexpr TokenId kSpace_row_1692 = 1692;
+inline constexpr DiscreteToken kSpace_row_1692{1692};
 // "uls"; original GPT-2 ID 5753.
-inline constexpr TokenId kuls_1693 = 1693;
+inline constexpr DiscreteToken kuls_1693{1693};
 // " rid"; original GPT-2 ID 5755.
-inline constexpr TokenId kSpace_rid_1694 = 1694;
+inline constexpr DiscreteToken kSpace_rid_1694{1694};
 // " wearing"; original GPT-2 ID 5762.
-inline constexpr TokenId kSpace_wearing_1695 = 1695;
+inline constexpr DiscreteToken kSpace_wearing_1695{1695};
 // " factor"; original GPT-2 ID 5766.
-inline constexpr TokenId kSpace_factor_1696 = 1696;
+inline constexpr DiscreteToken kSpace_factor_1696{1696};
 // "asts"; original GPT-2 ID 5773.
-inline constexpr TokenId kasts_1697 = 1697;
+inline constexpr DiscreteToken kasts_1697{1697};
 // " Games"; original GPT-2 ID 5776.
-inline constexpr TokenId kSpace_Games_1698 = 1698;
+inline constexpr DiscreteToken kSpace_Games_1698{1698};
 // "Well"; original GPT-2 ID 5779.
-inline constexpr TokenId kWell_1699 = 1699;
+inline constexpr DiscreteToken kWell_1699{1699};
 // " Hell"; original GPT-2 ID 5783.
-inline constexpr TokenId kSpace_Hell_1700 = 1700;
+inline constexpr DiscreteToken kSpace_Hell_1700{1700};
 // " stars"; original GPT-2 ID 5788.
-inline constexpr TokenId kSpace_stars_1701 = 1701;
+inline constexpr DiscreteToken kSpace_stars_1701{1701};
 // " format"; original GPT-2 ID 5794.
-inline constexpr TokenId kSpace_format_1702 = 1702;
+inline constexpr DiscreteToken kSpace_format_1702{1702};
 // " agent"; original GPT-2 ID 5797.
-inline constexpr TokenId kSpace_agent_1703 = 1703;
+inline constexpr DiscreteToken kSpace_agent_1703{1703};
 // "ora"; original GPT-2 ID 5799.
-inline constexpr TokenId kora_1704 = 1704;
+inline constexpr DiscreteToken kora_1704{1704};
 // " warm"; original GPT-2 ID 5814.
-inline constexpr TokenId kSpace_warm_1705 = 1705;
+inline constexpr DiscreteToken kSpace_warm_1705{1705};
 // " king"; original GPT-2 ID 5822.
-inline constexpr TokenId kSpace_king_1706 = 1706;
+inline constexpr DiscreteToken kSpace_king_1706{1706};
 // " Mexico"; original GPT-2 ID 5828.
-inline constexpr TokenId kSpace_Mexico_1707 = 1707;
+inline constexpr DiscreteToken kSpace_Mexico_1707{1707};
 // "cean"; original GPT-2 ID 5829.
-inline constexpr TokenId kcean_1708 = 1708;
+inline constexpr DiscreteToken kcean_1708{1708};
 // " Death"; original GPT-2 ID 5830.
-inline constexpr TokenId kSpace_Death_1709 = 1709;
+inline constexpr DiscreteToken kSpace_Death_1709{1709};
 // "pty"; original GPT-2 ID 5835.
-inline constexpr TokenId kpty_1710 = 1710;
+inline constexpr DiscreteToken kpty_1710{1710};
 // " Battle"; original GPT-2 ID 5838.
-inline constexpr TokenId kSpace_Battle_1711 = 1711;
+inline constexpr DiscreteToken kSpace_Battle_1711{1711};
 // "Am"; original GPT-2 ID 5840.
-inline constexpr TokenId kAm_1712 = 1712;
+inline constexpr DiscreteToken kAm_1712{1712};
 // " Cre"; original GPT-2 ID 5844.
-inline constexpr TokenId kSpace_Cre_1713 = 1713;
+inline constexpr DiscreteToken kSpace_Cre_1713{1713};
 // " 44"; original GPT-2 ID 5846.
-inline constexpr TokenId kSpace_44_1714 = 1714;
+inline constexpr DiscreteToken kSpace_44_1714{1714};
 // "iser"; original GPT-2 ID 5847.
-inline constexpr TokenId kiser_1715 = 1715;
+inline constexpr DiscreteToken kiser_1715{1715};
 // " famous"; original GPT-2 ID 5863.
-inline constexpr TokenId kSpace_famous_1716 = 1716;
+inline constexpr DiscreteToken kSpace_famous_1716{1716};
 // " Sign"; original GPT-2 ID 5865.
-inline constexpr TokenId kSpace_Sign_1717 = 1717;
+inline constexpr DiscreteToken kSpace_Sign_1717{1717};
 // " River"; original GPT-2 ID 5866.
-inline constexpr TokenId kSpace_River_1718 = 1718;
+inline constexpr DiscreteToken kSpace_River_1718{1718};
 // " percentage"; original GPT-2 ID 5873.
-inline constexpr TokenId kSpace_percentage_1719 = 1719;
+inline constexpr DiscreteToken kSpace_percentage_1719{1719};
 // " visual"; original GPT-2 ID 5874.
-inline constexpr TokenId kSpace_visual_1720 = 1720;
+inline constexpr DiscreteToken kSpace_visual_1720{1720};
 // " Long"; original GPT-2 ID 5882.
-inline constexpr TokenId kSpace_Long_1721 = 1721;
+inline constexpr DiscreteToken kSpace_Long_1721{1721};
 // " connected"; original GPT-2 ID 5884.
-inline constexpr TokenId kSpace_connected_1722 = 1722;
+inline constexpr DiscreteToken kSpace_connected_1722{1722};
 // " dry"; original GPT-2 ID 5894.
-inline constexpr TokenId kSpace_dry_1723 = 1723;
+inline constexpr DiscreteToken kSpace_dry_1723{1723};
 // " identify"; original GPT-2 ID 5911.
-inline constexpr TokenId kSpace_identify_1724 = 1724;
+inline constexpr DiscreteToken kSpace_identify_1724{1724};
 // " fish"; original GPT-2 ID 5916.
-inline constexpr TokenId kSpace_fish_1725 = 1725;
+inline constexpr DiscreteToken kSpace_fish_1725{1725};
 // " bodies"; original GPT-2 ID 5920.
-inline constexpr TokenId kSpace_bodies_1726 = 1726;
+inline constexpr DiscreteToken kSpace_bodies_1726{1726};
 // " developing"; original GPT-2 ID 5922.
-inline constexpr TokenId kSpace_developing_1727 = 1727;
+inline constexpr DiscreteToken kSpace_developing_1727{1727};
 // " chemical"; original GPT-2 ID 5931.
-inline constexpr TokenId kSpace_chemical_1728 = 1728;
+inline constexpr DiscreteToken kSpace_chemical_1728{1728};
 // " egg"; original GPT-2 ID 5935.
-inline constexpr TokenId kSpace_egg_1729 = 1729;
+inline constexpr DiscreteToken kSpace_egg_1729{1729};
 // "sters"; original GPT-2 ID 5937.
-inline constexpr TokenId ksters_1730 = 1730;
+inline constexpr DiscreteToken ksters_1730{1730};
 // " temperature"; original GPT-2 ID 5951.
-inline constexpr TokenId kSpace_temperature_1731 = 1731;
+inline constexpr DiscreteToken kSpace_temperature_1731{1731};
 // "osis"; original GPT-2 ID 5958.
-inline constexpr TokenId kosis_1732 = 1732;
+inline constexpr DiscreteToken kosis_1732{1732};
 // " Pan"; original GPT-2 ID 5961.
-inline constexpr TokenId kSpace_Pan_1733 = 1733;
+inline constexpr DiscreteToken kSpace_Pan_1733{1733};
 // " fixed"; original GPT-2 ID 5969.
-inline constexpr TokenId kSpace_fixed_1734 = 1734;
+inline constexpr DiscreteToken kSpace_fixed_1734{1734};
 // "osite"; original GPT-2 ID 5971.
-inline constexpr TokenId kosite_1735 = 1735;
+inline constexpr DiscreteToken kosite_1735{1735};
 // "olt"; original GPT-2 ID 5978.
-inline constexpr TokenId kolt_1736 = 1736;
+inline constexpr DiscreteToken kolt_1736{1736};
 // " pictures"; original GPT-2 ID 5986.
-inline constexpr TokenId kSpace_pictures_1737 = 1737;
+inline constexpr DiscreteToken kSpace_pictures_1737{1737};
 // "Per"; original GPT-2 ID 5990.
-inline constexpr TokenId kPer_1738 = 1738;
+inline constexpr DiscreteToken kPer_1738{1738};
 // "rome"; original GPT-2 ID 5998.
-inline constexpr TokenId krome_1739 = 1739;
+inline constexpr DiscreteToken krome_1739{1739};
 // " greatest"; original GPT-2 ID 6000.
-inline constexpr TokenId kSpace_greatest_1740 = 1740;
+inline constexpr DiscreteToken kSpace_greatest_1740{1740};
 // " capable"; original GPT-2 ID 6007.
-inline constexpr TokenId kSpace_capable_1741 = 1741;
+inline constexpr DiscreteToken kSpace_capable_1741{1741};
 // " bright"; original GPT-2 ID 6016.
-inline constexpr TokenId kSpace_bright_1742 = 1742;
+inline constexpr DiscreteToken kSpace_bright_1742{1742};
 // " typically"; original GPT-2 ID 6032.
-inline constexpr TokenId kSpace_typically_1743 = 1743;
+inline constexpr DiscreteToken kSpace_typically_1743{1743};
 // " Dan"; original GPT-2 ID 6035.
-inline constexpr TokenId kSpace_Dan_1744 = 1744;
+inline constexpr DiscreteToken kSpace_Dan_1744{1744};
 // "rees"; original GPT-2 ID 6037.
-inline constexpr TokenId krees_1745 = 1745;
+inline constexpr DiscreteToken krees_1745{1745};
 // "life"; original GPT-2 ID 6042.
-inline constexpr TokenId klife_1746 = 1746;
+inline constexpr DiscreteToken klife_1746{1746};
 // "rid"; original GPT-2 ID 6058.
-inline constexpr TokenId krid_1747 = 1747;
+inline constexpr DiscreteToken krid_1747{1747};
 // " Men"; original GPT-2 ID 6065.
-inline constexpr TokenId kSpace_Men_1748 = 1748;
+inline constexpr DiscreteToken kSpace_Men_1748{1748};
 // " forth"; original GPT-2 ID 6071.
-inline constexpr TokenId kSpace_forth_1749 = 1749;
+inline constexpr DiscreteToken kSpace_forth_1749{1749};
 // " spring"; original GPT-2 ID 6076.
-inline constexpr TokenId kSpace_spring_1750 = 1750;
+inline constexpr DiscreteToken kSpace_spring_1750{1750};
 // " distribution"; original GPT-2 ID 6082.
-inline constexpr TokenId kSpace_distribution_1751 = 1751;
+inline constexpr DiscreteToken kSpace_distribution_1751{1751};
 // "Can"; original GPT-2 ID 6090.
-inline constexpr TokenId kCan_1752 = 1752;
+inline constexpr DiscreteToken kCan_1752{1752};
 // "cr"; original GPT-2 ID 6098.
-inline constexpr TokenId kcr_1753 = 1753;
+inline constexpr DiscreteToken kcr_1753{1753};
 // " moves"; original GPT-2 ID 6100.
-inline constexpr TokenId kSpace_moves_1754 = 1754;
+inline constexpr DiscreteToken kSpace_moves_1754{1754};
 // " IP"; original GPT-2 ID 6101.
-inline constexpr TokenId kSpace_IP_1755 = 1755;
+inline constexpr DiscreteToken kSpace_IP_1755{1755};
 // "Every"; original GPT-2 ID 6109.
-inline constexpr TokenId kEvery_1756 = 1756;
+inline constexpr DiscreteToken kEvery_1756{1756};
 // " volume"; original GPT-2 ID 6115.
-inline constexpr TokenId kSpace_volume_1757 = 1757;
+inline constexpr DiscreteToken kSpace_volume_1757{1757};
 // " positions"; original GPT-2 ID 6116.
-inline constexpr TokenId kSpace_positions_1758 = 1758;
+inline constexpr DiscreteToken kSpace_positions_1758{1758};
 // "agues"; original GPT-2 ID 6120.
-inline constexpr TokenId kagues_1759 = 1759;
+inline constexpr DiscreteToken kagues_1759{1759};
 // " cas"; original GPT-2 ID 6124.
-inline constexpr TokenId kSpace_cas_1760 = 1760;
+inline constexpr DiscreteToken kSpace_cas_1760{1760};
 // " fly"; original GPT-2 ID 6129.
-inline constexpr TokenId kSpace_fly_1761 = 1761;
+inline constexpr DiscreteToken kSpace_fly_1761{1761};
 // " plants"; original GPT-2 ID 6134.
-inline constexpr TokenId kSpace_plants_1762 = 1762;
+inline constexpr DiscreteToken kSpace_plants_1762{1762};
 // " begins"; original GPT-2 ID 6140.
-inline constexpr TokenId kSpace_begins_1763 = 1763;
+inline constexpr DiscreteToken kSpace_begins_1763{1763};
 // " storage"; original GPT-2 ID 6143.
-inline constexpr TokenId kSpace_storage_1764 = 1764;
+inline constexpr DiscreteToken kSpace_storage_1764{1764};
 // " metal"; original GPT-2 ID 6147.
-inline constexpr TokenId kSpace_metal_1765 = 1765;
+inline constexpr DiscreteToken kSpace_metal_1765{1765};
 // "elly"; original GPT-2 ID 6148.
-inline constexpr TokenId kelly_1766 = 1766;
+inline constexpr DiscreteToken kelly_1766{1766};
 // " ordered"; original GPT-2 ID 6149.
-inline constexpr TokenId kSpace_ordered_1767 = 1767;
+inline constexpr DiscreteToken kSpace_ordered_1767{1767};
 // " ancient"; original GPT-2 ID 6156.
-inline constexpr TokenId kSpace_ancient_1768 = 1768;
+inline constexpr DiscreteToken kSpace_ancient_1768{1768};
 // " performed"; original GPT-2 ID 6157.
-inline constexpr TokenId kSpace_performed_1769 = 1769;
+inline constexpr DiscreteToken kSpace_performed_1769{1769};
 // " neither"; original GPT-2 ID 6159.
-inline constexpr TokenId kSpace_neither_1770 = 1770;
+inline constexpr DiscreteToken kSpace_neither_1770{1770};
 // " selected"; original GPT-2 ID 6163.
-inline constexpr TokenId kSpace_selected_1771 = 1771;
+inline constexpr DiscreteToken kSpace_selected_1771{1771};
 // "Trump"; original GPT-2 ID 6170.
-inline constexpr TokenId kTrump_1772 = 1772;
+inline constexpr DiscreteToken kTrump_1772{1772};
 // " syn"; original GPT-2 ID 6171.
-inline constexpr TokenId kSpace_syn_1773 = 1773;
+inline constexpr DiscreteToken kSpace_syn_1773{1773};
 // " Amazon"; original GPT-2 ID 6186.
-inline constexpr TokenId kSpace_Amazon_1774 = 1774;
+inline constexpr DiscreteToken kSpace_Amazon_1774{1774};
 // "olar"; original GPT-2 ID 6192.
-inline constexpr TokenId kolar_1775 = 1775;
+inline constexpr DiscreteToken kolar_1775{1775};
 // " weather"; original GPT-2 ID 6193.
-inline constexpr TokenId kSpace_weather_1776 = 1776;
+inline constexpr DiscreteToken kSpace_weather_1776{1776};
 // " symbol"; original GPT-2 ID 6194.
-inline constexpr TokenId kSpace_symbol_1777 = 1777;
+inline constexpr DiscreteToken kSpace_symbol_1777{1777};
 // " originally"; original GPT-2 ID 6198.
-inline constexpr TokenId kSpace_originally_1778 = 1778;
+inline constexpr DiscreteToken kSpace_originally_1778{1778};
 // " deck"; original GPT-2 ID 6203.
-inline constexpr TokenId kSpace_deck_1779 = 1779;
+inline constexpr DiscreteToken kSpace_deck_1779{1779};
 // " stood"; original GPT-2 ID 6204.
-inline constexpr TokenId kSpace_stood_1780 = 1780;
+inline constexpr DiscreteToken kSpace_stood_1780{1780};
 // "otic"; original GPT-2 ID 6210.
-inline constexpr TokenId kotic_1781 = 1781;
+inline constexpr DiscreteToken kotic_1781{1781};
 // " turning"; original GPT-2 ID 6225.
-inline constexpr TokenId kSpace_turning_1782 = 1782;
+inline constexpr DiscreteToken kSpace_turning_1782{1782};
 // " flat"; original GPT-2 ID 6228.
-inline constexpr TokenId kSpace_flat_1783 = 1783;
+inline constexpr DiscreteToken kSpace_flat_1783{1783};
 // "anges"; original GPT-2 ID 6231.
-inline constexpr TokenId kanges_1784 = 1784;
+inline constexpr DiscreteToken kanges_1784{1784};
 // " Lake"; original GPT-2 ID 6233.
-inline constexpr TokenId kSpace_Lake_1785 = 1785;
+inline constexpr DiscreteToken kSpace_Lake_1785{1785};
 // " writer"; original GPT-2 ID 6260.
-inline constexpr TokenId kSpace_writer_1786 = 1786;
+inline constexpr DiscreteToken kSpace_writer_1786{1786};
 // " recorded"; original GPT-2 ID 6264.
-inline constexpr TokenId kSpace_recorded_1787 = 1787;
+inline constexpr DiscreteToken kSpace_recorded_1787{1787};
 // " motion"; original GPT-2 ID 6268.
-inline constexpr TokenId kSpace_motion_1788 = 1788;
+inline constexpr DiscreteToken kSpace_motion_1788{1788};
 // "inity"; original GPT-2 ID 6269.
-inline constexpr TokenId kinity_1789 = 1789;
+inline constexpr DiscreteToken kinity_1789{1789};
 // " excellent"; original GPT-2 ID 6275.
-inline constexpr TokenId kSpace_excellent_1790 = 1790;
+inline constexpr DiscreteToken kSpace_excellent_1790{1790};
 // "ami"; original GPT-2 ID 6277.
-inline constexpr TokenId kami_1791 = 1791;
+inline constexpr DiscreteToken kami_1791{1791};
 // " cloud"; original GPT-2 ID 6279.
-inline constexpr TokenId kSpace_cloud_1792 = 1792;
+inline constexpr DiscreteToken kSpace_cloud_1792{1792};
 // " fort"; original GPT-2 ID 6285.
-inline constexpr TokenId kSpace_fort_1793 = 1793;
+inline constexpr DiscreteToken kSpace_fort_1793{1793};
 // " stands"; original GPT-2 ID 6296.
-inline constexpr TokenId kSpace_stands_1794 = 1794;
+inline constexpr DiscreteToken kSpace_stands_1794{1794};
 // " boot"; original GPT-2 ID 6297.
-inline constexpr TokenId kSpace_boot_1795 = 1795;
+inline constexpr DiscreteToken kSpace_boot_1795{1795};
 // " versions"; original GPT-2 ID 6300.
-inline constexpr TokenId kSpace_versions_1796 = 1796;
+inline constexpr DiscreteToken kSpace_versions_1796{1796};
 // " bond"; original GPT-2 ID 6314.
-inline constexpr TokenId kSpace_bond_1797 = 1797;
+inline constexpr DiscreteToken kSpace_bond_1797{1797};
 // " reaction"; original GPT-2 ID 6317.
-inline constexpr TokenId kSpace_reaction_1798 = 1798;
+inline constexpr DiscreteToken kSpace_reaction_1798{1798};
 // "DP"; original GPT-2 ID 6322.
-inline constexpr TokenId kDP_1799 = 1799;
+inline constexpr DiscreteToken kDP_1799{1799};
 // "mond"; original GPT-2 ID 6327.
-inline constexpr TokenId kmond_1800 = 1800;
+inline constexpr DiscreteToken kmond_1800{1800};
 // " chain"; original GPT-2 ID 6333.
-inline constexpr TokenId kSpace_chain_1801 = 1801;
+inline constexpr DiscreteToken kSpace_chain_1801{1801};
 // " 46"; original GPT-2 ID 6337.
-inline constexpr TokenId kSpace_46_1802 = 1802;
+inline constexpr DiscreteToken kSpace_46_1802{1802};
 // " automatically"; original GPT-2 ID 6338.
-inline constexpr TokenId kSpace_automatically_1803 = 1803;
+inline constexpr DiscreteToken kSpace_automatically_1803{1803};
 // " pal"; original GPT-2 ID 6340.
-inline constexpr TokenId kSpace_pal_1804 = 1804;
+inline constexpr DiscreteToken kSpace_pal_1804{1804};
 // " banks"; original GPT-2 ID 6341.
-inline constexpr TokenId kSpace_banks_1805 = 1805;
+inline constexpr DiscreteToken kSpace_banks_1805{1805};
 // " Paris"; original GPT-2 ID 6342.
-inline constexpr TokenId kSpace_Paris_1806 = 1806;
+inline constexpr DiscreteToken kSpace_Paris_1806{1806};
 // " slowly"; original GPT-2 ID 6364.
-inline constexpr TokenId kSpace_slowly_1807 = 1807;
+inline constexpr DiscreteToken kSpace_slowly_1807{1807};
 // " Egypt"; original GPT-2 ID 6365.
-inline constexpr TokenId kSpace_Egypt_1808 = 1808;
+inline constexpr DiscreteToken kSpace_Egypt_1808{1808};
 // " index"; original GPT-2 ID 6376.
-inline constexpr TokenId kSpace_index_1809 = 1809;
+inline constexpr DiscreteToken kSpace_index_1809{1809};
 // " Way"; original GPT-2 ID 6378.
-inline constexpr TokenId kSpace_Way_1810 = 1810;
+inline constexpr DiscreteToken kSpace_Way_1810{1810};
 // " cart"; original GPT-2 ID 6383.
-inline constexpr TokenId kSpace_cart_1811 = 1811;
+inline constexpr DiscreteToken kSpace_cart_1811{1811};
 // "hew"; original GPT-2 ID 6391.
-inline constexpr TokenId khew_1812 = 1812;
+inline constexpr DiscreteToken khew_1812{1812};
 // "log"; original GPT-2 ID 6404.
-inline constexpr TokenId klog_1813 = 1813;
+inline constexpr DiscreteToken klog_1813{1813};
 // " numerous"; original GPT-2 ID 6409.
-inline constexpr TokenId kSpace_numerous_1814 = 1814;
+inline constexpr DiscreteToken kSpace_numerous_1814{1814};
 // "ua"; original GPT-2 ID 6413.
-inline constexpr TokenId kua_1815 = 1815;
+inline constexpr DiscreteToken kua_1815{1815};
 // "otes"; original GPT-2 ID 6421.
-inline constexpr TokenId kotes_1816 = 1816;
+inline constexpr DiscreteToken kotes_1816{1816};
 // " passing"; original GPT-2 ID 6427.
-inline constexpr TokenId kSpace_passing_1817 = 1817;
+inline constexpr DiscreteToken kSpace_passing_1817{1817};
 // " mal"; original GPT-2 ID 6428.
-inline constexpr TokenId kSpace_mal_1818 = 1818;
+inline constexpr DiscreteToken kSpace_mal_1818{1818};
 // "Pe"; original GPT-2 ID 6435.
-inline constexpr TokenId kPe_1819 = 1819;
+inline constexpr DiscreteToken kPe_1819{1819};
 // "stone"; original GPT-2 ID 6440.
-inline constexpr TokenId kstone_1820 = 1820;
+inline constexpr DiscreteToken kstone_1820{1820};
 // " browser"; original GPT-2 ID 6444.
-inline constexpr TokenId kSpace_browser_1821 = 1821;
+inline constexpr DiscreteToken kSpace_browser_1821{1821};
 // " sand"; original GPT-2 ID 6450.
-inline constexpr TokenId kSpace_sand_1822 = 1822;
+inline constexpr DiscreteToken kSpace_sand_1822{1822};
 // " joint"; original GPT-2 ID 6466.
-inline constexpr TokenId kSpace_joint_1823 = 1823;
+inline constexpr DiscreteToken kSpace_joint_1823{1823};
 // "amm"; original GPT-2 ID 6475.
-inline constexpr TokenId kamm_1824 = 1824;
+inline constexpr DiscreteToken kamm_1824{1824};
 // " lie"; original GPT-2 ID 6486.
-inline constexpr TokenId kSpace_lie_1825 = 1825;
+inline constexpr DiscreteToken kSpace_lie_1825{1825};
 // " adults"; original GPT-2 ID 6490.
-inline constexpr TokenId kSpace_adults_1826 = 1826;
+inline constexpr DiscreteToken kSpace_adults_1826{1826};
 // " obtained"; original GPT-2 ID 6492.
-inline constexpr TokenId kSpace_obtained_1827 = 1827;
+inline constexpr DiscreteToken kSpace_obtained_1827{1827};
 // " supporting"; original GPT-2 ID 6493.
-inline constexpr TokenId kSpace_supporting_1828 = 1828;
+inline constexpr DiscreteToken kSpace_supporting_1828{1828};
 // " detailed"; original GPT-2 ID 6496.
-inline constexpr TokenId kSpace_detailed_1829 = 1829;
+inline constexpr DiscreteToken kSpace_detailed_1829{1829};
 // " observed"; original GPT-2 ID 6515.
-inline constexpr TokenId kSpace_observed_1830 = 1830;
+inline constexpr DiscreteToken kSpace_observed_1830{1830};
 // " zone"; original GPT-2 ID 6516.
-inline constexpr TokenId kSpace_zone_1831 = 1831;
+inline constexpr DiscreteToken kSpace_zone_1831{1831};
 // " acts"; original GPT-2 ID 6529.
-inline constexpr TokenId kSpace_acts_1832 = 1832;
+inline constexpr DiscreteToken kSpace_acts_1832{1832};
 // " Name"; original GPT-2 ID 6530.
-inline constexpr TokenId kSpace_Name_1833 = 1833;
+inline constexpr DiscreteToken kSpace_Name_1833{1833};
 // "HT"; original GPT-2 ID 6535.
-inline constexpr TokenId kHT_1834 = 1834;
+inline constexpr DiscreteToken kHT_1834{1834};
 // "enger"; original GPT-2 ID 6540.
-inline constexpr TokenId kenger_1835 = 1835;
+inline constexpr DiscreteToken kenger_1835{1835};
 // " thick"; original GPT-2 ID 6546.
-inline constexpr TokenId kSpace_thick_1836 = 1836;
+inline constexpr DiscreteToken kSpace_thick_1836{1836};
 // " battery"; original GPT-2 ID 6555.
-inline constexpr TokenId kSpace_battery_1837 = 1837;
+inline constexpr DiscreteToken kSpace_battery_1837{1837};
 // " empty"; original GPT-2 ID 6565.
-inline constexpr TokenId kSpace_empty_1838 = 1838;
+inline constexpr DiscreteToken kSpace_empty_1838{1838};
 // "aph"; original GPT-2 ID 6570.
-inline constexpr TokenId kaph_1839 = 1839;
+inline constexpr DiscreteToken kaph_1839{1839};
 // " Toronto"; original GPT-2 ID 6586.
-inline constexpr TokenId kSpace_Toronto_1840 = 1840;
+inline constexpr DiscreteToken kSpace_Toronto_1840{1840};
 // "hetic"; original GPT-2 ID 6587.
-inline constexpr TokenId khetic_1841 = 1841;
+inline constexpr DiscreteToken khetic_1841{1841};
 // " carbon"; original GPT-2 ID 6588.
-inline constexpr TokenId kSpace_carbon_1842 = 1842;
+inline constexpr DiscreteToken kSpace_carbon_1842{1842};
 // " solar"; original GPT-2 ID 6591.
-inline constexpr TokenId kSpace_solar_1843 = 1843;
+inline constexpr DiscreteToken kSpace_solar_1843{1843};
 // " eating"; original GPT-2 ID 6600.
-inline constexpr TokenId kSpace_eating_1844 = 1844;
+inline constexpr DiscreteToken kSpace_eating_1844{1844};
 // " properties"; original GPT-2 ID 6608.
-inline constexpr TokenId kSpace_properties_1845 = 1845;
+inline constexpr DiscreteToken kSpace_properties_1845{1845};
 // " blow"; original GPT-2 ID 6611.
-inline constexpr TokenId kSpace_blow_1846 = 1846;
+inline constexpr DiscreteToken kSpace_blow_1846{1846};
 // " plane"; original GPT-2 ID 6614.
-inline constexpr TokenId kSpace_plane_1847 = 1847;
+inline constexpr DiscreteToken kSpace_plane_1847{1847};
 // " square"; original GPT-2 ID 6616.
-inline constexpr TokenId kSpace_square_1848 = 1848;
+inline constexpr DiscreteToken kSpace_square_1848{1848};
 // " holds"; original GPT-2 ID 6622.
-inline constexpr TokenId kSpace_holds_1849 = 1849;
+inline constexpr DiscreteToken kSpace_holds_1849{1849};
 // " resistance"; original GPT-2 ID 6625.
-inline constexpr TokenId kSpace_resistance_1850 = 1850;
+inline constexpr DiscreteToken kSpace_resistance_1850{1850};
 // " zero"; original GPT-2 ID 6632.
-inline constexpr TokenId kSpace_zero_1851 = 1851;
+inline constexpr DiscreteToken kSpace_zero_1851{1851};
 // "ifications"; original GPT-2 ID 6637.
-inline constexpr TokenId kifications_1852 = 1852;
+inline constexpr DiscreteToken kifications_1852{1852};
 // " perspective"; original GPT-2 ID 6650.
-inline constexpr TokenId kSpace_perspective_1853 = 1853;
+inline constexpr DiscreteToken kSpace_perspective_1853{1853};
 // " escape"; original GPT-2 ID 6654.
-inline constexpr TokenId kSpace_escape_1854 = 1854;
+inline constexpr DiscreteToken kSpace_escape_1854{1854};
 // " narr"; original GPT-2 ID 6664.
-inline constexpr TokenId kSpace_narr_1855 = 1855;
+inline constexpr DiscreteToken kSpace_narr_1855{1855};
 // " adds"; original GPT-2 ID 6673.
-inline constexpr TokenId kSpace_adds_1856 = 1856;
+inline constexpr DiscreteToken kSpace_adds_1856{1856};
 // " usual"; original GPT-2 ID 6678.
-inline constexpr TokenId kSpace_usual_1857 = 1857;
+inline constexpr DiscreteToken kSpace_usual_1857{1857};
 // "Rec"; original GPT-2 ID 6690.
-inline constexpr TokenId kRec_1858 = 1858;
+inline constexpr DiscreteToken kRec_1858{1858};
 // " linked"; original GPT-2 ID 6692.
-inline constexpr TokenId kSpace_linked_1859 = 1859;
+inline constexpr DiscreteToken kSpace_linked_1859{1859};
 // " opposite"; original GPT-2 ID 6697.
-inline constexpr TokenId kSpace_opposite_1860 = 1860;
+inline constexpr DiscreteToken kSpace_opposite_1860{1860};
 // " faces"; original GPT-2 ID 6698.
-inline constexpr TokenId kSpace_faces_1861 = 1861;
+inline constexpr DiscreteToken kSpace_faces_1861{1861};
 // " nut"; original GPT-2 ID 6701.
-inline constexpr TokenId kSpace_nut_1862 = 1862;
+inline constexpr DiscreteToken kSpace_nut_1862{1862};
 // " approximately"; original GPT-2 ID 6702.
-inline constexpr TokenId kSpace_approximately_1863 = 1863;
+inline constexpr DiscreteToken kSpace_approximately_1863{1863};
 // "agram"; original GPT-2 ID 6713.
-inline constexpr TokenId kagram_1864 = 1864;
+inline constexpr DiscreteToken kagram_1864{1864};
 // " nearby"; original GPT-2 ID 6716.
-inline constexpr TokenId kSpace_nearby_1865 = 1865;
+inline constexpr DiscreteToken kSpace_nearby_1865{1865};
 // "Pre"; original GPT-2 ID 6719.
-inline constexpr TokenId kPre_1866 = 1866;
+inline constexpr DiscreteToken kPre_1866{1866};
 // " upper"; original GPT-2 ID 6727.
-inline constexpr TokenId kSpace_upper_1867 = 1867;
+inline constexpr DiscreteToken kSpace_upper_1867{1867};
 // "Fr"; original GPT-2 ID 6732.
-inline constexpr TokenId kFr_1868 = 1868;
+inline constexpr DiscreteToken kFr_1868{1868};
 // " cere"; original GPT-2 ID 6736.
-inline constexpr TokenId kSpace_cere_1869 = 1869;
+inline constexpr DiscreteToken kSpace_cere_1869{1869};
 // " signal"; original GPT-2 ID 6737.
-inline constexpr TokenId kSpace_signal_1870 = 1870;
+inline constexpr DiscreteToken kSpace_signal_1870{1870};
 // " sufficient"; original GPT-2 ID 6751.
-inline constexpr TokenId kSpace_sufficient_1871 = 1871;
+inline constexpr DiscreteToken kSpace_sufficient_1871{1871};
 // " historical"; original GPT-2 ID 6754.
-inline constexpr TokenId kSpace_historical_1872 = 1872;
+inline constexpr DiscreteToken kSpace_historical_1872{1872};
 // " tradition"; original GPT-2 ID 6761.
-inline constexpr TokenId kSpace_tradition_1873 = 1873;
+inline constexpr DiscreteToken kSpace_tradition_1873{1873};
 // " cro"; original GPT-2 ID 6763.
-inline constexpr TokenId kSpace_cro_1874 = 1874;
+inline constexpr DiscreteToken kSpace_cro_1874{1874};
 // " sky"; original GPT-2 ID 6766.
-inline constexpr TokenId kSpace_sky_1875 = 1875;
+inline constexpr DiscreteToken kSpace_sky_1875{1875};
 // " widely"; original GPT-2 ID 6768.
-inline constexpr TokenId kSpace_widely_1876 = 1876;
+inline constexpr DiscreteToken kSpace_widely_1876{1876};
 // " wave"; original GPT-2 ID 6769.
-inline constexpr TokenId kSpace_wave_1877 = 1877;
+inline constexpr DiscreteToken kSpace_wave_1877{1877};
 // " cycle"; original GPT-2 ID 6772.
-inline constexpr TokenId kSpace_cycle_1878 = 1878;
+inline constexpr DiscreteToken kSpace_cycle_1878{1878};
 // " frequently"; original GPT-2 ID 6777.
-inline constexpr TokenId kSpace_frequently_1879 = 1879;
+inline constexpr DiscreteToken kSpace_frequently_1879{1879};
 // "lv"; original GPT-2 ID 6780.
-inline constexpr TokenId klv_1880 = 1880;
+inline constexpr DiscreteToken klv_1880{1880};
 // " Christmas"; original GPT-2 ID 6786.
-inline constexpr TokenId kSpace_Christmas_1881 = 1881;
+inline constexpr DiscreteToken kSpace_Christmas_1881{1881};
 // " depth"; original GPT-2 ID 6795.
-inline constexpr TokenId kSpace_depth_1882 = 1882;
+inline constexpr DiscreteToken kSpace_depth_1882{1882};
 // " transition"; original GPT-2 ID 6801.
-inline constexpr TokenId kSpace_transition_1883 = 1883;
+inline constexpr DiscreteToken kSpace_transition_1883{1883};
 // " artist"; original GPT-2 ID 6802.
-inline constexpr TokenId kSpace_artist_1884 = 1884;
+inline constexpr DiscreteToken kSpace_artist_1884{1884};
 // " root"; original GPT-2 ID 6808.
-inline constexpr TokenId kSpace_root_1885 = 1885;
+inline constexpr DiscreteToken kSpace_root_1885{1885};
 // " database"; original GPT-2 ID 6831.
-inline constexpr TokenId kSpace_database_1886 = 1886;
+inline constexpr DiscreteToken kSpace_database_1886{1886};
 // "Pr"; original GPT-2 ID 6836.
-inline constexpr TokenId kPr_1887 = 1887;
+inline constexpr DiscreteToken kPr_1887{1887};
 // " bear"; original GPT-2 ID 6842.
-inline constexpr TokenId kSpace_bear_1888 = 1888;
+inline constexpr DiscreteToken kSpace_bear_1888{1888};
 // "oral"; original GPT-2 ID 6864.
-inline constexpr TokenId koral_1889 = 1889;
+inline constexpr DiscreteToken koral_1889{1889};
 // " amounts"; original GPT-2 ID 6867.
-inline constexpr TokenId kSpace_amounts_1890 = 1890;
+inline constexpr DiscreteToken kSpace_amounts_1890{1890};
 // " Moon"; original GPT-2 ID 6869.
-inline constexpr TokenId kSpace_Moon_1891 = 1891;
+inline constexpr DiscreteToken kSpace_Moon_1891{1891};
 // " represents"; original GPT-2 ID 6870.
-inline constexpr TokenId kSpace_represents_1892 = 1892;
+inline constexpr DiscreteToken kSpace_represents_1892{1892};
 // " carrying"; original GPT-2 ID 6872.
-inline constexpr TokenId kSpace_carrying_1893 = 1893;
+inline constexpr DiscreteToken kSpace_carrying_1893{1893};
 // " universe"; original GPT-2 ID 6881.
-inline constexpr TokenId kSpace_universe_1894 = 1894;
+inline constexpr DiscreteToken kSpace_universe_1894{1894};
 // " Rod"; original GPT-2 ID 6882.
-inline constexpr TokenId kSpace_Rod_1895 = 1895;
+inline constexpr DiscreteToken kSpace_Rod_1895{1895};
 // "ca"; original GPT-2 ID 6888.
-inline constexpr TokenId kca_1896 = 1896;
+inline constexpr DiscreteToken kca_1896{1896};
 // " coffee"; original GPT-2 ID 6891.
-inline constexpr TokenId kSpace_coffee_1897 = 1897;
+inline constexpr DiscreteToken kSpace_coffee_1897{1897};
 // "Rel"; original GPT-2 ID 6892.
-inline constexpr TokenId kRel_1898 = 1898;
+inline constexpr DiscreteToken kRel_1898{1898};
 // " Sea"; original GPT-2 ID 6896.
-inline constexpr TokenId kSpace_Sea_1899 = 1899;
+inline constexpr DiscreteToken kSpace_Sea_1899{1899};
 // "ersion"; original GPT-2 ID 6900.
-inline constexpr TokenId kersion_1900 = 1900;
+inline constexpr DiscreteToken kersion_1900{1900};
 // " portion"; original GPT-2 ID 6903.
-inline constexpr TokenId kSpace_portion_1901 = 1901;
+inline constexpr DiscreteToken kSpace_portion_1901{1901};
 // " Valley"; original GPT-2 ID 6916.
-inline constexpr TokenId kSpace_Valley_1902 = 1902;
+inline constexpr DiscreteToken kSpace_Valley_1902{1902};
 // "iform"; original GPT-2 ID 6933.
-inline constexpr TokenId kiform_1903 = 1903;
+inline constexpr DiscreteToken kiform_1903{1903};
 // " constant"; original GPT-2 ID 6937.
-inline constexpr TokenId kSpace_constant_1904 = 1904;
+inline constexpr DiscreteToken kSpace_constant_1904{1904};
 // " mo"; original GPT-2 ID 6941.
-inline constexpr TokenId kSpace_mo_1905 = 1905;
+inline constexpr DiscreteToken kSpace_mo_1905{1905};
 // "Most"; original GPT-2 ID 6943.
-inline constexpr TokenId kMost_1906 = 1906;
+inline constexpr DiscreteToken kMost_1906{1906};
 // "oration"; original GPT-2 ID 6944.
-inline constexpr TokenId koration_1907 = 1907;
+inline constexpr DiscreteToken koration_1907{1907};
 // "ifies"; original GPT-2 ID 6945.
-inline constexpr TokenId kifies_1908 = 1908;
+inline constexpr DiscreteToken kifies_1908{1908};
 // " communication"; original GPT-2 ID 6946.
-inline constexpr TokenId kSpace_communication_1909 = 1909;
+inline constexpr DiscreteToken kSpace_communication_1909{1909};
 // " iron"; original GPT-2 ID 6953.
-inline constexpr TokenId kSpace_iron_1910 = 1910;
+inline constexpr DiscreteToken kSpace_iron_1910{1910};
 // " relationships"; original GPT-2 ID 6958.
-inline constexpr TokenId kSpace_relationships_1911 = 1911;
+inline constexpr DiscreteToken kSpace_relationships_1911{1911};
 // "adel"; original GPT-2 ID 6959.
-inline constexpr TokenId kadel_1912 = 1912;
+inline constexpr DiscreteToken kadel_1912{1912};
 // " supports"; original GPT-2 ID 6971.
-inline constexpr TokenId kSpace_supports_1913 = 1913;
+inline constexpr DiscreteToken kSpace_supports_1913{1913};
 // " controls"; original GPT-2 ID 6973.
-inline constexpr TokenId kSpace_controls_1914 = 1914;
+inline constexpr DiscreteToken kSpace_controls_1914{1914};
 // "umer"; original GPT-2 ID 6975.
-inline constexpr TokenId kumer_1915 = 1915;
+inline constexpr DiscreteToken kumer_1915{1915};
 // " Korean"; original GPT-2 ID 6983.
-inline constexpr TokenId kSpace_Korean_1916 = 1916;
+inline constexpr DiscreteToken kSpace_Korean_1916{1916};
 // " prime"; original GPT-2 ID 6994.
-inline constexpr TokenId kSpace_prime_1917 = 1917;
+inline constexpr DiscreteToken kSpace_prime_1917{1917};
 // " stores"; original GPT-2 ID 7000.
-inline constexpr TokenId kSpace_stores_1918 = 1918;
+inline constexpr DiscreteToken kSpace_stores_1918{1918};
 // " journey"; original GPT-2 ID 7002.
-inline constexpr TokenId kSpace_journey_1919 = 1919;
+inline constexpr DiscreteToken kSpace_journey_1919{1919};
 // "Although"; original GPT-2 ID 7003.
-inline constexpr TokenId kAlthough_1920 = 1920;
+inline constexpr DiscreteToken kAlthough_1920{1920};
 // " tiny"; original GPT-2 ID 7009.
-inline constexpr TokenId kSpace_tiny_1921 = 1921;
+inline constexpr DiscreteToken kSpace_tiny_1921{1921};
 // "ba"; original GPT-2 ID 7012.
-inline constexpr TokenId kba_1922 = 1922;
+inline constexpr DiscreteToken kba_1922{1922};
 // "celer"; original GPT-2 ID 7015.
-inline constexpr TokenId kceler_1923 = 1923;
+inline constexpr DiscreteToken kceler_1923{1923};
 // " blocks"; original GPT-2 ID 7021.
-inline constexpr TokenId kSpace_blocks_1924 = 1924;
+inline constexpr DiscreteToken kSpace_blocks_1924{1924};
 // " island"; original GPT-2 ID 7022.
-inline constexpr TokenId kSpace_island_1925 = 1925;
+inline constexpr DiscreteToken kSpace_island_1925{1925};
 // " seasons"; original GPT-2 ID 7028.
-inline constexpr TokenId kSpace_seasons_1926 = 1926;
+inline constexpr DiscreteToken kSpace_seasons_1926{1926};
 // " fields"; original GPT-2 ID 7032.
-inline constexpr TokenId kSpace_fields_1927 = 1927;
+inline constexpr DiscreteToken kSpace_fields_1927{1927};
 // " formed"; original GPT-2 ID 7042.
-inline constexpr TokenId kSpace_formed_1928 = 1928;
+inline constexpr DiscreteToken kSpace_formed_1928{1928};
 // " du"; original GPT-2 ID 7043.
-inline constexpr TokenId kSpace_du_1929 = 1929;
+inline constexpr DiscreteToken kSpace_du_1929{1929};
 // "water"; original GPT-2 ID 7050.
-inline constexpr TokenId kwater_1930 = 1930;
+inline constexpr DiscreteToken kwater_1930{1930};
 // " coast"; original GPT-2 ID 7051.
-inline constexpr TokenId kSpace_coast_1931 = 1931;
+inline constexpr DiscreteToken kSpace_coast_1931{1931};
 // " architect"; original GPT-2 ID 7068.
-inline constexpr TokenId kSpace_architect_1932 = 1932;
+inline constexpr DiscreteToken kSpace_architect_1932{1932};
 // " pitch"; original GPT-2 ID 7078.
-inline constexpr TokenId kSpace_pitch_1933 = 1933;
+inline constexpr DiscreteToken kSpace_pitch_1933{1933};
 // "ador"; original GPT-2 ID 7079.
-inline constexpr TokenId kador_1934 = 1934;
+inline constexpr DiscreteToken kador_1934{1934};
 // "Many"; original GPT-2 ID 7085.
-inline constexpr TokenId kMany_1935 = 1935;
+inline constexpr DiscreteToken kMany_1935{1935};
 // "ifer"; original GPT-2 ID 7087.
-inline constexpr TokenId kifer_1936 = 1936;
+inline constexpr DiscreteToken kifer_1936{1936};
 // " medium"; original GPT-2 ID 7090.
-inline constexpr TokenId kSpace_medium_1937 = 1937;
+inline constexpr DiscreteToken kSpace_medium_1937{1937};
 // " external"; original GPT-2 ID 7097.
-inline constexpr TokenId kSpace_external_1938 = 1938;
+inline constexpr DiscreteToken kSpace_external_1938{1938};
 // " expansion"; original GPT-2 ID 7118.
-inline constexpr TokenId kSpace_expansion_1939 = 1939;
+inline constexpr DiscreteToken kSpace_expansion_1939{1939};
 // " Ell"; original GPT-2 ID 7122.
-inline constexpr TokenId kSpace_Ell_1940 = 1940;
+inline constexpr DiscreteToken kSpace_Ell_1940{1940};
 // "ket"; original GPT-2 ID 7126.
-inline constexpr TokenId kket_1941 = 1941;
+inline constexpr DiscreteToken kket_1941{1941};
 // " gro"; original GPT-2 ID 7128.
-inline constexpr TokenId kSpace_gro_1942 = 1942;
+inline constexpr DiscreteToken kSpace_gro_1942{1942};
 // " narrow"; original GPT-2 ID 7135.
-inline constexpr TokenId kSpace_narrow_1943 = 1943;
+inline constexpr DiscreteToken kSpace_narrow_1943{1943};
 // " Turkey"; original GPT-2 ID 7137.
-inline constexpr TokenId kSpace_Turkey_1944 = 1944;
+inline constexpr DiscreteToken kSpace_Turkey_1944{1944};
 // " chosen"; original GPT-2 ID 7147.
-inline constexpr TokenId kSpace_chosen_1945 = 1945;
+inline constexpr DiscreteToken kSpace_chosen_1945{1945};
 // " trees"; original GPT-2 ID 7150.
-inline constexpr TokenId kSpace_trees_1946 = 1946;
+inline constexpr DiscreteToken kSpace_trees_1946{1946};
 // "EG"; original GPT-2 ID 7156.
-inline constexpr TokenId kEG_1947 = 1947;
+inline constexpr DiscreteToken kEG_1947{1947};
 // " closely"; original GPT-2 ID 7173.
-inline constexpr TokenId kSpace_closely_1948 = 1948;
+inline constexpr DiscreteToken kSpace_closely_1948{1948};
 // " creature"; original GPT-2 ID 7185.
-inline constexpr TokenId kSpace_creature_1949 = 1949;
+inline constexpr DiscreteToken kSpace_creature_1949{1949};
 // " resulting"; original GPT-2 ID 7186.
-inline constexpr TokenId kSpace_resulting_1950 = 1950;
+inline constexpr DiscreteToken kSpace_resulting_1950{1950};
 // "During"; original GPT-2 ID 7191.
-inline constexpr TokenId kDuring_1951 = 1951;
+inline constexpr DiscreteToken kDuring_1951{1951};
 // " acting"; original GPT-2 ID 7205.
-inline constexpr TokenId kSpace_acting_1952 = 1952;
+inline constexpr DiscreteToken kSpace_acting_1952{1952};
 // " smooth"; original GPT-2 ID 7209.
-inline constexpr TokenId kSpace_smooth_1953 = 1953;
+inline constexpr DiscreteToken kSpace_smooth_1953{1953};
 // " Fall"; original GPT-2 ID 7218.
-inline constexpr TokenId kSpace_Fall_1954 = 1954;
+inline constexpr DiscreteToken kSpace_Fall_1954{1954};
 // "Co"; original GPT-2 ID 7222.
-inline constexpr TokenId kCo_1955 = 1955;
+inline constexpr DiscreteToken kCo_1955{1955};
 // " attached"; original GPT-2 ID 7223.
-inline constexpr TokenId kSpace_attached_1956 = 1956;
+inline constexpr DiscreteToken kSpace_attached_1956{1956};
 // " typical"; original GPT-2 ID 7226.
-inline constexpr TokenId kSpace_typical_1957 = 1957;
+inline constexpr DiscreteToken kSpace_typical_1957{1957};
 // " Asia"; original GPT-2 ID 7229.
-inline constexpr TokenId kSpace_Asia_1958 = 1958;
+inline constexpr DiscreteToken kSpace_Asia_1958{1958};
 // "umin"; original GPT-2 ID 7230.
-inline constexpr TokenId kumin_1959 = 1959;
+inline constexpr DiscreteToken kumin_1959{1959};
 // "inent"; original GPT-2 ID 7233.
-inline constexpr TokenId kinent_1960 = 1960;
+inline constexpr DiscreteToken kinent_1960{1960};
 // "uce"; original GPT-2 ID 7234.
-inline constexpr TokenId kuce_1961 = 1961;
+inline constexpr DiscreteToken kuce_1961{1961};
 // "uted"; original GPT-2 ID 7241.
-inline constexpr TokenId kuted_1962 = 1962;
+inline constexpr DiscreteToken kuted_1962{1962};
 // " containing"; original GPT-2 ID 7268.
-inline constexpr TokenId kSpace_containing_1963 = 1963;
+inline constexpr DiscreteToken kSpace_containing_1963{1963};
 // " Ut"; original GPT-2 ID 7273.
-inline constexpr TokenId kSpace_Ut_1964 = 1964;
+inline constexpr DiscreteToken kSpace_Ut_1964{1964};
 // "iner"; original GPT-2 ID 7274.
-inline constexpr TokenId kiner_1965 = 1965;
+inline constexpr DiscreteToken kiner_1965{1965};
 // "ji"; original GPT-2 ID 7285.
-inline constexpr TokenId kji_1966 = 1966;
+inline constexpr DiscreteToken kji_1966{1966};
 // "Comp"; original GPT-2 ID 7293.
-inline constexpr TokenId kComp_1967 = 1967;
+inline constexpr DiscreteToken kComp_1967{1967};
 // " explore"; original GPT-2 ID 7301.
-inline constexpr TokenId kSpace_explore_1968 = 1968;
+inline constexpr DiscreteToken kSpace_explore_1968{1968};
 // " ideal"; original GPT-2 ID 7306.
-inline constexpr TokenId kSpace_ideal_1969 = 1969;
+inline constexpr DiscreteToken kSpace_ideal_1969{1969};
 // " distinct"; original GPT-2 ID 7310.
-inline constexpr TokenId kSpace_distinct_1970 = 1970;
+inline constexpr DiscreteToken kSpace_distinct_1970{1970};
 // " thousand"; original GPT-2 ID 7319.
-inline constexpr TokenId kSpace_thousand_1971 = 1971;
+inline constexpr DiscreteToken kSpace_thousand_1971{1971};
 // " obtain"; original GPT-2 ID 7330.
-inline constexpr TokenId kSpace_obtain_1972 = 1972;
+inline constexpr DiscreteToken kSpace_obtain_1972{1972};
 // " grown"; original GPT-2 ID 7334.
-inline constexpr TokenId kSpace_grown_1973 = 1973;
+inline constexpr DiscreteToken kSpace_grown_1973{1973};
 // "ali"; original GPT-2 ID 7344.
-inline constexpr TokenId kali_1974 = 1974;
+inline constexpr DiscreteToken kali_1974{1974};
 // " surrounding"; original GPT-2 ID 7346.
-inline constexpr TokenId kSpace_surrounding_1975 = 1975;
+inline constexpr DiscreteToken kSpace_surrounding_1975{1975};
 // " Java"; original GPT-2 ID 7349.
-inline constexpr TokenId kSpace_Java_1976 = 1976;
+inline constexpr DiscreteToken kSpace_Java_1976{1976};
 // " exposed"; original GPT-2 ID 7362.
-inline constexpr TokenId kSpace_exposed_1977 = 1977;
+inline constexpr DiscreteToken kSpace_exposed_1977{1977};
 // " lies"; original GPT-2 ID 7363.
-inline constexpr TokenId kSpace_lies_1978 = 1978;
+inline constexpr DiscreteToken kSpace_lies_1978{1978};
 // " degrees"; original GPT-2 ID 7370.
-inline constexpr TokenId kSpace_degrees_1979 = 1979;
+inline constexpr DiscreteToken kSpace_degrees_1979{1979};
 // " attacked"; original GPT-2 ID 7384.
-inline constexpr TokenId kSpace_attacked_1980 = 1980;
+inline constexpr DiscreteToken kSpace_attacked_1980{1980};
 // " domain"; original GPT-2 ID 7386.
-inline constexpr TokenId kSpace_domain_1981 = 1981;
+inline constexpr DiscreteToken kSpace_domain_1981{1981};
 // " legs"; original GPT-2 ID 7405.
-inline constexpr TokenId kSpace_legs_1982 = 1982;
+inline constexpr DiscreteToken kSpace_legs_1982{1982};
 // "Ed"; original GPT-2 ID 7407.
-inline constexpr TokenId kEd_1983 = 1983;
+inline constexpr DiscreteToken kEd_1983{1983};
 // " acid"; original GPT-2 ID 7408.
-inline constexpr TokenId kSpace_acid_1984 = 1984;
+inline constexpr DiscreteToken kSpace_acid_1984{1984};
 // " involving"; original GPT-2 ID 7411.
-inline constexpr TokenId kSpace_involving_1985 = 1985;
+inline constexpr DiscreteToken kSpace_involving_1985{1985};
 // "Fl"; original GPT-2 ID 7414.
-inline constexpr TokenId kFl_1986 = 1986;
+inline constexpr DiscreteToken kFl_1986{1986};
 // "Source"; original GPT-2 ID 7416.
-inline constexpr TokenId kSource_1987 = 1987;
+inline constexpr DiscreteToken kSource_1987{1987};
 // " west"; original GPT-2 ID 7421.
-inline constexpr TokenId kSpace_west_1988 = 1988;
+inline constexpr DiscreteToken kSpace_west_1988{1988};
 // " visible"; original GPT-2 ID 7424.
-inline constexpr TokenId kSpace_visible_1989 = 1989;
+inline constexpr DiscreteToken kSpace_visible_1989{1989};
 // " struck"; original GPT-2 ID 7425.
-inline constexpr TokenId kSpace_struck_1990 = 1990;
+inline constexpr DiscreteToken kSpace_struck_1990{1990};
 // " Girl"; original GPT-2 ID 7430.
-inline constexpr TokenId kSpace_Girl_1991 = 1991;
+inline constexpr DiscreteToken kSpace_Girl_1991{1991};
 // " Ram"; original GPT-2 ID 7431.
-inline constexpr TokenId kSpace_Ram_1992 = 1992;
+inline constexpr DiscreteToken kSpace_Ram_1992{1992};
 // " vent"; original GPT-2 ID 7435.
-inline constexpr TokenId kSpace_vent_1993 = 1993;
+inline constexpr DiscreteToken kSpace_vent_1993{1993};
 // "American"; original GPT-2 ID 7437.
-inline constexpr TokenId kAmerican_1994 = 1994;
+inline constexpr DiscreteToken kAmerican_1994{1994};
 // " DNA"; original GPT-2 ID 7446.
-inline constexpr TokenId kSpace_DNA_1995 = 1995;
+inline constexpr DiscreteToken kSpace_DNA_1995{1995};
 // "Once"; original GPT-2 ID 7454.
-inline constexpr TokenId kOnce_1996 = 1996;
+inline constexpr DiscreteToken kOnce_1996{1996};
 // " Bell"; original GPT-2 ID 7459.
-inline constexpr TokenId kSpace_Bell_1997 = 1997;
+inline constexpr DiscreteToken kSpace_Bell_1997{1997};
 // " falling"; original GPT-2 ID 7463.
-inline constexpr TokenId kSpace_falling_1998 = 1998;
+inline constexpr DiscreteToken kSpace_falling_1998{1998};
 // " letters"; original GPT-2 ID 7475.
-inline constexpr TokenId kSpace_letters_1999 = 1999;
+inline constexpr DiscreteToken kSpace_letters_1999{1999};
 // " plate"; original GPT-2 ID 7480.
-inline constexpr TokenId kSpace_plate_2000 = 2000;
+inline constexpr DiscreteToken kSpace_plate_2000{2000};
 // " Dar"; original GPT-2 ID 7491.
-inline constexpr TokenId kSpace_Dar_2001 = 2001;
+inline constexpr DiscreteToken kSpace_Dar_2001{2001};
 // " Colorado"; original GPT-2 ID 7492.
-inline constexpr TokenId kSpace_Colorado_2002 = 2002;
+inline constexpr DiscreteToken kSpace_Colorado_2002{2002};
 // " veget"; original GPT-2 ID 7494.
-inline constexpr TokenId kSpace_veget_2003 = 2003;
+inline constexpr DiscreteToken kSpace_veget_2003{2003};
 // "ria"; original GPT-2 ID 7496.
-inline constexpr TokenId kria_2004 = 2004;
+inline constexpr DiscreteToken kria_2004{2004};
 // "po"; original GPT-2 ID 7501.
-inline constexpr TokenId kpo_2005 = 2005;
+inline constexpr DiscreteToken kpo_2005{2005};
 // " poly"; original GPT-2 ID 7514.
-inline constexpr TokenId kSpace_poly_2006 = 2006;
+inline constexpr DiscreteToken kSpace_poly_2006{2006};
 // " component"; original GPT-2 ID 7515.
-inline constexpr TokenId kSpace_component_2007 = 2007;
+inline constexpr DiscreteToken kSpace_component_2007{2007};
 // " Ireland"; original GPT-2 ID 7517.
-inline constexpr TokenId kSpace_Ireland_2008 = 2008;
+inline constexpr DiscreteToken kSpace_Ireland_2008{2008};
 // " primarily"; original GPT-2 ID 7525.
-inline constexpr TokenId kSpace_primarily_2009 = 2009;
+inline constexpr DiscreteToken kSpace_primarily_2009{2009};
 // " Kingdom"; original GPT-2 ID 7526.
-inline constexpr TokenId kSpace_Kingdom_2010 = 2010;
+inline constexpr DiscreteToken kSpace_Kingdom_2010{2010};
 // " fundamental"; original GPT-2 ID 7531.
-inline constexpr TokenId kSpace_fundamental_2011 = 2011;
+inline constexpr DiscreteToken kSpace_fundamental_2011{2011};
 // " protein"; original GPT-2 ID 7532.
-inline constexpr TokenId kSpace_protein_2012 = 2012;
+inline constexpr DiscreteToken kSpace_protein_2012{2012};
 // " milk"; original GPT-2 ID 7545.
-inline constexpr TokenId kSpace_milk_2013 = 2013;
+inline constexpr DiscreteToken kSpace_milk_2013{2013};
 // " extension"; original GPT-2 ID 7552.
-inline constexpr TokenId kSpace_extension_2014 = 2014;
+inline constexpr DiscreteToken kSpace_extension_2014{2014};
 // "Sm"; original GPT-2 ID 7556.
-inline constexpr TokenId kSm_2015 = 2015;
+inline constexpr DiscreteToken kSm_2015{2015};
 // " patterns"; original GPT-2 ID 7572.
-inline constexpr TokenId kSpace_patterns_2016 = 2016;
+inline constexpr DiscreteToken kSpace_patterns_2016{2016};
 // "aning"; original GPT-2 ID 7574.
-inline constexpr TokenId kaning_2017 = 2017;
+inline constexpr DiscreteToken kaning_2017{2017};
 // " colors"; original GPT-2 ID 7577.
-inline constexpr TokenId kSpace_colors_2018 = 2018;
+inline constexpr DiscreteToken kSpace_colors_2018{2018};
 // " Az"; original GPT-2 ID 7578.
-inline constexpr TokenId kSpace_Az_2019 = 2019;
+inline constexpr DiscreteToken kSpace_Az_2019{2019};
 // " shell"; original GPT-2 ID 7582.
-inline constexpr TokenId kSpace_shell_2020 = 2020;
+inline constexpr DiscreteToken kSpace_shell_2020{2020};
 // "rous"; original GPT-2 ID 7596.
-inline constexpr TokenId krous_2021 = 2021;
+inline constexpr DiscreteToken krous_2021{2021};
 // " indicate"; original GPT-2 ID 7603.
-inline constexpr TokenId kSpace_indicate_2022 = 2022;
+inline constexpr DiscreteToken kSpace_indicate_2022{2022};
 // " hole"; original GPT-2 ID 7604.
-inline constexpr TokenId kSpace_hole_2023 = 2023;
+inline constexpr DiscreteToken kSpace_hole_2023{2023};
 // " shield"; original GPT-2 ID 7614.
-inline constexpr TokenId kSpace_shield_2024 = 2024;
+inline constexpr DiscreteToken kSpace_shield_2024{2024};
 // "mal"; original GPT-2 ID 7617.
-inline constexpr TokenId kmal_2025 = 2025;
+inline constexpr DiscreteToken kmal_2025{2025};
 // " tort"; original GPT-2 ID 7619.
-inline constexpr TokenId kSpace_tort_2026 = 2026;
+inline constexpr DiscreteToken kSpace_tort_2026{2026};
 // " keeps"; original GPT-2 ID 7622.
-inline constexpr TokenId kSpace_keeps_2027 = 2027;
+inline constexpr DiscreteToken kSpace_keeps_2027{2027};
 // " east"; original GPT-2 ID 7627.
-inline constexpr TokenId kSpace_east_2028 = 2028;
+inline constexpr DiscreteToken kSpace_east_2028{2028};
 // " strongly"; original GPT-2 ID 7634.
-inline constexpr TokenId kSpace_strongly_2029 = 2029;
+inline constexpr DiscreteToken kSpace_strongly_2029{2029};
 // "jo"; original GPT-2 ID 7639.
-inline constexpr TokenId kjo_2030 = 2030;
+inline constexpr DiscreteToken kjo_2030{2030};
 // " Pakistan"; original GPT-2 ID 7648.
-inline constexpr TokenId kSpace_Pakistan_2031 = 2031;
+inline constexpr DiscreteToken kSpace_Pakistan_2031{2031};
 // "ributes"; original GPT-2 ID 7657.
-inline constexpr TokenId kributes_2032 = 2032;
+inline constexpr DiscreteToken kributes_2032{2032};
 // " extensive"; original GPT-2 ID 7667.
-inline constexpr TokenId kSpace_extensive_2033 = 2033;
+inline constexpr DiscreteToken kSpace_extensive_2033{2033};
 // " mixed"; original GPT-2 ID 7668.
-inline constexpr TokenId kSpace_mixed_2034 = 2034;
+inline constexpr DiscreteToken kSpace_mixed_2034{2034};
 // "Mar"; original GPT-2 ID 7676.
-inline constexpr TokenId kMar_2035 = 2035;
+inline constexpr DiscreteToken kMar_2035{2035};
 // " layer"; original GPT-2 ID 7679.
-inline constexpr TokenId kSpace_layer_2036 = 2036;
+inline constexpr DiscreteToken kSpace_layer_2036{2036};
 // " normally"; original GPT-2 ID 7685.
-inline constexpr TokenId kSpace_normally_2037 = 2037;
+inline constexpr DiscreteToken kSpace_normally_2037{2037};
 // " networks"; original GPT-2 ID 7686.
-inline constexpr TokenId kSpace_networks_2038 = 2038;
+inline constexpr DiscreteToken kSpace_networks_2038{2038};
 // " regardless"; original GPT-2 ID 7692.
-inline constexpr TokenId kSpace_regardless_2039 = 2039;
+inline constexpr DiscreteToken kSpace_regardless_2039{2039};
 // " bridge"; original GPT-2 ID 7696.
-inline constexpr TokenId kSpace_bridge_2040 = 2040;
+inline constexpr DiscreteToken kSpace_bridge_2040{2040};
 // " Silver"; original GPT-2 ID 7698.
-inline constexpr TokenId kSpace_Silver_2041 = 2041;
+inline constexpr DiscreteToken kSpace_Silver_2041{2041};
 // " walls"; original GPT-2 ID 7714.
-inline constexpr TokenId kSpace_walls_2042 = 2042;
+inline constexpr DiscreteToken kSpace_walls_2042{2042};
 // " generate"; original GPT-2 ID 7716.
-inline constexpr TokenId kSpace_generate_2043 = 2043;
+inline constexpr DiscreteToken kSpace_generate_2043{2043};
 // " promote"; original GPT-2 ID 7719.
-inline constexpr TokenId kSpace_promote_2044 = 2044;
+inline constexpr DiscreteToken kSpace_promote_2044{2044};
 // " cutting"; original GPT-2 ID 7720.
-inline constexpr TokenId kSpace_cutting_2045 = 2045;
+inline constexpr DiscreteToken kSpace_cutting_2045{2045};
 // " chest"; original GPT-2 ID 7721.
-inline constexpr TokenId kSpace_chest_2046 = 2046;
+inline constexpr DiscreteToken kSpace_chest_2046{2046};
 // " instructions"; original GPT-2 ID 7729.
-inline constexpr TokenId kSpace_instructions_2047 = 2047;
+inline constexpr DiscreteToken kSpace_instructions_2047{2047};
 // "Red"; original GPT-2 ID 7738.
-inline constexpr TokenId kRed_2048 = 2048;
+inline constexpr DiscreteToken kRed_2048{2048};
 // " reduction"; original GPT-2 ID 7741.
-inline constexpr TokenId kSpace_reduction_2049 = 2049;
+inline constexpr DiscreteToken kSpace_reduction_2049{2049};
 // " reveal"; original GPT-2 ID 7766.
-inline constexpr TokenId kSpace_reveal_2050 = 2050;
+inline constexpr DiscreteToken kSpace_reveal_2050{2050};
 // " steel"; original GPT-2 ID 7771.
-inline constexpr TokenId kSpace_steel_2051 = 2051;
+inline constexpr DiscreteToken kSpace_steel_2051{2051};
 // "bound"; original GPT-2 ID 7784.
-inline constexpr TokenId kbound_2052 = 2052;
+inline constexpr DiscreteToken kbound_2052{2052};
 // " sin"; original GPT-2 ID 7813.
-inline constexpr TokenId kSpace_sin_2053 = 2053;
+inline constexpr DiscreteToken kSpace_sin_2053{2053};
 // " stone"; original GPT-2 ID 7815.
-inline constexpr TokenId kSpace_stone_2054 = 2054;
+inline constexpr DiscreteToken kSpace_stone_2054{2054};
 // "olars"; original GPT-2 ID 7828.
-inline constexpr TokenId kolars_2055 = 2055;
+inline constexpr DiscreteToken kolars_2055{2055};
 // " repeatedly"; original GPT-2 ID 7830.
-inline constexpr TokenId kSpace_repeatedly_2056 = 2056;
+inline constexpr DiscreteToken kSpace_repeatedly_2056{2056};
 // " northern"; original GPT-2 ID 7840.
-inline constexpr TokenId kSpace_northern_2057 = 2057;
+inline constexpr DiscreteToken kSpace_northern_2057{2057};
 // " magn"; original GPT-2 ID 7842.
-inline constexpr TokenId kSpace_magn_2058 = 2058;
+inline constexpr DiscreteToken kSpace_magn_2058{2058};
 // " displ"; original GPT-2 ID 7845.
-inline constexpr TokenId kSpace_displ_2059 = 2059;
+inline constexpr DiscreteToken kSpace_displ_2059{2059};
 // " river"; original GPT-2 ID 7850.
-inline constexpr TokenId kSpace_river_2060 = 2060;
+inline constexpr DiscreteToken kSpace_river_2060{2060};
 // "owing"; original GPT-2 ID 7855.
-inline constexpr TokenId kowing_2061 = 2061;
+inline constexpr DiscreteToken kowing_2061{2061};
 // "size"; original GPT-2 ID 7857.
-inline constexpr TokenId ksize_2062 = 2062;
+inline constexpr DiscreteToken ksize_2062{2062};
 // " tur"; original GPT-2 ID 7858.
-inline constexpr TokenId kSpace_tur_2063 = 2063;
+inline constexpr DiscreteToken kSpace_tur_2063{2063};
 // "raction"; original GPT-2 ID 7861.
-inline constexpr TokenId kraction_2064 = 2064;
+inline constexpr DiscreteToken kraction_2064{2064};
 // " ax"; original GPT-2 ID 7877.
-inline constexpr TokenId kSpace_ax_2065 = 2065;
+inline constexpr DiscreteToken kSpace_ax_2065{2065};
 // " register"; original GPT-2 ID 7881.
-inline constexpr TokenId kSpace_register_2066 = 2066;
+inline constexpr DiscreteToken kSpace_register_2066{2066};
 // " thin"; original GPT-2 ID 7888.
-inline constexpr TokenId kSpace_thin_2067 = 2067;
+inline constexpr DiscreteToken kSpace_thin_2067{2067};
 // " tail"; original GPT-2 ID 7894.
-inline constexpr TokenId kSpace_tail_2068 = 2068;
+inline constexpr DiscreteToken kSpace_tail_2068{2068};
 // " Spanish"; original GPT-2 ID 7897.
-inline constexpr TokenId kSpace_Spanish_2069 = 2069;
+inline constexpr DiscreteToken kSpace_Spanish_2069{2069};
 // " spin"; original GPT-2 ID 7906.
-inline constexpr TokenId kSpace_spin_2070 = 2070;
+inline constexpr DiscreteToken kSpace_spin_2070{2070};
 // " captured"; original GPT-2 ID 7907.
-inline constexpr TokenId kSpace_captured_2071 = 2071;
+inline constexpr DiscreteToken kSpace_captured_2071{2071};
 // " artists"; original GPT-2 ID 7912.
-inline constexpr TokenId kSpace_artists_2072 = 2072;
+inline constexpr DiscreteToken kSpace_artists_2072{2072};
 // "bell"; original GPT-2 ID 7923.
-inline constexpr TokenId kbell_2073 = 2073;
+inline constexpr DiscreteToken kbell_2073{2073};
 // " directed"; original GPT-2 ID 7924.
-inline constexpr TokenId kSpace_directed_2074 = 2074;
+inline constexpr DiscreteToken kSpace_directed_2074{2074};
 // " frag"; original GPT-2 ID 7956.
-inline constexpr TokenId kSpace_frag_2075 = 2075;
+inline constexpr DiscreteToken kSpace_frag_2075{2075};
 // "wind"; original GPT-2 ID 7972.
-inline constexpr TokenId kwind_2076 = 2076;
+inline constexpr DiscreteToken kwind_2076{2076};
 // " gall"; original GPT-2 ID 7976.
-inline constexpr TokenId kSpace_gall_2077 = 2077;
+inline constexpr DiscreteToken kSpace_gall_2077{2077};
 // " driven"; original GPT-2 ID 7986.
-inline constexpr TokenId kSpace_driven_2078 = 2078;
+inline constexpr DiscreteToken kSpace_driven_2078{2078};
 // " regularly"; original GPT-2 ID 7987.
-inline constexpr TokenId kSpace_regularly_2079 = 2079;
+inline constexpr DiscreteToken kSpace_regularly_2079{2079};
 // " Roman"; original GPT-2 ID 7993.
-inline constexpr TokenId kSpace_Roman_2080 = 2080;
+inline constexpr DiscreteToken kSpace_Roman_2080{2080};
 // " represented"; original GPT-2 ID 7997.
-inline constexpr TokenId kSpace_represented_2081 = 2081;
+inline constexpr DiscreteToken kSpace_represented_2081{2081};
 // " capture"; original GPT-2 ID 8006.
-inline constexpr TokenId kSpace_capture_2082 = 2082;
+inline constexpr DiscreteToken kSpace_capture_2082{2082};
 // " hook"; original GPT-2 ID 8011.
-inline constexpr TokenId kSpace_hook_2083 = 2083;
+inline constexpr DiscreteToken kSpace_hook_2083{2083};
 // " Stone"; original GPT-2 ID 8026.
-inline constexpr TokenId kSpace_Stone_2084 = 2084;
+inline constexpr DiscreteToken kSpace_Stone_2084{2084};
 // " Italy"; original GPT-2 ID 8031.
-inline constexpr TokenId kSpace_Italy_2085 = 2085;
+inline constexpr DiscreteToken kSpace_Italy_2085{2085};
 // " fing"; original GPT-2 ID 8038.
-inline constexpr TokenId kSpace_fing_2086 = 2086;
+inline constexpr DiscreteToken kSpace_fing_2086{2086};
 // "color"; original GPT-2 ID 8043.
-inline constexpr TokenId kcolor_2087 = 2087;
+inline constexpr DiscreteToken kcolor_2087{2087};
 // " Southern"; original GPT-2 ID 8050.
-inline constexpr TokenId kSpace_Southern_2088 = 2088;
+inline constexpr DiscreteToken kSpace_Southern_2088{2088};
 // " ratio"; original GPT-2 ID 8064.
-inline constexpr TokenId kSpace_ratio_2089 = 2089;
+inline constexpr DiscreteToken kSpace_ratio_2089{2089};
 // " Empire"; original GPT-2 ID 8065.
-inline constexpr TokenId kSpace_Empire_2090 = 2090;
+inline constexpr DiscreteToken kSpace_Empire_2090{2090};
 // " creates"; original GPT-2 ID 8075.
-inline constexpr TokenId kSpace_creates_2091 = 2091;
+inline constexpr DiscreteToken kSpace_creates_2091{2091};
 // " Jordan"; original GPT-2 ID 8078.
-inline constexpr TokenId kSpace_Jordan_2092 = 2092;
+inline constexpr DiscreteToken kSpace_Jordan_2092{2092};
 // " sustain"; original GPT-2 ID 8080.
-inline constexpr TokenId kSpace_sustain_2093 = 2093;
+inline constexpr DiscreteToken kSpace_sustain_2093{2093};
 // "ima"; original GPT-2 ID 8083.
-inline constexpr TokenId kima_2094 = 2094;
+inline constexpr DiscreteToken kima_2094{2094};
 // " filter"; original GPT-2 ID 8106.
-inline constexpr TokenId kSpace_filter_2095 = 2095;
+inline constexpr DiscreteToken kSpace_filter_2095{2095};
 // "uction"; original GPT-2 ID 8110.
-inline constexpr TokenId kuction_2096 = 2096;
+inline constexpr DiscreteToken kuction_2096{2096};
 // " Gi"; original GPT-2 ID 8118.
-inline constexpr TokenId kSpace_Gi_2097 = 2097;
+inline constexpr DiscreteToken kSpace_Gi_2097{2097};
 // " liquid"; original GPT-2 ID 8122.
-inline constexpr TokenId kSpace_liquid_2098 = 2098;
+inline constexpr DiscreteToken kSpace_liquid_2098{2098};
 // "Ref"; original GPT-2 ID 8134.
-inline constexpr TokenId kRef_2099 = 2099;
+inline constexpr DiscreteToken kRef_2099{2099};
 // " atmosphere"; original GPT-2 ID 8137.
-inline constexpr TokenId kSpace_atmosphere_2100 = 2100;
+inline constexpr DiscreteToken kSpace_atmosphere_2100{2100};
 // " fifth"; original GPT-2 ID 8150.
-inline constexpr TokenId kSpace_fifth_2101 = 2101;
+inline constexpr DiscreteToken kSpace_fifth_2101{2101};
 // "bow"; original GPT-2 ID 8176.
-inline constexpr TokenId kbow_2102 = 2102;
+inline constexpr DiscreteToken kbow_2102{2102};
 // " hang"; original GPT-2 ID 8181.
-inline constexpr TokenId kSpace_hang_2103 = 2103;
+inline constexpr DiscreteToken kSpace_hang_2103{2103};
 // "aki"; original GPT-2 ID 8182.
-inline constexpr TokenId kaki_2104 = 2104;
+inline constexpr DiscreteToken kaki_2104{2104};
 // " reprodu"; original GPT-2 ID 8186.
-inline constexpr TokenId kSpace_reprodu_2105 = 2105;
+inline constexpr DiscreteToken kSpace_reprodu_2105{2105};
 // " uniform"; original GPT-2 ID 8187.
-inline constexpr TokenId kSpace_uniform_2106 = 2106;
+inline constexpr DiscreteToken kSpace_uniform_2106{2106};
 // " scenes"; original GPT-2 ID 8188.
-inline constexpr TokenId kSpace_scenes_2107 = 2107;
+inline constexpr DiscreteToken kSpace_scenes_2107{2107};
 // "Ne"; original GPT-2 ID 8199.
-inline constexpr TokenId kNe_2108 = 2108;
+inline constexpr DiscreteToken kNe_2108{2108};
 // " Italian"; original GPT-2 ID 8200.
-inline constexpr TokenId kSpace_Italian_2109 = 2109;
+inline constexpr DiscreteToken kSpace_Italian_2109{2109};
 // " twenty"; original GPT-2 ID 8208.
-inline constexpr TokenId kSpace_twenty_2110 = 2110;
+inline constexpr DiscreteToken kSpace_twenty_2110{2110};
 // " Pacific"; original GPT-2 ID 8211.
-inline constexpr TokenId kSpace_Pacific_2111 = 2111;
+inline constexpr DiscreteToken kSpace_Pacific_2111{2111};
 // "yo"; original GPT-2 ID 8226.
-inline constexpr TokenId kyo_2112 = 2112;
+inline constexpr DiscreteToken kyo_2112{2112};
 // "ials"; original GPT-2 ID 8231.
-inline constexpr TokenId kials_2113 = 2113;
+inline constexpr DiscreteToken kials_2113{2113};
 // " fruit"; original GPT-2 ID 8234.
-inline constexpr TokenId kSpace_fruit_2114 = 2114;
+inline constexpr DiscreteToken kSpace_fruit_2114{2114};
 // "Star"; original GPT-2 ID 8248.
-inline constexpr TokenId kStar_2115 = 2115;
+inline constexpr DiscreteToken kStar_2115{2115};
 // " keys"; original GPT-2 ID 8251.
-inline constexpr TokenId kSpace_keys_2116 = 2116;
+inline constexpr DiscreteToken kSpace_keys_2116{2116};
 // " salt"; original GPT-2 ID 8268.
-inline constexpr TokenId kSpace_salt_2117 = 2117;
+inline constexpr DiscreteToken kSpace_salt_2117{2117};
 // "ille"; original GPT-2 ID 8270.
-inline constexpr TokenId kille_2118 = 2118;
+inline constexpr DiscreteToken kille_2118{2118};
 // " resource"; original GPT-2 ID 8271.
-inline constexpr TokenId kSpace_resource_2119 = 2119;
+inline constexpr DiscreteToken kSpace_resource_2119{2119};
 // "away"; original GPT-2 ID 8272.
-inline constexpr TokenId kaway_2120 = 2120;
+inline constexpr DiscreteToken kaway_2120{2120};
 // " participate"; original GPT-2 ID 8277.
-inline constexpr TokenId kSpace_participate_2121 = 2121;
+inline constexpr DiscreteToken kSpace_participate_2121{2121};
 // " muscle"; original GPT-2 ID 8280.
-inline constexpr TokenId kSpace_muscle_2122 = 2122;
+inline constexpr DiscreteToken kSpace_muscle_2122{2122};
 // " rear"; original GPT-2 ID 8286.
-inline constexpr TokenId kSpace_rear_2123 = 2123;
+inline constexpr DiscreteToken kSpace_rear_2123{2123};
 // "Trans"; original GPT-2 ID 8291.
-inline constexpr TokenId kTrans_2124 = 2124;
+inline constexpr DiscreteToken kTrans_2124{2124};
 // " programming"; original GPT-2 ID 8300.
-inline constexpr TokenId kSpace_programming_2125 = 2125;
+inline constexpr DiscreteToken kSpace_programming_2125{2125};
 // "ulating"; original GPT-2 ID 8306.
-inline constexpr TokenId kulating_2126 = 2126;
+inline constexpr DiscreteToken kulating_2126{2126};
 // " Greek"; original GPT-2 ID 8312.
-inline constexpr TokenId kSpace_Greek_2127 = 2127;
+inline constexpr DiscreteToken kSpace_Greek_2127{2127};
 // " passes"; original GPT-2 ID 8318.
-inline constexpr TokenId kSpace_passes_2128 = 2128;
+inline constexpr DiscreteToken kSpace_passes_2128{2128};
 // " acceler"; original GPT-2 ID 8320.
-inline constexpr TokenId kSpace_acceler_2129 = 2129;
+inline constexpr DiscreteToken kSpace_acceler_2129{2129};
 // "oval"; original GPT-2 ID 8325.
-inline constexpr TokenId koval_2130 = 2130;
+inline constexpr DiscreteToken koval_2130{2130};
 // "Despite"; original GPT-2 ID 8332.
-inline constexpr TokenId kDespite_2131 = 2131;
+inline constexpr DiscreteToken kDespite_2131{2131};
 // " Northern"; original GPT-2 ID 8342.
-inline constexpr TokenId kSpace_Northern_2132 = 2132;
+inline constexpr DiscreteToken kSpace_Northern_2132{2132};
 // " southern"; original GPT-2 ID 8372.
-inline constexpr TokenId kSpace_southern_2133 = 2133;
+inline constexpr DiscreteToken kSpace_southern_2133{2133};
 // " frequency"; original GPT-2 ID 8373.
-inline constexpr TokenId kSpace_frequency_2134 = 2134;
+inline constexpr DiscreteToken kSpace_frequency_2134{2134};
 // " sequence"; original GPT-2 ID 8379.
-inline constexpr TokenId kSpace_sequence_2135 = 2135;
+inline constexpr DiscreteToken kSpace_sequence_2135{2135};
 // " worker"; original GPT-2 ID 8383.
-inline constexpr TokenId kSpace_worker_2136 = 2136;
+inline constexpr DiscreteToken kSpace_worker_2136{2136};
 // " mainly"; original GPT-2 ID 8384.
-inline constexpr TokenId kSpace_mainly_2137 = 2137;
+inline constexpr DiscreteToken kSpace_mainly_2137{2137};
 // " organized"; original GPT-2 ID 8389.
-inline constexpr TokenId kSpace_organized_2138 = 2138;
+inline constexpr DiscreteToken kSpace_organized_2138{2138};
 // " inner"; original GPT-2 ID 8434.
-inline constexpr TokenId kSpace_inner_2139 = 2139;
+inline constexpr DiscreteToken kSpace_inner_2139{2139};
 // " protocol"; original GPT-2 ID 8435.
-inline constexpr TokenId kSpace_protocol_2140 = 2140;
+inline constexpr DiscreteToken kSpace_protocol_2140{2140};
 // "press"; original GPT-2 ID 8439.
-inline constexpr TokenId kpress_2141 = 2141;
+inline constexpr DiscreteToken kpress_2141{2141};
 // " describes"; original GPT-2 ID 8477.
-inline constexpr TokenId kSpace_describes_2142 = 2142;
+inline constexpr DiscreteToken kSpace_describes_2142{2142};
 // " branch"; original GPT-2 ID 8478.
-inline constexpr TokenId kSpace_branch_2143 = 2143;
+inline constexpr DiscreteToken kSpace_branch_2143{2143};
 // "bi"; original GPT-2 ID 8482.
-inline constexpr TokenId kbi_2144 = 2144;
+inline constexpr DiscreteToken kbi_2144{2144};
 // " neutral"; original GPT-2 ID 8500.
-inline constexpr TokenId kSpace_neutral_2145 = 2145;
+inline constexpr DiscreteToken kSpace_neutral_2145{2145};
 // "olis"; original GPT-2 ID 8506.
-inline constexpr TokenId kolis_2146 = 2146;
+inline constexpr DiscreteToken kolis_2146{2146};
 // " smell"; original GPT-2 ID 8508.
-inline constexpr TokenId kSpace_smell_2147 = 2147;
+inline constexpr DiscreteToken kSpace_smell_2147{2147};
 // " bread"; original GPT-2 ID 8509.
-inline constexpr TokenId kSpace_bread_2148 = 2148;
+inline constexpr DiscreteToken kSpace_bread_2148{2148};
 // " genetic"; original GPT-2 ID 8513.
-inline constexpr TokenId kSpace_genetic_2149 = 2149;
+inline constexpr DiscreteToken kSpace_genetic_2149{2149};
 // "etary"; original GPT-2 ID 8527.
-inline constexpr TokenId ketary_2150 = 2150;
+inline constexpr DiscreteToken ketary_2150{2150};
 // " wing"; original GPT-2 ID 8539.
-inline constexpr TokenId kSpace_wing_2151 = 2151;
+inline constexpr DiscreteToken kSpace_wing_2151{2151};
 // "osa"; original GPT-2 ID 8546.
-inline constexpr TokenId kosa_2152 = 2152;
+inline constexpr DiscreteToken kosa_2152{2152};
 // " Greg"; original GPT-2 ID 8547.
-inline constexpr TokenId kSpace_Greg_2153 = 2153;
+inline constexpr DiscreteToken kSpace_Greg_2153{2153};
 // "orne"; original GPT-2 ID 8553.
-inline constexpr TokenId korne_2154 = 2154;
+inline constexpr DiscreteToken korne_2154{2154};
 // " spiritual"; original GPT-2 ID 8557.
-inline constexpr TokenId kSpace_spiritual_2155 = 2155;
+inline constexpr DiscreteToken kSpace_spiritual_2155{2155};
 // " cream"; original GPT-2 ID 8566.
-inline constexpr TokenId kSpace_cream_2156 = 2156;
+inline constexpr DiscreteToken kSpace_cream_2156{2156};
 // " structures"; original GPT-2 ID 8573.
-inline constexpr TokenId kSpace_structures_2157 = 2157;
+inline constexpr DiscreteToken kSpace_structures_2157{2157};
 // " stored"; original GPT-2 ID 8574.
-inline constexpr TokenId kSpace_stored_2158 = 2158;
+inline constexpr DiscreteToken kSpace_stored_2158{2158};
 // "sea"; original GPT-2 ID 8583.
-inline constexpr TokenId ksea_2159 = 2159;
+inline constexpr DiscreteToken ksea_2159{2159};
 // " contracts"; original GPT-2 ID 8592.
-inline constexpr TokenId kSpace_contracts_2160 = 2160;
+inline constexpr DiscreteToken kSpace_contracts_2160{2160};
 // " mountain"; original GPT-2 ID 8598.
-inline constexpr TokenId kSpace_mountain_2161 = 2161;
+inline constexpr DiscreteToken kSpace_mountain_2161{2161};
 // " Spain"; original GPT-2 ID 8602.
-inline constexpr TokenId kSpace_Spain_2162 = 2162;
+inline constexpr DiscreteToken kSpace_Spain_2162{2162};
 // "aters"; original GPT-2 ID 8605.
-inline constexpr TokenId katers_2163 = 2163;
+inline constexpr DiscreteToken katers_2163{2163};
 // " measured"; original GPT-2 ID 8630.
-inline constexpr TokenId kSpace_measured_2164 = 2164;
+inline constexpr DiscreteToken kSpace_measured_2164{2164};
 // "athered"; original GPT-2 ID 8638.
-inline constexpr TokenId kathered_2165 = 2165;
+inline constexpr DiscreteToken kathered_2165{2165};
 // "rogen"; original GPT-2 ID 8648.
-inline constexpr TokenId krogen_2166 = 2166;
+inline constexpr DiscreteToken krogen_2166{2166};
 // " assigned"; original GPT-2 ID 8686.
-inline constexpr TokenId kSpace_assigned_2167 = 2167;
+inline constexpr DiscreteToken kSpace_assigned_2167{2167};
 // " narrative"; original GPT-2 ID 8689.
-inline constexpr TokenId kSpace_narrative_2168 = 2168;
+inline constexpr DiscreteToken kSpace_narrative_2168{2168};
 // " covers"; original GPT-2 ID 8698.
-inline constexpr TokenId kSpace_covers_2169 = 2169;
+inline constexpr DiscreteToken kSpace_covers_2169{2169};
 // " grass"; original GPT-2 ID 8701.
-inline constexpr TokenId kSpace_grass_2170 = 2170;
+inline constexpr DiscreteToken kSpace_grass_2170{2170};
 // "ira"; original GPT-2 ID 8704.
-inline constexpr TokenId kira_2171 = 2171;
+inline constexpr DiscreteToken kira_2171{2171};
 // " Mars"; original GPT-2 ID 8706.
-inline constexpr TokenId kSpace_Mars_2172 = 2172;
+inline constexpr DiscreteToken kSpace_Mars_2172{2172};
 // " hyper"; original GPT-2 ID 8718.
-inline constexpr TokenId kSpace_hyper_2173 = 2173;
+inline constexpr DiscreteToken kSpace_hyper_2173{2173};
 // " difficulty"; original GPT-2 ID 8722.
-inline constexpr TokenId kSpace_difficulty_2174 = 2174;
+inline constexpr DiscreteToken kSpace_difficulty_2174{2174};
 // "link"; original GPT-2 ID 8726.
-inline constexpr TokenId klink_2175 = 2175;
+inline constexpr DiscreteToken klink_2175{2175};
 // "Wind"; original GPT-2 ID 8731.
-inline constexpr TokenId kWind_2176 = 2176;
+inline constexpr DiscreteToken kWind_2176{2176};
 // " burd"; original GPT-2 ID 8746.
-inline constexpr TokenId kSpace_burd_2177 = 2177;
+inline constexpr DiscreteToken kSpace_burd_2177{2177};
 // " Tower"; original GPT-2 ID 8765.
-inline constexpr TokenId kSpace_Tower_2178 = 2178;
+inline constexpr DiscreteToken kSpace_Tower_2178{2178};
 // " kil"; original GPT-2 ID 8769.
-inline constexpr TokenId kSpace_kil_2179 = 2179;
+inline constexpr DiscreteToken kSpace_kil_2179{2179};
 // " procedure"; original GPT-2 ID 8771.
-inline constexpr TokenId kSpace_procedure_2180 = 2180;
+inline constexpr DiscreteToken kSpace_procedure_2180{2180};
 // " connections"; original GPT-2 ID 8787.
-inline constexpr TokenId kSpace_connections_2181 = 2181;
+inline constexpr DiscreteToken kSpace_connections_2181{2181};
 // " checks"; original GPT-2 ID 8794.
-inline constexpr TokenId kSpace_checks_2182 = 2182;
+inline constexpr DiscreteToken kSpace_checks_2182{2182};
 // "isp"; original GPT-2 ID 8802.
-inline constexpr TokenId kisp_2183 = 2183;
+inline constexpr DiscreteToken kisp_2183{2183};
 // " gains"; original GPT-2 ID 8810.
-inline constexpr TokenId kSpace_gains_2184 = 2184;
+inline constexpr DiscreteToken kSpace_gains_2184{2184};
 // " commonly"; original GPT-2 ID 8811.
-inline constexpr TokenId kSpace_commonly_2185 = 2185;
+inline constexpr DiscreteToken kSpace_commonly_2185{2185};
 // " hypot"; original GPT-2 ID 8813.
-inline constexpr TokenId kSpace_hypot_2186 = 2186;
+inline constexpr DiscreteToken kSpace_hypot_2186{2186};
 // " moon"; original GPT-2 ID 8824.
-inline constexpr TokenId kSpace_moon_2187 = 2187;
+inline constexpr DiscreteToken kSpace_moon_2187{2187};
 // " western"; original GPT-2 ID 8830.
-inline constexpr TokenId kSpace_western_2188 = 2188;
+inline constexpr DiscreteToken kSpace_western_2188{2188};
 // " occurs"; original GPT-2 ID 8833.
-inline constexpr TokenId kSpace_occurs_2189 = 2189;
+inline constexpr DiscreteToken kSpace_occurs_2189{2189};
 // " vessel"; original GPT-2 ID 8837.
-inline constexpr TokenId kSpace_vessel_2190 = 2190;
+inline constexpr DiscreteToken kSpace_vessel_2190{2190};
 // " marks"; original GPT-2 ID 8849.
-inline constexpr TokenId kSpace_marks_2191 = 2191;
+inline constexpr DiscreteToken kSpace_marks_2191{2191};
 // " ordinary"; original GPT-2 ID 8850.
-inline constexpr TokenId kSpace_ordinary_2192 = 2192;
+inline constexpr DiscreteToken kSpace_ordinary_2192{2192};
 // " reducing"; original GPT-2 ID 8868.
-inline constexpr TokenId kSpace_reducing_2193 = 2193;
+inline constexpr DiscreteToken kSpace_reducing_2193{2193};
 // " instrument"; original GPT-2 ID 8875.
-inline constexpr TokenId kSpace_instrument_2194 = 2194;
+inline constexpr DiscreteToken kSpace_instrument_2194{2194};
 // " ruled"; original GPT-2 ID 8879.
-inline constexpr TokenId kSpace_ruled_2195 = 2195;
+inline constexpr DiscreteToken kSpace_ruled_2195{2195};
 // " Mah"; original GPT-2 ID 8882.
-inline constexpr TokenId kSpace_Mah_2196 = 2196;
+inline constexpr DiscreteToken kSpace_Mah_2196{2196};
 // " tables"; original GPT-2 ID 8893.
-inline constexpr TokenId kSpace_tables_2197 = 2197;
+inline constexpr DiscreteToken kSpace_tables_2197{2197};
 // "map"; original GPT-2 ID 8899.
-inline constexpr TokenId kmap_2198 = 2198;
+inline constexpr DiscreteToken kmap_2198{2198};
 // " pump"; original GPT-2 ID 8901.
-inline constexpr TokenId kSpace_pump_2199 = 2199;
+inline constexpr DiscreteToken kSpace_pump_2199{2199};
 // " rapidly"; original GPT-2 ID 8902.
-inline constexpr TokenId kSpace_rapidly_2200 = 2200;
+inline constexpr DiscreteToken kSpace_rapidly_2200{2200};
 // " substantial"; original GPT-2 ID 8904.
-inline constexpr TokenId kSpace_substantial_2201 = 2201;
+inline constexpr DiscreteToken kSpace_substantial_2201{2201};
 // " Bron"; original GPT-2 ID 8923.
-inline constexpr TokenId kSpace_Bron_2202 = 2202;
+inline constexpr DiscreteToken kSpace_Bron_2202{2202};
 // "ulator"; original GPT-2 ID 8927.
-inline constexpr TokenId kulator_2203 = 2203;
+inline constexpr DiscreteToken kulator_2203{2203};
 // " stack"; original GPT-2 ID 8931.
-inline constexpr TokenId kSpace_stack_2204 = 2204;
+inline constexpr DiscreteToken kSpace_stack_2204{2204};
 // " Zealand"; original GPT-2 ID 8936.
-inline constexpr TokenId kSpace_Zealand_2205 = 2205;
+inline constexpr DiscreteToken kSpace_Zealand_2205{2205};
 // " languages"; original GPT-2 ID 8950.
-inline constexpr TokenId kSpace_languages_2206 = 2206;
+inline constexpr DiscreteToken kSpace_languages_2206{2206};
 // "emen"; original GPT-2 ID 8952.
-inline constexpr TokenId kemen_2207 = 2207;
+inline constexpr DiscreteToken kemen_2207{2207};
 // " coc"; original GPT-2 ID 8954.
-inline constexpr TokenId kSpace_coc_2208 = 2208;
+inline constexpr DiscreteToken kSpace_coc_2208{2208};
 // " bell"; original GPT-2 ID 8966.
-inline constexpr TokenId kSpace_bell_2209 = 2209;
+inline constexpr DiscreteToken kSpace_bell_2209{2209};
 // "cut"; original GPT-2 ID 8968.
-inline constexpr TokenId kcut_2210 = 2210;
+inline constexpr DiscreteToken kcut_2210{2210};
 // " rival"; original GPT-2 ID 8976.
-inline constexpr TokenId kSpace_rival_2211 = 2211;
+inline constexpr DiscreteToken kSpace_rival_2211{2211};
 // " dust"; original GPT-2 ID 8977.
-inline constexpr TokenId kSpace_dust_2212 = 2212;
+inline constexpr DiscreteToken kSpace_dust_2212{2212};
 // " reaching"; original GPT-2 ID 8978.
-inline constexpr TokenId kSpace_reaching_2213 = 2213;
+inline constexpr DiscreteToken kSpace_reaching_2213{2213};
 // " applies"; original GPT-2 ID 8991.
-inline constexpr TokenId kSpace_applies_2214 = 2214;
+inline constexpr DiscreteToken kSpace_applies_2214{2214};
 // " sections"; original GPT-2 ID 9004.
-inline constexpr TokenId kSpace_sections_2215 = 2215;
+inline constexpr DiscreteToken kSpace_sections_2215{2215};
 // " foods"; original GPT-2 ID 9013.
-inline constexpr TokenId kSpace_foods_2216 = 2216;
+inline constexpr DiscreteToken kSpace_foods_2216{2216};
 // " lowest"; original GPT-2 ID 9016.
-inline constexpr TokenId kSpace_lowest_2217 = 2217;
+inline constexpr DiscreteToken kSpace_lowest_2217{2217};
 // " involves"; original GPT-2 ID 9018.
-inline constexpr TokenId kSpace_involves_2218 = 2218;
+inline constexpr DiscreteToken kSpace_involves_2218{2218};
 // "ui"; original GPT-2 ID 9019.
-inline constexpr TokenId kui_2219 = 2219;
+inline constexpr DiscreteToken kui_2219{2219};
 // " mechanism"; original GPT-2 ID 9030.
-inline constexpr TokenId kSpace_mechanism_2220 = 2220;
+inline constexpr DiscreteToken kSpace_mechanism_2220{2220};
 // "cus"; original GPT-2 ID 9042.
-inline constexpr TokenId kcus_2221 = 2221;
+inline constexpr DiscreteToken kcus_2221{2221};
 // " loop"; original GPT-2 ID 9052.
-inline constexpr TokenId kSpace_loop_2222 = 2222;
+inline constexpr DiscreteToken kSpace_loop_2222{2222};
 // " shadow"; original GPT-2 ID 9082.
-inline constexpr TokenId kSpace_shadow_2223 = 2223;
+inline constexpr DiscreteToken kSpace_shadow_2223{2223};
 // " divided"; original GPT-2 ID 9086.
-inline constexpr TokenId kSpace_divided_2224 = 2224;
+inline constexpr DiscreteToken kSpace_divided_2224{2224};
 // " copies"; original GPT-2 ID 9088.
-inline constexpr TokenId kSpace_copies_2225 = 2225;
+inline constexpr DiscreteToken kSpace_copies_2225{2225};
 // "ked"; original GPT-2 ID 9091.
-inline constexpr TokenId kked_2226 = 2226;
+inline constexpr DiscreteToken kked_2226{2226};
 // " gam"; original GPT-2 ID 9106.
-inline constexpr TokenId kSpace_gam_2227 = 2227;
+inline constexpr DiscreteToken kSpace_gam_2227{2227};
 // "zer"; original GPT-2 ID 9107.
-inline constexpr TokenId kzer_2228 = 2228;
+inline constexpr DiscreteToken kzer_2228{2228};
 // " extend"; original GPT-2 ID 9117.
-inline constexpr TokenId kSpace_extend_2229 = 2229;
+inline constexpr DiscreteToken kSpace_extend_2229{2229};
 // " Latin"; original GPT-2 ID 9133.
-inline constexpr TokenId kSpace_Latin_2230 = 2230;
+inline constexpr DiscreteToken kSpace_Latin_2230{2230};
 // " substance"; original GPT-2 ID 9136.
-inline constexpr TokenId kSpace_substance_2231 = 2231;
+inline constexpr DiscreteToken kSpace_substance_2231{2231};
 // " guarantee"; original GPT-2 ID 9149.
-inline constexpr TokenId kSpace_guarantee_2232 = 2232;
+inline constexpr DiscreteToken kSpace_guarantee_2232{2232};
 // " ocean"; original GPT-2 ID 9151.
-inline constexpr TokenId kSpace_ocean_2233 = 2233;
+inline constexpr DiscreteToken kSpace_ocean_2233{2233};
 // " logic"; original GPT-2 ID 9156.
-inline constexpr TokenId kSpace_logic_2234 = 2234;
+inline constexpr DiscreteToken kSpace_logic_2234{2234};
 // "isa"; original GPT-2 ID 9160.
-inline constexpr TokenId kisa_2235 = 2235;
+inline constexpr DiscreteToken kisa_2235{2235};
 // " investigate"; original GPT-2 ID 9161.
-inline constexpr TokenId kSpace_investigate_2236 = 2236;
+inline constexpr DiscreteToken kSpace_investigate_2236{2236};
 // " windows"; original GPT-2 ID 9168.
-inline constexpr TokenId kSpace_windows_2237 = 2237;
+inline constexpr DiscreteToken kSpace_windows_2237{2237};
 // "Met"; original GPT-2 ID 9171.
-inline constexpr TokenId kMet_2238 = 2238;
+inline constexpr DiscreteToken kMet_2238{2238};
 // " serves"; original GPT-2 ID 9179.
-inline constexpr TokenId kSpace_serves_2239 = 2239;
+inline constexpr DiscreteToken kSpace_serves_2239{2239};
 // "adi"; original GPT-2 ID 9189.
-inline constexpr TokenId kadi_2240 = 2240;
+inline constexpr DiscreteToken kadi_2240{2240};
 // " producing"; original GPT-2 ID 9194.
-inline constexpr TokenId kSpace_producing_2241 = 2241;
+inline constexpr DiscreteToken kSpace_producing_2241{2241};
 // " circle"; original GPT-2 ID 9197.
-inline constexpr TokenId kSpace_circle_2242 = 2242;
+inline constexpr DiscreteToken kSpace_circle_2242{2242};
 // "Under"; original GPT-2 ID 9203.
-inline constexpr TokenId kUnder_2243 = 2243;
+inline constexpr DiscreteToken kUnder_2243{2243};
 // " bars"; original GPT-2 ID 9210.
-inline constexpr TokenId kSpace_bars_2244 = 2244;
+inline constexpr DiscreteToken kSpace_bars_2244{2244};
 // " butter"; original GPT-2 ID 9215.
-inline constexpr TokenId kSpace_butter_2245 = 2245;
+inline constexpr DiscreteToken kSpace_butter_2245{2245};
 // " indicates"; original GPT-2 ID 9217.
-inline constexpr TokenId kSpace_indicates_2246 = 2246;
+inline constexpr DiscreteToken kSpace_indicates_2246{2246};
 // " 79"; original GPT-2 ID 9225.
-inline constexpr TokenId kSpace_79_2247 = 2247;
+inline constexpr DiscreteToken kSpace_79_2247{2247};
 // "onic"; original GPT-2 ID 9229.
-inline constexpr TokenId konic_2248 = 2248;
+inline constexpr DiscreteToken konic_2248{2248};
 // " fur"; original GPT-2 ID 9230.
-inline constexpr TokenId kSpace_fur_2249 = 2249;
+inline constexpr DiscreteToken kSpace_fur_2249{2249};
 // " arrive"; original GPT-2 ID 9240.
-inline constexpr TokenId kSpace_arrive_2250 = 2250;
+inline constexpr DiscreteToken kSpace_arrive_2250{2250};
 // "ologists"; original GPT-2 ID 9251.
-inline constexpr TokenId kologists_2251 = 2251;
+inline constexpr DiscreteToken kologists_2251{2251};
 // "enter"; original GPT-2 ID 9255.
-inline constexpr TokenId kenter_2252 = 2252;
+inline constexpr DiscreteToken kenter_2252{2252};
 // " soil"; original GPT-2 ID 9260.
-inline constexpr TokenId kSpace_soil_2253 = 2253;
+inline constexpr DiscreteToken kSpace_soil_2253{2253};
 // " Anton"; original GPT-2 ID 9261.
-inline constexpr TokenId kSpace_Anton_2254 = 2254;
+inline constexpr DiscreteToken kSpace_Anton_2254{2254};
 // " dance"; original GPT-2 ID 9280.
-inline constexpr TokenId kSpace_dance_2255 = 2255;
+inline constexpr DiscreteToken kSpace_dance_2255{2255};
 // " container"; original GPT-2 ID 9290.
-inline constexpr TokenId kSpace_container_2256 = 2256;
+inline constexpr DiscreteToken kSpace_container_2256{2256};
 // "engers"; original GPT-2 ID 9302.
-inline constexpr TokenId kengers_2257 = 2257;
+inline constexpr DiscreteToken kengers_2257{2257};
 // "ds"; original GPT-2 ID 9310.
-inline constexpr TokenId kds_2258 = 2258;
+inline constexpr DiscreteToken kds_2258{2258};
 // " reliable"; original GPT-2 ID 9314.
-inline constexpr TokenId kSpace_reliable_2259 = 2259;
+inline constexpr DiscreteToken kSpace_reliable_2259{2259};
 // " paralle"; original GPT-2 ID 9315.
-inline constexpr TokenId kSpace_paralle_2260 = 2260;
+inline constexpr DiscreteToken kSpace_paralle_2260{2260};
 // " mask"; original GPT-2 ID 9335.
-inline constexpr TokenId kSpace_mask_2261 = 2261;
+inline constexpr DiscreteToken kSpace_mask_2261{2261};
 // "Her"; original GPT-2 ID 9360.
-inline constexpr TokenId kHer_2262 = 2262;
+inline constexpr DiscreteToken kHer_2262{2262};
 // " Ten"; original GPT-2 ID 9368.
-inline constexpr TokenId kSpace_Ten_2263 = 2263;
+inline constexpr DiscreteToken kSpace_Ten_2263{2263};
 // " rational"; original GPT-2 ID 9377.
-inline constexpr TokenId kSpace_rational_2264 = 2264;
+inline constexpr DiscreteToken kSpace_rational_2264{2264};
 // " graphics"; original GPT-2 ID 9382.
-inline constexpr TokenId kSpace_graphics_2265 = 2265;
+inline constexpr DiscreteToken kSpace_graphics_2265{2265};
 // "mic"; original GPT-2 ID 9383.
-inline constexpr TokenId kmic_2266 = 2266;
+inline constexpr DiscreteToken kmic_2266{2266};
 // " distributed"; original GPT-2 ID 9387.
-inline constexpr TokenId kSpace_distributed_2267 = 2267;
+inline constexpr DiscreteToken kSpace_distributed_2267{2267};
 // "uto"; original GPT-2 ID 9390.
-inline constexpr TokenId kuto_2268 = 2268;
+inline constexpr DiscreteToken kuto_2268{2268};
 // " seed"; original GPT-2 ID 9403.
-inline constexpr TokenId kSpace_seed_2269 = 2269;
+inline constexpr DiscreteToken kSpace_seed_2269{2269};
 // " addresses"; original GPT-2 ID 9405.
-inline constexpr TokenId kSpace_addresses_2270 = 2270;
+inline constexpr DiscreteToken kSpace_addresses_2270{2270};
 // " mole"; original GPT-2 ID 9411.
-inline constexpr TokenId kSpace_mole_2271 = 2271;
+inline constexpr DiscreteToken kSpace_mole_2271{2271};
 // "Br"; original GPT-2 ID 9414.
-inline constexpr TokenId kBr_2272 = 2272;
+inline constexpr DiscreteToken kBr_2272{2272};
 // "elling"; original GPT-2 ID 9417.
-inline constexpr TokenId kelling_2273 = 2273;
+inline constexpr DiscreteToken kelling_2273{2273};
 // " vert"; original GPT-2 ID 9421.
-inline constexpr TokenId kSpace_vert_2274 = 2274;
+inline constexpr DiscreteToken kSpace_vert_2274{2274};
 // " objective"; original GPT-2 ID 9432.
-inline constexpr TokenId kSpace_objective_2275 = 2275;
+inline constexpr DiscreteToken kSpace_objective_2275{2275};
 // " breaks"; original GPT-2 ID 9457.
-inline constexpr TokenId kSpace_breaks_2276 = 2276;
+inline constexpr DiscreteToken kSpace_breaks_2276{2276};
 // "atar"; original GPT-2 ID 9459.
-inline constexpr TokenId katar_2277 = 2277;
+inline constexpr DiscreteToken katar_2277{2277};
 // "agg"; original GPT-2 ID 9460.
-inline constexpr TokenId kagg_2278 = 2278;
+inline constexpr DiscreteToken kagg_2278{2278};
 // " Pers"; original GPT-2 ID 9467.
-inline constexpr TokenId kSpace_Pers_2279 = 2279;
+inline constexpr DiscreteToken kSpace_Pers_2279{2279};
 // " virus"; original GPT-2 ID 9471.
-inline constexpr TokenId kSpace_virus_2280 = 2280;
+inline constexpr DiscreteToken kSpace_virus_2280{2280};
 // " whereas"; original GPT-2 ID 9472.
-inline constexpr TokenId kSpace_whereas_2281 = 2281;
+inline constexpr DiscreteToken kSpace_whereas_2281{2281};
 // " duration"; original GPT-2 ID 9478.
-inline constexpr TokenId kSpace_duration_2282 = 2282;
+inline constexpr DiscreteToken kSpace_duration_2282{2282};
 // " Py"; original GPT-2 ID 9485.
-inline constexpr TokenId kSpace_Py_2283 = 2283;
+inline constexpr DiscreteToken kSpace_Py_2283{2283};
 // " performing"; original GPT-2 ID 9489.
-inline constexpr TokenId kSpace_performing_2284 = 2284;
+inline constexpr DiscreteToken kSpace_performing_2284{2284};
 // "jar"; original GPT-2 ID 9491.
-inline constexpr TokenId kjar_2285 = 2285;
+inline constexpr DiscreteToken kjar_2285{2285};
 // "Inter"; original GPT-2 ID 9492.
-inline constexpr TokenId kInter_2286 = 2286;
+inline constexpr DiscreteToken kInter_2286{2286};
 // "fs"; original GPT-2 ID 9501.
-inline constexpr TokenId kfs_2287 = 2287;
+inline constexpr DiscreteToken kfs_2287{2287};
 // " covering"; original GPT-2 ID 9505.
-inline constexpr TokenId kSpace_covering_2288 = 2288;
+inline constexpr DiscreteToken kSpace_covering_2288{2288};
 // "zing"; original GPT-2 ID 9510.
-inline constexpr TokenId kzing_2289 = 2289;
+inline constexpr DiscreteToken kzing_2289{2289};
 // " modified"; original GPT-2 ID 9518.
-inline constexpr TokenId kSpace_modified_2290 = 2290;
+inline constexpr DiscreteToken kSpace_modified_2290{2290};
 // " rh"; original GPT-2 ID 9529.
-inline constexpr TokenId kSpace_rh_2291 = 2291;
+inline constexpr DiscreteToken kSpace_rh_2291{2291};
 // " Han"; original GPT-2 ID 9530.
-inline constexpr TokenId kSpace_Han_2292 = 2292;
+inline constexpr DiscreteToken kSpace_Han_2292{2292};
 // " phrase"; original GPT-2 ID 9546.
-inline constexpr TokenId kSpace_phrase_2293 = 2293;
+inline constexpr DiscreteToken kSpace_phrase_2293{2293};
 // "ington"; original GPT-2 ID 9557.
-inline constexpr TokenId kington_2294 = 2294;
+inline constexpr DiscreteToken kington_2294{2294};
 // " bow"; original GPT-2 ID 9563.
-inline constexpr TokenId kSpace_bow_2295 = 2295;
+inline constexpr DiscreteToken kSpace_bow_2295{2295};
 // " flavor"; original GPT-2 ID 9565.
-inline constexpr TokenId kSpace_flavor_2296 = 2296;
+inline constexpr DiscreteToken kSpace_flavor_2296{2296};
 // " viewed"; original GPT-2 ID 9569.
-inline constexpr TokenId kSpace_viewed_2297 = 2297;
+inline constexpr DiscreteToken kSpace_viewed_2297{2297};
 // " periods"; original GPT-2 ID 9574.
-inline constexpr TokenId kSpace_periods_2298 = 2298;
+inline constexpr DiscreteToken kSpace_periods_2298{2298};
 // " screw"; original GPT-2 ID 9580.
-inline constexpr TokenId kSpace_screw_2299 = 2299;
+inline constexpr DiscreteToken kSpace_screw_2299{2299};
 // " wet"; original GPT-2 ID 9583.
-inline constexpr TokenId kSpace_wet_2300 = 2300;
+inline constexpr DiscreteToken kSpace_wet_2300{2300};
 // "erk"; original GPT-2 ID 9587.
-inline constexpr TokenId kerk_2301 = 2301;
+inline constexpr DiscreteToken kerk_2301{2301};
 // "Still"; original GPT-2 ID 9590.
-inline constexpr TokenId kStill_2302 = 2302;
+inline constexpr DiscreteToken kStill_2302{2302};
 // "lan"; original GPT-2 ID 9620.
-inline constexpr TokenId klan_2303 = 2303;
+inline constexpr DiscreteToken klan_2303{2303};
 // " sheet"; original GPT-2 ID 9629.
-inline constexpr TokenId kSpace_sheet_2304 = 2304;
+inline constexpr DiscreteToken kSpace_sheet_2304{2304};
 // " firing"; original GPT-2 ID 9645.
-inline constexpr TokenId kSpace_firing_2305 = 2305;
+inline constexpr DiscreteToken kSpace_firing_2305{2305};
 // " eggs"; original GPT-2 ID 9653.
-inline constexpr TokenId kSpace_eggs_2306 = 2306;
+inline constexpr DiscreteToken kSpace_eggs_2306{2306};
 // "open"; original GPT-2 ID 9654.
-inline constexpr TokenId kopen_2307 = 2307;
+inline constexpr DiscreteToken kopen_2307{2307};
 // " fabric"; original GPT-2 ID 9664.
-inline constexpr TokenId kSpace_fabric_2308 = 2308;
+inline constexpr DiscreteToken kSpace_fabric_2308{2308};
 // " populations"; original GPT-2 ID 9684.
-inline constexpr TokenId kSpace_populations_2309 = 2309;
+inline constexpr DiscreteToken kSpace_populations_2309{2309};
 // " nose"; original GPT-2 ID 9686.
-inline constexpr TokenId kSpace_nose_2310 = 2310;
+inline constexpr DiscreteToken kSpace_nose_2310{2310};
 // " characteristics"; original GPT-2 ID 9695.
-inline constexpr TokenId kSpace_characteristics_2311 = 2311;
+inline constexpr DiscreteToken kSpace_characteristics_2311{2311};
 // "rates"; original GPT-2 ID 9700.
-inline constexpr TokenId krates_2312 = 2312;
+inline constexpr DiscreteToken krates_2312{2312};
 // " execution"; original GPT-2 ID 9706.
-inline constexpr TokenId kSpace_execution_2313 = 2313;
+inline constexpr DiscreteToken kSpace_execution_2313{2313};
 // " Moh"; original GPT-2 ID 9719.
-inline constexpr TokenId kSpace_Moh_2314 = 2314;
+inline constexpr DiscreteToken kSpace_Moh_2314{2314};
 // " commands"; original GPT-2 ID 9729.
-inline constexpr TokenId kSpace_commands_2315 = 2315;
+inline constexpr DiscreteToken kSpace_commands_2315{2315};
 // " reads"; original GPT-2 ID 9743.
-inline constexpr TokenId kSpace_reads_2316 = 2316;
+inline constexpr DiscreteToken kSpace_reads_2316{2316};
 // " referring"; original GPT-2 ID 9759.
-inline constexpr TokenId kSpace_referring_2317 = 2317;
+inline constexpr DiscreteToken kSpace_referring_2317{2317};
 // " gene"; original GPT-2 ID 9779.
-inline constexpr TokenId kSpace_gene_2318 = 2318;
+inline constexpr DiscreteToken kSpace_gene_2318{2318};
 // "Check"; original GPT-2 ID 9787.
-inline constexpr TokenId kCheck_2319 = 2319;
+inline constexpr DiscreteToken kCheck_2319{2319};
 // " echo"; original GPT-2 ID 9809.
-inline constexpr TokenId kSpace_echo_2320 = 2320;
+inline constexpr DiscreteToken kSpace_echo_2320{2320};
 // " enormous"; original GPT-2 ID 9812.
-inline constexpr TokenId kSpace_enormous_2321 = 2321;
+inline constexpr DiscreteToken kSpace_enormous_2321{2321};
 // " waves"; original GPT-2 ID 9813.
-inline constexpr TokenId kSpace_waves_2322 = 2322;
+inline constexpr DiscreteToken kSpace_waves_2322{2322};
 // " tap"; original GPT-2 ID 9814.
-inline constexpr TokenId kSpace_tap_2323 = 2323;
+inline constexpr DiscreteToken kSpace_tap_2323{2323};
 // " designs"; original GPT-2 ID 9824.
-inline constexpr TokenId kSpace_designs_2324 = 2324;
+inline constexpr DiscreteToken kSpace_designs_2324{2324};
 // "mate"; original GPT-2 ID 9830.
-inline constexpr TokenId kmate_2325 = 2325;
+inline constexpr DiscreteToken kmate_2325{2325};
 // " convention"; original GPT-2 ID 9831.
-inline constexpr TokenId kSpace_convention_2326 = 2326;
+inline constexpr DiscreteToken kSpace_convention_2326{2326};
 // " ye"; original GPT-2 ID 9838.
-inline constexpr TokenId kSpace_ye_2327 = 2327;
+inline constexpr DiscreteToken kSpace_ye_2327{2327};
 // " Bu"; original GPT-2 ID 9842.
-inline constexpr TokenId kSpace_Bu_2328 = 2328;
+inline constexpr DiscreteToken kSpace_Bu_2328{2328};
 // " angle"; original GPT-2 ID 9848.
-inline constexpr TokenId kSpace_angle_2329 = 2329;
+inline constexpr DiscreteToken kSpace_angle_2329{2329};
 // " counts"; original GPT-2 ID 9853.
-inline constexpr TokenId kSpace_counts_2330 = 2330;
+inline constexpr DiscreteToken kSpace_counts_2330{2330};
 // "Gl"; original GPT-2 ID 9861.
-inline constexpr TokenId kGl_2331 = 2331;
+inline constexpr DiscreteToken kGl_2331{2331};
 // "har"; original GPT-2 ID 9869.
-inline constexpr TokenId khar_2332 = 2332;
+inline constexpr DiscreteToken khar_2332{2332};
 // " bytes"; original GPT-2 ID 9881.
-inline constexpr TokenId kSpace_bytes_2333 = 2333;
+inline constexpr DiscreteToken kSpace_bytes_2333{2333};
 // "scale"; original GPT-2 ID 9888.
-inline constexpr TokenId kscale_2334 = 2334;
+inline constexpr DiscreteToken kscale_2334{2334};
 // "Car"; original GPT-2 ID 9914.
-inline constexpr TokenId kCar_2335 = 2335;
+inline constexpr DiscreteToken kCar_2335{2335};
 // "Black"; original GPT-2 ID 9915.
-inline constexpr TokenId kBlack_2336 = 2336;
+inline constexpr DiscreteToken kBlack_2336{2336};
 // "acles"; original GPT-2 ID 9928.
-inline constexpr TokenId kacles_2337 = 2337;
+inline constexpr DiscreteToken kacles_2337{2337};
 // " teeth"; original GPT-2 ID 9941.
-inline constexpr TokenId kSpace_teeth_2338 = 2338;
+inline constexpr DiscreteToken kSpace_teeth_2338{2338};
 // " suspended"; original GPT-2 ID 9951.
-inline constexpr TokenId kSpace_suspended_2339 = 2339;
+inline constexpr DiscreteToken kSpace_suspended_2339{2339};
 // "block"; original GPT-2 ID 9967.
-inline constexpr TokenId kblock_2340 = 2340;
+inline constexpr DiscreteToken kblock_2340{2340};
 // " bone"; original GPT-2 ID 9970.
-inline constexpr TokenId kSpace_bone_2341 = 2341;
+inline constexpr DiscreteToken kSpace_bone_2341{2341};
 // " formation"; original GPT-2 ID 9978.
-inline constexpr TokenId kSpace_formation_2342 = 2342;
+inline constexpr DiscreteToken kSpace_formation_2342{2342};
 // "ths"; original GPT-2 ID 9998.
-inline constexpr TokenId kths_2343 = 2343;
+inline constexpr DiscreteToken kths_2343{2343};
 // " Crime"; original GPT-2 ID 10003.
-inline constexpr TokenId kSpace_Crime_2344 = 2344;
+inline constexpr DiscreteToken kSpace_Crime_2344{2344};
 // " concert"; original GPT-2 ID 10010.
-inline constexpr TokenId kSpace_concert_2345 = 2345;
+inline constexpr DiscreteToken kSpace_concert_2345{2345};
 // " concrete"; original GPT-2 ID 10017.
-inline constexpr TokenId kSpace_concrete_2346 = 2346;
+inline constexpr DiscreteToken kSpace_concrete_2346{2346};
 // " Ros"; original GPT-2 ID 10018.
-inline constexpr TokenId kSpace_Ros_2347 = 2347;
+inline constexpr DiscreteToken kSpace_Ros_2347{2347};
 // "Par"; original GPT-2 ID 10044.
-inline constexpr TokenId kPar_2348 = 2348;
+inline constexpr DiscreteToken kPar_2348{2348};
 // " guitar"; original GPT-2 ID 10047.
-inline constexpr TokenId kSpace_guitar_2349 = 2349;
+inline constexpr DiscreteToken kSpace_guitar_2349{2349};
 // " releases"; original GPT-2 ID 10050.
-inline constexpr TokenId kSpace_releases_2350 = 2350;
+inline constexpr DiscreteToken kSpace_releases_2350{2350};
 // " passage"; original GPT-2 ID 10066.
-inline constexpr TokenId kSpace_passage_2351 = 2351;
+inline constexpr DiscreteToken kSpace_passage_2351{2351};
 // " birds"; original GPT-2 ID 10087.
-inline constexpr TokenId kSpace_birds_2352 = 2352;
+inline constexpr DiscreteToken kSpace_birds_2352{2352};
 // " classified"; original GPT-2 ID 10090.
-inline constexpr TokenId kSpace_classified_2353 = 2353;
+inline constexpr DiscreteToken kSpace_classified_2353{2353};
 // "ito"; original GPT-2 ID 10094.
-inline constexpr TokenId kito_2354 = 2354;
+inline constexpr DiscreteToken kito_2354{2354};
 // " temperatures"; original GPT-2 ID 10101.
-inline constexpr TokenId kSpace_temperatures_2355 = 2355;
+inline constexpr DiscreteToken kSpace_temperatures_2355{2355};
 // "olds"; original GPT-2 ID 10119.
-inline constexpr TokenId kolds_2356 = 2356;
+inline constexpr DiscreteToken kolds_2356{2356};
 // " Las"; original GPT-2 ID 10123.
-inline constexpr TokenId kSpace_Las_2357 = 2357;
+inline constexpr DiscreteToken kSpace_Las_2357{2357};
 // "ori"; original GPT-2 ID 10145.
-inline constexpr TokenId kori_2358 = 2358;
+inline constexpr DiscreteToken kori_2358{2358};
 // " contents"; original GPT-2 ID 10154.
-inline constexpr TokenId kSpace_contents_2359 = 2359;
+inline constexpr DiscreteToken kSpace_contents_2359{2359};
 // " shr"; original GPT-2 ID 10157.
-inline constexpr TokenId kSpace_shr_2360 = 2360;
+inline constexpr DiscreteToken kSpace_shr_2360{2360};
 // " drives"; original GPT-2 ID 10182.
-inline constexpr TokenId kSpace_drives_2361 = 2361;
+inline constexpr DiscreteToken kSpace_drives_2361{2361};
 // " eastern"; original GPT-2 ID 10183.
-inline constexpr TokenId kSpace_eastern_2362 = 2362;
+inline constexpr DiscreteToken kSpace_eastern_2362{2362};
 // "vard"; original GPT-2 ID 10187.
-inline constexpr TokenId kvard_2363 = 2363;
+inline constexpr DiscreteToken kvard_2363{2363};
 // " attach"; original GPT-2 ID 10199.
-inline constexpr TokenId kSpace_attach_2364 = 2364;
+inline constexpr DiscreteToken kSpace_attach_2364{2364};
 // " mouse"; original GPT-2 ID 10211.
-inline constexpr TokenId kSpace_mouse_2365 = 2365;
+inline constexpr DiscreteToken kSpace_mouse_2365{2365};
 // " clar"; original GPT-2 ID 10212.
-inline constexpr TokenId kSpace_clar_2366 = 2366;
+inline constexpr DiscreteToken kSpace_clar_2366{2366};
 // "cor"; original GPT-2 ID 10215.
-inline constexpr TokenId kcor_2367 = 2367;
+inline constexpr DiscreteToken kcor_2367{2367};
 // " conventional"; original GPT-2 ID 10224.
-inline constexpr TokenId kSpace_conventional_2368 = 2368;
+inline constexpr DiscreteToken kSpace_conventional_2368{2368};
 // " buck"; original GPT-2 ID 10230.
-inline constexpr TokenId kSpace_buck_2369 = 2369;
+inline constexpr DiscreteToken kSpace_buck_2369{2369};
 // " references"; original GPT-2 ID 10288.
-inline constexpr TokenId kSpace_references_2370 = 2370;
+inline constexpr DiscreteToken kSpace_references_2370{2370};
 // "mn"; original GPT-2 ID 10295.
-inline constexpr TokenId kmn_2371 = 2371;
+inline constexpr DiscreteToken kmn_2371{2371};
 // "ela"; original GPT-2 ID 10304.
-inline constexpr TokenId kela_2372 = 2372;
+inline constexpr DiscreteToken kela_2372{2372};
 // " Greece"; original GPT-2 ID 10315.
-inline constexpr TokenId kSpace_Greece_2373 = 2373;
+inline constexpr DiscreteToken kSpace_Greece_2373{2373};
 // " lens"; original GPT-2 ID 10317.
-inline constexpr TokenId kSpace_lens_2374 = 2374;
+inline constexpr DiscreteToken kSpace_lens_2374{2374};
 // " Rh"; original GPT-2 ID 10323.
-inline constexpr TokenId kSpace_Rh_2375 = 2375;
+inline constexpr DiscreteToken kSpace_Rh_2375{2375};
 // " desert"; original GPT-2 ID 10326.
-inline constexpr TokenId kSpace_desert_2376 = 2376;
+inline constexpr DiscreteToken kSpace_desert_2376{2376};
 // " knee"; original GPT-2 ID 10329.
-inline constexpr TokenId kSpace_knee_2377 = 2377;
+inline constexpr DiscreteToken kSpace_knee_2377{2377};
 // "ogg"; original GPT-2 ID 10332.
-inline constexpr TokenId kogg_2378 = 2378;
+inline constexpr DiscreteToken kogg_2378{2378};
 // " differently"; original GPT-2 ID 10338.
-inline constexpr TokenId kSpace_differently_2379 = 2379;
+inline constexpr DiscreteToken kSpace_differently_2379{2379};
 // " bits"; original GPT-2 ID 10340.
-inline constexpr TokenId kSpace_bits_2380 = 2380;
+inline constexpr DiscreteToken kSpace_bits_2380{2380};
 // " functional"; original GPT-2 ID 10345.
-inline constexpr TokenId kSpace_functional_2381 = 2381;
+inline constexpr DiscreteToken kSpace_functional_2381{2381};
 // " circuit"; original GPT-2 ID 10349.
-inline constexpr TokenId kSpace_circuit_2382 = 2382;
+inline constexpr DiscreteToken kSpace_circuit_2382{2382};
 // " hip"; original GPT-2 ID 10359.
-inline constexpr TokenId kSpace_hip_2383 = 2383;
+inline constexpr DiscreteToken kSpace_hip_2383{2383};
 // "rat"; original GPT-2 ID 10366.
-inline constexpr TokenId krat_2384 = 2384;
+inline constexpr DiscreteToken krat_2384{2384};
 // " revers"; original GPT-2 ID 10372.
-inline constexpr TokenId kSpace_revers_2385 = 2385;
+inline constexpr DiscreteToken kSpace_revers_2385{2385};
 // "Bar"; original GPT-2 ID 10374.
-inline constexpr TokenId kBar_2386 = 2386;
+inline constexpr DiscreteToken kBar_2386{2386};
 // " entrance"; original GPT-2 ID 10384.
-inline constexpr TokenId kSpace_entrance_2387 = 2387;
+inline constexpr DiscreteToken kSpace_entrance_2387{2387};
 // " convert"; original GPT-2 ID 10385.
-inline constexpr TokenId kSpace_convert_2388 = 2388;
+inline constexpr DiscreteToken kSpace_convert_2388{2388};
 // "vol"; original GPT-2 ID 10396.
-inline constexpr TokenId kvol_2389 = 2389;
+inline constexpr DiscreteToken kvol_2389{2389};
 // " centers"; original GPT-2 ID 10399.
-inline constexpr TokenId kSpace_centers_2390 = 2390;
+inline constexpr DiscreteToken kSpace_centers_2390{2390};
 // " independence"; original GPT-2 ID 10404.
-inline constexpr TokenId kSpace_independence_2391 = 2391;
+inline constexpr DiscreteToken kSpace_independence_2391{2391};
 // " identical"; original GPT-2 ID 10411.
-inline constexpr TokenId kSpace_identical_2392 = 2392;
+inline constexpr DiscreteToken kSpace_identical_2392{2392};
 // "conf"; original GPT-2 ID 10414.
-inline constexpr TokenId kconf_2393 = 2393;
+inline constexpr DiscreteToken kconf_2393{2393};
 // " signals"; original GPT-2 ID 10425.
-inline constexpr TokenId kSpace_signals_2394 = 2394;
+inline constexpr DiscreteToken kSpace_signals_2394{2394};
 // " pulling"; original GPT-2 ID 10427.
-inline constexpr TokenId kSpace_pulling_2395 = 2395;
+inline constexpr DiscreteToken kSpace_pulling_2395{2395};
 // " generations"; original GPT-2 ID 10439.
-inline constexpr TokenId kSpace_generations_2396 = 2396;
+inline constexpr DiscreteToken kSpace_generations_2396{2396};
 // " formula"; original GPT-2 ID 10451.
-inline constexpr TokenId kSpace_formula_2397 = 2397;
+inline constexpr DiscreteToken kSpace_formula_2397{2397};
 // "jud"; original GPT-2 ID 10456.
-inline constexpr TokenId kjud_2398 = 2398;
+inline constexpr DiscreteToken kjud_2398{2398};
 // "Sw"; original GPT-2 ID 10462.
-inline constexpr TokenId kSw_2399 = 2399;
+inline constexpr DiscreteToken kSw_2399{2399};
 // " organic"; original GPT-2 ID 10469.
-inline constexpr TokenId kSpace_organic_2400 = 2400;
+inline constexpr DiscreteToken kSpace_organic_2400{2400};
 // "NG"; original GPT-2 ID 10503.
-inline constexpr TokenId kNG_2401 = 2401;
+inline constexpr DiscreteToken kNG_2401{2401};
 // "piration"; original GPT-2 ID 10514.
-inline constexpr TokenId kpiration_2402 = 2402;
+inline constexpr DiscreteToken kpiration_2402{2402};
 // " Od"; original GPT-2 ID 10529.
-inline constexpr TokenId kSpace_Od_2403 = 2403;
+inline constexpr DiscreteToken kSpace_Od_2403{2403};
 // " musical"; original GPT-2 ID 10530.
-inline constexpr TokenId kSpace_musical_2404 = 2404;
+inline constexpr DiscreteToken kSpace_musical_2404{2404};
 // " representation"; original GPT-2 ID 10552.
-inline constexpr TokenId kSpace_representation_2405 = 2405;
+inline constexpr DiscreteToken kSpace_representation_2405{2405};
 // " silent"; original GPT-2 ID 10574.
-inline constexpr TokenId kSpace_silent_2406 = 2406;
+inline constexpr DiscreteToken kSpace_silent_2406{2406};
 // " timing"; original GPT-2 ID 10576.
-inline constexpr TokenId kSpace_timing_2407 = 2407;
+inline constexpr DiscreteToken kSpace_timing_2407{2407};
 // " tower"; original GPT-2 ID 10580.
-inline constexpr TokenId kSpace_tower_2408 = 2408;
+inline constexpr DiscreteToken kSpace_tower_2408{2408};
 // " keyboard"; original GPT-2 ID 10586.
-inline constexpr TokenId kSpace_keyboard_2409 = 2409;
+inline constexpr DiscreteToken kSpace_keyboard_2409{2409};
 // "will"; original GPT-2 ID 10594.
-inline constexpr TokenId kwill_2410 = 2410;
+inline constexpr DiscreteToken kwill_2410{2410};
 // " Atlantic"; original GPT-2 ID 10596.
-inline constexpr TokenId kSpace_Atlantic_2411 = 2411;
+inline constexpr DiscreteToken kSpace_Atlantic_2411{2411};
 // " Rome"; original GPT-2 ID 10598.
-inline constexpr TokenId kSpace_Rome_2412 = 2412;
+inline constexpr DiscreteToken kSpace_Rome_2412{2412};
 // " flour"; original GPT-2 ID 10601.
-inline constexpr TokenId kSpace_flour_2413 = 2413;
+inline constexpr DiscreteToken kSpace_flour_2413{2413};
 // "Cor"; original GPT-2 ID 10606.
-inline constexpr TokenId kCor_2414 = 2414;
+inline constexpr DiscreteToken kCor_2414{2414};
 // " requiring"; original GPT-2 ID 10616.
-inline constexpr TokenId kSpace_requiring_2415 = 2415;
+inline constexpr DiscreteToken kSpace_requiring_2415{2415};
 // "acteria"; original GPT-2 ID 10634.
-inline constexpr TokenId kacteria_2416 = 2416;
+inline constexpr DiscreteToken kacteria_2416{2416};
 // " lip"; original GPT-2 ID 10645.
-inline constexpr TokenId kSpace_lip_2417 = 2417;
+inline constexpr DiscreteToken kSpace_lip_2417{2417};
 // " slide"; original GPT-2 ID 10649.
-inline constexpr TokenId kSpace_slide_2418 = 2418;
+inline constexpr DiscreteToken kSpace_slide_2418{2418};
 // " Elizabeth"; original GPT-2 ID 10674.
-inline constexpr TokenId kSpace_Elizabeth_2419 = 2419;
+inline constexpr DiscreteToken kSpace_Elizabeth_2419{2419};
 // "atin"; original GPT-2 ID 10680.
-inline constexpr TokenId katin_2420 = 2420;
+inline constexpr DiscreteToken katin_2420{2420};
 // " Gil"; original GPT-2 ID 10689.
-inline constexpr TokenId kSpace_Gil_2421 = 2421;
+inline constexpr DiscreteToken kSpace_Gil_2421{2421};
 // " Ocean"; original GPT-2 ID 10692.
-inline constexpr TokenId kSpace_Ocean_2422 = 2422;
+inline constexpr DiscreteToken kSpace_Ocean_2422{2422};
 // " mice"; original GPT-2 ID 10693.
-inline constexpr TokenId kSpace_mice_2423 = 2423;
+inline constexpr DiscreteToken kSpace_mice_2423{2423};
 // "Mus"; original GPT-2 ID 10694.
-inline constexpr TokenId kMus_2424 = 2424;
+inline constexpr DiscreteToken kMus_2424{2424};
 // " meters"; original GPT-2 ID 10700.
-inline constexpr TokenId kSpace_meters_2425 = 2425;
+inline constexpr DiscreteToken kSpace_meters_2425{2425};
 // " grid"; original GPT-2 ID 10706.
-inline constexpr TokenId kSpace_grid_2426 = 2426;
+inline constexpr DiscreteToken kSpace_grid_2426{2426};
 // "Dec"; original GPT-2 ID 10707.
-inline constexpr TokenId kDec_2427 = 2427;
+inline constexpr DiscreteToken kDec_2427{2427};
 // " rolling"; original GPT-2 ID 10708.
-inline constexpr TokenId kSpace_rolling_2428 = 2428;
+inline constexpr DiscreteToken kSpace_rolling_2428{2428};
 // " examine"; original GPT-2 ID 10716.
-inline constexpr TokenId kSpace_examine_2429 = 2429;
+inline constexpr DiscreteToken kSpace_examine_2429{2429};
 // " stem"; original GPT-2 ID 10717.
-inline constexpr TokenId kSpace_stem_2430 = 2430;
+inline constexpr DiscreteToken kSpace_stem_2430{2430};
 // " parallel"; original GPT-2 ID 10730.
-inline constexpr TokenId kSpace_parallel_2431 = 2431;
+inline constexpr DiscreteToken kSpace_parallel_2431{2431};
 // " carries"; original GPT-2 ID 10732.
-inline constexpr TokenId kSpace_carries_2432 = 2432;
+inline constexpr DiscreteToken kSpace_carries_2432{2432};
 // " sauce"; original GPT-2 ID 10746.
-inline constexpr TokenId kSpace_sauce_2433 = 2433;
+inline constexpr DiscreteToken kSpace_sauce_2433{2433};
 // " landscape"; original GPT-2 ID 10747.
-inline constexpr TokenId kSpace_landscape_2434 = 2434;
+inline constexpr DiscreteToken kSpace_landscape_2434{2434};
 // " coin"; original GPT-2 ID 10752.
-inline constexpr TokenId kSpace_coin_2435 = 2435;
+inline constexpr DiscreteToken kSpace_coin_2435{2435};
 // " coins"; original GPT-2 ID 10796.
-inline constexpr TokenId kSpace_coins_2436 = 2436;
+inline constexpr DiscreteToken kSpace_coins_2436{2436};
 // " cooking"; original GPT-2 ID 10801.
-inline constexpr TokenId kSpace_cooking_2437 = 2437;
+inline constexpr DiscreteToken kSpace_cooking_2437{2437};
 // " ther"; original GPT-2 ID 10811.
-inline constexpr TokenId kSpace_ther_2438 = 2438;
+inline constexpr DiscreteToken kSpace_ther_2438{2438};
 // " Mexican"; original GPT-2 ID 10816.
-inline constexpr TokenId kSpace_Mexican_2439 = 2439;
+inline constexpr DiscreteToken kSpace_Mexican_2439{2439};
 // " removing"; original GPT-2 ID 10829.
-inline constexpr TokenId kSpace_removing_2440 = 2440;
+inline constexpr DiscreteToken kSpace_removing_2440{2440};
 // " Carter"; original GPT-2 ID 10831.
-inline constexpr TokenId kSpace_Carter_2441 = 2441;
+inline constexpr DiscreteToken kSpace_Carter_2441{2441};
 // " Vietnam"; original GPT-2 ID 10836.
-inline constexpr TokenId kSpace_Vietnam_2442 = 2442;
+inline constexpr DiscreteToken kSpace_Vietnam_2442{2442};
 // "Whe"; original GPT-2 ID 10842.
-inline constexpr TokenId kWhe_2443 = 2443;
+inline constexpr DiscreteToken kWhe_2443{2443};
 // " lady"; original GPT-2 ID 10846.
-inline constexpr TokenId kSpace_lady_2444 = 2444;
+inline constexpr DiscreteToken kSpace_lady_2444{2444};
 // " golden"; original GPT-2 ID 10861.
-inline constexpr TokenId kSpace_golden_2445 = 2445;
+inline constexpr DiscreteToken kSpace_golden_2445{2445};
 // "Each"; original GPT-2 ID 10871.
-inline constexpr TokenId kEach_2446 = 2446;
+inline constexpr DiscreteToken kEach_2446{2446};
 // "zo"; original GPT-2 ID 10872.
-inline constexpr TokenId kzo_2447 = 2447;
+inline constexpr DiscreteToken kzo_2447{2447};
 // " consists"; original GPT-2 ID 10874.
-inline constexpr TokenId kSpace_consists_2448 = 2448;
+inline constexpr DiscreteToken kSpace_consists_2448{2448};
 // "oln"; original GPT-2 ID 10875.
-inline constexpr TokenId koln_2449 = 2449;
+inline constexpr DiscreteToken koln_2449{2449};
 // " immune"; original GPT-2 ID 10900.
-inline constexpr TokenId kSpace_immune_2450 = 2450;
+inline constexpr DiscreteToken kSpace_immune_2450{2450};
 // " outcomes"; original GPT-2 ID 10906.
-inline constexpr TokenId kSpace_outcomes_2451 = 2451;
+inline constexpr DiscreteToken kSpace_outcomes_2451{2451};
 // " everyday"; original GPT-2 ID 10908.
-inline constexpr TokenId kSpace_everyday_2452 = 2452;
+inline constexpr DiscreteToken kSpace_everyday_2452{2452};
 // " nervous"; original GPT-2 ID 10927.
-inline constexpr TokenId kSpace_nervous_2453 = 2453;
+inline constexpr DiscreteToken kSpace_nervous_2453{2453};
 // " rook"; original GPT-2 ID 10929.
-inline constexpr TokenId kSpace_rook_2454 = 2454;
+inline constexpr DiscreteToken kSpace_rook_2454{2454};
 // " Vancouver"; original GPT-2 ID 10930.
-inline constexpr TokenId kSpace_Vancouver_2455 = 2455;
+inline constexpr DiscreteToken kSpace_Vancouver_2455{2455};
 // " quoted"; original GPT-2 ID 10947.
-inline constexpr TokenId kSpace_quoted_2456 = 2456;
+inline constexpr DiscreteToken kSpace_quoted_2456{2456};
 // " spectrum"; original GPT-2 ID 10958.
-inline constexpr TokenId kSpace_spectrum_2457 = 2457;
+inline constexpr DiscreteToken kSpace_spectrum_2457{2457};
 // "Table"; original GPT-2 ID 10962.
-inline constexpr TokenId kTable_2458 = 2458;
+inline constexpr DiscreteToken kTable_2458{2458};
 // " belt"; original GPT-2 ID 10999.
-inline constexpr TokenId kSpace_belt_2459 = 2459;
+inline constexpr DiscreteToken kSpace_belt_2459{2459};
 // " bind"; original GPT-2 ID 11007.
-inline constexpr TokenId kSpace_bind_2460 = 2460;
+inline constexpr DiscreteToken kSpace_bind_2460{2460};
 // "imp"; original GPT-2 ID 11011.
-inline constexpr TokenId kimp_2461 = 2461;
+inline constexpr DiscreteToken kimp_2461{2461};
 // "mers"; original GPT-2 ID 11056.
-inline constexpr TokenId kmers_2462 = 2462;
+inline constexpr DiscreteToken kmers_2462{2462};
 // " beneath"; original GPT-2 ID 11061.
-inline constexpr TokenId kSpace_beneath_2463 = 2463;
+inline constexpr DiscreteToken kSpace_beneath_2463{2463};
 // " perceived"; original GPT-2 ID 11067.
-inline constexpr TokenId kSpace_perceived_2464 = 2464;
+inline constexpr DiscreteToken kSpace_perceived_2464{2464};
 // "chi"; original GPT-2 ID 11072.
-inline constexpr TokenId kchi_2465 = 2465;
+inline constexpr DiscreteToken kchi_2465{2465};
 // " produces"; original GPT-2 ID 11073.
-inline constexpr TokenId kSpace_produces_2466 = 2466;
+inline constexpr DiscreteToken kSpace_produces_2466{2466};
 // " suitable"; original GPT-2 ID 11080.
-inline constexpr TokenId kSpace_suitable_2467 = 2467;
+inline constexpr DiscreteToken kSpace_suitable_2467{2467};
 // "fish"; original GPT-2 ID 11084.
-inline constexpr TokenId kfish_2468 = 2468;
+inline constexpr DiscreteToken kfish_2468{2468};
 // " interior"; original GPT-2 ID 11087.
-inline constexpr TokenId kSpace_interior_2469 = 2469;
+inline constexpr DiscreteToken kSpace_interior_2469{2469};
 // " Channel"; original GPT-2 ID 11102.
-inline constexpr TokenId kSpace_Channel_2470 = 2470;
+inline constexpr DiscreteToken kSpace_Channel_2470{2470};
 // "oli"; original GPT-2 ID 11106.
-inline constexpr TokenId koli_2471 = 2471;
+inline constexpr DiscreteToken koli_2471{2471};
 // "bling"; original GPT-2 ID 11108.
-inline constexpr TokenId kbling_2472 = 2472;
+inline constexpr DiscreteToken kbling_2472{2472};
 // "Sl"; original GPT-2 ID 11122.
-inline constexpr TokenId kSl_2473 = 2473;
+inline constexpr DiscreteToken kSl_2473{2473};
 // "duction"; original GPT-2 ID 11124.
-inline constexpr TokenId kduction_2474 = 2474;
+inline constexpr DiscreteToken kduction_2474{2474};
 // " roots"; original GPT-2 ID 11135.
-inline constexpr TokenId kSpace_roots_2475 = 2475;
+inline constexpr DiscreteToken kSpace_roots_2475{2475};
 // "Free"; original GPT-2 ID 11146.
-inline constexpr TokenId kFree_2476 = 2476;
+inline constexpr DiscreteToken kFree_2476{2476};
 // " restore"; original GPT-2 ID 11169.
-inline constexpr TokenId kSpace_restore_2477 = 2477;
+inline constexpr DiscreteToken kSpace_restore_2477{2477};
 // " transferred"; original GPT-2 ID 11172.
-inline constexpr TokenId kSpace_transferred_2478 = 2478;
+inline constexpr DiscreteToken kSpace_transferred_2478{2478};
 // " burst"; original GPT-2 ID 11173.
-inline constexpr TokenId kSpace_burst_2479 = 2479;
+inline constexpr DiscreteToken kSpace_burst_2479{2479};
 // "Log"; original GPT-2 ID 11187.
-inline constexpr TokenId kLog_2480 = 2480;
+inline constexpr DiscreteToken kLog_2480{2480};
 // " corresponding"; original GPT-2 ID 11188.
-inline constexpr TokenId kSpace_corresponding_2481 = 2481;
+inline constexpr DiscreteToken kSpace_corresponding_2481{2481};
 // " tens"; original GPT-2 ID 11192.
-inline constexpr TokenId kSpace_tens_2482 = 2482;
+inline constexpr DiscreteToken kSpace_tens_2482{2482};
 // " flesh"; original GPT-2 ID 11222.
-inline constexpr TokenId kSpace_flesh_2483 = 2483;
+inline constexpr DiscreteToken kSpace_flesh_2483{2483};
 // " gathering"; original GPT-2 ID 11228.
-inline constexpr TokenId kSpace_gathering_2484 = 2484;
+inline constexpr DiscreteToken kSpace_gathering_2484{2484};
 // " explosion"; original GPT-2 ID 11278.
-inline constexpr TokenId kSpace_explosion_2485 = 2485;
+inline constexpr DiscreteToken kSpace_explosion_2485{2485};
 // "agen"; original GPT-2 ID 11286.
-inline constexpr TokenId kagen_2486 = 2486;
+inline constexpr DiscreteToken kagen_2486{2486};
 // " Cas"; original GPT-2 ID 11294.
-inline constexpr TokenId kSpace_Cas_2487 = 2487;
+inline constexpr DiscreteToken kSpace_Cas_2487{2487};
 // " displays"; original GPT-2 ID 11298.
-inline constexpr TokenId kSpace_displays_2488 = 2488;
+inline constexpr DiscreteToken kSpace_displays_2488{2488};
 // " traveling"; original GPT-2 ID 11300.
-inline constexpr TokenId kSpace_traveling_2489 = 2489;
+inline constexpr DiscreteToken kSpace_traveling_2489{2489};
 // " chocolate"; original GPT-2 ID 11311.
-inline constexpr TokenId kSpace_chocolate_2490 = 2490;
+inline constexpr DiscreteToken kSpace_chocolate_2490{2490};
 // " sour"; original GPT-2 ID 11348.
-inline constexpr TokenId kSpace_sour_2491 = 2491;
+inline constexpr DiscreteToken kSpace_sour_2491{2491};
 // " extraordinary"; original GPT-2 ID 11359.
-inline constexpr TokenId kSpace_extraordinary_2492 = 2492;
+inline constexpr DiscreteToken kSpace_extraordinary_2492{2492};
 // " garden"; original GPT-2 ID 11376.
-inline constexpr TokenId kSpace_garden_2493 = 2493;
+inline constexpr DiscreteToken kSpace_garden_2493{2493};
 // " stomach"; original GPT-2 ID 11384.
-inline constexpr TokenId kSpace_stomach_2494 = 2494;
+inline constexpr DiscreteToken kSpace_stomach_2494{2494};
 // "sa"; original GPT-2 ID 11400.
-inline constexpr TokenId ksa_2495 = 2495;
+inline constexpr DiscreteToken ksa_2495{2495};
 // "otte"; original GPT-2 ID 11404.
-inline constexpr TokenId kotte_2496 = 2496;
+inline constexpr DiscreteToken kotte_2496{2496};
 // " producers"; original GPT-2 ID 11408.
-inline constexpr TokenId kSpace_producers_2497 = 2497;
+inline constexpr DiscreteToken kSpace_producers_2497{2497};
 // " scientist"; original GPT-2 ID 11444.
-inline constexpr TokenId kSpace_scientist_2498 = 2498;
+inline constexpr DiscreteToken kSpace_scientist_2498{2498};
 // " 1950"; original GPT-2 ID 11445.
-inline constexpr TokenId kSpace_1950_2499 = 2499;
+inline constexpr DiscreteToken kSpace_1950_2499{2499};
 // " underground"; original GPT-2 ID 11447.
-inline constexpr TokenId kSpace_underground_2500 = 2500;
+inline constexpr DiscreteToken kSpace_underground_2500{2500};
 // " hosts"; original GPT-2 ID 11453.
-inline constexpr TokenId kSpace_hosts_2501 = 2501;
+inline constexpr DiscreteToken kSpace_hosts_2501{2501};
 // " suspension"; original GPT-2 ID 11461.
-inline constexpr TokenId kSpace_suspension_2502 = 2502;
+inline constexpr DiscreteToken kSpace_suspension_2502{2502};
 // " 360"; original GPT-2 ID 11470.
-inline constexpr TokenId kSpace_360_2503 = 2503;
+inline constexpr DiscreteToken kSpace_360_2503{2503};
 // "tery"; original GPT-2 ID 11471.
-inline constexpr TokenId ktery_2504 = 2504;
+inline constexpr DiscreteToken ktery_2504{2504};
 // "table"; original GPT-2 ID 11487.
-inline constexpr TokenId ktable_2505 = 2505;
+inline constexpr DiscreteToken ktable_2505{2505};
 // " bacteria"; original GPT-2 ID 11492.
-inline constexpr TokenId kSpace_bacteria_2506 = 2506;
+inline constexpr DiscreteToken kSpace_bacteria_2506{2506};
 // "rac"; original GPT-2 ID 11510.
-inline constexpr TokenId krac_2507 = 2507;
+inline constexpr DiscreteToken krac_2507{2507};
 // " Olympic"; original GPT-2 ID 11514.
-inline constexpr TokenId kSpace_Olympic_2508 = 2508;
+inline constexpr DiscreteToken kSpace_Olympic_2508{2508};
 // " cave"; original GPT-2 ID 11527.
-inline constexpr TokenId kSpace_cave_2509 = 2509;
+inline constexpr DiscreteToken kSpace_cave_2509{2509};
 // " HTML"; original GPT-2 ID 11532.
-inline constexpr TokenId kSpace_HTML_2510 = 2510;
+inline constexpr DiscreteToken kSpace_HTML_2510{2510};
 // " electron"; original GPT-2 ID 11538.
-inline constexpr TokenId kSpace_electron_2511 = 2511;
+inline constexpr DiscreteToken kSpace_electron_2511{2511};
 // "two"; original GPT-2 ID 11545.
-inline constexpr TokenId ktwo_2512 = 2512;
+inline constexpr DiscreteToken ktwo_2512{2512};
 // " 180"; original GPT-2 ID 11546.
-inline constexpr TokenId kSpace_180_2513 = 2513;
+inline constexpr DiscreteToken kSpace_180_2513{2513};
 // " isolated"; original GPT-2 ID 11557.
-inline constexpr TokenId kSpace_isolated_2514 = 2514;
+inline constexpr DiscreteToken kSpace_isolated_2514{2514};
 // "plan"; original GPT-2 ID 11578.
-inline constexpr TokenId kplan_2515 = 2515;
+inline constexpr DiscreteToken kplan_2515{2515};
 // " expanding"; original GPT-2 ID 11581.
-inline constexpr TokenId kSpace_expanding_2516 = 2516;
+inline constexpr DiscreteToken kSpace_expanding_2516{2516};
 // " briefly"; original GPT-2 ID 11589.
-inline constexpr TokenId kSpace_briefly_2517 = 2517;
+inline constexpr DiscreteToken kSpace_briefly_2517{2517};
 // " Things"; original GPT-2 ID 11597.
-inline constexpr TokenId kSpace_Things_2518 = 2518;
+inline constexpr DiscreteToken kSpace_Things_2518{2518};
 // "oku"; original GPT-2 ID 11601.
-inline constexpr TokenId koku_2519 = 2519;
+inline constexpr DiscreteToken koku_2519{2519};
 // "Orig"; original GPT-2 ID 11610.
-inline constexpr TokenId kOrig_2520 = 2520;
+inline constexpr DiscreteToken kOrig_2520{2520};
 // " Beijing"; original GPT-2 ID 11618.
-inline constexpr TokenId kSpace_Beijing_2521 = 2521;
+inline constexpr DiscreteToken kSpace_Beijing_2521{2521};
 // " corn"; original GPT-2 ID 11676.
-inline constexpr TokenId kSpace_corn_2522 = 2522;
+inline constexpr DiscreteToken kSpace_corn_2522{2522};
 // " directions"; original GPT-2 ID 11678.
-inline constexpr TokenId kSpace_directions_2523 = 2523;
+inline constexpr DiscreteToken kSpace_directions_2523{2523};
 // " towns"; original GPT-2 ID 11684.
-inline constexpr TokenId kSpace_towns_2524 = 2524;
+inline constexpr DiscreteToken kSpace_towns_2524{2524};
 // " layers"; original GPT-2 ID 11685.
-inline constexpr TokenId kSpace_layers_2525 = 2525;
+inline constexpr DiscreteToken kSpace_layers_2525{2525};
 // "cha"; original GPT-2 ID 11693.
-inline constexpr TokenId kcha_2526 = 2526;
+inline constexpr DiscreteToken kcha_2526{2526};
 // " buried"; original GPT-2 ID 11694.
-inline constexpr TokenId kSpace_buried_2527 = 2527;
+inline constexpr DiscreteToken kSpace_buried_2527{2527};
 // "ressing"; original GPT-2 ID 11697.
-inline constexpr TokenId kressing_2528 = 2528;
+inline constexpr DiscreteToken kressing_2528{2528};
 // " decor"; original GPT-2 ID 11705.
-inline constexpr TokenId kSpace_decor_2529 = 2529;
+inline constexpr DiscreteToken kSpace_decor_2529{2529};
 // " fluid"; original GPT-2 ID 11711.
-inline constexpr TokenId kSpace_fluid_2530 = 2530;
+inline constexpr DiscreteToken kSpace_fluid_2530{2530};
 // "Sign"; original GPT-2 ID 11712.
-inline constexpr TokenId kSign_2531 = 2531;
+inline constexpr DiscreteToken kSign_2531{2531};
 // "riel"; original GPT-2 ID 11719.
-inline constexpr TokenId kriel_2532 = 2532;
+inline constexpr DiscreteToken kriel_2532{2532};
 // " Les"; original GPT-2 ID 11732.
-inline constexpr TokenId kSpace_Les_2533 = 2533;
+inline constexpr DiscreteToken kSpace_Les_2533{2533};
 // "rer"; original GPT-2 ID 11751.
-inline constexpr TokenId krer_2534 = 2534;
+inline constexpr DiscreteToken krer_2534{2534};
 // " invasion"; original GPT-2 ID 11796.
-inline constexpr TokenId kSpace_invasion_2535 = 2535;
+inline constexpr DiscreteToken kSpace_invasion_2535{2535};
 // "asma"; original GPT-2 ID 11797.
-inline constexpr TokenId kasma_2536 = 2536;
+inline constexpr DiscreteToken kasma_2536{2536};
 // " Vin"; original GPT-2 ID 11820.
-inline constexpr TokenId kSpace_Vin_2537 = 2537;
+inline constexpr DiscreteToken kSpace_Vin_2537{2537};
 // " steady"; original GPT-2 ID 11831.
-inline constexpr TokenId kSpace_steady_2538 = 2538;
+inline constexpr DiscreteToken kSpace_steady_2538{2538};
 // " gradually"; original GPT-2 ID 11835.
-inline constexpr TokenId kSpace_gradually_2539 = 2539;
+inline constexpr DiscreteToken kSpace_gradually_2539{2539};
 // "orses"; original GPT-2 ID 11836.
-inline constexpr TokenId korses_2540 = 2540;
+inline constexpr DiscreteToken korses_2540{2540};
 // " Sydney"; original GPT-2 ID 11852.
-inline constexpr TokenId kSpace_Sydney_2541 = 2541;
+inline constexpr DiscreteToken kSpace_Sydney_2541{2541};
 // " packed"; original GPT-2 ID 11856.
-inline constexpr TokenId kSpace_packed_2542 = 2542;
+inline constexpr DiscreteToken kSpace_packed_2542{2542};
 // " algorithm"; original GPT-2 ID 11862.
-inline constexpr TokenId kSpace_algorithm_2543 = 2543;
+inline constexpr DiscreteToken kSpace_algorithm_2543{2543};
 // " oxygen"; original GPT-2 ID 11863.
-inline constexpr TokenId kSpace_oxygen_2544 = 2544;
+inline constexpr DiscreteToken kSpace_oxygen_2544{2544};
 // " kilomet"; original GPT-2 ID 11866.
-inline constexpr TokenId kSpace_kilomet_2545 = 2545;
+inline constexpr DiscreteToken kSpace_kilomet_2545{2545};
 // " buffer"; original GPT-2 ID 11876.
-inline constexpr TokenId kSpace_buffer_2546 = 2546;
+inline constexpr DiscreteToken kSpace_buffer_2546{2546};
 // " tongue"; original GPT-2 ID 11880.
-inline constexpr TokenId kSpace_tongue_2547 = 2547;
+inline constexpr DiscreteToken kSpace_tongue_2547{2547};
 // " radiation"; original GPT-2 ID 11881.
-inline constexpr TokenId kSpace_radiation_2548 = 2548;
+inline constexpr DiscreteToken kSpace_radiation_2548{2548};
 // " disk"; original GPT-2 ID 11898.
-inline constexpr TokenId kSpace_disk_2549 = 2549;
+inline constexpr DiscreteToken kSpace_disk_2549{2549};
 // " seeds"; original GPT-2 ID 11904.
-inline constexpr TokenId kSpace_seeds_2550 = 2550;
+inline constexpr DiscreteToken kSpace_seeds_2550{2550};
 // " powder"; original GPT-2 ID 11913.
-inline constexpr TokenId kSpace_powder_2551 = 2551;
+inline constexpr DiscreteToken kSpace_powder_2551{2551};
 // " lips"; original GPT-2 ID 11914.
-inline constexpr TokenId kSpace_lips_2552 = 2552;
+inline constexpr DiscreteToken kSpace_lips_2552{2552};
 // " bones"; original GPT-2 ID 11945.
-inline constexpr TokenId kSpace_bones_2553 = 2553;
+inline constexpr DiscreteToken kSpace_bones_2553{2553};
 // " hearts"; original GPT-2 ID 11954.
-inline constexpr TokenId kSpace_hearts_2554 = 2554;
+inline constexpr DiscreteToken kSpace_hearts_2554{2554};
 // " bulk"; original GPT-2 ID 11963.
-inline constexpr TokenId kSpace_bulk_2555 = 2555;
+inline constexpr DiscreteToken kSpace_bulk_2555{2555};
 // " hosted"; original GPT-2 ID 12007.
-inline constexpr TokenId kSpace_hosted_2556 = 2556;
+inline constexpr DiscreteToken kSpace_hosted_2556{2556};
 // "actic"; original GPT-2 ID 12009.
-inline constexpr TokenId kactic_2557 = 2557;
+inline constexpr DiscreteToken kactic_2557{2557};
 // " Islands"; original GPT-2 ID 12010.
-inline constexpr TokenId kSpace_Islands_2558 = 2558;
+inline constexpr DiscreteToken kSpace_Islands_2558{2558};
 // " ox"; original GPT-2 ID 12018.
-inline constexpr TokenId kSpace_ox_2559 = 2559;
+inline constexpr DiscreteToken kSpace_ox_2559{2559};
 // "aro"; original GPT-2 ID 12022.
-inline constexpr TokenId karo_2560 = 2560;
+inline constexpr DiscreteToken karo_2560{2560};
 // " painting"; original GPT-2 ID 12036.
-inline constexpr TokenId kSpace_painting_2561 = 2561;
+inline constexpr DiscreteToken kSpace_painting_2561{2561};
 // " quantity"; original GPT-2 ID 12040.
-inline constexpr TokenId kSpace_quantity_2562 = 2562;
+inline constexpr DiscreteToken kSpace_quantity_2562{2562};
 // " instruction"; original GPT-2 ID 12064.
-inline constexpr TokenId kSpace_instruction_2563 = 2563;
+inline constexpr DiscreteToken kSpace_instruction_2563{2563};
 // " pressed"; original GPT-2 ID 12070.
-inline constexpr TokenId kSpace_pressed_2564 = 2564;
+inline constexpr DiscreteToken kSpace_pressed_2564{2564};
 // "forced"; original GPT-2 ID 12072.
-inline constexpr TokenId kforced_2565 = 2565;
+inline constexpr DiscreteToken kforced_2565{2565};
 // " raises"; original GPT-2 ID 12073.
-inline constexpr TokenId kSpace_raises_2566 = 2566;
+inline constexpr DiscreteToken kSpace_raises_2566{2566};
 // " outer"; original GPT-2 ID 12076.
-inline constexpr TokenId kSpace_outer_2567 = 2567;
+inline constexpr DiscreteToken kSpace_outer_2567{2567};
 // " Jane"; original GPT-2 ID 12091.
-inline constexpr TokenId kSpace_Jane_2568 = 2568;
+inline constexpr DiscreteToken kSpace_Jane_2568{2568};
 // " tension"; original GPT-2 ID 12097.
-inline constexpr TokenId kSpace_tension_2569 = 2569;
+inline constexpr DiscreteToken kSpace_tension_2569{2569};
 // " wings"; original GPT-2 ID 12098.
-inline constexpr TokenId kSpace_wings_2570 = 2570;
+inline constexpr DiscreteToken kSpace_wings_2570{2570};
 // " Gulf"; original GPT-2 ID 12108.
-inline constexpr TokenId kSpace_Gulf_2571 = 2571;
+inline constexpr DiscreteToken kSpace_Gulf_2571{2571};
 // "Pat"; original GPT-2 ID 12130.
-inline constexpr TokenId kPat_2572 = 2572;
+inline constexpr DiscreteToken kPat_2572{2572};
 // "storm"; original GPT-2 ID 12135.
-inline constexpr TokenId kstorm_2573 = 2573;
+inline constexpr DiscreteToken kstorm_2573{2573};
 // "iva"; original GPT-2 ID 12151.
-inline constexpr TokenId kiva_2574 = 2574;
+inline constexpr DiscreteToken kiva_2574{2574};
 // " toss"; original GPT-2 ID 12153.
-inline constexpr TokenId kSpace_toss_2575 = 2575;
+inline constexpr DiscreteToken kSpace_toss_2575{2575};
 // " rib"; original GPT-2 ID 12183.
-inline constexpr TokenId kSpace_rib_2576 = 2576;
+inline constexpr DiscreteToken kSpace_rib_2576{2576};
 // " builds"; original GPT-2 ID 12188.
-inline constexpr TokenId kSpace_builds_2577 = 2577;
+inline constexpr DiscreteToken kSpace_builds_2577{2577};
 // " epic"; original GPT-2 ID 12191.
-inline constexpr TokenId kSpace_epic_2578 = 2578;
+inline constexpr DiscreteToken kSpace_epic_2578{2578};
 // " preserve"; original GPT-2 ID 12201.
-inline constexpr TokenId kSpace_preserve_2579 = 2579;
+inline constexpr DiscreteToken kSpace_preserve_2579{2579};
 // "roc"; original GPT-2 ID 12204.
-inline constexpr TokenId kroc_2580 = 2580;
+inline constexpr DiscreteToken kroc_2580{2580};
 // "rons"; original GPT-2 ID 12212.
-inline constexpr TokenId krons_2581 = 2581;
+inline constexpr DiscreteToken krons_2581{2581};
 // " interactions"; original GPT-2 ID 12213.
-inline constexpr TokenId kSpace_interactions_2582 = 2582;
+inline constexpr DiscreteToken kSpace_interactions_2582{2582};
 // " logical"; original GPT-2 ID 12219.
-inline constexpr TokenId kSpace_logical_2583 = 2583;
+inline constexpr DiscreteToken kSpace_logical_2583{2583};
 // " reaches"; original GPT-2 ID 12229.
-inline constexpr TokenId kSpace_reaches_2584 = 2584;
+inline constexpr DiscreteToken kSpace_reaches_2584{2584};
 // " hash"; original GPT-2 ID 12234.
-inline constexpr TokenId kSpace_hash_2585 = 2585;
+inline constexpr DiscreteToken kSpace_hash_2585{2585};
 // " shorter"; original GPT-2 ID 12238.
-inline constexpr TokenId kSpace_shorter_2586 = 2586;
+inline constexpr DiscreteToken kSpace_shorter_2586{2586};
 // "piece"; original GPT-2 ID 12239.
-inline constexpr TokenId kpiece_2587 = 2587;
+inline constexpr DiscreteToken kpiece_2587{2587};
 // " Wat"; original GPT-2 ID 12242.
-inline constexpr TokenId kSpace_Wat_2588 = 2588;
+inline constexpr DiscreteToken kSpace_Wat_2588{2588};
 // " intensity"; original GPT-2 ID 12245.
-inline constexpr TokenId kSpace_intensity_2589 = 2589;
+inline constexpr DiscreteToken kSpace_intensity_2589{2589};
 // "fly"; original GPT-2 ID 12254.
-inline constexpr TokenId kfly_2590 = 2590;
+inline constexpr DiscreteToken kfly_2590{2590};
 // "White"; original GPT-2 ID 12256.
-inline constexpr TokenId kWhite_2591 = 2591;
+inline constexpr DiscreteToken kWhite_2591{2591};
 // " execute"; original GPT-2 ID 12260.
-inline constexpr TokenId kSpace_execute_2592 = 2592;
+inline constexpr DiscreteToken kSpace_execute_2592{2592};
 // " mountains"; original GPT-2 ID 12269.
-inline constexpr TokenId kSpace_mountains_2593 = 2593;
+inline constexpr DiscreteToken kSpace_mountains_2593{2593};
 // " pressing"; original GPT-2 ID 12273.
-inline constexpr TokenId kSpace_pressing_2594 = 2594;
+inline constexpr DiscreteToken kSpace_pressing_2594{2594};
 // " thirty"; original GPT-2 ID 12277.
-inline constexpr TokenId kSpace_thirty_2595 = 2595;
+inline constexpr DiscreteToken kSpace_thirty_2595{2595};
 // " electrical"; original GPT-2 ID 12278.
-inline constexpr TokenId kSpace_electrical_2596 = 2596;
+inline constexpr DiscreteToken kSpace_electrical_2596{2596};
 // " Rap"; original GPT-2 ID 12281.
-inline constexpr TokenId kSpace_Rap_2597 = 2597;
+inline constexpr DiscreteToken kSpace_Rap_2597{2597};
 // " depos"; original GPT-2 ID 12304.
-inline constexpr TokenId kSpace_depos_2598 = 2598;
+inline constexpr DiscreteToken kSpace_depos_2598{2598};
 // " Victoria"; original GPT-2 ID 12313.
-inline constexpr TokenId kSpace_Victoria_2599 = 2599;
+inline constexpr DiscreteToken kSpace_Victoria_2599{2599};
 // "acre"; original GPT-2 ID 12345.
-inline constexpr TokenId kacre_2600 = 2600;
+inline constexpr DiscreteToken kacre_2600{2600};
 // " females"; original GPT-2 ID 12366.
-inline constexpr TokenId kSpace_females_2601 = 2601;
+inline constexpr DiscreteToken kSpace_females_2601{2601};
 // " mechanical"; original GPT-2 ID 12370.
-inline constexpr TokenId kSpace_mechanical_2602 = 2602;
+inline constexpr DiscreteToken kSpace_mechanical_2602{2602};
 // "otta"; original GPT-2 ID 12375.
-inline constexpr TokenId kotta_2603 = 2603;
+inline constexpr DiscreteToken kotta_2603{2603};
 // " retain"; original GPT-2 ID 12377.
-inline constexpr TokenId kSpace_retain_2604 = 2604;
+inline constexpr DiscreteToken kSpace_retain_2604{2604};
 // " da"; original GPT-2 ID 12379.
-inline constexpr TokenId kSpace_da_2605 = 2605;
+inline constexpr DiscreteToken kSpace_da_2605{2605};
 // " Michel"; original GPT-2 ID 12386.
-inline constexpr TokenId kSpace_Michel_2606 = 2606;
+inline constexpr DiscreteToken kSpace_Michel_2606{2606};
 // " crown"; original GPT-2 ID 12389.
-inline constexpr TokenId kSpace_crown_2607 = 2607;
+inline constexpr DiscreteToken kSpace_crown_2607{2607};
 // " tube"; original GPT-2 ID 12403.
-inline constexpr TokenId kSpace_tube_2608 = 2608;
+inline constexpr DiscreteToken kSpace_tube_2608{2608};
 // " query"; original GPT-2 ID 12405.
-inline constexpr TokenId kSpace_query_2609 = 2609;
+inline constexpr DiscreteToken kSpace_query_2609{2609};
 // "ante"; original GPT-2 ID 12427.
-inline constexpr TokenId kante_2610 = 2610;
+inline constexpr DiscreteToken kante_2610{2610};
 // " floating"; original GPT-2 ID 12462.
-inline constexpr TokenId kSpace_floating_2611 = 2611;
+inline constexpr DiscreteToken kSpace_floating_2611{2611};
 // "whe"; original GPT-2 ID 12491.
-inline constexpr TokenId kwhe_2612 = 2612;
+inline constexpr DiscreteToken kwhe_2612{2612};
 // " environments"; original GPT-2 ID 12493.
-inline constexpr TokenId kSpace_environments_2613 = 2613;
+inline constexpr DiscreteToken kSpace_environments_2613{2613};
 // " reflects"; original GPT-2 ID 12497.
-inline constexpr TokenId kSpace_reflects_2614 = 2614;
+inline constexpr DiscreteToken kSpace_reflects_2614{2614};
 // " honey"; original GPT-2 ID 12498.
-inline constexpr TokenId kSpace_honey_2615 = 2615;
+inline constexpr DiscreteToken kSpace_honey_2615{2615};
 // " temple"; original GPT-2 ID 12505.
-inline constexpr TokenId kSpace_temple_2616 = 2616;
+inline constexpr DiscreteToken kSpace_temple_2616{2616};
 // "Three"; original GPT-2 ID 12510.
-inline constexpr TokenId kThree_2617 = 2617;
+inline constexpr DiscreteToken kThree_2617{2617};
 // " bases"; original GPT-2 ID 12536.
-inline constexpr TokenId kSpace_bases_2618 = 2618;
+inline constexpr DiscreteToken kSpace_bases_2618{2618};
 // " crossing"; original GPT-2 ID 12538.
-inline constexpr TokenId kSpace_crossing_2619 = 2619;
+inline constexpr DiscreteToken kSpace_crossing_2619{2619};
 // " reflected"; original GPT-2 ID 12548.
-inline constexpr TokenId kSpace_reflected_2620 = 2620;
+inline constexpr DiscreteToken kSpace_reflected_2620{2620};
 // "iar"; original GPT-2 ID 12571.
-inline constexpr TokenId kiar_2621 = 2621;
+inline constexpr DiscreteToken kiar_2621{2621};
 // " Days"; original GPT-2 ID 12579.
-inline constexpr TokenId kSpace_Days_2622 = 2622;
+inline constexpr DiscreteToken kSpace_Days_2622{2622};
 // "live"; original GPT-2 ID 12583.
-inline constexpr TokenId klive_2623 = 2623;
+inline constexpr DiscreteToken klive_2623{2623};
 // " rocks"; original GPT-2 ID 12586.
-inline constexpr TokenId kSpace_rocks_2624 = 2624;
+inline constexpr DiscreteToken kSpace_rocks_2624{2624};
 // "aments"; original GPT-2 ID 12604.
-inline constexpr TokenId kaments_2625 = 2625;
+inline constexpr DiscreteToken kaments_2625{2625};
 // " sustained"; original GPT-2 ID 12605.
-inline constexpr TokenId kSpace_sustained_2626 = 2626;
+inline constexpr DiscreteToken kSpace_sustained_2626{2626};
 // "atile"; original GPT-2 ID 12610.
-inline constexpr TokenId katile_2627 = 2627;
+inline constexpr DiscreteToken katile_2627{2627};
 // " vibr"; original GPT-2 ID 12611.
-inline constexpr TokenId kSpace_vibr_2628 = 2628;
+inline constexpr DiscreteToken kSpace_vibr_2628{2628};
 // "Hel"; original GPT-2 ID 12621.
-inline constexpr TokenId kHel_2629 = 2629;
+inline constexpr DiscreteToken kHel_2629{2629};
 // " Victor"; original GPT-2 ID 12622.
-inline constexpr TokenId kSpace_Victor_2630 = 2630;
+inline constexpr DiscreteToken kSpace_Victor_2630{2630};
 // " elabor"; original GPT-2 ID 12628.
-inline constexpr TokenId kSpace_elabor_2631 = 2631;
+inline constexpr DiscreteToken kSpace_elabor_2631{2631};
 // " processor"; original GPT-2 ID 12649.
-inline constexpr TokenId kSpace_processor_2632 = 2632;
+inline constexpr DiscreteToken kSpace_processor_2632{2632};
 // " Robinson"; original GPT-2 ID 12652.
-inline constexpr TokenId kSpace_Robinson_2633 = 2633;
+inline constexpr DiscreteToken kSpace_Robinson_2633{2633};
 // " Peace"; original GPT-2 ID 12689.
-inline constexpr TokenId kSpace_Peace_2634 = 2634;
+inline constexpr DiscreteToken kSpace_Peace_2634{2634};
 // " sensor"; original GPT-2 ID 12694.
-inline constexpr TokenId kSpace_sensor_2635 = 2635;
+inline constexpr DiscreteToken kSpace_sensor_2635{2635};
 // " bass"; original GPT-2 ID 12702.
-inline constexpr TokenId kSpace_bass_2636 = 2636;
+inline constexpr DiscreteToken kSpace_bass_2636{2636};
 // "Point"; original GPT-2 ID 12727.
-inline constexpr TokenId kPoint_2637 = 2637;
+inline constexpr DiscreteToken kPoint_2637{2637};
 // " flowers"; original GPT-2 ID 12734.
-inline constexpr TokenId kSpace_flowers_2638 = 2638;
+inline constexpr DiscreteToken kSpace_flowers_2638{2638};
 // " reactions"; original GPT-2 ID 12737.
-inline constexpr TokenId kSpace_reactions_2639 = 2639;
+inline constexpr DiscreteToken kSpace_reactions_2639{2639};
 // " freely"; original GPT-2 ID 12748.
-inline constexpr TokenId kSpace_freely_2640 = 2640;
+inline constexpr DiscreteToken kSpace_freely_2640{2640};
 // " muscles"; original GPT-2 ID 12749.
-inline constexpr TokenId kSpace_muscles_2641 = 2641;
+inline constexpr DiscreteToken kSpace_muscles_2641{2641};
 // " entries"; original GPT-2 ID 12784.
-inline constexpr TokenId kSpace_entries_2642 = 2642;
+inline constexpr DiscreteToken kSpace_entries_2642{2642};
 // " consecutive"; original GPT-2 ID 12785.
-inline constexpr TokenId kSpace_consecutive_2643 = 2643;
+inline constexpr DiscreteToken kSpace_consecutive_2643{2643};
 // " sends"; original GPT-2 ID 12800.
-inline constexpr TokenId kSpace_sends_2644 = 2644;
+inline constexpr DiscreteToken kSpace_sends_2644{2644};
 // " Gate"; original GPT-2 ID 12816.
-inline constexpr TokenId kSpace_Gate_2645 = 2645;
+inline constexpr DiscreteToken kSpace_Gate_2645{2645};
 // " Naz"; original GPT-2 ID 12819.
-inline constexpr TokenId kSpace_Naz_2646 = 2646;
+inline constexpr DiscreteToken kSpace_Naz_2646{2646};
 // " influenced"; original GPT-2 ID 12824.
-inline constexpr TokenId kSpace_influenced_2647 = 2647;
+inline constexpr DiscreteToken kSpace_influenced_2647{2647};
 // "Ac"; original GPT-2 ID 12832.
-inline constexpr TokenId kAc_2648 = 2648;
+inline constexpr DiscreteToken kAc_2648{2648};
 // " insect"; original GPT-2 ID 12833.
-inline constexpr TokenId kSpace_insect_2649 = 2649;
+inline constexpr DiscreteToken kSpace_insect_2649{2649};
 // " instruments"; original GPT-2 ID 12834.
-inline constexpr TokenId kSpace_instruments_2650 = 2650;
+inline constexpr DiscreteToken kSpace_instruments_2650{2650};
 // " leaf"; original GPT-2 ID 12835.
-inline constexpr TokenId kSpace_leaf_2651 = 2651;
+inline constexpr DiscreteToken kSpace_leaf_2651{2651};
 // " trap"; original GPT-2 ID 12840.
-inline constexpr TokenId kSpace_trap_2652 = 2652;
+inline constexpr DiscreteToken kSpace_trap_2652{2652};
 // " reduces"; original GPT-2 ID 12850.
-inline constexpr TokenId kSpace_reduces_2653 = 2653;
+inline constexpr DiscreteToken kSpace_reduces_2653{2653};
 // "uther"; original GPT-2 ID 12866.
-inline constexpr TokenId kuther_2654 = 2654;
+inline constexpr DiscreteToken kuther_2654{2654};
 // " probability"; original GPT-2 ID 12867.
-inline constexpr TokenId kSpace_probability_2655 = 2655;
+inline constexpr DiscreteToken kSpace_probability_2655{2655};
 // " Poland"; original GPT-2 ID 12873.
-inline constexpr TokenId kSpace_Poland_2656 = 2656;
+inline constexpr DiscreteToken kSpace_Poland_2656{2656};
 // "JP"; original GPT-2 ID 12889.
-inline constexpr TokenId kJP_2657 = 2657;
+inline constexpr DiscreteToken kJP_2657{2657};
 // "tha"; original GPT-2 ID 12898.
-inline constexpr TokenId ktha_2658 = 2658;
+inline constexpr DiscreteToken ktha_2658{2658};
 // " distant"; original GPT-2 ID 12899.
-inline constexpr TokenId kSpace_distant_2659 = 2659;
+inline constexpr DiscreteToken kSpace_distant_2659{2659};
 // " fib"; original GPT-2 ID 12900.
-inline constexpr TokenId kSpace_fib_2660 = 2660;
+inline constexpr DiscreteToken kSpace_fib_2660{2660};
 // "rait"; original GPT-2 ID 12907.
-inline constexpr TokenId krait_2661 = 2661;
+inline constexpr DiscreteToken krait_2661{2661};
 // " frozen"; original GPT-2 ID 12912.
-inline constexpr TokenId kSpace_frozen_2662 = 2662;
+inline constexpr DiscreteToken kSpace_frozen_2662{2662};
 // " countless"; original GPT-2 ID 12925.
-inline constexpr TokenId kSpace_countless_2663 = 2663;
+inline constexpr DiscreteToken kSpace_countless_2663{2663};
 // " mechanics"; original GPT-2 ID 12933.
-inline constexpr TokenId kSpace_mechanics_2664 = 2664;
+inline constexpr DiscreteToken kSpace_mechanics_2664{2664};
 // " cache"; original GPT-2 ID 12940.
-inline constexpr TokenId kSpace_cache_2665 = 2665;
+inline constexpr DiscreteToken kSpace_cache_2665{2665};
 // " continuous"; original GPT-2 ID 12948.
-inline constexpr TokenId kSpace_continuous_2666 = 2666;
+inline constexpr DiscreteToken kSpace_continuous_2666{2666};
 // "Tem"; original GPT-2 ID 12966.
-inline constexpr TokenId kTem_2667 = 2667;
+inline constexpr DiscreteToken kTem_2667{2667};
 // " pig"; original GPT-2 ID 12967.
-inline constexpr TokenId kSpace_pig_2668 = 2668;
+inline constexpr DiscreteToken kSpace_pig_2668{2668};
 // " py"; original GPT-2 ID 12972.
-inline constexpr TokenId kSpace_py_2669 = 2669;
+inline constexpr DiscreteToken kSpace_py_2669{2669};
 // " balanced"; original GPT-2 ID 12974.
-inline constexpr TokenId kSpace_balanced_2670 = 2670;
+inline constexpr DiscreteToken kSpace_balanced_2670{2670};
 // " Divine"; original GPT-2 ID 13009.
-inline constexpr TokenId kSpace_Divine_2671 = 2671;
+inline constexpr DiscreteToken kSpace_Divine_2671{2671};
 // " edges"; original GPT-2 ID 13015.
-inline constexpr TokenId kSpace_edges_2672 = 2672;
+inline constexpr DiscreteToken kSpace_edges_2672{2672};
 // " feeding"; original GPT-2 ID 13017.
-inline constexpr TokenId kSpace_feeding_2673 = 2673;
+inline constexpr DiscreteToken kSpace_feeding_2673{2673};
 // " grain"; original GPT-2 ID 13020.
-inline constexpr TokenId kSpace_grain_2674 = 2674;
+inline constexpr DiscreteToken kSpace_grain_2674{2674};
 // "oons"; original GPT-2 ID 13022.
-inline constexpr TokenId koons_2675 = 2675;
+inline constexpr DiscreteToken koons_2675{2675};
 // " drum"; original GPT-2 ID 13026.
-inline constexpr TokenId kSpace_drum_2676 = 2676;
+inline constexpr DiscreteToken kSpace_drum_2676{2676};
 // "Micro"; original GPT-2 ID 13031.
-inline constexpr TokenId kMicro_2677 = 2677;
+inline constexpr DiscreteToken kMicro_2677{2677};
 // " strings"; original GPT-2 ID 13042.
-inline constexpr TokenId kSpace_strings_2678 = 2678;
+inline constexpr DiscreteToken kSpace_strings_2678{2678};
 // " panels"; original GPT-2 ID 13043.
-inline constexpr TokenId kSpace_panels_2679 = 2679;
+inline constexpr DiscreteToken kSpace_panels_2679{2679};
 // " barrier"; original GPT-2 ID 13054.
-inline constexpr TokenId kSpace_barrier_2680 = 2680;
+inline constexpr DiscreteToken kSpace_barrier_2680{2680};
 // " painted"; original GPT-2 ID 13055.
-inline constexpr TokenId kSpace_painted_2681 = 2681;
+inline constexpr DiscreteToken kSpace_painted_2681{2681};
 // " compound"; original GPT-2 ID 13061.
-inline constexpr TokenId kSpace_compound_2682 = 2682;
+inline constexpr DiscreteToken kSpace_compound_2682{2682};
 // " bears"; original GPT-2 ID 13062.
-inline constexpr TokenId kSpace_bears_2683 = 2683;
+inline constexpr DiscreteToken kSpace_bears_2683{2683};
 // " orbit"; original GPT-2 ID 13066.
-inline constexpr TokenId kSpace_orbit_2684 = 2684;
+inline constexpr DiscreteToken kSpace_orbit_2684{2684};
 // "lean"; original GPT-2 ID 13087.
-inline constexpr TokenId klean_2685 = 2685;
+inline constexpr DiscreteToken klean_2685{2685};
 // " bonds"; original GPT-2 ID 13100.
-inline constexpr TokenId kSpace_bonds_2686 = 2686;
+inline constexpr DiscreteToken kSpace_bonds_2686{2686};
 // " 128"; original GPT-2 ID 13108.
-inline constexpr TokenId kSpace_128_2687 = 2687;
+inline constexpr DiscreteToken kSpace_128_2687{2687};
 // "ardo"; original GPT-2 ID 13109.
-inline constexpr TokenId kardo_2688 = 2688;
+inline constexpr DiscreteToken kardo_2688{2688};
 // " collecting"; original GPT-2 ID 13157.
-inline constexpr TokenId kSpace_collecting_2689 = 2689;
+inline constexpr DiscreteToken kSpace_collecting_2689{2689};
 // " particles"; original GPT-2 ID 13166.
-inline constexpr TokenId kSpace_particles_2690 = 2690;
+inline constexpr DiscreteToken kSpace_particles_2690{2690};
 // "ryption"; original GPT-2 ID 13168.
-inline constexpr TokenId kryption_2691 = 2691;
+inline constexpr DiscreteToken kryption_2691{2691};
 // " rotation"; original GPT-2 ID 13179.
-inline constexpr TokenId kSpace_rotation_2692 = 2692;
+inline constexpr DiscreteToken kSpace_rotation_2692{2692};
 // " excessive"; original GPT-2 ID 13181.
-inline constexpr TokenId kSpace_excessive_2693 = 2693;
+inline constexpr DiscreteToken kSpace_excessive_2693{2693};
 // " ecosystem"; original GPT-2 ID 13187.
-inline constexpr TokenId kSpace_ecosystem_2694 = 2694;
+inline constexpr DiscreteToken kSpace_ecosystem_2694{2694};
 // "Instead"; original GPT-2 ID 13193.
-inline constexpr TokenId kInstead_2695 = 2695;
+inline constexpr DiscreteToken kInstead_2695{2695};
 // "tail"; original GPT-2 ID 13199.
-inline constexpr TokenId ktail_2696 = 2696;
+inline constexpr DiscreteToken ktail_2696{2696};
 // " structural"; original GPT-2 ID 13204.
-inline constexpr TokenId kSpace_structural_2697 = 2697;
+inline constexpr DiscreteToken kSpace_structural_2697{2697};
 // " Years"; original GPT-2 ID 13212.
-inline constexpr TokenId kSpace_Years_2698 = 2698;
+inline constexpr DiscreteToken kSpace_Years_2698{2698};
 // "Ant"; original GPT-2 ID 13217.
-inline constexpr TokenId kAnt_2699 = 2699;
+inline constexpr DiscreteToken kAnt_2699{2699};
 // " powered"; original GPT-2 ID 13232.
-inline constexpr TokenId kSpace_powered_2700 = 2700;
+inline constexpr DiscreteToken kSpace_powered_2700{2700};
 // " retrie"; original GPT-2 ID 13236.
-inline constexpr TokenId kSpace_retrie_2701 = 2701;
+inline constexpr DiscreteToken kSpace_retrie_2701{2701};
 // " differ"; original GPT-2 ID 13238.
-inline constexpr TokenId kSpace_differ_2702 = 2702;
+inline constexpr DiscreteToken kSpace_differ_2702{2702};
 // " kingdom"; original GPT-2 ID 13239.
-inline constexpr TokenId kSpace_kingdom_2703 = 2703;
+inline constexpr DiscreteToken kSpace_kingdom_2703{2703};
 // " transparent"; original GPT-2 ID 13245.
-inline constexpr TokenId kSpace_transparent_2704 = 2704;
+inline constexpr DiscreteToken kSpace_transparent_2704{2704};
 // "five"; original GPT-2 ID 13261.
-inline constexpr TokenId kfive_2705 = 2705;
+inline constexpr DiscreteToken kfive_2705{2705};
 // "istence"; original GPT-2 ID 13274.
-inline constexpr TokenId kistence_2706 = 2706;
+inline constexpr DiscreteToken kistence_2706{2706};
 // "Connect"; original GPT-2 ID 13313.
-inline constexpr TokenId kConnect_2707 = 2707;
+inline constexpr DiscreteToken kConnect_2707{2707};
 // " Philippines"; original GPT-2 ID 13316.
-inline constexpr TokenId kSpace_Philippines_2708 = 2708;
+inline constexpr DiscreteToken kSpace_Philippines_2708{2708};
 // " plates"; original GPT-2 ID 13375.
-inline constexpr TokenId kSpace_plates_2709 = 2709;
+inline constexpr DiscreteToken kSpace_plates_2709{2709};
 // " pepper"; original GPT-2 ID 13385.
-inline constexpr TokenId kSpace_pepper_2710 = 2710;
+inline constexpr DiscreteToken kSpace_pepper_2710{2710};
 // " ceiling"; original GPT-2 ID 13387.
-inline constexpr TokenId kSpace_ceiling_2711 = 2711;
+inline constexpr DiscreteToken kSpace_ceiling_2711{2711};
 // " transformation"; original GPT-2 ID 13389.
-inline constexpr TokenId kSpace_transformation_2712 = 2712;
+inline constexpr DiscreteToken kSpace_transformation_2712{2712};
 // " fraction"; original GPT-2 ID 13390.
-inline constexpr TokenId kSpace_fraction_2713 = 2713;
+inline constexpr DiscreteToken kSpace_fraction_2713{2713};
 // " moist"; original GPT-2 ID 13394.
-inline constexpr TokenId kSpace_moist_2714 = 2714;
+inline constexpr DiscreteToken kSpace_moist_2714{2714};
 // " texts"; original GPT-2 ID 13399.
-inline constexpr TokenId kSpace_texts_2715 = 2715;
+inline constexpr DiscreteToken kSpace_texts_2715{2715};
 // "hu"; original GPT-2 ID 13415.
-inline constexpr TokenId khu_2716 = 2716;
+inline constexpr DiscreteToken khu_2716{2716};
 // "Power"; original GPT-2 ID 13434.
-inline constexpr TokenId kPower_2717 = 2717;
+inline constexpr DiscreteToken kPower_2717{2717};
 // " sentences"; original GPT-2 ID 13439.
-inline constexpr TokenId kSpace_sentences_2718 = 2718;
+inline constexpr DiscreteToken kSpace_sentences_2718{2718};
 // "Ang"; original GPT-2 ID 13450.
-inline constexpr TokenId kAng_2719 = 2719;
+inline constexpr DiscreteToken kAng_2719{2719};
 // " bombing"; original GPT-2 ID 13471.
-inline constexpr TokenId kSpace_bombing_2720 = 2720;
+inline constexpr DiscreteToken kSpace_bombing_2720{2720};
 // " wooden"; original GPT-2 ID 13510.
-inline constexpr TokenId kSpace_wooden_2721 = 2721;
+inline constexpr DiscreteToken kSpace_wooden_2721{2721};
 // " gravity"; original GPT-2 ID 13522.
-inline constexpr TokenId kSpace_gravity_2722 = 2722;
+inline constexpr DiscreteToken kSpace_gravity_2722{2722};
 // " consumed"; original GPT-2 ID 13529.
-inline constexpr TokenId kSpace_consumed_2723 = 2723;
+inline constexpr DiscreteToken kSpace_consumed_2723{2723};
 // " paths"; original GPT-2 ID 13532.
-inline constexpr TokenId kSpace_paths_2724 = 2724;
+inline constexpr DiscreteToken kSpace_paths_2724{2724};
 // " Ath"; original GPT-2 ID 13548.
-inline constexpr TokenId kSpace_Ath_2725 = 2725;
+inline constexpr DiscreteToken kSpace_Ath_2725{2725};
 // " hier"; original GPT-2 ID 13550.
-inline constexpr TokenId kSpace_hier_2726 = 2726;
+inline constexpr DiscreteToken kSpace_hier_2726{2726};
 // " polar"; original GPT-2 ID 13559.
-inline constexpr TokenId kSpace_polar_2727 = 2727;
+inline constexpr DiscreteToken kSpace_polar_2727{2727};
 // " harmful"; original GPT-2 ID 13568.
-inline constexpr TokenId kSpace_harmful_2728 = 2728;
+inline constexpr DiscreteToken kSpace_harmful_2728{2728};
 // " printing"; original GPT-2 ID 13570.
-inline constexpr TokenId kSpace_printing_2729 = 2729;
+inline constexpr DiscreteToken kSpace_printing_2729{2729};
 // " tragedy"; original GPT-2 ID 13574.
-inline constexpr TokenId kSpace_tragedy_2730 = 2730;
+inline constexpr DiscreteToken kSpace_tragedy_2730{2730};
 // "Har"; original GPT-2 ID 13587.
-inline constexpr TokenId kHar_2731 = 2731;
+inline constexpr DiscreteToken kHar_2731{2731};
 // " throat"; original GPT-2 ID 13589.
-inline constexpr TokenId kSpace_throat_2732 = 2732;
+inline constexpr DiscreteToken kSpace_throat_2732{2732};
 // " addressing"; original GPT-2 ID 13593.
-inline constexpr TokenId kSpace_addressing_2733 = 2733;
+inline constexpr DiscreteToken kSpace_addressing_2733{2733};
 // " fiber"; original GPT-2 ID 13608.
-inline constexpr TokenId kSpace_fiber_2734 = 2734;
+inline constexpr DiscreteToken kSpace_fiber_2734{2734};
 // " cub"; original GPT-2 ID 13617.
-inline constexpr TokenId kSpace_cub_2735 = 2735;
+inline constexpr DiscreteToken kSpace_cub_2735{2735};
 // " quarters"; original GPT-2 ID 13620.
-inline constexpr TokenId kSpace_quarters_2736 = 2736;
+inline constexpr DiscreteToken kSpace_quarters_2736{2736};
 // "estone"; original GPT-2 ID 13631.
-inline constexpr TokenId kestone_2737 = 2737;
+inline constexpr DiscreteToken kestone_2737{2737};
 // " trapped"; original GPT-2 ID 13640.
-inline constexpr TokenId kSpace_trapped_2738 = 2738;
+inline constexpr DiscreteToken kSpace_trapped_2738{2738};
 // " grows"; original GPT-2 ID 13676.
-inline constexpr TokenId kSpace_grows_2739 = 2739;
+inline constexpr DiscreteToken kSpace_grows_2739{2739};
 // "Great"; original GPT-2 ID 13681.
-inline constexpr TokenId kGreat_2740 = 2740;
+inline constexpr DiscreteToken kGreat_2740{2740};
 // " processed"; original GPT-2 ID 13686.
-inline constexpr TokenId kSpace_processed_2741 = 2741;
+inline constexpr DiscreteToken kSpace_processed_2741{2741};
 // "Earlier"; original GPT-2 ID 13689.
-inline constexpr TokenId kEarlier_2742 = 2742;
+inline constexpr DiscreteToken kEarlier_2742{2742};
 // " Cart"; original GPT-2 ID 13690.
-inline constexpr TokenId kSpace_Cart_2743 = 2743;
+inline constexpr DiscreteToken kSpace_Cart_2743{2743};
 // " vegetables"; original GPT-2 ID 13701.
-inline constexpr TokenId kSpace_vegetables_2744 = 2744;
+inline constexpr DiscreteToken kSpace_vegetables_2744{2744};
 // "enna"; original GPT-2 ID 13713.
-inline constexpr TokenId kenna_2745 = 2745;
+inline constexpr DiscreteToken kenna_2745{2745};
 // "Green"; original GPT-2 ID 13719.
-inline constexpr TokenId kGreen_2746 = 2746;
+inline constexpr DiscreteToken kGreen_2746{2746};
 // " branches"; original GPT-2 ID 13737.
-inline constexpr TokenId kSpace_branches_2747 = 2747;
+inline constexpr DiscreteToken kSpace_branches_2747{2747};
 // " occupation"; original GPT-2 ID 13755.
-inline constexpr TokenId kSpace_occupation_2748 = 2748;
+inline constexpr DiscreteToken kSpace_occupation_2748{2748};
 // " Mississippi"; original GPT-2 ID 13797.
-inline constexpr TokenId kSpace_Mississippi_2749 = 2749;
+inline constexpr DiscreteToken kSpace_Mississippi_2749{2749};
 // "Press"; original GPT-2 ID 13800.
-inline constexpr TokenId kPress_2750 = 2750;
+inline constexpr DiscreteToken kPress_2750{2750};
 // " crop"; original GPT-2 ID 13833.
-inline constexpr TokenId kSpace_crop_2751 = 2751;
+inline constexpr DiscreteToken kSpace_crop_2751{2751};
 // " meals"; original GPT-2 ID 13840.
-inline constexpr TokenId kSpace_meals_2752 = 2752;
+inline constexpr DiscreteToken kSpace_meals_2752{2752};
 // " measurements"; original GPT-2 ID 13871.
-inline constexpr TokenId kSpace_measurements_2753 = 2753;
+inline constexpr DiscreteToken kSpace_measurements_2753{2753};
 // "oots"; original GPT-2 ID 13880.
-inline constexpr TokenId koots_2754 = 2754;
+inline constexpr DiscreteToken koots_2754{2754};
 // "keeper"; original GPT-2 ID 13884.
-inline constexpr TokenId kkeeper_2755 = 2755;
+inline constexpr DiscreteToken kkeeper_2755{2755};
 // " arrangement"; original GPT-2 ID 13888.
-inline constexpr TokenId kSpace_arrangement_2756 = 2756;
+inline constexpr DiscreteToken kSpace_arrangement_2756{2756};
 // "Sem"; original GPT-2 ID 13900.
-inline constexpr TokenId kSem_2757 = 2757;
+inline constexpr DiscreteToken kSem_2757{2757};
 // " transparency"; original GPT-2 ID 13902.
-inline constexpr TokenId kSpace_transparency_2758 = 2758;
+inline constexpr DiscreteToken kSpace_transparency_2758{2758};
 // "Map"; original GPT-2 ID 13912.
-inline constexpr TokenId kMap_2759 = 2759;
+inline constexpr DiscreteToken kMap_2759{2759};
 // " rings"; original GPT-2 ID 13917.
-inline constexpr TokenId kSpace_rings_2760 = 2760;
+inline constexpr DiscreteToken kSpace_rings_2760{2760};
 // "opes"; original GPT-2 ID 13920.
-inline constexpr TokenId kopes_2761 = 2761;
+inline constexpr DiscreteToken kopes_2761{2761};
 // "Port"; original GPT-2 ID 13924.
-inline constexpr TokenId kPort_2762 = 2762;
+inline constexpr DiscreteToken kPort_2762{2762};
 // "umm"; original GPT-2 ID 13929.
-inline constexpr TokenId kumm_2763 = 2763;
+inline constexpr DiscreteToken kumm_2763{2763};
 // " binary"; original GPT-2 ID 13934.
-inline constexpr TokenId kSpace_binary_2764 = 2764;
+inline constexpr DiscreteToken kSpace_binary_2764{2764};
 // "Sy"; original GPT-2 ID 13940.
-inline constexpr TokenId kSy_2765 = 2765;
+inline constexpr DiscreteToken kSy_2765{2765};
 // " viable"; original GPT-2 ID 13971.
-inline constexpr TokenId kSpace_viable_2766 = 2766;
+inline constexpr DiscreteToken kSpace_viable_2766{2766};
 // "asses"; original GPT-2 ID 13978.
-inline constexpr TokenId kasses_2767 = 2767;
+inline constexpr DiscreteToken kasses_2767{2767};
 // "sized"; original GPT-2 ID 13982.
-inline constexpr TokenId ksized_2768 = 2768;
+inline constexpr DiscreteToken ksized_2768{2768};
 // " variations"; original GPT-2 ID 13991.
-inline constexpr TokenId kSpace_variations_2769 = 2769;
+inline constexpr DiscreteToken kSpace_variations_2769{2769};
 // " strain"; original GPT-2 ID 14022.
-inline constexpr TokenId kSpace_strain_2770 = 2770;
+inline constexpr DiscreteToken kSpace_strain_2770{2770};
 // " Benn"; original GPT-2 ID 14025.
-inline constexpr TokenId kSpace_Benn_2771 = 2771;
+inline constexpr DiscreteToken kSpace_Benn_2771{2771};
 // " Memory"; original GPT-2 ID 14059.
-inline constexpr TokenId kSpace_Memory_2772 = 2772;
+inline constexpr DiscreteToken kSpace_Memory_2772{2772};
 // " Ottawa"; original GPT-2 ID 14074.
-inline constexpr TokenId kSpace_Ottawa_2773 = 2773;
+inline constexpr DiscreteToken kSpace_Ottawa_2773{2773};
 // " Egyptian"; original GPT-2 ID 14075.
-inline constexpr TokenId kSpace_Egyptian_2774 = 2774;
+inline constexpr DiscreteToken kSpace_Egyptian_2774{2774};
 // " magnetic"; original GPT-2 ID 14091.
-inline constexpr TokenId kSpace_magnetic_2775 = 2775;
+inline constexpr DiscreteToken kSpace_magnetic_2775{2775};
 // " brush"; original GPT-2 ID 14093.
-inline constexpr TokenId kSpace_brush_2776 = 2776;
+inline constexpr DiscreteToken kSpace_brush_2776{2776};
 // " twelve"; original GPT-2 ID 14104.
-inline constexpr TokenId kSpace_twelve_2777 = 2777;
+inline constexpr DiscreteToken kSpace_twelve_2777{2777};
 // "Space"; original GPT-2 ID 14106.
-inline constexpr TokenId kSpace_2778 = 2778;
+inline constexpr DiscreteToken kSpace_2778{2778};
 // "izards"; original GPT-2 ID 14124.
-inline constexpr TokenId kizards_2779 = 2779;
+inline constexpr DiscreteToken kizards_2779{2779};
 // "Call"; original GPT-2 ID 14134.
-inline constexpr TokenId kCall_2780 = 2780;
+inline constexpr DiscreteToken kCall_2780{2780};
 // " protective"; original GPT-2 ID 14153.
-inline constexpr TokenId kSpace_protective_2781 = 2781;
+inline constexpr DiscreteToken kSpace_protective_2781{2781};
 // " Cuba"; original GPT-2 ID 14159.
-inline constexpr TokenId kSpace_Cuba_2782 = 2782;
+inline constexpr DiscreteToken kSpace_Cuba_2782{2782};
 // " enters"; original GPT-2 ID 14170.
-inline constexpr TokenId kSpace_enters_2783 = 2783;
+inline constexpr DiscreteToken kSpace_enters_2783{2783};
 // " Sens"; original GPT-2 ID 14173.
-inline constexpr TokenId kSpace_Sens_2784 = 2784;
+inline constexpr DiscreteToken kSpace_Sens_2784{2784};
 // " linear"; original GPT-2 ID 14174.
-inline constexpr TokenId kSpace_linear_2785 = 2785;
+inline constexpr DiscreteToken kSpace_linear_2785{2785};
 // " dupl"; original GPT-2 ID 14184.
-inline constexpr TokenId kSpace_dupl_2786 = 2786;
+inline constexpr DiscreteToken kSpace_dupl_2786{2786};
 // " precious"; original GPT-2 ID 14186.
-inline constexpr TokenId kSpace_precious_2787 = 2787;
+inline constexpr DiscreteToken kSpace_precious_2787{2787};
 // " Tig"; original GPT-2 ID 14189.
-inline constexpr TokenId kSpace_Tig_2788 = 2788;
+inline constexpr DiscreteToken kSpace_Tig_2788{2788};
 // " influential"; original GPT-2 ID 14212.
-inline constexpr TokenId kSpace_influential_2789 = 2789;
+inline constexpr DiscreteToken kSpace_influential_2789{2789};
 // "Sur"; original GPT-2 ID 14214.
-inline constexpr TokenId kSur_2790 = 2790;
+inline constexpr DiscreteToken kSur_2790{2790};
 // "otation"; original GPT-2 ID 14221.
-inline constexpr TokenId kotation_2791 = 2791;
+inline constexpr DiscreteToken kotation_2791{2791};
 // " horses"; original GPT-2 ID 14260.
-inline constexpr TokenId kSpace_horses_2792 = 2792;
+inline constexpr DiscreteToken kSpace_horses_2792{2792};
 // " climbing"; original GPT-2 ID 14281.
-inline constexpr TokenId kSpace_climbing_2793 = 2793;
+inline constexpr DiscreteToken kSpace_climbing_2793{2793};
 // " median"; original GPT-2 ID 14288.
-inline constexpr TokenId kSpace_median_2794 = 2794;
+inline constexpr DiscreteToken kSpace_median_2794{2794};
 // " shaped"; original GPT-2 ID 14292.
-inline constexpr TokenId kSpace_shaped_2795 = 2795;
+inline constexpr DiscreteToken kSpace_shaped_2795{2795};
 // "Fe"; original GPT-2 ID 14304.
-inline constexpr TokenId kFe_2796 = 2796;
+inline constexpr DiscreteToken kFe_2796{2796};
 // " bubble"; original GPT-2 ID 14310.
-inline constexpr TokenId kSpace_bubble_2797 = 2797;
+inline constexpr DiscreteToken kSpace_bubble_2797{2797};
 // "Among"; original GPT-2 ID 14311.
-inline constexpr TokenId kAmong_2798 = 2798;
+inline constexpr DiscreteToken kAmong_2798{2798};
 // " imperial"; original GPT-2 ID 14312.
-inline constexpr TokenId kSpace_imperial_2799 = 2799;
+inline constexpr DiscreteToken kSpace_imperial_2799{2799};
 // " Nap"; original GPT-2 ID 14332.
-inline constexpr TokenId kSpace_Nap_2800 = 2800;
+inline constexpr DiscreteToken kSpace_Nap_2800{2800};
 // "four"; original GPT-2 ID 14337.
-inline constexpr TokenId kfour_2801 = 2801;
+inline constexpr DiscreteToken kfour_2801{2801};
 // " spreading"; original GPT-2 ID 14342.
-inline constexpr TokenId kSpace_spreading_2802 = 2802;
+inline constexpr DiscreteToken kSpace_spreading_2802{2802};
 // " symbols"; original GPT-2 ID 14354.
-inline constexpr TokenId kSpace_symbols_2803 = 2803;
+inline constexpr DiscreteToken kSpace_symbols_2803{2803};
 // " civilization"; original GPT-2 ID 14355.
-inline constexpr TokenId kSpace_civilization_2804 = 2804;
+inline constexpr DiscreteToken kSpace_civilization_2804{2804};
 // " lightning"; original GPT-2 ID 14357.
-inline constexpr TokenId kSpace_lightning_2805 = 2805;
+inline constexpr DiscreteToken kSpace_lightning_2805{2805};
 // " liver"; original GPT-2 ID 14383.
-inline constexpr TokenId kSpace_liver_2806 = 2806;
+inline constexpr DiscreteToken kSpace_liver_2806{2806};
 // " threads"; original GPT-2 ID 14390.
-inline constexpr TokenId kSpace_threads_2807 = 2807;
+inline constexpr DiscreteToken kSpace_threads_2807{2807};
 // "ighty"; original GPT-2 ID 14400.
-inline constexpr TokenId kighty_2808 = 2808;
+inline constexpr DiscreteToken kighty_2808{2808};
 // " churches"; original GPT-2 ID 14422.
-inline constexpr TokenId kSpace_churches_2809 = 2809;
+inline constexpr DiscreteToken kSpace_churches_2809{2809};
 // " belongs"; original GPT-2 ID 14448.
-inline constexpr TokenId kSpace_belongs_2810 = 2810;
+inline constexpr DiscreteToken kSpace_belongs_2810{2810};
 // "ulum"; original GPT-2 ID 14452.
-inline constexpr TokenId kulum_2811 = 2811;
+inline constexpr DiscreteToken kulum_2811{2811};
 // " knees"; original GPT-2 ID 14475.
-inline constexpr TokenId kSpace_knees_2812 = 2812;
+inline constexpr DiscreteToken kSpace_knees_2812{2812};
 // " agriculture"; original GPT-2 ID 14510.
-inline constexpr TokenId kSpace_agriculture_2813 = 2813;
+inline constexpr DiscreteToken kSpace_agriculture_2813{2813};
 // " skull"; original GPT-2 ID 14511.
-inline constexpr TokenId kSpace_skull_2814 = 2814;
+inline constexpr DiscreteToken kSpace_skull_2814{2814};
 // " societies"; original GPT-2 ID 14515.
-inline constexpr TokenId kSpace_societies_2815 = 2815;
+inline constexpr DiscreteToken kSpace_societies_2815{2815};
 // "gon"; original GPT-2 ID 14520.
-inline constexpr TokenId kgon_2816 = 2816;
+inline constexpr DiscreteToken kgon_2816{2816};
 // " conducting"; original GPT-2 ID 14523.
-inline constexpr TokenId kSpace_conducting_2817 = 2817;
+inline constexpr DiscreteToken kSpace_conducting_2817{2817};
 // " earliest"; original GPT-2 ID 14555.
-inline constexpr TokenId kSpace_earliest_2818 = 2818;
+inline constexpr DiscreteToken kSpace_earliest_2818{2818};
 // " masses"; original GPT-2 ID 14568.
-inline constexpr TokenId kSpace_masses_2819 = 2819;
+inline constexpr DiscreteToken kSpace_masses_2819{2819};
 // "Blue"; original GPT-2 ID 14573.
-inline constexpr TokenId kBlue_2820 = 2820;
+inline constexpr DiscreteToken kBlue_2820{2820};
 // " reflection"; original GPT-2 ID 14580.
-inline constexpr TokenId kSpace_reflection_2821 = 2821;
+inline constexpr DiscreteToken kSpace_reflection_2821{2821};
 // " extends"; original GPT-2 ID 14582.
-inline constexpr TokenId kSpace_extends_2822 = 2822;
+inline constexpr DiscreteToken kSpace_extends_2822{2822};
 // " forming"; original GPT-2 ID 14583.
-inline constexpr TokenId kSpace_forming_2823 = 2823;
+inline constexpr DiscreteToken kSpace_forming_2823{2823};
 // "etics"; original GPT-2 ID 14596.
-inline constexpr TokenId ketics_2824 = 2824;
+inline constexpr DiscreteToken ketics_2824{2824};
 // " gram"; original GPT-2 ID 14599.
-inline constexpr TokenId kSpace_gram_2825 = 2825;
+inline constexpr DiscreteToken kSpace_gram_2825{2825};
 // "Long"; original GPT-2 ID 14617.
-inline constexpr TokenId kLong_2826 = 2826;
+inline constexpr DiscreteToken kLong_2826{2826};
 // " HTTP"; original GPT-2 ID 14626.
-inline constexpr TokenId kSpace_HTTP_2827 = 2827;
+inline constexpr DiscreteToken kSpace_HTTP_2827{2827};
 // "kh"; original GPT-2 ID 14636.
-inline constexpr TokenId kkh_2828 = 2828;
+inline constexpr DiscreteToken kkh_2828{2828};
 // "aux"; original GPT-2 ID 14644.
-inline constexpr TokenId kaux_2829 = 2829;
+inline constexpr DiscreteToken kaux_2829{2829};
 // " chains"; original GPT-2 ID 14659.
-inline constexpr TokenId kSpace_chains_2830 = 2830;
+inline constexpr DiscreteToken kSpace_chains_2830{2830};
 // "mus"; original GPT-2 ID 14664.
-inline constexpr TokenId kmus_2831 = 2831;
+inline constexpr DiscreteToken kmus_2831{2831};
 // " trop"; original GPT-2 ID 14673.
-inline constexpr TokenId kSpace_trop_2832 = 2832;
+inline constexpr DiscreteToken kSpace_trop_2832{2832};
 // " Switzerland"; original GPT-2 ID 14679.
-inline constexpr TokenId kSpace_Switzerland_2833 = 2833;
+inline constexpr DiscreteToken kSpace_Switzerland_2833{2833};
 // " redd"; original GPT-2 ID 14688.
-inline constexpr TokenId kSpace_redd_2834 = 2834;
+inline constexpr DiscreteToken kSpace_redd_2834{2834};
 // " expressions"; original GPT-2 ID 14700.
-inline constexpr TokenId kSpace_expressions_2835 = 2835;
+inline constexpr DiscreteToken kSpace_expressions_2835{2835};
 // " planets"; original GPT-2 ID 14705.
-inline constexpr TokenId kSpace_planets_2836 = 2836;
+inline constexpr DiscreteToken kSpace_planets_2836{2836};
 // " collapsed"; original GPT-2 ID 14707.
-inline constexpr TokenId kSpace_collapsed_2837 = 2837;
+inline constexpr DiscreteToken kSpace_collapsed_2837{2837};
 // " irrit"; original GPT-2 ID 14709.
-inline constexpr TokenId kSpace_irrit_2838 = 2838;
+inline constexpr DiscreteToken kSpace_irrit_2838{2838};
 // " buzz"; original GPT-2 ID 14713.
-inline constexpr TokenId kSpace_buzz_2839 = 2839;
+inline constexpr DiscreteToken kSpace_buzz_2839{2839};
 // " pairs"; original GPT-2 ID 14729.
-inline constexpr TokenId kSpace_pairs_2840 = 2840;
+inline constexpr DiscreteToken kSpace_pairs_2840{2840};
 // " sculpt"; original GPT-2 ID 14747.
-inline constexpr TokenId kSpace_sculpt_2841 = 2841;
+inline constexpr DiscreteToken kSpace_sculpt_2841{2841};
 // " scripts"; original GPT-2 ID 14750.
-inline constexpr TokenId kSpace_scripts_2842 = 2842;
+inline constexpr DiscreteToken kSpace_scripts_2842{2842};
 // " arrangements"; original GPT-2 ID 14752.
-inline constexpr TokenId kSpace_arrangements_2843 = 2843;
+inline constexpr DiscreteToken kSpace_arrangements_2843{2843};
 // " diameter"; original GPT-2 ID 14753.
-inline constexpr TokenId kSpace_diameter_2844 = 2844;
+inline constexpr DiscreteToken kSpace_diameter_2844{2844};
 // " loses"; original GPT-2 ID 14754.
-inline constexpr TokenId kSpace_loses_2845 = 2845;
+inline constexpr DiscreteToken kSpace_loses_2845{2845};
 // " stays"; original GPT-2 ID 14768.
-inline constexpr TokenId kSpace_stays_2846 = 2846;
+inline constexpr DiscreteToken kSpace_stays_2846{2846};
 // "century"; original GPT-2 ID 14792.
-inline constexpr TokenId kcentury_2847 = 2847;
+inline constexpr DiscreteToken kcentury_2847{2847};
 // "uv"; original GPT-2 ID 14795.
-inline constexpr TokenId kuv_2848 = 2848;
+inline constexpr DiscreteToken kuv_2848{2848};
 // "ilateral"; original GPT-2 ID 14796.
-inline constexpr TokenId kilateral_2849 = 2849;
+inline constexpr DiscreteToken kilateral_2849{2849};
 // " independently"; original GPT-2 ID 14799.
-inline constexpr TokenId kSpace_independently_2850 = 2850;
+inline constexpr DiscreteToken kSpace_independently_2850{2850};
 // " suits"; original GPT-2 ID 14803.
-inline constexpr TokenId kSpace_suits_2851 = 2851;
+inline constexpr DiscreteToken kSpace_suits_2851{2851};
 // " islands"; original GPT-2 ID 14807.
-inline constexpr TokenId kSpace_islands_2852 = 2852;
+inline constexpr DiscreteToken kSpace_islands_2852{2852};
 // "green"; original GPT-2 ID 14809.
-inline constexpr TokenId kgreen_2853 = 2853;
+inline constexpr DiscreteToken kgreen_2853{2853};
 // "Version"; original GPT-2 ID 14815.
-inline constexpr TokenId kVersion_2854 = 2854;
+inline constexpr DiscreteToken kVersion_2854{2854};
 // " Sud"; original GPT-2 ID 14818.
-inline constexpr TokenId kSpace_Sud_2855 = 2855;
+inline constexpr DiscreteToken kSpace_Sud_2855{2855};
 // " aqu"; original GPT-2 ID 14839.
-inline constexpr TokenId kSpace_aqu_2856 = 2856;
+inline constexpr DiscreteToken kSpace_aqu_2856{2856};
 // " Alice"; original GPT-2 ID 14862.
-inline constexpr TokenId kSpace_Alice_2857 = 2857;
+inline constexpr DiscreteToken kSpace_Alice_2857{2857};
 // "uez"; original GPT-2 ID 14870.
-inline constexpr TokenId kuez_2858 = 2858;
+inline constexpr DiscreteToken kuez_2858{2858};
 // " vessels"; original GPT-2 ID 14891.
-inline constexpr TokenId kSpace_vessels_2859 = 2859;
+inline constexpr DiscreteToken kSpace_vessels_2859{2859};
 // " arranged"; original GPT-2 ID 14921.
-inline constexpr TokenId kSpace_arranged_2860 = 2860;
+inline constexpr DiscreteToken kSpace_arranged_2860{2860};
 // " Mes"; original GPT-2 ID 14937.
-inline constexpr TokenId kSpace_Mes_2861 = 2861;
+inline constexpr DiscreteToken kSpace_Mes_2861{2861};
 // " Pun"; original GPT-2 ID 14944.
-inline constexpr TokenId kSpace_Pun_2862 = 2862;
+inline constexpr DiscreteToken kSpace_Pun_2862{2862};
 // " Watson"; original GPT-2 ID 14959.
-inline constexpr TokenId kSpace_Watson_2863 = 2863;
+inline constexpr DiscreteToken kSpace_Watson_2863{2863};
 // " stones"; original GPT-2 ID 14966.
-inline constexpr TokenId kSpace_stones_2864 = 2864;
+inline constexpr DiscreteToken kSpace_stones_2864{2864};
 // " tract"; original GPT-2 ID 14998.
-inline constexpr TokenId kSpace_tract_2865 = 2865;
+inline constexpr DiscreteToken kSpace_tract_2865{2865};
 // " shed"; original GPT-2 ID 14999.
-inline constexpr TokenId kSpace_shed_2866 = 2866;
+inline constexpr DiscreteToken kSpace_shed_2866{2866};
 // " voltage"; original GPT-2 ID 15004.
-inline constexpr TokenId kSpace_voltage_2867 = 2867;
+inline constexpr DiscreteToken kSpace_voltage_2867{2867};
 // "heric"; original GPT-2 ID 15011.
-inline constexpr TokenId kheric_2868 = 2868;
+inline constexpr DiscreteToken kheric_2868{2868};
 // " puzzle"; original GPT-2 ID 15027.
-inline constexpr TokenId kSpace_puzzle_2869 = 2869;
+inline constexpr DiscreteToken kSpace_puzzle_2869{2869};
 // "Light"; original GPT-2 ID 15047.
-inline constexpr TokenId kLight_2870 = 2870;
+inline constexpr DiscreteToken kLight_2870{2870};
 // " cord"; original GPT-2 ID 15050.
-inline constexpr TokenId kSpace_cord_2871 = 2871;
+inline constexpr DiscreteToken kSpace_cord_2871{2871};
 // " triple"; original GPT-2 ID 15055.
-inline constexpr TokenId kSpace_triple_2872 = 2872;
+inline constexpr DiscreteToken kSpace_triple_2872{2872};
 // " flower"; original GPT-2 ID 15061.
-inline constexpr TokenId kSpace_flower_2873 = 2873;
+inline constexpr DiscreteToken kSpace_flower_2873{2873};
 // " multipl"; original GPT-2 ID 15082.
-inline constexpr TokenId kSpace_multipl_2874 = 2874;
+inline constexpr DiscreteToken kSpace_multipl_2874{2874};
 // " Pic"; original GPT-2 ID 15085.
-inline constexpr TokenId kSpace_Pic_2875 = 2875;
+inline constexpr DiscreteToken kSpace_Pic_2875{2875};
 // "Sil"; original GPT-2 ID 15086.
-inline constexpr TokenId kSil_2876 = 2876;
+inline constexpr DiscreteToken kSil_2876{2876};
 // " royal"; original GPT-2 ID 15100.
-inline constexpr TokenId kSpace_royal_2877 = 2877;
+inline constexpr DiscreteToken kSpace_royal_2877{2877};
 // " streak"; original GPT-2 ID 15113.
-inline constexpr TokenId kSpace_streak_2878 = 2878;
+inline constexpr DiscreteToken kSpace_streak_2878{2878};
 // " clouds"; original GPT-2 ID 15114.
-inline constexpr TokenId kSpace_clouds_2879 = 2879;
+inline constexpr DiscreteToken kSpace_clouds_2879{2879};
 // " crystal"; original GPT-2 ID 15121.
-inline constexpr TokenId kSpace_crystal_2880 = 2880;
+inline constexpr DiscreteToken kSpace_crystal_2880{2880};
 // " cooling"; original GPT-2 ID 15134.
-inline constexpr TokenId kSpace_cooling_2881 = 2881;
+inline constexpr DiscreteToken kSpace_cooling_2881{2881};
 // " Barcelona"; original GPT-2 ID 15142.
-inline constexpr TokenId kSpace_Barcelona_2882 = 2882;
+inline constexpr DiscreteToken kSpace_Barcelona_2882{2882};
 // " mutation"; original GPT-2 ID 15148.
-inline constexpr TokenId kSpace_mutation_2883 = 2883;
+inline constexpr DiscreteToken kSpace_mutation_2883{2883};
 // " sisters"; original GPT-2 ID 15153.
-inline constexpr TokenId kSpace_sisters_2884 = 2884;
+inline constexpr DiscreteToken kSpace_sisters_2884{2884};
 // " Crus"; original GPT-2 ID 15170.
-inline constexpr TokenId kSpace_Crus_2885 = 2885;
+inline constexpr DiscreteToken kSpace_Crus_2885{2885};
 // " columns"; original GPT-2 ID 15180.
-inline constexpr TokenId kSpace_columns_2886 = 2886;
+inline constexpr DiscreteToken kSpace_columns_2886{2886};
 // " fart"; original GPT-2 ID 15189.
-inline constexpr TokenId kSpace_fart_2887 = 2887;
+inline constexpr DiscreteToken kSpace_fart_2887{2887};
 // " streams"; original GPT-2 ID 15190.
-inline constexpr TokenId kSpace_streams_2888 = 2888;
+inline constexpr DiscreteToken kSpace_streams_2888{2888};
 // "Ev"; original GPT-2 ID 15200.
-inline constexpr TokenId kEv_2889 = 2889;
+inline constexpr DiscreteToken kEv_2889{2889};
 // "Public"; original GPT-2 ID 15202.
-inline constexpr TokenId kPublic_2890 = 2890;
+inline constexpr DiscreteToken kPublic_2890{2890};
 // "ulsion"; original GPT-2 ID 15204.
-inline constexpr TokenId kulsion_2891 = 2891;
+inline constexpr DiscreteToken kulsion_2891{2891};
 // "Mult"; original GPT-2 ID 15205.
-inline constexpr TokenId kMult_2892 = 2892;
+inline constexpr DiscreteToken kMult_2892{2892};
 // " Lion"; original GPT-2 ID 15218.
-inline constexpr TokenId kSpace_Lion_2893 = 2893;
+inline constexpr DiscreteToken kSpace_Lion_2893{2893};
 // " dimensions"; original GPT-2 ID 15225.
-inline constexpr TokenId kSpace_dimensions_2894 = 2894;
+inline constexpr DiscreteToken kSpace_dimensions_2894{2894};
 // " Norway"; original GPT-2 ID 15238.
-inline constexpr TokenId kSpace_Norway_2895 = 2895;
+inline constexpr DiscreteToken kSpace_Norway_2895{2895};
 // "etta"; original GPT-2 ID 15253.
-inline constexpr TokenId ketta_2896 = 2896;
+inline constexpr DiscreteToken ketta_2896{2896};
 // " destruct"; original GPT-2 ID 15256.
-inline constexpr TokenId kSpace_destruct_2897 = 2897;
+inline constexpr DiscreteToken kSpace_destruct_2897{2897};
 // "Bay"; original GPT-2 ID 15262.
-inline constexpr TokenId kBay_2898 = 2898;
+inline constexpr DiscreteToken kBay_2898{2898};
 // " shapes"; original GPT-2 ID 15268.
-inline constexpr TokenId kSpace_shapes_2899 = 2899;
+inline constexpr DiscreteToken kSpace_shapes_2899{2899};
 // " rows"; original GPT-2 ID 15274.
-inline constexpr TokenId kSpace_rows_2900 = 2900;
+inline constexpr DiscreteToken kSpace_rows_2900{2900};
 // " sealed"; original GPT-2 ID 15283.
-inline constexpr TokenId kSpace_sealed_2901 = 2901;
+inline constexpr DiscreteToken kSpace_sealed_2901{2901};
 // "ulent"; original GPT-2 ID 15288.
-inline constexpr TokenId kulent_2902 = 2902;
+inline constexpr DiscreteToken kulent_2902{2902};
 // " diamond"; original GPT-2 ID 15291.
-inline constexpr TokenId kSpace_diamond_2903 = 2903;
+inline constexpr DiscreteToken kSpace_diamond_2903{2903};
 // " Palace"; original GPT-2 ID 15301.
-inline constexpr TokenId kSpace_Palace_2904 = 2904;
+inline constexpr DiscreteToken kSpace_Palace_2904{2904};
 // "Alex"; original GPT-2 ID 15309.
-inline constexpr TokenId kAlex_2905 = 2905;
+inline constexpr DiscreteToken kAlex_2905{2905};
 // " manages"; original GPT-2 ID 15314.
-inline constexpr TokenId kSpace_manages_2906 = 2906;
+inline constexpr DiscreteToken kSpace_manages_2906{2906};
 // " copper"; original GPT-2 ID 15317.
-inline constexpr TokenId kSpace_copper_2907 = 2907;
+inline constexpr DiscreteToken kSpace_copper_2907{2907};
 // " fifty"; original GPT-2 ID 15334.
-inline constexpr TokenId kSpace_fifty_2908 = 2908;
+inline constexpr DiscreteToken kSpace_fifty_2908{2908};
 // " Malaysia"; original GPT-2 ID 15336.
-inline constexpr TokenId kSpace_Malaysia_2909 = 2909;
+inline constexpr DiscreteToken kSpace_Malaysia_2909{2909};
 // " mature"; original GPT-2 ID 15345.
-inline constexpr TokenId kSpace_mature_2910 = 2910;
+inline constexpr DiscreteToken kSpace_mature_2910{2910};
 // " chrom"; original GPT-2 ID 15358.
-inline constexpr TokenId kSpace_chrom_2911 = 2911;
+inline constexpr DiscreteToken kSpace_chrom_2911{2911};
 // " Lisa"; original GPT-2 ID 15378.
-inline constexpr TokenId kSpace_Lisa_2912 = 2912;
+inline constexpr DiscreteToken kSpace_Lisa_2912{2912};
 // " shifts"; original GPT-2 ID 15381.
-inline constexpr TokenId kSpace_shifts_2913 = 2913;
+inline constexpr DiscreteToken kSpace_shifts_2913{2913};
 // " Language"; original GPT-2 ID 15417.
-inline constexpr TokenId kSpace_Language_2914 = 2914;
+inline constexpr DiscreteToken kSpace_Language_2914{2914};
 // " velocity"; original GPT-2 ID 15432.
-inline constexpr TokenId kSpace_velocity_2915 = 2915;
+inline constexpr DiscreteToken kSpace_velocity_2915{2915};
 // " cit"; original GPT-2 ID 15433.
-inline constexpr TokenId kSpace_cit_2916 = 2916;
+inline constexpr DiscreteToken kSpace_cit_2916{2916};
 // " joins"; original GPT-2 ID 15449.
-inline constexpr TokenId kSpace_joins_2917 = 2917;
+inline constexpr DiscreteToken kSpace_joins_2917{2917};
 // " searches"; original GPT-2 ID 15455.
-inline constexpr TokenId kSpace_searches_2918 = 2918;
+inline constexpr DiscreteToken kSpace_searches_2918{2918};
 // " sweat"; original GPT-2 ID 15488.
-inline constexpr TokenId kSpace_sweat_2919 = 2919;
+inline constexpr DiscreteToken kSpace_sweat_2919{2919};
 // "ews"; original GPT-2 ID 15515.
-inline constexpr TokenId kews_2920 = 2920;
+inline constexpr DiscreteToken kews_2920{2920};
 // "Bas"; original GPT-2 ID 15522.
-inline constexpr TokenId kBas_2921 = 2921;
+inline constexpr DiscreteToken kBas_2921{2921};
 // " infinite"; original GPT-2 ID 15541.
-inline constexpr TokenId kSpace_infinite_2922 = 2922;
+inline constexpr DiscreteToken kSpace_infinite_2922{2922};
 // "three"; original GPT-2 ID 15542.
-inline constexpr TokenId kthree_2923 = 2923;
+inline constexpr DiscreteToken kthree_2923{2923};
 // " hammer"; original GPT-2 ID 15554.
-inline constexpr TokenId kSpace_hammer_2924 = 2924;
+inline constexpr DiscreteToken kSpace_hammer_2924{2924};
 // "Incre"; original GPT-2 ID 15562.
-inline constexpr TokenId kIncre_2925 = 2925;
+inline constexpr DiscreteToken kIncre_2925{2925};
 // " proteins"; original GPT-2 ID 15568.
-inline constexpr TokenId kSpace_proteins_2926 = 2926;
+inline constexpr DiscreteToken kSpace_proteins_2926{2926};
 // " noble"; original GPT-2 ID 15581.
-inline constexpr TokenId kSpace_noble_2927 = 2927;
+inline constexpr DiscreteToken kSpace_noble_2927{2927};
 // " origins"; original GPT-2 ID 15587.
-inline constexpr TokenId kSpace_origins_2928 = 2928;
+inline constexpr DiscreteToken kSpace_origins_2928{2928};
 // " dwar"; original GPT-2 ID 15594.
-inline constexpr TokenId kSpace_dwar_2929 = 2929;
+inline constexpr DiscreteToken kSpace_dwar_2929{2929};
 // " Swift"; original GPT-2 ID 15608.
-inline constexpr TokenId kSpace_Swift_2930 = 2930;
+inline constexpr DiscreteToken kSpace_Swift_2930{2930};
 // "Cap"; original GPT-2 ID 15610.
-inline constexpr TokenId kCap_2931 = 2931;
+inline constexpr DiscreteToken kCap_2931{2931};
 // " Hem"; original GPT-2 ID 15617.
-inline constexpr TokenId kSpace_Hem_2932 = 2932;
+inline constexpr DiscreteToken kSpace_Hem_2932{2932};
 // " incoming"; original GPT-2 ID 15619.
-inline constexpr TokenId kSpace_incoming_2933 = 2933;
+inline constexpr DiscreteToken kSpace_incoming_2933{2933};
 // " flows"; original GPT-2 ID 15623.
-inline constexpr TokenId kSpace_flows_2934 = 2934;
+inline constexpr DiscreteToken kSpace_flows_2934{2934};
 // " limiting"; original GPT-2 ID 15637.
-inline constexpr TokenId kSpace_limiting_2935 = 2935;
+inline constexpr DiscreteToken kSpace_limiting_2935{2935};
 // " varied"; original GPT-2 ID 15641.
-inline constexpr TokenId kSpace_varied_2936 = 2936;
+inline constexpr DiscreteToken kSpace_varied_2936{2936};
 // " overlook"; original GPT-2 ID 15677.
-inline constexpr TokenId kSpace_overlook_2937 = 2937;
+inline constexpr DiscreteToken kSpace_overlook_2937{2937};
 // "sky"; original GPT-2 ID 15688.
-inline constexpr TokenId ksky_2938 = 2938;
+inline constexpr DiscreteToken ksky_2938{2938};
 // "cend"; original GPT-2 ID 15695.
-inline constexpr TokenId kcend_2939 = 2939;
+inline constexpr DiscreteToken kcend_2939{2939};
 // " distinguish"; original GPT-2 ID 15714.
-inline constexpr TokenId kSpace_distinguish_2940 = 2940;
+inline constexpr DiscreteToken kSpace_distinguish_2940{2940};
 // " dense"; original GPT-2 ID 15715.
-inline constexpr TokenId kSpace_dense_2941 = 2941;
+inline constexpr DiscreteToken kSpace_dense_2941{2941};
 // " sheets"; original GPT-2 ID 15747.
-inline constexpr TokenId kSpace_sheets_2942 = 2942;
+inline constexpr DiscreteToken kSpace_sheets_2942{2942};
 // " dough"; original GPT-2 ID 15756.
-inline constexpr TokenId kSpace_dough_2943 = 2943;
+inline constexpr DiscreteToken kSpace_dough_2943{2943};
 // "root"; original GPT-2 ID 15763.
-inline constexpr TokenId kroot_2944 = 2944;
+inline constexpr DiscreteToken kroot_2944{2944};
 // " translate"; original GPT-2 ID 15772.
-inline constexpr TokenId kSpace_translate_2945 = 2945;
+inline constexpr DiscreteToken kSpace_translate_2945{2945};
 // " associations"; original GPT-2 ID 15814.
-inline constexpr TokenId kSpace_associations_2946 = 2946;
+inline constexpr DiscreteToken kSpace_associations_2946{2946};
 // "English"; original GPT-2 ID 15823.
-inline constexpr TokenId kEnglish_2947 = 2947;
+inline constexpr DiscreteToken kEnglish_2947{2947};
 // " encryption"; original GPT-2 ID 15835.
-inline constexpr TokenId kSpace_encryption_2948 = 2948;
+inline constexpr DiscreteToken kSpace_encryption_2948{2948};
 // " Chamber"; original GPT-2 ID 15840.
-inline constexpr TokenId kSpace_Chamber_2949 = 2949;
+inline constexpr DiscreteToken kSpace_Chamber_2949{2949};
 // "Tor"; original GPT-2 ID 15884.
-inline constexpr TokenId kTor_2950 = 2950;
+inline constexpr DiscreteToken kTor_2950{2950};
 // " Prize"; original GPT-2 ID 15895.
-inline constexpr TokenId kSpace_Prize_2951 = 2951;
+inline constexpr DiscreteToken kSpace_Prize_2951{2951};
 // " fruits"; original GPT-2 ID 15921.
-inline constexpr TokenId kSpace_fruits_2952 = 2952;
+inline constexpr DiscreteToken kSpace_fruits_2952{2952};
 // " mold"; original GPT-2 ID 15936.
-inline constexpr TokenId kSpace_mold_2953 = 2953;
+inline constexpr DiscreteToken kSpace_mold_2953{2953};
 // " substances"; original GPT-2 ID 15938.
-inline constexpr TokenId kSpace_substances_2954 = 2954;
+inline constexpr DiscreteToken kSpace_substances_2954{2954};
 // " determines"; original GPT-2 ID 15947.
-inline constexpr TokenId kSpace_determines_2955 = 2955;
+inline constexpr DiscreteToken kSpace_determines_2955{2955};
 // " prey"; original GPT-2 ID 15974.
-inline constexpr TokenId kSpace_prey_2956 = 2956;
+inline constexpr DiscreteToken kSpace_prey_2956{2956};
 // " cotton"; original GPT-2 ID 15985.
-inline constexpr TokenId kSpace_cotton_2957 = 2957;
+inline constexpr DiscreteToken kSpace_cotton_2957{2957};
 // " loads"; original GPT-2 ID 15989.
-inline constexpr TokenId kSpace_loads_2958 = 2958;
+inline constexpr DiscreteToken kSpace_loads_2958{2958};
 // "bone"; original GPT-2 ID 15992.
-inline constexpr TokenId kbone_2959 = 2959;
+inline constexpr DiscreteToken kbone_2959{2959};
 // " classical"; original GPT-2 ID 15993.
-inline constexpr TokenId kSpace_classical_2960 = 2960;
+inline constexpr DiscreteToken kSpace_classical_2960{2960};
 // " compact"; original GPT-2 ID 16001.
-inline constexpr TokenId kSpace_compact_2961 = 2961;
+inline constexpr DiscreteToken kSpace_compact_2961{2961};
 // " cycles"; original GPT-2 ID 16006.
-inline constexpr TokenId kSpace_cycles_2962 = 2962;
+inline constexpr DiscreteToken kSpace_cycles_2962{2962};
 // "Sun"; original GPT-2 ID 16012.
-inline constexpr TokenId kSun_2963 = 2963;
+inline constexpr DiscreteToken kSun_2963{2963};
 // " horizontal"; original GPT-2 ID 16021.
-inline constexpr TokenId kSpace_horizontal_2964 = 2964;
+inline constexpr DiscreteToken kSpace_horizontal_2964{2964};
 // " maintains"; original GPT-2 ID 16047.
-inline constexpr TokenId kSpace_maintains_2965 = 2965;
+inline constexpr DiscreteToken kSpace_maintains_2965{2965};
 // "bra"; original GPT-2 ID 16057.
-inline constexpr TokenId kbra_2966 = 2966;
+inline constexpr DiscreteToken kbra_2966{2966};
 // " ranges"; original GPT-2 ID 16069.
-inline constexpr TokenId kSpace_ranges_2967 = 2967;
+inline constexpr DiscreteToken kSpace_ranges_2967{2967};
 // " traditionally"; original GPT-2 ID 16083.
-inline constexpr TokenId kSpace_traditionally_2968 = 2968;
+inline constexpr DiscreteToken kSpace_traditionally_2968{2968};
 // " novels"; original GPT-2 ID 16122.
-inline constexpr TokenId kSpace_novels_2969 = 2969;
+inline constexpr DiscreteToken kSpace_novels_2969{2969};
 // " galaxy"; original GPT-2 ID 16161.
-inline constexpr TokenId kSpace_galaxy_2970 = 2970;
+inline constexpr DiscreteToken kSpace_galaxy_2970{2970};
 // " tooth"; original GPT-2 ID 16162.
-inline constexpr TokenId kSpace_tooth_2971 = 2971;
+inline constexpr DiscreteToken kSpace_tooth_2971{2971};
 // "Air"; original GPT-2 ID 16170.
-inline constexpr TokenId kAir_2972 = 2972;
+inline constexpr DiscreteToken kAir_2972{2972};
 // " Dash"; original GPT-2 ID 16189.
-inline constexpr TokenId kSpace_Dash_2973 = 2973;
+inline constexpr DiscreteToken kSpace_Dash_2973{2973};
 // "oven"; original GPT-2 ID 16206.
-inline constexpr TokenId koven_2974 = 2974;
+inline constexpr DiscreteToken koven_2974{2974};
 // "Without"; original GPT-2 ID 16249.
-inline constexpr TokenId kWithout_2975 = 2975;
+inline constexpr DiscreteToken kWithout_2975{2975};
 // " scales"; original GPT-2 ID 16252.
-inline constexpr TokenId kSpace_scales_2976 = 2976;
+inline constexpr DiscreteToken kSpace_scales_2976{2976};
 // " Indonesia"; original GPT-2 ID 16256.
-inline constexpr TokenId kSpace_Indonesia_2977 = 2977;
+inline constexpr DiscreteToken kSpace_Indonesia_2977{2977};
 // " artwork"; original GPT-2 ID 16257.
-inline constexpr TokenId kSpace_artwork_2978 = 2978;
+inline constexpr DiscreteToken kSpace_artwork_2978{2978};
 // " digest"; original GPT-2 ID 16274.
-inline constexpr TokenId kSpace_digest_2979 = 2979;
+inline constexpr DiscreteToken kSpace_digest_2979{2979};
 // " earthquake"; original GPT-2 ID 16295.
-inline constexpr TokenId kSpace_earthquake_2980 = 2980;
+inline constexpr DiscreteToken kSpace_earthquake_2980{2980};
 // " laying"; original GPT-2 ID 16299.
-inline constexpr TokenId kSpace_laying_2981 = 2981;
+inline constexpr DiscreteToken kSpace_laying_2981{2981};
 // "Ult"; original GPT-2 ID 16301.
-inline constexpr TokenId kUlt_2982 = 2982;
+inline constexpr DiscreteToken kUlt_2982{2982};
 // " sequences"; original GPT-2 ID 16311.
-inline constexpr TokenId kSpace_sequences_2983 = 2983;
+inline constexpr DiscreteToken kSpace_sequences_2983{2983};
 // "Fore"; original GPT-2 ID 16351.
-inline constexpr TokenId kFore_2984 = 2984;
+inline constexpr DiscreteToken kFore_2984{2984};
 // " grams"; original GPT-2 ID 16379.
-inline constexpr TokenId kSpace_grams_2985 = 2985;
+inline constexpr DiscreteToken kSpace_grams_2985{2985};
 // " Shi"; original GPT-2 ID 16380.
-inline constexpr TokenId kSpace_Shi_2986 = 2986;
+inline constexpr DiscreteToken kSpace_Shi_2986{2986};
 // " transfers"; original GPT-2 ID 16395.
-inline constexpr TokenId kSpace_transfers_2987 = 2987;
+inline constexpr DiscreteToken kSpace_transfers_2987{2987};
 // " colored"; original GPT-2 ID 16396.
-inline constexpr TokenId kSpace_colored_2988 = 2988;
+inline constexpr DiscreteToken kSpace_colored_2988{2988};
 // " Hindu"; original GPT-2 ID 16397.
-inline constexpr TokenId kSpace_Hindu_2989 = 2989;
+inline constexpr DiscreteToken kSpace_Hindu_2989{2989};
 // "ippers"; original GPT-2 ID 16415.
-inline constexpr TokenId kippers_2990 = 2990;
+inline constexpr DiscreteToken kippers_2990{2990};
 // " meter"; original GPT-2 ID 16430.
-inline constexpr TokenId kSpace_meter_2991 = 2991;
+inline constexpr DiscreteToken kSpace_meter_2991{2991};
 // " debris"; original GPT-2 ID 16468.
-inline constexpr TokenId kSpace_debris_2992 = 2992;
+inline constexpr DiscreteToken kSpace_debris_2992{2992};
 // " organize"; original GPT-2 ID 16481.
-inline constexpr TokenId kSpace_organize_2993 = 2993;
+inline constexpr DiscreteToken kSpace_organize_2993{2993};
 // " axis"; original GPT-2 ID 16488.
-inline constexpr TokenId kSpace_axis_2994 = 2994;
+inline constexpr DiscreteToken kSpace_axis_2994{2994};
 // " Denmark"; original GPT-2 ID 16490.
-inline constexpr TokenId kSpace_Denmark_2995 = 2995;
+inline constexpr DiscreteToken kSpace_Denmark_2995{2995};
 // "Sn"; original GPT-2 ID 16501.
-inline constexpr TokenId kSn_2996 = 2996;
+inline constexpr DiscreteToken kSn_2996{2996};
 // " Hebrew"; original GPT-2 ID 16505.
-inline constexpr TokenId kSpace_Hebrew_2997 = 2997;
+inline constexpr DiscreteToken kSpace_Hebrew_2997{2997};
 // " Fam"; original GPT-2 ID 16513.
-inline constexpr TokenId kSpace_Fam_2998 = 2998;
+inline constexpr DiscreteToken kSpace_Fam_2998{2998};
 // " Argentina"; original GPT-2 ID 16519.
-inline constexpr TokenId kSpace_Argentina_2999 = 2999;
+inline constexpr DiscreteToken kSpace_Argentina_2999{2999};
 // " tuned"; original GPT-2 ID 16524.
-inline constexpr TokenId kSpace_tuned_3000 = 3000;
+inline constexpr DiscreteToken kSpace_tuned_3000{3000};
 // "olphins"; original GPT-2 ID 16547.
-inline constexpr TokenId kolphins_3001 = 3001;
+inline constexpr DiscreteToken kolphins_3001{3001};
 // " sphere"; original GPT-2 ID 16558.
-inline constexpr TokenId kSpace_sphere_3002 = 3002;
+inline constexpr DiscreteToken kSpace_sphere_3002{3002};
 // " beans"; original GPT-2 ID 16567.
-inline constexpr TokenId kSpace_beans_3003 = 3003;
+inline constexpr DiscreteToken kSpace_beans_3003{3003};
 // " adapted"; original GPT-2 ID 16573.
-inline constexpr TokenId kSpace_adapted_3004 = 3004;
+inline constexpr DiscreteToken kSpace_adapted_3004{3004};
 // " dried"; original GPT-2 ID 16577.
-inline constexpr TokenId kSpace_dried_3005 = 3005;
+inline constexpr DiscreteToken kSpace_dried_3005{3005};
 // " scal"; original GPT-2 ID 16578.
-inline constexpr TokenId kSpace_scal_3006 = 3006;
+inline constexpr DiscreteToken kSpace_scal_3006{3006};
 // " Bh"; original GPT-2 ID 16581.
-inline constexpr TokenId kSpace_Bh_3007 = 3007;
+inline constexpr DiscreteToken kSpace_Bh_3007{3007};
 // " chemistry"; original GPT-2 ID 16585.
-inline constexpr TokenId kSpace_chemistry_3008 = 3008;
+inline constexpr DiscreteToken kSpace_chemistry_3008{3008};
 // "Vol"; original GPT-2 ID 16598.
-inline constexpr TokenId kVol_3009 = 3009;
+inline constexpr DiscreteToken kVol_3009{3009};
 // " queen"; original GPT-2 ID 16599.
-inline constexpr TokenId kSpace_queen_3010 = 3010;
+inline constexpr DiscreteToken kSpace_queen_3010{3010};
 // "heads"; original GPT-2 ID 16600.
-inline constexpr TokenId kheads_3011 = 3011;
+inline constexpr DiscreteToken kheads_3011{3011};
 // "opic"; original GPT-2 ID 16603.
-inline constexpr TokenId kopic_3012 = 3012;
+inline constexpr DiscreteToken kopic_3012{3012};
 // " organs"; original GPT-2 ID 16613.
-inline constexpr TokenId kSpace_organs_3013 = 3013;
+inline constexpr DiscreteToken kSpace_organs_3013{3013};
 // "Mo"; original GPT-2 ID 16632.
-inline constexpr TokenId kMo_3014 = 3014;
+inline constexpr DiscreteToken kMo_3014{3014};
 // " Czech"; original GPT-2 ID 16639.
-inline constexpr TokenId kSpace_Czech_3015 = 3015;
+inline constexpr DiscreteToken kSpace_Czech_3015{3015};
 // " surfaces"; original GPT-2 ID 16649.
-inline constexpr TokenId kSpace_surfaces_3016 = 3016;
+inline constexpr DiscreteToken kSpace_surfaces_3016{3016};
 // " interval"; original GPT-2 ID 16654.
-inline constexpr TokenId kSpace_interval_3017 = 3017;
+inline constexpr DiscreteToken kSpace_interval_3017{3017};
 // " suited"; original GPT-2 ID 16662.
-inline constexpr TokenId kSpace_suited_3018 = 3018;
+inline constexpr DiscreteToken kSpace_suited_3018{3018};
 // " tom"; original GPT-2 ID 16667.
-inline constexpr TokenId kSpace_tom_3019 = 3019;
+inline constexpr DiscreteToken kSpace_tom_3019{3019};
 // " regulate"; original GPT-2 ID 16697.
-inline constexpr TokenId kSpace_regulate_3020 = 3020;
+inline constexpr DiscreteToken kSpace_regulate_3020{3020};
 // " Fitz"; original GPT-2 ID 16703.
-inline constexpr TokenId kSpace_Fitz_3021 = 3021;
+inline constexpr DiscreteToken kSpace_Fitz_3021{3021};
 // " characteristic"; original GPT-2 ID 16704.
-inline constexpr TokenId kSpace_characteristic_3022 = 3022;
+inline constexpr DiscreteToken kSpace_characteristic_3022{3022};
 // " Belt"; original GPT-2 ID 16734.
-inline constexpr TokenId kSpace_Belt_3023 = 3023;
+inline constexpr DiscreteToken kSpace_Belt_3023{3023};
 // "umatic"; original GPT-2 ID 16735.
-inline constexpr TokenId kumatic_3024 = 3024;
+inline constexpr DiscreteToken kumatic_3024{3024};
 // " rises"; original GPT-2 ID 16736.
-inline constexpr TokenId kSpace_rises_3025 = 3025;
+inline constexpr DiscreteToken kSpace_rises_3025{3025};
 // "Os"; original GPT-2 ID 16748.
-inline constexpr TokenId kOs_3026 = 3026;
+inline constexpr DiscreteToken kOs_3026{3026};
 // " dishes"; original GPT-2 ID 16759.
-inline constexpr TokenId kSpace_dishes_3027 = 3027;
+inline constexpr DiscreteToken kSpace_dishes_3027{3027};
 // "shaped"; original GPT-2 ID 16760.
-inline constexpr TokenId kshaped_3028 = 3028;
+inline constexpr DiscreteToken kshaped_3028{3028};
 // " Epic"; original GPT-2 ID 16781.
-inline constexpr TokenId kSpace_Epic_3029 = 3029;
+inline constexpr DiscreteToken kSpace_Epic_3029{3029};
 // " spacecraft"; original GPT-2 ID 16807.
-inline constexpr TokenId kSpace_spacecraft_3030 = 3030;
+inline constexpr DiscreteToken kSpace_spacecraft_3030{3030};
 // " Around"; original GPT-2 ID 16824.
-inline constexpr TokenId kSpace_Around_3031 = 3031;
+inline constexpr DiscreteToken kSpace_Around_3031{3031};
 // " pole"; original GPT-2 ID 16825.
-inline constexpr TokenId kSpace_pole_3032 = 3032;
+inline constexpr DiscreteToken kSpace_pole_3032{3032};
 // " queue"; original GPT-2 ID 16834.
-inline constexpr TokenId kSpace_queue_3033 = 3033;
+inline constexpr DiscreteToken kSpace_queue_3033{3033};
 // " digit"; original GPT-2 ID 16839.
-inline constexpr TokenId kSpace_digit_3034 = 3034;
+inline constexpr DiscreteToken kSpace_digit_3034{3034};
 // " vanilla"; original GPT-2 ID 16858.
-inline constexpr TokenId kSpace_vanilla_3035 = 3035;
+inline constexpr DiscreteToken kSpace_vanilla_3035{3035};
 // " hem"; original GPT-2 ID 16869.
-inline constexpr TokenId kSpace_hem_3036 = 3036;
+inline constexpr DiscreteToken kSpace_hem_3036{3036};
 // " radius"; original GPT-2 ID 16874.
-inline constexpr TokenId kSpace_radius_3037 = 3037;
+inline constexpr DiscreteToken kSpace_radius_3037{3037};
 // " Tap"; original GPT-2 ID 16880.
-inline constexpr TokenId kSpace_Tap_3038 = 3038;
+inline constexpr DiscreteToken kSpace_Tap_3038{3038};
 // " ink"; original GPT-2 ID 16882.
-inline constexpr TokenId kSpace_ink_3039 = 3039;
+inline constexpr DiscreteToken kSpace_ink_3039{3039};
 // "building"; original GPT-2 ID 16894.
-inline constexpr TokenId kbuilding_3040 = 3040;
+inline constexpr DiscreteToken kbuilding_3040{3040};
 // "imeter"; original GPT-2 ID 16912.
-inline constexpr TokenId kimeter_3041 = 3041;
+inline constexpr DiscreteToken kimeter_3041{3041};
 // " heating"; original GPT-2 ID 16930.
-inline constexpr TokenId kSpace_heating_3042 = 3042;
+inline constexpr DiscreteToken kSpace_heating_3042{3042};
 // " nearest"; original GPT-2 ID 16936.
-inline constexpr TokenId kSpace_nearest_3043 = 3043;
+inline constexpr DiscreteToken kSpace_nearest_3043{3043};
 // "bird"; original GPT-2 ID 16944.
-inline constexpr TokenId kbird_3044 = 3044;
+inline constexpr DiscreteToken kbird_3044{3044};
 // " Thailand"; original GPT-2 ID 16952.
-inline constexpr TokenId kSpace_Thailand_3045 = 3045;
+inline constexpr DiscreteToken kSpace_Thailand_3045{3045};
 // "Card"; original GPT-2 ID 16962.
-inline constexpr TokenId kCard_3046 = 3046;
+inline constexpr DiscreteToken kCard_3046{3046};
 // " heated"; original GPT-2 ID 16968.
-inline constexpr TokenId kSpace_heated_3047 = 3047;
+inline constexpr DiscreteToken kSpace_heated_3047{3047};
 // " specialized"; original GPT-2 ID 16976.
-inline constexpr TokenId kSpace_specialized_3048 = 3048;
+inline constexpr DiscreteToken kSpace_specialized_3048{3048};
 // "Pop"; original GPT-2 ID 16979.
-inline constexpr TokenId kPop_3049 = 3049;
+inline constexpr DiscreteToken kPop_3049{3049};
 // "Jul"; original GPT-2 ID 16980.
-inline constexpr TokenId kJul_3050 = 3050;
+inline constexpr DiscreteToken kJul_3050{3050};
 // "ophy"; original GPT-2 ID 16982.
-inline constexpr TokenId kophy_3051 = 3051;
+inline constexpr DiscreteToken kophy_3051{3051};
 // "ravity"; original GPT-2 ID 16995.
-inline constexpr TokenId kravity_3052 = 3052;
+inline constexpr DiscreteToken kravity_3052{3052};
 // " paste"; original GPT-2 ID 17008.
-inline constexpr TokenId kSpace_paste_3053 = 3053;
+inline constexpr DiscreteToken kSpace_paste_3053{3053};
 // " bicycle"; original GPT-2 ID 17026.
-inline constexpr TokenId kSpace_bicycle_3054 = 3054;
+inline constexpr DiscreteToken kSpace_bicycle_3054{3054};
 // " acids"; original GPT-2 ID 17045.
-inline constexpr TokenId kSpace_acids_3055 = 3055;
+inline constexpr DiscreteToken kSpace_acids_3055{3055};
 // " compiler"; original GPT-2 ID 17050.
-inline constexpr TokenId kSpace_compiler_3056 = 3056;
+inline constexpr DiscreteToken kSpace_compiler_3056{3056};
 // " eaten"; original GPT-2 ID 17065.
-inline constexpr TokenId kSpace_eaten_3057 = 3057;
+inline constexpr DiscreteToken kSpace_eaten_3057{3057};
 // " vacuum"; original GPT-2 ID 17076.
-inline constexpr TokenId kSpace_vacuum_3058 = 3058;
+inline constexpr DiscreteToken kSpace_vacuum_3058{3058};
 // " Wave"; original GPT-2 ID 17084.
-inline constexpr TokenId kSpace_Wave_3059 = 3059;
+inline constexpr DiscreteToken kSpace_Wave_3059{3059};
 // "anti"; original GPT-2 ID 17096.
-inline constexpr TokenId kanti_3060 = 3060;
+inline constexpr DiscreteToken kanti_3060{3060};
 // " Gran"; original GPT-2 ID 17113.
-inline constexpr TokenId kSpace_Gran_3061 = 3061;
+inline constexpr DiscreteToken kSpace_Gran_3061{3061};
 // " manuscript"; original GPT-2 ID 17116.
-inline constexpr TokenId kSpace_manuscript_3062 = 3062;
+inline constexpr DiscreteToken kSpace_manuscript_3062{3062};
 // "William"; original GPT-2 ID 17121.
-inline constexpr TokenId kWilliam_3063 = 3063;
+inline constexpr DiscreteToken kWilliam_3063{3063};
 // " lever"; original GPT-2 ID 17124.
-inline constexpr TokenId kSpace_lever_3064 = 3064;
+inline constexpr DiscreteToken kSpace_lever_3064{3064};
 // " wheat"; original GPT-2 ID 17135.
-inline constexpr TokenId kSpace_wheat_3065 = 3065;
+inline constexpr DiscreteToken kSpace_wheat_3065{3065};
 // "rh"; original GPT-2 ID 17179.
-inline constexpr TokenId krh_3066 = 3066;
+inline constexpr DiscreteToken krh_3066{3066};
 // " apple"; original GPT-2 ID 17180.
-inline constexpr TokenId kSpace_apple_3067 = 3067;
+inline constexpr DiscreteToken kSpace_apple_3067{3067};
 // " rope"; original GPT-2 ID 17182.
-inline constexpr TokenId kSpace_rope_3068 = 3068;
+inline constexpr DiscreteToken kSpace_rope_3068{3068};
 // " atomic"; original GPT-2 ID 17226.
-inline constexpr TokenId kSpace_atomic_3069 = 3069;
+inline constexpr DiscreteToken kSpace_atomic_3069{3069};
 // " preserved"; original GPT-2 ID 17232.
-inline constexpr TokenId kSpace_preserved_3070 = 3070;
+inline constexpr DiscreteToken kSpace_preserved_3070{3070};
 // " musicians"; original GPT-2 ID 17245.
-inline constexpr TokenId kSpace_musicians_3071 = 3071;
+inline constexpr DiscreteToken kSpace_musicians_3071{3071};
 // " examining"; original GPT-2 ID 17247.
-inline constexpr TokenId kSpace_examining_3072 = 3072;
+inline constexpr DiscreteToken kSpace_examining_3072{3072};
 // " locate"; original GPT-2 ID 17276.
-inline constexpr TokenId kSpace_locate_3073 = 3073;
+inline constexpr DiscreteToken kSpace_locate_3073{3073};
 // " continuously"; original GPT-2 ID 17282.
-inline constexpr TokenId kSpace_continuously_3074 = 3074;
+inline constexpr DiscreteToken kSpace_continuously_3074{3074};
 // " protects"; original GPT-2 ID 17289.
-inline constexpr TokenId kSpace_protects_3075 = 3075;
+inline constexpr DiscreteToken kSpace_protects_3075{3075};
 // " concentrated"; original GPT-2 ID 17298.
-inline constexpr TokenId kSpace_concentrated_3076 = 3076;
+inline constexpr DiscreteToken kSpace_concentrated_3076{3076};
 // " generator"; original GPT-2 ID 17301.
-inline constexpr TokenId kSpace_generator_3077 = 3077;
+inline constexpr DiscreteToken kSpace_generator_3077{3077};
 // " inputs"; original GPT-2 ID 17311.
-inline constexpr TokenId kSpace_inputs_3078 = 3078;
+inline constexpr DiscreteToken kSpace_inputs_3078{3078};
 // "Acc"; original GPT-2 ID 17320.
-inline constexpr TokenId kAcc_3079 = 3079;
+inline constexpr DiscreteToken kAcc_3079{3079};
 // " Austria"; original GPT-2 ID 17322.
-inline constexpr TokenId kSpace_Austria_3080 = 3080;
+inline constexpr DiscreteToken kSpace_Austria_3080{3080};
 // " Iceland"; original GPT-2 ID 17333.
-inline constexpr TokenId kSpace_Iceland_3081 = 3081;
+inline constexpr DiscreteToken kSpace_Iceland_3081{3081};
 // "fat"; original GPT-2 ID 17359.
-inline constexpr TokenId kfat_3082 = 3082;
+inline constexpr DiscreteToken kfat_3082{3082};
 // " Vel"; original GPT-2 ID 17378.
-inline constexpr TokenId kSpace_Vel_3083 = 3083;
+inline constexpr DiscreteToken kSpace_Vel_3083{3083};
 // " Tale"; original GPT-2 ID 17388.
-inline constexpr TokenId kSpace_Tale_3084 = 3084;
+inline constexpr DiscreteToken kSpace_Tale_3084{3084};
 // " receptor"; original GPT-2 ID 17408.
-inline constexpr TokenId kSpace_receptor_3085 = 3085;
+inline constexpr DiscreteToken kSpace_receptor_3085{3085};
 // " behave"; original GPT-2 ID 17438.
-inline constexpr TokenId kSpace_behave_3086 = 3086;
+inline constexpr DiscreteToken kSpace_behave_3086{3086};
 // " Chile"; original GPT-2 ID 17456.
-inline constexpr TokenId kSpace_Chile_3087 = 3087;
+inline constexpr DiscreteToken kSpace_Chile_3087{3087};
 // " pixel"; original GPT-2 ID 17465.
-inline constexpr TokenId kSpace_pixel_3088 = 3088;
+inline constexpr DiscreteToken kSpace_pixel_3088{3088};
 // " Tag"; original GPT-2 ID 17467.
-inline constexpr TokenId kSpace_Tag_3089 = 3089;
+inline constexpr DiscreteToken kSpace_Tag_3089{3089};
 // " pul"; original GPT-2 ID 17472.
-inline constexpr TokenId kSpace_pul_3090 = 3090;
+inline constexpr DiscreteToken kSpace_pul_3090{3090};
 // " coastal"; original GPT-2 ID 17475.
-inline constexpr TokenId kSpace_coastal_3091 = 3091;
+inline constexpr DiscreteToken kSpace_coastal_3091{3091};
 // "Tur"; original GPT-2 ID 17483.
-inline constexpr TokenId kTur_3092 = 3092;
+inline constexpr DiscreteToken kTur_3092{3092};
 // "osc"; original GPT-2 ID 17500.
-inline constexpr TokenId kosc_3093 = 3093;
+inline constexpr DiscreteToken kosc_3093{3093};
 // "ilia"; original GPT-2 ID 17517.
-inline constexpr TokenId kilia_3094 = 3094;
+inline constexpr DiscreteToken kilia_3094{3094};
 // " snake"; original GPT-2 ID 17522.
-inline constexpr TokenId kSpace_snake_3095 = 3095;
+inline constexpr DiscreteToken kSpace_snake_3095{3095};
 // " adventures"; original GPT-2 ID 17545.
-inline constexpr TokenId kSpace_adventures_3096 = 3096;
+inline constexpr DiscreteToken kSpace_adventures_3096{3096};
 // " guides"; original GPT-2 ID 17555.
-inline constexpr TokenId kSpace_guides_3097 = 3097;
+inline constexpr DiscreteToken kSpace_guides_3097{3097};
 // " dioxide"; original GPT-2 ID 17556.
-inline constexpr TokenId kSpace_dioxide_3098 = 3098;
+inline constexpr DiscreteToken kSpace_dioxide_3098{3098};
 // " absorb"; original GPT-2 ID 17565.
-inline constexpr TokenId kSpace_absorb_3099 = 3099;
+inline constexpr DiscreteToken kSpace_absorb_3099{3099};
 // "Af"; original GPT-2 ID 17584.
-inline constexpr TokenId kAf_3100 = 3100;
+inline constexpr DiscreteToken kAf_3100{3100};
 // " needle"; original GPT-2 ID 17598.
-inline constexpr TokenId kSpace_needle_3101 = 3101;
+inline constexpr DiscreteToken kSpace_needle_3101{3101};
 // " Holmes"; original GPT-2 ID 17628.
-inline constexpr TokenId kSpace_Holmes_3102 = 3102;
+inline constexpr DiscreteToken kSpace_Holmes_3102{3102};
 // " obstacles"; original GPT-2 ID 17648.
-inline constexpr TokenId kSpace_obstacles_3103 = 3103;
+inline constexpr DiscreteToken kSpace_obstacles_3103{3103};
 // " discharge"; original GPT-2 ID 17655.
-inline constexpr TokenId kSpace_discharge_3104 = 3104;
+inline constexpr DiscreteToken kSpace_discharge_3104{3104};
 // " collision"; original GPT-2 ID 17661.
-inline constexpr TokenId kSpace_collision_3105 = 3105;
+inline constexpr DiscreteToken kSpace_collision_3105{3105};
 // " hydrogen"; original GPT-2 ID 17669.
-inline constexpr TokenId kSpace_hydrogen_3106 = 3106;
+inline constexpr DiscreteToken kSpace_hydrogen_3106{3106};
 // "auts"; original GPT-2 ID 17712.
-inline constexpr TokenId kauts_3107 = 3107;
+inline constexpr DiscreteToken kauts_3107{3107};
 // " molecules"; original GPT-2 ID 17745.
-inline constexpr TokenId kSpace_molecules_3108 = 3108;
+inline constexpr DiscreteToken kSpace_molecules_3108{3108};
 // " nucle"; original GPT-2 ID 17751.
-inline constexpr TokenId kSpace_nucle_3109 = 3109;
+inline constexpr DiscreteToken kSpace_nucle_3109{3109};
 // " monument"; original GPT-2 ID 17757.
-inline constexpr TokenId kSpace_monument_3110 = 3110;
+inline constexpr DiscreteToken kSpace_monument_3110{3110};
 // "ucked"; original GPT-2 ID 17758.
-inline constexpr TokenId kucked_3111 = 3111;
+inline constexpr DiscreteToken kucked_3111{3111};
 // " 256"; original GPT-2 ID 17759.
-inline constexpr TokenId kSpace_256_3112 = 3112;
+inline constexpr DiscreteToken kSpace_256_3112{3112};
 // " tile"; original GPT-2 ID 17763.
-inline constexpr TokenId kSpace_tile_3113 = 3113;
+inline constexpr DiscreteToken kSpace_tile_3113{3113};
 // " undergo"; original GPT-2 ID 17777.
-inline constexpr TokenId kSpace_undergo_3114 = 3114;
+inline constexpr DiscreteToken kSpace_undergo_3114{3114};
 // " travels"; original GPT-2 ID 17781.
-inline constexpr TokenId kSpace_travels_3115 = 3115;
+inline constexpr DiscreteToken kSpace_travels_3115{3115};
 // "lings"; original GPT-2 ID 17783.
-inline constexpr TokenId klings_3116 = 3116;
+inline constexpr DiscreteToken klings_3116{3116};
 // "uras"; original GPT-2 ID 17786.
-inline constexpr TokenId kuras_3117 = 3117;
+inline constexpr DiscreteToken kuras_3117{3117};
 // " vine"; original GPT-2 ID 17793.
-inline constexpr TokenId kSpace_vine_3118 = 3118;
+inline constexpr DiscreteToken kSpace_vine_3118{3118};
 // " quantities"; original GPT-2 ID 17794.
-inline constexpr TokenId kSpace_quantities_3119 = 3119;
+inline constexpr DiscreteToken kSpace_quantities_3119{3119};
 // " soy"; original GPT-2 ID 17797.
-inline constexpr TokenId kSpace_soy_3120 = 3120;
+inline constexpr DiscreteToken kSpace_soy_3120{3120};
 // "Dragon"; original GPT-2 ID 17808.
-inline constexpr TokenId kDragon_3121 = 3121;
+inline constexpr DiscreteToken kDragon_3121{3121};
 // " horizon"; original GPT-2 ID 17810.
-inline constexpr TokenId kSpace_horizon_3122 = 3122;
+inline constexpr DiscreteToken kSpace_horizon_3122{3122};
 // " beats"; original GPT-2 ID 17825.
-inline constexpr TokenId kSpace_beats_3123 = 3123;
+inline constexpr DiscreteToken kSpace_beats_3123{3123};
 // " Finland"; original GPT-2 ID 17837.
-inline constexpr TokenId kSpace_Finland_3124 = 3124;
+inline constexpr DiscreteToken kSpace_Finland_3124{3124};
 // " pixels"; original GPT-2 ID 17848.
-inline constexpr TokenId kSpace_pixels_3125 = 3125;
+inline constexpr DiscreteToken kSpace_pixels_3125{3125};
 // "SQL"; original GPT-2 ID 17861.
-inline constexpr TokenId kSQL_3126 = 3126;
+inline constexpr DiscreteToken kSQL_3126{3126};
 // "ishment"; original GPT-2 ID 17862.
-inline constexpr TokenId kishment_3127 = 3127;
+inline constexpr DiscreteToken kishment_3127{3127};
 // "Contin"; original GPT-2 ID 17875.
-inline constexpr TokenId kContin_3128 = 3128;
+inline constexpr DiscreteToken kContin_3128{3128};
 // " segments"; original GPT-2 ID 17894.
-inline constexpr TokenId kSpace_segments_3129 = 3129;
+inline constexpr DiscreteToken kSpace_segments_3129{3129};
 // "August"; original GPT-2 ID 17908.
-inline constexpr TokenId kAugust_3130 = 3130;
+inline constexpr DiscreteToken kAugust_3130{3130};
 // " hex"; original GPT-2 ID 17910.
-inline constexpr TokenId kSpace_hex_3131 = 3131;
+inline constexpr DiscreteToken kSpace_hex_3131{3131};
 // "abi"; original GPT-2 ID 17914.
-inline constexpr TokenId kabi_3132 = 3132;
+inline constexpr DiscreteToken kabi_3132{3132};
 // "mination"; original GPT-2 ID 17928.
-inline constexpr TokenId kmination_3133 = 3133;
+inline constexpr DiscreteToken kmination_3133{3133};
 // "Canada"; original GPT-2 ID 17940.
-inline constexpr TokenId kCanada_3134 = 3134;
+inline constexpr DiscreteToken kCanada_3134{3134};
 // "amel"; original GPT-2 ID 17983.
-inline constexpr TokenId kamel_3135 = 3135;
+inline constexpr DiscreteToken kamel_3135{3135};
 // " observers"; original GPT-2 ID 17984.
-inline constexpr TokenId kSpace_observers_3136 = 3136;
+inline constexpr DiscreteToken kSpace_observers_3136{3136};
 // "usk"; original GPT-2 ID 17990.
-inline constexpr TokenId kusk_3137 = 3137;
+inline constexpr DiscreteToken kusk_3137{3137};
 // " cables"; original GPT-2 ID 18018.
-inline constexpr TokenId kSpace_cables_3138 = 3138;
+inline constexpr DiscreteToken kSpace_cables_3138{3138};
 // " Caribbean"; original GPT-2 ID 18020.
-inline constexpr TokenId kSpace_Caribbean_3139 = 3139;
+inline constexpr DiscreteToken kSpace_Caribbean_3139{3139};
 // " byte"; original GPT-2 ID 18022.
-inline constexpr TokenId kSpace_byte_3140 = 3140;
+inline constexpr DiscreteToken kSpace_byte_3140{3140};
 // " singular"; original GPT-2 ID 18032.
-inline constexpr TokenId kSpace_singular_3141 = 3141;
+inline constexpr DiscreteToken kSpace_singular_3141{3141};
 // " breathe"; original GPT-2 ID 18044.
-inline constexpr TokenId kSpace_breathe_3142 = 3142;
+inline constexpr DiscreteToken kSpace_breathe_3142{3142};
 // " coupled"; original GPT-2 ID 18064.
-inline constexpr TokenId kSpace_coupled_3143 = 3143;
+inline constexpr DiscreteToken kSpace_coupled_3143{3143};
 // " pitcher"; original GPT-2 ID 18086.
-inline constexpr TokenId kSpace_pitcher_3144 = 3144;
+inline constexpr DiscreteToken kSpace_pitcher_3144{3144};
 // " faint"; original GPT-2 ID 18107.
-inline constexpr TokenId kSpace_faint_3145 = 3145;
+inline constexpr DiscreteToken kSpace_faint_3145{3145};
 // " solving"; original GPT-2 ID 18120.
-inline constexpr TokenId kSpace_solving_3146 = 3146;
+inline constexpr DiscreteToken kSpace_solving_3146{3146};
 // "airo"; original GPT-2 ID 18131.
-inline constexpr TokenId kairo_3147 = 3147;
+inline constexpr DiscreteToken kairo_3147{3147};
 // " interfere"; original GPT-2 ID 18135.
-inline constexpr TokenId kSpace_interfere_3148 = 3148;
+inline constexpr DiscreteToken kSpace_interfere_3148{3148};
 // " preceding"; original GPT-2 ID 18148.
-inline constexpr TokenId kSpace_preceding_3149 = 3149;
+inline constexpr DiscreteToken kSpace_preceding_3149{3149};
 // " rivers"; original GPT-2 ID 18180.
-inline constexpr TokenId kSpace_rivers_3150 = 3150;
+inline constexpr DiscreteToken kSpace_rivers_3150{3150};
 // " deposits"; original GPT-2 ID 18190.
-inline constexpr TokenId kSpace_deposits_3151 = 3151;
+inline constexpr DiscreteToken kSpace_deposits_3151{3151};
 // "allic"; original GPT-2 ID 18196.
-inline constexpr TokenId kallic_3152 = 3152;
+inline constexpr DiscreteToken kallic_3152{3152};
 // " smallest"; original GPT-2 ID 18197.
-inline constexpr TokenId kSpace_smallest_3153 = 3153;
+inline constexpr DiscreteToken kSpace_smallest_3153{3153};
 // "lit"; original GPT-2 ID 18250.
-inline constexpr TokenId klit_3154 = 3154;
+inline constexpr DiscreteToken klit_3154{3154};
 // " integer"; original GPT-2 ID 18253.
-inline constexpr TokenId kSpace_integer_3155 = 3155;
+inline constexpr DiscreteToken kSpace_integer_3155{3155};
 // " skeleton"; original GPT-2 ID 18328.
-inline constexpr TokenId kSpace_skeleton_3156 = 3156;
+inline constexpr DiscreteToken kSpace_skeleton_3156{3156};
 // " angles"; original GPT-2 ID 18333.
-inline constexpr TokenId kSpace_angles_3157 = 3157;
+inline constexpr DiscreteToken kSpace_angles_3157{3157};
 // " incidence"; original GPT-2 ID 18349.
-inline constexpr TokenId kSpace_incidence_3158 = 3158;
+inline constexpr DiscreteToken kSpace_incidence_3158{3158};
 // " mineral"; original GPT-2 ID 18352.
-inline constexpr TokenId kSpace_mineral_3159 = 3159;
+inline constexpr DiscreteToken kSpace_mineral_3159{3159};
 // " thunder"; original GPT-2 ID 18355.
-inline constexpr TokenId kSpace_thunder_3160 = 3160;
+inline constexpr DiscreteToken kSpace_thunder_3160{3160};
 // " defenses"; original GPT-2 ID 18370.
-inline constexpr TokenId kSpace_defenses_3161 = 3161;
+inline constexpr DiscreteToken kSpace_defenses_3161{3161};
 // " Shah"; original GPT-2 ID 18381.
-inline constexpr TokenId kSpace_Shah_3162 = 3162;
+inline constexpr DiscreteToken kSpace_Shah_3162{3162};
 // " reproductive"; original GPT-2 ID 18391.
-inline constexpr TokenId kSpace_reproductive_3163 = 3163;
+inline constexpr DiscreteToken kSpace_reproductive_3163{3163};
 // " lenses"; original GPT-2 ID 18405.
-inline constexpr TokenId kSpace_lenses_3164 = 3164;
+inline constexpr DiscreteToken kSpace_lenses_3164{3164};
 // " thermal"; original GPT-2 ID 18411.
-inline constexpr TokenId kSpace_thermal_3165 = 3165;
+inline constexpr DiscreteToken kSpace_thermal_3165{3165};
 // " treats"; original GPT-2 ID 18432.
-inline constexpr TokenId kSpace_treats_3166 = 3166;
+inline constexpr DiscreteToken kSpace_treats_3166{3166};
 // " bron"; original GPT-2 ID 18443.
-inline constexpr TokenId kSpace_bron_3167 = 3167;
+inline constexpr DiscreteToken kSpace_bron_3167{3167};
 // "aic"; original GPT-2 ID 18452.
-inline constexpr TokenId kaic_3168 = 3168;
+inline constexpr DiscreteToken kaic_3168{3168};
 // "Mad"; original GPT-2 ID 18454.
-inline constexpr TokenId kMad_3169 = 3169;
+inline constexpr DiscreteToken kMad_3169{3169};
 // "Sand"; original GPT-2 ID 18471.
-inline constexpr TokenId kSand_3170 = 3170;
+inline constexpr DiscreteToken kSand_3170{3170};
 // " optical"; original GPT-2 ID 18480.
-inline constexpr TokenId kSpace_optical_3171 = 3171;
+inline constexpr DiscreteToken kSpace_optical_3171{3171};
 // " Pearl"; original GPT-2 ID 18482.
-inline constexpr TokenId kSpace_Pearl_3172 = 3172;
+inline constexpr DiscreteToken kSpace_Pearl_3172{3172};
 // " farther"; original GPT-2 ID 18485.
-inline constexpr TokenId kSpace_farther_3173 = 3173;
+inline constexpr DiscreteToken kSpace_farther_3173{3173};
 // " manipulate"; original GPT-2 ID 18510.
-inline constexpr TokenId kSpace_manipulate_3174 = 3174;
+inline constexpr DiscreteToken kSpace_manipulate_3174{3174};
 // "Unlike"; original GPT-2 ID 18521.
-inline constexpr TokenId kUnlike_3175 = 3175;
+inline constexpr DiscreteToken kUnlike_3175{3175};
 // " Vers"; original GPT-2 ID 18535.
-inline constexpr TokenId kSpace_Vers_3176 = 3176;
+inline constexpr DiscreteToken kSpace_Vers_3176{3176};
 // " Garcia"; original GPT-2 ID 18555.
-inline constexpr TokenId kSpace_Garcia_3177 = 3177;
+inline constexpr DiscreteToken kSpace_Garcia_3177{3177};
 // " portrait"; original GPT-2 ID 18560.
-inline constexpr TokenId kSpace_portrait_3178 = 3178;
+inline constexpr DiscreteToken kSpace_portrait_3178{3178};
 // " floors"; original GPT-2 ID 18570.
-inline constexpr TokenId kSpace_floors_3179 = 3179;
+inline constexpr DiscreteToken kSpace_floors_3179{3179};
 // " crushed"; original GPT-2 ID 18577.
-inline constexpr TokenId kSpace_crushed_3180 = 3180;
+inline constexpr DiscreteToken kSpace_crushed_3180{3180};
 // " apost"; original GPT-2 ID 18584.
-inline constexpr TokenId kSpace_apost_3181 = 3181;
+inline constexpr DiscreteToken kSpace_apost_3181{3181};
 // " generates"; original GPT-2 ID 18616.
-inline constexpr TokenId kSpace_generates_3182 = 3182;
+inline constexpr DiscreteToken kSpace_generates_3182{3182};
 // " circular"; original GPT-2 ID 18620.
-inline constexpr TokenId kSpace_circular_3183 = 3183;
+inline constexpr DiscreteToken kSpace_circular_3183{3183};
 // " upward"; original GPT-2 ID 18644.
-inline constexpr TokenId kSpace_upward_3184 = 3184;
+inline constexpr DiscreteToken kSpace_upward_3184{3184};
 // " boundary"; original GPT-2 ID 18645.
-inline constexpr TokenId kSpace_boundary_3185 = 3185;
+inline constexpr DiscreteToken kSpace_boundary_3185{3185};
 // " metric"; original GPT-2 ID 18663.
-inline constexpr TokenId kSpace_metric_3186 = 3186;
+inline constexpr DiscreteToken kSpace_metric_3186{3186};
 // " transported"; original GPT-2 ID 18665.
-inline constexpr TokenId kSpace_transported_3187 = 3187;
+inline constexpr DiscreteToken kSpace_transported_3187{3187};
 // " CE"; original GPT-2 ID 18671.
-inline constexpr TokenId kSpace_CE_3188 = 3188;
+inline constexpr DiscreteToken kSpace_CE_3188{3188};
 // " Desert"; original GPT-2 ID 18692.
-inline constexpr TokenId kSpace_Desert_3189 = 3189;
+inline constexpr DiscreteToken kSpace_Desert_3189{3189};
 // "okers"; original GPT-2 ID 18698.
-inline constexpr TokenId kokers_3190 = 3190;
+inline constexpr DiscreteToken kokers_3190{3190};
 // " lion"; original GPT-2 ID 18744.
-inline constexpr TokenId kSpace_lion_3191 = 3191;
+inline constexpr DiscreteToken kSpace_lion_3191{3191};
 // "Bron"; original GPT-2 ID 18760.
-inline constexpr TokenId kBron_3192 = 3192;
+inline constexpr DiscreteToken kBron_3192{3192};
 // " oxid"; original GPT-2 ID 18762.
-inline constexpr TokenId kSpace_oxid_3193 = 3193;
+inline constexpr DiscreteToken kSpace_oxid_3193{3193};
 // " distinctive"; original GPT-2 ID 18778.
-inline constexpr TokenId kSpace_distinctive_3194 = 3194;
+inline constexpr DiscreteToken kSpace_distinctive_3194{3194};
 // "built"; original GPT-2 ID 18780.
-inline constexpr TokenId kbuilt_3195 = 3195;
+inline constexpr DiscreteToken kbuilt_3195{3195};
 // " explored"; original GPT-2 ID 18782.
-inline constexpr TokenId kSpace_explored_3196 = 3196;
+inline constexpr DiscreteToken kSpace_explored_3196{3196};
 // "stant"; original GPT-2 ID 18797.
-inline constexpr TokenId kstant_3197 = 3197;
+inline constexpr DiscreteToken kstant_3197{3197};
 // " colony"; original GPT-2 ID 18815.
-inline constexpr TokenId kSpace_colony_3198 = 3198;
+inline constexpr DiscreteToken kSpace_colony_3198{3198};
 // "ablo"; original GPT-2 ID 18817.
-inline constexpr TokenId kablo_3199 = 3199;
+inline constexpr DiscreteToken kablo_3199{3199};
 // " uncovered"; original GPT-2 ID 18838.
-inline constexpr TokenId kSpace_uncovered_3200 = 3200;
+inline constexpr DiscreteToken kSpace_uncovered_3200{3200};
 // "Cloud"; original GPT-2 ID 18839.
-inline constexpr TokenId kCloud_3201 = 3201;
+inline constexpr DiscreteToken kCloud_3201{3201};
 // " mes"; original GPT-2 ID 18842.
-inline constexpr TokenId kSpace_mes_3202 = 3202;
+inline constexpr DiscreteToken kSpace_mes_3202{3202};
 // "Ann"; original GPT-2 ID 18858.
-inline constexpr TokenId kAnn_3203 = 3203;
+inline constexpr DiscreteToken kAnn_3203{3203};
 // " distances"; original GPT-2 ID 18868.
-inline constexpr TokenId kSpace_distances_3204 = 3204;
+inline constexpr DiscreteToken kSpace_distances_3204{3204};
 // " literal"; original GPT-2 ID 18875.
-inline constexpr TokenId kSpace_literal_3205 = 3205;
+inline constexpr DiscreteToken kSpace_literal_3205{3205};
 // " urine"; original GPT-2 ID 18922.
-inline constexpr TokenId kSpace_urine_3206 = 3206;
+inline constexpr DiscreteToken kSpace_urine_3206{3206};
 // "Inf"; original GPT-2 ID 18943.
-inline constexpr TokenId kInf_3207 = 3207;
+inline constexpr DiscreteToken kInf_3207{3207};
 // " molecular"; original GPT-2 ID 18955.
-inline constexpr TokenId kSpace_molecular_3208 = 3208;
+inline constexpr DiscreteToken kSpace_molecular_3208{3208};
 // " outline"; original GPT-2 ID 19001.
-inline constexpr TokenId kSpace_outline_3209 = 3209;
+inline constexpr DiscreteToken kSpace_outline_3209{3209};
 // " fertil"; original GPT-2 ID 19078.
-inline constexpr TokenId kSpace_fertil_3210 = 3210;
+inline constexpr DiscreteToken kSpace_fertil_3210{3210};
 // "heres"; original GPT-2 ID 19079.
-inline constexpr TokenId kheres_3211 = 3211;
+inline constexpr DiscreteToken kheres_3211{3211};
 // " viewer"; original GPT-2 ID 19091.
-inline constexpr TokenId kSpace_viewer_3212 = 3212;
+inline constexpr DiscreteToken kSpace_viewer_3212{3212};
 // " Portugal"; original GPT-2 ID 19101.
-inline constexpr TokenId kSpace_Portugal_3213 = 3213;
+inline constexpr DiscreteToken kSpace_Portugal_3213{3213};
 // " stretched"; original GPT-2 ID 19110.
-inline constexpr TokenId kSpace_stretched_3214 = 3214;
+inline constexpr DiscreteToken kSpace_stretched_3214{3214};
 // " piano"; original GPT-2 ID 19132.
-inline constexpr TokenId kSpace_piano_3215 = 3215;
+inline constexpr DiscreteToken kSpace_piano_3215{3215};
 // "sun"; original GPT-2 ID 19155.
-inline constexpr TokenId ksun_3216 = 3216;
+inline constexpr DiscreteToken ksun_3216{3216};
 // "Robert"; original GPT-2 ID 19156.
-inline constexpr TokenId kRobert_3217 = 3217;
+inline constexpr DiscreteToken kRobert_3217{3217};
 // "Water"; original GPT-2 ID 19184.
-inline constexpr TokenId kWater_3218 = 3218;
+inline constexpr DiscreteToken kWater_3218{3218};
 // "ells"; original GPT-2 ID 19187.
-inline constexpr TokenId kells_3219 = 3219;
+inline constexpr DiscreteToken kells_3219{3219};
 // "ahan"; original GPT-2 ID 19210.
-inline constexpr TokenId kahan_3220 = 3220;
+inline constexpr DiscreteToken kahan_3220{3220};
 // " delicate"; original GPT-2 ID 19217.
-inline constexpr TokenId kSpace_delicate_3221 = 3221;
+inline constexpr DiscreteToken kSpace_delicate_3221{3221};
 // "Sal"; original GPT-2 ID 19221.
-inline constexpr TokenId kSal_3222 = 3222;
+inline constexpr DiscreteToken kSal_3222{3222};
 // "Cast"; original GPT-2 ID 19248.
-inline constexpr TokenId kCast_3223 = 3223;
+inline constexpr DiscreteToken kCast_3223{3223};
 // " oct"; original GPT-2 ID 19318.
-inline constexpr TokenId kSpace_oct_3224 = 3224;
+inline constexpr DiscreteToken kSpace_oct_3224{3224};
 // " cooler"; original GPT-2 ID 19346.
-inline constexpr TokenId kSpace_cooler_3225 = 3225;
+inline constexpr DiscreteToken kSpace_cooler_3225{3225};
 // "Lim"; original GPT-2 ID 19352.
-inline constexpr TokenId kLim_3226 = 3226;
+inline constexpr DiscreteToken kLim_3226{3226};
 // " bend"; original GPT-2 ID 19396.
-inline constexpr TokenId kSpace_bend_3227 = 3227;
+inline constexpr DiscreteToken kSpace_bend_3227{3227};
 // "six"; original GPT-2 ID 19412.
-inline constexpr TokenId ksix_3228 = 3228;
+inline constexpr DiscreteToken ksix_3228{3228};
 // "oys"; original GPT-2 ID 19417.
-inline constexpr TokenId koys_3229 = 3229;
+inline constexpr DiscreteToken koys_3229{3229};
 // " illustrate"; original GPT-2 ID 19418.
-inline constexpr TokenId kSpace_illustrate_3230 = 3230;
+inline constexpr DiscreteToken kSpace_illustrate_3230{3230};
 // " insects"; original GPT-2 ID 19435.
-inline constexpr TokenId kSpace_insects_3231 = 3231;
+inline constexpr DiscreteToken kSpace_insects_3231{3231};
 // " olive"; original GPT-2 ID 19450.
-inline constexpr TokenId kSpace_olive_3232 = 3232;
+inline constexpr DiscreteToken kSpace_olive_3232{3232};
 // "Elect"; original GPT-2 ID 19453.
-inline constexpr TokenId kElect_3233 = 3233;
+inline constexpr DiscreteToken kElect_3233{3233};
 // " gran"; original GPT-2 ID 19468.
-inline constexpr TokenId kSpace_gran_3234 = 3234;
+inline constexpr DiscreteToken kSpace_gran_3234{3234};
 // " Bangladesh"; original GPT-2 ID 19483.
-inline constexpr TokenId kSpace_Bangladesh_3235 = 3235;
+inline constexpr DiscreteToken kSpace_Bangladesh_3235{3235};
 // "short"; original GPT-2 ID 19509.
-inline constexpr TokenId kshort_3236 = 3236;
+inline constexpr DiscreteToken kshort_3236{3236};
 // " Mediterranean"; original GPT-2 ID 19517.
-inline constexpr TokenId kSpace_Mediterranean_3237 = 3237;
+inline constexpr DiscreteToken kSpace_Mediterranean_3237{3237};
 // " backward"; original GPT-2 ID 19528.
-inline constexpr TokenId kSpace_backward_3238 = 3238;
+inline constexpr DiscreteToken kSpace_backward_3238{3238};
 // " dip"; original GPT-2 ID 19550.
-inline constexpr TokenId kSpace_dip_3239 = 3239;
+inline constexpr DiscreteToken kSpace_dip_3239{3239};
 // " digits"; original GPT-2 ID 19561.
-inline constexpr TokenId kSpace_digits_3240 = 3240;
+inline constexpr DiscreteToken kSpace_digits_3240{3240};
 // " depict"; original GPT-2 ID 19583.
-inline constexpr TokenId kSpace_depict_3241 = 3241;
+inline constexpr DiscreteToken kSpace_depict_3241{3241};
 // " reinforce"; original GPT-2 ID 19594.
-inline constexpr TokenId kSpace_reinforce_3242 = 3242;
+inline constexpr DiscreteToken kSpace_reinforce_3242{3242};
 // " sunlight"; original GPT-2 ID 19606.
-inline constexpr TokenId kSpace_sunlight_3243 = 3243;
+inline constexpr DiscreteToken kSpace_sunlight_3243{3243};
 // " glow"; original GPT-2 ID 19634.
-inline constexpr TokenId kSpace_glow_3244 = 3244;
+inline constexpr DiscreteToken kSpace_glow_3244{3244};
 // " Norman"; original GPT-2 ID 19636.
-inline constexpr TokenId kSpace_Norman_3245 = 3245;
+inline constexpr DiscreteToken kSpace_Norman_3245{3245};
 // " packet"; original GPT-2 ID 19638.
-inline constexpr TokenId kSpace_packet_3246 = 3246;
+inline constexpr DiscreteToken kSpace_packet_3246{3246};
 // " ov"; original GPT-2 ID 19643.
-inline constexpr TokenId kSpace_ov_3247 = 3247;
+inline constexpr DiscreteToken kSpace_ov_3247{3247};
 // " neighboring"; original GPT-2 ID 19651.
-inline constexpr TokenId kSpace_neighboring_3248 = 3248;
+inline constexpr DiscreteToken kSpace_neighboring_3248{3248};
 // " tropical"; original GPT-2 ID 19690.
-inline constexpr TokenId kSpace_tropical_3249 = 3249;
+inline constexpr DiscreteToken kSpace_tropical_3249{3249};
 // " calcium"; original GPT-2 ID 19700.
-inline constexpr TokenId kSpace_calcium_3250 = 3250;
+inline constexpr DiscreteToken kSpace_calcium_3250{3250};
 // " prince"; original GPT-2 ID 19716.
-inline constexpr TokenId kSpace_prince_3251 = 3251;
+inline constexpr DiscreteToken kSpace_prince_3251{3251};
 // " Pill"; original GPT-2 ID 19770.
-inline constexpr TokenId kSpace_Pill_3252 = 3252;
+inline constexpr DiscreteToken kSpace_Pill_3252{3252};
 // " chess"; original GPT-2 ID 19780.
-inline constexpr TokenId kSpace_chess_3253 = 3253;
+inline constexpr DiscreteToken kSpace_chess_3253{3253};
 // " tin"; original GPT-2 ID 19783.
-inline constexpr TokenId kSpace_tin_3254 = 3254;
+inline constexpr DiscreteToken kSpace_tin_3254{3254};
 // " compression"; original GPT-2 ID 19794.
-inline constexpr TokenId kSpace_compression_3255 = 3255;
+inline constexpr DiscreteToken kSpace_compression_3255{3255};
 // " fictional"; original GPT-2 ID 19812.
-inline constexpr TokenId kSpace_fictional_3256 = 3256;
+inline constexpr DiscreteToken kSpace_fictional_3256{3256};
 // " cellular"; original GPT-2 ID 19824.
-inline constexpr TokenId kSpace_cellular_3257 = 3257;
+inline constexpr DiscreteToken kSpace_cellular_3257{3257};
 // "idian"; original GPT-2 ID 19825.
-inline constexpr TokenId kidian_3258 = 3258;
+inline constexpr DiscreteToken kidian_3258{3258};
 // " Mons"; original GPT-2 ID 19853.
-inline constexpr TokenId kSpace_Mons_3259 = 3259;
+inline constexpr DiscreteToken kSpace_Mons_3259{3259};
 // " inclusive"; original GPT-2 ID 19889.
-inline constexpr TokenId kSpace_inclusive_3260 = 3260;
+inline constexpr DiscreteToken kSpace_inclusive_3260{3260};
 // "Arch"; original GPT-2 ID 19895.
-inline constexpr TokenId kArch_3261 = 3261;
+inline constexpr DiscreteToken kArch_3261{3261};
 // " starters"; original GPT-2 ID 19896.
-inline constexpr TokenId kSpace_starters_3262 = 3262;
+inline constexpr DiscreteToken kSpace_starters_3262{3262};
 // " Kil"; original GPT-2 ID 19902.
-inline constexpr TokenId kSpace_Kil_3263 = 3263;
+inline constexpr DiscreteToken kSpace_Kil_3263{3263};
 // "orns"; original GPT-2 ID 19942.
-inline constexpr TokenId korns_3264 = 3264;
+inline constexpr DiscreteToken korns_3264{3264};
 // " medieval"; original GPT-2 ID 19955.
-inline constexpr TokenId kSpace_medieval_3265 = 3265;
+inline constexpr DiscreteToken kSpace_medieval_3265{3265};
 // "Daniel"; original GPT-2 ID 19962.
-inline constexpr TokenId kDaniel_3266 = 3266;
+inline constexpr DiscreteToken kDaniel_3266{3266};
 // "games"; original GPT-2 ID 19966.
-inline constexpr TokenId kgames_3267 = 3267;
+inline constexpr DiscreteToken kgames_3267{3267};
 // " magnet"; original GPT-2 ID 19972.
-inline constexpr TokenId kSpace_magnet_3268 = 3268;
+inline constexpr DiscreteToken kSpace_magnet_3268{3268};
 // " frequencies"; original GPT-2 ID 19998.
-inline constexpr TokenId kSpace_frequencies_3269 = 3269;
+inline constexpr DiscreteToken kSpace_frequencies_3269{3269};
 // " meteor"; original GPT-2 ID 19999.
-inline constexpr TokenId kSpace_meteor_3270 = 3270;
+inline constexpr DiscreteToken kSpace_meteor_3270{3270};
 // " intervals"; original GPT-2 ID 20016.
-inline constexpr TokenId kSpace_intervals_3271 = 3271;
+inline constexpr DiscreteToken kSpace_intervals_3271{3271};
 // " Domain"; original GPT-2 ID 20021.
-inline constexpr TokenId kSpace_Domain_3272 = 3272;
+inline constexpr DiscreteToken kSpace_Domain_3272{3272};
 // "chet"; original GPT-2 ID 20043.
-inline constexpr TokenId kchet_3273 = 3273;
+inline constexpr DiscreteToken kchet_3273{3273};
 // " crust"; original GPT-2 ID 20048.
-inline constexpr TokenId kSpace_crust_3274 = 3274;
+inline constexpr DiscreteToken kSpace_crust_3274{3274};
 // " Tol"; original GPT-2 ID 20054.
-inline constexpr TokenId kSpace_Tol_3275 = 3275;
+inline constexpr DiscreteToken kSpace_Tol_3275{3275};
 // " responds"; original GPT-2 ID 20067.
-inline constexpr TokenId kSpace_responds_3276 = 3276;
+inline constexpr DiscreteToken kSpace_responds_3276{3276};
 // " ruins"; original GPT-2 ID 20073.
-inline constexpr TokenId kSpace_ruins_3277 = 3277;
+inline constexpr DiscreteToken kSpace_ruins_3277{3277};
 // " displaced"; original GPT-2 ID 20085.
-inline constexpr TokenId kSpace_displaced_3278 = 3278;
+inline constexpr DiscreteToken kSpace_displaced_3278{3278};
 // "opl"; original GPT-2 ID 20106.
-inline constexpr TokenId kopl_3279 = 3279;
+inline constexpr DiscreteToken kopl_3279{3279};
 // " phrases"; original GPT-2 ID 20144.
-inline constexpr TokenId kSpace_phrases_3280 = 3280;
+inline constexpr DiscreteToken kSpace_phrases_3280{3280};
 // " yeast"; original GPT-2 ID 20146.
-inline constexpr TokenId kSpace_yeast_3281 = 3281;
+inline constexpr DiscreteToken kSpace_yeast_3281{3281};
 // " moisture"; original GPT-2 ID 20160.
-inline constexpr TokenId kSpace_moisture_3282 = 3282;
+inline constexpr DiscreteToken kSpace_moisture_3282{3282};
 // " lovers"; original GPT-2 ID 20175.
-inline constexpr TokenId kSpace_lovers_3283 = 3283;
+inline constexpr DiscreteToken kSpace_lovers_3283{3283};
 // " vapor"; original GPT-2 ID 20199.
-inline constexpr TokenId kSpace_vapor_3284 = 3284;
+inline constexpr DiscreteToken kSpace_vapor_3284{3284};
 // " Treasure"; original GPT-2 ID 20215.
-inline constexpr TokenId kSpace_Treasure_3285 = 3285;
+inline constexpr DiscreteToken kSpace_Treasure_3285{3285};
 // " vegetable"; original GPT-2 ID 20236.
-inline constexpr TokenId kSpace_vegetable_3286 = 3286;
+inline constexpr DiscreteToken kSpace_vegetable_3286{3286};
 // "Sat"; original GPT-2 ID 20245.
-inline constexpr TokenId kSat_3287 = 3287;
+inline constexpr DiscreteToken kSat_3287{3287};
 // " reflecting"; original GPT-2 ID 20252.
-inline constexpr TokenId kSpace_reflecting_3288 = 3288;
+inline constexpr DiscreteToken kSpace_reflecting_3288{3288};
 // " router"; original GPT-2 ID 20264.
-inline constexpr TokenId kSpace_router_3289 = 3289;
+inline constexpr DiscreteToken kSpace_router_3289{3289};
 // "Mass"; original GPT-2 ID 20273.
-inline constexpr TokenId kMass_3290 = 3290;
+inline constexpr DiscreteToken kMass_3290{3290};
 // " protagonist"; original GPT-2 ID 20281.
-inline constexpr TokenId kSpace_protagonist_3291 = 3291;
+inline constexpr DiscreteToken kSpace_protagonist_3291{3291};
 // "teenth"; original GPT-2 ID 20283.
-inline constexpr TokenId kteenth_3292 = 3292;
+inline constexpr DiscreteToken kteenth_3292{3292};
 // " organisms"; original GPT-2 ID 20296.
-inline constexpr TokenId kSpace_organisms_3293 = 3293;
+inline constexpr DiscreteToken kSpace_organisms_3293{3293};
 // " wax"; original GPT-2 ID 20302.
-inline constexpr TokenId kSpace_wax_3294 = 3294;
+inline constexpr DiscreteToken kSpace_wax_3294{3294};
 // " acceleration"; original GPT-2 ID 20309.
-inline constexpr TokenId kSpace_acceleration_3295 = 3295;
+inline constexpr DiscreteToken kSpace_acceleration_3295{3295};
 // " varieties"; original GPT-2 ID 20328.
-inline constexpr TokenId kSpace_varieties_3296 = 3296;
+inline constexpr DiscreteToken kSpace_varieties_3296{3296};
 // " Gutenberg"; original GPT-2 ID 20336.
-inline constexpr TokenId kSpace_Gutenberg_3297 = 3297;
+inline constexpr DiscreteToken kSpace_Gutenberg_3297{3297};
 // "Dist"; original GPT-2 ID 20344.
-inline constexpr TokenId kDist_3298 = 3298;
+inline constexpr DiscreteToken kDist_3298{3298};
 // " twins"; original GPT-2 ID 20345.
-inline constexpr TokenId kSpace_twins_3299 = 3299;
+inline constexpr DiscreteToken kSpace_twins_3299{3299};
 // " Heights"; original GPT-2 ID 20365.
-inline constexpr TokenId kSpace_Heights_3300 = 3300;
+inline constexpr DiscreteToken kSpace_Heights_3300{3300};
 // " repeating"; original GPT-2 ID 20394.
-inline constexpr TokenId kSpace_repeating_3301 = 3301;
+inline constexpr DiscreteToken kSpace_repeating_3301{3301};
 // " processors"; original GPT-2 ID 20399.
-inline constexpr TokenId kSpace_processors_3302 = 3302;
+inline constexpr DiscreteToken kSpace_processors_3302{3302};
 // " connects"; original GPT-2 ID 20417.
-inline constexpr TokenId kSpace_connects_3303 = 3303;
+inline constexpr DiscreteToken kSpace_connects_3303{3303};
 // "Cy"; original GPT-2 ID 20418.
-inline constexpr TokenId kCy_3304 = 3304;
+inline constexpr DiscreteToken kCy_3304{3304};
 // " brass"; original GPT-2 ID 20422.
-inline constexpr TokenId kSpace_brass_3305 = 3305;
+inline constexpr DiscreteToken kSpace_brass_3305{3305};
 // " lengths"; original GPT-2 ID 20428.
-inline constexpr TokenId kSpace_lengths_3306 = 3306;
+inline constexpr DiscreteToken kSpace_lengths_3306{3306};
 // " coordinate"; original GPT-2 ID 20435.
-inline constexpr TokenId kSpace_coordinate_3307 = 3307;
+inline constexpr DiscreteToken kSpace_coordinate_3307{3307};
 // " pap"; original GPT-2 ID 20461.
-inline constexpr TokenId kSpace_pap_3308 = 3308;
+inline constexpr DiscreteToken kSpace_pap_3308{3308};
 // " commissioned"; original GPT-2 ID 20462.
-inline constexpr TokenId kSpace_commissioned_3309 = 3309;
+inline constexpr DiscreteToken kSpace_commissioned_3309{3309};
 // "rays"; original GPT-2 ID 20477.
-inline constexpr TokenId krays_3310 = 3310;
+inline constexpr DiscreteToken krays_3310{3310};
 // "Human"; original GPT-2 ID 20490.
-inline constexpr TokenId kHuman_3311 = 3311;
+inline constexpr DiscreteToken kHuman_3311{3311};
 // " Paradise"; original GPT-2 ID 20494.
-inline constexpr TokenId kSpace_Paradise_3312 = 3312;
+inline constexpr DiscreteToken kSpace_Paradise_3312{3312};
 // " cement"; original GPT-2 ID 20534.
-inline constexpr TokenId kSpace_cement_3313 = 3313;
+inline constexpr DiscreteToken kSpace_cement_3313{3313};
 // " palace"; original GPT-2 ID 20562.
-inline constexpr TokenId kSpace_palace_3314 = 3314;
+inline constexpr DiscreteToken kSpace_palace_3314{3314};
 // " pins"; original GPT-2 ID 20567.
-inline constexpr TokenId kSpace_pins_3315 = 3315;
+inline constexpr DiscreteToken kSpace_pins_3315{3315};
 // "Comb"; original GPT-2 ID 20575.
-inline constexpr TokenId kComb_3316 = 3316;
+inline constexpr DiscreteToken kComb_3316{3316};
 // " soda"; original GPT-2 ID 20584.
-inline constexpr TokenId kSpace_soda_3317 = 3317;
+inline constexpr DiscreteToken kSpace_soda_3317{3317};
 // " hollow"; original GPT-2 ID 20596.
-inline constexpr TokenId kSpace_hollow_3318 = 3318;
+inline constexpr DiscreteToken kSpace_hollow_3318{3318};
 // " Lem"; original GPT-2 ID 20607.
-inline constexpr TokenId kSpace_Lem_3319 = 3319;
+inline constexpr DiscreteToken kSpace_Lem_3319{3319};
 // " shoots"; original GPT-2 ID 20611.
-inline constexpr TokenId kSpace_shoots_3320 = 3320;
+inline constexpr DiscreteToken kSpace_shoots_3320{3320};
 // " oils"; original GPT-2 ID 20629.
-inline constexpr TokenId kSpace_oils_3321 = 3321;
+inline constexpr DiscreteToken kSpace_oils_3321{3321};
 // "Bot"; original GPT-2 ID 20630.
-inline constexpr TokenId kBot_3322 = 3322;
+inline constexpr DiscreteToken kBot_3322{3322};
 // " topped"; original GPT-2 ID 20633.
-inline constexpr TokenId kSpace_topped_3323 = 3323;
+inline constexpr DiscreteToken kSpace_topped_3323{3323};
 // " decreases"; original GPT-2 ID 20638.
-inline constexpr TokenId kSpace_decreases_3324 = 3324;
+inline constexpr DiscreteToken kSpace_decreases_3324{3324};
 // "Brown"; original GPT-2 ID 20644.
-inline constexpr TokenId kBrown_3325 = 3325;
+inline constexpr DiscreteToken kBrown_3325{3325};
 // " removes"; original GPT-2 ID 20694.
-inline constexpr TokenId kSpace_removes_3326 = 3326;
+inline constexpr DiscreteToken kSpace_removes_3326{3326};
 // " Spart"; original GPT-2 ID 20711.
-inline constexpr TokenId kSpace_Spart_3327 = 3327;
+inline constexpr DiscreteToken kSpace_Spart_3327{3327};
 // " Nobel"; original GPT-2 ID 20715.
-inline constexpr TokenId kSpace_Nobel_3328 = 3328;
+inline constexpr DiscreteToken kSpace_Nobel_3328{3328};
 // "glass"; original GPT-2 ID 20721.
-inline constexpr TokenId kglass_3329 = 3329;
+inline constexpr DiscreteToken kglass_3329{3329};
 // " indirectly"; original GPT-2 ID 20762.
-inline constexpr TokenId kSpace_indirectly_3330 = 3330;
+inline constexpr DiscreteToken kSpace_indirectly_3330{3330};
 // "corn"; original GPT-2 ID 20772.
-inline constexpr TokenId kcorn_3331 = 3331;
+inline constexpr DiscreteToken kcorn_3331{3331};
 // " detective"; original GPT-2 ID 20775.
-inline constexpr TokenId kSpace_detective_3332 = 3332;
+inline constexpr DiscreteToken kSpace_detective_3332{3332};
 // " cater"; original GPT-2 ID 20825.
-inline constexpr TokenId kSpace_cater_3333 = 3333;
+inline constexpr DiscreteToken kSpace_cater_3333{3333};
 // " Cities"; original GPT-2 ID 20830.
-inline constexpr TokenId kSpace_Cities_3334 = 3334;
+inline constexpr DiscreteToken kSpace_Cities_3334{3334};
 // " rigid"; original GPT-2 ID 20831.
-inline constexpr TokenId kSpace_rigid_3335 = 3335;
+inline constexpr DiscreteToken kSpace_rigid_3335{3335};
 // " Buddhist"; original GPT-2 ID 20838.
-inline constexpr TokenId kSpace_Buddhist_3336 = 3336;
+inline constexpr DiscreteToken kSpace_Buddhist_3336{3336};
 // " downward"; original GPT-2 ID 20841.
-inline constexpr TokenId kSpace_downward_3337 = 3337;
+inline constexpr DiscreteToken kSpace_downward_3337{3337};
 // " prints"; original GPT-2 ID 20842.
-inline constexpr TokenId kSpace_prints_3338 = 3338;
+inline constexpr DiscreteToken kSpace_prints_3338{3338};
 // " colonies"; original GPT-2 ID 20848.
-inline constexpr TokenId kSpace_colonies_3339 = 3339;
+inline constexpr DiscreteToken kSpace_colonies_3339{3339};
 // " Danish"; original GPT-2 ID 20849.
-inline constexpr TokenId kSpace_Danish_3340 = 3340;
+inline constexpr DiscreteToken kSpace_Danish_3340{3340};
 // " freezing"; original GPT-2 ID 20884.
-inline constexpr TokenId kSpace_freezing_3341 = 3341;
+inline constexpr DiscreteToken kSpace_freezing_3341{3341};
 // " Luis"; original GPT-2 ID 20894.
-inline constexpr TokenId kSpace_Luis_3342 = 3342;
+inline constexpr DiscreteToken kSpace_Luis_3342{3342};
 // " nutrients"; original GPT-2 ID 20901.
-inline constexpr TokenId kSpace_nutrients_3343 = 3343;
+inline constexpr DiscreteToken kSpace_nutrients_3343{3343};
 // " atmospheric"; original GPT-2 ID 20938.
-inline constexpr TokenId kSpace_atmospheric_3344 = 3344;
+inline constexpr DiscreteToken kSpace_atmospheric_3344{3344};
 // "akespeare"; original GPT-2 ID 20946.
-inline constexpr TokenId kakespeare_3345 = 3345;
+inline constexpr DiscreteToken kakespeare_3345{3345};
 // " elephant"; original GPT-2 ID 20950.
-inline constexpr TokenId kSpace_elephant_3346 = 3346;
+inline constexpr DiscreteToken kSpace_elephant_3346{3346};
 // "bee"; original GPT-2 ID 20963.
-inline constexpr TokenId kbee_3347 = 3347;
+inline constexpr DiscreteToken kbee_3347{3347};
 // "appa"; original GPT-2 ID 20975.
-inline constexpr TokenId kappa_3348 = 3348;
+inline constexpr DiscreteToken kappa_3348{3348};
 // " combines"; original GPT-2 ID 21001.
-inline constexpr TokenId kSpace_combines_3349 = 3349;
+inline constexpr DiscreteToken kSpace_combines_3349{3349};
 // " shark"; original GPT-2 ID 21027.
-inline constexpr TokenId kSpace_shark_3350 = 3350;
+inline constexpr DiscreteToken kSpace_shark_3350{3350};
 // " seize"; original GPT-2 ID 21031.
-inline constexpr TokenId kSpace_seize_3351 = 3351;
+inline constexpr DiscreteToken kSpace_seize_3351{3351};
 // "hee"; original GPT-2 ID 21067.
-inline constexpr TokenId khee_3352 = 3352;
+inline constexpr DiscreteToken khee_3352{3352};
 // " sodium"; original GPT-2 ID 21072.
-inline constexpr TokenId kSpace_sodium_3353 = 3353;
+inline constexpr DiscreteToken kSpace_sodium_3353{3353};
 // " identifies"; original GPT-2 ID 21079.
-inline constexpr TokenId kSpace_identifies_3354 = 3354;
+inline constexpr DiscreteToken kSpace_identifies_3354{3354};
 // " Venus"; original GPT-2 ID 21094.
-inline constexpr TokenId kSpace_Venus_3355 = 3355;
+inline constexpr DiscreteToken kSpace_Venus_3355{3355};
 // "Mel"; original GPT-2 ID 21102.
-inline constexpr TokenId kMel_3356 = 3356;
+inline constexpr DiscreteToken kMel_3356{3356};
 // " Mountains"; original GPT-2 ID 21124.
-inline constexpr TokenId kSpace_Mountains_3357 = 3357;
+inline constexpr DiscreteToken kSpace_Mountains_3357{3357};
 // " develops"; original GPT-2 ID 21126.
-inline constexpr TokenId kSpace_develops_3358 = 3358;
+inline constexpr DiscreteToken kSpace_develops_3358{3358};
 // " induce"; original GPT-2 ID 21155.
-inline constexpr TokenId kSpace_induce_3359 = 3359;
+inline constexpr DiscreteToken kSpace_induce_3359{3359};
 // " phases"; original GPT-2 ID 21164.
-inline constexpr TokenId kSpace_phases_3360 = 3360;
+inline constexpr DiscreteToken kSpace_phases_3360{3360};
 // "yrus"; original GPT-2 ID 21180.
-inline constexpr TokenId kyrus_3361 = 3361;
+inline constexpr DiscreteToken kyrus_3361{3361};
 // " yarn"; original GPT-2 ID 21181.
-inline constexpr TokenId kSpace_yarn_3362 = 3362;
+inline constexpr DiscreteToken kSpace_yarn_3362{3362};
 // " toe"; original GPT-2 ID 21189.
-inline constexpr TokenId kSpace_toe_3363 = 3363;
+inline constexpr DiscreteToken kSpace_toe_3363{3363};
 // " Southeast"; original GPT-2 ID 21199.
-inline constexpr TokenId kSpace_Southeast_3364 = 3364;
+inline constexpr DiscreteToken kSpace_Southeast_3364{3364};
 // " potato"; original GPT-2 ID 21219.
-inline constexpr TokenId kSpace_potato_3365 = 3365;
+inline constexpr DiscreteToken kSpace_potato_3365{3365};
 // "affe"; original GPT-2 ID 21223.
-inline constexpr TokenId kaffe_3366 = 3366;
+inline constexpr DiscreteToken kaffe_3366{3366};
 // " pads"; original GPT-2 ID 21226.
-inline constexpr TokenId kSpace_pads_3367 = 3367;
+inline constexpr DiscreteToken kSpace_pads_3367{3367};
 // " prefix"; original GPT-2 ID 21231.
-inline constexpr TokenId kSpace_prefix_3368 = 3368;
+inline constexpr DiscreteToken kSpace_prefix_3368{3368};
 // " extracted"; original GPT-2 ID 21242.
-inline constexpr TokenId kSpace_extracted_3369 = 3369;
+inline constexpr DiscreteToken kSpace_extracted_3369{3369};
 // " underwater"; original GPT-2 ID 21258.
-inline constexpr TokenId kSpace_underwater_3370 = 3370;
+inline constexpr DiscreteToken kSpace_underwater_3370{3370};
 // " frog"; original GPT-2 ID 21264.
-inline constexpr TokenId kSpace_frog_3371 = 3371;
+inline constexpr DiscreteToken kSpace_frog_3371{3371};
 // " cooperate"; original GPT-2 ID 21270.
-inline constexpr TokenId kSpace_cooperate_3372 = 3372;
+inline constexpr DiscreteToken kSpace_cooperate_3372{3372};
 // "Ham"; original GPT-2 ID 21281.
-inline constexpr TokenId kHam_3373 = 3373;
+inline constexpr DiscreteToken kHam_3373{3373};
 // " Colombia"; original GPT-2 ID 21291.
-inline constexpr TokenId kSpace_Colombia_3374 = 3374;
+inline constexpr DiscreteToken kSpace_Colombia_3374{3374};
 // " Carroll"; original GPT-2 ID 21298.
-inline constexpr TokenId kSpace_Carroll_3375 = 3375;
+inline constexpr DiscreteToken kSpace_Carroll_3375{3375};
 // " surroundings"; original GPT-2 ID 21334.
-inline constexpr TokenId kSpace_surroundings_3376 = 3376;
+inline constexpr DiscreteToken kSpace_surroundings_3376{3376};
 // " unstable"; original GPT-2 ID 21354.
-inline constexpr TokenId kSpace_unstable_3377 = 3377;
+inline constexpr DiscreteToken kSpace_unstable_3377{3377};
 // " conceal"; original GPT-2 ID 21363.
-inline constexpr TokenId kSpace_conceal_3378 = 3378;
+inline constexpr DiscreteToken kSpace_conceal_3378{3378};
 // "Sound"; original GPT-2 ID 21369.
-inline constexpr TokenId kSound_3379 = 3379;
+inline constexpr DiscreteToken kSound_3379{3379};
 // " Hag"; original GPT-2 ID 21375.
-inline constexpr TokenId kSpace_Hag_3380 = 3380;
+inline constexpr DiscreteToken kSpace_Hag_3380{3380};
 // " tissues"; original GPT-2 ID 21379.
-inline constexpr TokenId kSpace_tissues_3381 = 3381;
+inline constexpr DiscreteToken kSpace_tissues_3381{3381};
 // " irregular"; original GPT-2 ID 21388.
-inline constexpr TokenId kSpace_irregular_3382 = 3382;
+inline constexpr DiscreteToken kSpace_irregular_3382{3382};
 // " bark"; original GPT-2 ID 21405.
-inline constexpr TokenId kSpace_bark_3383 = 3383;
+inline constexpr DiscreteToken kSpace_bark_3383{3383};
 // " trunk"; original GPT-2 ID 21427.
-inline constexpr TokenId kSpace_trunk_3384 = 3384;
+inline constexpr DiscreteToken kSpace_trunk_3384{3384};
 // " payload"; original GPT-2 ID 21437.
-inline constexpr TokenId kSpace_payload_3385 = 3385;
+inline constexpr DiscreteToken kSpace_payload_3385{3385};
 // " fragments"; original GPT-2 ID 21441.
-inline constexpr TokenId kSpace_fragments_3386 = 3386;
+inline constexpr DiscreteToken kSpace_fragments_3386{3386};
 // "olith"; original GPT-2 ID 21446.
-inline constexpr TokenId kolith_3387 = 3387;
+inline constexpr DiscreteToken kolith_3387{3387};
 // "Ma"; original GPT-2 ID 21467.
-inline constexpr TokenId kMa_3388 = 3388;
+inline constexpr DiscreteToken kMa_3388{3388};
 // "Ill"; original GPT-2 ID 21478.
-inline constexpr TokenId kIll_3389 = 3389;
+inline constexpr DiscreteToken kIll_3389{3389};
 // "omers"; original GPT-2 ID 21499.
-inline constexpr TokenId komers_3390 = 3390;
+inline constexpr DiscreteToken komers_3390{3390};
 // " Kenya"; original GPT-2 ID 21506.
-inline constexpr TokenId kSpace_Kenya_3391 = 3391;
+inline constexpr DiscreteToken kSpace_Kenya_3391{3391};
 // " stems"; original GPT-2 ID 21552.
-inline constexpr TokenId kSpace_stems_3392 = 3392;
+inline constexpr DiscreteToken kSpace_stems_3392{3392};
 // " clay"; original GPT-2 ID 21558.
-inline constexpr TokenId kSpace_clay_3393 = 3393;
+inline constexpr DiscreteToken kSpace_clay_3393{3393};
 // " Ey"; original GPT-2 ID 21566.
-inline constexpr TokenId kSpace_Ey_3394 = 3394;
+inline constexpr DiscreteToken kSpace_Ey_3394{3394};
 // " unchanged"; original GPT-2 ID 21588.
-inline constexpr TokenId kSpace_unchanged_3395 = 3395;
+inline constexpr DiscreteToken kSpace_unchanged_3395{3395};
 // "atorial"; original GPT-2 ID 21592.
-inline constexpr TokenId katorial_3396 = 3396;
+inline constexpr DiscreteToken katorial_3396{3396};
 // "ethyl"; original GPT-2 ID 21610.
-inline constexpr TokenId kethyl_3397 = 3397;
+inline constexpr DiscreteToken kethyl_3397{3397};
 // " minerals"; original GPT-2 ID 21622.
-inline constexpr TokenId kSpace_minerals_3398 = 3398;
+inline constexpr DiscreteToken kSpace_minerals_3398{3398};
 // " paintings"; original GPT-2 ID 21641.
-inline constexpr TokenId kSpace_paintings_3399 = 3399;
+inline constexpr DiscreteToken kSpace_paintings_3399{3399};
 // " onion"; original GPT-2 ID 21670.
-inline constexpr TokenId kSpace_onion_3400 = 3400;
+inline constexpr DiscreteToken kSpace_onion_3400{3400};
 // " Mercury"; original GPT-2 ID 21673.
-inline constexpr TokenId kSpace_Mercury_3401 = 3401;
+inline constexpr DiscreteToken kSpace_Mercury_3401{3401};
 // " gases"; original GPT-2 ID 21678.
-inline constexpr TokenId kSpace_gases_3402 = 3402;
+inline constexpr DiscreteToken kSpace_gases_3402{3402};
 // "Cam"; original GPT-2 ID 21701.
-inline constexpr TokenId kCam_3403 = 3403;
+inline constexpr DiscreteToken kCam_3403{3403};
 // "illes"; original GPT-2 ID 21718.
-inline constexpr TokenId killes_3404 = 3404;
+inline constexpr DiscreteToken killes_3404{3404};
 // " overlap"; original GPT-2 ID 21721.
-inline constexpr TokenId kSpace_overlap_3405 = 3405;
+inline constexpr DiscreteToken kSpace_overlap_3405{3405};
 // " lungs"; original GPT-2 ID 21726.
-inline constexpr TokenId kSpace_lungs_3406 = 3406;
+inline constexpr DiscreteToken kSpace_lungs_3406{3406};
 // " Pride"; original GPT-2 ID 21735.
-inline constexpr TokenId kSpace_Pride_3407 = 3407;
+inline constexpr DiscreteToken kSpace_Pride_3407{3407};
 // " fusion"; original GPT-2 ID 21748.
-inline constexpr TokenId kSpace_fusion_3408 = 3408;
+inline constexpr DiscreteToken kSpace_fusion_3408{3408};
 // " limbs"; original GPT-2 ID 21755.
-inline constexpr TokenId kSpace_limbs_3409 = 3409;
+inline constexpr DiscreteToken kSpace_limbs_3409{3409};
 // "Ra"; original GPT-2 ID 21762.
-inline constexpr TokenId kRa_3410 = 3410;
+inline constexpr DiscreteToken kRa_3410{3410};
 // " equals"; original GPT-2 ID 21767.
-inline constexpr TokenId kSpace_equals_3411 = 3411;
+inline constexpr DiscreteToken kSpace_equals_3411{3411};
 // " Portuguese"; original GPT-2 ID 21813.
-inline constexpr TokenId kSpace_Portuguese_3412 = 3412;
+inline constexpr DiscreteToken kSpace_Portuguese_3412{3412};
 // " seasonal"; original GPT-2 ID 21819.
-inline constexpr TokenId kSpace_seasonal_3413 = 3413;
+inline constexpr DiscreteToken kSpace_seasonal_3413{3413};
 // " microphone"; original GPT-2 ID 21822.
-inline constexpr TokenId kSpace_microphone_3414 = 3414;
+inline constexpr DiscreteToken kSpace_microphone_3414{3414};
 // " grains"; original GPT-2 ID 21824.
-inline constexpr TokenId kSpace_grains_3415 = 3415;
+inline constexpr DiscreteToken kSpace_grains_3415{3415};
 // "ogram"; original GPT-2 ID 21857.
-inline constexpr TokenId kogram_3416 = 3416;
+inline constexpr DiscreteToken kogram_3416{3416};
 // " Athens"; original GPT-2 ID 21891.
-inline constexpr TokenId kSpace_Athens_3417 = 3417;
+inline constexpr DiscreteToken kSpace_Athens_3417{3417};
 // "innamon"; original GPT-2 ID 21920.
-inline constexpr TokenId kinnamon_3418 = 3418;
+inline constexpr DiscreteToken kinnamon_3418{3418};
 // " transmit"; original GPT-2 ID 21937.
-inline constexpr TokenId kSpace_transmit_3419 = 3419;
+inline constexpr DiscreteToken kSpace_transmit_3419{3419};
 // "Vict"; original GPT-2 ID 21944.
-inline constexpr TokenId kVict_3420 = 3420;
+inline constexpr DiscreteToken kVict_3420{3420};
 // " therm"; original GPT-2 ID 21969.
-inline constexpr TokenId kSpace_therm_3421 = 3421;
+inline constexpr DiscreteToken kSpace_therm_3421{3421};
 // " scanning"; original GPT-2 ID 21976.
-inline constexpr TokenId kSpace_scanning_3422 = 3422;
+inline constexpr DiscreteToken kSpace_scanning_3422{3422};
 // "wheel"; original GPT-2 ID 22001.
-inline constexpr TokenId kwheel_3423 = 3423;
+inline constexpr DiscreteToken kwheel_3423{3423};
 // "ymes"; original GPT-2 ID 22009.
-inline constexpr TokenId kymes_3424 = 3424;
+inline constexpr DiscreteToken kymes_3424{3424};
 // "uba"; original GPT-2 ID 22013.
-inline constexpr TokenId kuba_3425 = 3425;
+inline constexpr DiscreteToken kuba_3425{3425};
 // " Aj"; original GPT-2 ID 22028.
-inline constexpr TokenId kSpace_Aj_3426 = 3426;
+inline constexpr DiscreteToken kSpace_Aj_3426{3426};
 // "European"; original GPT-2 ID 22030.
-inline constexpr TokenId kEuropean_3427 = 3427;
+inline constexpr DiscreteToken kEuropean_3427{3427};
 // " Persian"; original GPT-2 ID 22035.
-inline constexpr TokenId kSpace_Persian_3428 = 3428;
+inline constexpr DiscreteToken kSpace_Persian_3428{3428};
 // " atom"; original GPT-2 ID 22037.
-inline constexpr TokenId kSpace_atom_3429 = 3429;
+inline constexpr DiscreteToken kSpace_atom_3429{3429};
 // " forwards"; original GPT-2 ID 22052.
-inline constexpr TokenId kSpace_forwards_3430 = 3430;
+inline constexpr DiscreteToken kSpace_forwards_3430{3430};
 // " knight"; original GPT-2 ID 22062.
-inline constexpr TokenId kSpace_knight_3431 = 3431;
+inline constexpr DiscreteToken kSpace_knight_3431{3431};
 // " ion"; original GPT-2 ID 22088.
-inline constexpr TokenId kSpace_ion_3432 = 3432;
+inline constexpr DiscreteToken kSpace_ion_3432{3432};
 // "ribes"; original GPT-2 ID 22090.
-inline constexpr TokenId kribes_3433 = 3433;
+inline constexpr DiscreteToken kribes_3433{3433};
 // " Canyon"; original GPT-2 ID 22099.
-inline constexpr TokenId kSpace_Canyon_3434 = 3434;
+inline constexpr DiscreteToken kSpace_Canyon_3434{3434};
 // " bronze"; original GPT-2 ID 22101.
-inline constexpr TokenId kSpace_bronze_3435 = 3435;
+inline constexpr DiscreteToken kSpace_bronze_3435{3435};
 // " decay"; original GPT-2 ID 22119.
-inline constexpr TokenId kSpace_decay_3436 = 3436;
+inline constexpr DiscreteToken kSpace_decay_3436{3436};
 // " panc"; original GPT-2 ID 22154.
-inline constexpr TokenId kSpace_panc_3437 = 3437;
+inline constexpr DiscreteToken kSpace_panc_3437{3437};
 // " Shakespeare"; original GPT-2 ID 22197.
-inline constexpr TokenId kSpace_Shakespeare_3438 = 3438;
+inline constexpr DiscreteToken kSpace_Shakespeare_3438{3438};
 // " brightness"; original GPT-2 ID 22204.
-inline constexpr TokenId kSpace_brightness_3439 = 3439;
+inline constexpr DiscreteToken kSpace_brightness_3439{3439};
 // " whale"; original GPT-2 ID 22206.
-inline constexpr TokenId kSpace_whale_3440 = 3440;
+inline constexpr DiscreteToken kSpace_whale_3440{3440};
 // " tomb"; original GPT-2 ID 22234.
-inline constexpr TokenId kSpace_tomb_3441 = 3441;
+inline constexpr DiscreteToken kSpace_tomb_3441{3441};
 // "mand"; original GPT-2 ID 22249.
-inline constexpr TokenId kmand_3442 = 3442;
+inline constexpr DiscreteToken kmand_3442{3442};
 // "Squ"; original GPT-2 ID 22266.
-inline constexpr TokenId kSqu_3443 = 3443;
+inline constexpr DiscreteToken kSqu_3443{3443};
 // "quez"; original GPT-2 ID 22281.
-inline constexpr TokenId kquez_3444 = 3444;
+inline constexpr DiscreteToken kquez_3444{3444};
 // "ondo"; original GPT-2 ID 22311.
-inline constexpr TokenId kondo_3445 = 3445;
+inline constexpr DiscreteToken kondo_3445{3445};
 // " Comedy"; original GPT-2 ID 22329.
-inline constexpr TokenId kSpace_Comedy_3446 = 3446;
+inline constexpr DiscreteToken kSpace_Comedy_3446{3446};
 // "sided"; original GPT-2 ID 22339.
-inline constexpr TokenId ksided_3447 = 3447;
+inline constexpr DiscreteToken ksided_3447{3447};
 // " mirrors"; original GPT-2 ID 22353.
-inline constexpr TokenId kSpace_mirrors_3448 = 3448;
+inline constexpr DiscreteToken kSpace_mirrors_3448{3448};
 // " dur"; original GPT-2 ID 22365.
-inline constexpr TokenId kSpace_dur_3449 = 3449;
+inline constexpr DiscreteToken kSpace_dur_3449{3449};
 // " Twenty"; original GPT-2 ID 22381.
-inline constexpr TokenId kSpace_Twenty_3450 = 3450;
+inline constexpr DiscreteToken kSpace_Twenty_3450{3450};
 // "ochond"; original GPT-2 ID 22400.
-inline constexpr TokenId kochond_3451 = 3451;
+inline constexpr DiscreteToken kochond_3451{3451};
 // " pitches"; original GPT-2 ID 22421.
-inline constexpr TokenId kSpace_pitches_3452 = 3452;
+inline constexpr DiscreteToken kSpace_pitches_3452{3452};
 // " accumulated"; original GPT-2 ID 22425.
-inline constexpr TokenId kSpace_accumulated_3453 = 3453;
+inline constexpr DiscreteToken kSpace_accumulated_3453{3453};
 // " resemble"; original GPT-2 ID 22464.
-inline constexpr TokenId kSpace_resemble_3454 = 3454;
+inline constexpr DiscreteToken kSpace_resemble_3454{3454};
 // " Monte"; original GPT-2 ID 22489.
-inline constexpr TokenId kSpace_Monte_3455 = 3455;
+inline constexpr DiscreteToken kSpace_Monte_3455{3455};
 // " omitted"; original GPT-2 ID 22532.
-inline constexpr TokenId kSpace_omitted_3456 = 3456;
+inline constexpr DiscreteToken kSpace_omitted_3456{3456};
 // " Nem"; original GPT-2 ID 22547.
-inline constexpr TokenId kSpace_Nem_3457 = 3457;
+inline constexpr DiscreteToken kSpace_Nem_3457{3457};
 // "rag"; original GPT-2 ID 22562.
-inline constexpr TokenId krag_3458 = 3458;
+inline constexpr DiscreteToken krag_3458{3458};
 // "zero"; original GPT-2 ID 22570.
-inline constexpr TokenId kzero_3459 = 3459;
+inline constexpr DiscreteToken kzero_3459{3459};
 // " Apart"; original GPT-2 ID 22596.
-inline constexpr TokenId kSpace_Apart_3460 = 3460;
+inline constexpr DiscreteToken kSpace_Apart_3460{3460};
 // "rophe"; original GPT-2 ID 22599.
-inline constexpr TokenId krophe_3461 = 3461;
+inline constexpr DiscreteToken krophe_3461{3461};
 // " contributes"; original GPT-2 ID 22625.
-inline constexpr TokenId kSpace_contributes_3462 = 3462;
+inline constexpr DiscreteToken kSpace_contributes_3462{3462};
 // "Music"; original GPT-2 ID 22648.
-inline constexpr TokenId kMusic_3463 = 3463;
+inline constexpr DiscreteToken kMusic_3463{3463};
 // " sounding"; original GPT-2 ID 22655.
-inline constexpr TokenId kSpace_sounding_3464 = 3464;
+inline constexpr DiscreteToken kSpace_sounding_3464{3464};
 // " strips"; original GPT-2 ID 22670.
-inline constexpr TokenId kSpace_strips_3465 = 3465;
+inline constexpr DiscreteToken kSpace_strips_3465{3465};
 // " Jupiter"; original GPT-2 ID 22721.
-inline constexpr TokenId kSpace_Jupiter_3466 = 3466;
+inline constexpr DiscreteToken kSpace_Jupiter_3466{3466};
 // " rabbit"; original GPT-2 ID 22746.
-inline constexpr TokenId kSpace_rabbit_3467 = 3467;
+inline constexpr DiscreteToken kSpace_rabbit_3467{3467};
 // " volatile"; original GPT-2 ID 22750.
-inline constexpr TokenId kSpace_volatile_3468 = 3468;
+inline constexpr DiscreteToken kSpace_volatile_3468{3468};
 // " Guinea"; original GPT-2 ID 22777.
-inline constexpr TokenId kSpace_Guinea_3469 = 3469;
+inline constexpr DiscreteToken kSpace_Guinea_3469{3469};
 // " mainland"; original GPT-2 ID 22779.
-inline constexpr TokenId kSpace_mainland_3470 = 3470;
+inline constexpr DiscreteToken kSpace_mainland_3470{3470};
 // "Sir"; original GPT-2 ID 22788.
-inline constexpr TokenId kSir_3471 = 3471;
+inline constexpr DiscreteToken kSir_3471{3471};
 // " Tut"; original GPT-2 ID 22792.
-inline constexpr TokenId kSpace_Tut_3472 = 3472;
+inline constexpr DiscreteToken kSpace_Tut_3472{3472};
 // "Iron"; original GPT-2 ID 22797.
-inline constexpr TokenId kIron_3473 = 3473;
+inline constexpr DiscreteToken kIron_3473{3473};
 // " plural"; original GPT-2 ID 22801.
-inline constexpr TokenId kSpace_plural_3474 = 3474;
+inline constexpr DiscreteToken kSpace_plural_3474{3474};
 // "osphere"; original GPT-2 ID 22829.
-inline constexpr TokenId kosphere_3475 = 3475;
+inline constexpr DiscreteToken kosphere_3475{3475};
 // " contests"; original GPT-2 ID 22830.
-inline constexpr TokenId kSpace_contests_3476 = 3476;
+inline constexpr DiscreteToken kSpace_contests_3476{3476};
 // "Earth"; original GPT-2 ID 22840.
-inline constexpr TokenId kEarth_3477 = 3477;
+inline constexpr DiscreteToken kEarth_3477{3477};
 // " observer"; original GPT-2 ID 22890.
-inline constexpr TokenId kSpace_observer_3478 = 3478;
+inline constexpr DiscreteToken kSpace_observer_3478{3478};
 // "Wood"; original GPT-2 ID 22911.
-inline constexpr TokenId kWood_3479 = 3479;
+inline constexpr DiscreteToken kWood_3479{3479};
 // " reproduce"; original GPT-2 ID 22919.
-inline constexpr TokenId kSpace_reproduce_3480 = 3480;
+inline constexpr DiscreteToken kSpace_reproduce_3480{3480};
 // " geometry"; original GPT-2 ID 22939.
-inline constexpr TokenId kSpace_geometry_3481 = 3481;
+inline constexpr DiscreteToken kSpace_geometry_3481{3481};
 // " triangle"; original GPT-2 ID 22950.
-inline constexpr TokenId kSpace_triangle_3482 = 3482;
+inline constexpr DiscreteToken kSpace_triangle_3482{3482};
 // " dots"; original GPT-2 ID 22969.
-inline constexpr TokenId kSpace_dots_3483 = 3483;
+inline constexpr DiscreteToken kSpace_dots_3483{3483};
 // " captures"; original GPT-2 ID 23007.
-inline constexpr TokenId kSpace_captures_3484 = 3484;
+inline constexpr DiscreteToken kSpace_captures_3484{3484};
 // " compares"; original GPT-2 ID 23008.
-inline constexpr TokenId kSpace_compares_3485 = 3485;
+inline constexpr DiscreteToken kSpace_compares_3485{3485};
 // " dessert"; original GPT-2 ID 23084.
-inline constexpr TokenId kSpace_dessert_3486 = 3486;
+inline constexpr DiscreteToken kSpace_dessert_3486{3486};
 // " metaphor"; original GPT-2 ID 23094.
-inline constexpr TokenId kSpace_metaphor_3487 = 3487;
+inline constexpr DiscreteToken kSpace_metaphor_3487{3487};
 // "abl"; original GPT-2 ID 23117.
-inline constexpr TokenId kabl_3488 = 3488;
+inline constexpr DiscreteToken kabl_3488{3488};
 // " emperor"; original GPT-2 ID 23129.
-inline constexpr TokenId kSpace_emperor_3489 = 3489;
+inline constexpr DiscreteToken kSpace_emperor_3489{3489};
 // " pouring"; original GPT-2 ID 23147.
-inline constexpr TokenId kSpace_pouring_3490 = 3490;
+inline constexpr DiscreteToken kSpace_pouring_3490{3490};
 // " Cherry"; original GPT-2 ID 23165.
-inline constexpr TokenId kSpace_Cherry_3491 = 3491;
+inline constexpr DiscreteToken kSpace_Cherry_3491{3491};
 // " amino"; original GPT-2 ID 23206.
-inline constexpr TokenId kSpace_amino_3492 = 3492;
+inline constexpr DiscreteToken kSpace_amino_3492{3492};
 // " cracks"; original GPT-2 ID 23217.
-inline constexpr TokenId kSpace_cracks_3493 = 3493;
+inline constexpr DiscreteToken kSpace_cracks_3493{3493};
 // " accidental"; original GPT-2 ID 23221.
-inline constexpr TokenId kSpace_accidental_3494 = 3494;
+inline constexpr DiscreteToken kSpace_accidental_3494{3494};
 // " atoms"; original GPT-2 ID 23235.
-inline constexpr TokenId kSpace_atoms_3495 = 3495;
+inline constexpr DiscreteToken kSpace_atoms_3495{3495};
 // " sorted"; original GPT-2 ID 23243.
-inline constexpr TokenId kSpace_sorted_3496 = 3496;
+inline constexpr DiscreteToken kSpace_sorted_3496{3496};
 // " predators"; original GPT-2 ID 23311.
-inline constexpr TokenId kSpace_predators_3497 = 3497;
+inline constexpr DiscreteToken kSpace_predators_3497{3497};
 // " sensory"; original GPT-2 ID 23326.
-inline constexpr TokenId kSpace_sensory_3498 = 3498;
+inline constexpr DiscreteToken kSpace_sensory_3498{3498};
 // " Notre"; original GPT-2 ID 23382.
-inline constexpr TokenId kSpace_Notre_3499 = 3499;
+inline constexpr DiscreteToken kSpace_Notre_3499{3499};
 // " Wide"; original GPT-2 ID 23399.
-inline constexpr TokenId kSpace_Wide_3500 = 3500;
+inline constexpr DiscreteToken kSpace_Wide_3500{3500};
 // "London"; original GPT-2 ID 23421.
-inline constexpr TokenId kLondon_3501 = 3501;
+inline constexpr DiscreteToken kLondon_3501{3501};
 // " mammals"; original GPT-2 ID 23426.
-inline constexpr TokenId kSpace_mammals_3502 = 3502;
+inline constexpr DiscreteToken kSpace_mammals_3502{3502};
 // " cube"; original GPT-2 ID 23441.
-inline constexpr TokenId kSpace_cube_3503 = 3503;
+inline constexpr DiscreteToken kSpace_cube_3503{3503};
 // " cosmic"; original GPT-2 ID 23464.
-inline constexpr TokenId kSpace_cosmic_3504 = 3504;
+inline constexpr DiscreteToken kSpace_cosmic_3504{3504};
 // " carved"; original GPT-2 ID 23470.
-inline constexpr TokenId kSpace_carved_3505 = 3505;
+inline constexpr DiscreteToken kSpace_carved_3505{3505};
 // " Panama"; original GPT-2 ID 23519.
-inline constexpr TokenId kSpace_Panama_3506 = 3506;
+inline constexpr DiscreteToken kSpace_Panama_3506{3506};
 // " outward"; original GPT-2 ID 23537.
-inline constexpr TokenId kSpace_outward_3507 = 3507;
+inline constexpr DiscreteToken kSpace_outward_3507{3507};
 // "Chinese"; original GPT-2 ID 23604.
-inline constexpr TokenId kChinese_3508 = 3508;
+inline constexpr DiscreteToken kChinese_3508{3508};
 // " loops"; original GPT-2 ID 23607.
-inline constexpr TokenId kSpace_loops_3509 = 3509;
+inline constexpr DiscreteToken kSpace_loops_3509{3509};
 // " autumn"; original GPT-2 ID 23608.
-inline constexpr TokenId kSpace_autumn_3510 = 3510;
+inline constexpr DiscreteToken kSpace_autumn_3510{3510};
 // " shaping"; original GPT-2 ID 23610.
-inline constexpr TokenId kSpace_shaping_3511 = 3511;
+inline constexpr DiscreteToken kSpace_shaping_3511{3511};
 // "iza"; original GPT-2 ID 23638.
-inline constexpr TokenId kiza_3512 = 3512;
+inline constexpr DiscreteToken kiza_3512{3512};
 // "itcher"; original GPT-2 ID 23640.
-inline constexpr TokenId kitcher_3513 = 3513;
+inline constexpr DiscreteToken kitcher_3513{3513};
 // " spiral"; original GPT-2 ID 23642.
-inline constexpr TokenId kSpace_spiral_3514 = 3514;
+inline constexpr DiscreteToken kSpace_spiral_3514{3514};
 // " Plate"; original GPT-2 ID 23648.
-inline constexpr TokenId kSpace_Plate_3515 = 3515;
+inline constexpr DiscreteToken kSpace_Plate_3515{3515};
 // " translates"; original GPT-2 ID 23677.
-inline constexpr TokenId kSpace_translates_3516 = 3516;
+inline constexpr DiscreteToken kSpace_translates_3516{3516};
 // " stretches"; original GPT-2 ID 23687.
-inline constexpr TokenId kSpace_stretches_3517 = 3517;
+inline constexpr DiscreteToken kSpace_stretches_3517{3517};
 // " unusually"; original GPT-2 ID 23708.
-inline constexpr TokenId kSpace_unusually_3518 = 3518;
+inline constexpr DiscreteToken kSpace_unusually_3518{3518};
 // " friction"; original GPT-2 ID 23822.
-inline constexpr TokenId kSpace_friction_3519 = 3519;
+inline constexpr DiscreteToken kSpace_friction_3519{3519};
 // "alks"; original GPT-2 ID 23833.
-inline constexpr TokenId kalks_3520 = 3520;
+inline constexpr DiscreteToken kalks_3520{3520};
 // " worm"; original GPT-2 ID 23849.
-inline constexpr TokenId kSpace_worm_3521 = 3521;
+inline constexpr DiscreteToken kSpace_worm_3521{3521};
 // " barred"; original GPT-2 ID 23902.
-inline constexpr TokenId kSpace_barred_3522 = 3522;
+inline constexpr DiscreteToken kSpace_barred_3522{3522};
 // " empt"; original GPT-2 ID 23909.
-inline constexpr TokenId kSpace_empt_3523 = 3523;
+inline constexpr DiscreteToken kSpace_empt_3523{3523};
 // " preserving"; original GPT-2 ID 23934.
-inline constexpr TokenId kSpace_preserving_3524 = 3524;
+inline constexpr DiscreteToken kSpace_preserving_3524{3524};
 // " silk"; original GPT-2 ID 23938.
-inline constexpr TokenId kSpace_silk_3525 = 3525;
+inline constexpr DiscreteToken kSpace_silk_3525{3525};
 // " rotating"; original GPT-2 ID 24012.
-inline constexpr TokenId kSpace_rotating_3526 = 3526;
+inline constexpr DiscreteToken kSpace_rotating_3526{3526};
 // " joints"; original GPT-2 ID 24039.
-inline constexpr TokenId kSpace_joints_3527 = 3527;
+inline constexpr DiscreteToken kSpace_joints_3527{3527};
 // " sou"; original GPT-2 ID 24049.
-inline constexpr TokenId kSpace_sou_3528 = 3528;
+inline constexpr DiscreteToken kSpace_sou_3528{3528};
 // " Peninsula"; original GPT-2 ID 24078.
-inline constexpr TokenId kSpace_Peninsula_3529 = 3529;
+inline constexpr DiscreteToken kSpace_Peninsula_3529{3529};
 // "iman"; original GPT-2 ID 24086.
-inline constexpr TokenId kiman_3530 = 3530;
+inline constexpr DiscreteToken kiman_3530{3530};
 // " Caesar"; original GPT-2 ID 24088.
-inline constexpr TokenId kSpace_Caesar_3531 = 3531;
+inline constexpr DiscreteToken kSpace_Caesar_3531{3531};
 // "Div"; original GPT-2 ID 24095.
-inline constexpr TokenId kDiv_3532 = 3532;
+inline constexpr DiscreteToken kDiv_3532{3532};
 // "Mary"; original GPT-2 ID 24119.
-inline constexpr TokenId kMary_3533 = 3533;
+inline constexpr DiscreteToken kMary_3533{3533};
 // " uniquely"; original GPT-2 ID 24139.
-inline constexpr TokenId kSpace_uniquely_3534 = 3534;
+inline constexpr DiscreteToken kSpace_uniquely_3534{3534};
 // " Lakes"; original GPT-2 ID 24153.
-inline constexpr TokenId kSpace_Lakes_3535 = 3535;
+inline constexpr DiscreteToken kSpace_Lakes_3535{3535};
 // "locked"; original GPT-2 ID 24162.
-inline constexpr TokenId klocked_3536 = 3536;
+inline constexpr DiscreteToken klocked_3536{3536};
 // " stacked"; original GPT-2 ID 24167.
-inline constexpr TokenId kSpace_stacked_3537 = 3537;
+inline constexpr DiscreteToken kSpace_stacked_3537{3537};
 // "ursion"; original GPT-2 ID 24197.
-inline constexpr TokenId kursion_3538 = 3538;
+inline constexpr DiscreteToken kursion_3538{3538};
 // " melting"; original GPT-2 ID 24203.
-inline constexpr TokenId kSpace_melting_3539 = 3539;
+inline constexpr DiscreteToken kSpace_melting_3539{3539};
 // " bishop"; original GPT-2 ID 24233.
-inline constexpr TokenId kSpace_bishop_3540 = 3540;
+inline constexpr DiscreteToken kSpace_bishop_3540{3540};
 // " crosses"; original GPT-2 ID 24234.
-inline constexpr TokenId kSpace_crosses_3541 = 3541;
+inline constexpr DiscreteToken kSpace_crosses_3541{3541};
 // " tomato"; original GPT-2 ID 24240.
-inline constexpr TokenId kSpace_tomato_3542 = 3542;
+inline constexpr DiscreteToken kSpace_tomato_3542{3542};
 // "inas"; original GPT-2 ID 24252.
-inline constexpr TokenId kinas_3543 = 3543;
+inline constexpr DiscreteToken kinas_3543{3543};
 // " usable"; original GPT-2 ID 24284.
-inline constexpr TokenId kSpace_usable_3544 = 3544;
+inline constexpr DiscreteToken kSpace_usable_3544{3544};
 // " northeast"; original GPT-2 ID 24287.
-inline constexpr TokenId kSpace_northeast_3545 = 3545;
+inline constexpr DiscreteToken kSpace_northeast_3545{3545};
 // " telescope"; original GPT-2 ID 24344.
-inline constexpr TokenId kSpace_telescope_3546 = 3546;
+inline constexpr DiscreteToken kSpace_telescope_3546{3546};
 // "criptions"; original GPT-2 ID 24370.
-inline constexpr TokenId kcriptions_3547 = 3547;
+inline constexpr DiscreteToken kcriptions_3547{3547};
 // " boiling"; original GPT-2 ID 24372.
-inline constexpr TokenId kSpace_boiling_3548 = 3548;
+inline constexpr DiscreteToken kSpace_boiling_3548{3548};
 // " indefinitely"; original GPT-2 ID 24391.
-inline constexpr TokenId kSpace_indefinitely_3549 = 3549;
+inline constexpr DiscreteToken kSpace_indefinitely_3549{3549};
 // " squares"; original GPT-2 ID 24438.
-inline constexpr TokenId kSpace_squares_3550 = 3550;
+inline constexpr DiscreteToken kSpace_squares_3550{3550};
 // "Inside"; original GPT-2 ID 24441.
-inline constexpr TokenId kInside_3551 = 3551;
+inline constexpr DiscreteToken kInside_3551{3551};
 // "Charl"; original GPT-2 ID 24453.
-inline constexpr TokenId kCharl_3552 = 3552;
+inline constexpr DiscreteToken kCharl_3552{3552};
 // " lith"; original GPT-2 ID 24491.
-inline constexpr TokenId kSpace_lith_3553 = 3553;
+inline constexpr DiscreteToken kSpace_lith_3553{3553};
 // "cool"; original GPT-2 ID 24494.
-inline constexpr TokenId kcool_3554 = 3554;
+inline constexpr DiscreteToken kcool_3554{3554};
 // " Rocky"; original GPT-2 ID 24534.
-inline constexpr TokenId kSpace_Rocky_3555 = 3555;
+inline constexpr DiscreteToken kSpace_Rocky_3555{3555};
 // " salmon"; original GPT-2 ID 24535.
-inline constexpr TokenId kSpace_salmon_3556 = 3556;
+inline constexpr DiscreteToken kSpace_salmon_3556{3556};
 // "Length"; original GPT-2 ID 24539.
-inline constexpr TokenId kLength_3557 = 3557;
+inline constexpr DiscreteToken kLength_3557{3557};
 // "Bat"; original GPT-2 ID 24541.
-inline constexpr TokenId kBat_3558 = 3558;
+inline constexpr DiscreteToken kBat_3558{3558};
 // " Crist"; original GPT-2 ID 24568.
-inline constexpr TokenId kSpace_Crist_3559 = 3559;
+inline constexpr DiscreteToken kSpace_Crist_3559{3559};
 // " dwarf"; original GPT-2 ID 24603.
-inline constexpr TokenId kSpace_dwarf_3560 = 3560;
+inline constexpr DiscreteToken kSpace_dwarf_3560{3560};
 // "oan"; original GPT-2 ID 24611.
-inline constexpr TokenId koan_3561 = 3561;
+inline constexpr DiscreteToken koan_3561{3561};
 // " gestures"; original GPT-2 ID 24621.
-inline constexpr TokenId kSpace_gestures_3562 = 3562;
+inline constexpr DiscreteToken kSpace_gestures_3562{3562};
 // " packets"; original GPT-2 ID 24624.
-inline constexpr TokenId kSpace_packets_3563 = 3563;
+inline constexpr DiscreteToken kSpace_packets_3563{3563};
 // " whales"; original GPT-2 ID 24635.
-inline constexpr TokenId kSpace_whales_3564 = 3564;
+inline constexpr DiscreteToken kSpace_whales_3564{3564};
 // "ipl"; original GPT-2 ID 24705.
-inline constexpr TokenId kipl_3565 = 3565;
+inline constexpr DiscreteToken kipl_3565{3565};
 // "nas"; original GPT-2 ID 24716.
-inline constexpr TokenId knas_3566 = 3566;
+inline constexpr DiscreteToken knas_3566{3566};
 // " saturated"; original GPT-2 ID 24725.
-inline constexpr TokenId kSpace_saturated_3567 = 3567;
+inline constexpr DiscreteToken kSpace_saturated_3567{3567};
 // " biblical"; original GPT-2 ID 24726.
-inline constexpr TokenId kSpace_biblical_3568 = 3568;
+inline constexpr DiscreteToken kSpace_biblical_3568{3568};
 // " sixty"; original GPT-2 ID 24742.
-inline constexpr TokenId kSpace_sixty_3569 = 3569;
+inline constexpr DiscreteToken kSpace_sixty_3569{3569};
 // " conve"; original GPT-2 ID 24748.
-inline constexpr TokenId kSpace_conve_3570 = 3570;
+inline constexpr DiscreteToken kSpace_conve_3570{3570};
 // "idation"; original GPT-2 ID 24765.
-inline constexpr TokenId kidation_3571 = 3571;
+inline constexpr DiscreteToken kidation_3571{3571};
 // " lakes"; original GPT-2 ID 24768.
-inline constexpr TokenId kSpace_lakes_3572 = 3572;
+inline constexpr DiscreteToken kSpace_lakes_3572{3572};
 // " crystals"; original GPT-2 ID 24770.
-inline constexpr TokenId kSpace_crystals_3573 = 3573;
+inline constexpr DiscreteToken kSpace_crystals_3573{3573};
 // " absorption"; original GPT-2 ID 24774.
-inline constexpr TokenId kSpace_absorption_3574 = 3574;
+inline constexpr DiscreteToken kSpace_absorption_3574{3574};
 // " listener"; original GPT-2 ID 24783.
-inline constexpr TokenId kSpace_listener_3575 = 3575;
+inline constexpr DiscreteToken kSpace_listener_3575{3575};
 // " decorated"; original GPT-2 ID 24789.
-inline constexpr TokenId kSpace_decorated_3576 = 3576;
+inline constexpr DiscreteToken kSpace_decorated_3576{3576};
 // " mant"; original GPT-2 ID 24818.
-inline constexpr TokenId kSpace_mant_3577 = 3577;
+inline constexpr DiscreteToken kSpace_mant_3577{3577};
 // " exceptionally"; original GPT-2 ID 24822.
-inline constexpr TokenId kSpace_exceptionally_3578 = 3578;
+inline constexpr DiscreteToken kSpace_exceptionally_3578{3578};
 // " alphabet"; original GPT-2 ID 24830.
-inline constexpr TokenId kSpace_alphabet_3579 = 3579;
+inline constexpr DiscreteToken kSpace_alphabet_3579{3579};
 // " corresponds"; original GPT-2 ID 24866.
-inline constexpr TokenId kSpace_corresponds_3580 = 3580;
+inline constexpr DiscreteToken kSpace_corresponds_3580{3580};
 // "mits"; original GPT-2 ID 24883.
-inline constexpr TokenId kmits_3581 = 3581;
+inline constexpr DiscreteToken kmits_3581{3581};
 // " circuits"; original GPT-2 ID 24907.
-inline constexpr TokenId kSpace_circuits_3582 = 3582;
+inline constexpr DiscreteToken kSpace_circuits_3582{3582};
 // " cylinder"; original GPT-2 ID 24911.
-inline constexpr TokenId kSpace_cylinder_3583 = 3583;
+inline constexpr DiscreteToken kSpace_cylinder_3583{3583};
 // " rulers"; original GPT-2 ID 24925.
-inline constexpr TokenId kSpace_rulers_3584 = 3584;
+inline constexpr DiscreteToken kSpace_rulers_3584{3584};
 // " submarine"; original GPT-2 ID 24927.
-inline constexpr TokenId kSpace_submarine_3585 = 3585;
+inline constexpr DiscreteToken kSpace_submarine_3585{3585};
 // " crushing"; original GPT-2 ID 24949.
-inline constexpr TokenId kSpace_crushing_3586 = 3586;
+inline constexpr DiscreteToken kSpace_crushing_3586{3586};
 // " Sense"; original GPT-2 ID 24956.
-inline constexpr TokenId kSpace_Sense_3587 = 3587;
+inline constexpr DiscreteToken kSpace_Sense_3587{3587};
 // " oscill"; original GPT-2 ID 24969.
-inline constexpr TokenId kSpace_oscill_3588 = 3588;
+inline constexpr DiscreteToken kSpace_oscill_3588{3588};
 // " poles"; original GPT-2 ID 24971.
-inline constexpr TokenId kSpace_poles_3589 = 3589;
+inline constexpr DiscreteToken kSpace_poles_3589{3589};
 // " spelling"; original GPT-2 ID 24993.
-inline constexpr TokenId kSpace_spelling_3590 = 3590;
+inline constexpr DiscreteToken kSpace_spelling_3590{3590};
 // " membrane"; original GPT-2 ID 25019.
-inline constexpr TokenId kSpace_membrane_3591 = 3591;
+inline constexpr DiscreteToken kSpace_membrane_3591{3591};
 // " bubbles"; original GPT-2 ID 25037.
-inline constexpr TokenId kSpace_bubbles_3592 = 3592;
+inline constexpr DiscreteToken kSpace_bubbles_3592{3592};
 // " stellar"; original GPT-2 ID 25041.
-inline constexpr TokenId kSpace_stellar_3593 = 3593;
+inline constexpr DiscreteToken kSpace_stellar_3593{3593};
 // " devastated"; original GPT-2 ID 25074.
-inline constexpr TokenId kSpace_devastated_3594 = 3594;
+inline constexpr DiscreteToken kSpace_devastated_3594{3594};
 // " irrational"; original GPT-2 ID 25086.
-inline constexpr TokenId kSpace_irrational_3595 = 3595;
+inline constexpr DiscreteToken kSpace_irrational_3595{3595};
 // " reef"; original GPT-2 ID 25088.
-inline constexpr TokenId kSpace_reef_3596 = 3596;
+inline constexpr DiscreteToken kSpace_reef_3596{3596};
 // "Kn"; original GPT-2 ID 25095.
-inline constexpr TokenId kKn_3597 = 3597;
+inline constexpr DiscreteToken kKn_3597{3597};
 // "rared"; original GPT-2 ID 25122.
-inline constexpr TokenId krared_3598 = 3598;
+inline constexpr DiscreteToken krared_3598{3598};
 // "agnetic"; original GPT-2 ID 25145.
-inline constexpr TokenId kagnetic_3599 = 3599;
+inline constexpr DiscreteToken kagnetic_3599{3599};
 // " needles"; original GPT-2 ID 25209.
-inline constexpr TokenId kSpace_needles_3600 = 3600;
+inline constexpr DiscreteToken kSpace_needles_3600{3600};
 // " Tunis"; original GPT-2 ID 25266.
-inline constexpr TokenId kSpace_Tunis_3601 = 3601;
+inline constexpr DiscreteToken kSpace_Tunis_3601{3601};
 // " Istanbul"; original GPT-2 ID 25299.
-inline constexpr TokenId kSpace_Istanbul_3602 = 3602;
+inline constexpr DiscreteToken kSpace_Istanbul_3602{3602};
 // "illas"; original GPT-2 ID 25314.
-inline constexpr TokenId killas_3603 = 3603;
+inline constexpr DiscreteToken killas_3603{3603};
 // " perimeter"; original GPT-2 ID 25317.
-inline constexpr TokenId kSpace_perimeter_3604 = 3604;
+inline constexpr DiscreteToken kSpace_perimeter_3604{3604};
 // "worm"; original GPT-2 ID 25323.
-inline constexpr TokenId kworm_3605 = 3605;
+inline constexpr DiscreteToken kworm_3605{3605};
 // "Japanese"; original GPT-2 ID 25324.
-inline constexpr TokenId kJapanese_3606 = 3606;
+inline constexpr DiscreteToken kJapanese_3606{3606};
 // " strat"; original GPT-2 ID 25369.
-inline constexpr TokenId kSpace_strat_3607 = 3607;
+inline constexpr DiscreteToken kSpace_strat_3607{3607};
 // " compressed"; original GPT-2 ID 25388.
-inline constexpr TokenId kSpace_compressed_3608 = 3608;
+inline constexpr DiscreteToken kSpace_compressed_3608{3608};
 // "Pot"; original GPT-2 ID 25396.
-inline constexpr TokenId kPot_3609 = 3609;
+inline constexpr DiscreteToken kPot_3609{3609};
 // " assemble"; original GPT-2 ID 25432.
-inline constexpr TokenId kSpace_assemble_3610 = 3610;
+inline constexpr DiscreteToken kSpace_assemble_3610{3610};
 // "bows"; original GPT-2 ID 25435.
-inline constexpr TokenId kbows_3611 = 3611;
+inline constexpr DiscreteToken kbows_3611{3611};
 // "Mic"; original GPT-2 ID 25437.
-inline constexpr TokenId kMic_3612 = 3612;
+inline constexpr DiscreteToken kMic_3612{3612};
 // "Male"; original GPT-2 ID 25486.
-inline constexpr TokenId kMale_3613 = 3613;
+inline constexpr DiscreteToken kMale_3613{3613};
 // "athering"; original GPT-2 ID 25545.
-inline constexpr TokenId kathering_3614 = 3614;
+inline constexpr DiscreteToken kathering_3614{3614};
 // "flower"; original GPT-2 ID 25547.
-inline constexpr TokenId kflower_3615 = 3615;
+inline constexpr DiscreteToken kflower_3615{3615};
 // "Pen"; original GPT-2 ID 25553.
-inline constexpr TokenId kPen_3616 = 3616;
+inline constexpr DiscreteToken kPen_3616{3616};
 // "Cond"; original GPT-2 ID 25559.
-inline constexpr TokenId kCond_3617 = 3617;
+inline constexpr DiscreteToken kCond_3617{3617};
 // " lunar"; original GPT-2 ID 25572.
-inline constexpr TokenId kSpace_lunar_3618 = 3618;
+inline constexpr DiscreteToken kSpace_lunar_3618{3618};
 // " Sag"; original GPT-2 ID 25605.
-inline constexpr TokenId kSpace_Sag_3619 = 3619;
+inline constexpr DiscreteToken kSpace_Sag_3619{3619};
 // " skeletons"; original GPT-2 ID 25612.
-inline constexpr TokenId kSpace_skeletons_3620 = 3620;
+inline constexpr DiscreteToken kSpace_skeletons_3620{3620};
 // "oco"; original GPT-2 ID 25634.
-inline constexpr TokenId koco_3621 = 3621;
+inline constexpr DiscreteToken koco_3621{3621};
 // " coil"; original GPT-2 ID 25661.
-inline constexpr TokenId kSpace_coil_3622 = 3622;
+inline constexpr DiscreteToken kSpace_coil_3622{3622};
 // " spice"; original GPT-2 ID 25721.
-inline constexpr TokenId kSpace_spice_3623 = 3623;
+inline constexpr DiscreteToken kSpace_spice_3623{3623};
 // " Sherlock"; original GPT-2 ID 25730.
-inline constexpr TokenId kSpace_Sherlock_3624 = 3624;
+inline constexpr DiscreteToken kSpace_Sherlock_3624{3624};
 // "ensation"; original GPT-2 ID 25742.
-inline constexpr TokenId kensation_3625 = 3625;
+inline constexpr DiscreteToken kensation_3625{3625};
 // " Peru"; original GPT-2 ID 25768.
-inline constexpr TokenId kSpace_Peru_3626 = 3626;
+inline constexpr DiscreteToken kSpace_Peru_3626{3626};
 // "opus"; original GPT-2 ID 25790.
-inline constexpr TokenId kopus_3627 = 3627;
+inline constexpr DiscreteToken kopus_3627{3627};
 // " Ecuador"; original GPT-2 ID 25794.
-inline constexpr TokenId kSpace_Ecuador_3628 = 3628;
+inline constexpr DiscreteToken kSpace_Ecuador_3628{3628};
 // "Pet"; original GPT-2 ID 25803.
-inline constexpr TokenId kPet_3629 = 3629;
+inline constexpr DiscreteToken kPet_3629{3629};
 // " warp"; original GPT-2 ID 25825.
-inline constexpr TokenId kSpace_warp_3630 = 3630;
+inline constexpr DiscreteToken kSpace_warp_3630{3630};
 // " hatch"; original GPT-2 ID 25834.
-inline constexpr TokenId kSpace_hatch_3631 = 3631;
+inline constexpr DiscreteToken kSpace_hatch_3631{3631};
 // " Heath"; original GPT-2 ID 25846.
-inline constexpr TokenId kSpace_Heath_3632 = 3632;
+inline constexpr DiscreteToken kSpace_Heath_3632{3632};
 // " SI"; original GPT-2 ID 25861.
-inline constexpr TokenId kSpace_SI_3633 = 3633;
+inline constexpr DiscreteToken kSpace_SI_3633{3633};
 // " pirate"; original GPT-2 ID 25868.
-inline constexpr TokenId kSpace_pirate_3634 = 3634;
+inline constexpr DiscreteToken kSpace_pirate_3634{3634};
 // " eclipse"; original GPT-2 ID 25872.
-inline constexpr TokenId kSpace_eclipse_3635 = 3635;
+inline constexpr DiscreteToken kSpace_eclipse_3635{3635};
 // " RNA"; original GPT-2 ID 25897.
-inline constexpr TokenId kSpace_RNA_3636 = 3636;
+inline constexpr DiscreteToken kSpace_RNA_3636{3636};
 // "rene"; original GPT-2 ID 25924.
-inline constexpr TokenId krene_3637 = 3637;
+inline constexpr DiscreteToken krene_3637{3637};
 // " Hugo"; original GPT-2 ID 25930.
-inline constexpr TokenId kSpace_Hugo_3638 = 3638;
+inline constexpr DiscreteToken kSpace_Hugo_3638{3638};
 // " Maced"; original GPT-2 ID 25942.
-inline constexpr TokenId kSpace_Maced_3639 = 3639;
+inline constexpr DiscreteToken kSpace_Maced_3639{3639};
 // " IPv"; original GPT-2 ID 25961.
-inline constexpr TokenId kSpace_IPv_3640 = 3640;
+inline constexpr DiscreteToken kSpace_IPv_3640{3640};
 // " delta"; original GPT-2 ID 25979.
-inline constexpr TokenId kSpace_delta_3641 = 3641;
+inline constexpr DiscreteToken kSpace_delta_3641{3641};
 // "ropolis"; original GPT-2 ID 25986.
-inline constexpr TokenId kropolis_3642 = 3642;
+inline constexpr DiscreteToken kropolis_3642{3642};
 // " southeast"; original GPT-2 ID 26015.
-inline constexpr TokenId kSpace_southeast_3643 = 3643;
+inline constexpr DiscreteToken kSpace_southeast_3643{3643};
 // " splitting"; original GPT-2 ID 26021.
-inline constexpr TokenId kSpace_splitting_3644 = 3644;
+inline constexpr DiscreteToken kSpace_splitting_3644{3644};
 // "eight"; original GPT-2 ID 26022.
-inline constexpr TokenId keight_3645 = 3645;
+inline constexpr DiscreteToken keight_3645{3645};
 // " Maya"; original GPT-2 ID 26041.
-inline constexpr TokenId kSpace_Maya_3646 = 3646;
+inline constexpr DiscreteToken kSpace_Maya_3646{3646};
 // " Opera"; original GPT-2 ID 26049.
-inline constexpr TokenId kSpace_Opera_3647 = 3647;
+inline constexpr DiscreteToken kSpace_Opera_3647{3647};
 // " specifies"; original GPT-2 ID 26052.
-inline constexpr TokenId kSpace_specifies_3648 = 3648;
+inline constexpr DiscreteToken kSpace_specifies_3648{3648};
 // "atra"; original GPT-2 ID 26066.
-inline constexpr TokenId katra_3649 = 3649;
+inline constexpr DiscreteToken katra_3649{3649};
 // "Radio"; original GPT-2 ID 26093.
-inline constexpr TokenId kRadio_3650 = 3650;
+inline constexpr DiscreteToken kRadio_3650{3650};
 // " Orion"; original GPT-2 ID 26153.
-inline constexpr TokenId kSpace_Orion_3651 = 3651;
+inline constexpr DiscreteToken kSpace_Orion_3651{3651};
 // " converts"; original GPT-2 ID 26161.
-inline constexpr TokenId kSpace_converts_3652 = 3652;
+inline constexpr DiscreteToken kSpace_converts_3652{3652};
 // " oak"; original GPT-2 ID 26210.
-inline constexpr TokenId kSpace_oak_3653 = 3653;
+inline constexpr DiscreteToken kSpace_oak_3653{3653};
 // " spinal"; original GPT-2 ID 26234.
-inline constexpr TokenId kSpace_spinal_3654 = 3654;
+inline constexpr DiscreteToken kSpace_spinal_3654{3654};
 // "Hash"; original GPT-2 ID 26257.
-inline constexpr TokenId kHash_3655 = 3655;
+inline constexpr DiscreteToken kHash_3655{3655};
 // " pasta"; original GPT-2 ID 26296.
-inline constexpr TokenId kSpace_pasta_3656 = 3656;
+inline constexpr DiscreteToken kSpace_pasta_3656{3656};
 // " Lines"; original GPT-2 ID 26299.
-inline constexpr TokenId kSpace_Lines_3657 = 3657;
+inline constexpr DiscreteToken kSpace_Lines_3657{3657};
 // " dissolved"; original GPT-2 ID 26306.
-inline constexpr TokenId kSpace_dissolved_3658 = 3658;
+inline constexpr DiscreteToken kSpace_dissolved_3658{3658};
 // "byte"; original GPT-2 ID 26327.
-inline constexpr TokenId kbyte_3659 = 3659;
+inline constexpr DiscreteToken kbyte_3659{3659};
 // "zon"; original GPT-2 ID 26361.
-inline constexpr TokenId kzon_3660 = 3660;
+inline constexpr DiscreteToken kzon_3660{3660};
 // " meanings"; original GPT-2 ID 26368.
-inline constexpr TokenId kSpace_meanings_3661 = 3661;
+inline constexpr DiscreteToken kSpace_meanings_3661{3661};
 // " lar"; original GPT-2 ID 26371.
-inline constexpr TokenId kSpace_lar_3662 = 3662;
+inline constexpr DiscreteToken kSpace_lar_3662{3662};
 // "Kim"; original GPT-2 ID 26374.
-inline constexpr TokenId kKim_3663 = 3663;
+inline constexpr DiscreteToken kKim_3663{3663};
 // " bean"; original GPT-2 ID 26394.
-inline constexpr TokenId kSpace_bean_3664 = 3664;
+inline constexpr DiscreteToken kSpace_bean_3664{3664};
 // " organism"; original GPT-2 ID 26433.
-inline constexpr TokenId kSpace_organism_3665 = 3665;
+inline constexpr DiscreteToken kSpace_organism_3665{3665};
 // "Simple"; original GPT-2 ID 26437.
-inline constexpr TokenId kSimple_3666 = 3666;
+inline constexpr DiscreteToken kSimple_3666{3666};
 // " Neptune"; original GPT-2 ID 26461.
-inline constexpr TokenId kSpace_Neptune_3667 = 3667;
+inline constexpr DiscreteToken kSpace_Neptune_3667{3667};
 // " Hok"; original GPT-2 ID 26467.
-inline constexpr TokenId kSpace_Hok_3668 = 3668;
+inline constexpr DiscreteToken kSpace_Hok_3668{3668};
 // " tilt"; original GPT-2 ID 26500.
-inline constexpr TokenId kSpace_tilt_3669 = 3669;
+inline constexpr DiscreteToken kSpace_tilt_3669{3669};
 // "Taking"; original GPT-2 ID 26556.
-inline constexpr TokenId kTaking_3670 = 3670;
+inline constexpr DiscreteToken kTaking_3670{3670};
 // " vinegar"; original GPT-2 ID 26600.
-inline constexpr TokenId kSpace_vinegar_3671 = 3671;
+inline constexpr DiscreteToken kSpace_vinegar_3671{3671};
 // " lays"; original GPT-2 ID 26614.
-inline constexpr TokenId kSpace_lays_3672 = 3672;
+inline constexpr DiscreteToken kSpace_lays_3672{3672};
 // "uble"; original GPT-2 ID 26664.
-inline constexpr TokenId kuble_3673 = 3673;
+inline constexpr DiscreteToken kuble_3673{3673};
 // "adder"; original GPT-2 ID 26676.
-inline constexpr TokenId kadder_3674 = 3674;
+inline constexpr DiscreteToken kadder_3674{3674};
 // "Islamic"; original GPT-2 ID 26723.
-inline constexpr TokenId kIslamic_3675 = 3675;
+inline constexpr DiscreteToken kIslamic_3675{3675};
 // " swings"; original GPT-2 ID 26728.
-inline constexpr TokenId kSpace_swings_3676 = 3676;
+inline constexpr DiscreteToken kSpace_swings_3676{3676};
 // " beams"; original GPT-2 ID 26741.
-inline constexpr TokenId kSpace_beams_3677 = 3677;
+inline constexpr DiscreteToken kSpace_beams_3677{3677};
 // " fibers"; original GPT-2 ID 26742.
-inline constexpr TokenId kSpace_fibers_3678 = 3678;
+inline constexpr DiscreteToken kSpace_fibers_3678{3678};
 // " energetic"; original GPT-2 ID 26758.
-inline constexpr TokenId kSpace_energetic_3679 = 3679;
+inline constexpr DiscreteToken kSpace_energetic_3679{3679};
 // "iso"; original GPT-2 ID 26786.
-inline constexpr TokenId kiso_3680 = 3680;
+inline constexpr DiscreteToken kiso_3680{3680};
 // " cardboard"; original GPT-2 ID 26819.
-inline constexpr TokenId kSpace_cardboard_3681 = 3681;
+inline constexpr DiscreteToken kSpace_cardboard_3681{3681};
 // " ray"; original GPT-2 ID 26842.
-inline constexpr TokenId kSpace_ray_3682 = 3682;
+inline constexpr DiscreteToken kSpace_ray_3682{3682};
 // " malt"; original GPT-2 ID 26868.
-inline constexpr TokenId kSpace_malt_3683 = 3683;
+inline constexpr DiscreteToken kSpace_malt_3683{3683};
 // "Roll"; original GPT-2 ID 26869.
-inline constexpr TokenId kRoll_3684 = 3684;
+inline constexpr DiscreteToken kRoll_3684{3684};
 // " commercially"; original GPT-2 ID 26879.
-inline constexpr TokenId kSpace_commercially_3685 = 3685;
+inline constexpr DiscreteToken kSpace_commercially_3685{3685};
 // " rocky"; original GPT-2 ID 26898.
-inline constexpr TokenId kSpace_rocky_3686 = 3686;
+inline constexpr DiscreteToken kSpace_rocky_3686{3686};
 // " sculpture"; original GPT-2 ID 26924.
-inline constexpr TokenId kSpace_sculpture_3687 = 3687;
+inline constexpr DiscreteToken kSpace_sculpture_3687{3687};
 // " curved"; original GPT-2 ID 26929.
-inline constexpr TokenId kSpace_curved_3688 = 3688;
+inline constexpr DiscreteToken kSpace_curved_3688{3688};
 // " almond"; original GPT-2 ID 26948.
-inline constexpr TokenId kSpace_almond_3689 = 3689;
+inline constexpr DiscreteToken kSpace_almond_3689{3689};
 // "Imp"; original GPT-2 ID 26950.
-inline constexpr TokenId kImp_3690 = 3690;
+inline constexpr DiscreteToken kImp_3690{3690};
 // "Ve"; original GPT-2 ID 26979.
-inline constexpr TokenId kVe_3691 = 3691;
+inline constexpr DiscreteToken kVe_3691{3691};
 // " Monkey"; original GPT-2 ID 26997.
-inline constexpr TokenId kSpace_Monkey_3692 = 3692;
+inline constexpr DiscreteToken kSpace_Monkey_3692{3692};
 // " microwave"; original GPT-2 ID 27000.
-inline constexpr TokenId kSpace_microwave_3693 = 3693;
+inline constexpr DiscreteToken kSpace_microwave_3693{3693};
 // " Nepal"; original GPT-2 ID 27026.
-inline constexpr TokenId kSpace_Nepal_3694 = 3694;
+inline constexpr DiscreteToken kSpace_Nepal_3694{3694};
 // " dataset"; original GPT-2 ID 27039.
-inline constexpr TokenId kSpace_dataset_3695 = 3695;
+inline constexpr DiscreteToken kSpace_dataset_3695{3695};
 // " planetary"; original GPT-2 ID 27047.
-inline constexpr TokenId kSpace_planetary_3696 = 3696;
+inline constexpr DiscreteToken kSpace_planetary_3696{3696};
 // "Sche"; original GPT-2 ID 27054.
-inline constexpr TokenId kSche_3697 = 3697;
+inline constexpr DiscreteToken kSche_3697{3697};
 // " louder"; original GPT-2 ID 27089.
-inline constexpr TokenId kSpace_louder_3698 = 3698;
+inline constexpr DiscreteToken kSpace_louder_3698{3698};
 // " proportional"; original GPT-2 ID 27111.
-inline constexpr TokenId kSpace_proportional_3699 = 3699;
+inline constexpr DiscreteToken kSpace_proportional_3699{3699};
 // "oths"; original GPT-2 ID 27118.
-inline constexpr TokenId koths_3700 = 3700;
+inline constexpr DiscreteToken koths_3700{3700};
 // " prose"; original GPT-2 ID 27149.
-inline constexpr TokenId kSpace_prose_3701 = 3701;
+inline constexpr DiscreteToken kSpace_prose_3701{3701};
 // " deposited"; original GPT-2 ID 27163.
-inline constexpr TokenId kSpace_deposited_3702 = 3702;
+inline constexpr DiscreteToken kSpace_deposited_3702{3702};
 // " flatt"; original GPT-2 ID 27172.
-inline constexpr TokenId kSpace_flatt_3703 = 3703;
+inline constexpr DiscreteToken kSpace_flatt_3703{3703};
 // "Enc"; original GPT-2 ID 27195.
-inline constexpr TokenId kEnc_3704 = 3704;
+inline constexpr DiscreteToken kEnc_3704{3704};
 // "pill"; original GPT-2 ID 27215.
-inline constexpr TokenId kpill_3705 = 3705;
+inline constexpr DiscreteToken kpill_3705{3705};
 // " cubic"; original GPT-2 ID 27216.
-inline constexpr TokenId kSpace_cubic_3706 = 3706;
+inline constexpr DiscreteToken kSpace_cubic_3706{3706};
 // "states"; original GPT-2 ID 27219.
-inline constexpr TokenId kstates_3707 = 3707;
+inline constexpr DiscreteToken kstates_3707{3707};
 // " syll"; original GPT-2 ID 27226.
-inline constexpr TokenId kSpace_syll_3708 = 3708;
+inline constexpr DiscreteToken kSpace_syll_3708{3708};
 // " 206"; original GPT-2 ID 27253.
-inline constexpr TokenId kSpace_206_3709 = 3709;
+inline constexpr DiscreteToken kSpace_206_3709{3709};
 // " separating"; original GPT-2 ID 27259.
-inline constexpr TokenId kSpace_separating_3710 = 3710;
+inline constexpr DiscreteToken kSpace_separating_3710{3710};
 // "Female"; original GPT-2 ID 27273.
-inline constexpr TokenId kFemale_3711 = 3711;
+inline constexpr DiscreteToken kFemale_3711{3711};
 // " floods"; original GPT-2 ID 27283.
-inline constexpr TokenId kSpace_floods_3712 = 3712;
+inline constexpr DiscreteToken kSpace_floods_3712{3712};
 // " metallic"; original GPT-2 ID 27306.
-inline constexpr TokenId kSpace_metallic_3713 = 3713;
+inline constexpr DiscreteToken kSpace_metallic_3713{3713};
 // " chees"; original GPT-2 ID 27384.
-inline constexpr TokenId kSpace_chees_3714 = 3714;
+inline constexpr DiscreteToken kSpace_chees_3714{3714};
 // " contacting"; original GPT-2 ID 27390.
-inline constexpr TokenId kSpace_contacting_3715 = 3715;
+inline constexpr DiscreteToken kSpace_contacting_3715{3715};
 // " retains"; original GPT-2 ID 27452.
-inline constexpr TokenId kSpace_retains_3716 = 3716;
+inline constexpr DiscreteToken kSpace_retains_3716{3716};
 // " finite"; original GPT-2 ID 27454.
-inline constexpr TokenId kSpace_finite_3717 = 3717;
+inline constexpr DiscreteToken kSpace_finite_3717{3717};
 // " periodic"; original GPT-2 ID 27458.
-inline constexpr TokenId kSpace_periodic_3718 = 3718;
+inline constexpr DiscreteToken kSpace_periodic_3718{3718};
 // " asteroid"; original GPT-2 ID 27460.
-inline constexpr TokenId kSpace_asteroid_3719 = 3719;
+inline constexpr DiscreteToken kSpace_asteroid_3719{3719};
 // " elastic"; original GPT-2 ID 27468.
-inline constexpr TokenId kSpace_elastic_3720 = 3720;
+inline constexpr DiscreteToken kSpace_elastic_3720{3720};
 // " equations"; original GPT-2 ID 27490.
-inline constexpr TokenId kSpace_equations_3721 = 3721;
+inline constexpr DiscreteToken kSpace_equations_3721{3721};
 // " expresses"; original GPT-2 ID 27505.
-inline constexpr TokenId kSpace_expresses_3722 = 3722;
+inline constexpr DiscreteToken kSpace_expresses_3722{3722};
 // "Opp"; original GPT-2 ID 27524.
-inline constexpr TokenId kOpp_3723 = 3723;
+inline constexpr DiscreteToken kOpp_3723{3723};
 // "raits"; original GPT-2 ID 27554.
-inline constexpr TokenId kraits_3724 = 3724;
+inline constexpr DiscreteToken kraits_3724{3724};
 // " nutrient"; original GPT-2 ID 27560.
-inline constexpr TokenId kSpace_nutrient_3725 = 3725;
+inline constexpr DiscreteToken kSpace_nutrient_3725{3725};
 // " emit"; original GPT-2 ID 27588.
-inline constexpr TokenId kSpace_emit_3726 = 3726;
+inline constexpr DiscreteToken kSpace_emit_3726{3726};
 // " ger"; original GPT-2 ID 27602.
-inline constexpr TokenId kSpace_ger_3727 = 3727;
+inline constexpr DiscreteToken kSpace_ger_3727{3727};
 // "Lo"; original GPT-2 ID 27654.
-inline constexpr TokenId kLo_3728 = 3728;
+inline constexpr DiscreteToken kLo_3728{3728};
 // "amboo"; original GPT-2 ID 27708.
-inline constexpr TokenId kamboo_3729 = 3729;
+inline constexpr DiscreteToken kamboo_3729{3729};
 // " humidity"; original GPT-2 ID 27716.
-inline constexpr TokenId kSpace_humidity_3730 = 3730;
+inline constexpr DiscreteToken kSpace_humidity_3730{3730};
 // " Units"; original GPT-2 ID 27719.
-inline constexpr TokenId kSpace_Units_3731 = 3731;
+inline constexpr DiscreteToken kSpace_Units_3731{3731};
 // " molecule"; original GPT-2 ID 27756.
-inline constexpr TokenId kSpace_molecule_3732 = 3732;
+inline constexpr DiscreteToken kSpace_molecule_3732{3732};
 // " Nights"; original GPT-2 ID 27760.
-inline constexpr TokenId kSpace_Nights_3733 = 3733;
+inline constexpr DiscreteToken kSpace_Nights_3733{3733};
 // " fortunes"; original GPT-2 ID 27806.
-inline constexpr TokenId kSpace_fortunes_3734 = 3734;
+inline constexpr DiscreteToken kSpace_fortunes_3734{3734};
 // " creamy"; original GPT-2 ID 27892.
-inline constexpr TokenId kSpace_creamy_3735 = 3735;
+inline constexpr DiscreteToken kSpace_creamy_3735{3735};
 // "Captain"; original GPT-2 ID 27898.
-inline constexpr TokenId kCaptain_3736 = 3736;
+inline constexpr DiscreteToken kCaptain_3736{3736};
 // " sixteen"; original GPT-2 ID 27913.
-inline constexpr TokenId kSpace_sixteen_3737 = 3737;
+inline constexpr DiscreteToken kSpace_sixteen_3737{3737};
 // " recharge"; original GPT-2 ID 27978.
-inline constexpr TokenId kSpace_recharge_3738 = 3738;
+inline constexpr DiscreteToken kSpace_recharge_3738{3738};
 // " galaxies"; original GPT-2 ID 27982.
-inline constexpr TokenId kSpace_galaxies_3739 = 3739;
+inline constexpr DiscreteToken kSpace_galaxies_3739{3739};
 // " fats"; original GPT-2 ID 27997.
-inline constexpr TokenId kSpace_fats_3740 = 3740;
+inline constexpr DiscreteToken kSpace_fats_3740{3740};
 // " examines"; original GPT-2 ID 28025.
-inline constexpr TokenId kSpace_examines_3741 = 3741;
+inline constexpr DiscreteToken kSpace_examines_3741{3741};
 // " Babylon"; original GPT-2 ID 28028.
-inline constexpr TokenId kSpace_Babylon_3742 = 3742;
+inline constexpr DiscreteToken kSpace_Babylon_3742{3742};
 // " Odyssey"; original GPT-2 ID 28032.
-inline constexpr TokenId kSpace_Odyssey_3743 = 3743;
+inline constexpr DiscreteToken kSpace_Odyssey_3743{3743};
 // " stitches"; original GPT-2 ID 28096.
-inline constexpr TokenId kSpace_stitches_3744 = 3744;
+inline constexpr DiscreteToken kSpace_stitches_3744{3744};
 // " odor"; original GPT-2 ID 28192.
-inline constexpr TokenId kSpace_odor_3745 = 3745;
+inline constexpr DiscreteToken kSpace_odor_3745{3745};
 // " Indonesian"; original GPT-2 ID 28259.
-inline constexpr TokenId kSpace_Indonesian_3746 = 3746;
+inline constexpr DiscreteToken kSpace_Indonesian_3746{3746};
 // " bulb"; original GPT-2 ID 28287.
-inline constexpr TokenId kSpace_bulb_3747 = 3747;
+inline constexpr DiscreteToken kSpace_bulb_3747{3747};
 // "asso"; original GPT-2 ID 28372.
-inline constexpr TokenId kasso_3748 = 3748;
+inline constexpr DiscreteToken kasso_3748{3748};
 // "enos"; original GPT-2 ID 28380.
-inline constexpr TokenId kenos_3749 = 3749;
+inline constexpr DiscreteToken kenos_3749{3749};
 // " wavelength"; original GPT-2 ID 28400.
-inline constexpr TokenId kSpace_wavelength_3750 = 3750;
+inline constexpr DiscreteToken kSpace_wavelength_3750{3750};
 // "chid"; original GPT-2 ID 28402.
-inline constexpr TokenId kchid_3751 = 3751;
+inline constexpr DiscreteToken kchid_3751{3751};
 // " tet"; original GPT-2 ID 28408.
-inline constexpr TokenId kSpace_tet_3752 = 3752;
+inline constexpr DiscreteToken kSpace_tet_3752{3752};
 // "inx"; original GPT-2 ID 28413.
-inline constexpr TokenId kinx_3753 = 3753;
+inline constexpr DiscreteToken kinx_3753{3753};
 // " claws"; original GPT-2 ID 28421.
-inline constexpr TokenId kSpace_claws_3754 = 3754;
+inline constexpr DiscreteToken kSpace_claws_3754{3754};
 // " openings"; original GPT-2 ID 28431.
-inline constexpr TokenId kSpace_openings_3755 = 3755;
+inline constexpr DiscreteToken kSpace_openings_3755{3755};
 // " grinding"; original GPT-2 ID 28436.
-inline constexpr TokenId kSpace_grinding_3756 = 3756;
+inline constexpr DiscreteToken kSpace_grinding_3756{3756};
 // "holes"; original GPT-2 ID 28439.
-inline constexpr TokenId kholes_3757 = 3757;
+inline constexpr DiscreteToken kholes_3757{3757};
 // " flux"; original GPT-2 ID 28462.
-inline constexpr TokenId kSpace_flux_3758 = 3758;
+inline constexpr DiscreteToken kSpace_flux_3758{3758};
 // " clarified"; original GPT-2 ID 28464.
-inline constexpr TokenId kSpace_clarified_3759 = 3759;
+inline constexpr DiscreteToken kSpace_clarified_3759{3759};
 // "metal"; original GPT-2 ID 28469.
-inline constexpr TokenId kmetal_3760 = 3760;
+inline constexpr DiscreteToken kmetal_3760{3760};
 // " induction"; original GPT-2 ID 28471.
-inline constexpr TokenId kSpace_induction_3761 = 3761;
+inline constexpr DiscreteToken kSpace_induction_3761{3761};
 // " infl"; original GPT-2 ID 28472.
-inline constexpr TokenId kSpace_infl_3762 = 3762;
+inline constexpr DiscreteToken kSpace_infl_3762{3762};
 // " mushroom"; original GPT-2 ID 28520.
-inline constexpr TokenId kSpace_mushroom_3763 = 3763;
+inline constexpr DiscreteToken kSpace_mushroom_3763{3763};
 // " depicts"; original GPT-2 ID 28539.
-inline constexpr TokenId kSpace_depicts_3764 = 3764;
+inline constexpr DiscreteToken kSpace_depicts_3764{3764};
 // " mouths"; original GPT-2 ID 28552.
-inline constexpr TokenId kSpace_mouths_3765 = 3765;
+inline constexpr DiscreteToken kSpace_mouths_3765{3765};
 // "ulic"; original GPT-2 ID 28575.
-inline constexpr TokenId kulic_3766 = 3766;
+inline constexpr DiscreteToken kulic_3766{3766};
 // " Zimbabwe"; original GPT-2 ID 28589.
-inline constexpr TokenId kSpace_Zimbabwe_3767 = 3767;
+inline constexpr DiscreteToken kSpace_Zimbabwe_3767{3767};
 // " exponent"; original GPT-2 ID 28622.
-inline constexpr TokenId kSpace_exponent_3768 = 3768;
+inline constexpr DiscreteToken kSpace_exponent_3768{3768};
 // " breeze"; original GPT-2 ID 28633.
-inline constexpr TokenId kSpace_breeze_3769 = 3769;
+inline constexpr DiscreteToken kSpace_breeze_3769{3769};
 // "HTML"; original GPT-2 ID 28656.
-inline constexpr TokenId kHTML_3770 = 3770;
+inline constexpr DiscreteToken kHTML_3770{3770};
 // "Zero"; original GPT-2 ID 28667.
-inline constexpr TokenId kZero_3771 = 3771;
+inline constexpr DiscreteToken kZero_3771{3771};
 // " miniature"; original GPT-2 ID 28685.
-inline constexpr TokenId kSpace_miniature_3772 = 3772;
+inline constexpr DiscreteToken kSpace_miniature_3772{3772};
 // "Charles"; original GPT-2 ID 28711.
-inline constexpr TokenId kCharles_3773 = 3773;
+inline constexpr DiscreteToken kCharles_3773{3773};
 // " gears"; original GPT-2 ID 28713.
-inline constexpr TokenId kSpace_gears_3774 = 3774;
+inline constexpr DiscreteToken kSpace_gears_3774{3774};
 // " undefined"; original GPT-2 ID 28721.
-inline constexpr TokenId kSpace_undefined_3775 = 3775;
+inline constexpr DiscreteToken kSpace_undefined_3775{3775};
 // " electrons"; original GPT-2 ID 28722.
-inline constexpr TokenId kSpace_electrons_3776 = 3776;
+inline constexpr DiscreteToken kSpace_electrons_3776{3776};
 // "stones"; original GPT-2 ID 28750.
-inline constexpr TokenId kstones_3777 = 3777;
+inline constexpr DiscreteToken kstones_3777{3777};
 // " fortress"; original GPT-2 ID 28757.
-inline constexpr TokenId kSpace_fortress_3778 = 3778;
+inline constexpr DiscreteToken kSpace_fortress_3778{3778};
 // " rept"; original GPT-2 ID 28761.
-inline constexpr TokenId kSpace_rept_3779 = 3779;
+inline constexpr DiscreteToken kSpace_rept_3779{3779};
 // "Diff"; original GPT-2 ID 28813.
-inline constexpr TokenId kDiff_3780 = 3780;
+inline constexpr DiscreteToken kDiff_3780{3780};
 // " monuments"; original GPT-2 ID 28814.
-inline constexpr TokenId kSpace_monuments_3781 = 3781;
+inline constexpr DiscreteToken kSpace_monuments_3781{3781};
 // " Ig"; original GPT-2 ID 28818.
-inline constexpr TokenId kSpace_Ig_3782 = 3782;
+inline constexpr DiscreteToken kSpace_Ig_3782{3782};
 // "TPS"; original GPT-2 ID 28820.
-inline constexpr TokenId kTPS_3783 = 3783;
+inline constexpr DiscreteToken kTPS_3783{3783};
 // " Plain"; original GPT-2 ID 28847.
-inline constexpr TokenId kSpace_Plain_3784 = 3784;
+inline constexpr DiscreteToken kSpace_Plain_3784{3784};
 // " lava"; original GPT-2 ID 28856.
-inline constexpr TokenId kSpace_lava_3785 = 3785;
+inline constexpr DiscreteToken kSpace_lava_3785{3785};
 // " Scrolls"; original GPT-2 ID 28859.
-inline constexpr TokenId kSpace_Scrolls_3786 = 3786;
+inline constexpr DiscreteToken kSpace_Scrolls_3786{3786};
 // "meg"; original GPT-2 ID 28917.
-inline constexpr TokenId kmeg_3787 = 3787;
+inline constexpr DiscreteToken kmeg_3787{3787};
 // "Energy"; original GPT-2 ID 28925.
-inline constexpr TokenId kEnergy_3788 = 3788;
+inline constexpr DiscreteToken kEnergy_3788{3788};
 // "Snow"; original GPT-2 ID 28974.
-inline constexpr TokenId kSnow_3789 = 3789;
+inline constexpr DiscreteToken kSnow_3789{3789};
 // " slider"; original GPT-2 ID 28982.
-inline constexpr TokenId kSpace_slider_3790 = 3790;
+inline constexpr DiscreteToken kSpace_slider_3790{3790};
 // " Borg"; original GPT-2 ID 29004.
-inline constexpr TokenId kSpace_Borg_3791 = 3791;
+inline constexpr DiscreteToken kSpace_Borg_3791{3791};
 // " stal"; original GPT-2 ID 29049.
-inline constexpr TokenId kSpace_stal_3792 = 3792;
+inline constexpr DiscreteToken kSpace_stal_3792{3792};
 // " enzymes"; original GPT-2 ID 29120.
-inline constexpr TokenId kSpace_enzymes_3793 = 3793;
+inline constexpr DiscreteToken kSpace_enzymes_3793{3793};
 // "Alt"; original GPT-2 ID 29161.
-inline constexpr TokenId kAlt_3794 = 3794;
+inline constexpr DiscreteToken kAlt_3794{3794};
 // " conquest"; original GPT-2 ID 29179.
-inline constexpr TokenId kSpace_conquest_3795 = 3795;
+inline constexpr DiscreteToken kSpace_conquest_3795{3795};
 // "pared"; original GPT-2 ID 29190.
-inline constexpr TokenId kpared_3796 = 3796;
+inline constexpr DiscreteToken kpared_3796{3796};
 // "Mom"; original GPT-2 ID 29252.
-inline constexpr TokenId kMom_3797 = 3797;
+inline constexpr DiscreteToken kMom_3797{3797};
 // " Champ"; original GPT-2 ID 29260.
-inline constexpr TokenId kSpace_Champ_3798 = 3798;
+inline constexpr DiscreteToken kSpace_Champ_3798{3798};
 // "layer"; original GPT-2 ID 29289.
-inline constexpr TokenId klayer_3799 = 3799;
+inline constexpr DiscreteToken klayer_3799{3799};
 // "antics"; original GPT-2 ID 29320.
-inline constexpr TokenId kantics_3800 = 3800;
+inline constexpr DiscreteToken kantics_3800{3800};
 // " displacement"; original GPT-2 ID 29358.
-inline constexpr TokenId kSpace_displacement_3801 = 3801;
+inline constexpr DiscreteToken kSpace_displacement_3801{3801};
 // "allel"; original GPT-2 ID 29363.
-inline constexpr TokenId kallel_3802 = 3802;
+inline constexpr DiscreteToken kallel_3802{3802};
 // "Stars"; original GPT-2 ID 29366.
-inline constexpr TokenId kStars_3803 = 3803;
+inline constexpr DiscreteToken kStars_3803{3803};
 // " Renaissance"; original GPT-2 ID 29396.
-inline constexpr TokenId kSpace_Renaissance_3804 = 3804;
+inline constexpr DiscreteToken kSpace_Renaissance_3804{3804};
 // " Scandinav"; original GPT-2 ID 29410.
-inline constexpr TokenId kSpace_Scandinav_3805 = 3805;
+inline constexpr DiscreteToken kSpace_Scandinav_3805{3805};
 // "Breaking"; original GPT-2 ID 29449.
-inline constexpr TokenId kBreaking_3806 = 3806;
+inline constexpr DiscreteToken kBreaking_3806{3806};
 // " filename"; original GPT-2 ID 29472.
-inline constexpr TokenId kSpace_filename_3807 = 3807;
+inline constexpr DiscreteToken kSpace_filename_3807{3807};
 // " dens"; original GPT-2 ID 29509.
-inline constexpr TokenId kSpace_dens_3808 = 3808;
+inline constexpr DiscreteToken kSpace_dens_3808{3808};
 // " drying"; original GPT-2 ID 29621.
-inline constexpr TokenId kSpace_drying_3809 = 3809;
+inline constexpr DiscreteToken kSpace_drying_3809{3809};
 // " Morocco"; original GPT-2 ID 29638.
-inline constexpr TokenId kSpace_Morocco_3810 = 3810;
+inline constexpr DiscreteToken kSpace_Morocco_3810{3810};
 // " pawn"; original GPT-2 ID 29649.
-inline constexpr TokenId kSpace_pawn_3811 = 3811;
+inline constexpr DiscreteToken kSpace_pawn_3811{3811};
 // " nineteenth"; original GPT-2 ID 29666.
-inline constexpr TokenId kSpace_nineteenth_3812 = 3812;
+inline constexpr DiscreteToken kSpace_nineteenth_3812{3812};
 // " Stockholm"; original GPT-2 ID 29679.
-inline constexpr TokenId kSpace_Stockholm_3813 = 3813;
+inline constexpr DiscreteToken kSpace_Stockholm_3813{3813};
 // " lumin"; original GPT-2 ID 29763.
-inline constexpr TokenId kSpace_lumin_3814 = 3814;
+inline constexpr DiscreteToken kSpace_lumin_3814{3814};
 // " earthquakes"; original GPT-2 ID 29781.
-inline constexpr TokenId kSpace_earthquakes_3815 = 3815;
+inline constexpr DiscreteToken kSpace_earthquakes_3815{3815};
 // " inert"; original GPT-2 ID 29824.
-inline constexpr TokenId kSpace_inert_3816 = 3816;
+inline constexpr DiscreteToken kSpace_inert_3816{3816};
 // " silicon"; original GPT-2 ID 29867.
-inline constexpr TokenId kSpace_silicon_3817 = 3817;
+inline constexpr DiscreteToken kSpace_silicon_3817{3817};
 // " mortar"; original GPT-2 ID 29871.
-inline constexpr TokenId kSpace_mortar_3818 = 3818;
+inline constexpr DiscreteToken kSpace_mortar_3818{3818};
 // "Arthur"; original GPT-2 ID 29874.
-inline constexpr TokenId kArthur_3819 = 3819;
+inline constexpr DiscreteToken kArthur_3819{3819};
 // " sparse"; original GPT-2 ID 29877.
-inline constexpr TokenId kSpace_sparse_3820 = 3820;
+inline constexpr DiscreteToken kSpace_sparse_3820{3820};
 // " clocks"; original GPT-2 ID 29906.
-inline constexpr TokenId kSpace_clocks_3821 = 3821;
+inline constexpr DiscreteToken kSpace_clocks_3821{3821};
 // " folding"; original GPT-2 ID 29909.
-inline constexpr TokenId kSpace_folding_3822 = 3822;
+inline constexpr DiscreteToken kSpace_folding_3822{3822};
 // "ollen"; original GPT-2 ID 29952.
-inline constexpr TokenId kollen_3823 = 3823;
+inline constexpr DiscreteToken kollen_3823{3823};
 // " gravitational"; original GPT-2 ID 29973.
-inline constexpr TokenId kSpace_gravitational_3824 = 3824;
+inline constexpr DiscreteToken kSpace_gravitational_3824{3824};
 // " nucleus"; original GPT-2 ID 29984.
-inline constexpr TokenId kSpace_nucleus_3825 = 3825;
+inline constexpr DiscreteToken kSpace_nucleus_3825{3825};
 // " ell"; original GPT-2 ID 30004.
-inline constexpr TokenId kSpace_ell_3826 = 3826;
+inline constexpr DiscreteToken kSpace_ell_3826{3826};
 // " ecosystems"; original GPT-2 ID 30020.
-inline constexpr TokenId kSpace_ecosystems_3827 = 3827;
+inline constexpr DiscreteToken kSpace_ecosystems_3827{3827};
 // " spreadsheet"; original GPT-2 ID 30117.
-inline constexpr TokenId kSpace_spreadsheet_3828 = 3828;
+inline constexpr DiscreteToken kSpace_spreadsheet_3828{3828};
 // " dye"; original GPT-2 ID 30121.
-inline constexpr TokenId kSpace_dye_3829 = 3829;
+inline constexpr DiscreteToken kSpace_dye_3829{3829};
 // " reacts"; original GPT-2 ID 30174.
-inline constexpr TokenId kSpace_reacts_3830 = 3830;
+inline constexpr DiscreteToken kSpace_reacts_3830{3830};
 // "sensitive"; original GPT-2 ID 30176.
-inline constexpr TokenId ksensitive_3831 = 3831;
+inline constexpr DiscreteToken ksensitive_3831{3831};
 // "chard"; original GPT-2 ID 30215.
-inline constexpr TokenId kchard_3832 = 3832;
+inline constexpr DiscreteToken kchard_3832{3832};
 // " encoded"; original GPT-2 ID 30240.
-inline constexpr TokenId kSpace_encoded_3833 = 3833;
+inline constexpr DiscreteToken kSpace_encoded_3833{3833};
 // " pivot"; original GPT-2 ID 30355.
-inline constexpr TokenId kSpace_pivot_3834 = 3834;
+inline constexpr DiscreteToken kSpace_pivot_3834{3834};
 // " verte"; original GPT-2 ID 30362.
-inline constexpr TokenId kSpace_verte_3835 = 3835;
+inline constexpr DiscreteToken kSpace_verte_3835{3835};
 // "Jonathan"; original GPT-2 ID 30365.
-inline constexpr TokenId kJonathan_3836 = 3836;
+inline constexpr DiscreteToken kJonathan_3836{3836};
 // "Spring"; original GPT-2 ID 30387.
-inline constexpr TokenId kSpring_3837 = 3837;
+inline constexpr DiscreteToken kSpring_3837{3837};
 // "rocket"; original GPT-2 ID 30431.
-inline constexpr TokenId krocket_3838 = 3838;
+inline constexpr DiscreteToken krocket_3838{3838};
 // " remnants"; original GPT-2 ID 30468.
-inline constexpr TokenId kSpace_remnants_3839 = 3839;
+inline constexpr DiscreteToken kSpace_remnants_3839{3839};
 // " shale"; original GPT-2 ID 30498.
-inline constexpr TokenId kSpace_shale_3840 = 3840;
+inline constexpr DiscreteToken kSpace_shale_3840{3840};
 // " cultivated"; original GPT-2 ID 30499.
-inline constexpr TokenId kSpace_cultivated_3841 = 3841;
+inline constexpr DiscreteToken kSpace_cultivated_3841{3841};
 // " tails"; original GPT-2 ID 30514.
-inline constexpr TokenId kSpace_tails_3842 = 3842;
+inline constexpr DiscreteToken kSpace_tails_3842{3842};
 // "odor"; original GPT-2 ID 30530.
-inline constexpr TokenId kodor_3843 = 3843;
+inline constexpr DiscreteToken kodor_3843{3843};
 // "Dream"; original GPT-2 ID 30571.
-inline constexpr TokenId kDream_3844 = 3844;
+inline constexpr DiscreteToken kDream_3844{3844};
 // " constructing"; original GPT-2 ID 30580.
-inline constexpr TokenId kSpace_constructing_3845 = 3845;
+inline constexpr DiscreteToken kSpace_constructing_3845{3845};
 // " marble"; original GPT-2 ID 30623.
-inline constexpr TokenId kSpace_marble_3846 = 3846;
+inline constexpr DiscreteToken kSpace_marble_3846{3846};
 // " uneven"; original GPT-2 ID 30690.
-inline constexpr TokenId kSpace_uneven_3847 = 3847;
+inline constexpr DiscreteToken kSpace_uneven_3847{3847};
 // " volatility"; original GPT-2 ID 30772.
-inline constexpr TokenId kSpace_volatility_3848 = 3848;
+inline constexpr DiscreteToken kSpace_volatility_3848{3848};
 // " Uganda"; original GPT-2 ID 30872.
-inline constexpr TokenId kSpace_Uganda_3849 = 3849;
+inline constexpr DiscreteToken kSpace_Uganda_3849{3849};
 // " electr"; original GPT-2 ID 30880.
-inline constexpr TokenId kSpace_electr_3850 = 3850;
+inline constexpr DiscreteToken kSpace_electr_3850{3850};
 // " caves"; original GPT-2 ID 30923.
-inline constexpr TokenId kSpace_caves_3851 = 3851;
+inline constexpr DiscreteToken kSpace_caves_3851{3851};
 // " Dum"; original GPT-2 ID 30933.
-inline constexpr TokenId kSpace_Dum_3852 = 3852;
+inline constexpr DiscreteToken kSpace_Dum_3852{3852};
 // "Pers"; original GPT-2 ID 30946.
-inline constexpr TokenId kPers_3853 = 3853;
+inline constexpr DiscreteToken kPers_3853{3853};
 // " archaeological"; original GPT-2 ID 30971.
-inline constexpr TokenId kSpace_archaeological_3854 = 3854;
+inline constexpr DiscreteToken kSpace_archaeological_3854{3854};
 // "rica"; original GPT-2 ID 30997.
-inline constexpr TokenId krica_3855 = 3855;
+inline constexpr DiscreteToken krica_3855{3855};
 // " faults"; original GPT-2 ID 31025.
-inline constexpr TokenId kSpace_faults_3856 = 3856;
+inline constexpr DiscreteToken kSpace_faults_3856{3856};
 // " pi"; original GPT-2 ID 31028.
-inline constexpr TokenId kSpace_pi_3857 = 3857;
+inline constexpr DiscreteToken kSpace_pi_3857{3857};
 // " Cambodia"; original GPT-2 ID 31057.
-inline constexpr TokenId kSpace_Cambodia_3858 = 3858;
+inline constexpr DiscreteToken kSpace_Cambodia_3858{3858};
 // " moons"; original GPT-2 ID 31093.
-inline constexpr TokenId kSpace_moons_3859 = 3859;
+inline constexpr DiscreteToken kSpace_moons_3859{3859};
 // " electromagnetic"; original GPT-2 ID 31094.
-inline constexpr TokenId kSpace_electromagnetic_3860 = 3860;
+inline constexpr DiscreteToken kSpace_electromagnetic_3860{3860};
 // "agus"; original GPT-2 ID 31111.
-inline constexpr TokenId kagus_3861 = 3861;
+inline constexpr DiscreteToken kagus_3861{3861};
 // " nour"; original GPT-2 ID 31219.
-inline constexpr TokenId kSpace_nour_3862 = 3862;
+inline constexpr DiscreteToken kSpace_nour_3862{3862};
 // " messenger"; original GPT-2 ID 31228.
-inline constexpr TokenId kSpace_messenger_3863 = 3863;
+inline constexpr DiscreteToken kSpace_messenger_3863{3863};
 // " Doyle"; original GPT-2 ID 31233.
-inline constexpr TokenId kSpace_Doyle_3864 = 3864;
+inline constexpr DiscreteToken kSpace_Doyle_3864{3864};
 // "Obs"; original GPT-2 ID 31310.
-inline constexpr TokenId kObs_3865 = 3865;
+inline constexpr DiscreteToken kObs_3865{3865};
 // " Canal"; original GPT-2 ID 31314.
-inline constexpr TokenId kSpace_Canal_3866 = 3866;
+inline constexpr DiscreteToken kSpace_Canal_3866{3866};
 // " Rivera"; original GPT-2 ID 31325.
-inline constexpr TokenId kSpace_Rivera_3867 = 3867;
+inline constexpr DiscreteToken kSpace_Rivera_3867{3867};
 // "audi"; original GPT-2 ID 31330.
-inline constexpr TokenId kaudi_3868 = 3868;
+inline constexpr DiscreteToken kaudi_3868{3868};
 // " catalyst"; original GPT-2 ID 31357.
-inline constexpr TokenId kSpace_catalyst_3869 = 3869;
+inline constexpr DiscreteToken kSpace_catalyst_3869{3869};
 // "berra"; original GPT-2 ID 31358.
-inline constexpr TokenId kberra_3870 = 3870;
+inline constexpr DiscreteToken kberra_3870{3870};
 // "Modern"; original GPT-2 ID 31439.
-inline constexpr TokenId kModern_3871 = 3871;
+inline constexpr DiscreteToken kModern_3871{3871};
 // "Rain"; original GPT-2 ID 31443.
-inline constexpr TokenId kRain_3872 = 3872;
+inline constexpr DiscreteToken kRain_3872{3872};
 // " denomin"; original GPT-2 ID 31457.
-inline constexpr TokenId kSpace_denomin_3873 = 3873;
+inline constexpr DiscreteToken kSpace_denomin_3873{3873};
 // "moving"; original GPT-2 ID 31462.
-inline constexpr TokenId kmoving_3874 = 3874;
+inline constexpr DiscreteToken kmoving_3874{3874};
 // " Qin"; original GPT-2 ID 31482.
-inline constexpr TokenId kSpace_Qin_3875 = 3875;
+inline constexpr DiscreteToken kSpace_Qin_3875{3875};
 // " volcanic"; original GPT-2 ID 31513.
-inline constexpr TokenId kSpace_volcanic_3876 = 3876;
+inline constexpr DiscreteToken kSpace_volcanic_3876{3876};
 // " Perse"; original GPT-2 ID 31544.
-inline constexpr TokenId kSpace_Perse_3877 = 3877;
+inline constexpr DiscreteToken kSpace_Perse_3877{3877};
 // " separates"; original GPT-2 ID 31555.
-inline constexpr TokenId kSpace_separates_3878 = 3878;
+inline constexpr DiscreteToken kSpace_separates_3878{3878};
 // "Emb"; original GPT-2 ID 31567.
-inline constexpr TokenId kEmb_3879 = 3879;
+inline constexpr DiscreteToken kEmb_3879{3879};
 // " Ethiopia"; original GPT-2 ID 31592.
-inline constexpr TokenId kSpace_Ethiopia_3880 = 3880;
+inline constexpr DiscreteToken kSpace_Ethiopia_3880{3880};
 // "Arab"; original GPT-2 ID 31602.
-inline constexpr TokenId kArab_3881 = 3881;
+inline constexpr DiscreteToken kArab_3881{3881};
 // " stationary"; original GPT-2 ID 31607.
-inline constexpr TokenId kSpace_stationary_3882 = 3882;
+inline constexpr DiscreteToken kSpace_stationary_3882{3882};
 // " Conan"; original GPT-2 ID 31634.
-inline constexpr TokenId kSpace_Conan_3883 = 3883;
+inline constexpr DiscreteToken kSpace_Conan_3883{3883};
 // "Moon"; original GPT-2 ID 31640.
-inline constexpr TokenId kMoon_3884 = 3884;
+inline constexpr DiscreteToken kMoon_3884{3884};
 // " cavity"; original GPT-2 ID 31643.
-inline constexpr TokenId kSpace_cavity_3885 = 3885;
+inline constexpr DiscreteToken kSpace_cavity_3885{3885};
 // " Huang"; original GPT-2 ID 31663.
-inline constexpr TokenId kSpace_Huang_3886 = 3886;
+inline constexpr DiscreteToken kSpace_Huang_3886{3886};
 // " deflect"; original GPT-2 ID 31685.
-inline constexpr TokenId kSpace_deflect_3887 = 3887;
+inline constexpr DiscreteToken kSpace_deflect_3887{3887};
 // " comet"; original GPT-2 ID 31733.
-inline constexpr TokenId kSpace_comet_3888 = 3888;
+inline constexpr DiscreteToken kSpace_comet_3888{3888};
 // " readable"; original GPT-2 ID 31744.
-inline constexpr TokenId kSpace_readable_3889 = 3889;
+inline constexpr DiscreteToken kSpace_readable_3889{3889};
 // "eden"; original GPT-2 ID 31829.
-inline constexpr TokenId keden_3890 = 3890;
+inline constexpr DiscreteToken keden_3890{3890};
 // " zinc"; original GPT-2 ID 31861.
-inline constexpr TokenId kSpace_zinc_3891 = 3891;
+inline constexpr DiscreteToken kSpace_zinc_3891{3891};
 // " Tibetan"; original GPT-2 ID 31877.
-inline constexpr TokenId kSpace_Tibetan_3892 = 3892;
+inline constexpr DiscreteToken kSpace_Tibetan_3892{3892};
 // "erenn"; original GPT-2 ID 31915.
-inline constexpr TokenId kerenn_3893 = 3893;
+inline constexpr DiscreteToken kerenn_3893{3893};
 // " collisions"; original GPT-2 ID 31998.
-inline constexpr TokenId kSpace_collisions_3894 = 3894;
+inline constexpr DiscreteToken kSpace_collisions_3894{3894};
 // "kok"; original GPT-2 ID 32004.
-inline constexpr TokenId kkok_3895 = 3895;
+inline constexpr DiscreteToken kkok_3895{3895};
 // "fif"; original GPT-2 ID 32041.
-inline constexpr TokenId kfif_3896 = 3896;
+inline constexpr DiscreteToken kfif_3896{3896};
 // " seaw"; original GPT-2 ID 32085.
-inline constexpr TokenId kSpace_seaw_3897 = 3897;
+inline constexpr DiscreteToken kSpace_seaw_3897{3897};
 // " mantle"; original GPT-2 ID 32107.
-inline constexpr TokenId kSpace_mantle_3898 = 3898;
+inline constexpr DiscreteToken kSpace_mantle_3898{3898};
 // " cooled"; original GPT-2 ID 32162.
-inline constexpr TokenId kSpace_cooled_3899 = 3899;
+inline constexpr DiscreteToken kSpace_cooled_3899{3899};
 // " Guatemala"; original GPT-2 ID 32183.
-inline constexpr TokenId kSpace_Guatemala_3900 = 3900;
+inline constexpr DiscreteToken kSpace_Guatemala_3900{3900};
 // " exposures"; original GPT-2 ID 32185.
-inline constexpr TokenId kSpace_exposures_3901 = 3901;
+inline constexpr DiscreteToken kSpace_exposures_3901{3901};
 // " crab"; original GPT-2 ID 32202.
-inline constexpr TokenId kSpace_crab_3902 = 3902;
+inline constexpr DiscreteToken kSpace_crab_3902{3902};
 // "istine"; original GPT-2 ID 32248.
-inline constexpr TokenId kistine_3903 = 3903;
+inline constexpr DiscreteToken kistine_3903{3903};
 // " infinitely"; original GPT-2 ID 32264.
-inline constexpr TokenId kSpace_infinitely_3904 = 3904;
+inline constexpr DiscreteToken kSpace_infinitely_3904{3904};
 // " paints"; original GPT-2 ID 32281.
-inline constexpr TokenId kSpace_paints_3905 = 3905;
+inline constexpr DiscreteToken kSpace_paints_3905{3905};
 // " showers"; original GPT-2 ID 32290.
-inline constexpr TokenId kSpace_showers_3906 = 3906;
+inline constexpr DiscreteToken kSpace_showers_3906{3906};
 // " Seas"; original GPT-2 ID 32306.
-inline constexpr TokenId kSpace_Seas_3907 = 3907;
+inline constexpr DiscreteToken kSpace_Seas_3907{3907};
 // "achu"; original GPT-2 ID 32323.
-inline constexpr TokenId kachu_3908 = 3908;
+inline constexpr DiscreteToken kachu_3908{3908};
 // " volcano"; original GPT-2 ID 32410.
-inline constexpr TokenId kSpace_volcano_3909 = 3909;
+inline constexpr DiscreteToken kSpace_volcano_3909{3909};
 // "Die"; original GPT-2 ID 32423.
-inline constexpr TokenId kDie_3910 = 3910;
+inline constexpr DiscreteToken kDie_3910{3910};
 // "Howard"; original GPT-2 ID 32434.
-inline constexpr TokenId kHoward_3911 = 3911;
+inline constexpr DiscreteToken kHoward_3911{3911};
 // "Roman"; original GPT-2 ID 32454.
-inline constexpr TokenId kRoman_3912 = 3912;
+inline constexpr DiscreteToken kRoman_3912{3912};
 // " decimal"; original GPT-2 ID 32465.
-inline constexpr TokenId kSpace_decimal_3913 = 3913;
+inline constexpr DiscreteToken kSpace_decimal_3913{3913};
 // " Taj"; original GPT-2 ID 32490.
-inline constexpr TokenId kSpace_Taj_3914 = 3914;
+inline constexpr DiscreteToken kSpace_Taj_3914{3914};
 // " Martian"; original GPT-2 ID 32508.
-inline constexpr TokenId kSpace_Martian_3915 = 3915;
+inline constexpr DiscreteToken kSpace_Martian_3915{3915};
 // " deposition"; original GPT-2 ID 32553.
-inline constexpr TokenId kSpace_deposition_3916 = 3916;
+inline constexpr DiscreteToken kSpace_deposition_3916{3916};
 // " Came"; original GPT-2 ID 32653.
-inline constexpr TokenId kSpace_Came_3917 = 3917;
+inline constexpr DiscreteToken kSpace_Came_3917{3917};
 // " Egyptians"; original GPT-2 ID 32658.
-inline constexpr TokenId kSpace_Egyptians_3918 = 3918;
+inline constexpr DiscreteToken kSpace_Egyptians_3918{3918};
 // "Mos"; original GPT-2 ID 32668.
-inline constexpr TokenId kMos_3919 = 3919;
+inline constexpr DiscreteToken kMos_3919{3919};
 // " airborne"; original GPT-2 ID 32726.
-inline constexpr TokenId kSpace_airborne_3920 = 3920;
+inline constexpr DiscreteToken kSpace_airborne_3920{3920};
 // " aperture"; original GPT-2 ID 32729.
-inline constexpr TokenId kSpace_aperture_3921 = 3921;
+inline constexpr DiscreteToken kSpace_aperture_3921{3921};
 // " fuse"; original GPT-2 ID 32738.
-inline constexpr TokenId kSpace_fuse_3922 = 3922;
+inline constexpr DiscreteToken kSpace_fuse_3922{3922};
 // " Ghana"; original GPT-2 ID 32825.
-inline constexpr TokenId kSpace_Ghana_3923 = 3923;
+inline constexpr DiscreteToken kSpace_Ghana_3923{3923};
 // " rods"; original GPT-2 ID 32858.
-inline constexpr TokenId kSpace_rods_3924 = 3924;
+inline constexpr DiscreteToken kSpace_rods_3924{3924};
 // " melody"; original GPT-2 ID 32859.
-inline constexpr TokenId kSpace_melody_3925 = 3925;
+inline constexpr DiscreteToken kSpace_melody_3925{3925};
 // " Baltic"; original GPT-2 ID 32882.
-inline constexpr TokenId kSpace_Baltic_3926 = 3926;
+inline constexpr DiscreteToken kSpace_Baltic_3926{3926};
 // " phon"; original GPT-2 ID 32896.
-inline constexpr TokenId kSpace_phon_3927 = 3927;
+inline constexpr DiscreteToken kSpace_phon_3927{3927};
 // "Adding"; original GPT-2 ID 32901.
-inline constexpr TokenId kAdding_3928 = 3928;
+inline constexpr DiscreteToken kAdding_3928{3928};
 // " hairs"; original GPT-2 ID 32908.
-inline constexpr TokenId kSpace_hairs_3929 = 3929;
+inline constexpr DiscreteToken kSpace_hairs_3929{3929};
 // "posing"; original GPT-2 ID 32927.
-inline constexpr TokenId kposing_3930 = 3930;
+inline constexpr DiscreteToken kposing_3930{3930};
 // " Chapel"; original GPT-2 ID 32939.
-inline constexpr TokenId kSpace_Chapel_3931 = 3931;
+inline constexpr DiscreteToken kSpace_Chapel_3931{3931};
 // " hardened"; original GPT-2 ID 33034.
-inline constexpr TokenId kSpace_hardened_3932 = 3932;
+inline constexpr DiscreteToken kSpace_hardened_3932{3932};
 // " Arabian"; original GPT-2 ID 33081.
-inline constexpr TokenId kSpace_Arabian_3933 = 3933;
+inline constexpr DiscreteToken kSpace_Arabian_3933{3933};
 // "andel"; original GPT-2 ID 33134.
-inline constexpr TokenId kandel_3934 = 3934;
+inline constexpr DiscreteToken kandel_3934{3934};
 // " cereal"; original GPT-2 ID 33158.
-inline constexpr TokenId kSpace_cereal_3935 = 3935;
+inline constexpr DiscreteToken kSpace_cereal_3935{3935};
 // " hemisphere"; original GPT-2 ID 33169.
-inline constexpr TokenId kSpace_hemisphere_3936 = 3936;
+inline constexpr DiscreteToken kSpace_hemisphere_3936{3936};
 // " attracts"; original GPT-2 ID 33174.
-inline constexpr TokenId kSpace_attracts_3937 = 3937;
+inline constexpr DiscreteToken kSpace_attracts_3937{3937};
 // "Ident"; original GPT-2 ID 33234.
-inline constexpr TokenId kIdent_3938 = 3938;
+inline constexpr DiscreteToken kIdent_3938{3938};
 // " mixes"; original GPT-2 ID 33237.
-inline constexpr TokenId kSpace_mixes_3939 = 3939;
+inline constexpr DiscreteToken kSpace_mixes_3939{3939};
 // " celestial"; original GPT-2 ID 33258.
-inline constexpr TokenId kSpace_celestial_3940 = 3940;
+inline constexpr DiscreteToken kSpace_celestial_3940{3940};
 // " notation"; original GPT-2 ID 33274.
-inline constexpr TokenId kSpace_notation_3941 = 3941;
+inline constexpr DiscreteToken kSpace_notation_3941{3941};
 // " sediment"; original GPT-2 ID 33408.
-inline constexpr TokenId kSpace_sediment_3942 = 3942;
+inline constexpr DiscreteToken kSpace_sediment_3942{3942};
 // " reacting"; original GPT-2 ID 33413.
-inline constexpr TokenId kSpace_reacting_3943 = 3943;
+inline constexpr DiscreteToken kSpace_reacting_3943{3943};
 // " compositions"; original GPT-2 ID 33543.
-inline constexpr TokenId kSpace_compositions_3944 = 3944;
+inline constexpr DiscreteToken kSpace_compositions_3944{3944};
 // "ynt"; original GPT-2 ID 33567.
-inline constexpr TokenId kynt_3945 = 3945;
+inline constexpr DiscreteToken kynt_3945{3945};
 // "Moving"; original GPT-2 ID 33622.
-inline constexpr TokenId kMoving_3946 = 3946;
+inline constexpr DiscreteToken kMoving_3946{3946};
 // " mustard"; original GPT-2 ID 33694.
-inline constexpr TokenId kSpace_mustard_3947 = 3947;
+inline constexpr DiscreteToken kSpace_mustard_3947{3947};
 // "Ast"; original GPT-2 ID 33751.
-inline constexpr TokenId kAst_3948 = 3948;
+inline constexpr DiscreteToken kAst_3948{3948};
 // "araoh"; original GPT-2 ID 33766.
-inline constexpr TokenId karaoh_3949 = 3949;
+inline constexpr DiscreteToken karaoh_3949{3949};
 // "Nit"; original GPT-2 ID 33772.
-inline constexpr TokenId kNit_3950 = 3950;
+inline constexpr DiscreteToken kNit_3950{3950};
 // " algae"; original GPT-2 ID 33773.
-inline constexpr TokenId kSpace_algae_3951 = 3951;
+inline constexpr DiscreteToken kSpace_algae_3951{3951};
 // " Literature"; original GPT-2 ID 33818.
-inline constexpr TokenId kSpace_Literature_3952 = 3952;
+inline constexpr DiscreteToken kSpace_Literature_3952{3952};
 // "ibu"; original GPT-2 ID 33828.
-inline constexpr TokenId kibu_3953 = 3953;
+inline constexpr DiscreteToken kibu_3953{3953};
 // " brightest"; original GPT-2 ID 33871.
-inline constexpr TokenId kSpace_brightest_3954 = 3954;
+inline constexpr DiscreteToken kSpace_brightest_3954{3954};
 // "esame"; original GPT-2 ID 34038.
-inline constexpr TokenId kesame_3955 = 3955;
+inline constexpr DiscreteToken kesame_3955{3955};
 // " pupil"; original GPT-2 ID 34047.
-inline constexpr TokenId kSpace_pupil_3956 = 3956;
+inline constexpr DiscreteToken kSpace_pupil_3956{3956};
 // " fres"; original GPT-2 ID 34093.
-inline constexpr TokenId kSpace_fres_3957 = 3957;
+inline constexpr DiscreteToken kSpace_fres_3957{3957};
 // "actus"; original GPT-2 ID 34144.
-inline constexpr TokenId kactus_3958 = 3958;
+inline constexpr DiscreteToken kactus_3958{3958};
 // " lowers"; original GPT-2 ID 34157.
-inline constexpr TokenId kSpace_lowers_3959 = 3959;
+inline constexpr DiscreteToken kSpace_lowers_3959{3959};
 // " Ottoman"; original GPT-2 ID 34158.
-inline constexpr TokenId kSpace_Ottoman_3960 = 3960;
+inline constexpr DiscreteToken kSpace_Ottoman_3960{3960};
 // " constructs"; original GPT-2 ID 34175.
-inline constexpr TokenId kSpace_constructs_3961 = 3961;
+inline constexpr DiscreteToken kSpace_constructs_3961{3961};
 // " Celsius"; original GPT-2 ID 34186.
-inline constexpr TokenId kSpace_Celsius_3962 = 3962;
+inline constexpr DiscreteToken kSpace_Celsius_3962{3962};
 // "Poly"; original GPT-2 ID 34220.
-inline constexpr TokenId kPoly_3963 = 3963;
+inline constexpr DiscreteToken kPoly_3963{3963};
 // "otrop"; original GPT-2 ID 34248.
-inline constexpr TokenId kotrop_3964 = 3964;
+inline constexpr DiscreteToken kotrop_3964{3964};
 // " harvested"; original GPT-2 ID 34262.
-inline constexpr TokenId kSpace_harvested_3965 = 3965;
+inline constexpr DiscreteToken kSpace_harvested_3965{3965};
 // "Cold"; original GPT-2 ID 34312.
-inline constexpr TokenId kCold_3966 = 3966;
+inline constexpr DiscreteToken kCold_3966{3966};
 // "Stone"; original GPT-2 ID 34346.
-inline constexpr TokenId kStone_3967 = 3967;
+inline constexpr DiscreteToken kStone_3967{3967};
 // " chromosome"; original GPT-2 ID 34348.
-inline constexpr TokenId kSpace_chromosome_3968 = 3968;
+inline constexpr DiscreteToken kSpace_chromosome_3968{3968};
 // " Tempest"; original GPT-2 ID 34367.
-inline constexpr TokenId kSpace_Tempest_3969 = 3969;
+inline constexpr DiscreteToken kSpace_Tempest_3969{3969};
 // " Unicode"; original GPT-2 ID 34371.
-inline constexpr TokenId kSpace_Unicode_3970 = 3970;
+inline constexpr DiscreteToken kSpace_Unicode_3970{3970};
 // "atters"; original GPT-2 ID 34387.
-inline constexpr TokenId katters_3971 = 3971;
+inline constexpr DiscreteToken katters_3971{3971};
 // " sugars"; original GPT-2 ID 34476.
-inline constexpr TokenId kSpace_sugars_3972 = 3972;
+inline constexpr DiscreteToken kSpace_sugars_3972{3972};
 // " painter"; original GPT-2 ID 34537.
-inline constexpr TokenId kSpace_painter_3973 = 3973;
+inline constexpr DiscreteToken kSpace_painter_3973{3973};
 // "Computer"; original GPT-2 ID 34556.
-inline constexpr TokenId kComputer_3974 = 3974;
+inline constexpr DiscreteToken kComputer_3974{3974};
 // " groundwater"; original GPT-2 ID 34573.
-inline constexpr TokenId kSpace_groundwater_3975 = 3975;
+inline constexpr DiscreteToken kSpace_groundwater_3975{3975};
 // " overlooking"; original GPT-2 ID 34603.
-inline constexpr TokenId kSpace_overlooking_3976 = 3976;
+inline constexpr DiscreteToken kSpace_overlooking_3976{3976};
 // " digestive"; original GPT-2 ID 34616.
-inline constexpr TokenId kSpace_digestive_3977 = 3977;
+inline constexpr DiscreteToken kSpace_digestive_3977{3977};
 // "ogly"; original GPT-2 ID 34619.
-inline constexpr TokenId kogly_3978 = 3978;
+inline constexpr DiscreteToken kogly_3978{3978};
 // " dispersed"; original GPT-2 ID 34646.
-inline constexpr TokenId kSpace_dispersed_3979 = 3979;
+inline constexpr DiscreteToken kSpace_dispersed_3979{3979};
 // " scratching"; original GPT-2 ID 34688.
-inline constexpr TokenId kSpace_scratching_3980 = 3980;
+inline constexpr DiscreteToken kSpace_scratching_3980{3980};
 // "odynamic"; original GPT-2 ID 34743.
-inline constexpr TokenId kodynamic_3981 = 3981;
+inline constexpr DiscreteToken kodynamic_3981{3981};
 // " arithmetic"; original GPT-2 ID 34768.
-inline constexpr TokenId kSpace_arithmetic_3982 = 3982;
+inline constexpr DiscreteToken kSpace_arithmetic_3982{3982};
 // " witches"; original GPT-2 ID 34773.
-inline constexpr TokenId kSpace_witches_3983 = 3983;
+inline constexpr DiscreteToken kSpace_witches_3983{3983};
 // " Milky"; original GPT-2 ID 34822.
-inline constexpr TokenId kSpace_Milky_3984 = 3984;
+inline constexpr DiscreteToken kSpace_Milky_3984{3984};
 // " Dante"; original GPT-2 ID 34898.
-inline constexpr TokenId kSpace_Dante_3985 = 3985;
+inline constexpr DiscreteToken kSpace_Dante_3985{3985};
 // " bladder"; original GPT-2 ID 34918.
-inline constexpr TokenId kSpace_bladder_3986 = 3986;
+inline constexpr DiscreteToken kSpace_bladder_3986{3986};
 // "Ther"; original GPT-2 ID 35048.
-inline constexpr TokenId kTher_3987 = 3987;
+inline constexpr DiscreteToken kTher_3987{3987};
 // "utra"; original GPT-2 ID 35076.
-inline constexpr TokenId kutra_3988 = 3988;
+inline constexpr DiscreteToken kutra_3988{3988};
 // " oy"; original GPT-2 ID 35104.
-inline constexpr TokenId kSpace_oy_3989 = 3989;
+inline constexpr DiscreteToken kSpace_oy_3989{3989};
 // " butterfly"; original GPT-2 ID 35113.
-inline constexpr TokenId kSpace_butterfly_3990 = 3990;
+inline constexpr DiscreteToken kSpace_butterfly_3990{3990};
 // " fermentation"; original GPT-2 ID 35115.
-inline constexpr TokenId kSpace_fermentation_3991 = 3991;
+inline constexpr DiscreteToken kSpace_fermentation_3991{3991};
 // " 1913"; original GPT-2 ID 35145.
-inline constexpr TokenId kSpace_1913_3992 = 3992;
+inline constexpr DiscreteToken kSpace_1913_3992{3992};
 // " illuminated"; original GPT-2 ID 35162.
-inline constexpr TokenId kSpace_illuminated_3993 = 3993;
+inline constexpr DiscreteToken kSpace_illuminated_3993{3993};
 // "esse"; original GPT-2 ID 35270.
-inline constexpr TokenId kesse_3994 = 3994;
+inline constexpr DiscreteToken kesse_3994{3994};
 // "Anim"; original GPT-2 ID 35320.
-inline constexpr TokenId kAnim_3995 = 3995;
+inline constexpr DiscreteToken kAnim_3995{3995};
 // " sewing"; original GPT-2 ID 35356.
-inline constexpr TokenId kSpace_sewing_3996 = 3996;
+inline constexpr DiscreteToken kSpace_sewing_3996{3996};
 // "Natural"; original GPT-2 ID 35364.
-inline constexpr TokenId kNatural_3997 = 3997;
+inline constexpr DiscreteToken kNatural_3997{3997};
 // "Cro"; original GPT-2 ID 35403.
-inline constexpr TokenId kCro_3998 = 3998;
+inline constexpr DiscreteToken kCro_3998{3998};
 // "Ord"; original GPT-2 ID 35422.
-inline constexpr TokenId kOrd_3999 = 3999;
+inline constexpr DiscreteToken kOrd_3999{3999};
 // "Mount"; original GPT-2 ID 35452.
-inline constexpr TokenId kMount_4000 = 4000;
+inline constexpr DiscreteToken kMount_4000{4000};
 // " bananas"; original GPT-2 ID 35484.
-inline constexpr TokenId kSpace_bananas_4001 = 4001;
+inline constexpr DiscreteToken kSpace_bananas_4001{4001};
 // " suffix"; original GPT-2 ID 35488.
-inline constexpr TokenId kSpace_suffix_4002 = 4002;
+inline constexpr DiscreteToken kSpace_suffix_4002{4002};
 // "Ground"; original GPT-2 ID 35539.
-inline constexpr TokenId kGround_4003 = 4003;
+inline constexpr DiscreteToken kGround_4003{4003};
 // "Ye"; original GPT-2 ID 35543.
-inline constexpr TokenId kYe_4004 = 4004;
+inline constexpr DiscreteToken kYe_4004{4004};
 // " mosquitoes"; original GPT-2 ID 35573.
-inline constexpr TokenId kSpace_mosquitoes_4005 = 4005;
+inline constexpr DiscreteToken kSpace_mosquitoes_4005{4005};
 // " southeastern"; original GPT-2 ID 35618.
-inline constexpr TokenId kSpace_southeastern_4006 = 4006;
+inline constexpr DiscreteToken kSpace_southeastern_4006{4006};
 // "yg"; original GPT-2 ID 35641.
-inline constexpr TokenId kyg_4007 = 4007;
+inline constexpr DiscreteToken kyg_4007{4007};
 // " turbines"; original GPT-2 ID 35658.
-inline constexpr TokenId kSpace_turbines_4008 = 4008;
+inline constexpr DiscreteToken kSpace_turbines_4008{4008};
 // " likeness"; original GPT-2 ID 35674.
-inline constexpr TokenId kSpace_likeness_4009 = 4009;
+inline constexpr DiscreteToken kSpace_likeness_4009{4009};
 // "apest"; original GPT-2 ID 35746.
-inline constexpr TokenId kapest_4010 = 4010;
+inline constexpr DiscreteToken kapest_4010{4010};
 // " Euras"; original GPT-2 ID 35769.
-inline constexpr TokenId kSpace_Euras_4011 = 4011;
+inline constexpr DiscreteToken kSpace_Euras_4011{4011};
 // " photographic"; original GPT-2 ID 35788.
-inline constexpr TokenId kSpace_photographic_4012 = 4012;
+inline constexpr DiscreteToken kSpace_photographic_4012{4012};
 // " tuber"; original GPT-2 ID 35813.
-inline constexpr TokenId kSpace_tuber_4013 = 4013;
+inline constexpr DiscreteToken kSpace_tuber_4013{4013};
 // "ilus"; original GPT-2 ID 35815.
-inline constexpr TokenId kilus_4014 = 4014;
+inline constexpr DiscreteToken kilus_4014{4014};
 // " insol"; original GPT-2 ID 35831.
-inline constexpr TokenId kSpace_insol_4015 = 4015;
+inline constexpr DiscreteToken kSpace_insol_4015{4015};
 // " hive"; original GPT-2 ID 35881.
-inline constexpr TokenId kSpace_hive_4016 = 4016;
+inline constexpr DiscreteToken kSpace_hive_4016{4016};
 // " wedge"; original GPT-2 ID 35901.
-inline constexpr TokenId kSpace_wedge_4017 = 4017;
+inline constexpr DiscreteToken kSpace_wedge_4017{4017};
 // " edible"; original GPT-2 ID 35988.
-inline constexpr TokenId kSpace_edible_4018 = 4018;
+inline constexpr DiscreteToken kSpace_edible_4018{4018};
 // " rectangle"; original GPT-2 ID 35991.
-inline constexpr TokenId kSpace_rectangle_4019 = 4019;
+inline constexpr DiscreteToken kSpace_rectangle_4019{4019};
 // " floats"; original GPT-2 ID 36016.
-inline constexpr TokenId kSpace_floats_4020 = 4020;
+inline constexpr DiscreteToken kSpace_floats_4020{4020};
 // "iltration"; original GPT-2 ID 36055.
-inline constexpr TokenId kiltration_4021 = 4021;
+inline constexpr DiscreteToken kiltration_4021{4021};
 // " insertion"; original GPT-2 ID 36075.
-inline constexpr TokenId kSpace_insertion_4022 = 4022;
+inline constexpr DiscreteToken kSpace_insertion_4022{4022};
 // " 1922"; original GPT-2 ID 36094.
-inline constexpr TokenId kSpace_1922_4023 = 4023;
+inline constexpr DiscreteToken kSpace_1922_4023{4023};
 // "azes"; original GPT-2 ID 36096.
-inline constexpr TokenId kazes_4024 = 4024;
+inline constexpr DiscreteToken kazes_4024{4024};
 // " Nab"; original GPT-2 ID 36099.
-inline constexpr TokenId kSpace_Nab_4025 = 4025;
+inline constexpr DiscreteToken kSpace_Nab_4025{4025};
 // " Pompe"; original GPT-2 ID 36103.
-inline constexpr TokenId kSpace_Pompe_4026 = 4026;
+inline constexpr DiscreteToken kSpace_Pompe_4026{4026};
 // " temperament"; original GPT-2 ID 36140.
-inline constexpr TokenId kSpace_temperament_4027 = 4027;
+inline constexpr DiscreteToken kSpace_temperament_4027{4027};
 // " eruption"; original GPT-2 ID 36176.
-inline constexpr TokenId kSpace_eruption_4028 = 4028;
+inline constexpr DiscreteToken kSpace_eruption_4028{4028};
 // " intersect"; original GPT-2 ID 36177.
-inline constexpr TokenId kSpace_intersect_4029 = 4029;
+inline constexpr DiscreteToken kSpace_intersect_4029{4029};
 // "Leon"; original GPT-2 ID 36185.
-inline constexpr TokenId kLeon_4030 = 4030;
+inline constexpr DiscreteToken kLeon_4030{4030};
 // " alloy"; original GPT-2 ID 36186.
-inline constexpr TokenId kSpace_alloy_4031 = 4031;
+inline constexpr DiscreteToken kSpace_alloy_4031{4031};
 // "ocon"; original GPT-2 ID 36221.
-inline constexpr TokenId kocon_4032 = 4032;
+inline constexpr DiscreteToken kocon_4032{4032};
 // " contraction"; original GPT-2 ID 36246.
-inline constexpr TokenId kSpace_contraction_4033 = 4033;
+inline constexpr DiscreteToken kSpace_contraction_4033{4033};
 // " tad"; original GPT-2 ID 36264.
-inline constexpr TokenId kSpace_tad_4034 = 4034;
+inline constexpr DiscreteToken kSpace_tad_4034{4034};
 // " saturation"; original GPT-2 ID 36275.
-inline constexpr TokenId kSpace_saturation_4035 = 4035;
+inline constexpr DiscreteToken kSpace_saturation_4035{4035};
 // "tec"; original GPT-2 ID 36281.
-inline constexpr TokenId ktec_4036 = 4036;
+inline constexpr DiscreteToken ktec_4036{4036};
 // " turtles"; original GPT-2 ID 36288.
-inline constexpr TokenId kSpace_turtles_4037 = 4037;
+inline constexpr DiscreteToken kSpace_turtles_4037{4037};
 // " Scream"; original GPT-2 ID 36306.
-inline constexpr TokenId kSpace_Scream_4038 = 4038;
+inline constexpr DiscreteToken kSpace_Scream_4038{4038};
 // " divides"; original GPT-2 ID 36319.
-inline constexpr TokenId kSpace_divides_4039 = 4039;
+inline constexpr DiscreteToken kSpace_divides_4039{4039};
 // " sushi"; original GPT-2 ID 36324.
-inline constexpr TokenId kSpace_sushi_4040 = 4040;
+inline constexpr DiscreteToken kSpace_sushi_4040{4040};
 // " cling"; original GPT-2 ID 36331.
-inline constexpr TokenId kSpace_cling_4041 = 4041;
+inline constexpr DiscreteToken kSpace_cling_4041{4041};
 // "Bear"; original GPT-2 ID 36352.
-inline constexpr TokenId kBear_4042 = 4042;
+inline constexpr DiscreteToken kBear_4042{4042};
 // " monumental"; original GPT-2 ID 36364.
-inline constexpr TokenId kSpace_monumental_4043 = 4043;
+inline constexpr DiscreteToken kSpace_monumental_4043{4043};
 // " microscope"; original GPT-2 ID 36396.
-inline constexpr TokenId kSpace_microscope_4044 = 4044;
+inline constexpr DiscreteToken kSpace_microscope_4044{4044};
 // " buds"; original GPT-2 ID 36402.
-inline constexpr TokenId kSpace_buds_4045 = 4045;
+inline constexpr DiscreteToken kSpace_buds_4045{4045};
 // " Brah"; original GPT-2 ID 36415.
-inline constexpr TokenId kSpace_Brah_4046 = 4046;
+inline constexpr DiscreteToken kSpace_Brah_4046{4046};
 // " survives"; original GPT-2 ID 36417.
-inline constexpr TokenId kSpace_survives_4047 = 4047;
+inline constexpr DiscreteToken kSpace_survives_4047{4047};
 // " Uruguay"; original GPT-2 ID 36421.
-inline constexpr TokenId kSpace_Uruguay_4048 = 4048;
+inline constexpr DiscreteToken kSpace_Uruguay_4048{4048};
 // " Ves"; original GPT-2 ID 36448.
-inline constexpr TokenId kSpace_Ves_4049 = 4049;
+inline constexpr DiscreteToken kSpace_Ves_4049{4049};
 // "Mess"; original GPT-2 ID 36479.
-inline constexpr TokenId kMess_4050 = 4050;
+inline constexpr DiscreteToken kMess_4050{4050};
 // " negligible"; original GPT-2 ID 36480.
-inline constexpr TokenId kSpace_negligible_4051 = 4051;
+inline constexpr DiscreteToken kSpace_negligible_4051{4051};
 // " manuscripts"; original GPT-2 ID 36578.
-inline constexpr TokenId kSpace_manuscripts_4052 = 4052;
+inline constexpr DiscreteToken kSpace_manuscripts_4052{4052};
 // " pouch"; original GPT-2 ID 36594.
-inline constexpr TokenId kSpace_pouch_4053 = 4053;
+inline constexpr DiscreteToken kSpace_pouch_4053{4053};
 // "organic"; original GPT-2 ID 36617.
-inline constexpr TokenId korganic_4054 = 4054;
+inline constexpr DiscreteToken korganic_4054{4054};
 // " buoy"; original GPT-2 ID 36675.
-inline constexpr TokenId kSpace_buoy_4055 = 4055;
+inline constexpr DiscreteToken kSpace_buoy_4055{4055};
 // " Lal"; original GPT-2 ID 36683.
-inline constexpr TokenId kSpace_Lal_4056 = 4056;
+inline constexpr DiscreteToken kSpace_Lal_4056{4056};
 // " carve"; original GPT-2 ID 36717.
-inline constexpr TokenId kSpace_carve_4057 = 4057;
+inline constexpr DiscreteToken kSpace_carve_4057{4057};
 // "pole"; original GPT-2 ID 36869.
-inline constexpr TokenId kpole_4058 = 4058;
+inline constexpr DiscreteToken kpole_4058{4058};
 // "Dur"; original GPT-2 ID 36927.
-inline constexpr TokenId kDur_4059 = 4059;
+inline constexpr DiscreteToken kDur_4059{4059};
 // " woven"; original GPT-2 ID 36932.
-inline constexpr TokenId kSpace_woven_4060 = 4060;
+inline constexpr DiscreteToken kSpace_woven_4060{4060};
 // " plugs"; original GPT-2 ID 37008.
-inline constexpr TokenId kSpace_plugs_4061 = 4061;
+inline constexpr DiscreteToken kSpace_plugs_4061{4061};
 // " integers"; original GPT-2 ID 37014.
-inline constexpr TokenId kSpace_integers_4062 = 4062;
+inline constexpr DiscreteToken kSpace_integers_4062{4062};
 // " orbits"; original GPT-2 ID 37015.
-inline constexpr TokenId kSpace_orbits_4063 = 4063;
+inline constexpr DiscreteToken kSpace_orbits_4063{4063};
 // " salts"; original GPT-2 ID 37056.
-inline constexpr TokenId kSpace_salts_4064 = 4064;
+inline constexpr DiscreteToken kSpace_salts_4064{4064};
 // "Graph"; original GPT-2 ID 37065.
-inline constexpr TokenId kGraph_4065 = 4065;
+inline constexpr DiscreteToken kGraph_4065{4065};
 // " BCE"; original GPT-2 ID 37078.
-inline constexpr TokenId kSpace_BCE_4066 = 4066;
+inline constexpr DiscreteToken kSpace_BCE_4066{4066};
 // " ozone"; original GPT-2 ID 37170.
-inline constexpr TokenId kSpace_ozone_4067 = 4067;
+inline constexpr DiscreteToken kSpace_ozone_4067{4067};
 // " infinity"; original GPT-2 ID 37174.
-inline constexpr TokenId kSpace_infinity_4068 = 4068;
+inline constexpr DiscreteToken kSpace_infinity_4068{4068};
 // " pods"; original GPT-2 ID 37185.
-inline constexpr TokenId kSpace_pods_4069 = 4069;
+inline constexpr DiscreteToken kSpace_pods_4069{4069};
 // " inverted"; original GPT-2 ID 37204.
-inline constexpr TokenId kSpace_inverted_4070 = 4070;
+inline constexpr DiscreteToken kSpace_inverted_4070{4070};
 // " astronomical"; original GPT-2 ID 37209.
-inline constexpr TokenId kSpace_astronomical_4071 = 4071;
+inline constexpr DiscreteToken kSpace_astronomical_4071{4071};
 // " dru"; original GPT-2 ID 37215.
-inline constexpr TokenId kSpace_dru_4072 = 4072;
+inline constexpr DiscreteToken kSpace_dru_4072{4072};
 // " bonding"; original GPT-2 ID 37228.
-inline constexpr TokenId kSpace_bonding_4073 = 4073;
+inline constexpr DiscreteToken kSpace_bonding_4073{4073};
 // " tilted"; original GPT-2 ID 37229.
-inline constexpr TokenId kSpace_tilted_4074 = 4074;
+inline constexpr DiscreteToken kSpace_tilted_4074{4074};
 // " Tanzania"; original GPT-2 ID 37270.
-inline constexpr TokenId kSpace_Tanzania_4075 = 4075;
+inline constexpr DiscreteToken kSpace_Tanzania_4075{4075};
 // " Petra"; original GPT-2 ID 37285.
-inline constexpr TokenId kSpace_Petra_4076 = 4076;
+inline constexpr DiscreteToken kSpace_Petra_4076{4076};
 // " enlarged"; original GPT-2 ID 37287.
-inline constexpr TokenId kSpace_enlarged_4077 = 4077;
+inline constexpr DiscreteToken kSpace_enlarged_4077{4077};
 // " intervening"; original GPT-2 ID 37294.
-inline constexpr TokenId kSpace_intervening_4078 = 4078;
+inline constexpr DiscreteToken kSpace_intervening_4078{4078};
 // "ocular"; original GPT-2 ID 37320.
-inline constexpr TokenId kocular_4079 = 4079;
+inline constexpr DiscreteToken kocular_4079{4079};
 // " swollen"; original GPT-2 ID 37327.
-inline constexpr TokenId kSpace_swollen_4080 = 4080;
+inline constexpr DiscreteToken kSpace_swollen_4080{4080};
 // " larvae"; original GPT-2 ID 37346.
-inline constexpr TokenId kSpace_larvae_4081 = 4081;
+inline constexpr DiscreteToken kSpace_larvae_4081{4081};
 // " nipples"; original GPT-2 ID 37368.
-inline constexpr TokenId kSpace_nipples_4082 = 4082;
+inline constexpr DiscreteToken kSpace_nipples_4082{4082};
 // " gir"; original GPT-2 ID 37370.
-inline constexpr TokenId kSpace_gir_4083 = 4083;
+inline constexpr DiscreteToken kSpace_gir_4083{4083};
 // " spectral"; original GPT-2 ID 37410.
-inline constexpr TokenId kSpace_spectral_4084 = 4084;
+inline constexpr DiscreteToken kSpace_spectral_4084{4084};
 // " reinforcement"; original GPT-2 ID 37414.
-inline constexpr TokenId kSpace_reinforcement_4085 = 4085;
+inline constexpr DiscreteToken kSpace_reinforcement_4085{4085};
 // " magnets"; original GPT-2 ID 37446.
-inline constexpr TokenId kSpace_magnets_4086 = 4086;
+inline constexpr DiscreteToken kSpace_magnets_4086{4086};
 // " seismic"; original GPT-2 ID 37463.
-inline constexpr TokenId kSpace_seismic_4087 = 4087;
+inline constexpr DiscreteToken kSpace_seismic_4087{4087};
 // " frogs"; original GPT-2 ID 37475.
-inline constexpr TokenId kSpace_frogs_4088 = 4088;
+inline constexpr DiscreteToken kSpace_frogs_4088{4088};
 // " spontaneously"; original GPT-2 ID 37512.
-inline constexpr TokenId kSpace_spontaneously_4089 = 4089;
+inline constexpr DiscreteToken kSpace_spontaneously_4089{4089};
 // " eighty"; original GPT-2 ID 37516.
-inline constexpr TokenId kSpace_eighty_4090 = 4090;
+inline constexpr DiscreteToken kSpace_eighty_4090{4090};
 // "Ven"; original GPT-2 ID 37522.
-inline constexpr TokenId kVen_4091 = 4091;
+inline constexpr DiscreteToken kVen_4091{4091};
 // " hotter"; original GPT-2 ID 37546.
-inline constexpr TokenId kSpace_hotter_4092 = 4092;
+inline constexpr DiscreteToken kSpace_hotter_4092{4092};
 // "anuts"; original GPT-2 ID 37555.
-inline constexpr TokenId kanuts_4093 = 4093;
+inline constexpr DiscreteToken kanuts_4093{4093};
 // "Doctor"; original GPT-2 ID 37564.
-inline constexpr TokenId kDoctor_4094 = 4094;
+inline constexpr DiscreteToken kDoctor_4094{4094};
 // "Sea"; original GPT-2 ID 37567.
-inline constexpr TokenId kSea_4095 = 4095;
+inline constexpr DiscreteToken kSea_4095{4095};
 // "Machine"; original GPT-2 ID 37573.
-inline constexpr TokenId kMachine_4096 = 4096;
+inline constexpr DiscreteToken kMachine_4096{4096};
 // "Dub"; original GPT-2 ID 37590.
-inline constexpr TokenId kDub_4097 = 4097;
+inline constexpr DiscreteToken kDub_4097{4097};
 // " shredded"; original GPT-2 ID 37624.
-inline constexpr TokenId kSpace_shredded_4098 = 4098;
+inline constexpr DiscreteToken kSpace_shredded_4098{4098};
 // "amorph"; original GPT-2 ID 37670.
-inline constexpr TokenId kamorph_4099 = 4099;
+inline constexpr DiscreteToken kamorph_4099{4099};
 // "gil"; original GPT-2 ID 37718.
-inline constexpr TokenId kgil_4100 = 4100;
+inline constexpr DiscreteToken kgil_4100{4100};
 // " pulses"; original GPT-2 ID 37783.
-inline constexpr TokenId kSpace_pulses_4101 = 4101;
+inline constexpr DiscreteToken kSpace_pulses_4101{4101};
 // "ractions"; original GPT-2 ID 37810.
-inline constexpr TokenId kractions_4102 = 4102;
+inline constexpr DiscreteToken kractions_4102{4102};
 // " rearr"; original GPT-2 ID 37825.
-inline constexpr TokenId kSpace_rearr_4103 = 4103;
+inline constexpr DiscreteToken kSpace_rearr_4103{4103};
 // "ensis"; original GPT-2 ID 37834.
-inline constexpr TokenId kensis_4104 = 4104;
+inline constexpr DiscreteToken kensis_4104{4104};
 // " dyn"; original GPT-2 ID 37860.
-inline constexpr TokenId kSpace_dyn_4105 = 4105;
+inline constexpr DiscreteToken kSpace_dyn_4105{4105};
 // " inland"; original GPT-2 ID 37874.
-inline constexpr TokenId kSpace_inland_4106 = 4106;
+inline constexpr DiscreteToken kSpace_inland_4106{4106};
 // " heats"; original GPT-2 ID 37876.
-inline constexpr TokenId kSpace_heats_4107 = 4107;
+inline constexpr DiscreteToken kSpace_heats_4107{4107};
 // "ylene"; original GPT-2 ID 37880.
-inline constexpr TokenId kylene_4108 = 4108;
+inline constexpr DiscreteToken kylene_4108{4108};
 // " kinetic"; original GPT-2 ID 37892.
-inline constexpr TokenId kSpace_kinetic_4109 = 4109;
+inline constexpr DiscreteToken kSpace_kinetic_4109{4109};
 // " Marian"; original GPT-2 ID 37919.
-inline constexpr TokenId kSpace_Marian_4110 = 4110;
+inline constexpr DiscreteToken kSpace_Marian_4110{4110};
 // " immersed"; original GPT-2 ID 37970.
-inline constexpr TokenId kSpace_immersed_4111 = 4111;
+inline constexpr DiscreteToken kSpace_immersed_4111{4111};
 // " ceramic"; original GPT-2 ID 37973.
-inline constexpr TokenId kSpace_ceramic_4112 = 4112;
+inline constexpr DiscreteToken kSpace_ceramic_4112{4112};
 // " ninety"; original GPT-2 ID 37989.
-inline constexpr TokenId kSpace_ninety_4113 = 4113;
+inline constexpr DiscreteToken kSpace_ninety_4113{4113};
 // "aroo"; original GPT-2 ID 38049.
-inline constexpr TokenId karoo_4114 = 4114;
+inline constexpr DiscreteToken karoo_4114{4114};
 // " Nile"; original GPT-2 ID 38063.
-inline constexpr TokenId kSpace_Nile_4115 = 4115;
+inline constexpr DiscreteToken kSpace_Nile_4115{4115};
 // "Ger"; original GPT-2 ID 38069.
-inline constexpr TokenId kGer_4116 = 4116;
+inline constexpr DiscreteToken kGer_4116{4116};
 // " vibrations"; original GPT-2 ID 38071.
-inline constexpr TokenId kSpace_vibrations_4117 = 4117;
+inline constexpr DiscreteToken kSpace_vibrations_4117{4117};
 // " expressive"; original GPT-2 ID 38084.
-inline constexpr TokenId kSpace_expressive_4118 = 4118;
+inline constexpr DiscreteToken kSpace_expressive_4118{4118};
 // " northeastern"; original GPT-2 ID 38131.
-inline constexpr TokenId kSpace_northeastern_4119 = 4119;
+inline constexpr DiscreteToken kSpace_northeastern_4119{4119};
 // " Juliet"; original GPT-2 ID 38201.
-inline constexpr TokenId kSpace_Juliet_4120 = 4120;
+inline constexpr DiscreteToken kSpace_Juliet_4120{4120};
 // "Ox"; original GPT-2 ID 38208.
-inline constexpr TokenId kOx_4121 = 4121;
+inline constexpr DiscreteToken kOx_4121{4121};
 // " liquids"; original GPT-2 ID 38236.
-inline constexpr TokenId kSpace_liquids_4122 = 4122;
+inline constexpr DiscreteToken kSpace_liquids_4122{4122};
 // "Jean"; original GPT-2 ID 38248.
-inline constexpr TokenId kJean_4123 = 4123;
+inline constexpr DiscreteToken kJean_4123{4123};
 // " amphib"; original GPT-2 ID 38255.
-inline constexpr TokenId kSpace_amphib_4124 = 4124;
+inline constexpr DiscreteToken kSpace_amphib_4124{4124};
 // " violin"; original GPT-2 ID 38283.
-inline constexpr TokenId kSpace_violin_4125 = 4125;
+inline constexpr DiscreteToken kSpace_violin_4125{4125};
 // "containing"; original GPT-2 ID 38301.
-inline constexpr TokenId kcontaining_4126 = 4126;
+inline constexpr DiscreteToken kcontaining_4126{4126};
 // " Hastings"; original GPT-2 ID 38330.
-inline constexpr TokenId kSpace_Hastings_4127 = 4127;
+inline constexpr DiscreteToken kSpace_Hastings_4127{4127};
 // " Mum"; original GPT-2 ID 38367.
-inline constexpr TokenId kSpace_Mum_4128 = 4128;
+inline constexpr DiscreteToken kSpace_Mum_4128{4128};
 // " pengu"; original GPT-2 ID 38373.
-inline constexpr TokenId kSpace_pengu_4129 = 4129;
+inline constexpr DiscreteToken kSpace_pengu_4129{4129};
 // "Bu"; original GPT-2 ID 38374.
-inline constexpr TokenId kBu_4130 = 4130;
+inline constexpr DiscreteToken kBu_4130{4130};
 // " colder"; original GPT-2 ID 38427.
-inline constexpr TokenId kSpace_colder_4131 = 4131;
+inline constexpr DiscreteToken kSpace_colder_4131{4131};
 // "Vi"; original GPT-2 ID 38432.
-inline constexpr TokenId kVi_4132 = 4132;
+inline constexpr DiscreteToken kVi_4132{4132};
 // "nova"; original GPT-2 ID 38438.
-inline constexpr TokenId knova_4133 = 4133;
+inline constexpr DiscreteToken knova_4133{4133};
 // " geometric"; original GPT-2 ID 38445.
-inline constexpr TokenId kSpace_geometric_4134 = 4134;
+inline constexpr DiscreteToken kSpace_geometric_4134{4134};
 // " circumference"; original GPT-2 ID 38447.
-inline constexpr TokenId kSpace_circumference_4135 = 4135;
+inline constexpr DiscreteToken kSpace_circumference_4135{4135};
 // " fungi"; original GPT-2 ID 38467.
-inline constexpr TokenId kSpace_fungi_4136 = 4136;
+inline constexpr DiscreteToken kSpace_fungi_4136{4136};
 // " finer"; original GPT-2 ID 38575.
-inline constexpr TokenId kSpace_finer_4137 = 4137;
+inline constexpr DiscreteToken kSpace_finer_4137{4137};
 // " gymn"; original GPT-2 ID 38581.
-inline constexpr TokenId kSpace_gymn_4138 = 4138;
+inline constexpr DiscreteToken kSpace_gymn_4138{4138};
 // "aryn"; original GPT-2 ID 38621.
-inline constexpr TokenId karyn_4139 = 4139;
+inline constexpr DiscreteToken karyn_4139{4139};
 // " disturbances"; original GPT-2 ID 38622.
-inline constexpr TokenId kSpace_disturbances_4140 = 4140;
+inline constexpr DiscreteToken kSpace_disturbances_4140{4140};
 // " urinary"; original GPT-2 ID 38628.
-inline constexpr TokenId kSpace_urinary_4141 = 4141;
+inline constexpr DiscreteToken kSpace_urinary_4141{4141};
 // "ophone"; original GPT-2 ID 38656.
-inline constexpr TokenId kophone_4142 = 4142;
+inline constexpr DiscreteToken kophone_4142{4142};
 // " Stevenson"; original GPT-2 ID 38681.
-inline constexpr TokenId kSpace_Stevenson_4143 = 4143;
+inline constexpr DiscreteToken kSpace_Stevenson_4143{4143};
 // "Alexander"; original GPT-2 ID 38708.
-inline constexpr TokenId kAlexander_4144 = 4144;
+inline constexpr DiscreteToken kAlexander_4144{4144};
 // " constellation"; original GPT-2 ID 38712.
-inline constexpr TokenId kSpace_constellation_4145 = 4145;
+inline constexpr DiscreteToken kSpace_constellation_4145{4145};
 // " pizz"; original GPT-2 ID 38748.
-inline constexpr TokenId kSpace_pizz_4146 = 4146;
+inline constexpr DiscreteToken kSpace_pizz_4146{4146};
 // " ferment"; original GPT-2 ID 38797.
-inline constexpr TokenId kSpace_ferment_4147 = 4147;
+inline constexpr DiscreteToken kSpace_ferment_4147{4147};
 // " Kah"; original GPT-2 ID 38798.
-inline constexpr TokenId kSpace_Kah_4148 = 4148;
+inline constexpr DiscreteToken kSpace_Kah_4148{4148};
 // "inki"; original GPT-2 ID 38799.
-inline constexpr TokenId kinki_4149 = 4149;
+inline constexpr DiscreteToken kinki_4149{4149};
 // "keleton"; original GPT-2 ID 38800.
-inline constexpr TokenId kkeleton_4150 = 4150;
+inline constexpr DiscreteToken kkeleton_4150{4150};
 // "Fran"; original GPT-2 ID 38848.
-inline constexpr TokenId kFran_4151 = 4151;
+inline constexpr DiscreteToken kFran_4151{4151};
 // " dove"; original GPT-2 ID 38862.
-inline constexpr TokenId kSpace_dove_4152 = 4152;
+inline constexpr DiscreteToken kSpace_dove_4152{4152};
 // " assigning"; original GPT-2 ID 38875.
-inline constexpr TokenId kSpace_assigning_4153 = 4153;
+inline constexpr DiscreteToken kSpace_assigning_4153{4153};
 // " archaeologists"; original GPT-2 ID 38967.
-inline constexpr TokenId kSpace_archaeologists_4154 = 4154;
+inline constexpr DiscreteToken kSpace_archaeologists_4154{4154};
 // " raspberry"; original GPT-2 ID 38973.
-inline constexpr TokenId kSpace_raspberry_4155 = 4155;
+inline constexpr DiscreteToken kSpace_raspberry_4155{4155};
 // " spaced"; original GPT-2 ID 38980.
-inline constexpr TokenId kSpace_spaced_4156 = 4156;
+inline constexpr DiscreteToken kSpace_spaced_4156{4156};
 // " occupies"; original GPT-2 ID 38985.
-inline constexpr TokenId kSpace_occupies_4157 = 4157;
+inline constexpr DiscreteToken kSpace_occupies_4157{4157};
 // " Aram"; original GPT-2 ID 39026.
-inline constexpr TokenId kSpace_Aram_4158 = 4158;
+inline constexpr DiscreteToken kSpace_Aram_4158{4158};
 // "atan"; original GPT-2 ID 39036.
-inline constexpr TokenId katan_4159 = 4159;
+inline constexpr DiscreteToken katan_4159{4159};
 // " ATP"; original GPT-2 ID 39046.
-inline constexpr TokenId kSpace_ATP_4160 = 4160;
+inline constexpr DiscreteToken kSpace_ATP_4160{4160};
 // "imentary"; original GPT-2 ID 39051.
-inline constexpr TokenId kimentary_4161 = 4161;
+inline constexpr DiscreteToken kimentary_4161{4161};
 // " conspicuous"; original GPT-2 ID 39089.
-inline constexpr TokenId kSpace_conspicuous_4162 = 4162;
+inline constexpr DiscreteToken kSpace_conspicuous_4162{4162};
 // "Poll"; original GPT-2 ID 39176.
-inline constexpr TokenId kPoll_4163 = 4163;
+inline constexpr DiscreteToken kPoll_4163{4163};
 // "Brazil"; original GPT-2 ID 39190.
-inline constexpr TokenId kBrazil_4164 = 4164;
+inline constexpr DiscreteToken kBrazil_4164{4164};
 // " millennium"; original GPT-2 ID 39210.
-inline constexpr TokenId kSpace_millennium_4165 = 4165;
+inline constexpr DiscreteToken kSpace_millennium_4165{4165};
 // " Thousand"; original GPT-2 ID 39255.
-inline constexpr TokenId kSpace_Thousand_4166 = 4166;
+inline constexpr DiscreteToken kSpace_Thousand_4166{4166};
 // " ions"; original GPT-2 ID 39270.
-inline constexpr TokenId kSpace_ions_4167 = 4167;
+inline constexpr DiscreteToken kSpace_ions_4167{4167};
 // " fractures"; original GPT-2 ID 39381.
-inline constexpr TokenId kSpace_fractures_4168 = 4168;
+inline constexpr DiscreteToken kSpace_fractures_4168{4168};
 // " regulates"; original GPT-2 ID 39474.
-inline constexpr TokenId kSpace_regulates_4169 = 4169;
+inline constexpr DiscreteToken kSpace_regulates_4169{4169};
 // " ceremonial"; original GPT-2 ID 39490.
-inline constexpr TokenId kSpace_ceremonial_4170 = 4170;
+inline constexpr DiscreteToken kSpace_ceremonial_4170{4170};
 // "Hung"; original GPT-2 ID 39505.
-inline constexpr TokenId kHung_4171 = 4171;
+inline constexpr DiscreteToken kHung_4171{4171};
 // " starch"; original GPT-2 ID 39515.
-inline constexpr TokenId kSpace_starch_4172 = 4172;
+inline constexpr DiscreteToken kSpace_starch_4172{4172};
 // " probabilities"; original GPT-2 ID 39522.
-inline constexpr TokenId kSpace_probabilities_4173 = 4173;
+inline constexpr DiscreteToken kSpace_probabilities_4173{4173};
 // " fungus"; original GPT-2 ID 39526.
-inline constexpr TokenId kSpace_fungus_4174 = 4174;
+inline constexpr DiscreteToken kSpace_fungus_4174{4174};
 // "Heat"; original GPT-2 ID 39596.
-inline constexpr TokenId kHeat_4175 = 4175;
+inline constexpr DiscreteToken kHeat_4175{4175};
 // " alternating"; original GPT-2 ID 39623.
-inline constexpr TokenId kSpace_alternating_4176 = 4176;
+inline constexpr DiscreteToken kSpace_alternating_4176{4176};
 // "eeds"; original GPT-2 ID 39642.
-inline constexpr TokenId keeds_4177 = 4177;
+inline constexpr DiscreteToken keeds_4177{4177};
 // "Gas"; original GPT-2 ID 39699.
-inline constexpr TokenId kGas_4178 = 4178;
+inline constexpr DiscreteToken kGas_4178{4178};
 // "antes"; original GPT-2 ID 39781.
-inline constexpr TokenId kantes_4179 = 4179;
+inline constexpr DiscreteToken kantes_4179{4179};
 // "Steel"; original GPT-2 ID 39807.
-inline constexpr TokenId kSteel_4180 = 4180;
+inline constexpr DiscreteToken kSteel_4180{4180};
 // " proclamation"; original GPT-2 ID 39862.
-inline constexpr TokenId kSpace_proclamation_4181 = 4181;
+inline constexpr DiscreteToken kSpace_proclamation_4181{4181};
 // " embryo"; original GPT-2 ID 39880.
-inline constexpr TokenId kSpace_embryo_4182 = 4182;
+inline constexpr DiscreteToken kSpace_embryo_4182{4182};
 // " dispers"; original GPT-2 ID 39895.
-inline constexpr TokenId kSpace_dispers_4183 = 4183;
+inline constexpr DiscreteToken kSpace_dispers_4183{4183};
 // " Sophia"; original GPT-2 ID 39953.
-inline constexpr TokenId kSpace_Sophia_4184 = 4184;
+inline constexpr DiscreteToken kSpace_Sophia_4184{4184};
 // " embryos"; original GPT-2 ID 39966.
-inline constexpr TokenId kSpace_embryos_4185 = 4185;
+inline constexpr DiscreteToken kSpace_embryos_4185{4185};
 // " assassinated"; original GPT-2 ID 39981.
-inline constexpr TokenId kSpace_assassinated_4186 = 4186;
+inline constexpr DiscreteToken kSpace_assassinated_4186{4186};
 // "ometers"; original GPT-2 ID 40077.
-inline constexpr TokenId kometers_4187 = 4187;
+inline constexpr DiscreteToken kometers_4187{4187};
 // " rive"; original GPT-2 ID 40112.
-inline constexpr TokenId kSpace_rive_4188 = 4188;
+inline constexpr DiscreteToken kSpace_rive_4188{4188};
 // " Indo"; original GPT-2 ID 40136.
-inline constexpr TokenId kSpace_Indo_4189 = 4189;
+inline constexpr DiscreteToken kSpace_Indo_4189{4189};
 // " boils"; original GPT-2 ID 40169.
-inline constexpr TokenId kSpace_boils_4190 = 4190;
+inline constexpr DiscreteToken kSpace_boils_4190{4190};
 // " bonded"; original GPT-2 ID 40270.
-inline constexpr TokenId kSpace_bonded_4191 = 4191;
+inline constexpr DiscreteToken kSpace_bonded_4191{4191};
 // "Dou"; original GPT-2 ID 40287.
-inline constexpr TokenId kDou_4192 = 4192;
+inline constexpr DiscreteToken kDou_4192{4192};
 // " plat"; original GPT-2 ID 40315.
-inline constexpr TokenId kSpace_plat_4193 = 4193;
+inline constexpr DiscreteToken kSpace_plat_4193{4193};
 // " bulls"; original GPT-2 ID 40317.
-inline constexpr TokenId kSpace_bulls_4194 = 4194;
+inline constexpr DiscreteToken kSpace_bulls_4194{4194};
 // "Lewis"; original GPT-2 ID 40330.
-inline constexpr TokenId kLewis_4195 = 4195;
+inline constexpr DiscreteToken kLewis_4195{4195};
 // " saliva"; original GPT-2 ID 40333.
-inline constexpr TokenId kSpace_saliva_4196 = 4196;
+inline constexpr DiscreteToken kSpace_saliva_4196{4196};
 // "Different"; original GPT-2 ID 40341.
-inline constexpr TokenId kDifferent_4197 = 4197;
+inline constexpr DiscreteToken kDifferent_4197{4197};
 // "Hyd"; original GPT-2 ID 40436.
-inline constexpr TokenId kHyd_4198 = 4198;
+inline constexpr DiscreteToken kHyd_4198{4198};
 // " glaciers"; original GPT-2 ID 40509.
-inline constexpr TokenId kSpace_glaciers_4199 = 4199;
+inline constexpr DiscreteToken kSpace_glaciers_4199{4199};
 // " Hundred"; original GPT-2 ID 40531.
-inline constexpr TokenId kSpace_Hundred_4200 = 4200;
+inline constexpr DiscreteToken kSpace_Hundred_4200{4200};
 // " carrot"; original GPT-2 ID 40562.
-inline constexpr TokenId kSpace_carrot_4201 = 4201;
+inline constexpr DiscreteToken kSpace_carrot_4201{4201};
 // "inoa"; original GPT-2 ID 40564.
-inline constexpr TokenId kinoa_4202 = 4202;
+inline constexpr DiscreteToken kinoa_4202{4202};
 // "Term"; original GPT-2 ID 40596.
-inline constexpr TokenId kTerm_4203 = 4203;
+inline constexpr DiscreteToken kTerm_4203{4203};
 // "ipel"; original GPT-2 ID 40634.
-inline constexpr TokenId kipel_4204 = 4204;
+inline constexpr DiscreteToken kipel_4204{4204};
 // "Near"; original GPT-2 ID 40640.
-inline constexpr TokenId kNear_4205 = 4205;
+inline constexpr DiscreteToken kNear_4205{4205};
 // " cryptographic"; original GPT-2 ID 40705.
-inline constexpr TokenId kSpace_cryptographic_4206 = 4206;
+inline constexpr DiscreteToken kSpace_cryptographic_4206{4206};
 // "HTTP"; original GPT-2 ID 40717.
-inline constexpr TokenId kHTTP_4207 = 4207;
+inline constexpr DiscreteToken kHTTP_4207{4207};
 // " contrasting"; original GPT-2 ID 40737.
-inline constexpr TokenId kSpace_contrasting_4208 = 4208;
+inline constexpr DiscreteToken kSpace_contrasting_4208{4208};
 // " tidal"; original GPT-2 ID 40738.
-inline constexpr TokenId kSpace_tidal_4209 = 4209;
+inline constexpr DiscreteToken kSpace_tidal_4209{4209};
 // " measurable"; original GPT-2 ID 40757.
-inline constexpr TokenId kSpace_measurable_4210 = 4210;
+inline constexpr DiscreteToken kSpace_measurable_4210{4210};
 // " nasal"; original GPT-2 ID 40829.
-inline constexpr TokenId kSpace_nasal_4211 = 4211;
+inline constexpr DiscreteToken kSpace_nasal_4211{4211};
 // "allowed"; original GPT-2 ID 40845.
-inline constexpr TokenId kallowed_4212 = 4212;
+inline constexpr DiscreteToken kallowed_4212{4212};
 // " approximation"; original GPT-2 ID 40874.
-inline constexpr TokenId kSpace_approximation_4213 = 4213;
+inline constexpr DiscreteToken kSpace_approximation_4213{4213};
 // "illation"; original GPT-2 ID 40903.
-inline constexpr TokenId killation_4214 = 4214;
+inline constexpr DiscreteToken killation_4214{4214};
 // " freshwater"; original GPT-2 ID 40941.
-inline constexpr TokenId kSpace_freshwater_4215 = 4215;
+inline constexpr DiscreteToken kSpace_freshwater_4215{4215};
 // " Budapest"; original GPT-2 ID 40959.
-inline constexpr TokenId kSpace_Budapest_4216 = 4216;
+inline constexpr DiscreteToken kSpace_Budapest_4216{4216};
 // " UTF"; original GPT-2 ID 41002.
-inline constexpr TokenId kSpace_UTF_4217 = 4217;
+inline constexpr DiscreteToken kSpace_UTF_4217{4217};
 // "Jane"; original GPT-2 ID 41083.
-inline constexpr TokenId kJane_4218 = 4218;
+inline constexpr DiscreteToken kJane_4218{4218};
 // " tentacles"; original GPT-2 ID 41192.
-inline constexpr TokenId kSpace_tentacles_4219 = 4219;
+inline constexpr DiscreteToken kSpace_tentacles_4219{4219};
 // " strawberry"; original GPT-2 ID 41236.
-inline constexpr TokenId kSpace_strawberry_4220 = 4220;
+inline constexpr DiscreteToken kSpace_strawberry_4220{4220};
 // " cabbage"; original GPT-2 ID 41266.
-inline constexpr TokenId kSpace_cabbage_4221 = 4221;
+inline constexpr DiscreteToken kSpace_cabbage_4221{4221};
 // " coils"; original GPT-2 ID 41331.
-inline constexpr TokenId kSpace_coils_4222 = 4222;
+inline constexpr DiscreteToken kSpace_coils_4222{4222};
 // "Corn"; original GPT-2 ID 41389.
-inline constexpr TokenId kCorn_4223 = 4223;
+inline constexpr DiscreteToken kCorn_4223{4223};
 // " kidneys"; original GPT-2 ID 41395.
-inline constexpr TokenId kSpace_kidneys_4224 = 4224;
+inline constexpr DiscreteToken kSpace_kidneys_4224{4224};
 // " Strait"; original GPT-2 ID 41407.
-inline constexpr TokenId kSpace_Strait_4225 = 4225;
+inline constexpr DiscreteToken kSpace_Strait_4225{4225};
 // "rils"; original GPT-2 ID 41408.
-inline constexpr TokenId krils_4226 = 4226;
+inline constexpr DiscreteToken krils_4226{4226};
 // "ichen"; original GPT-2 ID 41437.
-inline constexpr TokenId kichen_4227 = 4227;
+inline constexpr DiscreteToken kichen_4227{4227};
 // " Pyramid"; original GPT-2 ID 41450.
-inline constexpr TokenId kSpace_Pyramid_4228 = 4228;
+inline constexpr DiscreteToken kSpace_Pyramid_4228{4228};
 // " markup"; original GPT-2 ID 41485.
-inline constexpr TokenId kSpace_markup_4229 = 4229;
+inline constexpr DiscreteToken kSpace_markup_4229{4229};
 // "Wars"; original GPT-2 ID 41508.
-inline constexpr TokenId kWars_4230 = 4230;
+inline constexpr DiscreteToken kWars_4230{4230};
 // "tone"; original GPT-2 ID 41527.
-inline constexpr TokenId ktone_4231 = 4231;
+inline constexpr DiscreteToken ktone_4231{4231};
 // " softened"; original GPT-2 ID 41534.
-inline constexpr TokenId kSpace_softened_4232 = 4232;
+inline constexpr DiscreteToken kSpace_softened_4232{4232};
 // " labyrinth"; original GPT-2 ID 41553.
-inline constexpr TokenId kSpace_labyrinth_4233 = 4233;
+inline constexpr DiscreteToken kSpace_labyrinth_4233{4233};
 // " Fib"; original GPT-2 ID 41566.
-inline constexpr TokenId kSpace_Fib_4234 = 4234;
+inline constexpr DiscreteToken kSpace_Fib_4234{4234};
 // " Lima"; original GPT-2 ID 41578.
-inline constexpr TokenId kSpace_Lima_4235 = 4235;
+inline constexpr DiscreteToken kSpace_Lima_4235{4235};
 // " fragmented"; original GPT-2 ID 41630.
-inline constexpr TokenId kSpace_fragmented_4236 = 4236;
+inline constexpr DiscreteToken kSpace_fragmented_4236{4236};
 // "ntax"; original GPT-2 ID 41641.
-inline constexpr TokenId kntax_4237 = 4237;
+inline constexpr DiscreteToken kntax_4237{4237};
 // "pillar"; original GPT-2 ID 41643.
-inline constexpr TokenId kpillar_4238 = 4238;
+inline constexpr DiscreteToken kpillar_4238{4238};
 // "bees"; original GPT-2 ID 41712.
-inline constexpr TokenId kbees_4239 = 4239;
+inline constexpr DiscreteToken kbees_4239{4239};
 // " buzzing"; original GPT-2 ID 41719.
-inline constexpr TokenId kSpace_buzzing_4240 = 4240;
+inline constexpr DiscreteToken kSpace_buzzing_4240{4240};
 // " cliffs"; original GPT-2 ID 41724.
-inline constexpr TokenId kSpace_cliffs_4241 = 4241;
+inline constexpr DiscreteToken kSpace_cliffs_4241{4241};
 // " piston"; original GPT-2 ID 41743.
-inline constexpr TokenId kSpace_piston_4242 = 4242;
+inline constexpr DiscreteToken kSpace_piston_4242{4242};
 // "Chem"; original GPT-2 ID 41829.
-inline constexpr TokenId kChem_4243 = 4243;
+inline constexpr DiscreteToken kChem_4243{4243};
 // " arranging"; original GPT-2 ID 41878.
-inline constexpr TokenId kSpace_arranging_4244 = 4244;
+inline constexpr DiscreteToken kSpace_arranging_4244{4244};
 // " Lisbon"; original GPT-2 ID 41898.
-inline constexpr TokenId kSpace_Lisbon_4245 = 4245;
+inline constexpr DiscreteToken kSpace_Lisbon_4245{4245};
 // " geological"; original GPT-2 ID 41917.
-inline constexpr TokenId kSpace_geological_4246 = 4246;
+inline constexpr DiscreteToken kSpace_geological_4246{4246};
 // " ker"; original GPT-2 ID 41927.
-inline constexpr TokenId kSpace_ker_4247 = 4247;
+inline constexpr DiscreteToken kSpace_ker_4247{4247};
 // " horny"; original GPT-2 ID 42014.
-inline constexpr TokenId kSpace_horny_4248 = 4248;
+inline constexpr DiscreteToken kSpace_horny_4248{4248};
 // " telescopes"; original GPT-2 ID 42067.
-inline constexpr TokenId kSpace_telescopes_4249 = 4249;
+inline constexpr DiscreteToken kSpace_telescopes_4249{4249};
 // "arbon"; original GPT-2 ID 42084.
-inline constexpr TokenId karbon_4250 = 4250;
+inline constexpr DiscreteToken karbon_4250{4250};
 // " intersections"; original GPT-2 ID 42085.
-inline constexpr TokenId kSpace_intersections_4251 = 4251;
+inline constexpr DiscreteToken kSpace_intersections_4251{4251};
 // " uniformly"; original GPT-2 ID 42096.
-inline constexpr TokenId kSpace_uniformly_4252 = 4252;
+inline constexpr DiscreteToken kSpace_uniformly_4252{4252};
 // " Olympus"; original GPT-2 ID 42108.
-inline constexpr TokenId kSpace_Olympus_4253 = 4253;
+inline constexpr DiscreteToken kSpace_Olympus_4253{4253};
 // "anca"; original GPT-2 ID 42124.
-inline constexpr TokenId kanca_4254 = 4254;
+inline constexpr DiscreteToken kanca_4254{4254};
 // "River"; original GPT-2 ID 42204.
-inline constexpr TokenId kRiver_4255 = 4255;
+inline constexpr DiscreteToken kRiver_4255{4255};
 // " Scandinavian"; original GPT-2 ID 42238.
-inline constexpr TokenId kSpace_Scandinavian_4256 = 4256;
+inline constexpr DiscreteToken kSpace_Scandinavian_4256{4256};
 // "Bra"; original GPT-2 ID 42333.
-inline constexpr TokenId kBra_4257 = 4257;
+inline constexpr DiscreteToken kBra_4257{4257};
 // " ostr"; original GPT-2 ID 42387.
-inline constexpr TokenId kSpace_ostr_4258 = 4258;
+inline constexpr DiscreteToken kSpace_ostr_4258{4258};
 // "roo"; original GPT-2 ID 42407.
-inline constexpr TokenId kroo_4259 = 4259;
+inline constexpr DiscreteToken kroo_4259{4259};
 // "kj"; original GPT-2 ID 42421.
-inline constexpr TokenId kkj_4260 = 4260;
+inline constexpr DiscreteToken kkj_4260{4260};
 // " Himal"; original GPT-2 ID 42438.
-inline constexpr TokenId kSpace_Himal_4261 = 4261;
+inline constexpr DiscreteToken kSpace_Himal_4261{4261};
 // "inet"; original GPT-2 ID 42504.
-inline constexpr TokenId kinet_4262 = 4262;
+inline constexpr DiscreteToken kinet_4262{4262};
 // " quer"; original GPT-2 ID 42517.
-inline constexpr TokenId kSpace_quer_4263 = 4263;
+inline constexpr DiscreteToken kSpace_quer_4263{4263};
 // " resumes"; original GPT-2 ID 42626.
-inline constexpr TokenId kSpace_resumes_4264 = 4264;
+inline constexpr DiscreteToken kSpace_resumes_4264{4264};
 // "ASC"; original GPT-2 ID 42643.
-inline constexpr TokenId kASC_4265 = 4265;
+inline constexpr DiscreteToken kASC_4265{4265};
 // " sculptures"; original GPT-2 ID 42645.
-inline constexpr TokenId kSpace_sculptures_4266 = 4266;
+inline constexpr DiscreteToken kSpace_sculptures_4266{4266};
 // " Wonderland"; original GPT-2 ID 42713.
-inline constexpr TokenId kSpace_Wonderland_4267 = 4267;
+inline constexpr DiscreteToken kSpace_Wonderland_4267{4267};
 // " chromosomes"; original GPT-2 ID 42742.
-inline constexpr TokenId kSpace_chromosomes_4268 = 4268;
+inline constexpr DiscreteToken kSpace_chromosomes_4268{4268};
 // " decipher"; original GPT-2 ID 42790.
-inline constexpr TokenId kSpace_decipher_4269 = 4269;
+inline constexpr DiscreteToken kSpace_decipher_4269{4269};
 // " Hemisphere"; original GPT-2 ID 42811.
-inline constexpr TokenId kSpace_Hemisphere_4270 = 4270;
+inline constexpr DiscreteToken kSpace_Hemisphere_4270{4270};
 // "incent"; original GPT-2 ID 42816.
-inline constexpr TokenId kincent_4271 = 4271;
+inline constexpr DiscreteToken kincent_4271{4271};
 // " Mek"; original GPT-2 ID 42859.
-inline constexpr TokenId kSpace_Mek_4272 = 4272;
+inline constexpr DiscreteToken kSpace_Mek_4272{4272};
 // " flask"; original GPT-2 ID 42903.
-inline constexpr TokenId kSpace_flask_4273 = 4273;
+inline constexpr DiscreteToken kSpace_flask_4273{4273};
 // " absorbs"; original GPT-2 ID 42909.
-inline constexpr TokenId kSpace_absorbs_4274 = 4274;
+inline constexpr DiscreteToken kSpace_absorbs_4274{4274};
 // "Paper"; original GPT-2 ID 42950.
-inline constexpr TokenId kPaper_4275 = 4275;
+inline constexpr DiscreteToken kPaper_4275{4275};
 // "iosis"; original GPT-2 ID 42960.
-inline constexpr TokenId kiosis_4276 = 4276;
+inline constexpr DiscreteToken kiosis_4276{4276};
 // "Merc"; original GPT-2 ID 42981.
-inline constexpr TokenId kMerc_4277 = 4277;
+inline constexpr DiscreteToken kMerc_4277{4277};
 // "Lake"; original GPT-2 ID 43035.
-inline constexpr TokenId kLake_4278 = 4278;
+inline constexpr DiscreteToken kLake_4278{4278};
 // " nineteen"; original GPT-2 ID 43063.
-inline constexpr TokenId kSpace_nineteen_4279 = 4279;
+inline constexpr DiscreteToken kSpace_nineteen_4279{4279};
 // " valleys"; original GPT-2 ID 43088.
-inline constexpr TokenId kSpace_valleys_4280 = 4280;
+inline constexpr DiscreteToken kSpace_valleys_4280{4280};
 // " helium"; original GPT-2 ID 43142.
-inline constexpr TokenId kSpace_helium_4281 = 4281;
+inline constexpr DiscreteToken kSpace_helium_4281{4281};
 // " Normandy"; original GPT-2 ID 43231.
-inline constexpr TokenId kSpace_Normandy_4282 = 4282;
+inline constexpr DiscreteToken kSpace_Normandy_4282{4282};
 // "Mit"; original GPT-2 ID 43339.
-inline constexpr TokenId kMit_4283 = 4283;
+inline constexpr DiscreteToken kMit_4283{4283};
 // "opot"; original GPT-2 ID 43372.
-inline constexpr TokenId kopot_4284 = 4284;
+inline constexpr DiscreteToken kopot_4284{4284};
 // " denotes"; original GPT-2 ID 43397.
-inline constexpr TokenId kSpace_denotes_4285 = 4285;
+inline constexpr DiscreteToken kSpace_denotes_4285{4285};
 // "tymology"; original GPT-2 ID 43408.
-inline constexpr TokenId ktymology_4286 = 4286;
+inline constexpr DiscreteToken ktymology_4286{4286};
 // "Cart"; original GPT-2 ID 43476.
-inline constexpr TokenId kCart_4287 = 4287;
+inline constexpr DiscreteToken kCart_4287{4287};
 // "VG"; original GPT-2 ID 43490.
-inline constexpr TokenId kVG_4288 = 4288;
+inline constexpr DiscreteToken kVG_4288{4288};
 // "acca"; original GPT-2 ID 43552.
-inline constexpr TokenId kacca_4289 = 4289;
+inline constexpr DiscreteToken kacca_4289{4289};
 // "Spanish"; original GPT-2 ID 43584.
-inline constexpr TokenId kSpanish_4290 = 4290;
+inline constexpr DiscreteToken kSpanish_4290{4290};
 // "ramids"; original GPT-2 ID 43591.
-inline constexpr TokenId kramids_4291 = 4291;
+inline constexpr DiscreteToken kramids_4291{4291};
 // "onyms"; original GPT-2 ID 43612.
-inline constexpr TokenId konyms_4292 = 4292;
+inline constexpr DiscreteToken konyms_4292{4292};
 // "Cub"; original GPT-2 ID 43632.
-inline constexpr TokenId kCub_4293 = 4293;
+inline constexpr DiscreteToken kCub_4293{4293};
 // " Fuji"; original GPT-2 ID 43694.
-inline constexpr TokenId kSpace_Fuji_4294 = 4294;
+inline constexpr DiscreteToken kSpace_Fuji_4294{4294};
 // "orange"; original GPT-2 ID 43745.
-inline constexpr TokenId korange_4295 = 4295;
+inline constexpr DiscreteToken korange_4295{4295};
 // "ugal"; original GPT-2 ID 43778.
-inline constexpr TokenId kugal_4296 = 4296;
+inline constexpr DiscreteToken kugal_4296{4296};
 // " pearl"; original GPT-2 ID 43836.
-inline constexpr TokenId kSpace_pearl_4297 = 4297;
+inline constexpr DiscreteToken kSpace_pearl_4297{4297};
 // " propel"; original GPT-2 ID 43855.
-inline constexpr TokenId kSpace_propel_4298 = 4298;
+inline constexpr DiscreteToken kSpace_propel_4298{4298};
 // "Bang"; original GPT-2 ID 43984.
-inline constexpr TokenId kBang_4299 = 4299;
+inline constexpr DiscreteToken kBang_4299{4299};
 // " Romeo"; original GPT-2 ID 43989.
-inline constexpr TokenId kSpace_Romeo_4300 = 4300;
+inline constexpr DiscreteToken kSpace_Romeo_4300{4300};
 // " kan"; original GPT-2 ID 43998.
-inline constexpr TokenId kSpace_kan_4301 = 4301;
+inline constexpr DiscreteToken kSpace_kan_4301{4301};
 // " pend"; original GPT-2 ID 44017.
-inline constexpr TokenId kSpace_pend_4302 = 4302;
+inline constexpr DiscreteToken kSpace_pend_4302{4302};
 // " molten"; original GPT-2 ID 44030.
-inline constexpr TokenId kSpace_molten_4303 = 4303;
+inline constexpr DiscreteToken kSpace_molten_4303{4303};
 // "Electric"; original GPT-2 ID 44132.
-inline constexpr TokenId kElectric_4304 = 4304;
+inline constexpr DiscreteToken kElectric_4304{4304};
 // "Oil"; original GPT-2 ID 44142.
-inline constexpr TokenId kOil_4305 = 4305;
+inline constexpr DiscreteToken kOil_4305{4305};
 // "raviolet"; original GPT-2 ID 44223.
-inline constexpr TokenId kraviolet_4306 = 4306;
+inline constexpr DiscreteToken kraviolet_4306{4306};
 // " conson"; original GPT-2 ID 44278.
-inline constexpr TokenId kSpace_conson_4307 = 4307;
+inline constexpr DiscreteToken kSpace_conson_4307{4307};
 // " squared"; original GPT-2 ID 44345.
-inline constexpr TokenId kSpace_squared_4308 = 4308;
+inline constexpr DiscreteToken kSpace_squared_4308{4308};
 // " triangles"; original GPT-2 ID 44360.
-inline constexpr TokenId kSpace_triangles_4309 = 4309;
+inline constexpr DiscreteToken kSpace_triangles_4309{4309};
 // " Mongolia"; original GPT-2 ID 44364.
-inline constexpr TokenId kSpace_Mongolia_4310 = 4310;
+inline constexpr DiscreteToken kSpace_Mongolia_4310{4310};
 // " freezes"; original GPT-2 ID 44389.
-inline constexpr TokenId kSpace_freezes_4311 = 4311;
+inline constexpr DiscreteToken kSpace_freezes_4311{4311};
 // " moth"; original GPT-2 ID 44400.
-inline constexpr TokenId kSpace_moth_4312 = 4312;
+inline constexpr DiscreteToken kSpace_moth_4312{4312};
 // "ynthesis"; original GPT-2 ID 44411.
-inline constexpr TokenId kynthesis_4313 = 4313;
+inline constexpr DiscreteToken kynthesis_4313{4313};
 // "acci"; original GPT-2 ID 44456.
-inline constexpr TokenId kacci_4314 = 4314;
+inline constexpr DiscreteToken kacci_4314{4314};
 // " Sidd"; original GPT-2 ID 44487.
-inline constexpr TokenId kSpace_Sidd_4315 = 4315;
+inline constexpr DiscreteToken kSpace_Sidd_4315{4315};
 // "ectar"; original GPT-2 ID 44504.
-inline constexpr TokenId kectar_4316 = 4316;
+inline constexpr DiscreteToken kectar_4316{4316};
 // " fermented"; original GPT-2 ID 44543.
-inline constexpr TokenId kSpace_fermented_4317 = 4317;
+inline constexpr DiscreteToken kSpace_fermented_4317{4317};
 // " imitate"; original GPT-2 ID 44638.
-inline constexpr TokenId kSpace_imitate_4318 = 4318;
+inline constexpr DiscreteToken kSpace_imitate_4318{4318};
 // " digestion"; original GPT-2 ID 44639.
-inline constexpr TokenId kSpace_digestion_4319 = 4319;
+inline constexpr DiscreteToken kSpace_digestion_4319{4319};
 // " broccoli"; original GPT-2 ID 44653.
-inline constexpr TokenId kSpace_broccoli_4320 = 4320;
+inline constexpr DiscreteToken kSpace_broccoli_4320{4320};
 // " Aires"; original GPT-2 ID 44692.
-inline constexpr TokenId kSpace_Aires_4321 = 4321;
+inline constexpr DiscreteToken kSpace_Aires_4321{4321};
 // " Trojan"; original GPT-2 ID 44695.
-inline constexpr TokenId kSpace_Trojan_4322 = 4322;
+inline constexpr DiscreteToken kSpace_Trojan_4322{4322};
 // " prehistoric"; original GPT-2 ID 44741.
-inline constexpr TokenId kSpace_prehistoric_4323 = 4323;
+inline constexpr DiscreteToken kSpace_prehistoric_4323{4323};
 // "beans"; original GPT-2 ID 44749.
-inline constexpr TokenId kbeans_4324 = 4324;
+inline constexpr DiscreteToken kbeans_4324{4324};
 // " portrays"; original GPT-2 ID 44771.
-inline constexpr TokenId kSpace_portrays_4325 = 4325;
+inline constexpr DiscreteToken kSpace_portrays_4325{4325};
 // "urized"; original GPT-2 ID 44796.
-inline constexpr TokenId kurized_4326 = 4326;
+inline constexpr DiscreteToken kurized_4326{4326};
 // " investigates"; original GPT-2 ID 44846.
-inline constexpr TokenId kSpace_investigates_4327 = 4327;
+inline constexpr DiscreteToken kSpace_investigates_4327{4327};
 // " chloride"; original GPT-2 ID 44921.
-inline constexpr TokenId kSpace_chloride_4328 = 4328;
+inline constexpr DiscreteToken kSpace_chloride_4328{4328};
 // "matical"; original GPT-2 ID 44935.
-inline constexpr TokenId kmatical_4329 = 4329;
+inline constexpr DiscreteToken kmatical_4329{4329};
 // "Ancient"; original GPT-2 ID 44974.
-inline constexpr TokenId kAncient_4330 = 4330;
+inline constexpr DiscreteToken kAncient_4330{4330};
 // "Italy"; original GPT-2 ID 45001.
-inline constexpr TokenId kItaly_4331 = 4331;
+inline constexpr DiscreteToken kItaly_4331{4331};
 // "anders"; original GPT-2 ID 45070.
-inline constexpr TokenId kanders_4332 = 4332;
+inline constexpr DiscreteToken kanders_4332{4332};
 // " conserve"; original GPT-2 ID 45075.
-inline constexpr TokenId kSpace_conserve_4333 = 4333;
+inline constexpr DiscreteToken kSpace_conserve_4333{4333};
 // " sten"; original GPT-2 ID 45219.
-inline constexpr TokenId kSpace_sten_4334 = 4334;
+inline constexpr DiscreteToken kSpace_sten_4334{4334};
 // " transports"; original GPT-2 ID 45245.
-inline constexpr TokenId kSpace_transports_4335 = 4335;
+inline constexpr DiscreteToken kSpace_transports_4335{4335};
 // " exposition"; original GPT-2 ID 45357.
-inline constexpr TokenId kSpace_exposition_4336 = 4336;
+inline constexpr DiscreteToken kSpace_exposition_4336{4336};
 // " Sph"; original GPT-2 ID 45368.
-inline constexpr TokenId kSpace_Sph_4337 = 4337;
+inline constexpr DiscreteToken kSpace_Sph_4337{4337};
 // " Appalachian"; original GPT-2 ID 45375.
-inline constexpr TokenId kSpace_Appalachian_4338 = 4338;
+inline constexpr DiscreteToken kSpace_Appalachian_4338{4338};
 // " intestine"; original GPT-2 ID 45426.
-inline constexpr TokenId kSpace_intestine_4339 = 4339;
+inline constexpr DiscreteToken kSpace_intestine_4339{4339};
 // " excavation"; original GPT-2 ID 45499.
-inline constexpr TokenId kSpace_excavation_4340 = 4340;
+inline constexpr DiscreteToken kSpace_excavation_4340{4340};
 // "atography"; original GPT-2 ID 45501.
-inline constexpr TokenId katography_4341 = 4341;
+inline constexpr DiscreteToken katography_4341{4341};
 // " pineapple"; original GPT-2 ID 45540.
-inline constexpr TokenId kSpace_pineapple_4342 = 4342;
+inline constexpr DiscreteToken kSpace_pineapple_4342{4342};
 // "igsaw"; original GPT-2 ID 45636.
-inline constexpr TokenId kigsaw_4343 = 4343;
+inline constexpr DiscreteToken kigsaw_4343{4343};
 // " wavelengths"; original GPT-2 ID 45656.
-inline constexpr TokenId kSpace_wavelengths_4344 = 4344;
+inline constexpr DiscreteToken kSpace_wavelengths_4344{4344};
 // "Thunder"; original GPT-2 ID 45713.
-inline constexpr TokenId kThunder_4345 = 4345;
+inline constexpr DiscreteToken kThunder_4345{4345};
 // " violet"; original GPT-2 ID 45725.
-inline constexpr TokenId kSpace_violet_4346 = 4346;
+inline constexpr DiscreteToken kSpace_violet_4346{4346};
 // " Frankenstein"; original GPT-2 ID 45738.
-inline constexpr TokenId kSpace_Frankenstein_4347 = 4347;
+inline constexpr DiscreteToken kSpace_Frankenstein_4347{4347};
 // "Motion"; original GPT-2 ID 45740.
-inline constexpr TokenId kMotion_4348 = 4348;
+inline constexpr DiscreteToken kMotion_4348{4348};
 // " Olympia"; original GPT-2 ID 45760.
-inline constexpr TokenId kSpace_Olympia_4349 = 4349;
+inline constexpr DiscreteToken kSpace_Olympia_4349{4349};
 // " Byzantine"; original GPT-2 ID 45772.
-inline constexpr TokenId kSpace_Byzantine_4350 = 4350;
+inline constexpr DiscreteToken kSpace_Byzantine_4350{4350};
 // " retina"; original GPT-2 ID 45804.
-inline constexpr TokenId kSpace_retina_4351 = 4351;
+inline constexpr DiscreteToken kSpace_retina_4351{4351};
 // " cryptography"; original GPT-2 ID 45898.
-inline constexpr TokenId kSpace_cryptography_4352 = 4352;
+inline constexpr DiscreteToken kSpace_cryptography_4352{4352};
 // "igraph"; original GPT-2 ID 45920.
-inline constexpr TokenId kigraph_4353 = 4353;
+inline constexpr DiscreteToken kigraph_4353{4353};
 // " ceilings"; original GPT-2 ID 45926.
-inline constexpr TokenId kSpace_ceilings_4354 = 4354;
+inline constexpr DiscreteToken kSpace_ceilings_4354{4354};
 // " Forbidden"; original GPT-2 ID 46014.
-inline constexpr TokenId kSpace_Forbidden_4355 = 4355;
+inline constexpr DiscreteToken kSpace_Forbidden_4355{4355};
 // " Brune"; original GPT-2 ID 46070.
-inline constexpr TokenId kSpace_Brune_4356 = 4356;
+inline constexpr DiscreteToken kSpace_Brune_4356{4356};
 // "Gab"; original GPT-2 ID 46079.
-inline constexpr TokenId kGab_4357 = 4357;
+inline constexpr DiscreteToken kGab_4357{4357};
 // " mammal"; original GPT-2 ID 46103.
-inline constexpr TokenId kSpace_mammal_4358 = 4358;
+inline constexpr DiscreteToken kSpace_mammal_4358{4358};
 // " Papua"; original GPT-2 ID 46117.
-inline constexpr TokenId kSpace_Papua_4359 = 4359;
+inline constexpr DiscreteToken kSpace_Papua_4359{4359};
 // "Boo"; original GPT-2 ID 46120.
-inline constexpr TokenId kBoo_4360 = 4360;
+inline constexpr DiscreteToken kBoo_4360{4360};
 // " tides"; original GPT-2 ID 46128.
-inline constexpr TokenId kSpace_tides_4361 = 4361;
+inline constexpr DiscreteToken kSpace_tides_4361{4361};
 // "readable"; original GPT-2 ID 46155.
-inline constexpr TokenId kreadable_4362 = 4362;
+inline constexpr DiscreteToken kreadable_4362{4362};
 // " Dickens"; original GPT-2 ID 46167.
-inline constexpr TokenId kSpace_Dickens_4363 = 4363;
+inline constexpr DiscreteToken kSpace_Dickens_4363{4363};
 // " Sanskrit"; original GPT-2 ID 46178.
-inline constexpr TokenId kSpace_Sanskrit_4364 = 4364;
+inline constexpr DiscreteToken kSpace_Sanskrit_4364{4364};
 // "riction"; original GPT-2 ID 46214.
-inline constexpr TokenId kriction_4365 = 4365;
+inline constexpr DiscreteToken kriction_4365{4365};
 // " ful"; original GPT-2 ID 46246.
-inline constexpr TokenId kSpace_ful_4366 = 4366;
+inline constexpr DiscreteToken kSpace_ful_4366{4366};
 // " Alps"; original GPT-2 ID 46312.
-inline constexpr TokenId kSpace_Alps_4367 = 4367;
+inline constexpr DiscreteToken kSpace_Alps_4367{4367};
 // " Constantinople"; original GPT-2 ID 46369.
-inline constexpr TokenId kSpace_Constantinople_4368 = 4368;
+inline constexpr DiscreteToken kSpace_Constantinople_4368{4368};
 // " plaster"; original GPT-2 ID 46376.
-inline constexpr TokenId kSpace_plaster_4369 = 4369;
+inline constexpr DiscreteToken kSpace_plaster_4369{4369};
 // "chu"; original GPT-2 ID 46417.
-inline constexpr TokenId kchu_4370 = 4370;
+inline constexpr DiscreteToken kchu_4370{4370};
 // " prism"; original GPT-2 ID 46475.
-inline constexpr TokenId kSpace_prism_4371 = 4371;
+inline constexpr DiscreteToken kSpace_prism_4371{4371};
 // "angelo"; original GPT-2 ID 46525.
-inline constexpr TokenId kangelo_4372 = 4372;
+inline constexpr DiscreteToken kangelo_4372{4372};
 // "Ocean"; original GPT-2 ID 46607.
-inline constexpr TokenId kOcean_4373 = 4373;
+inline constexpr DiscreteToken kOcean_4373{4373};
 // "ukong"; original GPT-2 ID 46654.
-inline constexpr TokenId kukong_4374 = 4374;
+inline constexpr DiscreteToken kukong_4374{4374};
 // "trap"; original GPT-2 ID 46670.
-inline constexpr TokenId ktrap_4375 = 4375;
+inline constexpr DiscreteToken ktrap_4375{4375};
 // " Madagascar"; original GPT-2 ID 46694.
-inline constexpr TokenId kSpace_Madagascar_4376 = 4376;
+inline constexpr DiscreteToken kSpace_Madagascar_4376{4376};
 // " beetles"; original GPT-2 ID 46716.
-inline constexpr TokenId kSpace_beetles_4377 = 4377;
+inline constexpr DiscreteToken kSpace_beetles_4377{4377};
 // " spears"; original GPT-2 ID 46842.
-inline constexpr TokenId kSpace_spears_4378 = 4378;
+inline constexpr DiscreteToken kSpace_spears_4378{4378};
 // "oplan"; original GPT-2 ID 46853.
-inline constexpr TokenId koplan_4379 = 4379;
+inline constexpr DiscreteToken koplan_4379{4379};
 // " Shelley"; original GPT-2 ID 46854.
-inline constexpr TokenId kSpace_Shelley_4380 = 4380;
+inline constexpr DiscreteToken kSpace_Shelley_4380{4380};
 // " Sahara"; original GPT-2 ID 46882.
-inline constexpr TokenId kSpace_Sahara_4381 = 4381;
+inline constexpr DiscreteToken kSpace_Sahara_4381{4381};
 // " Kafka"; original GPT-2 ID 46906.
-inline constexpr TokenId kSpace_Kafka_4382 = 4382;
+inline constexpr DiscreteToken kSpace_Kafka_4382{4382};
 // " sax"; original GPT-2 ID 46909.
-inline constexpr TokenId kSpace_sax_4383 = 4383;
+inline constexpr DiscreteToken kSpace_sax_4383{4383};
 // "plets"; original GPT-2 ID 46916.
-inline constexpr TokenId kplets_4384 = 4384;
+inline constexpr DiscreteToken kplets_4384{4384};
 // "Solid"; original GPT-2 ID 46933.
-inline constexpr TokenId kSolid_4385 = 4385;
+inline constexpr DiscreteToken kSolid_4385{4385};
 // " assigns"; original GPT-2 ID 46974.
-inline constexpr TokenId kSpace_assigns_4386 = 4386;
+inline constexpr DiscreteToken kSpace_assigns_4386{4386};
 // " oats"; original GPT-2 ID 47009.
-inline constexpr TokenId kSpace_oats_4387 = 4387;
+inline constexpr DiscreteToken kSpace_oats_4387{4387};
 // " synchronized"; original GPT-2 ID 47192.
-inline constexpr TokenId kSpace_synchronized_4388 = 4388;
+inline constexpr DiscreteToken kSpace_synchronized_4388{4388};
 // "olina"; original GPT-2 ID 47196.
-inline constexpr TokenId kolina_4389 = 4389;
+inline constexpr DiscreteToken kolina_4389{4389};
 // "letal"; original GPT-2 ID 47293.
-inline constexpr TokenId kletal_4390 = 4390;
+inline constexpr DiscreteToken kletal_4390{4390};
 // " spores"; original GPT-2 ID 47306.
-inline constexpr TokenId kSpace_spores_4391 = 4391;
+inline constexpr DiscreteToken kSpace_spores_4391{4391};
 // " cones"; original GPT-2 ID 47314.
-inline constexpr TokenId kSpace_cones_4392 = 4392;
+inline constexpr DiscreteToken kSpace_cones_4392{4392};
 // "elope"; original GPT-2 ID 47329.
-inline constexpr TokenId kelope_4393 = 4393;
+inline constexpr DiscreteToken kelope_4393{4393};
 // " transformer"; original GPT-2 ID 47385.
-inline constexpr TokenId kSpace_transformer_4394 = 4394;
+inline constexpr DiscreteToken kSpace_transformer_4394{4394};
 // " scorp"; original GPT-2 ID 47394.
-inline constexpr TokenId kSpace_scorp_4395 = 4395;
+inline constexpr DiscreteToken kSpace_scorp_4395{4395};
 // " Gibraltar"; original GPT-2 ID 47403.
-inline constexpr TokenId kSpace_Gibraltar_4396 = 4396;
+inline constexpr DiscreteToken kSpace_Gibraltar_4396{4396};
 // "Cla"; original GPT-2 ID 47404.
-inline constexpr TokenId kCla_4397 = 4397;
+inline constexpr DiscreteToken kCla_4397{4397};
 // " Euph"; original GPT-2 ID 47441.
-inline constexpr TokenId kSpace_Euph_4398 = 4398;
+inline constexpr DiscreteToken kSpace_Euph_4398{4398};
 // " initials"; original GPT-2 ID 47523.
-inline constexpr TokenId kSpace_initials_4399 = 4399;
+inline constexpr DiscreteToken kSpace_initials_4399{4399};
 // "iky"; original GPT-2 ID 47536.
-inline constexpr TokenId kiky_4400 = 4400;
+inline constexpr DiscreteToken kiky_4400{4400};
 // " deform"; original GPT-2 ID 47577.
-inline constexpr TokenId kSpace_deform_4401 = 4401;
+inline constexpr DiscreteToken kSpace_deform_4401{4401};
 // "eers"; original GPT-2 ID 47619.
-inline constexpr TokenId keers_4402 = 4402;
+inline constexpr DiscreteToken keers_4402{4402};
 // " pores"; original GPT-2 ID 47683.
-inline constexpr TokenId kSpace_pores_4403 = 4403;
+inline constexpr DiscreteToken kSpace_pores_4403{4403};
 // "Glass"; original GPT-2 ID 47698.
-inline constexpr TokenId kGlass_4404 = 4404;
+inline constexpr DiscreteToken kGlass_4404{4404};
 // "Diamond"; original GPT-2 ID 47710.
-inline constexpr TokenId kDiamond_4405 = 4405;
+inline constexpr DiscreteToken kDiamond_4405{4405};
 // " resists"; original GPT-2 ID 47786.
-inline constexpr TokenId kSpace_resists_4406 = 4406;
+inline constexpr DiscreteToken kSpace_resists_4406{4406};
 // " propagate"; original GPT-2 ID 47933.
-inline constexpr TokenId kSpace_propagate_4407 = 4407;
+inline constexpr DiscreteToken kSpace_propagate_4407{4407};
 // "isbury"; original GPT-2 ID 47967.
-inline constexpr TokenId kisbury_4408 = 4408;
+inline constexpr DiscreteToken kisbury_4408{4408};
 // " quartz"; original GPT-2 ID 47969.
-inline constexpr TokenId kSpace_quartz_4409 = 4409;
+inline constexpr DiscreteToken kSpace_quartz_4409{4409};
 // " bilingual"; original GPT-2 ID 48116.
-inline constexpr TokenId kSpace_bilingual_4410 = 4410;
+inline constexpr DiscreteToken kSpace_bilingual_4410{4410};
 // " reciprocal"; original GPT-2 ID 48135.
-inline constexpr TokenId kSpace_reciprocal_4411 = 4411;
+inline constexpr DiscreteToken kSpace_reciprocal_4411{4411};
 // " accompanies"; original GPT-2 ID 48159.
-inline constexpr TokenId kSpace_accompanies_4412 = 4412;
+inline constexpr DiscreteToken kSpace_accompanies_4412{4412};
 // " photon"; original GPT-2 ID 48190.
-inline constexpr TokenId kSpace_photon_4413 = 4413;
+inline constexpr DiscreteToken kSpace_photon_4413{4413};
 // "agos"; original GPT-2 ID 48215.
-inline constexpr TokenId kagos_4414 = 4414;
+inline constexpr DiscreteToken kagos_4414{4414};
 // " interrupts"; original GPT-2 ID 48237.
-inline constexpr TokenId kSpace_interrupts_4415 = 4415;
+inline constexpr DiscreteToken kSpace_interrupts_4415{4415};
 // " Centauri"; original GPT-2 ID 48278.
-inline constexpr TokenId kSpace_Centauri_4416 = 4416;
+inline constexpr DiscreteToken kSpace_Centauri_4416{4416};
 // "endra"; original GPT-2 ID 48286.
-inline constexpr TokenId kendra_4417 = 4417;
+inline constexpr DiscreteToken kendra_4417{4417};
 // " reversible"; original GPT-2 ID 48287.
-inline constexpr TokenId kSpace_reversible_4418 = 4418;
+inline constexpr DiscreteToken kSpace_reversible_4418{4418};
 // " exerted"; original GPT-2 ID 48322.
-inline constexpr TokenId kSpace_exerted_4419 = 4419;
+inline constexpr DiscreteToken kSpace_exerted_4419{4419};
 // "locking"; original GPT-2 ID 48331.
-inline constexpr TokenId klocking_4420 = 4420;
+inline constexpr DiscreteToken klocking_4420{4420};
 // "Changing"; original GPT-2 ID 48333.
-inline constexpr TokenId kChanging_4421 = 4421;
+inline constexpr DiscreteToken kChanging_4421{4421};
 // " percussion"; original GPT-2 ID 48388.
-inline constexpr TokenId kSpace_percussion_4422 = 4422;
+inline constexpr DiscreteToken kSpace_percussion_4422{4422};
 // "ihu"; original GPT-2 ID 48406.
-inline constexpr TokenId kihu_4423 = 4423;
+inline constexpr DiscreteToken kihu_4423{4423};
 // " aromatic"; original GPT-2 ID 48440.
-inline constexpr TokenId kSpace_aromatic_4424 = 4424;
+inline constexpr DiscreteToken kSpace_aromatic_4424{4424};
 // "sth"; original GPT-2 ID 48476.
-inline constexpr TokenId ksth_4425 = 4425;
+inline constexpr DiscreteToken ksth_4425{4425};
 // " inertia"; original GPT-2 ID 48482.
-inline constexpr TokenId kSpace_inertia_4426 = 4426;
+inline constexpr DiscreteToken kSpace_inertia_4426{4426};
 // "Traditional"; original GPT-2 ID 48485.
-inline constexpr TokenId kTraditional_4427 = 4427;
+inline constexpr DiscreteToken kTraditional_4427{4427};
 // "UTF"; original GPT-2 ID 48504.
-inline constexpr TokenId kUTF_4428 = 4428;
+inline constexpr DiscreteToken kUTF_4428{4428};
 // " limestone"; original GPT-2 ID 48520.
-inline constexpr TokenId kSpace_limestone_4429 = 4429;
+inline constexpr DiscreteToken kSpace_limestone_4429{4429};
 // " communicates"; original GPT-2 ID 48556.
-inline constexpr TokenId kSpace_communicates_4430 = 4430;
+inline constexpr DiscreteToken kSpace_communicates_4430{4430};
 // "adish"; original GPT-2 ID 48563.
-inline constexpr TokenId kadish_4431 = 4431;
+inline constexpr DiscreteToken kadish_4431{4431};
 // " flowering"; original GPT-2 ID 48573.
-inline constexpr TokenId kSpace_flowering_4432 = 4432;
+inline constexpr DiscreteToken kSpace_flowering_4432{4432};
 // " vowel"; original GPT-2 ID 48617.
-inline constexpr TokenId kSpace_vowel_4433 = 4433;
+inline constexpr DiscreteToken kSpace_vowel_4433{4433};
 // "Emily"; original GPT-2 ID 48640.
-inline constexpr TokenId kEmily_4434 = 4434;
+inline constexpr DiscreteToken kEmily_4434{4434};
 // "Ko"; original GPT-2 ID 48735.
-inline constexpr TokenId kKo_4435 = 4435;
+inline constexpr DiscreteToken kKo_4435{4435};
 // " loudspe"; original GPT-2 ID 48792.
-inline constexpr TokenId kSpace_loudspe_4436 = 4436;
+inline constexpr DiscreteToken kSpace_loudspe_4436{4436};
 // " melts"; original GPT-2 ID 48813.
-inline constexpr TokenId kSpace_melts_4437 = 4437;
+inline constexpr DiscreteToken kSpace_melts_4437{4437};
 // "wings"; original GPT-2 ID 48819.
-inline constexpr TokenId kwings_4438 = 4438;
+inline constexpr DiscreteToken kwings_4438{4438};
 // " centimeters"; original GPT-2 ID 48829.
-inline constexpr TokenId kSpace_centimeters_4439 = 4439;
+inline constexpr DiscreteToken kSpace_centimeters_4439{4439};
 // " Eucl"; original GPT-2 ID 48862.
-inline constexpr TokenId kSpace_Eucl_4440 = 4440;
+inline constexpr DiscreteToken kSpace_Eucl_4440{4440};
 // " Travels"; original GPT-2 ID 48899.
-inline constexpr TokenId kSpace_Travels_4441 = 4441;
+inline constexpr DiscreteToken kSpace_Travels_4441{4441};
 // " recycle"; original GPT-2 ID 48914.
-inline constexpr TokenId kSpace_recycle_4442 = 4442;
+inline constexpr DiscreteToken kSpace_recycle_4442{4442};
 // " mars"; original GPT-2 ID 48962.
-inline constexpr TokenId kSpace_mars_4443 = 4443;
+inline constexpr DiscreteToken kSpace_mars_4443{4443};
 // " zipper"; original GPT-2 ID 48992.
-inline constexpr TokenId kSpace_zipper_4444 = 4444;
+inline constexpr DiscreteToken kSpace_zipper_4444{4444};
 // "Nut"; original GPT-2 ID 49004.
-inline constexpr TokenId kNut_4445 = 4445;
+inline constexpr DiscreteToken kNut_4445{4445};
 // " vanishing"; original GPT-2 ID 49047.
-inline constexpr TokenId kSpace_vanishing_4446 = 4446;
+inline constexpr DiscreteToken kSpace_vanishing_4446{4446};
 // "andre"; original GPT-2 ID 49078.
-inline constexpr TokenId kandre_4447 = 4447;
+inline constexpr DiscreteToken kandre_4447{4447};
 // "CSS"; original GPT-2 ID 49155.
-inline constexpr TokenId kCSS_4448 = 4448;
+inline constexpr DiscreteToken kCSS_4448{4448};
 // " maize"; original GPT-2 ID 49235.
-inline constexpr TokenId kSpace_maize_4449 = 4449;
+inline constexpr DiscreteToken kSpace_maize_4449{4449};
 // " Carth"; original GPT-2 ID 49268.
-inline constexpr TokenId kSpace_Carth_4450 = 4450;
+inline constexpr DiscreteToken kSpace_Carth_4450{4450};
 // " circulate"; original GPT-2 ID 49306.
-inline constexpr TokenId kSpace_circulate_4451 = 4451;
+inline constexpr DiscreteToken kSpace_circulate_4451{4451};
 // " trout"; original GPT-2 ID 49411.
-inline constexpr TokenId kSpace_trout_4452 = 4452;
+inline constexpr DiscreteToken kSpace_trout_4452{4452};
 // "amia"; original GPT-2 ID 49442.
-inline constexpr TokenId kamia_4453 = 4453;
+inline constexpr DiscreteToken kamia_4453{4453};
 // "Rust"; original GPT-2 ID 49444.
-inline constexpr TokenId kRust_4454 = 4454;
+inline constexpr DiscreteToken kRust_4454{4454};
 // "ceptor"; original GPT-2 ID 49492.
-inline constexpr TokenId kceptor_4455 = 4455;
+inline constexpr DiscreteToken kceptor_4455{4455};
 // " 1889"; original GPT-2 ID 49545.
-inline constexpr TokenId kSpace_1889_4456 = 4456;
+inline constexpr DiscreteToken kSpace_1889_4456{4456};
 // "Pure"; original GPT-2 ID 49548.
-inline constexpr TokenId kPure_4457 = 4457;
+inline constexpr DiscreteToken kPure_4457{4457};
 // " stiffness"; original GPT-2 ID 49586.
-inline constexpr TokenId kSpace_stiffness_4458 = 4458;
+inline constexpr DiscreteToken kSpace_stiffness_4458{4458};
 // " reconstructed"; original GPT-2 ID 49594.
-inline constexpr TokenId kSpace_reconstructed_4459 = 4459;
+inline constexpr DiscreteToken kSpace_reconstructed_4459{4459};
 // "itone"; original GPT-2 ID 49644.
-inline constexpr TokenId kitone_4460 = 4460;
+inline constexpr DiscreteToken kitone_4460{4460};
 // " Senegal"; original GPT-2 ID 49657.
-inline constexpr TokenId kSpace_Senegal_4461 = 4461;
+inline constexpr DiscreteToken kSpace_Senegal_4461{4461};
 // "Tea"; original GPT-2 ID 49770.
-inline constexpr TokenId kTea_4462 = 4462;
+inline constexpr DiscreteToken kTea_4462{4462};
 // " neutron"; original GPT-2 ID 49810.
-inline constexpr TokenId kSpace_neutron_4463 = 4463;
+inline constexpr DiscreteToken kSpace_neutron_4463{4463};
 // " aph"; original GPT-2 ID 49812.
-inline constexpr TokenId kSpace_aph_4464 = 4464;
+inline constexpr DiscreteToken kSpace_aph_4464{4464};
 // " funer"; original GPT-2 ID 49831.
-inline constexpr TokenId kSpace_funer_4465 = 4465;
+inline constexpr DiscreteToken kSpace_funer_4465{4465};
 // "oglobin"; original GPT-2 ID 49835.
-inline constexpr TokenId koglobin_4466 = 4466;
+inline constexpr DiscreteToken koglobin_4466{4466};
 // "obos"; original GPT-2 ID 49878.
-inline constexpr TokenId kobos_4467 = 4467;
+inline constexpr DiscreteToken kobos_4467{4467};
 // " Purg"; original GPT-2 ID 49893.
-inline constexpr TokenId kSpace_Purg_4468 = 4468;
+inline constexpr DiscreteToken kSpace_Purg_4468{4468};
 // " ultraviolet"; original GPT-2 ID 49961.
-inline constexpr TokenId kSpace_ultraviolet_4469 = 4469;
+inline constexpr DiscreteToken kSpace_ultraviolet_4469{4469};
 // "ilage"; original GPT-2 ID 50006.
-inline constexpr TokenId kilage_4470 = 4470;
+inline constexpr DiscreteToken kilage_4470{4470};
 // " relational"; original GPT-2 ID 50126.
-inline constexpr TokenId kSpace_relational_4471 = 4471;
+inline constexpr DiscreteToken kSpace_relational_4471{4471};
 // "acan"; original GPT-2 ID 50195.
-inline constexpr TokenId kacan_4472 = 4472;
+inline constexpr DiscreteToken kacan_4472{4472};
 // " kernels"; original GPT-2 ID 50207.
-inline constexpr TokenId kSpace_kernels_4473 = 4473;
+inline constexpr DiscreteToken kSpace_kernels_4473{4473};
 // "<|endoftext|>"; original GPT-2 ID 50256.
-inline constexpr TokenId kEos_4474 = 4474;
+inline constexpr DiscreteToken kEos_4474{4474};
 }  // namespace pluto::llm::discretized::vocab

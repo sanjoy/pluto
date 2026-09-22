@@ -51,7 +51,8 @@ def _validate(model):
     states = {}
     original_members = set()
     for row in model["states"]:
-        state = _integer(row["id"], "state ID", minimum=vocabulary_size)
+        state = _integer(row["id"], "state ID", minimum=vocabulary_size,
+                         maximum=2**31-1)
         stage = _integer(row["stage"], "stage", maximum=2*layers)
         if state in states:
             raise ValueError("duplicate state ID")
@@ -65,14 +66,16 @@ def _validate(model):
                     row.get("member_count") != len(members)):
                 raise ValueError("invalid original-state membership count")
             for member in members:
-                _integer(member, "original state ID", minimum=vocabulary_size)
+                _integer(member, "original state ID", minimum=vocabulary_size,
+                         maximum=2**31-1)
                 if member in original_members:
                     raise ValueError("original state belongs to multiple classes")
                 original_members.add(member)
         states[state] = stage
 
     def state_at(state, stage):
-        _integer(state, "referenced state", minimum=vocabulary_size)
+        _integer(state, "referenced state", minimum=vocabulary_size,
+                 maximum=2**31-1)
         if states.get(state) != stage:
             raise ValueError(f"state {state} does not belong to stage {stage}")
 
@@ -186,12 +189,12 @@ def _span(name, count):
 
 def _state_source(name, rows, description, token_names=None):
     rows = sorted(rows)
-    values = (f"{{{a}, vocab::{token_names[b]}}}" if token_names is not None
-              else f"{{{a}, {b}}}" for a, b in rows)
-    body = "namespace {\nstruct StateRow { StateId input; StateId output; };\n"
+    values = (f"{{{{{a}}}, static_cast<DiscreteHiddenState>(vocab::{token_names[b]})}}"
+              if token_names is not None else f"{{{{{a}}}, {{{b}}}}}" for a, b in rows)
+    body = "namespace {\nstruct StateRow { DiscreteHiddenState input; DiscreteHiddenState output; };\n"
     body += _array("StateRow", "kRows", values)
     body += f'''// Binary search stays private; the runtime only invokes this pure lookup.
-TransitionResult Lookup(StateId state) {{
+TransitionResult Lookup(DiscreteHiddenState state) {{
   size_t first = 0;
   size_t last = {len(rows)};
   while (first < last) {{
@@ -231,7 +234,7 @@ def _render(model, include_state_index=False, compact_transitions=False):
     vocab = model["vocabulary"]
     token_names = [_token_name(bytes.fromhex(row["hex"]), token, model["eos_token"])
                    for token, row in enumerate(vocab)]
-    declarations = ["TransitionResult GeneratedEntryFunction(TokenId, uint32_t);", "absl::Span<const VocabularyRow> GeneratedVocabulary();", "StateTable GeneratedSnap();"]
+    declarations = ["TransitionResult GeneratedEntryFunction(DiscreteToken, uint32_t);", "absl::Span<const VocabularyRow> GeneratedVocabulary();", "StateTable GeneratedSnap();"]
     for block in range(layers):
         declarations += [f"AttentionTable GeneratedAttention{block}();", f"StateTable GeneratedMlp{block}();"]
     files = {"tables.h": f'// Generated declarations.\n#pragma once\n#include "{RUNTIME}"\nnamespace {NAMESPACE} {{\n' + "\n".join(declarations) + f"\n}}  // namespace {NAMESPACE}\n"}
@@ -246,14 +249,14 @@ def _render(model, include_state_index=False, compact_transitions=False):
     for token, row in enumerate(vocab):
         label = _literal(bytes.fromhex(row["hex"]))
         tokens_header += (f'// {label}; original GPT-2 ID {row["original_id"]}.\n'
-                          f'inline constexpr TokenId {token_names[token]} = {token};\n')
+                          f'inline constexpr DiscreteToken {token_names[token]}{{{token}}};\n')
     files["vocabulary_tokens.h"] = tokens_header + f"}}  // namespace {NAMESPACE}::vocab\n"
     entry = sorted(model["entry"])
-    body = "namespace {\nstruct EntryRow { TokenId token; uint32_t position; StateId state; };\n"
+    body = "namespace {\nstruct EntryRow { DiscreteToken token; uint32_t position; DiscreteHiddenState state; };\n"
     body += _array("EntryRow", "kRows", (
-        (f"{{vocab::{token_names[a]}, {b}, {c}}}", "token " + _comment_label(bytes.fromhex(vocab[a]["hex"])))
+        (f"{{vocab::{token_names[a]}, {b}, {{{c}}}}}", "token " + _comment_label(bytes.fromhex(vocab[a]["hex"])))
         for a, b, c in entry)) + "}\n"
-    body += f'''TransitionResult GeneratedEntryFunction(TokenId token, uint32_t position) {{
+    body += f'''TransitionResult GeneratedEntryFunction(DiscreteToken token, uint32_t position) {{
   size_t first = 0;
   size_t last = {len(entry)};
   while (first < last) {{
@@ -283,15 +286,15 @@ def _render(model, include_state_index=False, compact_transitions=False):
     for block in range(layers):
         keys, rows = [], []
         for prefix, output in sorted(model["attention"][block]):
-            rows.append(f"{{{len(keys)}, {len(prefix)}, {output}}}")
+            rows.append(f"{{{len(keys)}, {len(prefix)}, {{{output}}}}}")
             keys.extend(prefix)
-        body = "namespace {\nstruct AttentionRow { uint32_t offset; uint32_t length; StateId output; };\n"
-        body += _array("StateId", "kKeys", map(str, keys)) + _array("AttentionRow", "kRows", rows)
+        body = "namespace {\nstruct AttentionRow { uint32_t offset; uint32_t length; DiscreteHiddenState output; };\n"
+        body += _array("DiscreteHiddenState", "kKeys", (f"{{{state}}}" for state in keys)) + _array("AttentionRow", "kRows", rows)
         body += f'''// Lexicographic comparison checks every symbol of the complete prefix.
-int ComparePrefix(const AttentionRow& row, absl::Span<const StateId> prefix) {{
+int ComparePrefix(const AttentionRow& row, absl::Span<const DiscreteHiddenState> prefix) {{
   const size_t shared = row.length < prefix.size() ? row.length : prefix.size();
   for (size_t index = 0; index < shared; ++index) {{
-    const StateId state = kKeys[row.offset + index];
+    const DiscreteHiddenState state = kKeys[row.offset + index];
     if (state < prefix[index])
       return -1;
     if (state > prefix[index])
@@ -299,7 +302,7 @@ int ComparePrefix(const AttentionRow& row, absl::Span<const StateId> prefix) {{
   }}
   return row.length < prefix.size() ? -1 : row.length > prefix.size() ? 1 : 0;
 }}
-TransitionResult Lookup(absl::Span<const StateId> prefix) {{
+TransitionResult Lookup(absl::Span<const DiscreteHiddenState> prefix) {{
   size_t first = 0;
   size_t last = {len(rows)};
   while (first < last) {{
@@ -345,12 +348,12 @@ TransitionResult Lookup(absl::Span<const StateId> prefix) {{
 namespace {NAMESPACE} {{
 absl::Status VerifyGeneratedModel(const Model&, std::ostream&);
 TEST(GeneratedIntegerModel, NamedVocabularyCoversEveryCompactId) {{
-  constexpr TokenId kTokens[] = {{
+  constexpr DiscreteToken kTokens[] = {{
 {named_tokens}
   }};
   ASSERT_EQ(absl::MakeConstSpan(kTokens).size(), GeneratedModel().vocabulary.size());
   for (size_t token = 0; token < absl::MakeConstSpan(kTokens).size(); ++token)
-    EXPECT_EQ(kTokens[token], token);
+    EXPECT_EQ(kTokens[token].value, token);
 }}
 TEST(GeneratedIntegerModel, IndependentAutoregressiveCorpusVerification) {{
   const auto& model = GeneratedModel();
@@ -456,13 +459,13 @@ def _render_encoder(model, token_names):
         rows.append(f"{{{{{_literal(text)}, {len(text)}}}, {len(tokens)}, {len(ids)}}}")
         tokens.extend(ids)
     body = "namespace {\nstruct PromptRow { absl::string_view text; size_t offset; size_t length; };\n"
-    body += _array("TokenId", "kTokens", (f"vocab::{token_names[token]}" for token in tokens)) + _array("PromptRow", "kPrompts", rows) + "}\n"
-    body += f'''absl::StatusOr<std::vector<TokenId>> EncodeGeneratedPrompt(absl::string_view text) {{
+    body += _array("DiscreteToken", "kTokens", (f"vocab::{token_names[token]}" for token in tokens)) + _array("PromptRow", "kPrompts", rows) + "}\n"
+    body += f'''absl::StatusOr<std::vector<DiscreteToken>> EncodeGeneratedPrompt(absl::string_view text) {{
   auto row = std::lower_bound(std::begin(kPrompts), std::end(kPrompts), text,
       [](const PromptRow& r, absl::string_view key) {{ return r.text < key; }});
   if (row == std::end(kPrompts) || row->text != text)
     return absl::NotFoundError("unsupported text encoding: use a captured corpus prefix at a token boundary, or --token_ids");
-  return std::vector<TokenId>(kTokens + row->offset, kTokens + row->offset + row->length);
+  return std::vector<DiscreteToken>(kTokens + row->offset, kTokens + row->offset + row->length);
 }}'''
     return '#include <algorithm>\n#include <iterator>\n' + _source(body, f'"{RUNTIME}"', vocabulary=True)
 
@@ -473,7 +476,7 @@ def _render_verification(model, token_names):
         rows.append(f"{{{len(tokens)}, {len(sample['tokens'])}}}")
         tokens.extend(sample["tokens"])
     body = "namespace {\nstruct Sample { size_t offset; size_t length; };\n"
-    body += _array("TokenId", "kExpectedTokens", (f"vocab::{token_names[token]}" for token in tokens)) + _array("Sample", "kSamples", rows) + "}\n"
+    body += _array("DiscreteToken", "kExpectedTokens", (f"vocab::{token_names[token]}" for token in tokens)) + _array("Sample", "kSamples", rows) + "}\n"
     body += '''absl::Status VerifyGeneratedModel(const Model& model, std::ostream& output) {
   size_t targets = 0;
   size_t sentences = 0;
@@ -482,7 +485,7 @@ def _render_verification(model, token_names):
     auto generated = Generate(model, original.first(model.prompt_tokens),
                               sample.length - model.prompt_tokens + 1);
     if (!generated.ok()) return generated.status();
-    std::vector<TokenId> expected(original.begin() + model.prompt_tokens, original.end());
+    std::vector<DiscreteToken> expected(original.begin() + model.prompt_tokens, original.end());
     expected.push_back(model.eos_token);
     if (*generated != expected) {
       output << "mismatch at verification sentence " << sentences + 1 << "\\n";

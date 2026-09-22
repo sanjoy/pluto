@@ -59,12 +59,14 @@ class TransitionFixturesTest(unittest.TestCase):
     def test_all_snap_constraints_including_unreachable_ones_are_emitted(self):
         source = render_transition_test(fixture(), _NAMES)
         for state, token in fixture()["snap"]:
-            self.assertIn(f"{{{state}, {_NAMES[token]}}}", source)
+            self.assertIn(f"{{{{{state}}}, static_cast<DiscreteHiddenState>({_NAMES[token]})}}", source)
         self.assertIn("EverySourceSnapConstraint", source)
         self.assertIn("model.snap.function(row.input), {row.output}", source)
 
     def test_optional_expectations_preserve_supported_zero(self):
-        self.assertEqual(_result(True, 0), "{StateId{0}}")
+        self.assertEqual(_result(True, 0), "{DiscreteHiddenState{0}}")
+        self.assertEqual(_result(True, _NAMES[0]),
+                         "{static_cast<DiscreteHiddenState>(vocab::kA_0)}")
         self.assertEqual(_result(False, 0), "{std::nullopt}")
         source = render_transition_test(fixture(), _NAMES)
         self.assertIn("EXPECT_EQ(actual.output, expected.output);", source)
@@ -123,7 +125,8 @@ class TransitionFixturesTest(unittest.TestCase):
         probes = _pointwise_probes(rows)
         self.assertEqual(len(probes), 64)
         self.assertIn((0, False, 0), probes)
-        self.assertIn((2**32 - 1, False, 0), probes)
+        self.assertIn((2**31 - 1, False, 0), probes)
+        self.assertIn((-1, False, 0), probes)
         self.assertIn((9, False, 0), probes)
         self.assertIn((10, True, 11), probes)
         self.assertIn((11, False, 0), probes)
@@ -133,12 +136,12 @@ class TransitionFixturesTest(unittest.TestCase):
             self.assertEqual(supported, state in expected)
             self.assertEqual(output, expected.get(state, 0))
 
-    def test_uint32_endpoint_is_not_assumed_unsupported(self):
-        rows = [[2**32 - 1, 7], [0, 9]]
-        self.assertIn((2**32 - 1, True, 7), _pointwise_probes(rows))
+    def test_int_endpoint_is_not_assumed_unsupported(self):
+        rows = [[2**31 - 1, 7], [0, 9]]
+        self.assertIn((2**31 - 1, True, 7), _pointwise_probes(rows))
         self.assertIn((0, True, 9), _pointwise_probes(rows))
-        attention = [[[2**32 - 1], 7], [[0], 9]]
-        self.assertIn(((2**32 - 1,), True, 7), _attention_probes(attention))
+        attention = [[[2**31 - 1], 7], [[0], 9]]
+        self.assertIn(((2**31 - 1,), True, 7), _attention_probes(attention))
         self.assertIn(((0,), True, 9), _attention_probes(attention))
 
     def test_entry_probes_use_both_token_and_position(self):
@@ -157,9 +160,9 @@ class TransitionFixturesTest(unittest.TestCase):
 
     def test_generated_cpp_uses_independent_inputs_and_compact_stage_vectors(self):
         source = render_transition_test(fixture(), _NAMES)
-        values = re.search(r"constexpr StateId kExpectedStates\[\] = \{(.*?)\};",
+        values = re.search(r"constexpr DiscreteHiddenState kExpectedStates\[\] = \{(.*?)\};",
                            source, re.S).group(1)
-        states = [int(value) for value in values.split(",") if value.strip()]
+        states = [int(value) for value in re.findall(r"\{(-?\d+)\}", values)]
         self.assertEqual(states, _replay_samples(fixture())[1])
         self.assertIn("absl::MakeConstSpan(input, position + 1)", source)
         self.assertIn("model.mlp[block].function(after_attention[position])", source)
