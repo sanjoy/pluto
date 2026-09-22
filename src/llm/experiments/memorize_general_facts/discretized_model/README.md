@@ -122,7 +122,7 @@ The complete argument summary is also recorded in generated provenance. Run it
 on a saved model with:
 
 ```sh
-python3 -B scripts/memorize_general_facts/discretize_certificate.py \
+python3 -B src/llm/experiments/memorize_general_facts/discretized_model/discretize_certificate.py \
   --model=/tmp/pluto-discretize.AcuKzZ/search-final.json
 ```
 
@@ -288,17 +288,18 @@ dedicated test target, not linked by the production model or CLI.
 To reproduce the current representation from the saved reduced model:
 
 ```sh
-python3 -B scripts/memorize_general_facts/generate_discretized_model.py \
+python3 -B src/llm/experiments/memorize_general_facts/discretized_model/generate_discretized_model.py \
   --model=/tmp/pluto-discretize.AcuKzZ/search-final.json \
   --compact_transitions --state_index \
   --save_model=/tmp/facts-compact.json --output=/tmp/facts-compact-generated
 ```
 
 The output path must be fresh. Omit `--compact_transitions` to emit the original
-per-boundary tables for comparison. The C++ emitter is
-`src/llm/experiments/memorize_general_facts/discretize_emit.py`. The driver,
-reduction utilities, and Python tests remain in `scripts/memorize_general_facts/`;
-generated C++ stays here.
+per-boundary tables for comparison. All generation logic and its Python tests
+live alongside this README: the driver, C++ emitter, state reduction,
+irreducibility checker, and compact-transition helpers. Generated C++ stays in
+`generated/`. Benchmarking and training-sweep utilities remain in
+`scripts/memorize_general_facts/`.
 
 ## Reproduce capture and code generation
 
@@ -317,7 +318,7 @@ bazel-bin/src/llm/experiments/memorize_general_facts/discretized_model/capture_c
   --corpus=testdata/general_facts_dataset.txt \
   --output=/tmp/facts-capture.jsonl --verify_greedy=true
 
-python3 -B scripts/memorize_general_facts/generate_discretized_model.py \
+python3 -B src/llm/experiments/memorize_general_facts/discretized_model/generate_discretized_model.py \
   --capture=/tmp/facts-capture.jsonl --save_model=/tmp/facts-discrete.json \
   --output=/tmp/facts-generated \
   --checkpoint="$facts_run/layers_8/step_16128" \
@@ -337,5 +338,6 @@ search. State counts and the precise stopping condition are recorded in that
 artifact and in generated provenance. Test the Python utilities with:
 
 ```sh
-python3 -B -m unittest discover -s scripts/memorize_general_facts -p '*_test.py'
+python3 -B -m unittest discover \
+  -s src/llm/experiments/memorize_general_facts/discretized_model -p '*_test.py'
 ```
