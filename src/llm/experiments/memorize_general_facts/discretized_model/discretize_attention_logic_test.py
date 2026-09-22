@@ -154,27 +154,26 @@ struct DiscreteHiddenState {
   int value = 0;
   constexpr auto operator<=>(const DiscreteHiddenState&) const = default;
 };
-struct TransitionResult { std::optional<DiscreteHiddenState> output; };
 """ + generated + pure + empty + narrow + """
 int main() {
   std::vector<DiscreteHiddenState> narrow_key;
-  if (NarrowAttention(narrow_key).output.has_value()) return 4;
+  if (NarrowAttention(narrow_key).has_value()) return 4;
   for (int length = 1; length <= 8; ++length) {
     narrow_key.push_back(DiscreteHiddenState{length});
-    if (NarrowAttention(narrow_key).output !=
+    if (NarrowAttention(narrow_key) !=
         std::optional<DiscreteHiddenState>{DiscreteHiddenState{length - 1}}) return 5;
   }
   narrow_key.push_back(DiscreteHiddenState{9});
-  if (NarrowAttention(narrow_key).output.has_value()) return 6;
+  if (NarrowAttention(narrow_key).has_value()) return 6;
   std::size_t count;
   while (std::cin >> count) {
     std::vector<DiscreteHiddenState> key(count);
     for (auto& symbol : key) std::cin >> symbol.value;
-    if (EmptyAttention(key).output.has_value()) return 2;
+    if (EmptyAttention(key).has_value()) return 2;
     auto result = CompiledAttention(key);
     auto original = PureAttention(key);
-    if (result.output != original.output) return 3;
-    if (result.output.has_value()) std::cout << result.output->value << '\\n';
+    if (result != original) return 3;
+    if (result.has_value()) std::cout << result->value << '\\n';
     else std::cout << "unsupported\\n";
   }
 }

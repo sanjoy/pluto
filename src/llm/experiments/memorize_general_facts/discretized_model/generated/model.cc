@@ -7,23 +7,23 @@
 
 namespace pluto::llm::discretized {
 const Model& GeneratedModel() {
-  static const AttentionTable kAttention[] = {
-      GeneratedAttention0(), GeneratedAttention1(), GeneratedAttention2(),
-      GeneratedAttention3(), GeneratedAttention4(), GeneratedAttention5(),
-      GeneratedAttention6(), GeneratedAttention7(),
-  };
-  static const StateTable kMlp[] = {
-      GeneratedMlp0(), GeneratedMlp1(), GeneratedMlp2(), GeneratedMlp3(),
-      GeneratedMlp4(), GeneratedMlp5(), GeneratedMlp6(), GeneratedMlp7(),
+  static const Transformer kTransformers[] = {
+      {GeneratedAttention0(), GeneratedMlp0()},
+      {GeneratedAttention1(), GeneratedMlp1()},
+      {GeneratedAttention2(), GeneratedMlp2()},
+      {GeneratedAttention3(), GeneratedMlp3()},
+      {GeneratedAttention4(), GeneratedMlp4()},
+      {GeneratedAttention5(), GeneratedMlp5()},
+      {GeneratedAttention6(), GeneratedMlp6()},
+      {GeneratedAttention7(), GeneratedMlp7()},
   };
   static const Model model{1024,
                            5,
                            vocab::kEos_4474,
                            GeneratedVocabulary(),
-                           {kAttention, 8},
-                           {kMlp, 8},
+                           {kTransformers, 8},
                            GeneratedLanguageModelingHead(),
-                           GeneratedEntryFunction};
+                           GeneratedPositionEmbedding()};
   return model;
 }
 }  // namespace pluto::llm::discretized

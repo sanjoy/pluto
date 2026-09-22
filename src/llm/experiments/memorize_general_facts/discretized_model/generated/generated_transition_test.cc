@@ -25,21 +25,21 @@ struct AttentionProbe {
   size_t block;
   size_t offset;
   size_t length;
-  TransitionResult expected;
+  std::optional<DiscreteHiddenState> expected;
 };
 struct PointwiseProbe {
   size_t block;
   DiscreteHiddenState input;
-  TransitionResult expected;
+  std::optional<DiscreteHiddenState> expected;
 };
 struct StateProbe {
   DiscreteHiddenState input;
-  TransitionResult expected;
+  std::optional<DiscreteHiddenState> expected;
 };
 struct EntryProbe {
   DiscreteToken token;
-  uint32_t position;
-  TransitionResult expected;
+  int32_t position;
+  std::optional<DiscreteHiddenState> expected;
 };
 constexpr DiscreteToken kSampleTokens[] = {
     vocab::kFemale_3711,
@@ -49183,79 +49183,73 @@ constexpr EntryProbe kEntryProbes[] = {
     {vocab::kComma_0, 0, {std::nullopt}},
     {vocab::kComma_0, 2, {DiscreteHiddenState{4484}}},
     {vocab::kComma_0, 1024, {std::nullopt}},
-    {vocab::kComma_0, 4294967295, {std::nullopt}},
+    {vocab::kComma_0, -2147483648, {std::nullopt}},
+    {vocab::kComma_0, 2147483647, {std::nullopt}},
     {DiscreteToken{-1}, 1, {std::nullopt}},
     {vocab::kHyphen_1, 1, {DiscreteHiddenState{4483}}},
     {vocab::ko_43, 8, {DiscreteHiddenState{4519}}},
     {vocab::ko_43, 7, {DiscreteHiddenState{4519}}},
     {vocab::ko_43, 9, {std::nullopt}},
     {vocab::ko_43, 1024, {std::nullopt}},
-    {vocab::ko_43, 4294967295, {std::nullopt}},
+    {vocab::ko_43, -2147483648, {std::nullopt}},
+    {vocab::ko_43, 2147483647, {std::nullopt}},
     {vocab::kn_42, 8, {std::nullopt}},
     {vocab::kp_44, 8, {std::nullopt}},
     {vocab::kes_72, 2, {DiscreteHiddenState{4492}}},
     {vocab::kes_72, 1, {std::nullopt}},
     {vocab::kes_72, 3, {DiscreteHiddenState{4492}}},
     {vocab::kes_72, 1024, {std::nullopt}},
-    {vocab::kes_72, 4294967295, {std::nullopt}},
+    {vocab::kes_72, -2147483648, {std::nullopt}},
+    {vocab::kes_72, 2147483647, {std::nullopt}},
     {vocab::kor_71, 2, {DiscreteHiddenState{4481}}},
     {vocab::kSpace_b_73, 2, {std::nullopt}},
     {vocab::kic_87, 12, {DiscreteHiddenState{4521}}},
     {vocab::kic_87, 11, {DiscreteHiddenState{4521}}},
     {vocab::kic_87, 13, {DiscreteHiddenState{4521}}},
     {vocab::kic_87, 1024, {std::nullopt}},
-    {vocab::kic_87, 4294967295, {std::nullopt}},
+    {vocab::kic_87, -2147483648, {std::nullopt}},
+    {vocab::kic_87, 2147483647, {std::nullopt}},
     {vocab::kSpace_and_86, 12, {DiscreteHiddenState{4479}}},
     {vocab::kas_88, 12, {std::nullopt}},
     {vocab::kSpace_that_121, 12, {DiscreteHiddenState{4487}}},
     {vocab::kSpace_that_121, 11, {DiscreteHiddenState{4487}}},
     {vocab::kSpace_that_121, 13, {std::nullopt}},
     {vocab::kSpace_that_121, 1024, {std::nullopt}},
-    {vocab::kSpace_that_121, 4294967295, {std::nullopt}},
+    {vocab::kSpace_that_121, -2147483648, {std::nullopt}},
+    {vocab::kSpace_that_121, 2147483647, {std::nullopt}},
     {vocab::kse_120, 12, {std::nullopt}},
     {vocab::kSpace_C_122, 12, {std::nullopt}},
     {vocab::kSpace_R_154, 17, {DiscreteHiddenState{4507}}},
     {vocab::kSpace_R_154, 16, {std::nullopt}},
     {vocab::kSpace_R_154, 18, {std::nullopt}},
     {vocab::kSpace_R_154, 1024, {std::nullopt}},
-    {vocab::kSpace_R_154, 4294967295, {std::nullopt}},
+    {vocab::kSpace_R_154, -2147483648, {std::nullopt}},
+    {vocab::kSpace_R_154, 2147483647, {std::nullopt}},
     {vocab::kSpace_W_153, 17, {std::nullopt}},
     {vocab::kher_155, 17, {std::nullopt}},
     {vocab::kant_191, 1, {DiscreteHiddenState{4518}}},
     {vocab::kant_191, 0, {std::nullopt}},
     {vocab::kant_191, 2, {DiscreteHiddenState{4518}}},
     {vocab::kant_191, 1024, {std::nullopt}},
-    {vocab::kant_191, 4294967295, {std::nullopt}},
+    {vocab::kant_191, -2147483648, {std::nullopt}},
+    {vocab::kant_191, 2147483647, {std::nullopt}},
     {vocab::kity_190, 1, {std::nullopt}},
     {vocab::kSpace_by_192, 1, {std::nullopt}},
     {vocab::kSpace_all_225, 7, {DiscreteHiddenState{4521}}},
     {vocab::kSpace_all_225, 6, {std::nullopt}},
     {vocab::kSpace_all_225, 8, {std::nullopt}},
     {vocab::kSpace_all_225, 1024, {std::nullopt}},
-    {vocab::kSpace_all_225, 4294967295, {std::nullopt}},
-    {vocab::kSpace_but_224, 7, {std::nullopt}},
-    {vocab::kect_226, 7, {std::nullopt}},
-    {vocab::kSpace_were_270, 10, {DiscreteHiddenState{4520}}},
-    {vocab::kSpace_were_270, 9, {std::nullopt}},
-    {vocab::kSpace_were_270, 11, {std::nullopt}},
-    {vocab::kSpace_were_270, 1024, {std::nullopt}},
-    {vocab::kSpace_were_270, 4294967295, {std::nullopt}},
+    {vocab::kSpace_all_225, -2147483648, {std::nullopt}},
 };
 
-void ExpectTransition(TransitionResult actual, TransitionResult expected) {
-  EXPECT_EQ(actual.output, expected.output);
+void ExpectTransition(std::optional<DiscreteHiddenState> actual,
+                      std::optional<DiscreteHiddenState> expected) {
+  EXPECT_EQ(actual, expected);
 }
 
 TEST(GeneratedTransitionBoundaries, EverySamplePositionAtEveryBoundary) {
   const auto& model = GeneratedModel();
-  ASSERT_NE(model.entry_function, nullptr);
-  ASSERT_NE(model.language_modeling_head.function, nullptr);
-  ASSERT_EQ(model.attention.size(), kLayers);
-  ASSERT_EQ(model.mlp.size(), kLayers);
-  for (size_t block = 0; block < kLayers; ++block) {
-    ASSERT_NE(model.attention[block].function, nullptr);
-    ASSERT_NE(model.mlp[block].function, nullptr);
-  }
+  ASSERT_EQ(model.transformers.size(), kLayers);
   for (size_t index = 0; index < kSampleCount; ++index) {
     SCOPED_TRACE(::testing::Message() << "sample " << index);
     const auto& sample = kSamples[index];
@@ -49263,7 +49257,8 @@ TEST(GeneratedTransitionBoundaries, EverySamplePositionAtEveryBoundary) {
     const auto* expected = kExpectedStates + sample.state_offset;
     for (size_t position = 0; position < sample.length; ++position) {
       SCOPED_TRACE(::testing::Message() << "entry position " << position);
-      ExpectTransition(model.entry_function(tokens[position], position),
+      ExpectTransition(model.position_embedding(tokens[position],
+                                                static_cast<int32_t>(position)),
                        {expected[position]});
     }
     for (size_t block = 0; block < kLayers; ++block) {
@@ -49276,11 +49271,12 @@ TEST(GeneratedTransitionBoundaries, EverySamplePositionAtEveryBoundary) {
         // Both callbacks receive SOURCE expectations, never prior callback
         // outputs. Two compensating boundary mistakes therefore cannot pass
         // this test.
-        ExpectTransition(model.attention[block].function(
+        ExpectTransition(model.transformers[block].attention(
                              absl::MakeConstSpan(input, position + 1)),
                          {after_attention[position]});
-        ExpectTransition(model.mlp[block].function(after_attention[position]),
-                         {after_mlp[position]});
+        ExpectTransition(
+            model.transformers[block].mlp(after_attention[position]),
+            {after_mlp[position]});
       }
     }
     const auto* final_states = expected + (2 * kLayers) * sample.length;
@@ -49290,64 +49286,57 @@ TEST(GeneratedTransitionBoundaries, EverySamplePositionAtEveryBoundary) {
       const DiscreteToken target = position + 1 < sample.length
                                        ? tokens[position + 1]
                                        : vocab::kEos_4474;
-      ExpectTransition(
-          model.language_modeling_head.function(final_states[position]),
-          {static_cast<DiscreteHiddenState>(target)});
+      ExpectTransition(model.language_modeling_head(final_states[position]),
+                       {static_cast<DiscreteHiddenState>(target)});
     }
   }
 }
 
 TEST(GeneratedTransitionBoundaries, EverySourceLanguageModelingHeadConstraint) {
   const auto& model = GeneratedModel();
-  ASSERT_NE(model.language_modeling_head.function, nullptr);
   for (size_t index = 0; index < 2900; ++index) {
     const auto& row = kLanguageModelingHeadRows[index];
     SCOPED_TRACE(::testing::Message()
                  << "language modeling head state " << row.input.value);
-    ExpectTransition(model.language_modeling_head.function(row.input),
-                     {row.output});
+    ExpectTransition(model.language_modeling_head(row.input), {row.output});
   }
 }
 
 TEST(GeneratedTransitionBoundaries, ExactAttentionDomainMutationProbes) {
   const auto& model = GeneratedModel();
-  ASSERT_EQ(model.attention.size(), kLayers);
+  ASSERT_EQ(model.transformers.size(), kLayers);
   for (size_t index = 0; index < 512; ++index) {
     const auto& probe = kAttentionProbes[index];
     SCOPED_TRACE(::testing::Message()
                  << "probe " << index << " block " << probe.block);
-    ASSERT_NE(model.attention[probe.block].function, nullptr);
-    ExpectTransition(model.attention[probe.block].function(absl::MakeConstSpan(
-                         kAttentionProbeKeys + probe.offset, probe.length)),
-                     probe.expected);
+    ExpectTransition(
+        model.transformers[probe.block].attention(absl::MakeConstSpan(
+            kAttentionProbeKeys + probe.offset, probe.length)),
+        probe.expected);
   }
 }
 
 TEST(GeneratedTransitionBoundaries, EntryAndPointwiseDomainProbes) {
   const auto& model = GeneratedModel();
-  ASSERT_NE(model.entry_function, nullptr);
-  ASSERT_NE(model.language_modeling_head.function, nullptr);
-  ASSERT_EQ(model.mlp.size(), kLayers);
+  ASSERT_EQ(model.transformers.size(), kLayers);
   for (size_t index = 0; index < 64; ++index) {
     const auto& probe = kEntryProbes[index];
     SCOPED_TRACE(::testing::Message() << "entry probe " << index);
-    ExpectTransition(model.entry_function(probe.token, probe.position),
+    ExpectTransition(model.position_embedding(probe.token, probe.position),
                      probe.expected);
   }
   for (size_t index = 0; index < 430; ++index) {
     const auto& probe = kMlpProbes[index];
     SCOPED_TRACE(::testing::Message()
                  << "MLP probe " << index << " block " << probe.block);
-    ASSERT_NE(model.mlp[probe.block].function, nullptr);
-    ExpectTransition(model.mlp[probe.block].function(probe.input),
+    ExpectTransition(model.transformers[probe.block].mlp(probe.input),
                      probe.expected);
   }
   for (size_t index = 0; index < 64; ++index) {
     const auto& probe = kLanguageModelingHeadProbes[index];
     SCOPED_TRACE(::testing::Message()
                  << "language modeling head probe " << index);
-    ExpectTransition(model.language_modeling_head.function(probe.input),
-                     probe.expected);
+    ExpectTransition(model.language_modeling_head(probe.input), probe.expected);
   }
 }
 }  // namespace

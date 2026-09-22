@@ -146,31 +146,40 @@ emit_model(json.loads(Path(sys.argv[2]).read_text()), Path(sys.argv[3]),
         for name, digest in manifest["files"].items():
             self.assertEqual(hashlib.sha256((first / name).read_bytes()).hexdigest(), digest)
 
-    def test_plain_rows_are_private_and_every_boundary_exposes_a_function(self):
+    def test_plain_rows_are_private_and_every_boundary_exposes_an_interface(self):
         destination, _ = self.emit()
         header = (destination / "tables.h").read_text()
         self.assertNotIn("EntryRow", header)
         self.assertNotIn("StateRow", header)
         self.assertNotIn("AttentionRow", header)
         self.assertNotIn("GeneratedEntry()", header)
-        self.assertIn("TransitionResult GeneratedEntryFunction(DiscreteToken, uint32_t);", header)
+        self.assertIn("PositionEmbedding& GeneratedPositionEmbedding();", header)
+        self.assertIn("CausalAttention& GeneratedAttention0();", header)
+        self.assertIn("Map& GeneratedMlp0();", header)
+        self.assertIn("Map& GeneratedLanguageModelingHead();", header)
         model = (destination / "model.cc").read_text()
-        self.assertIn("GeneratedLanguageModelingHead(), GeneratedEntryFunction", model)
+        self.assertIn("GeneratedLanguageModelingHead(), GeneratedPositionEmbedding()", model)
+        self.assertIn("{GeneratedAttention0(), GeneratedMlp0()}", model)
         self.assertNotIn("GeneratedEntry()", model)
         for name in ("entry.cc", "attention_0.cc", "mlp_0.cc", "language_modeling_head.cc"):
             text = (destination / name).read_text()
             self.assertRegex(text, r"namespace \{\nstruct (Entry|Attention|State)Row")
-            self.assertIn("TransitionResult", text)
+            self.assertIn("std::optional<DiscreteHiddenState>", text)
+            self.assertIn("operator()", text)
+            self.assertIn("static ", text)
+            self.assertNotIn("TransitionResult", text)
 
     def _compile_and_check_partial_functions(self, model, compact):
         """Run the actual emitted production TUs, independent of lookup strategy.
 
-        A minimal header supplies only the public data/function interfaces and
+        A minimal header supplies only the public polymorphic interfaces and
         a standard span alias; no lookup algorithm is duplicated by this shim.
         This keeps the Python test CPU-only and independent of a Bazel cache.
         Repository C++ tests separately exercise the actual runtime itself.
         """
         directory, _ = self.emit(model=model, compact_transitions=compact)
+        if model["layers"] == 0:
+            self.assertNotIn("kTransformers", (directory / "model.cc").read_text())
         include = self.root / "include"
         header = include / discretize_emit.RUNTIME
         header.parent.mkdir(parents=True)
@@ -198,20 +207,33 @@ constexpr DiscreteToken::operator DiscreteHiddenState() const {
   return DiscreteHiddenState{value};
 }
 struct VocabularyRow { int32_t original_id; std::string_view bytes; };
-struct TransitionResult { std::optional<DiscreteHiddenState> output; };
-struct AttentionTable {
-  TransitionResult (*function)(absl::Span<const DiscreteHiddenState>) = nullptr;
+class CausalAttention {
+ public:
+  virtual ~CausalAttention() = default;
+  virtual std::optional<DiscreteHiddenState> operator()(absl::Span<const DiscreteHiddenState>) = 0;
 };
-struct StateTable { TransitionResult (*function)(DiscreteHiddenState) = nullptr; };
+class Map {
+ public:
+  virtual ~Map() = default;
+  virtual std::optional<DiscreteHiddenState> operator()(DiscreteHiddenState) = 0;
+};
+class PositionEmbedding {
+ public:
+  virtual ~PositionEmbedding() = default;
+  virtual std::optional<DiscreteHiddenState> operator()(DiscreteToken, int32_t) = 0;
+};
+struct Transformer {
+  CausalAttention& attention;
+  Map& mlp;
+};
 struct Model {
   uint32_t context_length;
   uint32_t prompt_tokens;
   DiscreteToken eos_token;
   absl::Span<const VocabularyRow> vocabulary;
-  absl::Span<const AttentionTable> attention;
-  absl::Span<const StateTable> mlp;
-  StateTable language_modeling_head;
-  TransitionResult (*entry_function)(DiscreteToken, uint32_t) = nullptr;
+  absl::Span<const Transformer> transformers;
+  Map& language_modeling_head;
+  PositionEmbedding& position_embedding;
 };
 const Model& GeneratedModel();
 }
@@ -222,20 +244,22 @@ const Model& GeneratedModel();
             output = ("std::nullopt" if expected is None else
                       f"std::optional<DiscreteHiddenState>(DiscreteHiddenState{{{expected}}})")
             label = len(checks)
-            checks.append(f'if (({expression}).output != {output}) {{ '
+            checks.append(f'if (({expression}) != {output}) {{ '
                           f'std::cerr << "partial function check {label} failed\\n"; return 1; }}')
 
         entries = {(token, position): output for token, position, output in model["entry"]}
         for token in [-1, *range(model["vocab_size"] + 1), 2147483647]:
-            for position in [*range(5), 4294967295]:
-                check(f"model.entry_function(DiscreteToken{{{token}}}, {position}u)", entries.get((token, position)))
-        pointwise = [(f"model.mlp[{block}].function", dict(rows))
+            for position in [-2147483648, -1, *range(5), 2147483647]:
+                check(f"model.position_embedding(DiscreteToken{{{token}}}, {position})", entries.get((token, position)))
+        pointwise = [(f"model.transformers[{block}].mlp", dict(rows))
                      for block, rows in enumerate(model["mlp"])]
-        pointwise.append(("model.language_modeling_head.function", dict(model["language_modeling_head"])))
+        pointwise.append(("model.language_modeling_head", dict(model["language_modeling_head"])))
         for function, rows in pointwise:
             for state in [-2147483648, -1, *range(20), *rows, 2147483646, 2147483647]:
                 check(f"{function}(DiscreteHiddenState{{{state}}})", rows.get(state))
         for block, rows in enumerate(model["attention"]):
+            checks.append(f'''if (&model.transformers[{block}].attention != &GeneratedAttention{block}() ||
+    &model.transformers[{block}].mlp != &GeneratedMlp{block}()) return 1;''')
             by_key = {tuple(prefix): output for prefix, output in rows}
             alphabet = sorted({-1, 0, 4, 5, 6, 7, 2147483647} |
                               {state for prefix, _ in rows for state in prefix})
@@ -244,7 +268,7 @@ const Model& GeneratedModel();
                 probes.update(itertools.product(alphabet, repeat=length))
             for prefix in sorted(probes):
                 literal = ", ".join(f"DiscreteHiddenState{{{state}}}" for state in prefix)
-                check(f"model.attention[{block}].function(std::vector<DiscreteHiddenState>{{{literal}}})",
+                check(f"model.transformers[{block}].attention(std::vector<DiscreteHiddenState>{{{literal}}})",
                       by_key.get(prefix))
         source = directory / "partial_functions_test.cc"
         source.write_text('''#include <iostream>
@@ -253,8 +277,10 @@ const Model& GeneratedModel();
 using namespace pluto::llm::discretized;
 int main() {
   const Model& model = GeneratedModel();
-''' + f'''  if (!model.entry_function || !model.language_modeling_head.function ||
-      model.attention.size() != {model["layers"]} || model.mlp.size() != {model["layers"]})
+''' + f'''  if (model.transformers.size() != {model["layers"]})
+    return 1;
+  if (&model.position_embedding != &GeneratedPositionEmbedding() ||
+      &model.language_modeling_head != &GeneratedLanguageModelingHead())
     return 1;
 ''' + "\n".join(checks) + "\nreturn 0;\n}\n")
         sources = [directory / name for name in ("entry.cc", "model.cc", "language_modeling_head.cc", "vocabulary.cc")]
@@ -295,6 +321,14 @@ int main() {
                           entry=[[0, 0, 2147483647]], attention=[], mlp=[],
                           language_modeling_head=[[2147483647, 0]], samples=[{"tokens": [0]}])
         self._compile_and_check_partial_functions(self.model, compact=False)
+
+    @unittest.skipUnless(shutil.which("c++"), "C++ compiler unavailable")
+    def test_compact_zero_blocks_and_maximum_state_ids(self):
+        self.model.update(layers=0,
+                          states=[{"id": 2147483647, "stage": 0, "bits": [0, 0]}],
+                          entry=[[0, 0, 2147483647]], attention=[], mlp=[],
+                          language_modeling_head=[[2147483647, 3]], samples=[{"tokens": [0]}])
+        self._compile_and_check_partial_functions(self.model, compact=True)
 
     def test_expected_suffixes_never_enter_production_model_sources(self):
         first, _ = self.emit("first")

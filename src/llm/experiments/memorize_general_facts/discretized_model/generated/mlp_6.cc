@@ -6,12 +6,24 @@
 
 namespace pluto::llm::discretized {
 namespace {
-TransitionResult Mlp6(DiscreteHiddenState state) {
+std::optional<DiscreteHiddenState> Lookup(DiscreteHiddenState state) {
   if (state.value < 5099 || state.value > 5143)
     return {};
   return {DiscreteHiddenState{state.value + 45}};
 }
+
+class Mlp6Impl final : public Map {
+ public:
+  std::optional<DiscreteHiddenState> operator()(
+      DiscreteHiddenState state) override {
+    return Lookup(state);
+  }
+};
 }  // namespace
-StateTable GeneratedMlp6() { return {Mlp6}; }
+
+Map& GeneratedMlp6() {
+  static Mlp6Impl instance;
+  return instance;
+}
 
 }  // namespace pluto::llm::discretized

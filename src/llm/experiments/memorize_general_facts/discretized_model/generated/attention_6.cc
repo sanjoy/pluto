@@ -11,3779 +11,3779 @@ namespace {
 // MATCH checks one symbol; ending before it returns this prefix's output.
 // No hash, nearest-state fallback, corpus ID, or answer cache is used.
 namespace {
-constexpr std::uint32_t kAttention6Done = 0xffffffffu;
-struct Attention6Step {
+constexpr std::uint32_t kLookupDone = 0xffffffffu;
+struct LookupStep {
   std::uint32_t next;
-  TransitionResult result;
+  std::optional<DiscreteHiddenState> result;
 };
-#define PLUTO_ATTN_END(output)                                 \
-  do {                                                         \
-    if (position == history.size())                            \
-      return {kAttention6Done, {DiscreteHiddenState{output}}}; \
+#define PLUTO_ATTN_END(output)                             \
+  do {                                                     \
+    if (position == history.size())                        \
+      return {kLookupDone, {DiscreteHiddenState{output}}}; \
   } while (false)
 #define PLUTO_ATTN_MORE()           \
   do {                              \
     if (position == history.size()) \
-      return {kAttention6Done, {}}; \
+      return {kLookupDone, {}};     \
   } while (false)
 #define PLUTO_ATTN_MATCH(symbol, output)     \
   do {                                       \
     PLUTO_ATTN_END(output);                  \
     if (history[position++].value != symbol) \
-      return {kAttention6Done, {}};          \
+      return {kLookupDone, {}};              \
   } while (false)
 #define PLUTO_ATTN_SKIP(symbol)              \
   do {                                       \
     PLUTO_ATTN_MORE();                       \
     if (history[position++].value != symbol) \
-      return {kAttention6Done, {}};          \
+      return {kLookupDone, {}};              \
   } while (false)
-struct Attention6MatchStep {
+struct LookupMatchStep {
   std::uint16_t symbol, output;
 };
 [[gnu::noinline]]
-Attention6Step Attention6MatchSequence(
-    const Attention6MatchStep* steps, std::size_t count,
-    absl::Span<const DiscreteHiddenState> history, std::size_t& position) {
+LookupStep LookupMatchSequence(const LookupMatchStep* steps, std::size_t count,
+                               absl::Span<const DiscreteHiddenState> history,
+                               std::size_t& position) {
   for (std::size_t index = 0; index < count; ++index) {
     if (position == history.size())
-      return {kAttention6Done,
+      return {kLookupDone,
               {DiscreteHiddenState{static_cast<int>(steps[index].output)}}};
     if (history[position++].value != static_cast<int>(steps[index].symbol))
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
   return {0u, {}};  // The literal run matched; continue at its shared tail.
 }
 #define PLUTO_ATTN_RUN(steps)                                        \
   do {                                                               \
-    auto matched = Attention6MatchSequence(                          \
+    auto matched = LookupMatchSequence(                              \
         steps, sizeof(steps) / sizeof(steps[0]), history, position); \
-    if (matched.next == kAttention6Done)                             \
+    if (matched.next == kLookupDone)                                 \
       return matched;                                                \
   } while (false)
-constexpr Attention6MatchStep kAttention6Sequence0[] = {
+constexpr LookupMatchStep kLookupSequence0[] = {
     {5069u, 5112u}, {5067u, 5106u}, {5067u, 5133u}, {5061u, 5106u},
     {5061u, 5133u}, {5065u, 5133u}, {5067u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence1[] = {
+constexpr LookupMatchStep kLookupSequence1[] = {
     {5069u, 5106u}, {5060u, 5106u}, {5061u, 5106u}, {5069u, 5133u},
     {5067u, 5117u}, {5067u, 5131u}, {5061u, 5120u}, {5067u, 5133u},
     {5061u, 5131u}, {5072u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence2[] = {
+constexpr LookupMatchStep kLookupSequence2[] = {
     {5061u, 5131u}, {5094u, 5133u}, {5067u, 5112u}, {5069u, 5131u},
     {5067u, 5106u}, {5067u, 5138u}, {5094u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence3[] = {
+constexpr LookupMatchStep kLookupSequence3[] = {
     {5094u, 5138u}, {5067u, 5115u}, {5067u, 5106u}, {5061u, 5133u},
     {5069u, 5133u}, {5094u, 5120u}, {5067u, 5112u}, {5067u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence4[] = {
+constexpr LookupMatchStep kLookupSequence4[] = {
     {5071u, 5106u}, {5067u, 5133u}, {5061u, 5133u}, {5061u, 5133u},
     {5061u, 5133u}, {5069u, 5138u}, {5065u, 5131u}, {5067u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence5[] = {
+constexpr LookupMatchStep kLookupSequence5[] = {
     {5067u, 5133u}, {5061u, 5120u}, {5072u, 5120u},
     {5061u, 5117u}, {5069u, 5120u}, {5069u, 5120u},
     {5061u, 5106u}, {5067u, 5138u}, {5067u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence6[] = {
+constexpr LookupMatchStep kLookupSequence6[] = {
     {5058u, 5127u}, {5061u, 5133u}, {5061u, 5122u},
     {5090u, 5133u}, {5067u, 5106u}, {5067u, 5106u},
     {5069u, 5131u}, {5094u, 5106u}, {5073u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence7[] = {
+constexpr LookupMatchStep kLookupSequence7[] = {
     {5094u, 5120u}, {5063u, 5117u}, {5069u, 5131u},
     {5094u, 5120u}, {5061u, 5117u}, {5061u, 5120u},
     {5067u, 5138u}, {5061u, 5127u}, {5069u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence8[] = {
+constexpr LookupMatchStep kLookupSequence8[] = {
     {5061u, 5112u}, {5061u, 5111u}, {5061u, 5133u}, {5094u, 5120u},
     {5061u, 5112u}, {5067u, 5106u}, {5079u, 5106u}, {5069u, 5111u},
     {5072u, 5120u}, {5067u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence9[] = {
+constexpr LookupMatchStep kLookupSequence9[] = {
     {5061u, 5125u}, {5069u, 5131u}, {5094u, 5106u}, {5069u, 5112u},
     {5094u, 5120u}, {5067u, 5112u}, {5061u, 5111u}, {5069u, 5131u},
     {5094u, 5106u}, {5069u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence10[] = {
+constexpr LookupMatchStep kLookupSequence10[] = {
     {5061u, 5120u}, {5090u, 5133u}, {5067u, 5106u},
     {5061u, 5111u}, {5069u, 5133u}, {5067u, 5120u},
     {5065u, 5131u}, {5070u, 5133u}, {5061u, 5115u},
 };
-constexpr Attention6MatchStep kAttention6Sequence11[] = {
+constexpr LookupMatchStep kLookupSequence11[] = {
     {5067u, 5125u}, {5061u, 5111u}, {5094u, 5120u}, {5063u, 5112u},
     {5067u, 5127u}, {5065u, 5111u}, {5069u, 5125u}, {5069u, 5106u},
     {5090u, 5111u}, {5069u, 5127u},
 };
-constexpr Attention6MatchStep kAttention6Sequence12[] = {
+constexpr LookupMatchStep kLookupSequence12[] = {
     {5061u, 5106u},
     {5071u, 5133u},
     {5061u, 5106u},
     {5069u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence13[] = {
+constexpr LookupMatchStep kLookupSequence13[] = {
     {5081u, 5117u}, {5069u, 5106u}, {5069u, 5111u},
     {5094u, 5120u}, {5071u, 5112u}, {5069u, 5127u},
     {5067u, 5106u}, {5061u, 5138u}, {5061u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence14[] = {
+constexpr LookupMatchStep kLookupSequence14[] = {
     {5069u, 5112u}, {5065u, 5133u}, {5067u, 5133u}, {5061u, 5111u},
     {5061u, 5133u}, {5067u, 5133u}, {5067u, 5106u}, {5069u, 5120u},
     {5094u, 5120u}, {5067u, 5112u}, {5088u, 5138u}, {5094u, 5106u},
     {5069u, 5112u}, {5063u, 5131u}, {5067u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence15[] = {
+constexpr LookupMatchStep kLookupSequence15[] = {
     {5067u, 5133u},
     {5067u, 5138u},
     {5069u, 5120u},
     {5069u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence16[] = {
+constexpr LookupMatchStep kLookupSequence16[] = {
     {5094u, 5120u}, {5067u, 5112u}, {5067u, 5133u}, {5069u, 5127u},
     {5094u, 5106u}, {5067u, 5112u}, {5069u, 5111u},
 };
-constexpr Attention6MatchStep kAttention6Sequence17[] = {
+constexpr LookupMatchStep kLookupSequence17[] = {
     {5094u, 5131u}, {5067u, 5112u}, {5067u, 5131u}, {5067u, 5131u},
     {5061u, 5133u}, {5067u, 5120u}, {5067u, 5120u}, {5063u, 5131u},
     {5061u, 5131u}, {5094u, 5133u}, {5067u, 5137u}, {5061u, 5131u},
     {5067u, 5120u}, {5061u, 5120u}, {5067u, 5133u}, {5061u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence18[] = {
+constexpr LookupMatchStep kLookupSequence18[] = {
     {5094u, 5106u}, {5061u, 5115u}, {5067u, 5138u}, {5067u, 5111u},
     {5061u, 5127u}, {5067u, 5106u}, {5069u, 5131u}, {5094u, 5106u},
     {5067u, 5112u}, {5065u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence19[] = {
+constexpr LookupMatchStep kLookupSequence19[] = {
     {5061u, 5106u}, {5067u, 5133u}, {5073u, 5138u}, {5067u, 5136u},
     {5067u, 5131u}, {5067u, 5136u}, {5067u, 5112u}, {5079u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence20[] = {
+constexpr LookupMatchStep kLookupSequence20[] = {
     {5094u, 5120u}, {5061u, 5112u}, {5067u, 5106u}, {5067u, 5138u},
     {5073u, 5138u}, {5067u, 5136u}, {5094u, 5120u}, {5069u, 5112u},
     {5069u, 5109u}, {5094u, 5120u}, {5069u, 5112u}, {5069u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence21[] = {
+constexpr LookupMatchStep kLookupSequence21[] = {
     {5071u, 5112u}, {5061u, 5138u}, {5061u, 5127u},
     {5069u, 5133u}, {5061u, 5133u}, {5094u, 5120u},
     {5067u, 5112u}, {5067u, 5131u}, {5061u, 5105u},
 };
-constexpr Attention6MatchStep kAttention6Sequence22[] = {
+constexpr LookupMatchStep kLookupSequence22[] = {
     {5079u, 5112u}, {5061u, 5133u}, {5067u, 5103u}, {5094u, 5133u},
     {5071u, 5112u}, {5067u, 5106u}, {5061u, 5120u}, {5094u, 5133u},
     {5067u, 5112u}, {5071u, 5106u}, {5061u, 5133u}, {5065u, 5138u},
     {5069u, 5125u},
 };
-constexpr Attention6MatchStep kAttention6Sequence23[] = {
+constexpr LookupMatchStep kLookupSequence23[] = {
     {5067u, 5112u}, {5066u, 5111u}, {5067u, 5138u},
     {5061u, 5105u}, {5064u, 5120u}, {5067u, 5131u},
     {5069u, 5131u}, {5067u, 5106u}, {5067u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence24[] = {
+constexpr LookupMatchStep kLookupSequence24[] = {
     {5061u, 5106u},
     {5071u, 5133u},
     {5094u, 5127u},
     {5061u, 5141u},
 };
-constexpr Attention6MatchStep kAttention6Sequence25[] = {
+constexpr LookupMatchStep kLookupSequence25[] = {
     {5061u, 5133u},
     {5094u, 5133u},
     {5092u, 5112u},
     {5063u, 5110u},
 };
-constexpr Attention6MatchStep kAttention6Sequence26[] = {
+constexpr LookupMatchStep kLookupSequence26[] = {
     {5071u, 5106u}, {5067u, 5133u}, {5067u, 5133u},
     {5077u, 5138u}, {5069u, 5134u},
 };
-constexpr Attention6MatchStep kAttention6Sequence27[] = {
+constexpr LookupMatchStep kLookupSequence27[] = {
     {5053u, 5143u},
     {5090u, 5138u},
     {5063u, 5133u},
     {5069u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence28[] = {
+constexpr LookupMatchStep kLookupSequence28[] = {
     {5061u, 5112u}, {5094u, 5120u}, {5061u, 5112u}, {5072u, 5105u},
     {5067u, 5117u}, {5067u, 5138u}, {5067u, 5131u}, {5061u, 5131u},
     {5069u, 5106u}, {5067u, 5131u}, {5061u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence29[] = {
+constexpr LookupMatchStep kLookupSequence29[] = {
     {5071u, 5138u}, {5067u, 5111u}, {5087u, 5131u},
     {5067u, 5138u}, {5090u, 5111u}, {5067u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence30[] = {
+constexpr LookupMatchStep kLookupSequence30[] = {
     {5080u, 5100u},
     {5067u, 5106u},
     {5067u, 5138u},
     {5061u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence31[] = {
+constexpr LookupMatchStep kLookupSequence31[] = {
     {5071u, 5111u}, {5069u, 5106u}, {5065u, 5108u},
     {5054u, 5120u}, {5063u, 5102u},
 };
-constexpr Attention6MatchStep kAttention6Sequence32[] = {
+constexpr LookupMatchStep kLookupSequence32[] = {
     {5069u, 5111u}, {5067u, 5112u}, {5061u, 5138u}, {5067u, 5131u},
     {5061u, 5136u}, {5061u, 5131u}, {5061u, 5127u}, {5069u, 5125u},
     {5061u, 5106u}, {5069u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence33[] = {
+constexpr LookupMatchStep kLookupSequence33[] = {
     {5054u, 5134u},
     {5067u, 5120u},
     {5065u, 5127u},
     {5067u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence34[] = {
+constexpr LookupMatchStep kLookupSequence34[] = {
     {5070u, 5125u}, {5067u, 5117u}, {5060u, 5138u}, {5065u, 5124u},
     {5074u, 5106u}, {5069u, 5143u}, {5094u, 5106u}, {5061u, 5112u},
     {5069u, 5106u}, {5061u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence35[] = {
+constexpr LookupMatchStep kLookupSequence35[] = {
     {5065u, 5131u}, {5083u, 5133u}, {5094u, 5111u}, {5090u, 5133u},
     {5061u, 5106u}, {5070u, 5108u}, {5067u, 5115u}, {5067u, 5111u},
     {5067u, 5111u}, {5061u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence36[] = {
+constexpr LookupMatchStep kLookupSequence36[] = {
     {5065u, 5111u}, {5067u, 5133u}, {5069u, 5111u},
     {5079u, 5106u}, {5094u, 5133u}, {5061u, 5112u},
     {5094u, 5131u}, {5067u, 5112u}, {5069u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence37[] = {
+constexpr LookupMatchStep kLookupSequence37[] = {
     {5094u, 5104u}, {5079u, 5112u}, {5061u, 5131u},
     {5069u, 5133u}, {5071u, 5106u}, {5069u, 5111u},
 };
-constexpr Attention6MatchStep kAttention6Sequence38[] = {
+constexpr LookupMatchStep kLookupSequence38[] = {
     {5067u, 5119u}, {5061u, 5133u}, {5069u, 5127u}, {5067u, 5106u},
     {5067u, 5106u}, {5067u, 5138u}, {5067u, 5106u}, {5061u, 5106u},
     {5063u, 5131u}, {5063u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence39[] = {
+constexpr LookupMatchStep kLookupSequence39[] = {
     {5079u, 5106u}, {5067u, 5106u}, {5065u, 5111u}, {5083u, 5106u},
     {5061u, 5127u}, {5061u, 5133u}, {5065u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence40[] = {
+constexpr LookupMatchStep kLookupSequence40[] = {
     {5067u, 5117u}, {5094u, 5111u}, {5071u, 5112u}, {5071u, 5106u},
     {5067u, 5106u}, {5067u, 5138u}, {5061u, 5138u}, {5061u, 5106u},
     {5061u, 5106u}, {5094u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence41[] = {
+constexpr LookupMatchStep kLookupSequence41[] = {
     {5071u, 5113u},
     {5067u, 5133u},
     {5094u, 5111u},
     {5063u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence42[] = {
+constexpr LookupMatchStep kLookupSequence42[] = {
     {5067u, 5120u},
     {5065u, 5111u},
     {5094u, 5125u},
     {5061u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence43[] = {
+constexpr LookupMatchStep kLookupSequence43[] = {
     {5065u, 5138u},
     {5069u, 5120u},
     {5069u, 5127u},
     {5071u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence44[] = {
+constexpr LookupMatchStep kLookupSequence44[] = {
     {5069u, 5111u}, {5061u, 5111u}, {5061u, 5138u}, {5067u, 5133u},
     {5061u, 5133u}, {5069u, 5106u}, {5067u, 5138u}, {5069u, 5102u},
 };
-constexpr Attention6MatchStep kAttention6Sequence45[] = {
+constexpr LookupMatchStep kLookupSequence45[] = {
     {5069u, 5106u}, {5067u, 5131u}, {5061u, 5131u}, {5067u, 5111u},
     {5071u, 5111u}, {5069u, 5106u}, {5069u, 5106u}, {5067u, 5131u},
     {5067u, 5131u}, {5061u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence46[] = {
+constexpr LookupMatchStep kLookupSequence46[] = {
     {5069u, 5133u}, {5070u, 5120u}, {5067u, 5115u},
     {5069u, 5138u}, {5070u, 5106u}, {5067u, 5115u},
 };
-constexpr Attention6MatchStep kAttention6Sequence47[] = {
+constexpr LookupMatchStep kLookupSequence47[] = {
     {5061u, 5111u}, {5061u, 5125u}, {5069u, 5120u}, {5071u, 5106u},
     {5069u, 5127u}, {5069u, 5120u}, {5072u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence48[] = {
+constexpr LookupMatchStep kLookupSequence48[] = {
     {5094u, 5106u}, {5067u, 5112u}, {5071u, 5106u}, {5067u, 5106u},
     {5071u, 5111u}, {5094u, 5106u}, {5069u, 5112u}, {5069u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence49[] = {
+constexpr LookupMatchStep kLookupSequence49[] = {
     {5067u, 5133u}, {5071u, 5130u}, {5061u, 5133u},
     {5067u, 5133u}, {5069u, 5120u}, {5069u, 5120u},
     {5063u, 5120u}, {5067u, 5106u}, {5063u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence50[] = {
+constexpr LookupMatchStep kLookupSequence50[] = {
     {5061u, 5108u}, {5071u, 5111u}, {5067u, 5111u}, {5072u, 5120u},
     {5067u, 5106u}, {5061u, 5111u}, {5067u, 5133u}, {5061u, 5104u},
 };
-constexpr Attention6MatchStep kAttention6Sequence51[] = {
+constexpr LookupMatchStep kLookupSequence51[] = {
     {5061u, 5117u},
     {5074u, 5133u},
     {5069u, 5143u},
     {5061u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence52[] = {
+constexpr LookupMatchStep kLookupSequence52[] = {
     {5069u, 5117u}, {5067u, 5120u}, {5067u, 5117u},
     {5061u, 5106u}, {5067u, 5133u}, {5061u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence53[] = {
+constexpr LookupMatchStep kLookupSequence53[] = {
     {5069u, 5106u}, {5061u, 5127u}, {5054u, 5106u}, {5067u, 5132u},
     {5069u, 5120u}, {5061u, 5120u}, {5061u, 5127u},
 };
-constexpr Attention6MatchStep kAttention6Sequence54[] = {
+constexpr LookupMatchStep kLookupSequence54[] = {
     {5069u, 5133u}, {5094u, 5106u}, {5091u, 5112u},
     {5061u, 5111u}, {5069u, 5127u}, {5066u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence55[] = {
+constexpr LookupMatchStep kLookupSequence55[] = {
     {5067u, 5111u}, {5061u, 5127u}, {5067u, 5120u}, {5053u, 5111u},
     {5063u, 5133u}, {5061u, 5105u}, {5072u, 5133u}, {5069u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence56[] = {
+constexpr LookupMatchStep kLookupSequence56[] = {
     {5083u, 5120u},
     {5094u, 5111u},
     {5093u, 5112u},
     {5069u, 5105u},
 };
-constexpr Attention6MatchStep kAttention6Sequence57[] = {
+constexpr LookupMatchStep kLookupSequence57[] = {
     {5094u, 5104u}, {5069u, 5112u}, {5069u, 5133u},
     {5069u, 5106u}, {5098u, 5133u}, {5063u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence58[] = {
+constexpr LookupMatchStep kLookupSequence58[] = {
     {5090u, 5143u}, {5063u, 5124u}, {5071u, 5100u}, {5079u, 5111u},
     {5067u, 5127u}, {5067u, 5111u}, {5069u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence59[] = {
+constexpr LookupMatchStep kLookupSequence59[] = {
     {5069u, 5106u}, {5065u, 5106u}, {5061u, 5133u},
     {5094u, 5106u}, {5067u, 5112u}, {5067u, 5111u},
 };
-constexpr Attention6MatchStep kAttention6Sequence60[] = {
+constexpr LookupMatchStep kLookupSequence60[] = {
     {5061u, 5102u},
     {5094u, 5120u},
     {5067u, 5112u},
     {5067u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence61[] = {
+constexpr LookupMatchStep kLookupSequence61[] = {
     {5094u, 5108u}, {5067u, 5112u}, {5067u, 5111u}, {5069u, 5131u},
     {5094u, 5120u}, {5067u, 5112u}, {5061u, 5136u}, {5067u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence62[] = {
+constexpr LookupMatchStep kLookupSequence62[] = {
     {5077u, 5111u}, {5090u, 5106u}, {5090u, 5133u},
     {5067u, 5113u}, {5069u, 5131u}, {5053u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence63[] = {
+constexpr LookupMatchStep kLookupSequence63[] = {
     {5053u, 5106u}, {5069u, 5108u}, {5065u, 5120u}, {5061u, 5124u},
     {5069u, 5106u}, {5067u, 5106u}, {5067u, 5111u},
 };
-constexpr Attention6MatchStep kAttention6Sequence64[] = {
+constexpr LookupMatchStep kLookupSequence64[] = {
     {5067u, 5138u},
     {5067u, 5138u},
     {5061u, 5131u},
     {5093u, 5111u},
 };
-constexpr Attention6MatchStep kAttention6Sequence65[] = {
+constexpr LookupMatchStep kLookupSequence65[] = {
     {5067u, 5120u}, {5094u, 5133u}, {5069u, 5112u},
     {5069u, 5106u}, {5063u, 5108u}, {5072u, 5105u},
     {5067u, 5117u}, {5063u, 5120u}, {5094u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence66[] = {
+constexpr LookupMatchStep kLookupSequence66[] = {
     {5061u, 5106u}, {5069u, 5133u}, {5061u, 5106u},
     {5065u, 5131u}, {5067u, 5125u}, {5067u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence67[] = {
+constexpr LookupMatchStep kLookupSequence67[] = {
     {5069u, 5127u}, {5083u, 5106u}, {5094u, 5127u},
     {5061u, 5112u}, {5067u, 5133u}, {5063u, 5127u},
 };
-constexpr Attention6MatchStep kAttention6Sequence68[] = {
+constexpr LookupMatchStep kLookupSequence68[] = {
     {5072u, 5120u},
     {5067u, 5112u},
     {5053u, 5111u},
     {5072u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence69[] = {
+constexpr LookupMatchStep kLookupSequence69[] = {
     {5061u, 5112u}, {5061u, 5120u}, {5067u, 5138u},
     {5069u, 5111u}, {5069u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence70[] = {
+constexpr LookupMatchStep kLookupSequence70[] = {
     {5067u, 5133u}, {5067u, 5112u}, {5069u, 5120u},
     {5067u, 5108u}, {5069u, 5138u}, {5072u, 5105u},
 };
-constexpr Attention6MatchStep kAttention6Sequence71[] = {
+constexpr LookupMatchStep kLookupSequence71[] = {
     {5094u, 5120u},
     {5067u, 5112u},
     {5061u, 5138u},
     {5069u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence72[] = {
+constexpr LookupMatchStep kLookupSequence72[] = {
     {5065u, 5133u}, {5094u, 5133u}, {5067u, 5112u},
     {5067u, 5131u}, {5067u, 5131u}, {5061u, 5131u},
     {5061u, 5133u}, {5094u, 5106u}, {5067u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence73[] = {
+constexpr LookupMatchStep kLookupSequence73[] = {
     {5069u, 5131u},
     {5065u, 5108u},
     {5061u, 5110u},
     {5069u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence74[] = {
+constexpr LookupMatchStep kLookupSequence74[] = {
     {5069u, 5111u}, {5094u, 5120u}, {5067u, 5112u},
     {5072u, 5133u}, {5094u, 5117u}, {5094u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence75[] = {
+constexpr LookupMatchStep kLookupSequence75[] = {
     {5061u, 5117u}, {5098u, 5133u}, {5098u, 5106u},
     {5067u, 5136u}, {5065u, 5131u}, {5094u, 5111u},
     {5069u, 5112u}, {5069u, 5131u}, {5061u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence76[] = {
+constexpr LookupMatchStep kLookupSequence76[] = {
     {5069u, 5133u}, {5094u, 5106u}, {5067u, 5112u},
     {5069u, 5131u}, {5069u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence77[] = {
+constexpr LookupMatchStep kLookupSequence77[] = {
     {5094u, 5125u}, {5087u, 5112u}, {5087u, 5112u},
     {5061u, 5120u}, {5094u, 5131u}, {5094u, 5117u},
     {5067u, 5112u}, {5067u, 5138u}, {5061u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence78[] = {
+constexpr LookupMatchStep kLookupSequence78[] = {
     {5069u, 5124u}, {5067u, 5120u}, {5061u, 5111u}, {5061u, 5133u},
     {5069u, 5133u}, {5067u, 5106u}, {5067u, 5127u}, {5069u, 5131u},
     {5067u, 5111u}, {5053u, 5131u}, {5069u, 5106u}, {5069u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence79[] = {
+constexpr LookupMatchStep kLookupSequence79[] = {
     {5069u, 5125u},
     {5069u, 5106u},
     {5072u, 5120u},
     {5067u, 5117u},
 };
-constexpr Attention6MatchStep kAttention6Sequence80[] = {
+constexpr LookupMatchStep kLookupSequence80[] = {
     {5061u, 5111u}, {5054u, 5138u}, {5063u, 5106u},
     {5069u, 5131u}, {5061u, 5138u}, {5094u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence81[] = {
+constexpr LookupMatchStep kLookupSequence81[] = {
     {5061u, 5104u}, {5094u, 5133u}, {5067u, 5112u},
     {5069u, 5120u}, {5094u, 5120u}, {5069u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence82[] = {
+constexpr LookupMatchStep kLookupSequence82[] = {
     {5065u, 5110u}, {5061u, 5110u}, {5067u, 5106u},
     {5069u, 5127u}, {5069u, 5133u}, {5067u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence83[] = {
+constexpr LookupMatchStep kLookupSequence83[] = {
     {5061u, 5133u}, {5061u, 5120u}, {5067u, 5131u}, {5061u, 5131u},
     {5067u, 5133u}, {5067u, 5136u}, {5061u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence84[] = {
+constexpr LookupMatchStep kLookupSequence84[] = {
     {5061u, 5106u}, {5067u, 5106u}, {5069u, 5138u}, {5067u, 5131u},
     {5061u, 5111u}, {5067u, 5133u}, {5069u, 5138u}, {5067u, 5131u},
     {5061u, 5106u}, {5069u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence85[] = {
+constexpr LookupMatchStep kLookupSequence85[] = {
     {5094u, 5125u}, {5067u, 5139u}, {5067u, 5111u}, {5061u, 5131u},
     {5094u, 5105u}, {5061u, 5112u}, {5067u, 5120u}, {5061u, 5131u},
     {5094u, 5120u}, {5067u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence86[] = {
+constexpr LookupMatchStep kLookupSequence86[] = {
     {5067u, 5130u}, {5067u, 5127u}, {5087u, 5133u},
     {5053u, 5138u}, {5070u, 5106u}, {5065u, 5112u},
     {5067u, 5131u}, {5072u, 5131u}, {5063u, 5117u},
 };
-constexpr Attention6MatchStep kAttention6Sequence87[] = {
+constexpr LookupMatchStep kLookupSequence87[] = {
     {5069u, 5115u}, {5067u, 5106u}, {5069u, 5138u}, {5082u, 5127u},
     {5069u, 5111u}, {5072u, 5120u}, {5063u, 5115u}, {5061u, 5131u},
     {5067u, 5112u}, {5071u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence88[] = {
+constexpr LookupMatchStep kLookupSequence88[] = {
     {5098u, 5117u},
     {5067u, 5138u},
     {5061u, 5131u},
     {5060u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence89[] = {
+constexpr LookupMatchStep kLookupSequence89[] = {
     {5067u, 5111u}, {5065u, 5111u}, {5094u, 5100u},
     {5069u, 5112u}, {5069u, 5120u}, {5063u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence90[] = {
+constexpr LookupMatchStep kLookupSequence90[] = {
     {5094u, 5120u}, {5065u, 5112u}, {5094u, 5106u}, {5067u, 5120u},
     {5063u, 5131u}, {5069u, 5131u}, {5061u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence91[] = {
+constexpr LookupMatchStep kLookupSequence91[] = {
     {5079u, 5117u}, {5067u, 5133u}, {5090u, 5111u}, {5067u, 5106u},
     {5069u, 5133u}, {5069u, 5120u}, {5053u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence92[] = {
+constexpr LookupMatchStep kLookupSequence92[] = {
     {5069u, 5112u},
     {5071u, 5111u},
     {5067u, 5120u},
     {5094u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence93[] = {
+constexpr LookupMatchStep kLookupSequence93[] = {
     {5067u, 5135u}, {5061u, 5133u}, {5061u, 5133u}, {5069u, 5106u},
     {5071u, 5131u}, {5067u, 5106u}, {5061u, 5133u}, {5094u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence94[] = {
+constexpr LookupMatchStep kLookupSequence94[] = {
     {5053u, 5133u}, {5067u, 5106u}, {5061u, 5127u}, {5061u, 5133u},
     {5061u, 5133u}, {5094u, 5133u}, {5061u, 5112u}, {5094u, 5133u},
     {5067u, 5112u}, {5094u, 5133u}, {5080u, 5112u}, {5069u, 5133u},
     {5069u, 5112u}, {5094u, 5120u}, {5069u, 5112u}, {5067u, 5127u},
     {5069u, 5131u}, {5067u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence95[] = {
+constexpr LookupMatchStep kLookupSequence95[] = {
     {5061u, 5111u},
     {5069u, 5120u},
     {5069u, 5133u},
     {5069u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence96[] = {
+constexpr LookupMatchStep kLookupSequence96[] = {
     {5069u, 5105u}, {5094u, 5120u}, {5067u, 5112u}, {5067u, 5138u},
     {5067u, 5138u}, {5069u, 5120u}, {5094u, 5120u}, {5063u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence97[] = {
+constexpr LookupMatchStep kLookupSequence97[] = {
     {5067u, 5127u}, {5094u, 5127u}, {5061u, 5133u},
     {5094u, 5120u}, {5067u, 5112u}, {5067u, 5111u},
 };
-constexpr Attention6MatchStep kAttention6Sequence98[] = {
+constexpr LookupMatchStep kLookupSequence98[] = {
     {5061u, 5131u}, {5066u, 5112u}, {5067u, 5116u}, {5061u, 5133u},
     {5067u, 5133u}, {5061u, 5133u}, {5061u, 5131u}, {5061u, 5106u},
     {5067u, 5120u}, {5069u, 5127u},
 };
-constexpr Attention6MatchStep kAttention6Sequence99[] = {
+constexpr LookupMatchStep kLookupSequence99[] = {
     {5061u, 5127u},
     {5067u, 5133u},
     {5069u, 5127u},
     {5069u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence100[] = {
+constexpr LookupMatchStep kLookupSequence100[] = {
     {5067u, 5112u},
     {5074u, 5133u},
     {5067u, 5125u},
     {5074u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence101[] = {
+constexpr LookupMatchStep kLookupSequence101[] = {
     {5061u, 5105u},
     {5094u, 5131u},
     {5069u, 5112u},
     {5063u, 5116u},
 };
-constexpr Attention6MatchStep kAttention6Sequence102[] = {
+constexpr LookupMatchStep kLookupSequence102[] = {
     {5098u, 5143u}, {5053u, 5120u}, {5098u, 5143u},
     {5061u, 5138u}, {5067u, 5127u}, {5069u, 5120u},
     {5067u, 5106u}, {5094u, 5120u}, {5073u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence103[] = {
+constexpr LookupMatchStep kLookupSequence103[] = {
     {5069u, 5133u}, {5061u, 5131u}, {5071u, 5138u}, {5061u, 5111u},
     {5071u, 5138u}, {5065u, 5127u}, {5069u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence104[] = {
+constexpr LookupMatchStep kLookupSequence104[] = {
     {5061u, 5120u}, {5069u, 5106u}, {5094u, 5133u}, {5067u, 5112u},
     {5069u, 5133u}, {5061u, 5131u}, {5067u, 5131u}, {5067u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence105[] = {
+constexpr LookupMatchStep kLookupSequence105[] = {
     {5061u, 5127u}, {5061u, 5133u}, {5094u, 5131u}, {5067u, 5112u},
     {5067u, 5138u}, {5061u, 5111u}, {5069u, 5133u}, {5067u, 5106u},
     {5061u, 5131u}, {5094u, 5120u}, {5061u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence106[] = {
+constexpr LookupMatchStep kLookupSequence106[] = {
     {5067u, 5111u}, {5071u, 5127u}, {5067u, 5138u},
     {5067u, 5138u}, {5094u, 5106u}, {5067u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence107[] = {
+constexpr LookupMatchStep kLookupSequence107[] = {
     {5067u, 5111u}, {5061u, 5131u}, {5094u, 5131u},
     {5067u, 5112u}, {5061u, 5133u}, {5067u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence108[] = {
+constexpr LookupMatchStep kLookupSequence108[] = {
     {5094u, 5111u}, {5067u, 5106u}, {5061u, 5131u},
     {5067u, 5133u}, {5061u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence109[] = {
+constexpr LookupMatchStep kLookupSequence109[] = {
     {5071u, 5127u}, {5067u, 5127u}, {5061u, 5131u},
     {5094u, 5133u}, {5069u, 5112u}, {5067u, 5127u},
 };
-constexpr Attention6MatchStep kAttention6Sequence110[] = {
+constexpr LookupMatchStep kLookupSequence110[] = {
     {5067u, 5134u}, {5069u, 5131u}, {5094u, 5133u}, {5067u, 5112u},
     {5069u, 5131u}, {5063u, 5131u}, {5070u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence111[] = {
+constexpr LookupMatchStep kLookupSequence111[] = {
     {5087u, 5111u}, {5061u, 5138u}, {5053u, 5120u},
     {5067u, 5106u}, {5065u, 5133u}, {5069u, 5111u},
 };
-constexpr Attention6MatchStep kAttention6Sequence112[] = {
+constexpr LookupMatchStep kLookupSequence112[] = {
     {5079u, 5133u}, {5061u, 5104u}, {5067u, 5133u},
     {5071u, 5138u}, {5061u, 5113u}, {5069u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence113[] = {
+constexpr LookupMatchStep kLookupSequence113[] = {
     {5054u, 5135u}, {5071u, 5102u}, {5067u, 5110u}, {5065u, 5127u},
     {5063u, 5120u}, {5094u, 5131u}, {5061u, 5112u}, {5061u, 5131u},
     {5069u, 5105u}, {5067u, 5106u}, {5067u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence114[] = {
+constexpr LookupMatchStep kLookupSequence114[] = {
     {5071u, 5111u}, {5056u, 5131u}, {5094u, 5120u},
     {5069u, 5112u}, {5069u, 5131u}, {5094u, 5106u},
     {5067u, 5112u}, {5072u, 5105u}, {5061u, 5117u},
 };
-constexpr Attention6MatchStep kAttention6Sequence115[] = {
+constexpr LookupMatchStep kLookupSequence115[] = {
     {5090u, 5138u}, {5079u, 5111u}, {5071u, 5106u},
     {5069u, 5131u}, {5069u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence116[] = {
+constexpr LookupMatchStep kLookupSequence116[] = {
     {5071u, 5131u}, {5067u, 5120u}, {5069u, 5127u},
     {5094u, 5112u}, {5067u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence117[] = {
+constexpr LookupMatchStep kLookupSequence117[] = {
     {5069u, 5111u}, {5065u, 5131u}, {5067u, 5120u},
     {5069u, 5127u}, {5069u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence118[] = {
+constexpr LookupMatchStep kLookupSequence118[] = {
     {5067u, 5106u},
     {5067u, 5111u},
     {5061u, 5133u},
     {5094u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence119[] = {
+constexpr LookupMatchStep kLookupSequence119[] = {
     {5061u, 5120u}, {5067u, 5120u}, {5069u, 5127u},
     {5061u, 5106u}, {5061u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence120[] = {
+constexpr LookupMatchStep kLookupSequence120[] = {
     {5094u, 5133u}, {5069u, 5112u}, {5067u, 5106u},
     {5061u, 5136u}, {5069u, 5131u}, {5094u, 5132u},
 };
-constexpr Attention6MatchStep kAttention6Sequence121[] = {
+constexpr LookupMatchStep kLookupSequence121[] = {
     {5094u, 5111u}, {5069u, 5112u}, {5067u, 5106u},
     {5063u, 5111u}, {5072u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence122[] = {
+constexpr LookupMatchStep kLookupSequence122[] = {
     {5067u, 5139u}, {5069u, 5131u}, {5071u, 5106u}, {5094u, 5131u},
     {5062u, 5112u}, {5061u, 5111u}, {5073u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence123[] = {
+constexpr LookupMatchStep kLookupSequence123[] = {
     {5067u, 5138u}, {5069u, 5131u}, {5067u, 5106u}, {5067u, 5138u},
     {5067u, 5138u}, {5061u, 5133u}, {5067u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence124[] = {
+constexpr LookupMatchStep kLookupSequence124[] = {
     {5061u, 5112u}, {5080u, 5106u}, {5067u, 5123u}, {5061u, 5106u},
     {5094u, 5120u}, {5063u, 5112u}, {5061u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence125[] = {
+constexpr LookupMatchStep kLookupSequence125[] = {
     {5069u, 5124u},
     {5094u, 5120u},
     {5067u, 5112u},
     {5067u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence126[] = {
+constexpr LookupMatchStep kLookupSequence126[] = {
     {5094u, 5106u}, {5063u, 5112u}, {5069u, 5131u}, {5061u, 5106u},
     {5061u, 5133u}, {5061u, 5138u}, {5094u, 5120u}, {5061u, 5112u},
     {5069u, 5133u}, {5067u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence127[] = {
+constexpr LookupMatchStep kLookupSequence127[] = {
     {5082u, 5138u}, {5069u, 5133u}, {5061u, 5120u}, {5067u, 5138u},
     {5069u, 5131u}, {5067u, 5106u}, {5071u, 5138u}, {5069u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence128[] = {
+constexpr LookupMatchStep kLookupSequence128[] = {
     {5069u, 5120u}, {5067u, 5106u}, {5061u, 5106u}, {5061u, 5133u},
     {5094u, 5106u}, {5067u, 5112u}, {5061u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence129[] = {
+constexpr LookupMatchStep kLookupSequence129[] = {
     {5069u, 5131u},
     {5094u, 5120u},
     {5067u, 5112u},
     {5069u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence130[] = {
+constexpr LookupMatchStep kLookupSequence130[] = {
     {5061u, 5133u}, {5061u, 5133u}, {5061u, 5133u},
     {5067u, 5106u}, {5067u, 5111u}, {5069u, 5111u},
 };
-constexpr Attention6MatchStep kAttention6Sequence131[] = {
+constexpr LookupMatchStep kLookupSequence131[] = {
     {5068u, 5104u},
     {5067u, 5133u},
     {5071u, 5120u},
     {5063u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence132[] = {
+constexpr LookupMatchStep kLookupSequence132[] = {
     {5061u, 5102u}, {5069u, 5131u}, {5061u, 5133u},
     {5094u, 5133u}, {5067u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence133[] = {
+constexpr LookupMatchStep kLookupSequence133[] = {
     {5067u, 5106u}, {5069u, 5131u}, {5069u, 5120u},
     {5061u, 5120u}, {5061u, 5131u}, {5067u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence134[] = {
+constexpr LookupMatchStep kLookupSequence134[] = {
     {5069u, 5111u}, {5067u, 5106u}, {5067u, 5131u}, {5061u, 5111u},
     {5093u, 5133u}, {5069u, 5120u}, {5094u, 5132u},
 };
-constexpr Attention6MatchStep kAttention6Sequence135[] = {
+constexpr LookupMatchStep kLookupSequence135[] = {
     {5069u, 5130u}, {5067u, 5111u}, {5061u, 5127u}, {5069u, 5131u},
     {5094u, 5120u}, {5067u, 5112u}, {5067u, 5138u}, {5061u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence136[] = {
+constexpr LookupMatchStep kLookupSequence136[] = {
     {5067u, 5112u}, {5061u, 5127u}, {5067u, 5133u}, {5069u, 5133u},
     {5094u, 5120u}, {5061u, 5112u}, {5067u, 5127u},
 };
-constexpr Attention6MatchStep kAttention6Sequence137[] = {
+constexpr LookupMatchStep kLookupSequence137[] = {
     {5067u, 5111u},
     {5069u, 5127u},
     {5094u, 5120u},
     {5067u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence138[] = {
+constexpr LookupMatchStep kLookupSequence138[] = {
     {5067u, 5127u}, {5061u, 5127u}, {5094u, 5125u}, {5071u, 5117u},
     {5067u, 5133u}, {5065u, 5106u}, {5067u, 5133u}, {5069u, 5111u},
     {5061u, 5106u}, {5067u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence139[] = {
+constexpr LookupMatchStep kLookupSequence139[] = {
     {5077u, 5133u}, {5053u, 5143u}, {5067u, 5106u},
     {5067u, 5131u}, {5063u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence140[] = {
+constexpr LookupMatchStep kLookupSequence140[] = {
     {5061u, 5104u},
     {5069u, 5133u},
     {5061u, 5106u},
     {5069u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence141[] = {
+constexpr LookupMatchStep kLookupSequence141[] = {
     {5067u, 5119u}, {5066u, 5106u}, {5067u, 5116u}, {5061u, 5138u},
     {5063u, 5120u}, {5067u, 5131u}, {5067u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence142[] = {
+constexpr LookupMatchStep kLookupSequence142[] = {
     {5090u, 5125u},
     {5067u, 5124u},
     {5067u, 5111u},
     {5069u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence143[] = {
+constexpr LookupMatchStep kLookupSequence143[] = {
     {5061u, 5117u}, {5069u, 5131u}, {5067u, 5106u}, {5069u, 5106u},
     {5063u, 5138u}, {5067u, 5106u}, {5061u, 5131u}, {5071u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence144[] = {
+constexpr LookupMatchStep kLookupSequence144[] = {
     {5071u, 5106u}, {5090u, 5120u}, {5098u, 5106u},
     {5067u, 5133u}, {5069u, 5131u}, {5065u, 5131u},
     {5067u, 5120u}, {5069u, 5111u}, {5067u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence145[] = {
+constexpr LookupMatchStep kLookupSequence145[] = {
     {5061u, 5112u},
     {5067u, 5133u},
     {5079u, 5138u},
     {5069u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence146[] = {
+constexpr LookupMatchStep kLookupSequence146[] = {
     {5069u, 5111u}, {5067u, 5106u}, {5061u, 5111u},
     {5061u, 5106u}, {5061u, 5106u}, {5061u, 5133u},
     {5067u, 5112u}, {5069u, 5131u}, {5094u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence147[] = {
+constexpr LookupMatchStep kLookupSequence147[] = {
     {5061u, 5106u}, {5071u, 5106u}, {5092u, 5106u}, {5061u, 5106u},
     {5069u, 5120u}, {5094u, 5108u}, {5069u, 5112u}, {5061u, 5106u},
     {5069u, 5120u}, {5067u, 5120u}, {5069u, 5138u}, {5061u, 5124u},
 };
-constexpr Attention6MatchStep kAttention6Sequence148[] = {
+constexpr LookupMatchStep kLookupSequence148[] = {
     {5071u, 5112u}, {5061u, 5111u}, {5067u, 5106u}, {5067u, 5138u},
     {5067u, 5138u}, {5066u, 5131u}, {5071u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence149[] = {
+constexpr LookupMatchStep kLookupSequence149[] = {
     {5069u, 5133u},
     {5067u, 5111u},
     {5065u, 5131u},
     {5061u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence150[] = {
+constexpr LookupMatchStep kLookupSequence150[] = {
     {5069u, 5110u}, {5063u, 5120u}, {5061u, 5131u}, {5069u, 5138u},
     {5094u, 5131u}, {5061u, 5112u}, {5061u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence151[] = {
+constexpr LookupMatchStep kLookupSequence151[] = {
     {5069u, 5120u}, {5094u, 5120u}, {5061u, 5112u},
     {5069u, 5131u}, {5069u, 5112u}, {5061u, 5112u},
     {5067u, 5131u}, {5067u, 5131u}, {5061u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence152[] = {
+constexpr LookupMatchStep kLookupSequence152[] = {
     {5094u, 5106u},
     {5061u, 5115u},
     {5069u, 5120u},
     {5061u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence153[] = {
+constexpr LookupMatchStep kLookupSequence153[] = {
     {5065u, 5133u}, {5067u, 5106u}, {5067u, 5131u},
     {5065u, 5127u}, {5069u, 5133u}, {5094u, 5131u},
     {5067u, 5112u}, {5067u, 5138u}, {5067u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence154[] = {
+constexpr LookupMatchStep kLookupSequence154[] = {
     {5067u, 5138u}, {5061u, 5133u}, {5065u, 5133u}, {5061u, 5133u},
     {5061u, 5133u}, {5061u, 5133u}, {5067u, 5131u}, {5061u, 5131u},
     {5061u, 5111u}, {5094u, 5133u}, {5061u, 5112u}, {5067u, 5120u},
     {5069u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence155[] = {
+constexpr LookupMatchStep kLookupSequence155[] = {
     {5061u, 5135u}, {5067u, 5111u}, {5087u, 5133u}, {5067u, 5133u},
     {5061u, 5127u}, {5067u, 5120u}, {5065u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence156[] = {
+constexpr LookupMatchStep kLookupSequence156[] = {
     {5061u, 5112u}, {5071u, 5138u}, {5069u, 5111u},
     {5061u, 5112u}, {5065u, 5127u}, {5071u, 5133u},
     {5061u, 5106u}, {5067u, 5120u}, {5061u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence157[] = {
+constexpr LookupMatchStep kLookupSequence157[] = {
     {5071u, 5136u}, {5067u, 5111u}, {5061u, 5138u}, {5067u, 5133u},
     {5061u, 5133u}, {5069u, 5106u}, {5094u, 5120u}, {5069u, 5112u},
     {5069u, 5131u}, {5067u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence158[] = {
+constexpr LookupMatchStep kLookupSequence158[] = {
     {5083u, 5111u}, {5069u, 5111u}, {5094u, 5133u}, {5053u, 5112u},
     {5067u, 5138u}, {5067u, 5138u}, {5067u, 5138u}, {5094u, 5111u},
     {5067u, 5112u}, {5067u, 5138u}, {5067u, 5131u}, {5067u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence159[] = {
+constexpr LookupMatchStep kLookupSequence159[] = {
     {5069u, 5117u}, {5069u, 5110u}, {5061u, 5112u}, {5061u, 5138u},
     {5061u, 5138u}, {5094u, 5133u}, {5067u, 5112u}, {5067u, 5131u},
     {5067u, 5131u}, {5069u, 5138u}, {5069u, 5131u}, {5067u, 5106u},
     {5094u, 5111u}, {5066u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence160[] = {
+constexpr LookupMatchStep kLookupSequence160[] = {
     {5061u, 5138u}, {5061u, 5133u}, {5094u, 5133u},
     {5067u, 5112u}, {5098u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence161[] = {
+constexpr LookupMatchStep kLookupSequence161[] = {
     {5069u, 5111u}, {5054u, 5120u}, {5067u, 5110u}, {5069u, 5127u},
     {5069u, 5120u}, {5072u, 5120u}, {5067u, 5108u}, {5067u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence162[] = {
+constexpr LookupMatchStep kLookupSequence162[] = {
     {5061u, 5112u},
     {5069u, 5131u},
     {5061u, 5106u},
     {5072u, 5109u},
 };
-constexpr Attention6MatchStep kAttention6Sequence163[] = {
+constexpr LookupMatchStep kLookupSequence163[] = {
     {5061u, 5112u}, {5069u, 5111u}, {5094u, 5133u}, {5061u, 5112u},
     {5067u, 5133u}, {5065u, 5131u}, {5069u, 5133u}, {5069u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence164[] = {
+constexpr LookupMatchStep kLookupSequence164[] = {
     {5071u, 5133u}, {5069u, 5111u}, {5094u, 5120u},
     {5067u, 5112u}, {5069u, 5111u}, {5054u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence165[] = {
+constexpr LookupMatchStep kLookupSequence165[] = {
     {5094u, 5131u},
     {5067u, 5112u},
     {5063u, 5138u},
     {5069u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence166[] = {
+constexpr LookupMatchStep kLookupSequence166[] = {
     {5094u, 5120u},
     {5067u, 5112u},
     {5069u, 5131u},
     {5067u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence167[] = {
+constexpr LookupMatchStep kLookupSequence167[] = {
     {5069u, 5131u}, {5094u, 5120u}, {5067u, 5112u}, {5069u, 5131u},
     {5094u, 5120u}, {5067u, 5112u}, {5069u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence168[] = {
+constexpr LookupMatchStep kLookupSequence168[] = {
     {5063u, 5106u},
     {5061u, 5120u},
     {5069u, 5131u},
     {5071u, 5127u},
 };
-constexpr Attention6MatchStep kAttention6Sequence169[] = {
+constexpr LookupMatchStep kLookupSequence169[] = {
     {5094u, 5120u}, {5067u, 5112u}, {5069u, 5127u},
     {5094u, 5120u}, {5061u, 5112u}, {5069u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence170[] = {
+constexpr LookupMatchStep kLookupSequence170[] = {
     {5094u, 5108u},
     {5094u, 5112u},
     {5063u, 5106u},
     {5069u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence171[] = {
+constexpr LookupMatchStep kLookupSequence171[] = {
     {5078u, 5125u}, {5094u, 5131u}, {5069u, 5112u},
     {5072u, 5131u}, {5069u, 5117u},
 };
-constexpr Attention6MatchStep kAttention6Sequence172[] = {
+constexpr LookupMatchStep kLookupSequence172[] = {
     {5067u, 5123u}, {5053u, 5138u}, {5069u, 5106u},
     {5072u, 5120u}, {5094u, 5117u},
 };
-constexpr Attention6MatchStep kAttention6Sequence173[] = {
+constexpr LookupMatchStep kLookupSequence173[] = {
     {5071u, 5112u}, {5069u, 5127u}, {5061u, 5106u}, {5067u, 5133u},
     {5072u, 5131u}, {5061u, 5117u}, {5069u, 5131u}, {5094u, 5120u},
     {5067u, 5112u}, {5067u, 5131u}, {5061u, 5111u},
 };
-constexpr Attention6MatchStep kAttention6Sequence174[] = {
+constexpr LookupMatchStep kLookupSequence174[] = {
     {5069u, 5131u}, {5094u, 5100u}, {5067u, 5112u}, {5067u, 5138u},
     {5094u, 5111u}, {5060u, 5112u}, {5069u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence175[] = {
+constexpr LookupMatchStep kLookupSequence175[] = {
     {5061u, 5120u}, {5094u, 5127u}, {5061u, 5106u},
     {5063u, 5131u}, {5061u, 5120u}, {5069u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence176[] = {
+constexpr LookupMatchStep kLookupSequence176[] = {
     {5072u, 5105u}, {5094u, 5117u}, {5068u, 5112u}, {5067u, 5138u},
     {5069u, 5133u}, {5067u, 5106u}, {5069u, 5131u}, {5061u, 5108u},
 };
-constexpr Attention6MatchStep kAttention6Sequence177[] = {
+constexpr LookupMatchStep kLookupSequence177[] = {
     {5053u, 5131u},
     {5069u, 5106u},
     {5067u, 5106u},
     {5063u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence178[] = {
+constexpr LookupMatchStep kLookupSequence178[] = {
     {5078u, 5139u}, {5067u, 5106u}, {5094u, 5131u}, {5074u, 5112u},
     {5065u, 5143u}, {5061u, 5112u}, {5069u, 5131u}, {5061u, 5108u},
 };
-constexpr Attention6MatchStep kAttention6Sequence179[] = {
+constexpr LookupMatchStep kLookupSequence179[] = {
     {5069u, 5111u},
     {5061u, 5112u},
     {5067u, 5111u},
     {5067u, 5111u},
 };
-constexpr Attention6MatchStep kAttention6Sequence180[] = {
+constexpr LookupMatchStep kLookupSequence180[] = {
     {5098u, 5112u}, {5067u, 5120u}, {5069u, 5127u}, {5094u, 5120u},
     {5069u, 5117u}, {5067u, 5106u}, {5061u, 5131u}, {5072u, 5120u},
     {5072u, 5117u}, {5067u, 5117u}, {5067u, 5138u}, {5067u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence181[] = {
+constexpr LookupMatchStep kLookupSequence181[] = {
     {5069u, 5104u}, {5061u, 5127u}, {5083u, 5133u},
     {5094u, 5127u}, {5067u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence182[] = {
+constexpr LookupMatchStep kLookupSequence182[] = {
     {5090u, 5135u},
     {5067u, 5104u},
     {5065u, 5133u},
     {5069u, 5125u},
 };
-constexpr Attention6MatchStep kAttention6Sequence183[] = {
+constexpr LookupMatchStep kLookupSequence183[] = {
     {5061u, 5143u},
     {5067u, 5111u},
     {5065u, 5127u},
     {5067u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence184[] = {
+constexpr LookupMatchStep kLookupSequence184[] = {
     {5067u, 5103u}, {5069u, 5131u}, {5067u, 5112u},
     {5061u, 5133u}, {5072u, 5133u}, {5069u, 5109u},
 };
-constexpr Attention6MatchStep kAttention6Sequence185[] = {
+constexpr LookupMatchStep kLookupSequence185[] = {
     {5067u, 5133u}, {5067u, 5138u}, {5067u, 5131u},
     {5061u, 5106u}, {5061u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence186[] = {
+constexpr LookupMatchStep kLookupSequence186[] = {
     {5069u, 5111u}, {5094u, 5125u}, {5067u, 5112u},
     {5067u, 5106u}, {5061u, 5138u}, {5061u, 5131u},
     {5094u, 5120u}, {5067u, 5112u}, {5067u, 5111u},
 };
-constexpr Attention6MatchStep kAttention6Sequence187[] = {
+constexpr LookupMatchStep kLookupSequence187[] = {
     {5067u, 5138u}, {5065u, 5127u}, {5090u, 5133u},
     {5063u, 5120u}, {5072u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence188[] = {
+constexpr LookupMatchStep kLookupSequence188[] = {
     {5067u, 5106u},
     {5091u, 5138u},
     {5061u, 5110u},
     {5061u, 5102u},
 };
-constexpr Attention6MatchStep kAttention6Sequence189[] = {
+constexpr LookupMatchStep kLookupSequence189[] = {
     {5069u, 5139u}, {5069u, 5131u}, {5072u, 5120u},
     {5067u, 5115u}, {5069u, 5106u}, {5069u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence190[] = {
+constexpr LookupMatchStep kLookupSequence190[] = {
     {5067u, 5127u}, {5065u, 5111u}, {5091u, 5112u}, {5067u, 5110u},
     {5067u, 5106u}, {5094u, 5133u}, {5071u, 5112u}, {5067u, 5111u},
 };
-constexpr Attention6MatchStep kAttention6Sequence191[] = {
+constexpr LookupMatchStep kLookupSequence191[] = {
     {5069u, 5125u}, {5090u, 5125u}, {5069u, 5124u},
     {5069u, 5106u}, {5069u, 5127u},
 };
-constexpr Attention6MatchStep kAttention6Sequence192[] = {
+constexpr LookupMatchStep kLookupSequence192[] = {
     {5067u, 5123u}, {5067u, 5138u}, {5061u, 5127u}, {5094u, 5133u},
     {5090u, 5112u}, {5061u, 5104u}, {5069u, 5127u},
 };
-constexpr Attention6MatchStep kAttention6Sequence193[] = {
+constexpr LookupMatchStep kLookupSequence193[] = {
     {5061u, 5113u},
     {5069u, 5120u},
     {5063u, 5120u},
     {5072u, 5109u},
 };
-constexpr Attention6MatchStep kAttention6Sequence194[] = {
+constexpr LookupMatchStep kLookupSequence194[] = {
     {5079u, 5129u}, {5067u, 5133u}, {5065u, 5133u},
     {5094u, 5125u}, {5090u, 5112u}, {5083u, 5106u},
     {5072u, 5109u}, {5069u, 5117u}, {5079u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence195[] = {
+constexpr LookupMatchStep kLookupSequence195[] = {
     {5069u, 5128u}, {5094u, 5120u}, {5061u, 5112u},
     {5061u, 5133u}, {5094u, 5120u}, {5069u, 5112u},
     {5067u, 5127u}, {5061u, 5120u}, {5061u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence196[] = {
+constexpr LookupMatchStep kLookupSequence196[] = {
     {5067u, 5112u}, {5069u, 5120u}, {5069u, 5106u},
     {5061u, 5120u}, {5094u, 5120u}, {5061u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence197[] = {
+constexpr LookupMatchStep kLookupSequence197[] = {
     {5067u, 5120u}, {5061u, 5138u}, {5065u, 5127u}, {5067u, 5133u},
     {5067u, 5111u}, {5094u, 5127u}, {5067u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence198[] = {
+constexpr LookupMatchStep kLookupSequence198[] = {
     {5094u, 5120u}, {5061u, 5112u}, {5069u, 5133u},
     {5053u, 5106u}, {5069u, 5138u}, {5069u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence199[] = {
+constexpr LookupMatchStep kLookupSequence199[] = {
     {5067u, 5115u}, {5061u, 5133u}, {5069u, 5111u},
     {5069u, 5106u}, {5061u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence200[] = {
+constexpr LookupMatchStep kLookupSequence200[] = {
     {5094u, 5117u},
     {5067u, 5112u},
     {5063u, 5111u},
     {5069u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence201[] = {
+constexpr LookupMatchStep kLookupSequence201[] = {
     {5053u, 5134u},
     {5061u, 5106u},
     {5080u, 5133u},
     {5061u, 5107u},
 };
-constexpr Attention6MatchStep kAttention6Sequence202[] = {
+constexpr LookupMatchStep kLookupSequence202[] = {
     {5061u, 5139u}, {5069u, 5133u}, {5071u, 5106u},
     {5067u, 5138u}, {5069u, 5111u},
 };
-constexpr Attention6MatchStep kAttention6Sequence203[] = {
+constexpr LookupMatchStep kLookupSequence203[] = {
     {5069u, 5106u}, {5072u, 5131u}, {5061u, 5117u},
     {5094u, 5138u}, {5066u, 5106u}, {5069u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence204[] = {
+constexpr LookupMatchStep kLookupSequence204[] = {
     {5087u, 5112u},
     {5067u, 5138u},
     {5069u, 5127u},
     {5094u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence205[] = {
+constexpr LookupMatchStep kLookupSequence205[] = {
     {5063u, 5131u},
     {5094u, 5120u},
     {5061u, 5112u},
     {5069u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence206[] = {
+constexpr LookupMatchStep kLookupSequence206[] = {
     {5094u, 5120u},
     {5067u, 5112u},
     {5069u, 5131u},
     {5053u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence207[] = {
+constexpr LookupMatchStep kLookupSequence207[] = {
     {5091u, 5106u}, {5063u, 5110u}, {5065u, 5131u}, {5094u, 5133u},
     {5061u, 5112u}, {5069u, 5131u}, {5061u, 5131u}, {5094u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence208[] = {
+constexpr LookupMatchStep kLookupSequence208[] = {
     {5061u, 5120u}, {5094u, 5120u}, {5067u, 5112u}, {5071u, 5131u},
     {5069u, 5111u}, {5069u, 5131u}, {5094u, 5120u}, {5067u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence209[] = {
+constexpr LookupMatchStep kLookupSequence209[] = {
     {5061u, 5112u}, {5065u, 5133u}, {5094u, 5106u}, {5061u, 5112u},
     {5067u, 5138u}, {5067u, 5138u}, {5067u, 5131u}, {5065u, 5111u},
     {5069u, 5106u}, {5069u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence210[] = {
+constexpr LookupMatchStep kLookupSequence210[] = {
     {5069u, 5127u}, {5061u, 5106u}, {5096u, 5111u}, {5053u, 5133u},
     {5069u, 5133u}, {5069u, 5120u}, {5067u, 5120u}, {5069u, 5127u},
 };
-constexpr Attention6MatchStep kAttention6Sequence211[] = {
+constexpr LookupMatchStep kLookupSequence211[] = {
     {5067u, 5133u}, {5069u, 5111u}, {5069u, 5106u},
     {5069u, 5120u}, {5094u, 5120u}, {5069u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence212[] = {
+constexpr LookupMatchStep kLookupSequence212[] = {
     {5067u, 5133u},
     {5061u, 5127u},
     {5094u, 5106u},
     {5067u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence213[] = {
+constexpr LookupMatchStep kLookupSequence213[] = {
     {5094u, 5120u}, {5071u, 5115u}, {5061u, 5106u},
     {5061u, 5111u}, {5061u, 5120u}, {5066u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence214[] = {
+constexpr LookupMatchStep kLookupSequence214[] = {
     {5071u, 5112u},
     {5069u, 5111u},
     {5069u, 5106u},
     {5069u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence215[] = {
+constexpr LookupMatchStep kLookupSequence215[] = {
     {5067u, 5138u}, {5065u, 5138u}, {5094u, 5125u},
     {5069u, 5112u}, {5069u, 5111u},
 };
-constexpr Attention6MatchStep kAttention6Sequence216[] = {
+constexpr LookupMatchStep kLookupSequence216[] = {
     {5079u, 5102u}, {5061u, 5120u}, {5072u, 5120u}, {5069u, 5120u},
     {5061u, 5108u}, {5065u, 5138u}, {5091u, 5106u}, {5061u, 5127u},
 };
-constexpr Attention6MatchStep kAttention6Sequence217[] = {
+constexpr LookupMatchStep kLookupSequence217[] = {
     {5067u, 5135u}, {5069u, 5117u}, {5061u, 5106u}, {5067u, 5133u},
     {5071u, 5138u}, {5061u, 5106u}, {5082u, 5131u}, {5082u, 5131u},
     {5069u, 5133u}, {5061u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence218[] = {
+constexpr LookupMatchStep kLookupSequence218[] = {
     {5094u, 5133u}, {5067u, 5115u}, {5061u, 5133u},
     {5079u, 5133u}, {5061u, 5133u}, {5094u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence219[] = {
+constexpr LookupMatchStep kLookupSequence219[] = {
     {5065u, 5131u}, {5067u, 5106u}, {5067u, 5133u}, {5061u, 5120u},
     {5067u, 5133u}, {5067u, 5127u}, {5067u, 5132u}, {5094u, 5132u},
     {5067u, 5112u}, {5061u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence220[] = {
+constexpr LookupMatchStep kLookupSequence220[] = {
     {5067u, 5108u},
     {5069u, 5131u},
     {5069u, 5120u},
     {5073u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence221[] = {
+constexpr LookupMatchStep kLookupSequence221[] = {
     {5094u, 5127u}, {5094u, 5133u}, {5069u, 5112u}, {5067u, 5131u},
     {5067u, 5131u}, {5069u, 5111u}, {5069u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence222[] = {
+constexpr LookupMatchStep kLookupSequence222[] = {
     {5069u, 5105u},
     {5053u, 5106u},
     {5067u, 5111u},
     {5094u, 5127u},
 };
-constexpr Attention6MatchStep kAttention6Sequence223[] = {
+constexpr LookupMatchStep kLookupSequence223[] = {
     {5067u, 5138u}, {5067u, 5127u}, {5061u, 5127u},
     {5069u, 5111u}, {5067u, 5100u},
 };
-constexpr Attention6MatchStep kAttention6Sequence224[] = {
+constexpr LookupMatchStep kLookupSequence224[] = {
     {5072u, 5109u}, {5067u, 5117u}, {5069u, 5111u}, {5094u, 5120u},
     {5061u, 5112u}, {5074u, 5133u}, {5067u, 5134u}, {5094u, 5131u},
     {5071u, 5112u}, {5069u, 5111u}, {5072u, 5120u}, {5094u, 5117u},
     {5061u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence225[] = {
+constexpr LookupMatchStep kLookupSequence225[] = {
     {5061u, 5133u}, {5090u, 5127u}, {5061u, 5106u},
     {5065u, 5133u}, {5066u, 5106u}, {5061u, 5138u},
     {5067u, 5104u}, {5069u, 5133u}, {5067u, 5108u},
 };
-constexpr Attention6MatchStep kAttention6Sequence226[] = {
+constexpr LookupMatchStep kLookupSequence226[] = {
     {5068u, 5104u}, {5068u, 5133u}, {5061u, 5133u}, {5067u, 5138u},
     {5061u, 5127u}, {5063u, 5131u}, {5094u, 5131u}, {5067u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence227[] = {
+constexpr LookupMatchStep kLookupSequence227[] = {
     {5069u, 5139u}, {5061u, 5120u}, {5082u, 5133u},
     {5094u, 5136u}, {5069u, 5112u}, {5067u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence228[] = {
+constexpr LookupMatchStep kLookupSequence228[] = {
     {5067u, 5111u}, {5061u, 5111u}, {5094u, 5106u}, {5061u, 5112u},
     {5067u, 5112u}, {5067u, 5106u}, {5061u, 5131u}, {5067u, 5106u},
     {5071u, 5111u}, {5072u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence229[] = {
+constexpr LookupMatchStep kLookupSequence229[] = {
     {5067u, 5115u}, {5067u, 5133u}, {5061u, 5133u},
     {5067u, 5112u}, {5094u, 5133u}, {5061u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence230[] = {
+constexpr LookupMatchStep kLookupSequence230[] = {
     {5067u, 5131u}, {5069u, 5120u}, {5069u, 5120u},
     {5069u, 5125u}, {5061u, 5111u}, {5067u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence231[] = {
+constexpr LookupMatchStep kLookupSequence231[] = {
     {5071u, 5120u}, {5067u, 5133u}, {5069u, 5133u}, {5060u, 5120u},
     {5067u, 5110u}, {5069u, 5111u}, {5063u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence232[] = {
+constexpr LookupMatchStep kLookupSequence232[] = {
     {5067u, 5143u}, {5069u, 5133u}, {5061u, 5120u},
     {5063u, 5133u}, {5094u, 5131u}, {5061u, 5112u},
     {5069u, 5131u}, {5069u, 5106u}, {5061u, 5116u},
 };
-constexpr Attention6MatchStep kAttention6Sequence233[] = {
+constexpr LookupMatchStep kLookupSequence233[] = {
     {5061u, 5112u},
     {5065u, 5133u},
     {5069u, 5125u},
     {5094u, 5132u},
 };
-constexpr Attention6MatchStep kAttention6Sequence234[] = {
+constexpr LookupMatchStep kLookupSequence234[] = {
     {5094u, 5117u}, {5067u, 5112u}, {5061u, 5133u}, {5069u, 5106u},
     {5094u, 5120u}, {5069u, 5112u}, {5072u, 5105u}, {5061u, 5117u},
 };
-constexpr Attention6MatchStep kAttention6Sequence235[] = {
+constexpr LookupMatchStep kLookupSequence235[] = {
     {5094u, 5133u}, {5063u, 5112u}, {5067u, 5136u},
     {5069u, 5111u}, {5069u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence236[] = {
+constexpr LookupMatchStep kLookupSequence236[] = {
     {5061u, 5120u}, {5067u, 5133u}, {5061u, 5131u},
     {5061u, 5133u}, {5067u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence237[] = {
+constexpr LookupMatchStep kLookupSequence237[] = {
     {5071u, 5138u},
     {5067u, 5138u},
     {5069u, 5127u},
     {5069u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence238[] = {
+constexpr LookupMatchStep kLookupSequence238[] = {
     {5069u, 5120u}, {5090u, 5120u}, {5094u, 5131u}, {5071u, 5106u},
     {5061u, 5106u}, {5061u, 5106u}, {5061u, 5133u}, {5069u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence239[] = {
+constexpr LookupMatchStep kLookupSequence239[] = {
     {5072u, 5106u}, {5061u, 5112u}, {5061u, 5133u}, {5069u, 5120u},
     {5067u, 5106u}, {5061u, 5138u}, {5072u, 5131u}, {5063u, 5115u},
 };
-constexpr Attention6MatchStep kAttention6Sequence240[] = {
+constexpr LookupMatchStep kLookupSequence240[] = {
     {5061u, 5104u}, {5061u, 5133u}, {5067u, 5106u}, {5094u, 5106u},
     {5061u, 5115u}, {5069u, 5106u}, {5072u, 5120u}, {5069u, 5117u},
 };
-constexpr Attention6MatchStep kAttention6Sequence241[] = {
+constexpr LookupMatchStep kLookupSequence241[] = {
     {5067u, 5111u}, {5053u, 5111u}, {5087u, 5106u}, {5094u, 5106u},
     {5067u, 5112u}, {5069u, 5127u}, {5067u, 5106u}, {5061u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence242[] = {
+constexpr LookupMatchStep kLookupSequence242[] = {
     {5067u, 5133u}, {5094u, 5120u}, {5063u, 5112u},
     {5072u, 5105u}, {5094u, 5117u}, {5071u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence243[] = {
+constexpr LookupMatchStep kLookupSequence243[] = {
     {5072u, 5120u}, {5061u, 5112u}, {5067u, 5133u}, {5069u, 5120u},
     {5067u, 5117u}, {5061u, 5111u}, {5094u, 5131u}, {5069u, 5112u},
     {5061u, 5106u}, {5067u, 5131u}, {5061u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence244[] = {
+constexpr LookupMatchStep kLookupSequence244[] = {
     {5065u, 5133u}, {5069u, 5133u}, {5061u, 5106u}, {5072u, 5133u},
     {5069u, 5117u}, {5067u, 5106u}, {5069u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence245[] = {
+constexpr LookupMatchStep kLookupSequence245[] = {
     {5094u, 5117u}, {5069u, 5112u}, {5067u, 5120u},
     {5067u, 5138u}, {5067u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence246[] = {
+constexpr LookupMatchStep kLookupSequence246[] = {
     {5094u, 5131u}, {5094u, 5133u}, {5063u, 5112u},
     {5069u, 5131u}, {5061u, 5105u},
 };
-constexpr Attention6MatchStep kAttention6Sequence247[] = {
+constexpr LookupMatchStep kLookupSequence247[] = {
     {5061u, 5117u}, {5072u, 5131u}, {5094u, 5117u},
     {5067u, 5112u}, {5067u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence248[] = {
+constexpr LookupMatchStep kLookupSequence248[] = {
     {5067u, 5112u}, {5067u, 5131u}, {5067u, 5131u},
     {5070u, 5131u}, {5063u, 5139u},
 };
-constexpr Attention6MatchStep kAttention6Sequence249[] = {
+constexpr LookupMatchStep kLookupSequence249[] = {
     {5069u, 5125u},
     {5072u, 5131u},
     {5094u, 5120u},
     {5063u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence250[] = {
+constexpr LookupMatchStep kLookupSequence250[] = {
     {5072u, 5131u}, {5067u, 5120u}, {5066u, 5138u},
     {5067u, 5138u}, {5067u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence251[] = {
+constexpr LookupMatchStep kLookupSequence251[] = {
     {5069u, 5133u},
     {5072u, 5131u},
     {5067u, 5112u},
     {5069u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence252[] = {
+constexpr LookupMatchStep kLookupSequence252[] = {
     {5094u, 5120u}, {5067u, 5112u}, {5067u, 5133u}, {5067u, 5138u},
     {5069u, 5111u}, {5094u, 5120u}, {5067u, 5112u}, {5094u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence253[] = {
+constexpr LookupMatchStep kLookupSequence253[] = {
     {5061u, 5112u}, {5071u, 5106u}, {5061u, 5111u},
     {5065u, 5131u}, {5067u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence254[] = {
+constexpr LookupMatchStep kLookupSequence254[] = {
     {5067u, 5106u}, {5082u, 5131u}, {5063u, 5117u},
     {5094u, 5120u}, {5069u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence255[] = {
+constexpr LookupMatchStep kLookupSequence255[] = {
     {5067u, 5138u}, {5053u, 5131u}, {5069u, 5106u},
     {5069u, 5125u}, {5094u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence256[] = {
+constexpr LookupMatchStep kLookupSequence256[] = {
     {5067u, 5120u}, {5061u, 5127u}, {5061u, 5138u},
     {5066u, 5106u}, {5067u, 5112u}, {5061u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence257[] = {
+constexpr LookupMatchStep kLookupSequence257[] = {
     {5061u, 5112u}, {5061u, 5138u}, {5061u, 5127u},
     {5061u, 5133u}, {5065u, 5133u}, {5094u, 5111u},
     {5067u, 5112u}, {5061u, 5138u}, {5067u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence258[] = {
+constexpr LookupMatchStep kLookupSequence258[] = {
     {5067u, 5133u}, {5067u, 5103u}, {5069u, 5131u},
     {5067u, 5112u}, {5067u, 5127u},
 };
-constexpr Attention6MatchStep kAttention6Sequence259[] = {
+constexpr LookupMatchStep kLookupSequence259[] = {
     {5067u, 5110u},
     {5065u, 5127u},
     {5094u, 5133u},
     {5067u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence260[] = {
+constexpr LookupMatchStep kLookupSequence260[] = {
     {5061u, 5106u}, {5061u, 5133u}, {5067u, 5133u}, {5069u, 5131u},
     {5061u, 5133u}, {5072u, 5131u}, {5094u, 5117u}, {5069u, 5112u},
     {5069u, 5131u}, {5094u, 5120u}, {5067u, 5112u}, {5061u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence261[] = {
+constexpr LookupMatchStep kLookupSequence261[] = {
     {5061u, 5138u},
     {5069u, 5102u},
     {5094u, 5120u},
     {5069u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence262[] = {
+constexpr LookupMatchStep kLookupSequence262[] = {
     {5061u, 5133u}, {5053u, 5133u}, {5092u, 5133u},
     {5077u, 5106u}, {5054u, 5143u}, {5069u, 5106u},
     {5067u, 5120u}, {5063u, 5131u}, {5067u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence263[] = {
+constexpr LookupMatchStep kLookupSequence263[] = {
     {5061u, 5111u}, {5094u, 5133u}, {5071u, 5133u}, {5094u, 5120u},
     {5067u, 5112u}, {5067u, 5138u}, {5094u, 5120u}, {5061u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence264[] = {
+constexpr LookupMatchStep kLookupSequence264[] = {
     {5063u, 5106u}, {5094u, 5106u}, {5067u, 5112u}, {5069u, 5127u},
     {5061u, 5106u}, {5063u, 5138u}, {5069u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence265[] = {
+constexpr LookupMatchStep kLookupSequence265[] = {
     {5061u, 5133u}, {5067u, 5117u}, {5094u, 5131u},
     {5067u, 5112u}, {5067u, 5138u}, {5067u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence266[] = {
+constexpr LookupMatchStep kLookupSequence266[] = {
     {5061u, 5106u},
     {5069u, 5127u},
     {5069u, 5120u},
     {5067u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence267[] = {
+constexpr LookupMatchStep kLookupSequence267[] = {
     {5067u, 5112u}, {5069u, 5131u}, {5094u, 5120u}, {5071u, 5112u},
     {5067u, 5133u}, {5067u, 5111u}, {5061u, 5111u}, {5069u, 5131u},
     {5063u, 5106u}, {5069u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence268[] = {
+constexpr LookupMatchStep kLookupSequence268[] = {
     {5094u, 5133u}, {5061u, 5112u}, {5067u, 5112u},
     {5067u, 5138u}, {5071u, 5138u}, {5093u, 5111u},
     {5061u, 5120u}, {5065u, 5133u}, {5061u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence269[] = {
+constexpr LookupMatchStep kLookupSequence269[] = {
     {5069u, 5127u}, {5071u, 5133u}, {5061u, 5138u}, {5061u, 5138u},
     {5069u, 5138u}, {5069u, 5127u}, {5071u, 5108u},
 };
-constexpr Attention6MatchStep kAttention6Sequence270[] = {
+constexpr LookupMatchStep kLookupSequence270[] = {
     {5069u, 5131u},
     {5067u, 5120u},
     {5069u, 5120u},
     {5069u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence271[] = {
+constexpr LookupMatchStep kLookupSequence271[] = {
     {5061u, 5106u}, {5061u, 5133u}, {5094u, 5106u},
     {5067u, 5112u}, {5067u, 5138u}, {5067u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence272[] = {
+constexpr LookupMatchStep kLookupSequence272[] = {
     {5061u, 5104u}, {5061u, 5106u}, {5067u, 5131u}, {5069u, 5111u},
     {5072u, 5131u}, {5067u, 5117u}, {5067u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence273[] = {
+constexpr LookupMatchStep kLookupSequence273[] = {
     {5067u, 5112u}, {5067u, 5133u}, {5069u, 5120u}, {5067u, 5106u},
     {5058u, 5138u}, {5074u, 5133u}, {5069u, 5143u},
 };
-constexpr Attention6MatchStep kAttention6Sequence274[] = {
+constexpr LookupMatchStep kLookupSequence274[] = {
     {5067u, 5110u}, {5065u, 5127u}, {5061u, 5112u},
     {5061u, 5138u}, {5067u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence275[] = {
+constexpr LookupMatchStep kLookupSequence275[] = {
     {5054u, 5131u},
     {5067u, 5108u},
     {5069u, 5127u},
     {5094u, 5108u},
 };
-constexpr Attention6MatchStep kAttention6Sequence276[] = {
+constexpr LookupMatchStep kLookupSequence276[] = {
     {5078u, 5118u}, {5072u, 5125u}, {5071u, 5112u},
     {5071u, 5110u}, {5065u, 5133u}, {5069u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence277[] = {
+constexpr LookupMatchStep kLookupSequence277[] = {
     {5065u, 5133u}, {5094u, 5125u}, {5061u, 5112u}, {5069u, 5111u},
     {5067u, 5106u}, {5061u, 5111u}, {5094u, 5133u}, {5067u, 5117u},
 };
-constexpr Attention6MatchStep kAttention6Sequence278[] = {
+constexpr LookupMatchStep kLookupSequence278[] = {
     {5094u, 5125u}, {5067u, 5112u}, {5071u, 5111u},
     {5067u, 5131u}, {5065u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence279[] = {
+constexpr LookupMatchStep kLookupSequence279[] = {
     {5061u, 5120u},
     {5094u, 5133u},
     {5061u, 5112u},
     {5061u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence280[] = {
+constexpr LookupMatchStep kLookupSequence280[] = {
     {5067u, 5108u}, {5065u, 5106u}, {5065u, 5124u},
     {5061u, 5124u}, {5069u, 5106u}, {5069u, 5108u},
 };
-constexpr Attention6MatchStep kAttention6Sequence281[] = {
+constexpr LookupMatchStep kLookupSequence281[] = {
     {5090u, 5126u},
     {5061u, 5110u},
     {5067u, 5133u},
     {5065u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence282[] = {
+constexpr LookupMatchStep kLookupSequence282[] = {
     {5061u, 5143u}, {5065u, 5127u}, {5069u, 5133u}, {5061u, 5127u},
     {5067u, 5112u}, {5067u, 5131u}, {5067u, 5127u}, {5063u, 5111u},
 };
-constexpr Attention6MatchStep kAttention6Sequence283[] = {
+constexpr LookupMatchStep kLookupSequence283[] = {
     {5094u, 5111u}, {5068u, 5112u}, {5061u, 5133u}, {5094u, 5133u},
     {5061u, 5112u}, {5067u, 5112u}, {5067u, 5111u},
 };
-constexpr Attention6MatchStep kAttention6Sequence284[] = {
+constexpr LookupMatchStep kLookupSequence284[] = {
     {5061u, 5138u}, {5065u, 5133u}, {5078u, 5132u}, {5094u, 5125u},
     {5071u, 5112u}, {5067u, 5111u}, {5069u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence285[] = {
+constexpr LookupMatchStep kLookupSequence285[] = {
     {5094u, 5106u}, {5069u, 5112u}, {5067u, 5106u}, {5069u, 5131u},
     {5067u, 5106u}, {5094u, 5111u}, {5067u, 5112u}, {5061u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence286[] = {
+constexpr LookupMatchStep kLookupSequence286[] = {
     {5069u, 5133u}, {5069u, 5131u}, {5061u, 5117u}, {5067u, 5131u},
     {5069u, 5138u}, {5067u, 5131u}, {5067u, 5138u}, {5094u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence287[] = {
+constexpr LookupMatchStep kLookupSequence287[] = {
     {5096u, 5120u}, {5071u, 5106u}, {5069u, 5133u},
     {5094u, 5120u}, {5053u, 5112u}, {5091u, 5111u},
 };
-constexpr Attention6MatchStep kAttention6Sequence288[] = {
+constexpr LookupMatchStep kLookupSequence288[] = {
     {5067u, 5106u}, {5069u, 5111u}, {5067u, 5106u},
     {5069u, 5127u}, {5083u, 5106u}, {5061u, 5124u},
 };
-constexpr Attention6MatchStep kAttention6Sequence289[] = {
+constexpr LookupMatchStep kLookupSequence289[] = {
     {5067u, 5115u}, {5082u, 5138u}, {5069u, 5133u},
     {5067u, 5106u}, {5063u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence290[] = {
+constexpr LookupMatchStep kLookupSequence290[] = {
     {5061u, 5127u}, {5069u, 5111u}, {5061u, 5106u}, {5061u, 5133u},
     {5094u, 5120u}, {5057u, 5112u}, {5094u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence291[] = {
+constexpr LookupMatchStep kLookupSequence291[] = {
     {5069u, 5124u}, {5094u, 5108u}, {5067u, 5112u}, {5069u, 5127u},
     {5069u, 5106u}, {5067u, 5106u}, {5061u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence292[] = {
+constexpr LookupMatchStep kLookupSequence292[] = {
     {5069u, 5106u}, {5070u, 5131u}, {5067u, 5115u}, {5061u, 5138u},
     {5094u, 5133u}, {5067u, 5112u}, {5067u, 5138u}, {5069u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence293[] = {
+constexpr LookupMatchStep kLookupSequence293[] = {
     {5071u, 5117u}, {5058u, 5133u}, {5061u, 5110u}, {5069u, 5120u},
     {5074u, 5106u}, {5069u, 5106u}, {5069u, 5106u}, {5094u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence294[] = {
+constexpr LookupMatchStep kLookupSequence294[] = {
     {5067u, 5115u}, {5074u, 5138u}, {5061u, 5143u},
     {5094u, 5131u}, {5061u, 5139u},
 };
-constexpr Attention6MatchStep kAttention6Sequence295[] = {
+constexpr LookupMatchStep kLookupSequence295[] = {
     {5063u, 5139u}, {5078u, 5120u}, {5061u, 5108u}, {5061u, 5133u},
     {5067u, 5133u}, {5067u, 5138u}, {5061u, 5133u}, {5069u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence296[] = {
+constexpr LookupMatchStep kLookupSequence296[] = {
     {5094u, 5111u}, {5071u, 5106u}, {5061u, 5106u}, {5061u, 5133u},
     {5069u, 5131u}, {5067u, 5133u}, {5067u, 5138u}, {5067u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence297[] = {
+constexpr LookupMatchStep kLookupSequence297[] = {
     {5061u, 5112u}, {5069u, 5131u}, {5067u, 5106u}, {5061u, 5131u},
     {5069u, 5133u}, {5072u, 5131u}, {5094u, 5117u},
 };
-constexpr Attention6MatchStep kAttention6Sequence298[] = {
+constexpr LookupMatchStep kLookupSequence298[] = {
     {5061u, 5106u}, {5061u, 5138u}, {5063u, 5106u},
     {5072u, 5120u}, {5070u, 5117u}, {5067u, 5115u},
 };
-constexpr Attention6MatchStep kAttention6Sequence299[] = {
+constexpr LookupMatchStep kLookupSequence299[] = {
     {5067u, 5134u},
     {5067u, 5111u},
     {5065u, 5127u},
     {5061u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence300[] = {
+constexpr LookupMatchStep kLookupSequence300[] = {
     {5053u, 5120u}, {5071u, 5106u}, {5067u, 5133u},
     {5065u, 5131u}, {5067u, 5106u}, {5069u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence301[] = {
+constexpr LookupMatchStep kLookupSequence301[] = {
     {5072u, 5120u},
     {5061u, 5117u},
     {5072u, 5105u},
     {5067u, 5117u},
 };
-constexpr Attention6MatchStep kAttention6Sequence302[] = {
+constexpr LookupMatchStep kLookupSequence302[] = {
     {5069u, 5112u}, {5071u, 5106u}, {5067u, 5106u},
     {5069u, 5131u}, {5069u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence303[] = {
+constexpr LookupMatchStep kLookupSequence303[] = {
     {5072u, 5127u}, {5067u, 5106u}, {5061u, 5133u},
     {5078u, 5133u}, {5067u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence304[] = {
+constexpr LookupMatchStep kLookupSequence304[] = {
     {5069u, 5131u},
     {5061u, 5106u},
     {5061u, 5120u},
     {5094u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence305[] = {
+constexpr LookupMatchStep kLookupSequence305[] = {
     {5079u, 5133u}, {5069u, 5120u}, {5094u, 5108u}, {5067u, 5112u},
     {5069u, 5131u}, {5061u, 5106u}, {5072u, 5105u},
 };
-constexpr Attention6MatchStep kAttention6Sequence306[] = {
+constexpr LookupMatchStep kLookupSequence306[] = {
     {5067u, 5117u}, {5065u, 5106u}, {5067u, 5106u},
     {5069u, 5131u}, {5061u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence307[] = {
+constexpr LookupMatchStep kLookupSequence307[] = {
     {5061u, 5143u}, {5069u, 5133u}, {5061u, 5133u}, {5069u, 5110u},
     {5061u, 5120u}, {5094u, 5120u}, {5067u, 5112u}, {5065u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence308[] = {
+constexpr LookupMatchStep kLookupSequence308[] = {
     {5094u, 5120u}, {5067u, 5112u}, {5067u, 5131u},
     {5069u, 5131u}, {5071u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence309[] = {
+constexpr LookupMatchStep kLookupSequence309[] = {
     {5069u, 5124u}, {5094u, 5120u}, {5061u, 5112u},
     {5074u, 5133u}, {5071u, 5143u},
 };
-constexpr Attention6MatchStep kAttention6Sequence310[] = {
+constexpr LookupMatchStep kLookupSequence310[] = {
     {5094u, 5117u}, {5069u, 5112u}, {5069u, 5106u}, {5069u, 5131u},
     {5071u, 5108u}, {5067u, 5106u}, {5069u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence311[] = {
+constexpr LookupMatchStep kLookupSequence311[] = {
     {5079u, 5134u}, {5067u, 5133u}, {5069u, 5131u}, {5061u, 5106u},
     {5094u, 5131u}, {5063u, 5112u}, {5069u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence312[] = {
+constexpr LookupMatchStep kLookupSequence312[] = {
     {5061u, 5106u}, {5087u, 5127u}, {5067u, 5106u},
     {5069u, 5125u}, {5067u, 5106u}, {5067u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence313[] = {
+constexpr LookupMatchStep kLookupSequence313[] = {
     {5069u, 5102u},
     {5069u, 5131u},
     {5061u, 5106u},
     {5067u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence314[] = {
+constexpr LookupMatchStep kLookupSequence314[] = {
     {5094u, 5120u}, {5067u, 5112u}, {5069u, 5131u}, {5094u, 5106u},
     {5061u, 5112u}, {5061u, 5138u}, {5063u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence315[] = {
+constexpr LookupMatchStep kLookupSequence315[] = {
     {5094u, 5127u}, {5067u, 5112u}, {5067u, 5133u},
     {5071u, 5133u}, {5067u, 5143u},
 };
-constexpr Attention6MatchStep kAttention6Sequence316[] = {
+constexpr LookupMatchStep kLookupSequence316[] = {
     {5069u, 5112u}, {5072u, 5131u}, {5069u, 5117u}, {5067u, 5131u},
     {5061u, 5117u}, {5065u, 5111u}, {5071u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence317[] = {
+constexpr LookupMatchStep kLookupSequence317[] = {
     {5067u, 5106u},
     {5071u, 5131u},
     {5067u, 5111u},
     {5072u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence318[] = {
+constexpr LookupMatchStep kLookupSequence318[] = {
     {5053u, 5106u}, {5067u, 5111u}, {5069u, 5127u},
     {5074u, 5108u}, {5067u, 5143u}, {5061u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence319[] = {
+constexpr LookupMatchStep kLookupSequence319[] = {
     {5061u, 5111u}, {5094u, 5133u}, {5061u, 5112u}, {5094u, 5131u},
     {5067u, 5112u}, {5067u, 5111u}, {5065u, 5131u}, {5094u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence320[] = {
+constexpr LookupMatchStep kLookupSequence320[] = {
     {5072u, 5131u}, {5069u, 5106u}, {5094u, 5106u},
     {5061u, 5112u}, {5061u, 5131u}, {5069u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence321[] = {
+constexpr LookupMatchStep kLookupSequence321[] = {
     {5094u, 5117u},
     {5067u, 5112u},
     {5067u, 5106u},
     {5061u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence322[] = {
+constexpr LookupMatchStep kLookupSequence322[] = {
     {5069u, 5133u}, {5094u, 5105u}, {5061u, 5112u},
     {5053u, 5133u}, {5069u, 5138u}, {5069u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence323[] = {
+constexpr LookupMatchStep kLookupSequence323[] = {
     {5061u, 5112u}, {5061u, 5133u}, {5069u, 5138u},
     {5063u, 5106u}, {5072u, 5120u}, {5067u, 5108u},
     {5061u, 5106u}, {5067u, 5112u}, {5069u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence324[] = {
+constexpr LookupMatchStep kLookupSequence324[] = {
     {5061u, 5120u}, {5061u, 5120u}, {5067u, 5133u}, {5069u, 5133u},
     {5067u, 5106u}, {5069u, 5138u}, {5063u, 5132u}, {5069u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence325[] = {
+constexpr LookupMatchStep kLookupSequence325[] = {
     {5067u, 5133u}, {5061u, 5127u}, {5061u, 5133u},
     {5061u, 5133u}, {5061u, 5131u}, {5067u, 5106u},
     {5067u, 5131u}, {5061u, 5120u}, {5069u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence326[] = {
+constexpr LookupMatchStep kLookupSequence326[] = {
     {5061u, 5105u}, {5067u, 5120u}, {5061u, 5133u}, {5087u, 5133u},
     {5061u, 5133u}, {5070u, 5120u}, {5067u, 5115u}, {5065u, 5111u},
 };
-constexpr Attention6MatchStep kAttention6Sequence327[] = {
+constexpr LookupMatchStep kLookupSequence327[] = {
     {5094u, 5131u}, {5071u, 5106u}, {5061u, 5106u}, {5067u, 5106u},
     {5067u, 5138u}, {5069u, 5131u}, {5094u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence328[] = {
+constexpr LookupMatchStep kLookupSequence328[] = {
     {5061u, 5112u}, {5069u, 5111u}, {5067u, 5106u}, {5061u, 5111u},
     {5067u, 5133u}, {5061u, 5131u}, {5069u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence329[] = {
+constexpr LookupMatchStep kLookupSequence329[] = {
     {5067u, 5111u},
     {5061u, 5131u},
     {5065u, 5127u},
     {5067u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence330[] = {
+constexpr LookupMatchStep kLookupSequence330[] = {
     {5094u, 5106u}, {5067u, 5112u}, {5061u, 5106u},
     {5069u, 5127u}, {5067u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence331[] = {
+constexpr LookupMatchStep kLookupSequence331[] = {
     {5067u, 5133u}, {5071u, 5120u}, {5067u, 5133u},
     {5094u, 5120u}, {5067u, 5112u}, {5069u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence332[] = {
+constexpr LookupMatchStep kLookupSequence332[] = {
     {5094u, 5120u}, {5061u, 5112u}, {5067u, 5106u},
     {5061u, 5131u}, {5094u, 5106u}, {5067u, 5112u},
     {5069u, 5106u}, {5072u, 5109u}, {5072u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence333[] = {
+constexpr LookupMatchStep kLookupSequence333[] = {
     {5069u, 5131u}, {5094u, 5120u}, {5067u, 5112u},
     {5067u, 5138u}, {5069u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence334[] = {
+constexpr LookupMatchStep kLookupSequence334[] = {
     {5069u, 5112u}, {5067u, 5120u}, {5065u, 5131u},
     {5067u, 5112u}, {5061u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence335[] = {
+constexpr LookupMatchStep kLookupSequence335[] = {
     {5069u, 5106u}, {5065u, 5131u}, {5067u, 5120u},
     {5069u, 5127u}, {5067u, 5120u}, {5094u, 5127u},
 };
-constexpr Attention6MatchStep kAttention6Sequence336[] = {
+constexpr LookupMatchStep kLookupSequence336[] = {
     {5069u, 5111u}, {5067u, 5106u}, {5061u, 5104u}, {5061u, 5133u},
     {5061u, 5133u}, {5094u, 5106u}, {5061u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence337[] = {
+constexpr LookupMatchStep kLookupSequence337[] = {
     {5067u, 5138u}, {5067u, 5111u}, {5069u, 5111u},
     {5094u, 5106u}, {5069u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence338[] = {
+constexpr LookupMatchStep kLookupSequence338[] = {
     {5090u, 5106u}, {5069u, 5120u}, {5067u, 5106u}, {5061u, 5106u},
     {5094u, 5133u}, {5067u, 5112u}, {5098u, 5138u}, {5065u, 5131u},
     {5067u, 5120u}, {5072u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence339[] = {
+constexpr LookupMatchStep kLookupSequence339[] = {
     {5094u, 5133u}, {5061u, 5112u}, {5063u, 5120u}, {5069u, 5131u},
     {5071u, 5106u}, {5067u, 5111u}, {5072u, 5120u}, {5094u, 5117u},
 };
-constexpr Attention6MatchStep kAttention6Sequence340[] = {
+constexpr LookupMatchStep kLookupSequence340[] = {
     {5061u, 5138u}, {5069u, 5127u}, {5074u, 5120u}, {5063u, 5106u},
     {5061u, 5131u}, {5069u, 5111u}, {5067u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence341[] = {
+constexpr LookupMatchStep kLookupSequence341[] = {
     {5061u, 5120u}, {5072u, 5131u}, {5067u, 5117u},
     {5069u, 5111u}, {5069u, 5106u}, {5067u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence342[] = {
+constexpr LookupMatchStep kLookupSequence342[] = {
     {5061u, 5111u},
     {5067u, 5133u},
     {5067u, 5138u},
     {5061u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence343[] = {
+constexpr LookupMatchStep kLookupSequence343[] = {
     {5094u, 5117u}, {5071u, 5112u}, {5074u, 5111u}, {5061u, 5134u},
     {5061u, 5131u}, {5061u, 5120u}, {5065u, 5120u}, {5069u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence344[] = {
+constexpr LookupMatchStep kLookupSequence344[] = {
     {5054u, 5134u}, {5067u, 5106u}, {5061u, 5106u},
     {5096u, 5131u}, {5061u, 5125u},
 };
-constexpr Attention6MatchStep kAttention6Sequence345[] = {
+constexpr LookupMatchStep kLookupSequence345[] = {
     {5071u, 5138u}, {5067u, 5106u}, {5067u, 5106u},
     {5069u, 5120u}, {5061u, 5120u}, {5061u, 5105u},
 };
-constexpr Attention6MatchStep kAttention6Sequence346[] = {
+constexpr LookupMatchStep kLookupSequence346[] = {
     {5067u, 5112u}, {5098u, 5138u}, {5098u, 5106u},
     {5061u, 5106u}, {5072u, 5105u}, {5067u, 5117u},
     {5061u, 5131u}, {5067u, 5138u}, {5067u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence347[] = {
+constexpr LookupMatchStep kLookupSequence347[] = {
     {5053u, 5133u}, {5061u, 5111u}, {5069u, 5108u},
     {5061u, 5108u}, {5069u, 5106u}, {5074u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence348[] = {
+constexpr LookupMatchStep kLookupSequence348[] = {
     {5093u, 5120u}, {5067u, 5133u}, {5069u, 5111u},
     {5067u, 5106u}, {5069u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence349[] = {
+constexpr LookupMatchStep kLookupSequence349[] = {
     {5061u, 5106u}, {5061u, 5106u}, {5094u, 5133u},
     {5067u, 5112u}, {5067u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence350[] = {
+constexpr LookupMatchStep kLookupSequence350[] = {
     {5090u, 5143u}, {5083u, 5124u}, {5069u, 5124u}, {5067u, 5106u},
     {5067u, 5138u}, {5067u, 5131u}, {5069u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence351[] = {
+constexpr LookupMatchStep kLookupSequence351[] = {
     {5067u, 5127u}, {5065u, 5131u}, {5061u, 5110u},
     {5072u, 5131u}, {5065u, 5117u},
 };
-constexpr Attention6MatchStep kAttention6Sequence352[] = {
+constexpr LookupMatchStep kLookupSequence352[] = {
     {5067u, 5112u}, {5069u, 5111u}, {5061u, 5120u},
     {5072u, 5131u}, {5069u, 5117u}, {5071u, 5127u},
 };
-constexpr Attention6MatchStep kAttention6Sequence353[] = {
+constexpr LookupMatchStep kLookupSequence353[] = {
     {5061u, 5127u}, {5067u, 5120u}, {5069u, 5111u}, {5071u, 5133u},
     {5067u, 5106u}, {5061u, 5131u}, {5061u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence354[] = {
+constexpr LookupMatchStep kLookupSequence354[] = {
     {5072u, 5106u}, {5071u, 5117u}, {5067u, 5133u},
     {5065u, 5127u}, {5061u, 5133u}, {5071u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence355[] = {
+constexpr LookupMatchStep kLookupSequence355[] = {
     {5053u, 5134u}, {5067u, 5133u}, {5061u, 5138u}, {5071u, 5133u},
     {5061u, 5110u}, {5069u, 5106u}, {5094u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence356[] = {
+constexpr LookupMatchStep kLookupSequence356[] = {
     {5072u, 5105u}, {5061u, 5120u}, {5074u, 5133u},
     {5067u, 5143u}, {5067u, 5111u}, {5061u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence357[] = {
+constexpr LookupMatchStep kLookupSequence357[] = {
     {5069u, 5106u},
     {5072u, 5105u},
     {5067u, 5117u},
     {5067u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence358[] = {
+constexpr LookupMatchStep kLookupSequence358[] = {
     {5094u, 5131u}, {5067u, 5112u}, {5069u, 5133u},
     {5063u, 5106u}, {5094u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence359[] = {
+constexpr LookupMatchStep kLookupSequence359[] = {
     {5063u, 5112u}, {5071u, 5111u}, {5061u, 5133u}, {5061u, 5138u},
     {5094u, 5131u}, {5067u, 5112u}, {5072u, 5127u},
 };
-constexpr Attention6MatchStep kAttention6Sequence360[] = {
+constexpr LookupMatchStep kLookupSequence360[] = {
     {5069u, 5138u}, {5070u, 5120u}, {5061u, 5139u},
     {5069u, 5133u}, {5065u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence361[] = {
+constexpr LookupMatchStep kLookupSequence361[] = {
     {5065u, 5124u},
     {5069u, 5120u},
     {5094u, 5120u},
     {5091u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence362[] = {
+constexpr LookupMatchStep kLookupSequence362[] = {
     {5053u, 5133u},
     {5067u, 5133u},
     {5065u, 5131u},
     {5094u, 5111u},
 };
-constexpr Attention6MatchStep kAttention6Sequence363[] = {
+constexpr LookupMatchStep kLookupSequence363[] = {
     {5061u, 5131u}, {5056u, 5127u}, {5094u, 5111u},
     {5069u, 5117u}, {5069u, 5127u}, {5067u, 5127u},
 };
-constexpr Attention6MatchStep kAttention6Sequence364[] = {
+constexpr LookupMatchStep kLookupSequence364[] = {
     {5061u, 5120u}, {5061u, 5106u}, {5069u, 5106u},
     {5094u, 5112u}, {5069u, 5112u}, {5064u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence365[] = {
+constexpr LookupMatchStep kLookupSequence365[] = {
     {5053u, 5130u}, {5074u, 5106u}, {5053u, 5143u}, {5067u, 5133u},
     {5094u, 5127u}, {5067u, 5106u}, {5069u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence366[] = {
+constexpr LookupMatchStep kLookupSequence366[] = {
     {5060u, 5110u}, {5069u, 5108u}, {5094u, 5106u},
     {5067u, 5112u}, {5067u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence367[] = {
+constexpr LookupMatchStep kLookupSequence367[] = {
     {5069u, 5138u}, {5061u, 5106u}, {5069u, 5131u},
     {5094u, 5111u}, {5061u, 5112u}, {5072u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence368[] = {
+constexpr LookupMatchStep kLookupSequence368[] = {
     {5069u, 5133u}, {5060u, 5126u}, {5069u, 5118u}, {5069u, 5120u},
     {5069u, 5120u}, {5069u, 5127u}, {5061u, 5127u},
 };
-constexpr Attention6MatchStep kAttention6Sequence369[] = {
+constexpr LookupMatchStep kLookupSequence369[] = {
     {5079u, 5111u}, {5069u, 5133u}, {5071u, 5133u}, {5069u, 5133u},
     {5071u, 5125u}, {5074u, 5133u}, {5071u, 5143u}, {5071u, 5133u},
     {5065u, 5133u}, {5069u, 5112u}, {5094u, 5120u}, {5061u, 5112u},
     {5061u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence370[] = {
+constexpr LookupMatchStep kLookupSequence370[] = {
     {5069u, 5133u}, {5094u, 5120u}, {5067u, 5112u},
     {5067u, 5138u}, {5069u, 5133u}, {5071u, 5103u},
 };
-constexpr Attention6MatchStep kAttention6Sequence371[] = {
+constexpr LookupMatchStep kLookupSequence371[] = {
     {5094u, 5110u}, {5067u, 5112u}, {5065u, 5131u},
     {5061u, 5106u}, {5061u, 5133u}, {5069u, 5133u},
     {5091u, 5110u}, {5069u, 5110u}, {5061u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence372[] = {
+constexpr LookupMatchStep kLookupSequence372[] = {
     {5061u, 5112u}, {5069u, 5111u}, {5094u, 5131u},
     {5067u, 5112u}, {5061u, 5111u}, {5094u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence373[] = {
+constexpr LookupMatchStep kLookupSequence373[] = {
     {5067u, 5120u}, {5061u, 5138u}, {5082u, 5138u},
     {5069u, 5132u}, {5067u, 5120u}, {5094u, 5133u},
     {5067u, 5112u}, {5061u, 5138u}, {5071u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence374[] = {
+constexpr LookupMatchStep kLookupSequence374[] = {
     {5069u, 5111u},
     {5067u, 5106u},
     {5067u, 5106u},
     {5067u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence375[] = {
+constexpr LookupMatchStep kLookupSequence375[] = {
     {5067u, 5120u}, {5065u, 5131u}, {5053u, 5133u},
     {5067u, 5106u}, {5094u, 5127u},
 };
-constexpr Attention6MatchStep kAttention6Sequence376[] = {
+constexpr LookupMatchStep kLookupSequence376[] = {
     {5069u, 5105u}, {5090u, 5106u}, {5061u, 5104u}, {5069u, 5131u},
     {5063u, 5106u}, {5072u, 5131u}, {5067u, 5117u}, {5061u, 5136u},
     {5067u, 5120u}, {5067u, 5136u},
 };
-constexpr Attention6MatchStep kAttention6Sequence377[] = {
+constexpr LookupMatchStep kLookupSequence377[] = {
     {5061u, 5112u}, {5072u, 5105u}, {5061u, 5117u},
     {5061u, 5131u}, {5061u, 5133u}, {5061u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence378[] = {
+constexpr LookupMatchStep kLookupSequence378[] = {
     {5061u, 5104u}, {5061u, 5133u}, {5069u, 5120u}, {5067u, 5106u},
     {5061u, 5120u}, {5065u, 5133u}, {5069u, 5110u}, {5061u, 5132u},
 };
-constexpr Attention6MatchStep kAttention6Sequence379[] = {
+constexpr LookupMatchStep kLookupSequence379[] = {
     {5061u, 5110u}, {5061u, 5133u}, {5058u, 5133u},
     {5061u, 5110u}, {5069u, 5131u}, {5061u, 5108u},
 };
-constexpr Attention6MatchStep kAttention6Sequence380[] = {
+constexpr LookupMatchStep kLookupSequence380[] = {
     {5069u, 5111u}, {5072u, 5120u}, {5063u, 5117u},
     {5069u, 5133u}, {5067u, 5111u}, {5061u, 5138u},
     {5094u, 5112u}, {5067u, 5112u}, {5067u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence381[] = {
+constexpr LookupMatchStep kLookupSequence381[] = {
     {5061u, 5133u}, {5061u, 5133u}, {5061u, 5127u},
     {5069u, 5133u}, {5069u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence382[] = {
+constexpr LookupMatchStep kLookupSequence382[] = {
     {5067u, 5106u}, {5094u, 5133u}, {5057u, 5112u},
     {5061u, 5133u}, {5067u, 5133u}, {5061u, 5131u},
     {5079u, 5133u}, {5061u, 5106u}, {5061u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence383[] = {
+constexpr LookupMatchStep kLookupSequence383[] = {
     {5069u, 5133u}, {5094u, 5131u}, {5061u, 5112u},
     {5067u, 5138u}, {5067u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence384[] = {
+constexpr LookupMatchStep kLookupSequence384[] = {
     {5067u, 5120u}, {5069u, 5127u}, {5060u, 5106u}, {5061u, 5111u},
     {5069u, 5120u}, {5067u, 5106u}, {5067u, 5138u}, {5061u, 5138u},
     {5069u, 5120u}, {5069u, 5108u},
 };
-constexpr Attention6MatchStep kAttention6Sequence385[] = {
+constexpr LookupMatchStep kLookupSequence385[] = {
     {5069u, 5120u}, {5061u, 5106u}, {5061u, 5131u}, {5067u, 5138u},
     {5094u, 5105u}, {5069u, 5112u}, {5061u, 5106u}, {5061u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence386[] = {
+constexpr LookupMatchStep kLookupSequence386[] = {
     {5067u, 5106u}, {5069u, 5106u}, {5065u, 5106u},
     {5094u, 5106u}, {5069u, 5112u}, {5098u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence387[] = {
+constexpr LookupMatchStep kLookupSequence387[] = {
     {5061u, 5106u}, {5067u, 5117u}, {5083u, 5106u},
     {5094u, 5111u}, {5071u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence388[] = {
+constexpr LookupMatchStep kLookupSequence388[] = {
     {5094u, 5125u}, {5061u, 5115u}, {5061u, 5138u},
     {5061u, 5138u}, {5065u, 5131u}, {5067u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence389[] = {
+constexpr LookupMatchStep kLookupSequence389[] = {
     {5061u, 5106u}, {5061u, 5111u}, {5061u, 5133u}, {5067u, 5106u},
     {5063u, 5131u}, {5094u, 5111u}, {5067u, 5112u}, {5066u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence390[] = {
+constexpr LookupMatchStep kLookupSequence390[] = {
     {5065u, 5133u},
     {5069u, 5111u},
     {5069u, 5131u},
     {5094u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence391[] = {
+constexpr LookupMatchStep kLookupSequence391[] = {
     {5067u, 5106u}, {5061u, 5138u}, {5069u, 5111u},
     {5069u, 5105u}, {5069u, 5106u}, {5067u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence392[] = {
+constexpr LookupMatchStep kLookupSequence392[] = {
     {5069u, 5116u}, {5069u, 5116u}, {5067u, 5138u},
     {5061u, 5138u}, {5065u, 5111u}, {5067u, 5104u},
     {5067u, 5138u}, {5061u, 5131u}, {5094u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence393[] = {
+constexpr LookupMatchStep kLookupSequence393[] = {
     {5094u, 5120u}, {5080u, 5115u}, {5061u, 5106u},
     {5071u, 5133u}, {5090u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence394[] = {
+constexpr LookupMatchStep kLookupSequence394[] = {
     {5067u, 5127u}, {5061u, 5131u}, {5061u, 5133u}, {5072u, 5133u},
     {5067u, 5112u}, {5098u, 5138u}, {5069u, 5127u},
 };
-constexpr Attention6MatchStep kAttention6Sequence395[] = {
+constexpr LookupMatchStep kLookupSequence395[] = {
     {5067u, 5130u}, {5069u, 5133u}, {5061u, 5106u}, {5061u, 5106u},
     {5063u, 5133u}, {5061u, 5105u}, {5061u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence396[] = {
+constexpr LookupMatchStep kLookupSequence396[] = {
     {5061u, 5112u},
     {5069u, 5131u},
     {5061u, 5106u},
     {5061u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence397[] = {
+constexpr LookupMatchStep kLookupSequence397[] = {
     {5061u, 5112u}, {5061u, 5106u}, {5069u, 5133u},
     {5074u, 5120u}, {5067u, 5134u},
 };
-constexpr Attention6MatchStep kAttention6Sequence398[] = {
+constexpr LookupMatchStep kLookupSequence398[] = {
     {5094u, 5117u}, {5067u, 5112u}, {5069u, 5120u},
     {5061u, 5106u}, {5067u, 5138u}, {5067u, 5138u},
     {5069u, 5131u}, {5063u, 5106u}, {5094u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence399[] = {
+constexpr LookupMatchStep kLookupSequence399[] = {
     {5069u, 5131u}, {5098u, 5112u}, {5067u, 5136u},
     {5067u, 5133u}, {5061u, 5131u}, {5072u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence400[] = {
+constexpr LookupMatchStep kLookupSequence400[] = {
     {5067u, 5133u}, {5067u, 5138u}, {5061u, 5106u}, {5061u, 5133u},
     {5061u, 5138u}, {5061u, 5133u}, {5094u, 5133u}, {5067u, 5112u},
     {5067u, 5138u}, {5069u, 5131u}, {5069u, 5106u}, {5072u, 5131u},
     {5067u, 5117u}, {5066u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence401[] = {
+constexpr LookupMatchStep kLookupSequence401[] = {
     {5061u, 5123u}, {5061u, 5122u}, {5087u, 5133u}, {5069u, 5122u},
     {5094u, 5127u}, {5090u, 5112u}, {5063u, 5106u}, {5069u, 5120u},
     {5094u, 5106u}, {5069u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence402[] = {
+constexpr LookupMatchStep kLookupSequence402[] = {
     {5061u, 5131u},
     {5069u, 5127u},
     {5069u, 5133u},
     {5082u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence403[] = {
+constexpr LookupMatchStep kLookupSequence403[] = {
     {5065u, 5133u}, {5067u, 5125u}, {5061u, 5138u}, {5071u, 5133u},
     {5067u, 5106u}, {5065u, 5131u}, {5069u, 5111u},
 };
-constexpr Attention6MatchStep kAttention6Sequence404[] = {
+constexpr LookupMatchStep kLookupSequence404[] = {
     {5067u, 5114u}, {5061u, 5106u}, {5067u, 5106u}, {5061u, 5120u},
     {5061u, 5133u}, {5067u, 5120u}, {5061u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence405[] = {
+constexpr LookupMatchStep kLookupSequence405[] = {
     {5061u, 5106u}, {5094u, 5120u}, {5067u, 5112u},
     {5069u, 5120u}, {5061u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence406[] = {
+constexpr LookupMatchStep kLookupSequence406[] = {
     {5071u, 5111u},
     {5069u, 5131u},
     {5061u, 5106u},
     {5069u, 5111u},
 };
-constexpr Attention6MatchStep kAttention6Sequence407[] = {
+constexpr LookupMatchStep kLookupSequence407[] = {
     {5071u, 5111u}, {5069u, 5120u}, {5067u, 5120u},
     {5065u, 5131u}, {5065u, 5133u}, {5069u, 5111u},
 };
-constexpr Attention6MatchStep kAttention6Sequence408[] = {
+constexpr LookupMatchStep kLookupSequence408[] = {
     {5061u, 5138u},
     {5093u, 5133u},
     {5094u, 5120u},
     {5065u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence409[] = {
+constexpr LookupMatchStep kLookupSequence409[] = {
     {5069u, 5112u}, {5067u, 5111u}, {5067u, 5111u},
     {5061u, 5133u}, {5061u, 5131u}, {5063u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence410[] = {
+constexpr LookupMatchStep kLookupSequence410[] = {
     {5061u, 5102u}, {5069u, 5131u}, {5061u, 5127u}, {5065u, 5133u},
     {5067u, 5106u}, {5065u, 5106u}, {5079u, 5106u}, {5096u, 5127u},
     {5069u, 5106u}, {5072u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence411[] = {
+constexpr LookupMatchStep kLookupSequence411[] = {
     {5069u, 5127u}, {5053u, 5120u}, {5069u, 5138u},
     {5094u, 5106u}, {5061u, 5112u}, {5061u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence412[] = {
+constexpr LookupMatchStep kLookupSequence412[] = {
     {5067u, 5138u}, {5069u, 5120u}, {5067u, 5106u},
     {5061u, 5131u}, {5069u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence413[] = {
+constexpr LookupMatchStep kLookupSequence413[] = {
     {5088u, 5124u}, {5069u, 5120u}, {5069u, 5106u}, {5067u, 5127u},
     {5069u, 5131u}, {5061u, 5108u}, {5070u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence414[] = {
+constexpr LookupMatchStep kLookupSequence414[] = {
     {5069u, 5120u}, {5067u, 5112u}, {5069u, 5120u},
     {5063u, 5106u}, {5070u, 5120u}, {5067u, 5139u},
 };
-constexpr Attention6MatchStep kAttention6Sequence415[] = {
+constexpr LookupMatchStep kLookupSequence415[] = {
     {5061u, 5134u}, {5069u, 5103u}, {5071u, 5110u},
     {5094u, 5131u}, {5091u, 5106u}, {5069u, 5110u},
 };
-constexpr Attention6MatchStep kAttention6Sequence416[] = {
+constexpr LookupMatchStep kLookupSequence416[] = {
     {5067u, 5111u}, {5069u, 5133u}, {5061u, 5106u},
     {5072u, 5131u}, {5067u, 5117u},
 };
-constexpr Attention6MatchStep kAttention6Sequence417[] = {
+constexpr LookupMatchStep kLookupSequence417[] = {
     {5069u, 5143u}, {5069u, 5127u}, {5061u, 5120u},
     {5063u, 5131u}, {5069u, 5109u}, {5061u, 5108u},
     {5067u, 5131u}, {5069u, 5131u}, {5067u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence418[] = {
+constexpr LookupMatchStep kLookupSequence418[] = {
     {5094u, 5133u}, {5071u, 5112u}, {5071u, 5106u}, {5069u, 5106u},
     {5061u, 5131u}, {5057u, 5133u}, {5061u, 5133u}, {5067u, 5133u},
     {5094u, 5133u}, {5061u, 5133u}, {5067u, 5138u}, {5061u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence419[] = {
+constexpr LookupMatchStep kLookupSequence419[] = {
     {5071u, 5105u}, {5067u, 5120u}, {5069u, 5111u}, {5071u, 5112u},
     {5067u, 5106u}, {5054u, 5131u}, {5063u, 5102u},
 };
-constexpr Attention6MatchStep kAttention6Sequence420[] = {
+constexpr LookupMatchStep kLookupSequence420[] = {
     {5063u, 5112u}, {5069u, 5131u}, {5061u, 5106u},
     {5067u, 5138u}, {5061u, 5138u}, {5069u, 5133u},
     {5067u, 5112u}, {5072u, 5105u}, {5067u, 5117u},
 };
-constexpr Attention6MatchStep kAttention6Sequence421[] = {
+constexpr LookupMatchStep kLookupSequence421[] = {
     {5067u, 5123u}, {5065u, 5111u}, {5067u, 5125u},
     {5065u, 5106u}, {5072u, 5125u}, {5079u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence422[] = {
+constexpr LookupMatchStep kLookupSequence422[] = {
     {5094u, 5117u}, {5067u, 5112u}, {5067u, 5138u},
     {5067u, 5105u}, {5088u, 5136u}, {5094u, 5111u},
 };
-constexpr Attention6MatchStep kAttention6Sequence423[] = {
+constexpr LookupMatchStep kLookupSequence423[] = {
     {5071u, 5143u}, {5061u, 5133u}, {5098u, 5112u}, {5067u, 5138u},
     {5094u, 5133u}, {5067u, 5112u}, {5065u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence424[] = {
+constexpr LookupMatchStep kLookupSequence424[] = {
     {5067u, 5106u},
     {5061u, 5106u},
     {5067u, 5133u},
     {5061u, 5111u},
 };
-constexpr Attention6MatchStep kAttention6Sequence425[] = {
+constexpr LookupMatchStep kLookupSequence425[] = {
     {5067u, 5115u}, {5067u, 5138u}, {5069u, 5127u},
     {5067u, 5106u}, {5065u, 5131u}, {5067u, 5125u},
 };
-constexpr Attention6MatchStep kAttention6Sequence426[] = {
+constexpr LookupMatchStep kLookupSequence426[] = {
     {5069u, 5131u}, {5067u, 5106u}, {5069u, 5138u}, {5061u, 5138u},
     {5061u, 5133u}, {5069u, 5138u}, {5072u, 5131u}, {5061u, 5117u},
 };
-constexpr Attention6MatchStep kAttention6Sequence427[] = {
+constexpr LookupMatchStep kLookupSequence427[] = {
     {5067u, 5133u},
     {5067u, 5111u},
     {5069u, 5127u},
     {5067u, 5134u},
 };
-constexpr Attention6MatchStep kAttention6Sequence428[] = {
+constexpr LookupMatchStep kLookupSequence428[] = {
     {5065u, 5120u}, {5094u, 5125u}, {5061u, 5112u}, {5067u, 5133u},
     {5069u, 5131u}, {5061u, 5120u}, {5069u, 5131u}, {5094u, 5120u},
     {5069u, 5112u}, {5067u, 5106u}, {5069u, 5127u}, {5067u, 5120u},
     {5067u, 5138u}, {5061u, 5105u}, {5063u, 5131u}, {5065u, 5131u},
     {5069u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence429[] = {
+constexpr LookupMatchStep kLookupSequence429[] = {
     {5061u, 5106u}, {5071u, 5133u}, {5094u, 5106u}, {5067u, 5112u},
     {5094u, 5133u}, {5053u, 5112u}, {5067u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence430[] = {
+constexpr LookupMatchStep kLookupSequence430[] = {
     {5069u, 5127u},
     {5061u, 5127u},
     {5072u, 5120u},
     {5094u, 5117u},
 };
-constexpr Attention6MatchStep kAttention6Sequence431[] = {
+constexpr LookupMatchStep kLookupSequence431[] = {
     {5069u, 5132u}, {5061u, 5106u}, {5061u, 5138u}, {5061u, 5133u},
     {5069u, 5120u}, {5061u, 5108u}, {5067u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence432[] = {
+constexpr LookupMatchStep kLookupSequence432[] = {
     {5067u, 5110u}, {5065u, 5111u}, {5061u, 5133u},
     {5067u, 5106u}, {5067u, 5111u}, {5069u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence433[] = {
+constexpr LookupMatchStep kLookupSequence433[] = {
     {5071u, 5102u}, {5069u, 5127u}, {5090u, 5131u}, {5069u, 5106u},
     {5069u, 5131u}, {5072u, 5131u}, {5061u, 5117u},
 };
-constexpr Attention6MatchStep kAttention6Sequence434[] = {
+constexpr LookupMatchStep kLookupSequence434[] = {
     {5069u, 5131u},
     {5069u, 5133u},
     {5069u, 5131u},
     {5067u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence435[] = {
+constexpr LookupMatchStep kLookupSequence435[] = {
     {5061u, 5120u}, {5069u, 5131u}, {5061u, 5106u},
     {5061u, 5104u}, {5061u, 5133u}, {5094u, 5120u},
     {5053u, 5112u}, {5061u, 5133u}, {5061u, 5123u},
 };
-constexpr Attention6MatchStep kAttention6Sequence436[] = {
+constexpr LookupMatchStep kLookupSequence436[] = {
     {5069u, 5127u}, {5094u, 5120u}, {5067u, 5112u}, {5067u, 5106u},
     {5061u, 5138u}, {5065u, 5131u}, {5070u, 5133u}, {5061u, 5139u},
 };
-constexpr Attention6MatchStep kAttention6Sequence437[] = {
+constexpr LookupMatchStep kLookupSequence437[] = {
     {5071u, 5125u}, {5094u, 5131u}, {5069u, 5106u}, {5067u, 5131u},
     {5061u, 5106u}, {5072u, 5109u}, {5094u, 5117u},
 };
-constexpr Attention6MatchStep kAttention6Sequence438[] = {
+constexpr LookupMatchStep kLookupSequence438[] = {
     {5069u, 5138u}, {5067u, 5106u}, {5069u, 5111u}, {5094u, 5120u},
     {5067u, 5112u}, {5067u, 5138u}, {5061u, 5138u}, {5061u, 5133u},
     {5069u, 5133u}, {5072u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence439[] = {
+constexpr LookupMatchStep kLookupSequence439[] = {
     {5069u, 5111u}, {5067u, 5133u}, {5069u, 5131u},
     {5071u, 5133u}, {5061u, 5133u}, {5061u, 5103u},
 };
-constexpr Attention6MatchStep kAttention6Sequence440[] = {
+constexpr LookupMatchStep kLookupSequence440[] = {
     {5061u, 5133u}, {5094u, 5133u}, {5053u, 5112u}, {5067u, 5138u},
     {5069u, 5131u}, {5094u, 5120u}, {5067u, 5112u}, {5061u, 5138u},
     {5061u, 5111u}, {5067u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence441[] = {
+constexpr LookupMatchStep kLookupSequence441[] = {
     {5067u, 5111u}, {5061u, 5138u}, {5071u, 5117u}, {5069u, 5111u},
     {5094u, 5120u}, {5071u, 5112u}, {5061u, 5133u}, {5067u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence442[] = {
+constexpr LookupMatchStep kLookupSequence442[] = {
     {5094u, 5106u},
     {5098u, 5112u},
     {5061u, 5117u},
     {5063u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence443[] = {
+constexpr LookupMatchStep kLookupSequence443[] = {
     {5072u, 5105u}, {5094u, 5120u}, {5069u, 5112u},
     {5069u, 5120u}, {5067u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence444[] = {
+constexpr LookupMatchStep kLookupSequence444[] = {
     {5065u, 5127u},
     {5069u, 5133u},
     {5067u, 5106u},
     {5065u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence445[] = {
+constexpr LookupMatchStep kLookupSequence445[] = {
     {5069u, 5120u}, {5067u, 5106u}, {5067u, 5131u},
     {5069u, 5131u}, {5067u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence446[] = {
+constexpr LookupMatchStep kLookupSequence446[] = {
     {5069u, 5130u}, {5067u, 5131u}, {5069u, 5120u}, {5067u, 5120u},
     {5061u, 5133u}, {5094u, 5120u}, {5069u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence447[] = {
+constexpr LookupMatchStep kLookupSequence447[] = {
     {5094u, 5128u}, {5067u, 5112u}, {5065u, 5131u},
     {5094u, 5125u}, {5054u, 5112u}, {5069u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence448[] = {
+constexpr LookupMatchStep kLookupSequence448[] = {
     {5067u, 5106u}, {5065u, 5111u}, {5067u, 5133u},
     {5094u, 5127u}, {5067u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence449[] = {
+constexpr LookupMatchStep kLookupSequence449[] = {
     {5061u, 5132u}, {5069u, 5133u}, {5094u, 5120u},
     {5067u, 5112u}, {5061u, 5138u}, {5067u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence450[] = {
+constexpr LookupMatchStep kLookupSequence450[] = {
     {5072u, 5127u}, {5094u, 5106u}, {5069u, 5112u}, {5067u, 5106u},
     {5069u, 5111u}, {5094u, 5120u}, {5067u, 5112u}, {5061u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence451[] = {
+constexpr LookupMatchStep kLookupSequence451[] = {
     {5067u, 5112u},
     {5067u, 5131u},
     {5069u, 5111u},
     {5067u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence452[] = {
+constexpr LookupMatchStep kLookupSequence452[] = {
     {5067u, 5117u}, {5072u, 5106u}, {5071u, 5117u}, {5053u, 5106u},
     {5069u, 5133u}, {5067u, 5138u}, {5071u, 5127u}, {5061u, 5106u},
     {5067u, 5106u}, {5067u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence453[] = {
+constexpr LookupMatchStep kLookupSequence453[] = {
     {5067u, 5111u}, {5061u, 5133u}, {5069u, 5133u},
     {5061u, 5124u}, {5069u, 5131u}, {5061u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence454[] = {
+constexpr LookupMatchStep kLookupSequence454[] = {
     {5061u, 5133u}, {5067u, 5138u}, {5069u, 5120u}, {5071u, 5120u},
     {5061u, 5127u}, {5067u, 5131u}, {5067u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence455[] = {
+constexpr LookupMatchStep kLookupSequence455[] = {
     {5069u, 5112u}, {5067u, 5106u}, {5061u, 5131u},
     {5069u, 5138u}, {5094u, 5108u},
 };
-constexpr Attention6MatchStep kAttention6Sequence456[] = {
+constexpr LookupMatchStep kLookupSequence456[] = {
     {5053u, 5106u}, {5090u, 5106u}, {5071u, 5106u}, {5067u, 5138u},
     {5069u, 5131u}, {5094u, 5132u}, {5067u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence457[] = {
+constexpr LookupMatchStep kLookupSequence457[] = {
     {5060u, 5106u}, {5094u, 5108u}, {5067u, 5112u}, {5060u, 5106u},
     {5069u, 5108u}, {5069u, 5133u}, {5061u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence458[] = {
+constexpr LookupMatchStep kLookupSequence458[] = {
     {5061u, 5135u},
     {5069u, 5106u},
     {5069u, 5131u},
     {5067u, 5134u},
 };
-constexpr Attention6MatchStep kAttention6Sequence459[] = {
+constexpr LookupMatchStep kLookupSequence459[] = {
     {5067u, 5133u},
     {5067u, 5138u},
     {5069u, 5120u},
     {5069u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence460[] = {
+constexpr LookupMatchStep kLookupSequence460[] = {
     {5069u, 5131u},
     {5063u, 5138u},
     {5094u, 5120u},
     {5079u, 5115u},
 };
-constexpr Attention6MatchStep kAttention6Sequence461[] = {
+constexpr LookupMatchStep kLookupSequence461[] = {
     {5053u, 5106u}, {5061u, 5106u}, {5061u, 5133u}, {5094u, 5120u},
     {5079u, 5112u}, {5069u, 5111u}, {5094u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence462[] = {
+constexpr LookupMatchStep kLookupSequence462[] = {
     {5071u, 5138u}, {5067u, 5138u}, {5069u, 5120u}, {5069u, 5133u},
     {5061u, 5111u}, {5061u, 5131u}, {5088u, 5131u}, {5094u, 5111u},
     {5061u, 5112u}, {5069u, 5106u}, {5067u, 5131u}, {5061u, 5131u},
     {5069u, 5120u}, {5066u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence463[] = {
+constexpr LookupMatchStep kLookupSequence463[] = {
     {5061u, 5115u}, {5061u, 5133u}, {5069u, 5127u}, {5069u, 5120u},
     {5067u, 5106u}, {5067u, 5133u}, {5069u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence464[] = {
+constexpr LookupMatchStep kLookupSequence464[] = {
     {5094u, 5124u}, {5067u, 5106u}, {5067u, 5133u},
     {5069u, 5138u}, {5067u, 5131u}, {5083u, 5138u},
     {5094u, 5127u}, {5063u, 5112u}, {5094u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence465[] = {
+constexpr LookupMatchStep kLookupSequence465[] = {
     {5074u, 5112u}, {5069u, 5143u}, {5069u, 5127u},
     {5061u, 5127u}, {5069u, 5106u}, {5094u, 5120u},
     {5061u, 5120u}, {5061u, 5131u}, {5067u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence466[] = {
+constexpr LookupMatchStep kLookupSequence466[] = {
     {5065u, 5111u}, {5072u, 5108u}, {5094u, 5117u}, {5069u, 5112u},
     {5069u, 5106u}, {5069u, 5131u}, {5067u, 5106u}, {5067u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence467[] = {
+constexpr LookupMatchStep kLookupSequence467[] = {
     {5072u, 5120u}, {5061u, 5106u}, {5094u, 5131u}, {5061u, 5112u},
     {5067u, 5131u}, {5061u, 5131u}, {5061u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence468[] = {
+constexpr LookupMatchStep kLookupSequence468[] = {
     {5067u, 5131u}, {5069u, 5131u}, {5094u, 5132u},
     {5066u, 5112u}, {5067u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence469[] = {
+constexpr LookupMatchStep kLookupSequence469[] = {
     {5061u, 5104u}, {5061u, 5133u}, {5067u, 5133u},
     {5061u, 5111u}, {5094u, 5133u}, {5067u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence470[] = {
+constexpr LookupMatchStep kLookupSequence470[] = {
     {5067u, 5106u}, {5067u, 5133u}, {5061u, 5133u}, {5069u, 5133u},
     {5061u, 5133u}, {5067u, 5138u}, {5061u, 5138u}, {5060u, 5111u},
     {5061u, 5106u}, {5061u, 5102u},
 };
-constexpr Attention6MatchStep kAttention6Sequence471[] = {
+constexpr LookupMatchStep kLookupSequence471[] = {
     {5090u, 5127u}, {5063u, 5124u}, {5094u, 5120u},
     {5067u, 5112u}, {5061u, 5138u}, {5061u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence472[] = {
+constexpr LookupMatchStep kLookupSequence472[] = {
     {5067u, 5133u}, {5062u, 5131u}, {5094u, 5120u},
     {5061u, 5115u}, {5072u, 5106u}, {5067u, 5117u},
 };
-constexpr Attention6MatchStep kAttention6Sequence473[] = {
+constexpr LookupMatchStep kLookupSequence473[] = {
     {5061u, 5117u}, {5090u, 5133u}, {5069u, 5125u},
     {5061u, 5127u}, {5072u, 5105u},
 };
-constexpr Attention6MatchStep kAttention6Sequence474[] = {
+constexpr LookupMatchStep kLookupSequence474[] = {
     {5067u, 5112u}, {5069u, 5120u}, {5067u, 5106u},
     {5067u, 5131u}, {5061u, 5138u}, {5069u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence475[] = {
+constexpr LookupMatchStep kLookupSequence475[] = {
     {5067u, 5106u}, {5061u, 5131u}, {5067u, 5133u},
     {5061u, 5138u}, {5069u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence476[] = {
+constexpr LookupMatchStep kLookupSequence476[] = {
     {5069u, 5111u}, {5078u, 5106u}, {5071u, 5120u},
     {5067u, 5106u}, {5061u, 5133u}, {5072u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence477[] = {
+constexpr LookupMatchStep kLookupSequence477[] = {
     {5087u, 5117u}, {5090u, 5120u}, {5093u, 5106u}, {5067u, 5105u},
     {5069u, 5127u}, {5067u, 5106u}, {5061u, 5131u}, {5061u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence478[] = {
+constexpr LookupMatchStep kLookupSequence478[] = {
     {5091u, 5143u}, {5069u, 5130u}, {5069u, 5131u},
     {5069u, 5120u}, {5061u, 5131u}, {5061u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence479[] = {
+constexpr LookupMatchStep kLookupSequence479[] = {
     {5065u, 5111u}, {5061u, 5133u}, {5067u, 5131u}, {5063u, 5131u},
     {5065u, 5109u}, {5061u, 5106u}, {5061u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence480[] = {
+constexpr LookupMatchStep kLookupSequence480[] = {
     {5070u, 5133u}, {5069u, 5115u}, {5071u, 5131u},
     {5067u, 5131u}, {5067u, 5131u}, {5072u, 5111u},
     {5067u, 5117u}, {5070u, 5105u}, {5067u, 5115u},
 };
-constexpr Attention6MatchStep kAttention6Sequence481[] = {
+constexpr LookupMatchStep kLookupSequence481[] = {
     {5067u, 5117u}, {5067u, 5138u}, {5067u, 5138u}, {5065u, 5120u},
     {5061u, 5106u}, {5061u, 5106u}, {5069u, 5111u}, {5067u, 5111u},
     {5067u, 5106u}, {5067u, 5131u}, {5066u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence482[] = {
+constexpr LookupMatchStep kLookupSequence482[] = {
     {5090u, 5143u}, {5094u, 5111u}, {5067u, 5106u}, {5094u, 5133u},
     {5068u, 5112u}, {5061u, 5133u}, {5063u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence483[] = {
+constexpr LookupMatchStep kLookupSequence483[] = {
     {5069u, 5111u}, {5069u, 5120u}, {5069u, 5131u}, {5067u, 5108u},
     {5072u, 5120u}, {5094u, 5117u}, {5067u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence484[] = {
+constexpr LookupMatchStep kLookupSequence484[] = {
     {5061u, 5106u},
     {5065u, 5133u},
     {5065u, 5133u},
     {5067u, 5099u},
 };
-constexpr Attention6MatchStep kAttention6Sequence485[] = {
+constexpr LookupMatchStep kLookupSequence485[] = {
     {5094u, 5133u}, {5053u, 5141u}, {5067u, 5133u}, {5061u, 5127u},
     {5069u, 5120u}, {5067u, 5120u}, {5094u, 5120u}, {5069u, 5133u},
     {5067u, 5106u}, {5069u, 5133u}, {5067u, 5116u}, {5067u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence486[] = {
+constexpr LookupMatchStep kLookupSequence486[] = {
     {5061u, 5118u}, {5069u, 5120u}, {5061u, 5106u},
     {5069u, 5131u}, {5061u, 5120u}, {5054u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence487[] = {
+constexpr LookupMatchStep kLookupSequence487[] = {
     {5065u, 5120u}, {5065u, 5133u}, {5067u, 5099u},
     {5067u, 5120u}, {5069u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence488[] = {
+constexpr LookupMatchStep kLookupSequence488[] = {
     {5061u, 5102u}, {5061u, 5131u}, {5069u, 5108u}, {5053u, 5125u},
     {5053u, 5132u}, {5074u, 5132u}, {5053u, 5143u},
 };
-constexpr Attention6MatchStep kAttention6Sequence489[] = {
+constexpr LookupMatchStep kLookupSequence489[] = {
     {5069u, 5127u}, {5061u, 5106u}, {5054u, 5106u},
     {5053u, 5106u}, {5069u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence490[] = {
+constexpr LookupMatchStep kLookupSequence490[] = {
     {5072u, 5125u}, {5061u, 5117u}, {5061u, 5138u},
     {5067u, 5131u}, {5061u, 5106u}, {5069u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence491[] = {
+constexpr LookupMatchStep kLookupSequence491[] = {
     {5094u, 5105u}, {5067u, 5112u}, {5069u, 5120u},
     {5094u, 5106u}, {5067u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence492[] = {
+constexpr LookupMatchStep kLookupSequence492[] = {
     {5061u, 5110u}, {5061u, 5110u}, {5057u, 5106u}, {5069u, 5133u},
     {5094u, 5132u}, {5069u, 5112u}, {5069u, 5131u}, {5069u, 5106u},
     {5061u, 5106u}, {5069u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence493[] = {
+constexpr LookupMatchStep kLookupSequence493[] = {
     {5071u, 5138u}, {5069u, 5106u}, {5067u, 5131u},
     {5061u, 5131u}, {5061u, 5131u}, {5067u, 5131u},
     {5094u, 5131u}, {5067u, 5112u}, {5063u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence494[] = {
+constexpr LookupMatchStep kLookupSequence494[] = {
     {5069u, 5133u}, {5094u, 5120u}, {5071u, 5112u},
     {5071u, 5133u}, {5071u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence495[] = {
+constexpr LookupMatchStep kLookupSequence495[] = {
     {5063u, 5131u}, {5072u, 5105u}, {5087u, 5117u}, {5061u, 5120u},
     {5087u, 5125u}, {5061u, 5106u}, {5069u, 5131u}, {5069u, 5106u},
     {5067u, 5117u}, {5067u, 5131u}, {5073u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence496[] = {
+constexpr LookupMatchStep kLookupSequence496[] = {
     {5094u, 5106u}, {5061u, 5112u}, {5071u, 5138u},
     {5069u, 5131u}, {5063u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence497[] = {
+constexpr LookupMatchStep kLookupSequence497[] = {
     {5061u, 5112u}, {5071u, 5133u}, {5069u, 5133u},
     {5063u, 5111u}, {5069u, 5109u},
 };
-constexpr Attention6MatchStep kAttention6Sequence498[] = {
+constexpr LookupMatchStep kLookupSequence498[] = {
     {5061u, 5131u}, {5069u, 5108u}, {5067u, 5120u},
     {5061u, 5131u}, {5069u, 5106u}, {5071u, 5127u},
 };
-constexpr Attention6MatchStep kAttention6Sequence499[] = {
+constexpr LookupMatchStep kLookupSequence499[] = {
     {5061u, 5112u},
     {5069u, 5120u},
     {5055u, 5106u},
     {5072u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence500[] = {
+constexpr LookupMatchStep kLookupSequence500[] = {
     {5073u, 5119u}, {5061u, 5111u}, {5061u, 5133u}, {5065u, 5111u},
     {5061u, 5133u}, {5067u, 5138u}, {5067u, 5138u}, {5063u, 5138u},
     {5072u, 5131u}, {5073u, 5117u}, {5061u, 5131u}, {5063u, 5120u},
     {5069u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence501[] = {
+constexpr LookupMatchStep kLookupSequence501[] = {
     {5067u, 5125u}, {5069u, 5106u}, {5094u, 5125u}, {5061u, 5112u},
     {5054u, 5106u}, {5067u, 5106u}, {5067u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence502[] = {
+constexpr LookupMatchStep kLookupSequence502[] = {
     {5058u, 5138u}, {5061u, 5118u}, {5094u, 5131u}, {5061u, 5117u},
     {5063u, 5106u}, {5069u, 5131u}, {5069u, 5106u}, {5069u, 5127u},
 };
-constexpr Attention6MatchStep kAttention6Sequence503[] = {
+constexpr LookupMatchStep kLookupSequence503[] = {
     {5060u, 5139u}, {5069u, 5106u}, {5069u, 5108u},
     {5094u, 5120u}, {5069u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence504[] = {
+constexpr LookupMatchStep kLookupSequence504[] = {
     {5061u, 5133u}, {5067u, 5120u}, {5061u, 5131u},
     {5070u, 5120u}, {5067u, 5112u}, {5064u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence505[] = {
+constexpr LookupMatchStep kLookupSequence505[] = {
     {5072u, 5100u}, {5067u, 5112u}, {5067u, 5138u},
     {5067u, 5131u}, {5061u, 5131u}, {5069u, 5108u},
 };
-constexpr Attention6MatchStep kAttention6Sequence506[] = {
+constexpr LookupMatchStep kLookupSequence506[] = {
     {5090u, 5131u}, {5090u, 5106u}, {5075u, 5124u}, {5094u, 5106u},
     {5067u, 5112u}, {5054u, 5131u}, {5069u, 5131u}, {5067u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence507[] = {
+constexpr LookupMatchStep kLookupSequence507[] = {
     {5091u, 5106u}, {5069u, 5111u}, {5094u, 5120u},
     {5071u, 5112u}, {5069u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence508[] = {
+constexpr LookupMatchStep kLookupSequence508[] = {
     {5067u, 5138u}, {5065u, 5131u}, {5067u, 5100u},
     {5065u, 5120u}, {5061u, 5106u}, {5072u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence509[] = {
+constexpr LookupMatchStep kLookupSequence509[] = {
     {5069u, 5120u}, {5067u, 5106u}, {5061u, 5138u},
     {5094u, 5120u}, {5061u, 5112u}, {5069u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence510[] = {
+constexpr LookupMatchStep kLookupSequence510[] = {
     {5061u, 5111u}, {5094u, 5120u}, {5061u, 5112u}, {5069u, 5133u},
     {5067u, 5106u}, {5069u, 5131u}, {5069u, 5131u}, {5061u, 5106u},
     {5094u, 5120u}, {5061u, 5112u}, {5067u, 5138u}, {5067u, 5127u},
 };
-constexpr Attention6MatchStep kAttention6Sequence511[] = {
+constexpr LookupMatchStep kLookupSequence511[] = {
     {5073u, 5108u}, {5091u, 5136u}, {5069u, 5110u}, {5094u, 5120u},
     {5067u, 5112u}, {5067u, 5111u}, {5069u, 5131u}, {5094u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence512[] = {
+constexpr LookupMatchStep kLookupSequence512[] = {
     {5087u, 5104u},
     {5067u, 5111u},
     {5069u, 5127u},
     {5061u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence513[] = {
+constexpr LookupMatchStep kLookupSequence513[] = {
     {5068u, 5112u}, {5061u, 5138u}, {5067u, 5138u},
     {5069u, 5131u}, {5094u, 5120u}, {5061u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence514[] = {
+constexpr LookupMatchStep kLookupSequence514[] = {
     {5071u, 5112u},
     {5069u, 5106u},
     {5067u, 5106u},
     {5061u, 5111u},
 };
-constexpr Attention6MatchStep kAttention6Sequence515[] = {
+constexpr LookupMatchStep kLookupSequence515[] = {
     {5067u, 5117u}, {5061u, 5120u}, {5057u, 5133u},
     {5061u, 5133u}, {5094u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence516[] = {
+constexpr LookupMatchStep kLookupSequence516[] = {
     {5069u, 5131u}, {5094u, 5117u}, {5067u, 5112u}, {5091u, 5131u},
     {5067u, 5110u}, {5061u, 5131u}, {5061u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence517[] = {
+constexpr LookupMatchStep kLookupSequence517[] = {
     {5061u, 5133u}, {5065u, 5133u}, {5061u, 5110u}, {5067u, 5106u},
     {5061u, 5106u}, {5094u, 5133u}, {5067u, 5112u}, {5069u, 5131u},
     {5067u, 5112u}, {5069u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence518[] = {
+constexpr LookupMatchStep kLookupSequence518[] = {
     {5067u, 5106u},
     {5069u, 5101u},
     {5072u, 5120u},
     {5067u, 5117u},
 };
-constexpr Attention6MatchStep kAttention6Sequence519[] = {
+constexpr LookupMatchStep kLookupSequence519[] = {
     {5069u, 5133u}, {5069u, 5120u}, {5065u, 5133u}, {5069u, 5106u},
     {5067u, 5108u}, {5072u, 5127u}, {5063u, 5117u}, {5094u, 5131u},
     {5063u, 5112u}, {5069u, 5131u}, {5069u, 5106u}, {5069u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence520[] = {
+constexpr LookupMatchStep kLookupSequence520[] = {
     {5094u, 5131u}, {5090u, 5112u}, {5094u, 5127u}, {5063u, 5106u},
     {5065u, 5133u}, {5065u, 5104u}, {5067u, 5104u}, {5061u, 5138u},
     {5072u, 5120u}, {5067u, 5112u}, {5061u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence521[] = {
+constexpr LookupMatchStep kLookupSequence521[] = {
     {5069u, 5106u}, {5069u, 5111u}, {5094u, 5120u},
     {5067u, 5112u}, {5069u, 5111u}, {5061u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence522[] = {
+constexpr LookupMatchStep kLookupSequence522[] = {
     {5084u, 5127u}, {5069u, 5117u}, {5072u, 5120u},
     {5067u, 5133u}, {5061u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence523[] = {
+constexpr LookupMatchStep kLookupSequence523[] = {
     {5060u, 5120u},
     {5063u, 5120u},
     {5072u, 5105u},
     {5072u, 5117u},
 };
-constexpr Attention6MatchStep kAttention6Sequence524[] = {
+constexpr LookupMatchStep kLookupSequence524[] = {
     {5093u, 5133u},
     {5069u, 5111u},
     {5094u, 5106u},
     {5094u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence525[] = {
+constexpr LookupMatchStep kLookupSequence525[] = {
     {5087u, 5111u},
     {5061u, 5138u},
     {5053u, 5120u},
     {5061u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence526[] = {
+constexpr LookupMatchStep kLookupSequence526[] = {
     {5061u, 5131u}, {5061u, 5133u}, {5094u, 5108u},
     {5091u, 5112u}, {5061u, 5130u},
 };
-constexpr Attention6MatchStep kAttention6Sequence527[] = {
+constexpr LookupMatchStep kLookupSequence527[] = {
     {5072u, 5127u}, {5069u, 5117u}, {5067u, 5106u}, {5069u, 5120u},
     {5069u, 5120u}, {5069u, 5106u}, {5069u, 5131u}, {5061u, 5106u},
     {5061u, 5131u}, {5061u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence528[] = {
+constexpr LookupMatchStep kLookupSequence528[] = {
     {5067u, 5106u}, {5067u, 5131u}, {5067u, 5127u}, {5061u, 5111u},
     {5069u, 5127u}, {5061u, 5106u}, {5067u, 5131u}, {5067u, 5138u},
     {5063u, 5131u}, {5069u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence529[] = {
+constexpr LookupMatchStep kLookupSequence529[] = {
     {5067u, 5133u}, {5082u, 5138u}, {5069u, 5133u}, {5069u, 5112u},
     {5094u, 5131u}, {5082u, 5115u}, {5067u, 5136u},
 };
-constexpr Attention6MatchStep kAttention6Sequence530[] = {
+constexpr LookupMatchStep kLookupSequence530[] = {
     {5071u, 5106u}, {5067u, 5106u}, {5094u, 5133u},
     {5067u, 5106u}, {5067u, 5127u}, {5067u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence531[] = {
+constexpr LookupMatchStep kLookupSequence531[] = {
     {5069u, 5131u}, {5094u, 5120u}, {5069u, 5112u},
     {5069u, 5131u}, {5094u, 5120u}, {5061u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence532[] = {
+constexpr LookupMatchStep kLookupSequence532[] = {
     {5065u, 5111u}, {5067u, 5100u}, {5094u, 5127u},
     {5069u, 5112u}, {5069u, 5131u}, {5063u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence533[] = {
+constexpr LookupMatchStep kLookupSequence533[] = {
     {5058u, 5127u}, {5060u, 5133u}, {5069u, 5108u},
     {5096u, 5106u}, {5069u, 5106u}, {5061u, 5120u},
     {5067u, 5112u}, {5067u, 5138u}, {5063u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence534[] = {
+constexpr LookupMatchStep kLookupSequence534[] = {
     {5069u, 5128u}, {5067u, 5106u}, {5069u, 5133u},
     {5067u, 5120u}, {5069u, 5138u}, {5061u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence535[] = {
+constexpr LookupMatchStep kLookupSequence535[] = {
     {5069u, 5120u}, {5061u, 5138u}, {5072u, 5105u}, {5069u, 5117u},
     {5067u, 5106u}, {5069u, 5131u}, {5083u, 5120u}, {5061u, 5127u},
 };
-constexpr Attention6MatchStep kAttention6Sequence536[] = {
+constexpr LookupMatchStep kLookupSequence536[] = {
     {5069u, 5120u}, {5094u, 5106u}, {5061u, 5112u},
     {5054u, 5106u}, {5063u, 5120u}, {5065u, 5131u},
     {5094u, 5133u}, {5067u, 5112u}, {5072u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence537[] = {
+constexpr LookupMatchStep kLookupSequence537[] = {
     {5069u, 5133u}, {5094u, 5131u}, {5069u, 5115u},
     {5069u, 5112u}, {5067u, 5131u}, {5067u, 5111u},
 };
-constexpr Attention6MatchStep kAttention6Sequence538[] = {
+constexpr LookupMatchStep kLookupSequence538[] = {
     {5072u, 5120u}, {5061u, 5117u}, {5071u, 5111u},
     {5069u, 5120u}, {5094u, 5120u}, {5067u, 5112u},
     {5061u, 5138u}, {5067u, 5138u}, {5061u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence539[] = {
+constexpr LookupMatchStep kLookupSequence539[] = {
     {5053u, 5106u}, {5080u, 5106u}, {5067u, 5123u}, {5053u, 5138u},
     {5065u, 5106u}, {5067u, 5106u}, {5061u, 5106u}, {5072u, 5120u},
     {5063u, 5112u}, {5072u, 5131u}, {5067u, 5117u},
 };
-constexpr Attention6MatchStep kAttention6Sequence540[] = {
+constexpr LookupMatchStep kLookupSequence540[] = {
     {5096u, 5112u},
     {5061u, 5106u},
     {5069u, 5127u},
     {5067u, 5125u},
 };
-constexpr Attention6MatchStep kAttention6Sequence541[] = {
+constexpr LookupMatchStep kLookupSequence541[] = {
     {5061u, 5141u}, {5061u, 5138u}, {5067u, 5133u},
     {5067u, 5133u}, {5067u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence542[] = {
+constexpr LookupMatchStep kLookupSequence542[] = {
     {5061u, 5124u},
     {5061u, 5109u},
     {5063u, 5120u},
     {5063u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence543[] = {
+constexpr LookupMatchStep kLookupSequence543[] = {
     {5061u, 5133u}, {5061u, 5133u}, {5067u, 5133u}, {5061u, 5106u},
     {5094u, 5133u}, {5071u, 5112u}, {5067u, 5111u}, {5063u, 5108u},
 };
-constexpr Attention6MatchStep kAttention6Sequence544[] = {
+constexpr LookupMatchStep kLookupSequence544[] = {
     {5069u, 5119u},
     {5061u, 5125u},
     {5065u, 5131u},
     {5053u, 5100u},
 };
-constexpr Attention6MatchStep kAttention6Sequence545[] = {
+constexpr LookupMatchStep kLookupSequence545[] = {
     {5094u, 5100u}, {5067u, 5112u}, {5061u, 5127u},
     {5061u, 5138u}, {5061u, 5133u}, {5065u, 5133u},
     {5067u, 5106u}, {5067u, 5131u}, {5061u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence546[] = {
+constexpr LookupMatchStep kLookupSequence546[] = {
     {5094u, 5125u}, {5061u, 5112u}, {5069u, 5111u},
     {5069u, 5120u}, {5069u, 5106u}, {5072u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence547[] = {
+constexpr LookupMatchStep kLookupSequence547[] = {
     {5063u, 5116u}, {5069u, 5131u}, {5067u, 5106u}, {5069u, 5106u},
     {5063u, 5120u}, {5072u, 5105u}, {5067u, 5117u}, {5091u, 5131u},
     {5071u, 5143u}, {5063u, 5127u},
 };
-constexpr Attention6MatchStep kAttention6Sequence548[] = {
+constexpr LookupMatchStep kLookupSequence548[] = {
     {5094u, 5120u}, {5053u, 5112u}, {5069u, 5138u}, {5069u, 5127u},
     {5071u, 5111u}, {5061u, 5106u}, {5061u, 5131u}, {5067u, 5131u},
     {5071u, 5138u}, {5069u, 5111u}, {5061u, 5127u},
 };
-constexpr Attention6MatchStep kAttention6Sequence549[] = {
+constexpr LookupMatchStep kLookupSequence549[] = {
     {5067u, 5112u},
     {5090u, 5117u},
     {5067u, 5110u},
     {5096u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence550[] = {
+constexpr LookupMatchStep kLookupSequence550[] = {
     {5091u, 5136u}, {5061u, 5110u}, {5061u, 5102u}, {5069u, 5131u},
     {5094u, 5120u}, {5067u, 5112u}, {5067u, 5138u}, {5067u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence551[] = {
+constexpr LookupMatchStep kLookupSequence551[] = {
     {5067u, 5111u}, {5094u, 5120u}, {5071u, 5133u},
     {5069u, 5103u}, {5072u, 5131u}, {5094u, 5117u},
 };
-constexpr Attention6MatchStep kAttention6Sequence552[] = {
+constexpr LookupMatchStep kLookupSequence552[] = {
     {5069u, 5140u}, {5094u, 5106u}, {5067u, 5112u}, {5069u, 5138u},
     {5069u, 5131u}, {5067u, 5106u}, {5069u, 5111u}, {5067u, 5106u},
     {5067u, 5106u}, {5094u, 5127u},
 };
-constexpr Attention6MatchStep kAttention6Sequence553[] = {
+constexpr LookupMatchStep kLookupSequence553[] = {
     {5069u, 5117u},
     {5069u, 5120u},
     {5084u, 5120u},
     {5082u, 5117u},
 };
-constexpr Attention6MatchStep kAttention6Sequence554[] = {
+constexpr LookupMatchStep kLookupSequence554[] = {
     {5061u, 5108u}, {5061u, 5133u}, {5061u, 5138u},
     {5069u, 5120u}, {5069u, 5108u}, {5061u, 5108u},
 };
-constexpr Attention6MatchStep kAttention6Sequence555[] = {
+constexpr LookupMatchStep kLookupSequence555[] = {
     {5061u, 5104u}, {5090u, 5120u}, {5061u, 5106u}, {5061u, 5127u},
     {5061u, 5111u}, {5061u, 5106u}, {5098u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence556[] = {
+constexpr LookupMatchStep kLookupSequence556[] = {
     {5065u, 5105u}, {5065u, 5106u}, {5090u, 5124u},
     {5069u, 5124u}, {5067u, 5106u}, {5065u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence557[] = {
+constexpr LookupMatchStep kLookupSequence557[] = {
     {5061u, 5137u}, {5069u, 5127u}, {5094u, 5120u}, {5067u, 5112u},
     {5069u, 5106u}, {5069u, 5106u}, {5069u, 5131u}, {5094u, 5120u},
     {5094u, 5112u}, {5063u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence558[] = {
+constexpr LookupMatchStep kLookupSequence558[] = {
     {5069u, 5119u}, {5094u, 5120u}, {5061u, 5112u},
     {5071u, 5106u}, {5069u, 5128u}, {5067u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence559[] = {
+constexpr LookupMatchStep kLookupSequence559[] = {
     {5065u, 5131u}, {5091u, 5133u}, {5069u, 5110u},
     {5067u, 5130u}, {5067u, 5131u}, {5069u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence560[] = {
+constexpr LookupMatchStep kLookupSequence560[] = {
     {5067u, 5111u}, {5088u, 5131u}, {5094u, 5111u}, {5069u, 5112u},
     {5069u, 5131u}, {5094u, 5120u}, {5069u, 5112u}, {5067u, 5106u},
     {5067u, 5131u}, {5061u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence561[] = {
+constexpr LookupMatchStep kLookupSequence561[] = {
     {5071u, 5113u}, {5071u, 5133u}, {5061u, 5133u}, {5094u, 5109u},
     {5069u, 5117u}, {5067u, 5131u}, {5067u, 5131u}, {5061u, 5138u},
     {5061u, 5111u}, {5067u, 5133u}, {5067u, 5138u}, {5061u, 5133u},
     {5094u, 5133u}, {5067u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence562[] = {
+constexpr LookupMatchStep kLookupSequence562[] = {
     {5061u, 5131u}, {5061u, 5102u}, {5072u, 5105u},
     {5063u, 5117u}, {5072u, 5120u}, {5067u, 5117u},
 };
-constexpr Attention6MatchStep kAttention6Sequence563[] = {
+constexpr LookupMatchStep kLookupSequence563[] = {
     {5094u, 5125u},
     {5067u, 5112u},
     {5067u, 5111u},
     {5094u, 5127u},
 };
-constexpr Attention6MatchStep kAttention6Sequence564[] = {
+constexpr LookupMatchStep kLookupSequence564[] = {
     {5094u, 5127u}, {5071u, 5112u}, {5067u, 5138u}, {5061u, 5106u},
     {5071u, 5131u}, {5067u, 5138u}, {5072u, 5120u}, {5063u, 5117u},
 };
-constexpr Attention6MatchStep kAttention6Sequence565[] = {
+constexpr LookupMatchStep kLookupSequence565[] = {
     {5060u, 5118u}, {5094u, 5111u}, {5069u, 5133u},
     {5069u, 5131u}, {5069u, 5120u}, {5067u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence566[] = {
+constexpr LookupMatchStep kLookupSequence566[] = {
     {5069u, 5133u}, {5094u, 5120u}, {5069u, 5112u}, {5061u, 5131u},
     {5094u, 5120u}, {5064u, 5112u}, {5094u, 5131u}, {5061u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence567[] = {
+constexpr LookupMatchStep kLookupSequence567[] = {
     {5053u, 5113u}, {5067u, 5111u}, {5069u, 5111u}, {5061u, 5106u},
     {5069u, 5133u}, {5094u, 5120u}, {5079u, 5112u}, {5071u, 5106u},
     {5069u, 5133u}, {5061u, 5127u}, {5094u, 5131u}, {5067u, 5112u},
     {5063u, 5106u}, {5094u, 5106u}, {5069u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence568[] = {
+constexpr LookupMatchStep kLookupSequence568[] = {
     {5074u, 5132u}, {5061u, 5143u}, {5069u, 5120u},
     {5071u, 5106u}, {5069u, 5106u}, {5067u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence569[] = {
+constexpr LookupMatchStep kLookupSequence569[] = {
     {5061u, 5116u}, {5069u, 5120u}, {5069u, 5106u},
     {5069u, 5127u}, {5069u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence570[] = {
+constexpr LookupMatchStep kLookupSequence570[] = {
     {5094u, 5131u},
     {5061u, 5112u},
     {5067u, 5106u},
     {5063u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence571[] = {
+constexpr LookupMatchStep kLookupSequence571[] = {
     {5094u, 5102u}, {5061u, 5112u}, {5069u, 5111u}, {5069u, 5106u},
     {5069u, 5106u}, {5069u, 5120u}, {5061u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence572[] = {
+constexpr LookupMatchStep kLookupSequence572[] = {
     {5071u, 5125u}, {5061u, 5106u}, {5061u, 5127u},
     {5069u, 5133u}, {5094u, 5120u}, {5067u, 5112u},
     {5067u, 5133u}, {5053u, 5138u}, {5069u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence573[] = {
+constexpr LookupMatchStep kLookupSequence573[] = {
     {5083u, 5139u}, {5094u, 5127u}, {5067u, 5112u},
     {5067u, 5131u}, {5065u, 5131u}, {5067u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence574[] = {
+constexpr LookupMatchStep kLookupSequence574[] = {
     {5067u, 5112u},
     {5067u, 5120u},
     {5061u, 5138u},
     {5063u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence575[] = {
+constexpr LookupMatchStep kLookupSequence575[] = {
     {5067u, 5124u}, {5065u, 5131u}, {5069u, 5133u}, {5061u, 5106u},
     {5069u, 5127u}, {5061u, 5106u}, {5094u, 5102u},
 };
-constexpr Attention6MatchStep kAttention6Sequence576[] = {
+constexpr LookupMatchStep kLookupSequence576[] = {
     {5061u, 5133u}, {5069u, 5133u}, {5061u, 5106u},
     {5067u, 5120u}, {5069u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence577[] = {
+constexpr LookupMatchStep kLookupSequence577[] = {
     {5061u, 5106u},
     {5067u, 5106u},
     {5067u, 5133u},
     {5069u, 5127u},
 };
-constexpr Attention6MatchStep kAttention6Sequence578[] = {
+constexpr LookupMatchStep kLookupSequence578[] = {
     {5061u, 5115u}, {5065u, 5131u}, {5063u, 5120u}, {5061u, 5120u},
     {5071u, 5120u}, {5067u, 5120u}, {5061u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence579[] = {
+constexpr LookupMatchStep kLookupSequence579[] = {
     {5094u, 5108u}, {5067u, 5112u}, {5071u, 5131u}, {5069u, 5106u},
     {5067u, 5131u}, {5067u, 5138u}, {5061u, 5138u}, {5072u, 5105u},
 };
-constexpr Attention6MatchStep kAttention6Sequence580[] = {
+constexpr LookupMatchStep kLookupSequence580[] = {
     {5067u, 5104u}, {5090u, 5138u}, {5069u, 5106u}, {5096u, 5132u},
     {5069u, 5106u}, {5069u, 5106u}, {5067u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence581[] = {
+constexpr LookupMatchStep kLookupSequence581[] = {
     {5061u, 5110u}, {5094u, 5120u}, {5061u, 5112u}, {5090u, 5133u},
     {5094u, 5133u}, {5061u, 5112u}, {5094u, 5106u}, {5069u, 5112u},
     {5067u, 5111u}, {5061u, 5131u}, {5072u, 5131u}, {5061u, 5117u},
     {5067u, 5106u}, {5094u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence582[] = {
+constexpr LookupMatchStep kLookupSequence582[] = {
     {5061u, 5118u}, {5069u, 5120u}, {5069u, 5108u}, {5067u, 5106u},
     {5061u, 5131u}, {5094u, 5120u}, {5069u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence583[] = {
+constexpr LookupMatchStep kLookupSequence583[] = {
     {5069u, 5112u},
     {5061u, 5120u},
     {5069u, 5131u},
     {5094u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence584[] = {
+constexpr LookupMatchStep kLookupSequence584[] = {
     {5094u, 5100u}, {5069u, 5115u}, {5067u, 5116u}, {5061u, 5120u},
     {5067u, 5138u}, {5061u, 5131u}, {5094u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence585[] = {
+constexpr LookupMatchStep kLookupSequence585[] = {
     {5072u, 5105u}, {5094u, 5117u}, {5069u, 5112u},
     {5061u, 5131u}, {5067u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence586[] = {
+constexpr LookupMatchStep kLookupSequence586[] = {
     {5069u, 5106u}, {5061u, 5106u}, {5094u, 5133u},
     {5067u, 5112u}, {5061u, 5127u}, {5069u, 5103u},
 };
-constexpr Attention6MatchStep kAttention6Sequence587[] = {
+constexpr LookupMatchStep kLookupSequence587[] = {
     {5069u, 5115u}, {5067u, 5112u}, {5067u, 5138u}, {5069u, 5138u},
     {5069u, 5124u}, {5061u, 5108u}, {5060u, 5127u},
 };
-constexpr Attention6MatchStep kAttention6Sequence588[] = {
+constexpr LookupMatchStep kLookupSequence588[] = {
     {5069u, 5117u}, {5067u, 5106u}, {5061u, 5138u},
     {5094u, 5120u}, {5061u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence589[] = {
+constexpr LookupMatchStep kLookupSequence589[] = {
     {5069u, 5112u}, {5069u, 5131u}, {5072u, 5106u},
     {5061u, 5112u}, {5061u, 5105u}, {5067u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence590[] = {
+constexpr LookupMatchStep kLookupSequence590[] = {
     {5067u, 5127u}, {5061u, 5111u}, {5063u, 5111u}, {5061u, 5131u},
     {5094u, 5120u}, {5061u, 5112u}, {5069u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence591[] = {
+constexpr LookupMatchStep kLookupSequence591[] = {
     {5071u, 5125u}, {5061u, 5120u}, {5069u, 5131u}, {5071u, 5120u},
     {5069u, 5127u}, {5094u, 5106u}, {5067u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence592[] = {
+constexpr LookupMatchStep kLookupSequence592[] = {
     {5061u, 5133u}, {5067u, 5122u}, {5061u, 5111u},
     {5065u, 5111u}, {5069u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence593[] = {
+constexpr LookupMatchStep kLookupSequence593[] = {
     {5094u, 5120u},
     {5067u, 5112u},
     {5094u, 5131u},
     {5094u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence594[] = {
+constexpr LookupMatchStep kLookupSequence594[] = {
     {5071u, 5106u}, {5065u, 5127u}, {5094u, 5106u},
     {5071u, 5112u}, {5069u, 5111u}, {5063u, 5111u},
 };
-constexpr Attention6MatchStep kAttention6Sequence595[] = {
+constexpr LookupMatchStep kLookupSequence595[] = {
     {5067u, 5112u}, {5065u, 5131u}, {5094u, 5100u}, {5069u, 5112u},
     {5069u, 5106u}, {5069u, 5131u}, {5069u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence596[] = {
+constexpr LookupMatchStep kLookupSequence596[] = {
     {5083u, 5138u}, {5069u, 5131u}, {5072u, 5120u},
     {5082u, 5112u}, {5061u, 5122u},
 };
-constexpr Attention6MatchStep kAttention6Sequence597[] = {
+constexpr LookupMatchStep kLookupSequence597[] = {
     {5061u, 5112u}, {5067u, 5138u}, {5077u, 5131u},
     {5061u, 5134u}, {5067u, 5106u}, {5061u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence598[] = {
+constexpr LookupMatchStep kLookupSequence598[] = {
     {5069u, 5124u}, {5094u, 5120u}, {5067u, 5112u},
     {5067u, 5138u}, {5067u, 5131u}, {5069u, 5131u},
     {5061u, 5131u}, {5094u, 5120u}, {5061u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence599[] = {
+constexpr LookupMatchStep kLookupSequence599[] = {
     {5061u, 5115u}, {5067u, 5106u}, {5069u, 5138u}, {5069u, 5131u},
     {5094u, 5102u}, {5061u, 5112u}, {5094u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence600[] = {
+constexpr LookupMatchStep kLookupSequence600[] = {
     {5061u, 5137u}, {5061u, 5120u}, {5061u, 5138u},
     {5065u, 5111u}, {5067u, 5112u}, {5067u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence601[] = {
+constexpr LookupMatchStep kLookupSequence601[] = {
     {5094u, 5105u}, {5067u, 5112u}, {5094u, 5133u},
     {5053u, 5112u}, {5063u, 5133u}, {5069u, 5119u},
 };
-constexpr Attention6MatchStep kAttention6Sequence602[] = {
+constexpr LookupMatchStep kLookupSequence602[] = {
     {5067u, 5099u}, {5067u, 5111u}, {5072u, 5120u},
     {5094u, 5117u}, {5067u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence603[] = {
+constexpr LookupMatchStep kLookupSequence603[] = {
     {5067u, 5102u}, {5072u, 5131u}, {5094u, 5106u}, {5053u, 5112u},
     {5061u, 5106u}, {5072u, 5109u}, {5094u, 5117u}, {5061u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence604[] = {
+constexpr LookupMatchStep kLookupSequence604[] = {
     {5069u, 5129u}, {5069u, 5127u}, {5063u, 5120u}, {5094u, 5120u},
     {5067u, 5112u}, {5067u, 5131u}, {5069u, 5102u},
 };
-constexpr Attention6MatchStep kAttention6Sequence605[] = {
+constexpr LookupMatchStep kLookupSequence605[] = {
     {5071u, 5104u}, {5094u, 5111u}, {5061u, 5112u},
     {5061u, 5127u}, {5069u, 5131u}, {5071u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence606[] = {
+constexpr LookupMatchStep kLookupSequence606[] = {
     {5060u, 5126u}, {5061u, 5126u}, {5094u, 5120u}, {5061u, 5112u},
     {5061u, 5138u}, {5069u, 5120u}, {5069u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence607[] = {
+constexpr LookupMatchStep kLookupSequence607[] = {
     {5094u, 5117u}, {5071u, 5117u}, {5069u, 5102u},
     {5067u, 5106u}, {5094u, 5133u}, {5063u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence608[] = {
+constexpr LookupMatchStep kLookupSequence608[] = {
     {5069u, 5128u}, {5067u, 5106u}, {5067u, 5133u},
     {5061u, 5133u}, {5069u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence609[] = {
+constexpr LookupMatchStep kLookupSequence609[] = {
     {5067u, 5112u}, {5069u, 5120u}, {5071u, 5106u},
     {5067u, 5106u}, {5061u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence610[] = {
+constexpr LookupMatchStep kLookupSequence610[] = {
     {5067u, 5118u}, {5069u, 5131u}, {5067u, 5120u}, {5069u, 5108u},
     {5061u, 5120u}, {5067u, 5106u}, {5069u, 5138u}, {5067u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence611[] = {
+constexpr LookupMatchStep kLookupSequence611[] = {
     {5054u, 5108u}, {5061u, 5131u}, {5061u, 5131u},
     {5061u, 5120u}, {5067u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence612[] = {
+constexpr LookupMatchStep kLookupSequence612[] = {
     {5061u, 5142u}, {5072u, 5131u}, {5061u, 5120u},
     {5061u, 5138u}, {5063u, 5133u}, {5072u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence613[] = {
+constexpr LookupMatchStep kLookupSequence613[] = {
     {5067u, 5103u}, {5065u, 5131u}, {5067u, 5133u},
     {5094u, 5120u}, {5067u, 5112u}, {5065u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence614[] = {
+constexpr LookupMatchStep kLookupSequence614[] = {
     {5061u, 5116u}, {5069u, 5133u}, {5079u, 5120u}, {5067u, 5133u},
     {5069u, 5138u}, {5094u, 5120u}, {5061u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence615[] = {
+constexpr LookupMatchStep kLookupSequence615[] = {
     {5069u, 5132u}, {5072u, 5131u}, {5069u, 5117u}, {5067u, 5133u},
     {5069u, 5138u}, {5069u, 5111u}, {5061u, 5120u}, {5072u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence616[] = {
+constexpr LookupMatchStep kLookupSequence616[] = {
     {5094u, 5120u}, {5061u, 5137u}, {5069u, 5111u},
     {5067u, 5106u}, {5061u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence617[] = {
+constexpr LookupMatchStep kLookupSequence617[] = {
     {5094u, 5100u}, {5061u, 5112u}, {5061u, 5138u},
     {5069u, 5127u}, {5067u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence618[] = {
+constexpr LookupMatchStep kLookupSequence618[] = {
     {5094u, 5131u}, {5069u, 5112u}, {5067u, 5131u},
     {5061u, 5131u}, {5061u, 5111u},
 };
-constexpr Attention6MatchStep kAttention6Sequence619[] = {
+constexpr LookupMatchStep kLookupSequence619[] = {
     {5069u, 5119u}, {5094u, 5106u}, {5067u, 5112u},
     {5069u, 5111u}, {5067u, 5132u},
 };
-constexpr Attention6MatchStep kAttention6Sequence620[] = {
+constexpr LookupMatchStep kLookupSequence620[] = {
     {5067u, 5106u}, {5065u, 5111u}, {5067u, 5112u},
     {5069u, 5120u}, {5067u, 5112u}, {5067u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence621[] = {
+constexpr LookupMatchStep kLookupSequence621[] = {
     {5069u, 5117u}, {5069u, 5127u}, {5069u, 5102u},
     {5061u, 5120u}, {5069u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence622[] = {
+constexpr LookupMatchStep kLookupSequence622[] = {
     {5061u, 5143u}, {5065u, 5133u}, {5061u, 5133u},
     {5069u, 5110u}, {5067u, 5133u}, {5061u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence623[] = {
+constexpr LookupMatchStep kLookupSequence623[] = {
     {5069u, 5133u}, {5061u, 5106u}, {5094u, 5120u}, {5071u, 5112u},
     {5067u, 5111u}, {5094u, 5131u}, {5065u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence624[] = {
+constexpr LookupMatchStep kLookupSequence624[] = {
     {5071u, 5105u}, {5072u, 5127u}, {5061u, 5117u},
     {5067u, 5133u}, {5069u, 5133u}, {5061u, 5131u},
     {5067u, 5133u}, {5061u, 5120u}, {5061u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence625[] = {
+constexpr LookupMatchStep kLookupSequence625[] = {
     {5071u, 5127u},
     {5094u, 5120u},
     {5063u, 5112u},
     {5094u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence626[] = {
+constexpr LookupMatchStep kLookupSequence626[] = {
     {5061u, 5112u}, {5061u, 5106u}, {5069u, 5111u}, {5094u, 5120u},
     {5081u, 5112u}, {5069u, 5130u}, {5067u, 5108u},
 };
-constexpr Attention6MatchStep kAttention6Sequence627[] = {
+constexpr LookupMatchStep kLookupSequence627[] = {
     {5094u, 5136u}, {5067u, 5112u}, {5067u, 5120u},
     {5094u, 5133u}, {5067u, 5112u}, {5065u, 5106u},
     {5094u, 5133u}, {5061u, 5115u}, {5061u, 5103u},
 };
-constexpr Attention6MatchStep kAttention6Sequence628[] = {
+constexpr LookupMatchStep kLookupSequence628[] = {
     {5061u, 5122u}, {5072u, 5133u}, {5069u, 5133u},
     {5061u, 5127u}, {5071u, 5138u}, {5072u, 5127u},
 };
-constexpr Attention6MatchStep kAttention6Sequence629[] = {
+constexpr LookupMatchStep kLookupSequence629[] = {
     {5061u, 5110u}, {5069u, 5127u}, {5071u, 5106u},
     {5094u, 5106u}, {5061u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence630[] = {
+constexpr LookupMatchStep kLookupSequence630[] = {
     {5085u, 5141u}, {5094u, 5120u}, {5061u, 5112u},
     {5069u, 5120u}, {5067u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence631[] = {
+constexpr LookupMatchStep kLookupSequence631[] = {
     {5061u, 5108u}, {5061u, 5108u}, {5061u, 5131u},
     {5094u, 5131u}, {5067u, 5112u}, {5063u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence632[] = {
+constexpr LookupMatchStep kLookupSequence632[] = {
     {5061u, 5138u}, {5067u, 5106u}, {5069u, 5133u}, {5090u, 5133u},
     {5090u, 5127u}, {5069u, 5124u}, {5094u, 5120u}, {5067u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence633[] = {
+constexpr LookupMatchStep kLookupSequence633[] = {
     {5094u, 5120u}, {5067u, 5112u}, {5069u, 5138u}, {5067u, 5106u},
     {5061u, 5131u}, {5067u, 5133u}, {5061u, 5138u}, {5061u, 5138u},
     {5061u, 5133u}, {5061u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence634[] = {
+constexpr LookupMatchStep kLookupSequence634[] = {
     {5090u, 5134u}, {5069u, 5106u}, {5090u, 5106u},
     {5065u, 5120u}, {5069u, 5106u}, {5079u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence635[] = {
+constexpr LookupMatchStep kLookupSequence635[] = {
     {5069u, 5112u}, {5063u, 5106u}, {5072u, 5131u},
     {5067u, 5117u}, {5067u, 5131u}, {5069u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence636[] = {
+constexpr LookupMatchStep kLookupSequence636[] = {
     {5067u, 5106u}, {5069u, 5111u}, {5067u, 5106u},
     {5065u, 5111u}, {5069u, 5125u}, {5067u, 5132u},
 };
-constexpr Attention6MatchStep kAttention6Sequence637[] = {
+constexpr LookupMatchStep kLookupSequence637[] = {
     {5094u, 5120u}, {5061u, 5112u}, {5061u, 5131u},
     {5069u, 5131u}, {5061u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence638[] = {
+constexpr LookupMatchStep kLookupSequence638[] = {
     {5067u, 5106u}, {5061u, 5106u}, {5061u, 5133u},
     {5094u, 5106u}, {5071u, 5112u}, {5067u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence639[] = {
+constexpr LookupMatchStep kLookupSequence639[] = {
     {5069u, 5105u}, {5061u, 5106u}, {5069u, 5133u},
     {5063u, 5106u}, {5069u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence640[] = {
+constexpr LookupMatchStep kLookupSequence640[] = {
     {5067u, 5123u},
     {5090u, 5103u},
     {5090u, 5110u},
     {5069u, 5124u},
 };
-constexpr Attention6MatchStep kAttention6Sequence641[] = {
+constexpr LookupMatchStep kLookupSequence641[] = {
     {5069u, 5133u},
     {5094u, 5120u},
     {5069u, 5112u},
     {5069u, 5111u},
 };
-constexpr Attention6MatchStep kAttention6Sequence642[] = {
+constexpr LookupMatchStep kLookupSequence642[] = {
     {5067u, 5116u}, {5067u, 5131u}, {5093u, 5138u},
     {5069u, 5127u}, {5063u, 5120u}, {5069u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence643[] = {
+constexpr LookupMatchStep kLookupSequence643[] = {
     {5069u, 5100u}, {5069u, 5106u}, {5069u, 5116u},
     {5069u, 5116u}, {5067u, 5138u}, {5072u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence644[] = {
+constexpr LookupMatchStep kLookupSequence644[] = {
     {5072u, 5102u}, {5072u, 5117u}, {5067u, 5112u},
     {5069u, 5138u}, {5069u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence645[] = {
+constexpr LookupMatchStep kLookupSequence645[] = {
     {5069u, 5103u}, {5083u, 5120u}, {5069u, 5105u},
     {5094u, 5133u}, {5067u, 5112u}, {5069u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence646[] = {
+constexpr LookupMatchStep kLookupSequence646[] = {
     {5069u, 5106u}, {5067u, 5133u}, {5061u, 5106u},
     {5061u, 5138u}, {5061u, 5131u}, {5069u, 5133u},
     {5094u, 5120u}, {5067u, 5112u}, {5061u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence647[] = {
+constexpr LookupMatchStep kLookupSequence647[] = {
     {5087u, 5112u}, {5061u, 5120u}, {5069u, 5131u},
     {5094u, 5133u}, {5067u, 5112u}, {5061u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence648[] = {
+constexpr LookupMatchStep kLookupSequence648[] = {
     {5082u, 5130u}, {5090u, 5106u}, {5061u, 5106u}, {5061u, 5133u},
     {5069u, 5131u}, {5067u, 5106u}, {5069u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence649[] = {
+constexpr LookupMatchStep kLookupSequence649[] = {
     {5061u, 5116u},
     {5094u, 5131u},
     {5071u, 5112u},
     {5071u, 5111u},
 };
-constexpr Attention6MatchStep kAttention6Sequence650[] = {
+constexpr LookupMatchStep kLookupSequence650[] = {
     {5069u, 5131u}, {5094u, 5106u}, {5067u, 5112u},
     {5069u, 5111u}, {5069u, 5132u},
 };
-constexpr Attention6MatchStep kAttention6Sequence651[] = {
+constexpr LookupMatchStep kLookupSequence651[] = {
     {5094u, 5117u},
     {5061u, 5112u},
     {5069u, 5131u},
     {5061u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence652[] = {
+constexpr LookupMatchStep kLookupSequence652[] = {
     {5094u, 5100u},
     {5067u, 5112u},
     {5094u, 5127u},
     {5067u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence653[] = {
+constexpr LookupMatchStep kLookupSequence653[] = {
     {5061u, 5133u}, {5094u, 5133u}, {5061u, 5115u},
     {5071u, 5106u}, {5072u, 5105u},
 };
-constexpr Attention6MatchStep kAttention6Sequence654[] = {
+constexpr LookupMatchStep kLookupSequence654[] = {
     {5067u, 5115u},
     {5063u, 5127u},
     {5065u, 5131u},
     {5079u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence655[] = {
+constexpr LookupMatchStep kLookupSequence655[] = {
     {5091u, 5110u}, {5091u, 5110u}, {5069u, 5110u}, {5072u, 5120u},
     {5067u, 5117u}, {5065u, 5131u}, {5094u, 5133u}, {5061u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence656[] = {
+constexpr LookupMatchStep kLookupSequence656[] = {
     {5069u, 5135u}, {5067u, 5106u}, {5069u, 5131u},
     {5067u, 5120u}, {5063u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence657[] = {
+constexpr LookupMatchStep kLookupSequence657[] = {
     {5065u, 5111u}, {5094u, 5125u}, {5069u, 5112u},
     {5055u, 5120u}, {5072u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence658[] = {
+constexpr LookupMatchStep kLookupSequence658[] = {
     {5094u, 5105u}, {5060u, 5115u}, {5061u, 5106u},
     {5094u, 5133u}, {5061u, 5112u}, {5061u, 5133u},
     {5094u, 5120u}, {5071u, 5112u}, {5069u, 5116u},
 };
-constexpr Attention6MatchStep kAttention6Sequence659[] = {
+constexpr LookupMatchStep kLookupSequence659[] = {
     {5063u, 5119u},
     {5069u, 5119u},
     {5061u, 5133u},
     {5069u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence660[] = {
+constexpr LookupMatchStep kLookupSequence660[] = {
     {5094u, 5125u}, {5061u, 5112u}, {5066u, 5106u},
     {5061u, 5136u}, {5069u, 5131u}, {5094u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence661[] = {
+constexpr LookupMatchStep kLookupSequence661[] = {
     {5069u, 5127u}, {5094u, 5120u}, {5061u, 5112u}, {5069u, 5138u},
     {5061u, 5120u}, {5067u, 5111u}, {5069u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence662[] = {
+constexpr LookupMatchStep kLookupSequence662[] = {
     {5061u, 5114u}, {5069u, 5106u}, {5083u, 5131u},
     {5094u, 5127u}, {5061u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence663[] = {
+constexpr LookupMatchStep kLookupSequence663[] = {
     {5069u, 5120u},
     {5072u, 5120u},
     {5067u, 5117u},
     {5067u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence664[] = {
+constexpr LookupMatchStep kLookupSequence664[] = {
     {5067u, 5123u}, {5065u, 5133u}, {5067u, 5133u}, {5069u, 5120u},
     {5067u, 5106u}, {5067u, 5131u}, {5068u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence665[] = {
+constexpr LookupMatchStep kLookupSequence665[] = {
     {5061u, 5113u}, {5061u, 5133u}, {5094u, 5133u},
     {5053u, 5112u}, {5067u, 5138u}, {5065u, 5127u},
     {5067u, 5133u}, {5069u, 5133u}, {5067u, 5111u},
 };
-constexpr Attention6MatchStep kAttention6Sequence666[] = {
+constexpr LookupMatchStep kLookupSequence666[] = {
     {5090u, 5139u}, {5061u, 5132u}, {5065u, 5127u}, {5067u, 5133u},
     {5067u, 5133u}, {5061u, 5120u}, {5071u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence667[] = {
+constexpr LookupMatchStep kLookupSequence667[] = {
     {5056u, 5101u},
     {5094u, 5117u},
     {5061u, 5112u},
     {5069u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence668[] = {
+constexpr LookupMatchStep kLookupSequence668[] = {
     {5055u, 5143u}, {5072u, 5131u}, {5094u, 5117u}, {5067u, 5112u},
     {5061u, 5138u}, {5069u, 5133u}, {5067u, 5111u}, {5063u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence669[] = {
+constexpr LookupMatchStep kLookupSequence669[] = {
     {5069u, 5140u}, {5061u, 5131u}, {5094u, 5133u},
     {5067u, 5112u}, {5061u, 5131u}, {5069u, 5131u},
     {5069u, 5120u}, {5072u, 5131u}, {5063u, 5117u},
 };
-constexpr Attention6MatchStep kAttention6Sequence670[] = {
+constexpr LookupMatchStep kLookupSequence670[] = {
     {5061u, 5109u},
     {5069u, 5131u},
     {5094u, 5131u},
     {5060u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence671[] = {
+constexpr LookupMatchStep kLookupSequence671[] = {
     {5061u, 5106u}, {5061u, 5106u}, {5069u, 5120u},
     {5068u, 5134u}, {5061u, 5133u}, {5094u, 5133u},
     {5067u, 5112u}, {5067u, 5138u}, {5061u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence672[] = {
+constexpr LookupMatchStep kLookupSequence672[] = {
     {5061u, 5107u}, {5067u, 5133u}, {5069u, 5120u},
     {5069u, 5120u}, {5067u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence673[] = {
+constexpr LookupMatchStep kLookupSequence673[] = {
     {5067u, 5131u}, {5069u, 5120u}, {5069u, 5106u},
     {5069u, 5120u}, {5061u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence674[] = {
+constexpr LookupMatchStep kLookupSequence674[] = {
     {5065u, 5136u},
     {5061u, 5133u},
     {5094u, 5131u},
     {5069u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence675[] = {
+constexpr LookupMatchStep kLookupSequence675[] = {
     {5072u, 5120u}, {5069u, 5117u}, {5069u, 5131u},
     {5067u, 5106u}, {5067u, 5127u},
 };
-constexpr Attention6MatchStep kAttention6Sequence676[] = {
+constexpr LookupMatchStep kLookupSequence676[] = {
     {5061u, 5111u}, {5071u, 5133u}, {5061u, 5106u},
     {5094u, 5120u}, {5067u, 5112u}, {5069u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence677[] = {
+constexpr LookupMatchStep kLookupSequence677[] = {
     {5067u, 5138u},
     {5061u, 5106u},
     {5061u, 5127u},
     {5063u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence678[] = {
+constexpr LookupMatchStep kLookupSequence678[] = {
     {5094u, 5120u}, {5067u, 5112u}, {5061u, 5138u},
     {5069u, 5120u}, {5094u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence679[] = {
+constexpr LookupMatchStep kLookupSequence679[] = {
     {5071u, 5138u}, {5069u, 5120u}, {5094u, 5120u},
     {5067u, 5112u}, {5061u, 5133u}, {5061u, 5133u},
     {5069u, 5131u}, {5094u, 5120u}, {5067u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence680[] = {
+constexpr LookupMatchStep kLookupSequence680[] = {
     {5054u, 5112u},
     {5067u, 5138u},
     {5061u, 5136u},
     {5065u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence681[] = {
+constexpr LookupMatchStep kLookupSequence681[] = {
     {5069u, 5104u}, {5061u, 5106u}, {5083u, 5133u},
     {5094u, 5127u}, {5067u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence682[] = {
+constexpr LookupMatchStep kLookupSequence682[] = {
     {5069u, 5127u}, {5071u, 5106u}, {5054u, 5106u},
     {5072u, 5120u}, {5067u, 5117u},
 };
-constexpr Attention6MatchStep kAttention6Sequence683[] = {
+constexpr LookupMatchStep kLookupSequence683[] = {
     {5094u, 5125u}, {5057u, 5112u}, {5094u, 5133u}, {5067u, 5112u},
     {5061u, 5138u}, {5072u, 5131u}, {5061u, 5117u}, {5079u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence684[] = {
+constexpr LookupMatchStep kLookupSequence684[] = {
     {5067u, 5138u}, {5067u, 5127u}, {5067u, 5138u}, {5069u, 5131u},
     {5094u, 5120u}, {5061u, 5112u}, {5061u, 5138u}, {5069u, 5138u},
     {5094u, 5120u}, {5067u, 5112u}, {5069u, 5131u}, {5067u, 5106u},
     {5067u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence685[] = {
+constexpr LookupMatchStep kLookupSequence685[] = {
     {5094u, 5120u}, {5067u, 5112u}, {5067u, 5131u},
     {5069u, 5131u}, {5067u, 5112u}, {5073u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence686[] = {
+constexpr LookupMatchStep kLookupSequence686[] = {
     {5072u, 5108u},
     {5061u, 5120u},
     {5094u, 5120u},
     {5071u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence687[] = {
+constexpr LookupMatchStep kLookupSequence687[] = {
     {5061u, 5112u}, {5061u, 5138u}, {5066u, 5135u},
     {5067u, 5138u}, {5069u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence688[] = {
+constexpr LookupMatchStep kLookupSequence688[] = {
     {5061u, 5134u}, {5069u, 5106u}, {5090u, 5106u},
     {5069u, 5124u}, {5071u, 5106u}, {5071u, 5111u},
 };
-constexpr Attention6MatchStep kAttention6Sequence689[] = {
+constexpr LookupMatchStep kLookupSequence689[] = {
     {5067u, 5143u},
     {5071u, 5127u},
     {5069u, 5131u},
     {5071u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence690[] = {
+constexpr LookupMatchStep kLookupSequence690[] = {
     {5094u, 5100u}, {5060u, 5112u}, {5069u, 5106u},
     {5072u, 5120u}, {5061u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence691[] = {
+constexpr LookupMatchStep kLookupSequence691[] = {
     {5067u, 5133u}, {5067u, 5138u}, {5069u, 5111u}, {5069u, 5133u},
     {5094u, 5131u}, {5067u, 5112u}, {5067u, 5138u}, {5054u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence692[] = {
+constexpr LookupMatchStep kLookupSequence692[] = {
     {5069u, 5110u}, {5069u, 5111u}, {5069u, 5131u}, {5094u, 5125u},
     {5067u, 5115u}, {5069u, 5111u}, {5069u, 5132u},
 };
-constexpr Attention6MatchStep kAttention6Sequence693[] = {
+constexpr LookupMatchStep kLookupSequence693[] = {
     {5077u, 5106u}, {5077u, 5133u}, {5061u, 5133u},
     {5067u, 5133u}, {5096u, 5111u}, {5067u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence694[] = {
+constexpr LookupMatchStep kLookupSequence694[] = {
     {5061u, 5127u}, {5065u, 5127u}, {5067u, 5106u},
     {5069u, 5131u}, {5061u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence695[] = {
+constexpr LookupMatchStep kLookupSequence695[] = {
     {5071u, 5120u}, {5094u, 5131u}, {5063u, 5112u}, {5094u, 5131u},
     {5061u, 5112u}, {5094u, 5131u}, {5061u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence696[] = {
+constexpr LookupMatchStep kLookupSequence696[] = {
     {5061u, 5102u}, {5067u, 5111u}, {5061u, 5131u},
     {5067u, 5106u}, {5069u, 5106u}, {5067u, 5143u},
     {5069u, 5131u}, {5067u, 5106u}, {5067u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence697[] = {
+constexpr LookupMatchStep kLookupSequence697[] = {
     {5090u, 5133u}, {5094u, 5131u}, {5069u, 5106u},
     {5071u, 5132u}, {5069u, 5106u}, {5069u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence698[] = {
+constexpr LookupMatchStep kLookupSequence698[] = {
     {5065u, 5106u},
     {5069u, 5133u},
     {5069u, 5116u},
     {5069u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence699[] = {
+constexpr LookupMatchStep kLookupSequence699[] = {
     {5069u, 5106u}, {5087u, 5131u}, {5067u, 5106u}, {5067u, 5106u},
     {5061u, 5138u}, {5061u, 5133u}, {5061u, 5111u}, {5061u, 5111u},
 };
-constexpr Attention6MatchStep kAttention6Sequence700[] = {
+constexpr LookupMatchStep kLookupSequence700[] = {
     {5069u, 5131u},
     {5061u, 5106u},
     {5061u, 5133u},
     {5061u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence701[] = {
+constexpr LookupMatchStep kLookupSequence701[] = {
     {5094u, 5120u}, {5069u, 5112u}, {5067u, 5111u},
     {5094u, 5131u}, {5069u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence702[] = {
+constexpr LookupMatchStep kLookupSequence702[] = {
     {5061u, 5133u}, {5080u, 5133u}, {5061u, 5106u},
     {5067u, 5138u}, {5069u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence703[] = {
+constexpr LookupMatchStep kLookupSequence703[] = {
     {5067u, 5106u},
     {5061u, 5111u},
     {5067u, 5133u},
     {5061u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence704[] = {
+constexpr LookupMatchStep kLookupSequence704[] = {
     {5053u, 5103u}, {5053u, 5114u}, {5074u, 5106u}, {5079u, 5143u},
     {5061u, 5127u}, {5069u, 5111u}, {5067u, 5106u}, {5061u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence705[] = {
+constexpr LookupMatchStep kLookupSequence705[] = {
     {5075u, 5120u}, {5085u, 5108u}, {5061u, 5106u}, {5067u, 5106u},
     {5094u, 5133u}, {5067u, 5112u}, {5069u, 5138u}, {5067u, 5131u},
     {5069u, 5131u}, {5067u, 5108u},
 };
-constexpr Attention6MatchStep kAttention6Sequence706[] = {
+constexpr LookupMatchStep kLookupSequence706[] = {
     {5061u, 5106u}, {5061u, 5133u}, {5094u, 5133u},
     {5094u, 5112u}, {5094u, 5112u}, {5067u, 5112u},
     {5067u, 5138u}, {5067u, 5111u}, {5067u, 5127u},
 };
-constexpr Attention6MatchStep kAttention6Sequence707[] = {
+constexpr LookupMatchStep kLookupSequence707[] = {
     {5069u, 5124u}, {5094u, 5108u}, {5067u, 5112u},
     {5067u, 5131u}, {5069u, 5131u}, {5094u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence708[] = {
+constexpr LookupMatchStep kLookupSequence708[] = {
     {5094u, 5127u}, {5071u, 5112u}, {5061u, 5121u}, {5069u, 5131u},
     {5082u, 5120u}, {5063u, 5106u}, {5072u, 5131u}, {5067u, 5117u},
 };
-constexpr Attention6MatchStep kAttention6Sequence709[] = {
+constexpr LookupMatchStep kLookupSequence709[] = {
     {5067u, 5133u}, {5063u, 5111u}, {5067u, 5106u}, {5067u, 5131u},
     {5061u, 5133u}, {5078u, 5133u}, {5067u, 5108u},
 };
-constexpr Attention6MatchStep kAttention6Sequence710[] = {
+constexpr LookupMatchStep kLookupSequence710[] = {
     {5094u, 5124u}, {5069u, 5106u}, {5091u, 5143u}, {5061u, 5110u},
     {5069u, 5127u}, {5067u, 5106u}, {5061u, 5131u}, {5061u, 5133u},
     {5065u, 5131u}, {5061u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence711[] = {
+constexpr LookupMatchStep kLookupSequence711[] = {
     {5061u, 5112u}, {5061u, 5106u}, {5091u, 5120u}, {5067u, 5127u},
     {5065u, 5131u}, {5094u, 5133u}, {5067u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence712[] = {
+constexpr LookupMatchStep kLookupSequence712[] = {
     {5069u, 5133u}, {5069u, 5120u}, {5094u, 5120u}, {5067u, 5112u},
     {5063u, 5131u}, {5069u, 5111u}, {5071u, 5106u}, {5067u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence713[] = {
+constexpr LookupMatchStep kLookupSequence713[] = {
     {5080u, 5108u},
     {5061u, 5134u},
     {5067u, 5106u},
     {5061u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence714[] = {
+constexpr LookupMatchStep kLookupSequence714[] = {
     {5094u, 5106u}, {5069u, 5133u}, {5067u, 5111u},
     {5069u, 5127u}, {5069u, 5108u}, {5069u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence715[] = {
+constexpr LookupMatchStep kLookupSequence715[] = {
     {5071u, 5113u}, {5061u, 5120u}, {5069u, 5120u},
     {5072u, 5131u}, {5061u, 5117u},
 };
-constexpr Attention6MatchStep kAttention6Sequence716[] = {
+constexpr LookupMatchStep kLookupSequence716[] = {
     {5094u, 5120u}, {5079u, 5112u}, {5069u, 5111u}, {5094u, 5106u},
     {5067u, 5112u}, {5069u, 5131u}, {5094u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence717[] = {
+constexpr LookupMatchStep kLookupSequence717[] = {
     {5061u, 5115u}, {5061u, 5138u}, {5094u, 5133u}, {5067u, 5112u},
     {5069u, 5138u}, {5063u, 5106u}, {5067u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence718[] = {
+constexpr LookupMatchStep kLookupSequence718[] = {
     {5069u, 5131u},
     {5069u, 5124u},
     {5072u, 5106u},
     {5071u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence719[] = {
+constexpr LookupMatchStep kLookupSequence719[] = {
     {5069u, 5117u}, {5091u, 5102u}, {5091u, 5111u}, {5061u, 5111u},
     {5072u, 5120u}, {5094u, 5120u}, {5098u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence720[] = {
+constexpr LookupMatchStep kLookupSequence720[] = {
     {5069u, 5110u},
     {5069u, 5120u},
     {5067u, 5138u},
     {5094u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence721[] = {
+constexpr LookupMatchStep kLookupSequence721[] = {
     {5060u, 5118u}, {5094u, 5108u}, {5069u, 5106u}, {5069u, 5120u},
     {5069u, 5106u}, {5072u, 5120u}, {5067u, 5117u}, {5069u, 5120u},
     {5061u, 5106u}, {5067u, 5138u}, {5067u, 5138u}, {5066u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence722[] = {
+constexpr LookupMatchStep kLookupSequence722[] = {
     {5069u, 5112u},
     {5071u, 5111u},
     {5069u, 5120u},
     {5094u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence723[] = {
+constexpr LookupMatchStep kLookupSequence723[] = {
     {5061u, 5138u}, {5053u, 5133u}, {5079u, 5106u}, {5069u, 5106u},
     {5094u, 5120u}, {5067u, 5112u}, {5061u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence724[] = {
+constexpr LookupMatchStep kLookupSequence724[] = {
     {5069u, 5133u}, {5061u, 5106u}, {5069u, 5138u}, {5094u, 5106u},
     {5067u, 5112u}, {5061u, 5106u}, {5069u, 5131u}, {5067u, 5111u},
 };
-constexpr Attention6MatchStep kAttention6Sequence725[] = {
+constexpr LookupMatchStep kLookupSequence725[] = {
     {5071u, 5110u}, {5067u, 5106u}, {5069u, 5131u}, {5061u, 5125u},
     {5072u, 5105u}, {5067u, 5117u}, {5061u, 5131u}, {5094u, 5120u},
     {5061u, 5112u}, {5069u, 5133u}, {5071u, 5106u}, {5071u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence726[] = {
+constexpr LookupMatchStep kLookupSequence726[] = {
     {5069u, 5120u},
     {5067u, 5106u},
     {5067u, 5111u},
     {5065u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence727[] = {
+constexpr LookupMatchStep kLookupSequence727[] = {
     {5082u, 5125u}, {5067u, 5111u}, {5065u, 5131u},
     {5071u, 5117u}, {5061u, 5118u},
 };
-constexpr Attention6MatchStep kAttention6Sequence728[] = {
+constexpr LookupMatchStep kLookupSequence728[] = {
     {5091u, 5106u}, {5069u, 5110u}, {5072u, 5120u}, {5061u, 5120u},
     {5061u, 5133u}, {5069u, 5131u}, {5069u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence729[] = {
+constexpr LookupMatchStep kLookupSequence729[] = {
     {5053u, 5114u}, {5069u, 5114u}, {5090u, 5120u}, {5067u, 5120u},
     {5061u, 5133u}, {5061u, 5133u}, {5072u, 5120u}, {5069u, 5117u},
 };
-constexpr Attention6MatchStep kAttention6Sequence730[] = {
+constexpr LookupMatchStep kLookupSequence730[] = {
     {5067u, 5117u}, {5065u, 5127u}, {5067u, 5133u},
     {5071u, 5111u}, {5067u, 5120u}, {5069u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence731[] = {
+constexpr LookupMatchStep kLookupSequence731[] = {
     {5065u, 5119u}, {5094u, 5125u}, {5065u, 5112u},
     {5071u, 5120u}, {5094u, 5131u}, {5069u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence732[] = {
+constexpr LookupMatchStep kLookupSequence732[] = {
     {5061u, 5138u}, {5069u, 5131u}, {5067u, 5106u},
     {5069u, 5111u}, {5067u, 5106u}, {5069u, 5131u},
     {5094u, 5120u}, {5069u, 5112u}, {5061u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence733[] = {
+constexpr LookupMatchStep kLookupSequence733[] = {
     {5061u, 5111u}, {5065u, 5133u}, {5061u, 5110u}, {5069u, 5131u},
     {5094u, 5120u}, {5061u, 5112u}, {5069u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence734[] = {
+constexpr LookupMatchStep kLookupSequence734[] = {
     {5067u, 5106u}, {5072u, 5131u}, {5067u, 5117u},
     {5061u, 5111u}, {5067u, 5133u}, {5094u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence735[] = {
+constexpr LookupMatchStep kLookupSequence735[] = {
     {5094u, 5131u}, {5061u, 5112u}, {5069u, 5127u}, {5067u, 5106u},
     {5057u, 5111u}, {5065u, 5111u}, {5094u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence736[] = {
+constexpr LookupMatchStep kLookupSequence736[] = {
     {5069u, 5143u}, {5069u, 5106u}, {5067u, 5130u},
     {5069u, 5120u}, {5061u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence737[] = {
+constexpr LookupMatchStep kLookupSequence737[] = {
     {5093u, 5120u}, {5069u, 5127u}, {5094u, 5120u}, {5091u, 5112u},
     {5067u, 5106u}, {5067u, 5131u}, {5069u, 5111u},
 };
-constexpr Attention6MatchStep kAttention6Sequence738[] = {
+constexpr LookupMatchStep kLookupSequence738[] = {
     {5094u, 5132u},
     {5067u, 5112u},
     {5069u, 5111u},
     {5063u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence739[] = {
+constexpr LookupMatchStep kLookupSequence739[] = {
     {5067u, 5133u},
     {5061u, 5106u},
     {5094u, 5133u},
     {5063u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence740[] = {
+constexpr LookupMatchStep kLookupSequence740[] = {
     {5053u, 5105u},
     {5067u, 5133u},
     {5061u, 5106u},
     {5069u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence741[] = {
+constexpr LookupMatchStep kLookupSequence741[] = {
     {5074u, 5133u}, {5071u, 5143u}, {5090u, 5133u}, {5094u, 5133u},
     {5071u, 5120u}, {5094u, 5127u}, {5061u, 5112u}, {5061u, 5138u},
     {5061u, 5111u}, {5065u, 5120u}, {5061u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence742[] = {
+constexpr LookupMatchStep kLookupSequence742[] = {
     {5061u, 5137u},
     {5067u, 5133u},
     {5063u, 5133u},
     {5094u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence743[] = {
+constexpr LookupMatchStep kLookupSequence743[] = {
     {5061u, 5143u}, {5071u, 5133u}, {5071u, 5133u},
     {5063u, 5127u}, {5094u, 5131u}, {5067u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence744[] = {
+constexpr LookupMatchStep kLookupSequence744[] = {
     {5061u, 5138u}, {5061u, 5133u}, {5094u, 5133u},
     {5067u, 5112u}, {5067u, 5138u}, {5067u, 5111u},
 };
-constexpr Attention6MatchStep kAttention6Sequence745[] = {
+constexpr LookupMatchStep kLookupSequence745[] = {
     {5094u, 5111u}, {5067u, 5112u}, {5061u, 5138u},
     {5069u, 5106u}, {5067u, 5106u}, {5063u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence746[] = {
+constexpr LookupMatchStep kLookupSequence746[] = {
     {5074u, 5106u},
     {5069u, 5125u},
     {5090u, 5125u},
     {5069u, 5124u},
 };
-constexpr Attention6MatchStep kAttention6Sequence747[] = {
+constexpr LookupMatchStep kLookupSequence747[] = {
     {5067u, 5117u}, {5067u, 5138u}, {5065u, 5111u}, {5094u, 5106u},
     {5061u, 5112u}, {5067u, 5133u}, {5069u, 5127u}, {5094u, 5120u},
     {5069u, 5112u}, {5069u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence748[] = {
+constexpr LookupMatchStep kLookupSequence748[] = {
     {5069u, 5120u}, {5094u, 5120u}, {5067u, 5112u}, {5067u, 5106u},
     {5067u, 5133u}, {5072u, 5131u}, {5069u, 5120u}, {5061u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence749[] = {
+constexpr LookupMatchStep kLookupSequence749[] = {
     {5061u, 5111u}, {5067u, 5133u}, {5065u, 5111u},
     {5071u, 5133u}, {5061u, 5106u}, {5053u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence750[] = {
+constexpr LookupMatchStep kLookupSequence750[] = {
     {5069u, 5120u}, {5067u, 5106u}, {5061u, 5111u}, {5067u, 5133u},
     {5061u, 5131u}, {5094u, 5106u}, {5069u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence751[] = {
+constexpr LookupMatchStep kLookupSequence751[] = {
     {5057u, 5138u}, {5069u, 5133u}, {5094u, 5125u},
     {5067u, 5112u}, {5069u, 5131u}, {5071u, 5125u},
 };
-constexpr Attention6MatchStep kAttention6Sequence752[] = {
+constexpr LookupMatchStep kLookupSequence752[] = {
     {5053u, 5106u}, {5061u, 5106u}, {5069u, 5111u}, {5065u, 5133u},
     {5065u, 5133u}, {5063u, 5118u}, {5069u, 5131u}, {5094u, 5106u},
     {5067u, 5112u}, {5061u, 5138u}, {5061u, 5105u},
 };
-constexpr Attention6MatchStep kAttention6Sequence753[] = {
+constexpr LookupMatchStep kLookupSequence753[] = {
     {5074u, 5105u}, {5067u, 5143u}, {5094u, 5111u},
     {5067u, 5112u}, {5067u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence754[] = {
+constexpr LookupMatchStep kLookupSequence754[] = {
     {5061u, 5127u},
     {5094u, 5112u},
     {5067u, 5112u},
     {5063u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence755[] = {
+constexpr LookupMatchStep kLookupSequence755[] = {
     {5069u, 5117u}, {5094u, 5120u}, {5061u, 5112u},
     {5067u, 5138u}, {5061u, 5117u},
 };
-constexpr Attention6MatchStep kAttention6Sequence756[] = {
+constexpr LookupMatchStep kLookupSequence756[] = {
     {5067u, 5133u}, {5063u, 5131u}, {5069u, 5120u},
     {5067u, 5131u}, {5061u, 5138u}, {5067u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence757[] = {
+constexpr LookupMatchStep kLookupSequence757[] = {
     {5061u, 5106u}, {5067u, 5133u}, {5066u, 5138u}, {5061u, 5138u},
     {5065u, 5138u}, {5063u, 5124u}, {5094u, 5120u}, {5067u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence758[] = {
+constexpr LookupMatchStep kLookupSequence758[] = {
     {5069u, 5127u}, {5094u, 5106u}, {5061u, 5112u}, {5069u, 5131u},
     {5061u, 5106u}, {5069u, 5131u}, {5067u, 5106u}, {5069u, 5111u},
 };
-constexpr Attention6MatchStep kAttention6Sequence759[] = {
+constexpr LookupMatchStep kLookupSequence759[] = {
     {5094u, 5102u}, {5067u, 5112u}, {5061u, 5106u},
     {5067u, 5106u}, {5061u, 5131u}, {5061u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence760[] = {
+constexpr LookupMatchStep kLookupSequence760[] = {
     {5061u, 5135u}, {5072u, 5131u}, {5067u, 5117u},
     {5063u, 5131u}, {5061u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence761[] = {
+constexpr LookupMatchStep kLookupSequence761[] = {
     {5094u, 5108u},
     {5067u, 5112u},
     {5090u, 5133u},
     {5090u, 5127u},
 };
-constexpr Attention6MatchStep kAttention6Sequence762[] = {
+constexpr LookupMatchStep kLookupSequence762[] = {
     {5061u, 5105u}, {5093u, 5131u}, {5071u, 5133u}, {5063u, 5133u},
     {5061u, 5131u}, {5065u, 5133u}, {5094u, 5125u}, {5061u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence763[] = {
+constexpr LookupMatchStep kLookupSequence763[] = {
     {5061u, 5104u}, {5094u, 5131u}, {5071u, 5112u}, {5067u, 5104u},
     {5067u, 5138u}, {5079u, 5138u}, {5069u, 5133u}, {5094u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence764[] = {
+constexpr LookupMatchStep kLookupSequence764[] = {
     {5067u, 5112u}, {5061u, 5120u}, {5094u, 5133u},
     {5067u, 5112u}, {5069u, 5131u}, {5094u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence765[] = {
+constexpr LookupMatchStep kLookupSequence765[] = {
     {5085u, 5133u}, {5093u, 5106u}, {5053u, 5105u}, {5071u, 5106u},
     {5063u, 5106u}, {5069u, 5120u}, {5064u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence766[] = {
+constexpr LookupMatchStep kLookupSequence766[] = {
     {5069u, 5111u}, {5067u, 5106u}, {5094u, 5120u}, {5061u, 5112u},
     {5069u, 5127u}, {5069u, 5120u}, {5069u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence767[] = {
+constexpr LookupMatchStep kLookupSequence767[] = {
     {5065u, 5131u}, {5069u, 5106u}, {5061u, 5127u},
     {5094u, 5120u}, {5061u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence768[] = {
+constexpr LookupMatchStep kLookupSequence768[] = {
     {5061u, 5127u}, {5061u, 5131u}, {5067u, 5133u},
     {5069u, 5138u}, {5072u, 5131u}, {5061u, 5117u},
     {5061u, 5131u}, {5061u, 5120u}, {5067u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence769[] = {
+constexpr LookupMatchStep kLookupSequence769[] = {
     {5061u, 5143u}, {5061u, 5106u}, {5061u, 5106u}, {5068u, 5138u},
     {5071u, 5133u}, {5069u, 5138u}, {5063u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence770[] = {
+constexpr LookupMatchStep kLookupSequence770[] = {
     {5069u, 5108u}, {5053u, 5133u}, {5069u, 5133u},
     {5067u, 5120u}, {5061u, 5133u}, {5066u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence771[] = {
+constexpr LookupMatchStep kLookupSequence771[] = {
     {5094u, 5106u}, {5061u, 5112u}, {5069u, 5127u}, {5094u, 5120u},
     {5067u, 5112u}, {5067u, 5106u}, {5072u, 5120u}, {5094u, 5108u},
 };
-constexpr Attention6MatchStep kAttention6Sequence772[] = {
+constexpr LookupMatchStep kLookupSequence772[] = {
     {5067u, 5136u},
     {5069u, 5127u},
     {5068u, 5106u},
     {5061u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence773[] = {
+constexpr LookupMatchStep kLookupSequence773[] = {
     {5067u, 5138u}, {5067u, 5133u}, {5061u, 5138u}, {5061u, 5133u},
     {5069u, 5127u}, {5067u, 5106u}, {5063u, 5127u},
 };
-constexpr Attention6MatchStep kAttention6Sequence774[] = {
+constexpr LookupMatchStep kLookupSequence774[] = {
     {5069u, 5120u}, {5094u, 5120u}, {5067u, 5112u},
     {5069u, 5131u}, {5071u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence775[] = {
+constexpr LookupMatchStep kLookupSequence775[] = {
     {5094u, 5111u}, {5061u, 5112u}, {5067u, 5104u}, {5061u, 5138u},
     {5065u, 5131u}, {5070u, 5133u}, {5061u, 5115u}, {5067u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence776[] = {
+constexpr LookupMatchStep kLookupSequence776[] = {
     {5094u, 5131u}, {5069u, 5112u}, {5069u, 5127u},
     {5069u, 5106u}, {5069u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence777[] = {
+constexpr LookupMatchStep kLookupSequence777[] = {
     {5067u, 5138u}, {5054u, 5138u}, {5069u, 5124u},
     {5069u, 5131u}, {5094u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence778[] = {
+constexpr LookupMatchStep kLookupSequence778[] = {
     {5094u, 5125u}, {5071u, 5112u}, {5067u, 5133u},
     {5069u, 5131u}, {5094u, 5125u},
 };
-constexpr Attention6MatchStep kAttention6Sequence779[] = {
+constexpr LookupMatchStep kLookupSequence779[] = {
     {5067u, 5106u}, {5065u, 5120u}, {5094u, 5100u}, {5071u, 5112u},
     {5094u, 5127u}, {5063u, 5112u}, {5065u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence780[] = {
+constexpr LookupMatchStep kLookupSequence780[] = {
     {5094u, 5125u}, {5061u, 5112u}, {5069u, 5120u},
     {5067u, 5106u}, {5061u, 5105u}, {5072u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence781[] = {
+constexpr LookupMatchStep kLookupSequence781[] = {
     {5061u, 5133u}, {5094u, 5106u}, {5053u, 5112u},
     {5067u, 5113u}, {5069u, 5128u}, {5061u, 5106u},
     {5094u, 5120u}, {5067u, 5112u}, {5067u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence782[] = {
+constexpr LookupMatchStep kLookupSequence782[] = {
     {5069u, 5127u}, {5094u, 5120u}, {5069u, 5112u},
     {5067u, 5127u}, {5061u, 5131u}, {5069u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence783[] = {
+constexpr LookupMatchStep kLookupSequence783[] = {
     {5061u, 5117u}, {5069u, 5111u}, {5067u, 5120u},
     {5063u, 5138u}, {5061u, 5131u}, {5071u, 5138u},
 };
-constexpr Attention6MatchStep kAttention6Sequence784[] = {
+constexpr LookupMatchStep kLookupSequence784[] = {
     {5094u, 5124u},
     {5069u, 5106u},
     {5061u, 5120u},
     {5061u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence785[] = {
+constexpr LookupMatchStep kLookupSequence785[] = {
     {5061u, 5112u},
     {5069u, 5131u},
     {5061u, 5106u},
     {5071u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence786[] = {
+constexpr LookupMatchStep kLookupSequence786[] = {
     {5067u, 5108u},
     {5067u, 5120u},
     {5067u, 5131u},
     {5069u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence787[] = {
+constexpr LookupMatchStep kLookupSequence787[] = {
     {5094u, 5117u}, {5069u, 5112u}, {5067u, 5110u},
     {5067u, 5111u}, {5069u, 5111u},
 };
-constexpr Attention6MatchStep kAttention6Sequence788[] = {
+constexpr LookupMatchStep kLookupSequence788[] = {
     {5061u, 5127u},
     {5069u, 5120u},
     {5067u, 5106u},
     {5065u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence789[] = {
+constexpr LookupMatchStep kLookupSequence789[] = {
     {5067u, 5138u},
     {5069u, 5131u},
     {5094u, 5131u},
     {5069u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence790[] = {
+constexpr LookupMatchStep kLookupSequence790[] = {
     {5094u, 5125u}, {5061u, 5117u}, {5069u, 5111u},
     {5067u, 5106u}, {5061u, 5133u},
 };
-constexpr Attention6MatchStep kAttention6Sequence791[] = {
+constexpr LookupMatchStep kLookupSequence791[] = {
     {5067u, 5133u}, {5061u, 5133u}, {5094u, 5133u},
     {5067u, 5112u}, {5061u, 5111u},
 };
-constexpr Attention6MatchStep kAttention6Sequence792[] = {
+constexpr LookupMatchStep kLookupSequence792[] = {
     {5067u, 5110u},
     {5069u, 5131u},
     {5094u, 5120u},
     {5061u, 5112u},
 };
-constexpr Attention6MatchStep kAttention6Sequence793[] = {
+constexpr LookupMatchStep kLookupSequence793[] = {
     {5067u, 5112u}, {5061u, 5131u}, {5061u, 5133u},
     {5065u, 5133u}, {5066u, 5120u}, {5063u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence794[] = {
+constexpr LookupMatchStep kLookupSequence794[] = {
     {5067u, 5138u}, {5061u, 5111u}, {5053u, 5133u}, {5067u, 5106u},
     {5061u, 5138u}, {5065u, 5106u}, {5069u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence795[] = {
+constexpr LookupMatchStep kLookupSequence795[] = {
     {5061u, 5139u}, {5067u, 5120u}, {5094u, 5120u}, {5063u, 5106u},
     {5094u, 5120u}, {5069u, 5117u}, {5061u, 5106u}, {5067u, 5111u},
     {5074u, 5138u}, {5061u, 5143u},
 };
-constexpr Attention6MatchStep kAttention6Sequence796[] = {
+constexpr LookupMatchStep kLookupSequence796[] = {
     {5067u, 5112u}, {5065u, 5111u}, {5094u, 5125u}, {5067u, 5112u},
     {5061u, 5120u}, {5069u, 5133u}, {5067u, 5106u}, {5069u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence797[] = {
+constexpr LookupMatchStep kLookupSequence797[] = {
     {5065u, 5131u}, {5061u, 5133u}, {5061u, 5133u},
     {5094u, 5133u}, {5069u, 5117u},
 };
-constexpr Attention6MatchStep kAttention6Sequence798[] = {
+constexpr LookupMatchStep kLookupSequence798[] = {
     {5067u, 5125u}, {5061u, 5106u}, {5065u, 5133u},
     {5094u, 5125u}, {5053u, 5112u}, {5061u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence799[] = {
+constexpr LookupMatchStep kLookupSequence799[] = {
     {5094u, 5120u}, {5067u, 5112u}, {5069u, 5131u},
     {5067u, 5106u}, {5069u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence800[] = {
+constexpr LookupMatchStep kLookupSequence800[] = {
     {5065u, 5133u}, {5067u, 5106u}, {5067u, 5111u}, {5071u, 5111u},
     {5061u, 5106u}, {5061u, 5133u}, {5072u, 5120u}, {5063u, 5139u},
 };
-constexpr Attention6MatchStep kAttention6Sequence801[] = {
+constexpr LookupMatchStep kLookupSequence801[] = {
     {5065u, 5111u}, {5094u, 5125u}, {5061u, 5112u},
     {5067u, 5138u}, {5067u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence802[] = {
+constexpr LookupMatchStep kLookupSequence802[] = {
     {5063u, 5112u}, {5094u, 5131u}, {5069u, 5112u},
     {5067u, 5131u}, {5067u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence803[] = {
+constexpr LookupMatchStep kLookupSequence803[] = {
     {5067u, 5104u}, {5061u, 5104u}, {5094u, 5120u}, {5069u, 5112u},
     {5061u, 5106u}, {5069u, 5102u}, {5067u, 5106u}, {5065u, 5131u},
     {5067u, 5133u}, {5069u, 5120u},
 };
-constexpr Attention6MatchStep kAttention6Sequence804[] = {
+constexpr LookupMatchStep kLookupSequence804[] = {
     {5065u, 5133u},
     {5065u, 5125u},
     {5069u, 5120u},
     {5069u, 5127u},
 };
-constexpr Attention6MatchStep kAttention6Sequence805[] = {
+constexpr LookupMatchStep kLookupSequence805[] = {
     {5067u, 5138u},
     {5061u, 5138u},
     {5061u, 5133u},
     {5061u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence806[] = {
+constexpr LookupMatchStep kLookupSequence806[] = {
     {5061u, 5127u}, {5067u, 5104u}, {5067u, 5138u},
     {5061u, 5127u}, {5094u, 5120u}, {5069u, 5115u},
     {5067u, 5111u}, {5067u, 5138u}, {5067u, 5106u},
 };
-constexpr Attention6MatchStep kAttention6Sequence807[] = {
+constexpr LookupMatchStep kLookupSequence807[] = {
     {5061u, 5131u}, {5061u, 5133u}, {5072u, 5120u},
     {5067u, 5117u}, {5065u, 5111u}, {5061u, 5125u},
 };
-constexpr Attention6MatchStep kAttention6Sequence808[] = {
+constexpr LookupMatchStep kLookupSequence808[] = {
     {5069u, 5106u}, {5069u, 5127u}, {5061u, 5127u}, {5067u, 5138u},
     {5069u, 5106u}, {5094u, 5131u}, {5069u, 5112u}, {5069u, 5127u},
 };
-constexpr Attention6MatchStep kAttention6Sequence809[] = {
+constexpr LookupMatchStep kLookupSequence809[] = {
     {5061u, 5120u},
     {5069u, 5127u},
     {5069u, 5120u},
     {5067u, 5111u},
 };
-constexpr Attention6MatchStep kAttention6Sequence810[] = {
+constexpr LookupMatchStep kLookupSequence810[] = {
     {5067u, 5111u}, {5069u, 5138u}, {5072u, 5108u},
     {5069u, 5117u}, {5067u, 5106u}, {5069u, 5131u},
 };
-constexpr Attention6MatchStep kAttention6Sequence811[] = {
+constexpr LookupMatchStep kLookupSequence811[] = {
     {5071u, 5132u}, {5071u, 5131u}, {5061u, 5110u},
     {5067u, 5138u}, {5061u, 5131u},
 };
-Attention6Step Attention6Part0(
+LookupStep LookupPart0(
     std::uint32_t node,
     [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
@@ -3861,7 +3861,7 @@ Attention6Step Attention6Part0(
     case 0u:
       goto n0;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n255:
   PLUTO_ATTN_MATCH(5094, 5102);
@@ -3879,10 +3879,10 @@ n251:
     case 5071:
       goto n241;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n250:
-  PLUTO_ATTN_RUN(kAttention6Sequence0);
+  PLUTO_ATTN_RUN(kLookupSequence0);
   goto n243;
 n243:
   PLUTO_ATTN_MATCH(5094, 5120);
@@ -3891,7 +3891,7 @@ n242:
   PLUTO_ATTN_MATCH(5071, 5112);
   goto n52;
 n241:
-  PLUTO_ATTN_RUN(kAttention6Sequence1);
+  PLUTO_ATTN_RUN(kLookupSequence1);
   goto n231;
 n231:
   PLUTO_ATTN_MATCH(5067, 5106);
@@ -3908,7 +3908,7 @@ n230:
     case 5094:
       goto n112;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n229:
   PLUTO_ATTN_END(5131);
@@ -3928,10 +3928,10 @@ n229:
     case 5094:
       goto n171;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n228:
-  PLUTO_ATTN_RUN(kAttention6Sequence2);
+  PLUTO_ATTN_RUN(kLookupSequence2);
   goto n221;
 n221:
   PLUTO_ATTN_MATCH(5069, 5112);
@@ -3940,43 +3940,43 @@ n220:
   PLUTO_ATTN_MATCH(5069, 5131);
   goto n16;
 n219:
-  PLUTO_ATTN_RUN(kAttention6Sequence3);
+  PLUTO_ATTN_RUN(kLookupSequence3);
   goto n211;
 n211:
   PLUTO_ATTN_MATCH(5069, 5131);
   goto n26;
 n210:
-  PLUTO_ATTN_RUN(kAttention6Sequence4);
+  PLUTO_ATTN_RUN(kLookupSequence4);
   goto n202;
 n202:
   PLUTO_ATTN_MATCH(5067, 5138);
   goto n1;
 n201:
-  PLUTO_ATTN_RUN(kAttention6Sequence5);
+  PLUTO_ATTN_RUN(kLookupSequence5);
   goto n192;
 n192:
   PLUTO_ATTN_MATCH(5061, 5131);
   goto n16;
 n191:
-  PLUTO_ATTN_RUN(kAttention6Sequence6);
+  PLUTO_ATTN_RUN(kLookupSequence6);
   goto n182;
 n182:
   PLUTO_ATTN_MATCH(5061, 5116);
   goto n1;
 n181:
-  PLUTO_ATTN_RUN(kAttention6Sequence7);
+  PLUTO_ATTN_RUN(kLookupSequence7);
   goto n172;
 n172:
   PLUTO_ATTN_MATCH(5067, 5131);
   goto n16;
 n171:
-  PLUTO_ATTN_RUN(kAttention6Sequence8);
+  PLUTO_ATTN_RUN(kLookupSequence8);
   goto n161;
 n161:
   PLUTO_ATTN_MATCH(5067, 5105);
   goto n16;
 n160:
-  PLUTO_ATTN_RUN(kAttention6Sequence9);
+  PLUTO_ATTN_RUN(kLookupSequence9);
   goto n150;
 n150:
   PLUTO_ATTN_MATCH(5061, 5108);
@@ -3993,34 +3993,34 @@ n149:
     case 5080:
       goto n122;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n148:
-  PLUTO_ATTN_RUN(kAttention6Sequence10);
+  PLUTO_ATTN_RUN(kLookupSequence10);
   goto n139;
 n139:
   PLUTO_ATTN_MATCH(5061, 5112);
   goto n1;
 n138:
-  PLUTO_ATTN_RUN(kAttention6Sequence11);
+  PLUTO_ATTN_RUN(kLookupSequence11);
   goto n128;
 n128:
   PLUTO_ATTN_MATCH(5069, 5133);
   goto n52;
 n127:
-  PLUTO_ATTN_RUN(kAttention6Sequence12);
+  PLUTO_ATTN_RUN(kLookupSequence12);
   goto n123;
 n123:
   PLUTO_ATTN_MATCH(5067, 5120);
   goto n26;
 n122:
-  PLUTO_ATTN_RUN(kAttention6Sequence13);
+  PLUTO_ATTN_RUN(kLookupSequence13);
   goto n113;
 n113:
   PLUTO_ATTN_MATCH(5061, 5133);
   goto n1;
 n112:
-  PLUTO_ATTN_RUN(kAttention6Sequence14);
+  PLUTO_ATTN_RUN(kLookupSequence14);
   goto n97;
 n97:
   PLUTO_ATTN_MATCH(5069, 5131);
@@ -4039,7 +4039,7 @@ n96:
     case 5094:
       goto n15;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n95:
   PLUTO_ATTN_END(5106);
@@ -4049,10 +4049,10 @@ n95:
     case 5069:
       goto n88;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n94:
-  PLUTO_ATTN_RUN(kAttention6Sequence15);
+  PLUTO_ATTN_RUN(kLookupSequence15);
   goto n90;
 n90:
   PLUTO_ATTN_MATCH(5094, 5120);
@@ -4061,7 +4061,7 @@ n89:
   PLUTO_ATTN_MATCH(5067, 5112);
   goto n16;
 n88:
-  PLUTO_ATTN_RUN(kAttention6Sequence16);
+  PLUTO_ATTN_RUN(kLookupSequence16);
   goto n81;
 n81:
   PLUTO_ATTN_MATCH(5069, 5111);
@@ -4074,16 +4074,16 @@ n80:
     case 5069:
       goto n62;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n79:
-  PLUTO_ATTN_RUN(kAttention6Sequence17);
+  PLUTO_ATTN_RUN(kLookupSequence17);
   goto n63;
 n63:
   PLUTO_ATTN_MATCH(5061, 5133);
   goto n52;
 n62:
-  PLUTO_ATTN_RUN(kAttention6Sequence18);
+  PLUTO_ATTN_RUN(kLookupSequence18);
   goto n52;
 n52:
   PLUTO_ATTN_MATCH(5061, 5106);
@@ -4096,16 +4096,16 @@ n51:
     case 5069:
       goto n41;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n50:
-  PLUTO_ATTN_RUN(kAttention6Sequence19);
+  PLUTO_ATTN_RUN(kLookupSequence19);
   goto n42;
 n42:
   PLUTO_ATTN_MATCH(5069, 5120);
   goto n2;
 n41:
-  PLUTO_ATTN_RUN(kAttention6Sequence20);
+  PLUTO_ATTN_RUN(kLookupSequence20);
   goto n29;
 n29:
   PLUTO_ATTN_MATCH(5094, 5120);
@@ -4120,13 +4120,13 @@ n26:
   PLUTO_ATTN_MATCH(5061, 5111);
   goto n1;
 n25:
-  PLUTO_ATTN_RUN(kAttention6Sequence21);
+  PLUTO_ATTN_RUN(kLookupSequence21);
   goto n16;
 n16:
   PLUTO_ATTN_MATCH(5061, 5131);
   goto n1;
 n15:
-  PLUTO_ATTN_RUN(kAttention6Sequence22);
+  PLUTO_ATTN_RUN(kLookupSequence22);
   goto n2;
 n2:
   PLUTO_ATTN_MATCH(5061, 5120);
@@ -4136,9 +4136,9 @@ n1:
   goto n0;
 n0:
   PLUTO_ATTN_END(5131);
-  return {kAttention6Done, {}};
+  return {kLookupDone, {}};
 }
-Attention6Step Attention6Part1(
+LookupStep LookupPart1(
     std::uint32_t node,
     [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
@@ -4226,16 +4226,16 @@ Attention6Step Attention6Part1(
     case 256u:
       goto n256;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n511:
-  PLUTO_ATTN_RUN(kAttention6Sequence23);
+  PLUTO_ATTN_RUN(kLookupSequence23);
   goto n502;
 n502:
   PLUTO_ATTN_MATCH(5067, 5106);
   goto n256;
 n501:
-  PLUTO_ATTN_RUN(kAttention6Sequence24);
+  PLUTO_ATTN_RUN(kLookupSequence24);
   goto n497;
 n497:
   PLUTO_ATTN_MATCH(5054, 5106);
@@ -4256,7 +4256,7 @@ n496:
     case 5079:
       goto n464;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n495:
   PLUTO_ATTN_MATCH(5061, 5120);
@@ -4265,7 +4265,7 @@ n494:
   PLUTO_ATTN_MATCH(5061, 5138);
   goto n256;
 n493:
-  PLUTO_ATTN_RUN(kAttention6Sequence25);
+  PLUTO_ATTN_RUN(kLookupSequence25);
   goto n489;
 n489:
   PLUTO_ATTN_MATCH(5065, 5131);
@@ -4274,25 +4274,25 @@ n488:
   PLUTO_ATTN_MATCH(5061, 5133);
   goto n256;
 n487:
-  PLUTO_ATTN_RUN(kAttention6Sequence26);
+  PLUTO_ATTN_RUN(kLookupSequence26);
   goto n482;
 n482:
   PLUTO_ATTN_MATCH(5069, 5120);
   return {52u, {}};
 n481:
-  PLUTO_ATTN_RUN(kAttention6Sequence27);
+  PLUTO_ATTN_RUN(kLookupSequence27);
   goto n477;
 n477:
   PLUTO_ATTN_MATCH(5061, 5106);
   return {172u, {}};
 n476:
-  PLUTO_ATTN_RUN(kAttention6Sequence28);
+  PLUTO_ATTN_RUN(kLookupSequence28);
   goto n465;
 n465:
   PLUTO_ATTN_MATCH(5067, 5131);
   goto n256;
 n464:
-  PLUTO_ATTN_RUN(kAttention6Sequence29);
+  PLUTO_ATTN_RUN(kLookupSequence29);
   goto n458;
 n458:
   PLUTO_ATTN_MATCH(5094, 5131);
@@ -4305,16 +4305,16 @@ n457:
     case 5071:
       goto n451;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n456:
-  PLUTO_ATTN_RUN(kAttention6Sequence30);
+  PLUTO_ATTN_RUN(kLookupSequence30);
   goto n452;
 n452:
   PLUTO_ATTN_MATCH(5069, 5106);
   return {1u, {}};
 n451:
-  PLUTO_ATTN_RUN(kAttention6Sequence31);
+  PLUTO_ATTN_RUN(kLookupSequence31);
   return {1u, {}};
 n446:
   PLUTO_ATTN_END(5108);
@@ -4326,7 +4326,7 @@ n446:
     case 5069:
       goto n415;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n445:
   PLUTO_ATTN_END(5131);
@@ -4338,7 +4338,7 @@ n445:
     case 5069:
       goto n431;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n444:
   PLUTO_ATTN_MATCH(5072, 5105);
@@ -4347,19 +4347,19 @@ n443:
   PLUTO_ATTN_MATCH(5094, 5117);
   return {139u, {}};
 n442:
-  PLUTO_ATTN_RUN(kAttention6Sequence32);
+  PLUTO_ATTN_RUN(kLookupSequence32);
   goto n432;
 n432:
   PLUTO_ATTN_MATCH(5067, 5106);
   return {220u, {}};
 n431:
-  PLUTO_ATTN_RUN(kAttention6Sequence33);
+  PLUTO_ATTN_RUN(kLookupSequence33);
   goto n427;
 n427:
   PLUTO_ATTN_MATCH(5094, 5133);
   return {139u, {}};
 n426:
-  PLUTO_ATTN_RUN(kAttention6Sequence34);
+  PLUTO_ATTN_RUN(kLookupSequence34);
   goto n416;
 n416:
   PLUTO_ATTN_MATCH(5061, 5131);
@@ -4374,19 +4374,19 @@ n415:
     case 5090:
       goto n394;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n414:
-  PLUTO_ATTN_RUN(kAttention6Sequence35);
+  PLUTO_ATTN_RUN(kLookupSequence35);
   return {81u, {}};
 n404:
-  PLUTO_ATTN_RUN(kAttention6Sequence36);
+  PLUTO_ATTN_RUN(kLookupSequence36);
   goto n395;
 n395:
   PLUTO_ATTN_MATCH(5069, 5120);
   goto n258;
 n394:
-  PLUTO_ATTN_RUN(kAttention6Sequence37);
+  PLUTO_ATTN_RUN(kLookupSequence37);
   return {90u, {}};
 n388:
   PLUTO_ATTN_MATCH(5069, 5133);
@@ -4401,10 +4401,10 @@ n385:
     case 5067:
       goto n372;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n384:
-  PLUTO_ATTN_RUN(kAttention6Sequence38);
+  PLUTO_ATTN_RUN(kLookupSequence38);
   goto n374;
 n374:
   PLUTO_ATTN_MATCH(5072, 5105);
@@ -4420,10 +4420,10 @@ n372:
     case 5069:
       goto n364;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n371:
-  PLUTO_ATTN_RUN(kAttention6Sequence39);
+  PLUTO_ATTN_RUN(kLookupSequence39);
   return {52u, {}};
 n364:
   PLUTO_ATTN_MATCH(5094, 5120);
@@ -4431,7 +4431,7 @@ n364:
   PLUTO_ATTN_MATCH(5069, 5131);
   return {220u, {}};
 n361:
-  PLUTO_ATTN_RUN(kAttention6Sequence40);
+  PLUTO_ATTN_RUN(kLookupSequence40);
   goto n351;
 n351:
   PLUTO_ATTN_MATCH(5069, 5112);
@@ -4448,7 +4448,7 @@ n350:
     case 5080:
       return {96u, {}};
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n349:
   PLUTO_ATTN_END(5131);
@@ -4464,7 +4464,7 @@ n349:
     case 5088:
       return {255u, {}};
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n348:
   PLUTO_ATTN_END(5111);
@@ -4482,28 +4482,28 @@ n348:
     case 5079:
       goto n312;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n347:
-  PLUTO_ATTN_RUN(kAttention6Sequence41);
+  PLUTO_ATTN_RUN(kLookupSequence41);
   return {26u, {}};
 n343:
-  PLUTO_ATTN_RUN(kAttention6Sequence42);
+  PLUTO_ATTN_RUN(kLookupSequence42);
   goto n339;
 n339:
   PLUTO_ATTN_MATCH(5067, 5120);
   goto n256;
 n338:
-  PLUTO_ATTN_RUN(kAttention6Sequence43);
+  PLUTO_ATTN_RUN(kLookupSequence43);
   return {16u, {}};
 n334:
-  PLUTO_ATTN_RUN(kAttention6Sequence44);
+  PLUTO_ATTN_RUN(kLookupSequence44);
   goto n326;
 n326:
   PLUTO_ATTN_MATCH(5094, 5120);
   return {139u, {}};
 n325:
-  PLUTO_ATTN_RUN(kAttention6Sequence45);
+  PLUTO_ATTN_RUN(kLookupSequence45);
   goto n315;
 n315:
   PLUTO_ATTN_MATCH(5072, 5131);
@@ -4515,13 +4515,13 @@ n313:
   PLUTO_ATTN_MATCH(5061, 5112);
   return {16u, {}};
 n312:
-  PLUTO_ATTN_RUN(kAttention6Sequence46);
+  PLUTO_ATTN_RUN(kLookupSequence46);
   goto n306;
 n306:
   PLUTO_ATTN_MATCH(5069, 5138);
   return {2u, {}};
 n305:
-  PLUTO_ATTN_RUN(kAttention6Sequence47);
+  PLUTO_ATTN_RUN(kLookupSequence47);
   goto n298;
 n298:
   PLUTO_ATTN_MATCH(5069, 5117);
@@ -4538,16 +4538,16 @@ n297:
     case 5094:
       goto n268;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n296:
-  PLUTO_ATTN_RUN(kAttention6Sequence48);
+  PLUTO_ATTN_RUN(kLookupSequence48);
   goto n288;
 n288:
   PLUTO_ATTN_MATCH(5061, 5106);
   return {52u, {}};
 n287:
-  PLUTO_ATTN_RUN(kAttention6Sequence49);
+  PLUTO_ATTN_RUN(kLookupSequence49);
   goto n278;
 n278:
   PLUTO_ATTN_MATCH(5069, 5106);
@@ -4556,13 +4556,13 @@ n277:
   PLUTO_ATTN_MATCH(5061, 5127);
   return {1u, {}};
 n276:
-  PLUTO_ATTN_RUN(kAttention6Sequence50);
+  PLUTO_ATTN_RUN(kLookupSequence50);
   return {63u, {}};
 n268:
-  PLUTO_ATTN_RUN(kAttention6Sequence51);
+  PLUTO_ATTN_RUN(kLookupSequence51);
   goto n258;
 n264:
-  PLUTO_ATTN_RUN(kAttention6Sequence52);
+  PLUTO_ATTN_RUN(kLookupSequence52);
   goto n258;
 n258:
   PLUTO_ATTN_MATCH(5094, 5120);
@@ -4574,7 +4574,7 @@ n256:
   PLUTO_ATTN_MATCH(5061, 5138);
   return {1u, {}};
 }
-Attention6Step Attention6Part2(
+LookupStep LookupPart2(
     std::uint32_t node,
     [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
@@ -4650,10 +4650,10 @@ Attention6Step Attention6Part2(
     case 518u:
       goto n518;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n767:
-  PLUTO_ATTN_RUN(kAttention6Sequence53);
+  PLUTO_ATTN_RUN(kLookupSequence53);
   return {172u, {}};
 n760:
   PLUTO_ATTN_END(5138);
@@ -4673,7 +4673,7 @@ n760:
     case 5094:
       goto n627;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n759:
   PLUTO_ATTN_END(5106);
@@ -4687,10 +4687,10 @@ n759:
     case 5079:
       goto n739;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n758:
-  PLUTO_ATTN_RUN(kAttention6Sequence54);
+  PLUTO_ATTN_RUN(kLookupSequence54);
   goto n752;
 n752:
   PLUTO_ATTN_MATCH(5063, 5131);
@@ -4703,13 +4703,13 @@ n749:
   PLUTO_ATTN_MATCH(5094, 5111);
   return {139u, {}};
 n748:
-  PLUTO_ATTN_RUN(kAttention6Sequence55);
+  PLUTO_ATTN_RUN(kLookupSequence55);
   goto n740;
 n740:
   PLUTO_ATTN_MATCH(5094, 5120);
   return {313u, {}};
 n739:
-  PLUTO_ATTN_RUN(kAttention6Sequence56);
+  PLUTO_ATTN_RUN(kLookupSequence56);
   goto n735;
 n735:
   PLUTO_ATTN_MATCH(5067, 5106);
@@ -4734,10 +4734,10 @@ n732:
     case 5094:
       goto n704;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n731:
-  PLUTO_ATTN_RUN(kAttention6Sequence57);
+  PLUTO_ATTN_RUN(kLookupSequence57);
   return {2u, {}};
 n725:
   PLUTO_ATTN_MATCH(5065, 5133);
@@ -4753,7 +4753,7 @@ n723:
     case 5069:
       goto n722;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n722:
   PLUTO_ATTN_MATCH(5071, 5125);
@@ -4761,7 +4761,7 @@ n722:
   PLUTO_ATTN_MATCH(5094, 5131);
   return {52u, {}};
 n719:
-  PLUTO_ATTN_RUN(kAttention6Sequence58);
+  PLUTO_ATTN_RUN(kLookupSequence58);
   goto n712;
 n712:
   PLUTO_ATTN_MATCH(5094, 5120);
@@ -4770,7 +4770,7 @@ n711:
   PLUTO_ATTN_MATCH(5067, 5112);
   return {172u, {}};
 n710:
-  PLUTO_ATTN_RUN(kAttention6Sequence59);
+  PLUTO_ATTN_RUN(kLookupSequence59);
   return {97u, {}};
 n704:
   PLUTO_ATTN_MATCH(5067, 5112);
@@ -4795,10 +4795,10 @@ n701:
     case 5087:
       goto n662;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n700:
-  PLUTO_ATTN_RUN(kAttention6Sequence60);
+  PLUTO_ATTN_RUN(kLookupSequence60);
   goto n696;
 n696:
   PLUTO_ATTN_MATCH(5069, 5131);
@@ -4814,25 +4814,25 @@ n691:
   PLUTO_ATTN_MATCH(5072, 5120);
   return {90u, {}};
 n689:
-  PLUTO_ATTN_RUN(kAttention6Sequence61);
+  PLUTO_ATTN_RUN(kLookupSequence61);
   goto n681;
 n681:
   PLUTO_ATTN_MATCH(5061, 5136);
   return {1u, {}};
 n680:
-  PLUTO_ATTN_RUN(kAttention6Sequence62);
+  PLUTO_ATTN_RUN(kLookupSequence62);
   return {26u, {}};
 n674:
-  PLUTO_ATTN_RUN(kAttention6Sequence63);
+  PLUTO_ATTN_RUN(kLookupSequence63);
   return {26u, {}};
 n667:
-  PLUTO_ATTN_RUN(kAttention6Sequence64);
+  PLUTO_ATTN_RUN(kLookupSequence64);
   goto n663;
 n663:
   PLUTO_ATTN_MATCH(5069, 5120);
   return {326u, {}};
 n662:
-  PLUTO_ATTN_RUN(kAttention6Sequence65);
+  PLUTO_ATTN_RUN(kLookupSequence65);
   goto n653;
 n653:
   PLUTO_ATTN_MATCH(5067, 5112);
@@ -4845,16 +4845,16 @@ n652:
     case 5067:
       goto n644;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n651:
-  PLUTO_ATTN_RUN(kAttention6Sequence66);
+  PLUTO_ATTN_RUN(kLookupSequence66);
   goto n645;
 n645:
   PLUTO_ATTN_MATCH(5061, 5138);
   return {2u, {}};
 n644:
-  PLUTO_ATTN_RUN(kAttention6Sequence67);
+  PLUTO_ATTN_RUN(kLookupSequence67);
   return {16u, {}};
 n638:
   PLUTO_ATTN_END(5131);
@@ -4864,16 +4864,16 @@ n638:
     case 5094:
       goto n632;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n637:
-  PLUTO_ATTN_RUN(kAttention6Sequence68);
+  PLUTO_ATTN_RUN(kLookupSequence68);
   goto n633;
 n633:
   PLUTO_ATTN_MATCH(5067, 5106);
   return {2u, {}};
 n632:
-  PLUTO_ATTN_RUN(kAttention6Sequence69);
+  PLUTO_ATTN_RUN(kLookupSequence69);
   return {452u, {}};
 n627:
   PLUTO_ATTN_END(5112);
@@ -4883,10 +4883,10 @@ n627:
     case 5079:
       goto n619;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n626:
-  PLUTO_ATTN_RUN(kAttention6Sequence70);
+  PLUTO_ATTN_RUN(kLookupSequence70);
   goto n620;
 n620:
   PLUTO_ATTN_MATCH(5067, 5117);
@@ -4903,7 +4903,7 @@ n617:
     case 5069:
       goto n596;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n616:
   PLUTO_ATTN_END(5138);
@@ -4915,16 +4915,16 @@ n616:
     case 5094:
       goto n600;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n615:
-  PLUTO_ATTN_RUN(kAttention6Sequence71);
+  PLUTO_ATTN_RUN(kLookupSequence71);
   goto n611;
 n611:
   PLUTO_ATTN_MATCH(5094, 5131);
   return {257u, {}};
 n610:
-  PLUTO_ATTN_RUN(kAttention6Sequence72);
+  PLUTO_ATTN_RUN(kLookupSequence72);
   goto n601;
 n601:
   PLUTO_ATTN_MATCH(5061, 5105);
@@ -4955,22 +4955,22 @@ n592:
     case 5071:
       goto n586;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n591:
-  PLUTO_ATTN_RUN(kAttention6Sequence73);
+  PLUTO_ATTN_RUN(kLookupSequence73);
   goto n587;
 n587:
   PLUTO_ATTN_MATCH(5067, 5120);
   return {16u, {}};
 n586:
-  PLUTO_ATTN_RUN(kAttention6Sequence74);
+  PLUTO_ATTN_RUN(kLookupSequence74);
   goto n580;
 n580:
   PLUTO_ATTN_MATCH(5067, 5117);
   return {16u, {}};
 n579:
-  PLUTO_ATTN_RUN(kAttention6Sequence75);
+  PLUTO_ATTN_RUN(kLookupSequence75);
   goto n570;
 n570:
   PLUTO_ATTN_MATCH(5067, 5138);
@@ -4984,10 +4984,10 @@ n569:
     case 5067:
       goto n562;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n567:
-  PLUTO_ATTN_RUN(kAttention6Sequence76);
+  PLUTO_ATTN_RUN(kLookupSequence76);
   return {172u, {}};
 n562:
   PLUTO_ATTN_MATCH(5069, 5127);
@@ -5013,7 +5013,7 @@ n558:
     case 5094:
       return {385u, {}};
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n557:
   PLUTO_ATTN_END(5111);
@@ -5023,7 +5023,7 @@ n557:
     case 5069:
       goto n555;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n556:
   PLUTO_ATTN_MATCH(5072, 5116);
@@ -5043,10 +5043,10 @@ n554:
     case 5079:
       return {457u, {}};
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n553:
-  PLUTO_ATTN_RUN(kAttention6Sequence77);
+  PLUTO_ATTN_RUN(kLookupSequence77);
   goto n544;
 n544:
   PLUTO_ATTN_MATCH(5061, 5119);
@@ -5069,13 +5069,13 @@ n543:
     case 5090:
       return {501u, {}};
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n542:
-  PLUTO_ATTN_RUN(kAttention6Sequence78);
+  PLUTO_ATTN_RUN(kLookupSequence78);
   return {123u, {}};
 n530:
-  PLUTO_ATTN_RUN(kAttention6Sequence79);
+  PLUTO_ATTN_RUN(kLookupSequence79);
   return {113u, {}};
 n526:
   PLUTO_ATTN_MATCH(5069, 5117);
@@ -5097,10 +5097,10 @@ n518:
   PLUTO_ATTN_MATCH(5069, 5120);
   return {16u, {}};
 n517:
-  PLUTO_ATTN_RUN(kAttention6Sequence80);
+  PLUTO_ATTN_RUN(kLookupSequence80);
   return {511u, {}};
 }
-Attention6Step Attention6Part3(
+LookupStep LookupPart3(
     std::uint32_t node,
     [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
@@ -5152,7 +5152,7 @@ Attention6Step Attention6Part3(
     case 768u:
       goto n768;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n1023:
   PLUTO_ATTN_MATCH(5094, 5120);
@@ -5172,13 +5172,13 @@ n1019:
     case 5069:
       goto n1005;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n1018:
-  PLUTO_ATTN_RUN(kAttention6Sequence81);
+  PLUTO_ATTN_RUN(kLookupSequence81);
   return {587u, {}};
 n1012:
-  PLUTO_ATTN_RUN(kAttention6Sequence82);
+  PLUTO_ATTN_RUN(kLookupSequence82);
   goto n1006;
 n1006:
   PLUTO_ATTN_MATCH(5061, 5131);
@@ -5196,10 +5196,10 @@ n1002:
     case 5067:
       goto n993;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n1001:
-  PLUTO_ATTN_RUN(kAttention6Sequence83);
+  PLUTO_ATTN_RUN(kLookupSequence83);
   goto n994;
 n994:
   PLUTO_ATTN_MATCH(5094, 5133);
@@ -5229,7 +5229,7 @@ n990:
     case 5074:
       return {569u, {}};
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n989:
   PLUTO_ATTN_END(5131);
@@ -5247,7 +5247,7 @@ n989:
     case 5082:
       goto n821;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n988:
   PLUTO_ATTN_END(5138);
@@ -5265,25 +5265,25 @@ n988:
     case 5079:
       goto n944;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n987:
-  PLUTO_ATTN_RUN(kAttention6Sequence84);
+  PLUTO_ATTN_RUN(kLookupSequence84);
   return {313u, {}};
 n977:
-  PLUTO_ATTN_RUN(kAttention6Sequence85);
+  PLUTO_ATTN_RUN(kLookupSequence85);
   return {520u, {}};
 n967:
-  PLUTO_ATTN_RUN(kAttention6Sequence86);
+  PLUTO_ATTN_RUN(kLookupSequence86);
   return {458u, {}};
 n958:
-  PLUTO_ATTN_RUN(kAttention6Sequence87);
+  PLUTO_ATTN_RUN(kLookupSequence87);
   return {2u, {}};
 n948:
-  PLUTO_ATTN_RUN(kAttention6Sequence88);
+  PLUTO_ATTN_RUN(kLookupSequence88);
   return {497u, {}};
 n944:
-  PLUTO_ATTN_RUN(kAttention6Sequence89);
+  PLUTO_ATTN_RUN(kLookupSequence89);
   goto n783;
 n938:
   PLUTO_ATTN_END(5133);
@@ -5295,16 +5295,16 @@ n938:
     case 5094:
       goto n923;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n937:
-  PLUTO_ATTN_RUN(kAttention6Sequence90);
+  PLUTO_ATTN_RUN(kLookupSequence90);
   return {277u, {}};
 n930:
-  PLUTO_ATTN_RUN(kAttention6Sequence91);
+  PLUTO_ATTN_RUN(kLookupSequence91);
   return {277u, {}};
 n923:
-  PLUTO_ATTN_RUN(kAttention6Sequence92);
+  PLUTO_ATTN_RUN(kLookupSequence92);
   return {52u, {}};
 n919:
   PLUTO_ATTN_END(5131);
@@ -5328,17 +5328,17 @@ n919:
     case 5094:
       goto n864;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n918:
-  PLUTO_ATTN_RUN(kAttention6Sequence93);
+  PLUTO_ATTN_RUN(kLookupSequence93);
   goto n910;
 n910:
   PLUTO_ATTN_MATCH(5069, 5112);
   PLUTO_ATTN_MATCH(5063, 5106);
   return {16u, {}};
 n908:
-  PLUTO_ATTN_RUN(kAttention6Sequence94);
+  PLUTO_ATTN_RUN(kLookupSequence94);
   goto n890;
 n890:
   PLUTO_ATTN_MATCH(5069, 5138);
@@ -5360,13 +5360,13 @@ n884:
   PLUTO_ATTN_MATCH(5067, 5106);
   return {373u, {}};
 n883:
-  PLUTO_ATTN_RUN(kAttention6Sequence95);
+  PLUTO_ATTN_RUN(kLookupSequence95);
   return {427u, {}};
 n879:
-  PLUTO_ATTN_RUN(kAttention6Sequence96);
+  PLUTO_ATTN_RUN(kLookupSequence96);
   return {519u, {}};
 n871:
-  PLUTO_ATTN_RUN(kAttention6Sequence97);
+  PLUTO_ATTN_RUN(kLookupSequence97);
   goto n865;
 n865:
   PLUTO_ATTN_MATCH(5069, 5131);
@@ -5389,10 +5389,10 @@ n862:
     case 5096:
       goto n837;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n861:
-  PLUTO_ATTN_RUN(kAttention6Sequence98);
+  PLUTO_ATTN_RUN(kLookupSequence98);
   goto n851;
 n851:
   PLUTO_ATTN_MATCH(5072, 5120);
@@ -5403,19 +5403,19 @@ n850:
   PLUTO_ATTN_MATCH(5061, 5111);
   return {458u, {}};
 n847:
-  PLUTO_ATTN_RUN(kAttention6Sequence99);
+  PLUTO_ATTN_RUN(kLookupSequence99);
   goto n843;
 n843:
   PLUTO_ATTN_MATCH(5061, 5132);
   return {1u, {}};
 n842:
-  PLUTO_ATTN_RUN(kAttention6Sequence100);
+  PLUTO_ATTN_RUN(kLookupSequence100);
   goto n838;
 n838:
   PLUTO_ATTN_MATCH(5061, 5125);
   return {1u, {}};
 n837:
-  PLUTO_ATTN_RUN(kAttention6Sequence101);
+  PLUTO_ATTN_RUN(kLookupSequence101);
   return {1u, {}};
 n833:
   PLUTO_ATTN_END(5143);
@@ -5425,13 +5425,13 @@ n833:
     case 5077:
       goto n831;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n832:
   PLUTO_ATTN_MATCH(5069, 5127);
   return {518u, {}};
 n831:
-  PLUTO_ATTN_RUN(kAttention6Sequence102);
+  PLUTO_ATTN_RUN(kLookupSequence102);
   goto n822;
 n822:
   PLUTO_ATTN_MATCH(5061, 5105);
@@ -5454,16 +5454,16 @@ n817:
     case 5069:
       goto n808;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n816:
-  PLUTO_ATTN_RUN(kAttention6Sequence103);
+  PLUTO_ATTN_RUN(kLookupSequence103);
   goto n809;
 n809:
   PLUTO_ATTN_MATCH(5061, 5120);
   return {16u, {}};
 n808:
-  PLUTO_ATTN_RUN(kAttention6Sequence104);
+  PLUTO_ATTN_RUN(kLookupSequence104);
   return {601u, {}};
 n800:
   PLUTO_ATTN_END(5106);
@@ -5475,7 +5475,7 @@ n800:
     case 5094:
       goto n775;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n799:
   PLUTO_ATTN_END(5131);
@@ -5485,7 +5485,7 @@ n799:
     case 5079:
       goto n794;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n798:
   PLUTO_ATTN_MATCH(5061, 5138);
@@ -5496,13 +5496,13 @@ n795:
   PLUTO_ATTN_MATCH(5067, 5138);
   return {256u, {}};
 n794:
-  PLUTO_ATTN_RUN(kAttention6Sequence105);
+  PLUTO_ATTN_RUN(kLookupSequence105);
   goto n783;
 n783:
   PLUTO_ATTN_MATCH(5061, 5109);
   return {1u, {}};
 n782:
-  PLUTO_ATTN_RUN(kAttention6Sequence106);
+  PLUTO_ATTN_RUN(kLookupSequence106);
   goto n776;
 n776:
   PLUTO_ATTN_MATCH(5069, 5111);
@@ -5515,16 +5515,16 @@ n775:
     case 5082:
       return {767u, {}};
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n774:
-  PLUTO_ATTN_RUN(kAttention6Sequence107);
+  PLUTO_ATTN_RUN(kLookupSequence107);
   goto n768;
 n768:
   PLUTO_ATTN_MATCH(5067, 5133);
   return {16u, {}};
 }
-Attention6Step Attention6Part4(
+LookupStep LookupPart4(
     std::uint32_t node,
     [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
@@ -5604,10 +5604,10 @@ Attention6Step Attention6Part4(
     case 1032u:
       goto n1032;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n1279:
-  PLUTO_ATTN_RUN(kAttention6Sequence108);
+  PLUTO_ATTN_RUN(kLookupSequence108);
   goto n1274;
 n1274:
   PLUTO_ATTN_MATCH(5094, 5133);
@@ -5621,7 +5621,7 @@ n1270:
   PLUTO_ATTN_MATCH(5067, 5112);
   return {502u, {}};
 n1269:
-  PLUTO_ATTN_RUN(kAttention6Sequence109);
+  PLUTO_ATTN_RUN(kLookupSequence109);
   return {172u, {}};
 n1263:
   PLUTO_ATTN_MATCH(5071, 5117);
@@ -5645,16 +5645,16 @@ n1255:
     case 5079:
       goto n1246;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n1254:
-  PLUTO_ATTN_RUN(kAttention6Sequence110);
+  PLUTO_ATTN_RUN(kLookupSequence110);
   goto n1247;
 n1247:
   PLUTO_ATTN_MATCH(5063, 5112);
   return {482u, {}};
 n1246:
-  PLUTO_ATTN_RUN(kAttention6Sequence111);
+  PLUTO_ATTN_RUN(kLookupSequence111);
   return {519u, {}};
 n1240:
   PLUTO_ATTN_END(5111);
@@ -5664,16 +5664,16 @@ n1240:
     case 5087:
       goto n1232;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n1239:
-  PLUTO_ATTN_RUN(kAttention6Sequence112);
+  PLUTO_ATTN_RUN(kLookupSequence112);
   goto n1233;
 n1233:
   PLUTO_ATTN_MATCH(5094, 5120);
   goto n1177;
 n1232:
-  PLUTO_ATTN_RUN(kAttention6Sequence113);
+  PLUTO_ATTN_RUN(kLookupSequence113);
   return {81u, {}};
 n1221:
   PLUTO_ATTN_END(5133);
@@ -5683,13 +5683,13 @@ n1221:
     case 5098:
       goto n1219;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n1220:
   PLUTO_ATTN_MATCH(5069, 5125);
   return {458u, {}};
 n1219:
-  PLUTO_ATTN_RUN(kAttention6Sequence114);
+  PLUTO_ATTN_RUN(kLookupSequence114);
   return {256u, {}};
 n1210:
   PLUTO_ATTN_END(5138);
@@ -5707,44 +5707,44 @@ n1210:
     case 5094:
       goto n1183;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n1209:
-  PLUTO_ATTN_RUN(kAttention6Sequence115);
+  PLUTO_ATTN_RUN(kLookupSequence115);
   return {735u, {}};
 n1204:
-  PLUTO_ATTN_RUN(kAttention6Sequence116);
+  PLUTO_ATTN_RUN(kLookupSequence116);
   goto n1047;
 n1199:
-  PLUTO_ATTN_RUN(kAttention6Sequence117);
+  PLUTO_ATTN_RUN(kLookupSequence117);
   goto n1194;
 n1194:
   PLUTO_ATTN_MATCH(5061, 5130);
   return {1u, {}};
 n1193:
-  PLUTO_ATTN_RUN(kAttention6Sequence118);
+  PLUTO_ATTN_RUN(kLookupSequence118);
   goto n1189;
 n1189:
   PLUTO_ATTN_MATCH(5061, 5112);
   goto n1046;
 n1188:
-  PLUTO_ATTN_RUN(kAttention6Sequence119);
+  PLUTO_ATTN_RUN(kLookupSequence119);
   return {488u, {}};
 n1183:
-  PLUTO_ATTN_RUN(kAttention6Sequence120);
+  PLUTO_ATTN_RUN(kLookupSequence120);
   goto n1177;
 n1177:
   PLUTO_ATTN_MATCH(5069, 5112);
   return {52u, {}};
 n1176:
-  PLUTO_ATTN_RUN(kAttention6Sequence121);
+  PLUTO_ATTN_RUN(kLookupSequence121);
   goto n1171;
 n1171:
   PLUTO_ATTN_MATCH(5061, 5117);
   PLUTO_ATTN_MATCH(5094, 5106);
   return {313u, {}};
 n1169:
-  PLUTO_ATTN_RUN(kAttention6Sequence122);
+  PLUTO_ATTN_RUN(kLookupSequence122);
   return {458u, {}};
 n1162:
   PLUTO_ATTN_END(5125);
@@ -5758,7 +5758,7 @@ n1162:
     case 5094:
       goto n1059;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n1161:
   PLUTO_ATTN_END(5106);
@@ -5770,7 +5770,7 @@ n1161:
     case 5094:
       goto n1147;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n1160:
   PLUTO_ATTN_MATCH(5061, 5106);
@@ -5782,13 +5782,13 @@ n1157:
   PLUTO_ATTN_MATCH(5067, 5112);
   return {416u, {}};
 n1155:
-  PLUTO_ATTN_RUN(kAttention6Sequence123);
+  PLUTO_ATTN_RUN(kLookupSequence123);
   goto n1148;
 n1148:
   PLUTO_ATTN_MATCH(5069, 5131);
   return {587u, {}};
 n1147:
-  PLUTO_ATTN_RUN(kAttention6Sequence124);
+  PLUTO_ATTN_RUN(kLookupSequence124);
   goto n1140;
 n1140:
   PLUTO_ATTN_MATCH(5094, 5127);
@@ -5803,16 +5803,16 @@ n1139:
     case 5069:
       goto n1123;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n1138:
-  PLUTO_ATTN_RUN(kAttention6Sequence125);
+  PLUTO_ATTN_RUN(kLookupSequence125);
   goto n1134;
 n1134:
   PLUTO_ATTN_MATCH(5067, 5138);
   return {326u, {}};
 n1133:
-  PLUTO_ATTN_RUN(kAttention6Sequence126);
+  PLUTO_ATTN_RUN(kLookupSequence126);
   return {580u, {}};
 n1123:
   PLUTO_ATTN_MATCH(5069, 5131);
@@ -5845,53 +5845,53 @@ n1120:
     case 5091:
       goto n1067;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n1119:
-  PLUTO_ATTN_RUN(kAttention6Sequence127);
+  PLUTO_ATTN_RUN(kLookupSequence127);
   return {257u, {}};
 n1111:
-  PLUTO_ATTN_RUN(kAttention6Sequence128);
+  PLUTO_ATTN_RUN(kLookupSequence128);
   goto n1104;
 n1104:
   PLUTO_ATTN_MATCH(5067, 5138);
   return {52u, {}};
 n1103:
-  PLUTO_ATTN_RUN(kAttention6Sequence129);
+  PLUTO_ATTN_RUN(kLookupSequence129);
   goto n1099;
 n1099:
   PLUTO_ATTN_MATCH(5072, 5131);
   PLUTO_ATTN_MATCH(5069, 5117);
   return {172u, {}};
 n1097:
-  PLUTO_ATTN_RUN(kAttention6Sequence130);
+  PLUTO_ATTN_RUN(kLookupSequence130);
   return {593u, {}};
 n1091:
-  PLUTO_ATTN_RUN(kAttention6Sequence131);
+  PLUTO_ATTN_RUN(kLookupSequence131);
   goto n1046;
 n1087:
-  PLUTO_ATTN_RUN(kAttention6Sequence132);
+  PLUTO_ATTN_RUN(kLookupSequence132);
   goto n1082;
 n1082:
   PLUTO_ATTN_MATCH(5061, 5106);
   return {374u, {}};
 n1081:
-  PLUTO_ATTN_RUN(kAttention6Sequence133);
+  PLUTO_ATTN_RUN(kLookupSequence133);
   goto n1075;
 n1075:
   PLUTO_ATTN_MATCH(5061, 5138);
   return {16u, {}};
 n1074:
-  PLUTO_ATTN_RUN(kAttention6Sequence134);
+  PLUTO_ATTN_RUN(kLookupSequence134);
   return {89u, {}};
 n1067:
-  PLUTO_ATTN_RUN(kAttention6Sequence135);
+  PLUTO_ATTN_RUN(kLookupSequence135);
   return {458u, {}};
 n1059:
-  PLUTO_ATTN_RUN(kAttention6Sequence136);
+  PLUTO_ATTN_RUN(kLookupSequence136);
   return {52u, {}};
 n1052:
-  PLUTO_ATTN_RUN(kAttention6Sequence137);
+  PLUTO_ATTN_RUN(kLookupSequence137);
   goto n1048;
 n1048:
   PLUTO_ATTN_MATCH(5067, 5133);
@@ -5912,7 +5912,7 @@ n1045:
     case 5069:
       return {1002u, {}};
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n1044:
   PLUTO_ATTN_END(5131);
@@ -5926,10 +5926,10 @@ n1044:
     case 5071:
       return {1021u, {}};
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n1043:
-  PLUTO_ATTN_RUN(kAttention6Sequence138);
+  PLUTO_ATTN_RUN(kLookupSequence138);
   goto n1033;
 n1033:
   PLUTO_ATTN_MATCH(5067, 5131);
@@ -5938,7 +5938,7 @@ n1032:
   PLUTO_ATTN_MATCH(5067, 5131);
   return {52u, {}};
 n1031:
-  PLUTO_ATTN_RUN(kAttention6Sequence139);
+  PLUTO_ATTN_RUN(kLookupSequence139);
   return {16u, {}};
 n1026:
   PLUTO_ATTN_MATCH(5071, 5131);
@@ -5946,7 +5946,7 @@ n1026:
   PLUTO_ATTN_MATCH(5061, 5131);
   return {1023u, {}};
 }
-Attention6Step Attention6Part5(
+LookupStep LookupPart5(
     std::uint32_t node,
     [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
@@ -6016,22 +6016,22 @@ Attention6Step Attention6Part5(
     case 1287u:
       goto n1287;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n1535:
-  PLUTO_ATTN_RUN(kAttention6Sequence140);
+  PLUTO_ATTN_RUN(kLookupSequence140);
   goto n1531;
 n1531:
   PLUTO_ATTN_MATCH(5063, 5106);
   return {1u, {}};
 n1530:
-  PLUTO_ATTN_RUN(kAttention6Sequence141);
+  PLUTO_ATTN_RUN(kLookupSequence141);
   goto n1523;
 n1523:
   PLUTO_ATTN_MATCH(5069, 5127);
   return {52u, {}};
 n1522:
-  PLUTO_ATTN_RUN(kAttention6Sequence142);
+  PLUTO_ATTN_RUN(kLookupSequence142);
   goto n1448;
 n1518:
   PLUTO_ATTN_MATCH(5061, 5111);
@@ -6041,13 +6041,13 @@ n1516:
   PLUTO_ATTN_MATCH(5067, 5115);
   return {256u, {}};
 n1515:
-  PLUTO_ATTN_RUN(kAttention6Sequence143);
+  PLUTO_ATTN_RUN(kLookupSequence143);
   return {482u, {}};
 n1507:
-  PLUTO_ATTN_RUN(kAttention6Sequence144);
+  PLUTO_ATTN_RUN(kLookupSequence144);
   return {795u, {}};
 n1498:
-  PLUTO_ATTN_RUN(kAttention6Sequence145);
+  PLUTO_ATTN_RUN(kLookupSequence145);
   return {258u, {}};
 n1494:
   PLUTO_ATTN_END(5117);
@@ -6061,10 +6061,10 @@ n1494:
     case 5094:
       goto n1467;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n1493:
-  PLUTO_ATTN_RUN(kAttention6Sequence146);
+  PLUTO_ATTN_RUN(kLookupSequence146);
   return {257u, {}};
 n1484:
   PLUTO_ATTN_MATCH(5069, 5131);
@@ -6078,10 +6078,10 @@ n1480:
   PLUTO_ATTN_MATCH(5061, 5112);
   return {113u, {}};
 n1479:
-  PLUTO_ATTN_RUN(kAttention6Sequence147);
+  PLUTO_ATTN_RUN(kLookupSequence147);
   return {1u, {}};
 n1467:
-  PLUTO_ATTN_RUN(kAttention6Sequence148);
+  PLUTO_ATTN_RUN(kLookupSequence148);
   return {884u, {}};
 n1460:
   PLUTO_ATTN_END(5143);
@@ -6091,13 +6091,13 @@ n1460:
     case 5090:
       goto n1455;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n1459:
-  PLUTO_ATTN_RUN(kAttention6Sequence149);
+  PLUTO_ATTN_RUN(kLookupSequence149);
   return {26u, {}};
 n1455:
-  PLUTO_ATTN_RUN(kAttention6Sequence150);
+  PLUTO_ATTN_RUN(kLookupSequence150);
   goto n1448;
 n1448:
   PLUTO_ATTN_MATCH(5067, 5111);
@@ -6118,37 +6118,37 @@ n1447:
     case 5098:
       goto n1402;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n1446:
-  PLUTO_ATTN_RUN(kAttention6Sequence151);
+  PLUTO_ATTN_RUN(kLookupSequence151);
   return {313u, {}};
 n1437:
-  PLUTO_ATTN_RUN(kAttention6Sequence152);
+  PLUTO_ATTN_RUN(kLookupSequence152);
   goto n1433;
 n1433:
   PLUTO_ATTN_MATCH(5061, 5112);
   return {256u, {}};
 n1432:
-  PLUTO_ATTN_RUN(kAttention6Sequence153);
+  PLUTO_ATTN_RUN(kLookupSequence153);
   goto n1423;
 n1423:
   PLUTO_ATTN_MATCH(5061, 5138);
   return {113u, {}};
 n1422:
-  PLUTO_ATTN_RUN(kAttention6Sequence154);
+  PLUTO_ATTN_RUN(kLookupSequence154);
   return {1148u, {}};
 n1409:
-  PLUTO_ATTN_RUN(kAttention6Sequence155);
+  PLUTO_ATTN_RUN(kLookupSequence155);
   return {139u, {}};
 n1402:
-  PLUTO_ATTN_RUN(kAttention6Sequence156);
+  PLUTO_ATTN_RUN(kLookupSequence156);
   goto n1393;
 n1393:
   PLUTO_ATTN_MATCH(5061, 5106);
   return {458u, {}};
 n1392:
-  PLUTO_ATTN_RUN(kAttention6Sequence157);
+  PLUTO_ATTN_RUN(kLookupSequence157);
   return {1046u, {}};
 n1382:
   PLUTO_ATTN_END(5104);
@@ -6158,16 +6158,16 @@ n1382:
     case 5094:
       goto n1368;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n1381:
-  PLUTO_ATTN_RUN(kAttention6Sequence158);
+  PLUTO_ATTN_RUN(kLookupSequence158);
   goto n1369;
 n1369:
   PLUTO_ATTN_MATCH(5067, 5111);
   return {795u, {}};
 n1368:
-  PLUTO_ATTN_RUN(kAttention6Sequence159);
+  PLUTO_ATTN_RUN(kLookupSequence159);
   return {256u, {}};
 n1354:
   PLUTO_ATTN_END(5132);
@@ -6179,16 +6179,16 @@ n1354:
     case 5072:
       goto n1340;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n1353:
-  PLUTO_ATTN_RUN(kAttention6Sequence160);
+  PLUTO_ATTN_RUN(kLookupSequence160);
   return {256u, {}};
 n1348:
-  PLUTO_ATTN_RUN(kAttention6Sequence161);
+  PLUTO_ATTN_RUN(kLookupSequence161);
   return {795u, {}};
 n1340:
-  PLUTO_ATTN_RUN(kAttention6Sequence162);
+  PLUTO_ATTN_RUN(kLookupSequence162);
   return {580u, {}};
 n1336:
   PLUTO_ATTN_END(5133);
@@ -6200,7 +6200,7 @@ n1336:
     case 5094:
       goto n1328;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n1335:
   PLUTO_ATTN_MATCH(5061, 5133);
@@ -6220,7 +6220,7 @@ n1329:
   PLUTO_ATTN_MATCH(5061, 5110);
   return {1u, {}};
 n1328:
-  PLUTO_ATTN_RUN(kAttention6Sequence163);
+  PLUTO_ATTN_RUN(kLookupSequence163);
   goto n1312;
 n1320:
   PLUTO_ATTN_END(5111);
@@ -6244,7 +6244,7 @@ n1320:
     case 5094:
       return {1169u, {}};
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n1319:
   PLUTO_ATTN_END(5131);
@@ -6256,16 +6256,16 @@ n1319:
     case 5067:
       goto n1306;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n1318:
-  PLUTO_ATTN_RUN(kAttention6Sequence164);
+  PLUTO_ATTN_RUN(kLookupSequence164);
   goto n1312;
 n1312:
   PLUTO_ATTN_MATCH(5067, 5138);
   return {16u, {}};
 n1311:
-  PLUTO_ATTN_RUN(kAttention6Sequence165);
+  PLUTO_ATTN_RUN(kLookupSequence165);
   goto n1307;
 n1307:
   PLUTO_ATTN_MATCH(5061, 5120);
@@ -6278,10 +6278,10 @@ n1306:
     case 5074:
       goto n1301;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n1305:
-  PLUTO_ATTN_RUN(kAttention6Sequence166);
+  PLUTO_ATTN_RUN(kLookupSequence166);
   return {519u, {}};
 n1301:
   PLUTO_ATTN_MATCH(5053, 5133);
@@ -6289,7 +6289,7 @@ n1301:
   PLUTO_ATTN_MATCH(5069, 5106);
   return {712u, {}};
 n1298:
-  PLUTO_ATTN_RUN(kAttention6Sequence167);
+  PLUTO_ATTN_RUN(kLookupSequence167);
   goto n1291;
 n1291:
   PLUTO_ATTN_MATCH(5061, 5111);
@@ -6312,7 +6312,7 @@ n1290:
     case 5079:
       return {1260u, {}};
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n1289:
   PLUTO_ATTN_MATCH(5067, 5133);
@@ -6322,7 +6322,7 @@ n1287:
   PLUTO_ATTN_MATCH(5069, 5106);
   return {52u, {}};
 n1286:
-  PLUTO_ATTN_RUN(kAttention6Sequence168);
+  PLUTO_ATTN_RUN(kLookupSequence168);
   return {113u, {}};
 n1282:
   PLUTO_ATTN_MATCH(5061, 5138);
@@ -6330,7 +6330,7 @@ n1282:
   PLUTO_ATTN_MATCH(5090, 5125);
   return {1279u, {}};
 }
-Attention6Step Attention6Part6(
+LookupStep LookupPart6(
     std::uint32_t node,
     [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
@@ -6380,10 +6380,10 @@ Attention6Step Attention6Part6(
     case 1540u:
       goto n1540;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n1791:
-  PLUTO_ATTN_RUN(kAttention6Sequence169);
+  PLUTO_ATTN_RUN(kLookupSequence169);
   return {278u, {}};
 n1785:
   PLUTO_ATTN_MATCH(5071, 5106);
@@ -6391,16 +6391,16 @@ n1785:
   PLUTO_ATTN_MATCH(5065, 5127);
   return {427u, {}};
 n1782:
-  PLUTO_ATTN_RUN(kAttention6Sequence170);
+  PLUTO_ATTN_RUN(kLookupSequence170);
   return {587u, {}};
 n1778:
-  PLUTO_ATTN_RUN(kAttention6Sequence171);
+  PLUTO_ATTN_RUN(kLookupSequence171);
   return {712u, {}};
 n1773:
-  PLUTO_ATTN_RUN(kAttention6Sequence172);
+  PLUTO_ATTN_RUN(kLookupSequence172);
   return {711u, {}};
 n1768:
-  PLUTO_ATTN_RUN(kAttention6Sequence173);
+  PLUTO_ATTN_RUN(kLookupSequence173);
   goto n1757;
 n1757:
   PLUTO_ATTN_MATCH(5094, 5131);
@@ -6415,10 +6415,10 @@ n1756:
     case 5094:
       goto n1748;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n1755:
-  PLUTO_ATTN_RUN(kAttention6Sequence174);
+  PLUTO_ATTN_RUN(kLookupSequence174);
   return {681u, {}};
 n1748:
   PLUTO_ATTN_MATCH(5061, 5112);
@@ -6442,16 +6442,16 @@ n1746:
     case 5094:
       goto n1711;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n1745:
-  PLUTO_ATTN_RUN(kAttention6Sequence175);
+  PLUTO_ATTN_RUN(kLookupSequence175);
   return {373u, {}};
 n1739:
-  PLUTO_ATTN_RUN(kAttention6Sequence176);
+  PLUTO_ATTN_RUN(kLookupSequence176);
   return {374u, {}};
 n1731:
-  PLUTO_ATTN_RUN(kAttention6Sequence177);
+  PLUTO_ATTN_RUN(kLookupSequence177);
   return {52u, {}};
 n1727:
   PLUTO_ATTN_MATCH(5061, 5130);
@@ -6459,16 +6459,16 @@ n1727:
   PLUTO_ATTN_MATCH(5067, 5106);
   return {1531u, {}};
 n1724:
-  PLUTO_ATTN_RUN(kAttention6Sequence178);
+  PLUTO_ATTN_RUN(kLookupSequence178);
   goto n1716;
 n1716:
   PLUTO_ATTN_MATCH(5094, 5120);
   return {351u, {}};
 n1715:
-  PLUTO_ATTN_RUN(kAttention6Sequence179);
+  PLUTO_ATTN_RUN(kLookupSequence179);
   return {1075u, {}};
 n1711:
-  PLUTO_ATTN_RUN(kAttention6Sequence180);
+  PLUTO_ATTN_RUN(kLookupSequence180);
   return {818u, {}};
 n1699:
   PLUTO_ATTN_END(5127);
@@ -6510,77 +6510,77 @@ n1699:
     case 5096:
       goto n1595;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n1698:
-  PLUTO_ATTN_RUN(kAttention6Sequence181);
+  PLUTO_ATTN_RUN(kLookupSequence181);
   return {231u, {}};
 n1693:
-  PLUTO_ATTN_RUN(kAttention6Sequence182);
+  PLUTO_ATTN_RUN(kLookupSequence182);
   return {432u, {}};
 n1689:
-  PLUTO_ATTN_RUN(kAttention6Sequence183);
+  PLUTO_ATTN_RUN(kLookupSequence183);
   goto n1685;
 n1685:
   PLUTO_ATTN_MATCH(5067, 5106);
   return {26u, {}};
 n1684:
-  PLUTO_ATTN_RUN(kAttention6Sequence184);
+  PLUTO_ATTN_RUN(kLookupSequence184);
   return {313u, {}};
 n1678:
-  PLUTO_ATTN_RUN(kAttention6Sequence185);
+  PLUTO_ATTN_RUN(kLookupSequence185);
   return {1523u, {}};
 n1673:
-  PLUTO_ATTN_RUN(kAttention6Sequence186);
+  PLUTO_ATTN_RUN(kLookupSequence186);
   return {1046u, {}};
 n1664:
-  PLUTO_ATTN_RUN(kAttention6Sequence187);
+  PLUTO_ATTN_RUN(kLookupSequence187);
   goto n1659;
 n1659:
   PLUTO_ATTN_MATCH(5069, 5120);
   return {502u, {}};
 n1658:
-  PLUTO_ATTN_RUN(kAttention6Sequence188);
+  PLUTO_ATTN_RUN(kLookupSequence188);
   return {395u, {}};
 n1654:
-  PLUTO_ATTN_RUN(kAttention6Sequence189);
+  PLUTO_ATTN_RUN(kLookupSequence189);
   return {257u, {}};
 n1648:
-  PLUTO_ATTN_RUN(kAttention6Sequence190);
+  PLUTO_ATTN_RUN(kLookupSequence190);
   return {519u, {}};
 n1640:
-  PLUTO_ATTN_RUN(kAttention6Sequence191);
+  PLUTO_ATTN_RUN(kLookupSequence191);
   goto n1635;
 n1635:
   PLUTO_ATTN_MATCH(5067, 5131);
   return {795u, {}};
 n1634:
-  PLUTO_ATTN_RUN(kAttention6Sequence192);
+  PLUTO_ATTN_RUN(kLookupSequence192);
   return {1531u, {}};
 n1627:
-  PLUTO_ATTN_RUN(kAttention6Sequence193);
+  PLUTO_ATTN_RUN(kLookupSequence193);
   return {373u, {}};
 n1623:
-  PLUTO_ATTN_RUN(kAttention6Sequence194);
+  PLUTO_ATTN_RUN(kLookupSequence194);
   return {26u, {}};
 n1614:
   PLUTO_ATTN_MATCH(5091, 5110);
   PLUTO_ATTN_MATCH(5067, 5110);
   return {886u, {}};
 n1612:
-  PLUTO_ATTN_RUN(kAttention6Sequence195);
+  PLUTO_ATTN_RUN(kLookupSequence195);
   goto n1603;
 n1603:
   PLUTO_ATTN_MATCH(5094, 5112);
   return {351u, {}};
 n1602:
-  PLUTO_ATTN_RUN(kAttention6Sequence196);
+  PLUTO_ATTN_RUN(kLookupSequence196);
   goto n1596;
 n1596:
   PLUTO_ATTN_MATCH(5061, 5127);
   return {326u, {}};
 n1595:
-  PLUTO_ATTN_RUN(kAttention6Sequence197);
+  PLUTO_ATTN_RUN(kLookupSequence197);
   return {277u, {}};
 n1588:
   PLUTO_ATTN_END(5112);
@@ -6602,7 +6602,7 @@ n1588:
     case 5094:
       goto n1552;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n1587:
   PLUTO_ATTN_MATCH(5061, 5111);
@@ -6610,31 +6610,31 @@ n1587:
   PLUTO_ATTN_MATCH(5061, 5111);
   return {172u, {}};
 n1584:
-  PLUTO_ATTN_RUN(kAttention6Sequence198);
+  PLUTO_ATTN_RUN(kLookupSequence198);
   return {1075u, {}};
 n1578:
-  PLUTO_ATTN_RUN(kAttention6Sequence199);
+  PLUTO_ATTN_RUN(kLookupSequence199);
   return {795u, {}};
 n1573:
-  PLUTO_ATTN_RUN(kAttention6Sequence200);
+  PLUTO_ATTN_RUN(kLookupSequence200);
   goto n1560;
 n1569:
-  PLUTO_ATTN_RUN(kAttention6Sequence201);
+  PLUTO_ATTN_RUN(kLookupSequence201);
   return {256u, {}};
 n1565:
-  PLUTO_ATTN_RUN(kAttention6Sequence202);
+  PLUTO_ATTN_RUN(kLookupSequence202);
   goto n1560;
 n1560:
   PLUTO_ATTN_MATCH(5094, 5106);
   return {351u, {}};
 n1559:
-  PLUTO_ATTN_RUN(kAttention6Sequence203);
+  PLUTO_ATTN_RUN(kLookupSequence203);
   goto n1553;
 n1553:
   PLUTO_ATTN_MATCH(5069, 5131);
   return {231u, {}};
 n1552:
-  PLUTO_ATTN_RUN(kAttention6Sequence204);
+  PLUTO_ATTN_RUN(kLookupSequence204);
   return {653u, {}};
 n1548:
   PLUTO_ATTN_END(5135);
@@ -6658,7 +6658,7 @@ n1548:
     case 5094:
       return {1498u, {}};
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n1547:
   PLUTO_ATTN_MATCH(5067, 5108);
@@ -6668,16 +6668,16 @@ n1545:
   PLUTO_ATTN_MATCH(5067, 5106);
   return {1312u, {}};
 n1544:
-  PLUTO_ATTN_RUN(kAttention6Sequence205);
+  PLUTO_ATTN_RUN(kLookupSequence205);
   goto n1540;
 n1540:
   PLUTO_ATTN_MATCH(5061, 5106);
   return {256u, {}};
 n1539:
-  PLUTO_ATTN_RUN(kAttention6Sequence206);
+  PLUTO_ATTN_RUN(kLookupSequence206);
   return {1535u, {}};
 }
-Attention6Step Attention6Part7(
+LookupStep LookupPart7(
     std::uint32_t node,
     [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
@@ -6723,23 +6723,23 @@ Attention6Step Attention6Part7(
     case 1797u:
       goto n1797;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2047:
   PLUTO_ATTN_MATCH(5061, 5138);
   PLUTO_ATTN_MATCH(5061, 5106);
   return {740u, {}};
 n2045:
-  PLUTO_ATTN_RUN(kAttention6Sequence207);
+  PLUTO_ATTN_RUN(kLookupSequence207);
   goto n2037;
 n2037:
   PLUTO_ATTN_MATCH(5063, 5112);
   return {1046u, {}};
 n2036:
-  PLUTO_ATTN_RUN(kAttention6Sequence208);
+  PLUTO_ATTN_RUN(kLookupSequence208);
   return {1104u, {}};
 n2028:
-  PLUTO_ATTN_RUN(kAttention6Sequence209);
+  PLUTO_ATTN_RUN(kLookupSequence209);
   return {663u, {}};
 n2018:
   PLUTO_ATTN_END(5112);
@@ -6749,20 +6749,20 @@ n2018:
     case 5071:
       goto n2009;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2017:
-  PLUTO_ATTN_RUN(kAttention6Sequence210);
+  PLUTO_ATTN_RUN(kLookupSequence210);
   return {593u, {}};
 n2009:
-  PLUTO_ATTN_RUN(kAttention6Sequence211);
+  PLUTO_ATTN_RUN(kLookupSequence211);
   goto n2003;
 n2003:
   PLUTO_ATTN_MATCH(5067, 5106);
   PLUTO_ATTN_MATCH(5067, 5131);
   return {465u, {}};
 n2001:
-  PLUTO_ATTN_RUN(kAttention6Sequence212);
+  PLUTO_ATTN_RUN(kLookupSequence212);
   return {26u, {}};
 n1997:
   PLUTO_ATTN_END(5131);
@@ -6800,7 +6800,7 @@ n1997:
     case 5094:
       return {1336u, {}};
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n1996:
   PLUTO_ATTN_END(5106);
@@ -6814,7 +6814,7 @@ n1996:
     case 5094:
       goto n1982;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n1995:
   PLUTO_ATTN_MATCH(5067, 5111);
@@ -6824,7 +6824,7 @@ n1993:
   PLUTO_ATTN_MATCH(5067, 5112);
   return {465u, {}};
 n1992:
-  PLUTO_ATTN_RUN(kAttention6Sequence213);
+  PLUTO_ATTN_RUN(kLookupSequence213);
   return {139u, {}};
 n1986:
   PLUTO_ATTN_MATCH(5096, 5127);
@@ -6835,7 +6835,7 @@ n1983:
   PLUTO_ATTN_MATCH(5069, 5131);
   return {502u, {}};
 n1982:
-  PLUTO_ATTN_RUN(kAttention6Sequence214);
+  PLUTO_ATTN_RUN(kLookupSequence214);
   goto n1978;
 n1978:
   PLUTO_ATTN_MATCH(5072, 5131);
@@ -6875,28 +6875,28 @@ n1976:
     case 5096:
       goto n1910;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n1975:
-  PLUTO_ATTN_RUN(kAttention6Sequence215);
+  PLUTO_ATTN_RUN(kLookupSequence215);
   return {818u, {}};
 n1970:
-  PLUTO_ATTN_RUN(kAttention6Sequence216);
+  PLUTO_ATTN_RUN(kLookupSequence216);
   return {16u, {}};
 n1962:
-  PLUTO_ATTN_RUN(kAttention6Sequence217);
+  PLUTO_ATTN_RUN(kLookupSequence217);
   return {1046u, {}};
 n1952:
-  PLUTO_ATTN_RUN(kAttention6Sequence218);
+  PLUTO_ATTN_RUN(kLookupSequence218);
   goto n1946;
 n1946:
   PLUTO_ATTN_MATCH(5067, 5112);
   return {1075u, {}};
 n1945:
-  PLUTO_ATTN_RUN(kAttention6Sequence219);
+  PLUTO_ATTN_RUN(kLookupSequence219);
   return {231u, {}};
 n1935:
-  PLUTO_ATTN_RUN(kAttention6Sequence220);
+  PLUTO_ATTN_RUN(kLookupSequence220);
   return {182u, {}};
 n1931:
   PLUTO_ATTN_MATCH(5069, 5111);
@@ -6908,7 +6908,7 @@ n1929:
   PLUTO_ATTN_MATCH(5061, 5112);
   return {1553u, {}};
 n1928:
-  PLUTO_ATTN_RUN(kAttention6Sequence221);
+  PLUTO_ATTN_RUN(kLookupSequence221);
   return {1033u, {}};
 n1921:
   PLUTO_ATTN_MATCH(5094, 5120);
@@ -6932,7 +6932,7 @@ n1913:
   PLUTO_ATTN_MATCH(5067, 5106);
   return {851u, {}};
 n1910:
-  PLUTO_ATTN_RUN(kAttention6Sequence222);
+  PLUTO_ATTN_RUN(kLookupSequence222);
   return {1270u, {}};
 n1906:
   PLUTO_ATTN_END(5120);
@@ -6966,19 +6966,19 @@ n1906:
     case 5096:
       goto n1816;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n1905:
-  PLUTO_ATTN_RUN(kAttention6Sequence223);
+  PLUTO_ATTN_RUN(kLookupSequence223);
   return {795u, {}};
 n1900:
-  PLUTO_ATTN_RUN(kAttention6Sequence224);
+  PLUTO_ATTN_RUN(kLookupSequence224);
   return {482u, {}};
 n1887:
-  PLUTO_ATTN_RUN(kAttention6Sequence225);
+  PLUTO_ATTN_RUN(kLookupSequence225);
   return {256u, {}};
 n1878:
-  PLUTO_ATTN_RUN(kAttention6Sequence226);
+  PLUTO_ATTN_RUN(kLookupSequence226);
   return {192u, {}};
 n1870:
   PLUTO_ATTN_MATCH(5061, 5106);
@@ -6986,10 +6986,10 @@ n1870:
   PLUTO_ATTN_MATCH(5061, 5120);
   return {63u, {}};
 n1867:
-  PLUTO_ATTN_RUN(kAttention6Sequence227);
+  PLUTO_ATTN_RUN(kLookupSequence227);
   return {465u, {}};
 n1861:
-  PLUTO_ATTN_RUN(kAttention6Sequence228);
+  PLUTO_ATTN_RUN(kLookupSequence228);
   goto n1851;
 n1851:
   PLUTO_ATTN_MATCH(5094, 5120);
@@ -6998,25 +6998,25 @@ n1850:
   PLUTO_ATTN_MATCH(5067, 5112);
   return {1046u, {}};
 n1849:
-  PLUTO_ATTN_RUN(kAttention6Sequence229);
+  PLUTO_ATTN_RUN(kLookupSequence229);
   goto n1843;
 n1843:
   PLUTO_ATTN_MATCH(5067, 5120);
   return {1u, {}};
 n1842:
-  PLUTO_ATTN_RUN(kAttention6Sequence230);
+  PLUTO_ATTN_RUN(kLookupSequence230);
   return {886u, {}};
 n1836:
-  PLUTO_ATTN_RUN(kAttention6Sequence231);
+  PLUTO_ATTN_RUN(kLookupSequence231);
   return {16u, {}};
 n1829:
-  PLUTO_ATTN_RUN(kAttention6Sequence232);
+  PLUTO_ATTN_RUN(kLookupSequence232);
   return {16u, {}};
 n1820:
-  PLUTO_ATTN_RUN(kAttention6Sequence233);
+  PLUTO_ATTN_RUN(kLookupSequence233);
   return {313u, {}};
 n1816:
-  PLUTO_ATTN_RUN(kAttention6Sequence234);
+  PLUTO_ATTN_RUN(kLookupSequence234);
   return {1046u, {}};
 n1808:
   PLUTO_ATTN_END(5131);
@@ -7040,25 +7040,25 @@ n1808:
     case 5094:
       return {1768u, {}};
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n1807:
-  PLUTO_ATTN_RUN(kAttention6Sequence235);
+  PLUTO_ATTN_RUN(kLookupSequence235);
   return {288u, {}};
 n1802:
-  PLUTO_ATTN_RUN(kAttention6Sequence236);
+  PLUTO_ATTN_RUN(kLookupSequence236);
   goto n1797;
 n1797:
   PLUTO_ATTN_MATCH(5061, 5106);
   return {16u, {}};
 n1796:
-  PLUTO_ATTN_RUN(kAttention6Sequence237);
+  PLUTO_ATTN_RUN(kLookupSequence237);
   return {258u, {}};
 n1792:
   PLUTO_ATTN_MATCH(5061, 5122);
   return {1791u, {}};
 }
-Attention6Step Attention6Part8(
+LookupStep LookupPart8(
     std::uint32_t node,
     [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
@@ -7100,7 +7100,7 @@ Attention6Step Attention6Part8(
     case 2104u:
       goto n2104;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2303:
   PLUTO_ATTN_MATCH(5067, 5106);
@@ -7116,22 +7116,22 @@ n2301:
     case 5079:
       goto n2284;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2300:
-  PLUTO_ATTN_RUN(kAttention6Sequence238);
+  PLUTO_ATTN_RUN(kLookupSequence238);
   return {113u, {}};
 n2292:
-  PLUTO_ATTN_RUN(kAttention6Sequence239);
+  PLUTO_ATTN_RUN(kLookupSequence239);
   return {1046u, {}};
 n2284:
-  PLUTO_ATTN_RUN(kAttention6Sequence240);
+  PLUTO_ATTN_RUN(kLookupSequence240);
   goto n2276;
 n2276:
   PLUTO_ATTN_MATCH(5072, 5131);
   return {373u, {}};
 n2275:
-  PLUTO_ATTN_RUN(kAttention6Sequence241);
+  PLUTO_ATTN_RUN(kLookupSequence241);
   return {444u, {}};
 n2267:
   PLUTO_ATTN_END(5106);
@@ -7141,13 +7141,13 @@ n2267:
     case 5069:
       goto n2260;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2266:
-  PLUTO_ATTN_RUN(kAttention6Sequence242);
+  PLUTO_ATTN_RUN(kLookupSequence242);
   return {128u, {}};
 n2260:
-  PLUTO_ATTN_RUN(kAttention6Sequence243);
+  PLUTO_ATTN_RUN(kLookupSequence243);
   goto n2249;
 n2249:
   PLUTO_ATTN_MATCH(5094, 5105);
@@ -7163,17 +7163,17 @@ n2248:
     case 5072:
       goto n2237;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2246:
-  PLUTO_ATTN_RUN(kAttention6Sequence244);
+  PLUTO_ATTN_RUN(kLookupSequence244);
   return {90u, {}};
 n2239:
   PLUTO_ATTN_MATCH(5094, 5120);
   PLUTO_ATTN_MATCH(5067, 5112);
   return {886u, {}};
 n2237:
-  PLUTO_ATTN_RUN(kAttention6Sequence245);
+  PLUTO_ATTN_RUN(kLookupSequence245);
   goto n2232;
 n2232:
   PLUTO_ATTN_MATCH(5069, 5138);
@@ -7188,7 +7188,7 @@ n2231:
     case 5094:
       goto n2209;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2230:
   PLUTO_ATTN_END(5131);
@@ -7200,22 +7200,22 @@ n2230:
     case 5094:
       goto n2218;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2229:
-  PLUTO_ATTN_RUN(kAttention6Sequence246);
+  PLUTO_ATTN_RUN(kLookupSequence246);
   goto n2224;
 n2224:
   PLUTO_ATTN_MATCH(5067, 5106);
   return {570u, {}};
 n2223:
-  PLUTO_ATTN_RUN(kAttention6Sequence247);
+  PLUTO_ATTN_RUN(kLookupSequence247);
   return {1523u, {}};
 n2218:
-  PLUTO_ATTN_RUN(kAttention6Sequence248);
+  PLUTO_ATTN_RUN(kLookupSequence248);
   return {202u, {}};
 n2213:
-  PLUTO_ATTN_RUN(kAttention6Sequence249);
+  PLUTO_ATTN_RUN(kLookupSequence249);
   return {256u, {}};
 n2209:
   PLUTO_ATTN_END(5112);
@@ -7225,7 +7225,7 @@ n2209:
     case 5069:
       goto n2186;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2208:
   PLUTO_ATTN_END(5131);
@@ -7239,19 +7239,19 @@ n2208:
     case 5094:
       goto n2189;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2207:
-  PLUTO_ATTN_RUN(kAttention6Sequence250);
+  PLUTO_ATTN_RUN(kLookupSequence250);
   goto n2202;
 n2202:
   PLUTO_ATTN_MATCH(5067, 5138);
   return {1312u, {}};
 n2201:
-  PLUTO_ATTN_RUN(kAttention6Sequence251);
+  PLUTO_ATTN_RUN(kLookupSequence251);
   return {819u, {}};
 n2197:
-  PLUTO_ATTN_RUN(kAttention6Sequence252);
+  PLUTO_ATTN_RUN(kLookupSequence252);
   return {711u, {}};
 n2189:
   PLUTO_ATTN_MATCH(5053, 5112);
@@ -7266,14 +7266,14 @@ n2186:
     case 5094:
       goto n2183;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2185:
   PLUTO_ATTN_MATCH(5094, 5131);
   PLUTO_ATTN_MATCH(5061, 5112);
   return {29u, {}};
 n2183:
-  PLUTO_ATTN_RUN(kAttention6Sequence253);
+  PLUTO_ATTN_RUN(kLookupSequence253);
   goto n2178;
 n2178:
   PLUTO_ATTN_MATCH(5069, 5138);
@@ -7286,7 +7286,7 @@ n2177:
     case 5067:
       goto n2147;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2176:
   PLUTO_ATTN_MATCH(5061, 5105);
@@ -7301,25 +7301,25 @@ n2176:
     case 5094:
       goto n2156;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2174:
-  PLUTO_ATTN_RUN(kAttention6Sequence254);
+  PLUTO_ATTN_RUN(kLookupSequence254);
   return {809u, {}};
 n2169:
-  PLUTO_ATTN_RUN(kAttention6Sequence255);
+  PLUTO_ATTN_RUN(kLookupSequence255);
   goto n2164;
 n2164:
   PLUTO_ATTN_MATCH(5061, 5112);
   return {1523u, {}};
 n2163:
-  PLUTO_ATTN_RUN(kAttention6Sequence256);
+  PLUTO_ATTN_RUN(kLookupSequence256);
   goto n2157;
 n2157:
   PLUTO_ATTN_MATCH(5069, 5133);
   return {2u, {}};
 n2156:
-  PLUTO_ATTN_RUN(kAttention6Sequence257);
+  PLUTO_ATTN_RUN(kLookupSequence257);
   return {1u, {}};
 n2147:
   PLUTO_ATTN_END(5131);
@@ -7329,7 +7329,7 @@ n2147:
     case 5069:
       goto n2136;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2146:
   PLUTO_ATTN_END(5106);
@@ -7339,16 +7339,16 @@ n2146:
     case 5069:
       goto n2140;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2145:
-  PLUTO_ATTN_RUN(kAttention6Sequence258);
+  PLUTO_ATTN_RUN(kLookupSequence258);
   return {202u, {}};
 n2140:
-  PLUTO_ATTN_RUN(kAttention6Sequence259);
+  PLUTO_ATTN_RUN(kLookupSequence259);
   return {519u, {}};
 n2136:
-  PLUTO_ATTN_RUN(kAttention6Sequence260);
+  PLUTO_ATTN_RUN(kLookupSequence260);
   return {663u, {}};
 n2124:
   PLUTO_ATTN_END(5138);
@@ -7368,7 +7368,7 @@ n2124:
     case 5094:
       return {1045u, {}};
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2123:
   PLUTO_ATTN_END(5138);
@@ -7384,7 +7384,7 @@ n2123:
     case 5094:
       return {2018u, {}};
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2122:
   PLUTO_ATTN_END(5111);
@@ -7400,10 +7400,10 @@ n2122:
     case 5090:
       goto n2095;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2121:
-  PLUTO_ATTN_RUN(kAttention6Sequence261);
+  PLUTO_ATTN_RUN(kLookupSequence261);
   return {1983u, {}};
 n2117:
   PLUTO_ATTN_MATCH(5069, 5127);
@@ -7414,16 +7414,16 @@ n2114:
   PLUTO_ATTN_MATCH(5061, 5111);
   return {2u, {}};
 n2113:
-  PLUTO_ATTN_RUN(kAttention6Sequence262);
+  PLUTO_ATTN_RUN(kLookupSequence262);
   goto n2104;
 n2104:
   PLUTO_ATTN_MATCH(5069, 5131);
   return {256u, {}};
 n2103:
-  PLUTO_ATTN_RUN(kAttention6Sequence263);
+  PLUTO_ATTN_RUN(kLookupSequence263);
   return {795u, {}};
 n2095:
-  PLUTO_ATTN_RUN(kAttention6Sequence264);
+  PLUTO_ATTN_RUN(kLookupSequence264);
   return {593u, {}};
 n2088:
   PLUTO_ATTN_END(5100);
@@ -7433,10 +7433,10 @@ n2088:
     case 5061:
       goto n2087;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2087:
-  PLUTO_ATTN_RUN(kAttention6Sequence265);
+  PLUTO_ATTN_RUN(kLookupSequence265);
   return {2u, {}};
 n2081:
   PLUTO_ATTN_END(5106);
@@ -7446,13 +7446,13 @@ n2081:
     case 5094:
       goto n2076;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2080:
-  PLUTO_ATTN_RUN(kAttention6Sequence266);
+  PLUTO_ATTN_RUN(kLookupSequence266);
   return {822u, {}};
 n2076:
-  PLUTO_ATTN_RUN(kAttention6Sequence267);
+  PLUTO_ATTN_RUN(kLookupSequence267);
   return {427u, {}};
 n2066:
   PLUTO_ATTN_END(5131);
@@ -7470,20 +7470,20 @@ n2066:
     case 5094:
       return {2028u, {}};
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2065:
-  PLUTO_ATTN_RUN(kAttention6Sequence268);
+  PLUTO_ATTN_RUN(kLookupSequence268);
   return {458u, {}};
 n2056:
-  PLUTO_ATTN_RUN(kAttention6Sequence269);
+  PLUTO_ATTN_RUN(kLookupSequence269);
   return {809u, {}};
 n2049:
   PLUTO_ATTN_MATCH(5069, 5131);
   PLUTO_ATTN_MATCH(5067, 5112);
   return {2047u, {}};
 }
-Attention6Step Attention6Part9(
+LookupStep LookupPart9(
     std::uint32_t node,
     [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
@@ -7513,10 +7513,10 @@ Attention6Step Attention6Part9(
     case 2312u:
       goto n2312;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2559:
-  PLUTO_ATTN_RUN(kAttention6Sequence270);
+  PLUTO_ATTN_RUN(kLookupSequence270);
   return {313u, {}};
 n2555:
   PLUTO_ATTN_END(5127);
@@ -7542,7 +7542,7 @@ n2555:
     case 5083:
       return {2301u, {}};
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2554:
   PLUTO_ATTN_END(5120);
@@ -7554,19 +7554,19 @@ n2554:
     case 5094:
       goto n2539;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2553:
-  PLUTO_ATTN_RUN(kAttention6Sequence271);
+  PLUTO_ATTN_RUN(kLookupSequence271);
   goto n2547;
 n2547:
   PLUTO_ATTN_MATCH(5061, 5131);
   return {458u, {}};
 n2546:
-  PLUTO_ATTN_RUN(kAttention6Sequence272);
+  PLUTO_ATTN_RUN(kLookupSequence272);
   return {601u, {}};
 n2539:
-  PLUTO_ATTN_RUN(kAttention6Sequence273);
+  PLUTO_ATTN_RUN(kLookupSequence273);
   return {519u, {}};
 n2532:
   PLUTO_ATTN_END(5106);
@@ -7596,50 +7596,50 @@ n2532:
     case 5090:
       goto n2464;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2531:
-  PLUTO_ATTN_RUN(kAttention6Sequence274);
+  PLUTO_ATTN_RUN(kLookupSequence274);
   return {724u, {}};
 n2526:
-  PLUTO_ATTN_RUN(kAttention6Sequence275);
+  PLUTO_ATTN_RUN(kLookupSequence275);
   return {2u, {}};
 n2522:
-  PLUTO_ATTN_RUN(kAttention6Sequence276);
+  PLUTO_ATTN_RUN(kLookupSequence276);
   return {477u, {}};
 n2516:
-  PLUTO_ATTN_RUN(kAttention6Sequence277);
+  PLUTO_ATTN_RUN(kLookupSequence277);
   return {26u, {}};
 n2508:
-  PLUTO_ATTN_RUN(kAttention6Sequence278);
+  PLUTO_ATTN_RUN(kLookupSequence278);
   return {427u, {}};
 n2503:
-  PLUTO_ATTN_RUN(kAttention6Sequence279);
+  PLUTO_ATTN_RUN(kLookupSequence279);
   goto n2499;
 n2499:
   PLUTO_ATTN_MATCH(5067, 5133);
   return {256u, {}};
 n2498:
-  PLUTO_ATTN_RUN(kAttention6Sequence280);
+  PLUTO_ATTN_RUN(kLookupSequence280);
   return {16u, {}};
 n2492:
-  PLUTO_ATTN_RUN(kAttention6Sequence281);
+  PLUTO_ATTN_RUN(kLookupSequence281);
   goto n2488;
 n2488:
   PLUTO_ATTN_MATCH(5069, 5106);
   PLUTO_ATTN_MATCH(5069, 5127);
   return {16u, {}};
 n2486:
-  PLUTO_ATTN_RUN(kAttention6Sequence282);
+  PLUTO_ATTN_RUN(kLookupSequence282);
   return {1u, {}};
 n2478:
-  PLUTO_ATTN_RUN(kAttention6Sequence283);
+  PLUTO_ATTN_RUN(kLookupSequence283);
   return {1448u, {}};
 n2471:
-  PLUTO_ATTN_RUN(kAttention6Sequence284);
+  PLUTO_ATTN_RUN(kLookupSequence284);
   return {42u, {}};
 n2464:
-  PLUTO_ATTN_RUN(kAttention6Sequence285);
+  PLUTO_ATTN_RUN(kLookupSequence285);
   return {373u, {}};
 n2456:
   PLUTO_ATTN_END(5131);
@@ -7655,25 +7655,25 @@ n2456:
     case 5094:
       goto n2433;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2455:
   PLUTO_ATTN_MATCH(5069, 5112);
   return {1121u, {}};
 n2454:
-  PLUTO_ATTN_RUN(kAttention6Sequence286);
+  PLUTO_ATTN_RUN(kLookupSequence286);
   return {1946u, {}};
 n2446:
-  PLUTO_ATTN_RUN(kAttention6Sequence287);
+  PLUTO_ATTN_RUN(kLookupSequence287);
   goto n2440;
 n2440:
   PLUTO_ATTN_MATCH(5063, 5127);
   return {1u, {}};
 n2439:
-  PLUTO_ATTN_RUN(kAttention6Sequence288);
+  PLUTO_ATTN_RUN(kLookupSequence288);
   return {795u, {}};
 n2433:
-  PLUTO_ATTN_RUN(kAttention6Sequence289);
+  PLUTO_ATTN_RUN(kLookupSequence289);
   goto n2428;
 n2428:
   PLUTO_ATTN_MATCH(5061, 5109);
@@ -7698,37 +7698,37 @@ n2427:
     case 5094:
       goto n2373;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2426:
-  PLUTO_ATTN_RUN(kAttention6Sequence290);
+  PLUTO_ATTN_RUN(kLookupSequence290);
   goto n2419;
 n2419:
   PLUTO_ATTN_MATCH(5067, 5112);
   return {1312u, {}};
 n2418:
-  PLUTO_ATTN_RUN(kAttention6Sequence291);
+  PLUTO_ATTN_RUN(kLookupSequence291);
   return {601u, {}};
 n2411:
-  PLUTO_ATTN_RUN(kAttention6Sequence292);
+  PLUTO_ATTN_RUN(kLookupSequence292);
   return {374u, {}};
 n2403:
-  PLUTO_ATTN_RUN(kAttention6Sequence293);
+  PLUTO_ATTN_RUN(kLookupSequence293);
   return {1189u, {}};
 n2395:
-  PLUTO_ATTN_RUN(kAttention6Sequence294);
+  PLUTO_ATTN_RUN(kLookupSequence294);
   return {1u, {}};
 n2390:
-  PLUTO_ATTN_RUN(kAttention6Sequence295);
+  PLUTO_ATTN_RUN(kLookupSequence295);
   return {502u, {}};
 n2382:
-  PLUTO_ATTN_RUN(kAttention6Sequence296);
+  PLUTO_ATTN_RUN(kLookupSequence296);
   goto n2374;
 n2374:
   PLUTO_ATTN_MATCH(5067, 5131);
   return {1u, {}};
 n2373:
-  PLUTO_ATTN_RUN(kAttention6Sequence297);
+  PLUTO_ATTN_RUN(kLookupSequence297);
   goto n2366;
 n2366:
   PLUTO_ATTN_MATCH(5061, 5112);
@@ -7745,10 +7745,10 @@ n2365:
     case 5096:
       goto n2351;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2364:
-  PLUTO_ATTN_RUN(kAttention6Sequence298);
+  PLUTO_ATTN_RUN(kLookupSequence298);
   return {465u, {}};
 n2358:
   PLUTO_ATTN_MATCH(5069, 5138);
@@ -7756,10 +7756,10 @@ n2358:
   PLUTO_ATTN_MATCH(5061, 5131);
   return {90u, {}};
 n2355:
-  PLUTO_ATTN_RUN(kAttention6Sequence299);
+  PLUTO_ATTN_RUN(kLookupSequence299);
   return {1545u, {}};
 n2351:
-  PLUTO_ATTN_RUN(kAttention6Sequence300);
+  PLUTO_ATTN_RUN(kLookupSequence300);
   return {1797u, {}};
 n2345:
   PLUTO_ATTN_END(5108);
@@ -7769,13 +7769,13 @@ n2345:
     case 5094:
       goto n2340;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2344:
-  PLUTO_ATTN_RUN(kAttention6Sequence301);
+  PLUTO_ATTN_RUN(kLookupSequence301);
   return {601u, {}};
 n2340:
-  PLUTO_ATTN_RUN(kAttention6Sequence302);
+  PLUTO_ATTN_RUN(kLookupSequence302);
   return {231u, {}};
 n2335:
   PLUTO_ATTN_END(5112);
@@ -7787,31 +7787,31 @@ n2335:
     case 5071:
       goto n2325;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2334:
-  PLUTO_ATTN_RUN(kAttention6Sequence303);
+  PLUTO_ATTN_RUN(kLookupSequence303);
   return {52u, {}};
 n2329:
-  PLUTO_ATTN_RUN(kAttention6Sequence304);
+  PLUTO_ATTN_RUN(kLookupSequence304);
   return {2164u, {}};
 n2325:
-  PLUTO_ATTN_RUN(kAttention6Sequence305);
+  PLUTO_ATTN_RUN(kLookupSequence305);
   goto n2318;
 n2318:
   PLUTO_ATTN_MATCH(5069, 5117);
   return {52u, {}};
 n2317:
-  PLUTO_ATTN_RUN(kAttention6Sequence306);
+  PLUTO_ATTN_RUN(kLookupSequence306);
   goto n2312;
 n2312:
   PLUTO_ATTN_MATCH(5067, 5138);
   return {26u, {}};
 n2311:
-  PLUTO_ATTN_RUN(kAttention6Sequence307);
+  PLUTO_ATTN_RUN(kLookupSequence307);
   return {2303u, {}};
 }
-Attention6Step Attention6Part10(
+LookupStep LookupPart10(
     std::uint32_t node,
     [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
@@ -7861,29 +7861,29 @@ Attention6Step Attention6Part10(
     case 2584u:
       goto n2584;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2815:
   PLUTO_ATTN_MATCH(5087, 5138);
   PLUTO_ATTN_MATCH(5071, 5133);
   return {1659u, {}};
 n2813:
-  PLUTO_ATTN_RUN(kAttention6Sequence308);
+  PLUTO_ATTN_RUN(kLookupSequence308);
   return {52u, {}};
 n2808:
-  PLUTO_ATTN_RUN(kAttention6Sequence309);
+  PLUTO_ATTN_RUN(kLookupSequence309);
   return {26u, {}};
 n2803:
-  PLUTO_ATTN_RUN(kAttention6Sequence310);
+  PLUTO_ATTN_RUN(kLookupSequence310);
   return {1099u, {}};
 n2796:
-  PLUTO_ATTN_RUN(kAttention6Sequence311);
+  PLUTO_ATTN_RUN(kLookupSequence311);
   return {1531u, {}};
 n2789:
-  PLUTO_ATTN_RUN(kAttention6Sequence312);
+  PLUTO_ATTN_RUN(kLookupSequence312);
   return {373u, {}};
 n2783:
-  PLUTO_ATTN_RUN(kAttention6Sequence313);
+  PLUTO_ATTN_RUN(kLookupSequence313);
   return {161u, {}};
 n2779:
   PLUTO_ATTN_END(5106);
@@ -7899,22 +7899,22 @@ n2779:
     case 5098:
       goto n2754;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2778:
-  PLUTO_ATTN_RUN(kAttention6Sequence314);
+  PLUTO_ATTN_RUN(kLookupSequence314);
   return {374u, {}};
 n2771:
-  PLUTO_ATTN_RUN(kAttention6Sequence315);
+  PLUTO_ATTN_RUN(kLookupSequence315);
   goto n2766;
 n2766:
   PLUTO_ATTN_MATCH(5063, 5131);
   return {52u, {}};
 n2765:
-  PLUTO_ATTN_RUN(kAttention6Sequence316);
+  PLUTO_ATTN_RUN(kLookupSequence316);
   return {1329u, {}};
 n2758:
-  PLUTO_ATTN_RUN(kAttention6Sequence317);
+  PLUTO_ATTN_RUN(kLookupSequence317);
   return {326u, {}};
 n2754:
   PLUTO_ATTN_MATCH(5067, 5111);
@@ -7940,44 +7940,44 @@ n2752:
     case 5096:
       goto n2708;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2751:
   PLUTO_ATTN_MATCH(5094, 5105);
   PLUTO_ATTN_MATCH(5063, 5112);
   return {1983u, {}};
 n2749:
-  PLUTO_ATTN_RUN(kAttention6Sequence318);
+  PLUTO_ATTN_RUN(kLookupSequence318);
   return {587u, {}};
 n2743:
-  PLUTO_ATTN_RUN(kAttention6Sequence319);
+  PLUTO_ATTN_RUN(kLookupSequence319);
   goto n2735;
 n2735:
   PLUTO_ATTN_MATCH(5069, 5112);
   return {465u, {}};
 n2734:
-  PLUTO_ATTN_RUN(kAttention6Sequence320);
+  PLUTO_ATTN_RUN(kLookupSequence320);
   goto n2728;
 n2728:
   PLUTO_ATTN_MATCH(5061, 5106);
   return {277u, {}};
 n2727:
-  PLUTO_ATTN_RUN(kAttention6Sequence321);
+  PLUTO_ATTN_RUN(kLookupSequence321);
   return {1046u, {}};
 n2723:
-  PLUTO_ATTN_RUN(kAttention6Sequence322);
+  PLUTO_ATTN_RUN(kLookupSequence322);
   return {90u, {}};
 n2717:
-  PLUTO_ATTN_RUN(kAttention6Sequence323);
+  PLUTO_ATTN_RUN(kLookupSequence323);
   return {611u, {}};
 n2708:
-  PLUTO_ATTN_RUN(kAttention6Sequence324);
+  PLUTO_ATTN_RUN(kLookupSequence324);
   goto n2700;
 n2700:
   PLUTO_ATTN_MATCH(5067, 5106);
   return {172u, {}};
 n2699:
-  PLUTO_ATTN_RUN(kAttention6Sequence325);
+  PLUTO_ATTN_RUN(kLookupSequence325);
   return {587u, {}};
 n2690:
   PLUTO_ATTN_END(5125);
@@ -7989,16 +7989,16 @@ n2690:
     case 5094:
       goto n2674;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2689:
-  PLUTO_ATTN_RUN(kAttention6Sequence326);
+  PLUTO_ATTN_RUN(kLookupSequence326);
   return {838u, {}};
 n2681:
-  PLUTO_ATTN_RUN(kAttention6Sequence327);
+  PLUTO_ATTN_RUN(kLookupSequence327);
   return {1433u, {}};
 n2674:
-  PLUTO_ATTN_RUN(kAttention6Sequence328);
+  PLUTO_ATTN_RUN(kLookupSequence328);
   return {257u, {}};
 n2667:
   PLUTO_ATTN_END(5111);
@@ -8014,7 +8014,7 @@ n2667:
     case 5069:
       goto n2652;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2666:
   PLUTO_ATTN_MATCH(5067, 5133);
@@ -8032,7 +8032,7 @@ n2660:
   PLUTO_ATTN_MATCH(5094, 5117);
   return {257u, {}};
 n2659:
-  PLUTO_ATTN_RUN(kAttention6Sequence329);
+  PLUTO_ATTN_RUN(kLookupSequence329);
   return {593u, {}};
 n2655:
   PLUTO_ATTN_MATCH(5094, 5127);
@@ -8040,7 +8040,7 @@ n2655:
   PLUTO_ATTN_MATCH(5067, 5131);
   return {519u, {}};
 n2652:
-  PLUTO_ATTN_RUN(kAttention6Sequence330);
+  PLUTO_ATTN_RUN(kLookupSequence330);
   return {427u, {}};
 n2647:
   PLUTO_ATTN_END(5120);
@@ -8058,22 +8058,22 @@ n2647:
     case 5090:
       goto n2617;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2646:
-  PLUTO_ATTN_RUN(kAttention6Sequence331);
+  PLUTO_ATTN_RUN(kLookupSequence331);
   return {477u, {}};
 n2640:
-  PLUTO_ATTN_RUN(kAttention6Sequence332);
+  PLUTO_ATTN_RUN(kLookupSequence332);
   return {313u, {}};
 n2631:
-  PLUTO_ATTN_RUN(kAttention6Sequence333);
+  PLUTO_ATTN_RUN(kLookupSequence333);
   goto n2626;
 n2626:
   PLUTO_ATTN_MATCH(5094, 5120);
   return {2366u, {}};
 n2625:
-  PLUTO_ATTN_RUN(kAttention6Sequence334);
+  PLUTO_ATTN_RUN(kLookupSequence334);
   return {52u, {}};
 n2620:
   PLUTO_ATTN_MATCH(5061, 5138);
@@ -8081,7 +8081,7 @@ n2620:
   PLUTO_ATTN_MATCH(5069, 5120);
   return {482u, {}};
 n2617:
-  PLUTO_ATTN_RUN(kAttention6Sequence335);
+  PLUTO_ATTN_RUN(kLookupSequence335);
   return {257u, {}};
 n2611:
   PLUTO_ATTN_END(5112);
@@ -8093,13 +8093,13 @@ n2611:
     case 5090:
       goto n2598;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2610:
-  PLUTO_ATTN_RUN(kAttention6Sequence336);
+  PLUTO_ATTN_RUN(kLookupSequence336);
   return {1312u, {}};
 n2603:
-  PLUTO_ATTN_RUN(kAttention6Sequence337);
+  PLUTO_ATTN_RUN(kLookupSequence337);
   return {256u, {}};
 n2598:
   PLUTO_ATTN_MATCH(5071, 5106);
@@ -8114,10 +8114,10 @@ n2595:
     case 5094:
       goto n2583;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2594:
-  PLUTO_ATTN_RUN(kAttention6Sequence338);
+  PLUTO_ATTN_RUN(kLookupSequence338);
   goto n2584;
 n2584:
   PLUTO_ATTN_MATCH(5094, 5120);
@@ -8134,23 +8134,23 @@ n2583:
     case 5069:
       goto n2565;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2582:
-  PLUTO_ATTN_RUN(kAttention6Sequence339);
+  PLUTO_ATTN_RUN(kLookupSequence339);
   return {653u, {}};
 n2574:
   PLUTO_ATTN_MATCH(5072, 5111);
   PLUTO_ATTN_MATCH(5067, 5117);
   return {519u, {}};
 n2572:
-  PLUTO_ATTN_RUN(kAttention6Sequence340);
+  PLUTO_ATTN_RUN(kLookupSequence340);
   return {2374u, {}};
 n2565:
-  PLUTO_ATTN_RUN(kAttention6Sequence341);
+  PLUTO_ATTN_RUN(kLookupSequence341);
   return {2559u, {}};
 }
-Attention6Step Attention6Part11(
+LookupStep LookupPart11(
     std::uint32_t node,
     [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
@@ -8200,19 +8200,19 @@ Attention6Step Attention6Part11(
     case 2823u:
       goto n2823;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n3071:
-  PLUTO_ATTN_RUN(kAttention6Sequence342);
+  PLUTO_ATTN_RUN(kLookupSequence342);
   return {427u, {}};
 n3067:
-  PLUTO_ATTN_RUN(kAttention6Sequence343);
+  PLUTO_ATTN_RUN(kLookupSequence343);
   goto n3059;
 n3059:
   PLUTO_ATTN_MATCH(5069, 5131);
   return {139u, {}};
 n3058:
-  PLUTO_ATTN_RUN(kAttention6Sequence344);
+  PLUTO_ATTN_RUN(kLookupSequence344);
   return {1274u, {}};
 n3053:
   PLUTO_ATTN_MATCH(5067, 5111);
@@ -8220,10 +8220,10 @@ n3053:
   PLUTO_ATTN_MATCH(5071, 5138);
   return {663u, {}};
 n3050:
-  PLUTO_ATTN_RUN(kAttention6Sequence345);
+  PLUTO_ATTN_RUN(kLookupSequence345);
   goto n2823;
 n3044:
-  PLUTO_ATTN_RUN(kAttention6Sequence346);
+  PLUTO_ATTN_RUN(kLookupSequence346);
   return {663u, {}};
 n3035:
   PLUTO_ATTN_END(5106);
@@ -8243,17 +8243,17 @@ n3035:
     case 5096:
       goto n3009;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n3034:
   PLUTO_ATTN_MATCH(5094, 5108);
   PLUTO_ATTN_MATCH(5067, 5139);
   return {97u, {}};
 n3032:
-  PLUTO_ATTN_RUN(kAttention6Sequence347);
+  PLUTO_ATTN_RUN(kLookupSequence347);
   return {52u, {}};
 n3026:
-  PLUTO_ATTN_RUN(kAttention6Sequence348);
+  PLUTO_ATTN_RUN(kLookupSequence348);
   goto n3021;
 n3021:
   PLUTO_ATTN_MATCH(5069, 5131);
@@ -8269,19 +8269,19 @@ n3017:
   PLUTO_ATTN_MATCH(5072, 5125);
   goto n2906;
 n3014:
-  PLUTO_ATTN_RUN(kAttention6Sequence349);
+  PLUTO_ATTN_RUN(kLookupSequence349);
   return {113u, {}};
 n3009:
-  PLUTO_ATTN_RUN(kAttention6Sequence350);
+  PLUTO_ATTN_RUN(kLookupSequence350);
   return {724u, {}};
 n3002:
-  PLUTO_ATTN_RUN(kAttention6Sequence351);
+  PLUTO_ATTN_RUN(kLookupSequence351);
   return {52u, {}};
 n2997:
-  PLUTO_ATTN_RUN(kAttention6Sequence352);
+  PLUTO_ATTN_RUN(kLookupSequence352);
   return {52u, {}};
 n2991:
-  PLUTO_ATTN_RUN(kAttention6Sequence353);
+  PLUTO_ATTN_RUN(kLookupSequence353);
   return {1307u, {}};
 n2984:
   PLUTO_ATTN_END(5106);
@@ -8291,7 +8291,7 @@ n2984:
     case 5069:
       goto n2969;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2983:
   PLUTO_ATTN_END(5131);
@@ -8301,13 +8301,13 @@ n2983:
     case 5077:
       goto n2976;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2982:
-  PLUTO_ATTN_RUN(kAttention6Sequence354);
+  PLUTO_ATTN_RUN(kLookupSequence354);
   return {52u, {}};
 n2976:
-  PLUTO_ATTN_RUN(kAttention6Sequence355);
+  PLUTO_ATTN_RUN(kLookupSequence355);
   return {711u, {}};
 n2969:
   PLUTO_ATTN_MATCH(5072, 5131);
@@ -8327,7 +8327,7 @@ n2967:
     case 5094:
       goto n2862;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2966:
   PLUTO_ATTN_END(5111);
@@ -8337,13 +8337,13 @@ n2966:
     case 5065:
       goto n2959;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2965:
-  PLUTO_ATTN_RUN(kAttention6Sequence356);
+  PLUTO_ATTN_RUN(kLookupSequence356);
   return {373u, {}};
 n2959:
-  PLUTO_ATTN_RUN(kAttention6Sequence357);
+  PLUTO_ATTN_RUN(kLookupSequence357);
   return {113u, {}};
 n2955:
   PLUTO_ATTN_END(5133);
@@ -8357,7 +8357,7 @@ n2955:
     case 5067:
       goto n2936;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2954:
   PLUTO_ATTN_MATCH(5094, 5120);
@@ -8368,7 +8368,7 @@ n2951:
   PLUTO_ATTN_MATCH(5069, 5127);
   return {90u, {}};
 n2950:
-  PLUTO_ATTN_RUN(kAttention6Sequence358);
+  PLUTO_ATTN_RUN(kLookupSequence358);
   goto n2945;
 n2945:
   PLUTO_ATTN_MATCH(5061, 5112);
@@ -8377,10 +8377,10 @@ n2944:
   PLUTO_ATTN_MATCH(5061, 5120);
   return {52u, {}};
 n2943:
-  PLUTO_ATTN_RUN(kAttention6Sequence359);
+  PLUTO_ATTN_RUN(kLookupSequence359);
   return {52u, {}};
 n2936:
-  PLUTO_ATTN_RUN(kAttention6Sequence360);
+  PLUTO_ATTN_RUN(kLookupSequence360);
   goto n2931;
 n2931:
   PLUTO_ATTN_MATCH(5069, 5133);
@@ -8407,19 +8407,19 @@ n2930:
     case 5098:
       goto n2889;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2929:
-  PLUTO_ATTN_RUN(kAttention6Sequence361);
+  PLUTO_ATTN_RUN(kLookupSequence361);
   return {1329u, {}};
 n2925:
-  PLUTO_ATTN_RUN(kAttention6Sequence362);
+  PLUTO_ATTN_RUN(kLookupSequence362);
   return {1189u, {}};
 n2921:
-  PLUTO_ATTN_RUN(kAttention6Sequence363);
+  PLUTO_ATTN_RUN(kLookupSequence363);
   return {97u, {}};
 n2915:
-  PLUTO_ATTN_RUN(kAttention6Sequence364);
+  PLUTO_ATTN_RUN(kLookupSequence364);
   return {16u, {}};
 n2909:
   PLUTO_ATTN_MATCH(5071, 5111);
@@ -8435,16 +8435,16 @@ n2905:
   PLUTO_ATTN_MATCH(5063, 5131);
   return {288u, {}};
 n2902:
-  PLUTO_ATTN_RUN(kAttention6Sequence365);
+  PLUTO_ATTN_RUN(kLookupSequence365);
   goto n2895;
 n2895:
   PLUTO_ATTN_MATCH(5069, 5106);
   return {1194u, {}};
 n2894:
-  PLUTO_ATTN_RUN(kAttention6Sequence366);
+  PLUTO_ATTN_RUN(kLookupSequence366);
   return {1104u, {}};
 n2889:
-  PLUTO_ATTN_RUN(kAttention6Sequence367);
+  PLUTO_ATTN_RUN(kLookupSequence367);
   return {2318u, {}};
 n2883:
   PLUTO_ATTN_END(5133);
@@ -8454,13 +8454,13 @@ n2883:
     case 5087:
       goto n2875;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2882:
-  PLUTO_ATTN_RUN(kAttention6Sequence368);
+  PLUTO_ATTN_RUN(kLookupSequence368);
   return {2318u, {}};
 n2875:
-  PLUTO_ATTN_RUN(kAttention6Sequence369);
+  PLUTO_ATTN_RUN(kLookupSequence369);
   return {593u, {}};
 n2862:
   PLUTO_ATTN_END(5112);
@@ -8470,7 +8470,7 @@ n2862:
     case 5067:
       goto n2858;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2861:
   PLUTO_ATTN_MATCH(5069, 5131);
@@ -8478,7 +8478,7 @@ n2861:
   PLUTO_ATTN_MATCH(5069, 5112);
   return {113u, {}};
 n2858:
-  PLUTO_ATTN_RUN(kAttention6Sequence370);
+  PLUTO_ATTN_RUN(kLookupSequence370);
   return {231u, {}};
 n2852:
   PLUTO_ATTN_END(5131);
@@ -8496,7 +8496,7 @@ n2852:
     case 5094:
       return {2248u, {}};
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2851:
   PLUTO_ATTN_END(5117);
@@ -8520,10 +8520,10 @@ n2851:
     case 5094:
       return {2611u, {}};
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2850:
-  PLUTO_ATTN_RUN(kAttention6Sequence371);
+  PLUTO_ATTN_RUN(kLookupSequence371);
   return {2178u, {}};
 n2841:
   PLUTO_ATTN_END(5109);
@@ -8549,7 +8549,7 @@ n2841:
     case 5098:
       return {2783u, {}};
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2840:
   PLUTO_ATTN_END(5127);
@@ -8559,13 +8559,13 @@ n2840:
     case 5077:
       goto n2833;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n2839:
-  PLUTO_ATTN_RUN(kAttention6Sequence372);
+  PLUTO_ATTN_RUN(kLookupSequence372);
   return {2037u, {}};
 n2833:
-  PLUTO_ATTN_RUN(kAttention6Sequence373);
+  PLUTO_ATTN_RUN(kLookupSequence373);
   return {277u, {}};
 n2824:
   PLUTO_ATTN_MATCH(5069, 5131);
@@ -8579,10 +8579,10 @@ n2822:
   PLUTO_ATTN_MATCH(5063, 5120);
   return {740u, {}};
 n2819:
-  PLUTO_ATTN_RUN(kAttention6Sequence374);
+  PLUTO_ATTN_RUN(kLookupSequence374);
   return {2815u, {}};
 }
-Attention6Step Attention6Part12(
+LookupStep LookupPart12(
     std::uint32_t node,
     [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
@@ -8622,16 +8622,16 @@ Attention6Step Attention6Part12(
     case 3077u:
       goto n3077;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n3327:
-  PLUTO_ATTN_RUN(kAttention6Sequence375);
+  PLUTO_ATTN_RUN(kLookupSequence375);
   return {242u, {}};
 n3322:
-  PLUTO_ATTN_RUN(kAttention6Sequence376);
+  PLUTO_ATTN_RUN(kLookupSequence376);
   return {752u, {}};
 n3312:
-  PLUTO_ATTN_RUN(kAttention6Sequence377);
+  PLUTO_ATTN_RUN(kLookupSequence377);
   goto n3306;
 n3306:
   PLUTO_ATTN_MATCH(5094, 5131);
@@ -8646,7 +8646,7 @@ n3305:
     case 5069:
       goto n3244;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n3304:
   PLUTO_ATTN_END(5109);
@@ -8662,13 +8662,13 @@ n3304:
     case 5079:
       goto n3278;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n3303:
-  PLUTO_ATTN_RUN(kAttention6Sequence378);
+  PLUTO_ATTN_RUN(kLookupSequence378);
   return {258u, {}};
 n3295:
-  PLUTO_ATTN_RUN(kAttention6Sequence379);
+  PLUTO_ATTN_RUN(kLookupSequence379);
   return {150u, {}};
 n3289:
   PLUTO_ATTN_MATCH(5069, 5106);
@@ -8677,10 +8677,10 @@ n3288:
   PLUTO_ATTN_MATCH(5061, 5131);
   return {809u, {}};
 n3287:
-  PLUTO_ATTN_RUN(kAttention6Sequence380);
+  PLUTO_ATTN_RUN(kLookupSequence380);
   return {1075u, {}};
 n3278:
-  PLUTO_ATTN_RUN(kAttention6Sequence381);
+  PLUTO_ATTN_RUN(kLookupSequence381);
   return {42u, {}};
 n3273:
   PLUTO_ATTN_END(5117);
@@ -8694,16 +8694,16 @@ n3273:
     case 5094:
       goto n3248;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n3272:
-  PLUTO_ATTN_RUN(kAttention6Sequence382);
+  PLUTO_ATTN_RUN(kLookupSequence382);
   return {502u, {}};
 n3263:
-  PLUTO_ATTN_RUN(kAttention6Sequence383);
+  PLUTO_ATTN_RUN(kLookupSequence383);
   return {494u, {}};
 n3258:
-  PLUTO_ATTN_RUN(kAttention6Sequence384);
+  PLUTO_ATTN_RUN(kLookupSequence384);
   return {52u, {}};
 n3248:
   PLUTO_ATTN_MATCH(5069, 5112);
@@ -8721,13 +8721,13 @@ n3244:
     case 5090:
       goto n3235;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n3243:
-  PLUTO_ATTN_RUN(kAttention6Sequence385);
+  PLUTO_ATTN_RUN(kLookupSequence385);
   return {63u, {}};
 n3235:
-  PLUTO_ATTN_RUN(kAttention6Sequence386);
+  PLUTO_ATTN_RUN(kLookupSequence386);
   return {16u, {}};
 n3229:
   PLUTO_ATTN_END(5120);
@@ -8741,7 +8741,7 @@ n3229:
     case 5096:
       goto n3182;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n3228:
   PLUTO_ATTN_END(5133);
@@ -8753,10 +8753,10 @@ n3228:
     case 5074:
       goto n3218;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n3227:
-  PLUTO_ATTN_RUN(kAttention6Sequence387);
+  PLUTO_ATTN_RUN(kLookupSequence387);
   goto n3222;
 n3222:
   PLUTO_ATTN_MATCH(5069, 5106);
@@ -8769,7 +8769,7 @@ n3219:
   PLUTO_ATTN_MATCH(5061, 5106);
   return {326u, {}};
 n3218:
-  PLUTO_ATTN_RUN(kAttention6Sequence388);
+  PLUTO_ATTN_RUN(kLookupSequence388);
   return {172u, {}};
 n3212:
   PLUTO_ATTN_END(5131);
@@ -8779,13 +8779,13 @@ n3212:
     case 5079:
       goto n3203;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n3211:
-  PLUTO_ATTN_RUN(kAttention6Sequence389);
+  PLUTO_ATTN_RUN(kLookupSequence389);
   return {1635u, {}};
 n3203:
-  PLUTO_ATTN_RUN(kAttention6Sequence390);
+  PLUTO_ATTN_RUN(kLookupSequence390);
   return {2735u, {}};
 n3199:
   PLUTO_ATTN_END(5134);
@@ -8795,19 +8795,19 @@ n3199:
     case 5069:
       goto n3192;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n3198:
-  PLUTO_ATTN_RUN(kAttention6Sequence391);
+  PLUTO_ATTN_RUN(kLookupSequence391);
   return {620u, {}};
 n3192:
-  PLUTO_ATTN_RUN(kAttention6Sequence392);
+  PLUTO_ATTN_RUN(kLookupSequence392);
   goto n3183;
 n3183:
   PLUTO_ATTN_MATCH(5067, 5112);
   return {113u, {}};
 n3182:
-  PLUTO_ATTN_RUN(kAttention6Sequence393);
+  PLUTO_ATTN_RUN(kLookupSequence393);
   goto n3177;
 n3177:
   PLUTO_ATTN_MATCH(5069, 5124);
@@ -8824,7 +8824,7 @@ n3176:
     case 5072:
       goto n3140;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n3175:
   PLUTO_ATTN_END(5124);
@@ -8834,7 +8834,7 @@ n3175:
     case 5071:
       goto n3172;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n3174:
   PLUTO_ATTN_MATCH(5069, 5120);
@@ -8859,10 +8859,10 @@ n3169:
     case 5094:
       goto n3151;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n3168:
-  PLUTO_ATTN_RUN(kAttention6Sequence394);
+  PLUTO_ATTN_RUN(kLookupSequence394);
   return {277u, {}};
 n3161:
   PLUTO_ATTN_MATCH(5094, 5120);
@@ -8870,20 +8870,20 @@ n3161:
   PLUTO_ATTN_MATCH(5067, 5131);
   return {326u, {}};
 n3158:
-  PLUTO_ATTN_RUN(kAttention6Sequence395);
+  PLUTO_ATTN_RUN(kLookupSequence395);
   return {465u, {}};
 n3151:
-  PLUTO_ATTN_RUN(kAttention6Sequence396);
+  PLUTO_ATTN_RUN(kLookupSequence396);
   return {611u, {}};
 n3147:
-  PLUTO_ATTN_RUN(kAttention6Sequence397);
+  PLUTO_ATTN_RUN(kLookupSequence397);
   goto n3142;
 n3142:
   PLUTO_ATTN_MATCH(5067, 5131);
   PLUTO_ATTN_MATCH(5061, 5120);
   return {1257u, {}};
 n3140:
-  PLUTO_ATTN_RUN(kAttention6Sequence398);
+  PLUTO_ATTN_RUN(kLookupSequence398);
   goto n3131;
 n3131:
   PLUTO_ATTN_MATCH(5069, 5112);
@@ -8906,13 +8906,13 @@ n3130:
     case 5098:
       return {2991u, {}};
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n3129:
-  PLUTO_ATTN_RUN(kAttention6Sequence399);
+  PLUTO_ATTN_RUN(kLookupSequence399);
   return {139u, {}};
 n3123:
-  PLUTO_ATTN_RUN(kAttention6Sequence400);
+  PLUTO_ATTN_RUN(kLookupSequence400);
   return {182u, {}};
 n3109:
   PLUTO_ATTN_END(5138);
@@ -8940,13 +8940,13 @@ n3109:
     case 5094:
       return {3044u, {}};
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n3108:
-  PLUTO_ATTN_RUN(kAttention6Sequence401);
+  PLUTO_ATTN_RUN(kLookupSequence401);
   return {1448u, {}};
 n3098:
-  PLUTO_ATTN_RUN(kAttention6Sequence402);
+  PLUTO_ATTN_RUN(kLookupSequence402);
   return {1121u, {}};
 n3094:
   PLUTO_ATTN_MATCH(5063, 5120);
@@ -8954,19 +8954,19 @@ n3094:
   PLUTO_ATTN_MATCH(5067, 5106);
   return {2232u, {}};
 n3091:
-  PLUTO_ATTN_RUN(kAttention6Sequence403);
+  PLUTO_ATTN_RUN(kLookupSequence403);
   return {16u, {}};
 n3084:
-  PLUTO_ATTN_RUN(kAttention6Sequence404);
+  PLUTO_ATTN_RUN(kLookupSequence404);
   goto n3077;
 n3077:
   PLUTO_ATTN_MATCH(5094, 5133);
   return {711u, {}};
 n3076:
-  PLUTO_ATTN_RUN(kAttention6Sequence405);
+  PLUTO_ATTN_RUN(kLookupSequence405);
   return {3071u, {}};
 }
-Attention6Step Attention6Part13(
+LookupStep LookupPart13(
     std::uint32_t node,
     [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
@@ -9006,22 +9006,22 @@ Attention6Step Attention6Part13(
     case 3388u:
       goto n3388;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n3583:
-  PLUTO_ATTN_RUN(kAttention6Sequence406);
+  PLUTO_ATTN_RUN(kLookupSequence406);
   return {256u, {}};
 n3579:
-  PLUTO_ATTN_RUN(kAttention6Sequence407);
+  PLUTO_ATTN_RUN(kLookupSequence407);
   return {2276u, {}};
 n3573:
-  PLUTO_ATTN_RUN(kAttention6Sequence408);
+  PLUTO_ATTN_RUN(kLookupSequence408);
   goto n3569;
 n3569:
   PLUTO_ATTN_MATCH(5069, 5106);
   return {26u, {}};
 n3568:
-  PLUTO_ATTN_RUN(kAttention6Sequence409);
+  PLUTO_ATTN_RUN(kLookupSequence409);
   return {2944u, {}};
 n3562:
   PLUTO_ATTN_END(5106);
@@ -9051,58 +9051,58 @@ n3562:
     case 5098:
       goto n3476;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n3561:
-  PLUTO_ATTN_RUN(kAttention6Sequence410);
+  PLUTO_ATTN_RUN(kLookupSequence410);
   return {3183u, {}};
 n3551:
-  PLUTO_ATTN_RUN(kAttention6Sequence411);
+  PLUTO_ATTN_RUN(kLookupSequence411);
   return {886u, {}};
 n3545:
-  PLUTO_ATTN_RUN(kAttention6Sequence412);
+  PLUTO_ATTN_RUN(kLookupSequence412);
   return {465u, {}};
 n3540:
-  PLUTO_ATTN_RUN(kAttention6Sequence413);
+  PLUTO_ATTN_RUN(kLookupSequence413);
   return {597u, {}};
 n3533:
-  PLUTO_ATTN_RUN(kAttention6Sequence414);
+  PLUTO_ATTN_RUN(kLookupSequence414);
   goto n3527;
 n3527:
   PLUTO_ATTN_MATCH(5067, 5131);
   return {172u, {}};
 n3526:
-  PLUTO_ATTN_RUN(kAttention6Sequence415);
+  PLUTO_ATTN_RUN(kLookupSequence415);
   goto n3520;
 n3520:
   PLUTO_ATTN_MATCH(5067, 5127);
   return {16u, {}};
 n3519:
-  PLUTO_ATTN_RUN(kAttention6Sequence416);
+  PLUTO_ATTN_RUN(kLookupSequence416);
   goto n3514;
 n3514:
   PLUTO_ATTN_MATCH(5069, 5111);
   return {2u, {}};
 n3513:
-  PLUTO_ATTN_RUN(kAttention6Sequence417);
+  PLUTO_ATTN_RUN(kLookupSequence417);
   return {587u, {}};
 n3504:
-  PLUTO_ATTN_RUN(kAttention6Sequence418);
+  PLUTO_ATTN_RUN(kLookupSequence418);
   return {818u, {}};
 n3492:
-  PLUTO_ATTN_RUN(kAttention6Sequence419);
+  PLUTO_ATTN_RUN(kLookupSequence419);
   return {1046u, {}};
 n3485:
-  PLUTO_ATTN_RUN(kAttention6Sequence420);
+  PLUTO_ATTN_RUN(kLookupSequence420);
   return {63u, {}};
 n3476:
-  PLUTO_ATTN_RUN(kAttention6Sequence421);
+  PLUTO_ATTN_RUN(kLookupSequence421);
   return {89u, {}};
 n3470:
-  PLUTO_ATTN_RUN(kAttention6Sequence422);
+  PLUTO_ATTN_RUN(kLookupSequence422);
   return {711u, {}};
 n3464:
-  PLUTO_ATTN_RUN(kAttention6Sequence423);
+  PLUTO_ATTN_RUN(kLookupSequence423);
   return {42u, {}};
 n3457:
   PLUTO_ATTN_END(5100);
@@ -9112,13 +9112,13 @@ n3457:
     case 5070:
       goto n3452;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n3456:
-  PLUTO_ATTN_RUN(kAttention6Sequence424);
+  PLUTO_ATTN_RUN(kLookupSequence424);
   return {3077u, {}};
 n3452:
-  PLUTO_ATTN_RUN(kAttention6Sequence425);
+  PLUTO_ATTN_RUN(kLookupSequence425);
   return {256u, {}};
 n3446:
   PLUTO_ATTN_END(5112);
@@ -9136,19 +9136,19 @@ n3446:
     case 5098:
       goto n3407;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n3445:
-  PLUTO_ATTN_RUN(kAttention6Sequence426);
+  PLUTO_ATTN_RUN(kLookupSequence426);
   return {2u, {}};
 n3437:
-  PLUTO_ATTN_RUN(kAttention6Sequence427);
+  PLUTO_ATTN_RUN(kLookupSequence427);
   goto n3433;
 n3433:
   PLUTO_ATTN_MATCH(5071, 5120);
   return {52u, {}};
 n3432:
-  PLUTO_ATTN_RUN(kAttention6Sequence428);
+  PLUTO_ATTN_RUN(kLookupSequence428);
   return {502u, {}};
 n3415:
   PLUTO_ATTN_END(5102);
@@ -9158,13 +9158,13 @@ n3415:
     case 5069:
       return {326u, {}};
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n3414:
-  PLUTO_ATTN_RUN(kAttention6Sequence429);
+  PLUTO_ATTN_RUN(kLookupSequence429);
   return {735u, {}};
 n3407:
-  PLUTO_ATTN_RUN(kAttention6Sequence430);
+  PLUTO_ATTN_RUN(kLookupSequence430);
   goto n3403;
 n3403:
   PLUTO_ATTN_MATCH(5067, 5112);
@@ -9205,19 +9205,19 @@ n3402:
     case 5094:
       return {3312u, {}};
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n3401:
-  PLUTO_ATTN_RUN(kAttention6Sequence431);
+  PLUTO_ATTN_RUN(kLookupSequence431);
   return {150u, {}};
 n3394:
-  PLUTO_ATTN_RUN(kAttention6Sequence432);
+  PLUTO_ATTN_RUN(kLookupSequence432);
   goto n3388;
 n3388:
   PLUTO_ATTN_MATCH(5094, 5112);
   return {139u, {}};
 n3387:
-  PLUTO_ATTN_RUN(kAttention6Sequence433);
+  PLUTO_ATTN_RUN(kLookupSequence433);
   return {52u, {}};
 n3380:
   PLUTO_ATTN_MATCH(5061, 5106);
@@ -9233,31 +9233,31 @@ n3376:
   PLUTO_ATTN_MATCH(5065, 5127);
   return {2157u, {}};
 n3373:
-  PLUTO_ATTN_RUN(kAttention6Sequence434);
+  PLUTO_ATTN_RUN(kLookupSequence434);
   return {113u, {}};
 n3369:
-  PLUTO_ATTN_RUN(kAttention6Sequence435);
+  PLUTO_ATTN_RUN(kLookupSequence435);
   return {1u, {}};
 n3360:
-  PLUTO_ATTN_RUN(kAttention6Sequence436);
+  PLUTO_ATTN_RUN(kLookupSequence436);
   return {1104u, {}};
 n3352:
-  PLUTO_ATTN_RUN(kAttention6Sequence437);
+  PLUTO_ATTN_RUN(kLookupSequence437);
   return {89u, {}};
 n3345:
-  PLUTO_ATTN_RUN(kAttention6Sequence438);
+  PLUTO_ATTN_RUN(kLookupSequence438);
   return {351u, {}};
 n3335:
   PLUTO_ATTN_MATCH(5067, 5134);
   return {113u, {}};
 n3334:
-  PLUTO_ATTN_RUN(kAttention6Sequence439);
+  PLUTO_ATTN_RUN(kLookupSequence439);
   return {416u, {}};
 n3328:
   PLUTO_ATTN_MATCH(5060, 5118);
   return {3327u, {}};
 }
-Attention6Step Attention6Part14(
+LookupStep LookupPart14(
     std::uint32_t node,
     [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
@@ -9289,13 +9289,13 @@ Attention6Step Attention6Part14(
     case 3591u:
       goto n3591;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n3839:
-  PLUTO_ATTN_RUN(kAttention6Sequence440);
+  PLUTO_ATTN_RUN(kLookupSequence440);
   return {52u, {}};
 n3829:
-  PLUTO_ATTN_RUN(kAttention6Sequence441);
+  PLUTO_ATTN_RUN(kLookupSequence441);
   return {752u, {}};
 n3821:
   PLUTO_ATTN_MATCH(5079, 5129);
@@ -9312,22 +9312,22 @@ n3820:
     case 5069:
       goto n3805;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n3819:
-  PLUTO_ATTN_RUN(kAttention6Sequence442);
+  PLUTO_ATTN_RUN(kLookupSequence442);
   goto n3815;
 n3815:
   PLUTO_ATTN_MATCH(5072, 5105);
   return {580u, {}};
 n3814:
-  PLUTO_ATTN_RUN(kAttention6Sequence443);
+  PLUTO_ATTN_RUN(kLookupSequence443);
   return {182u, {}};
 n3809:
-  PLUTO_ATTN_RUN(kAttention6Sequence444);
+  PLUTO_ATTN_RUN(kLookupSequence444);
   return {452u, {}};
 n3805:
-  PLUTO_ATTN_RUN(kAttention6Sequence445);
+  PLUTO_ATTN_RUN(kLookupSequence445);
   goto n3800;
 n3800:
   PLUTO_ATTN_MATCH(5063, 5138);
@@ -9348,7 +9348,7 @@ n3799:
     case 5094:
       goto n3710;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n3798:
   PLUTO_ATTN_END(5131);
@@ -9366,10 +9366,10 @@ n3798:
     case 5090:
       goto n3778;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n3797:
-  PLUTO_ATTN_RUN(kAttention6Sequence446);
+  PLUTO_ATTN_RUN(kLookupSequence446);
   return {1046u, {}};
 n3790:
   PLUTO_ATTN_MATCH(5069, 5133);
@@ -9377,7 +9377,7 @@ n3790:
   PLUTO_ATTN_MATCH(5072, 5106);
   return {620u, {}};
 n3787:
-  PLUTO_ATTN_RUN(kAttention6Sequence447);
+  PLUTO_ATTN_RUN(kLookupSequence447);
   return {587u, {}};
 n3781:
   PLUTO_ATTN_MATCH(5067, 5120);
@@ -9385,7 +9385,7 @@ n3781:
   PLUTO_ATTN_MATCH(5067, 5117);
   return {277u, {}};
 n3778:
-  PLUTO_ATTN_RUN(kAttention6Sequence448);
+  PLUTO_ATTN_RUN(kLookupSequence448);
   return {277u, {}};
 n3773:
   PLUTO_ATTN_END(5133);
@@ -9403,10 +9403,10 @@ n3773:
     case 5094:
       goto n3748;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n3772:
-  PLUTO_ATTN_RUN(kAttention6Sequence449);
+  PLUTO_ATTN_RUN(kLookupSequence449);
   return {465u, {}};
 n3766:
   PLUTO_ATTN_MATCH(5069, 5120);
@@ -9419,19 +9419,19 @@ n3763:
   PLUTO_ATTN_MATCH(5069, 5138);
   return {843u, {}};
 n3760:
-  PLUTO_ATTN_RUN(kAttention6Sequence450);
+  PLUTO_ATTN_RUN(kLookupSequence450);
   return {3388u, {}};
 n3752:
-  PLUTO_ATTN_RUN(kAttention6Sequence451);
+  PLUTO_ATTN_RUN(kLookupSequence451);
   return {1140u, {}};
 n3748:
-  PLUTO_ATTN_RUN(kAttention6Sequence452);
+  PLUTO_ATTN_RUN(kLookupSequence452);
   goto n3738;
 n3738:
   PLUTO_ATTN_MATCH(5069, 5105);
   return {52u, {}};
 n3737:
-  PLUTO_ATTN_RUN(kAttention6Sequence453);
+  PLUTO_ATTN_RUN(kLookupSequence453);
   return {3520u, {}};
 n3731:
   PLUTO_ATTN_END(5127);
@@ -9441,19 +9441,19 @@ n3731:
     case 5072:
       goto n3723;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n3730:
-  PLUTO_ATTN_RUN(kAttention6Sequence454);
+  PLUTO_ATTN_RUN(kLookupSequence454);
   return {211u, {}};
 n3723:
-  PLUTO_ATTN_RUN(kAttention6Sequence455);
+  PLUTO_ATTN_RUN(kLookupSequence455);
   goto n3718;
 n3718:
   PLUTO_ATTN_MATCH(5067, 5112);
   return {52u, {}};
 n3717:
-  PLUTO_ATTN_RUN(kAttention6Sequence456);
+  PLUTO_ATTN_RUN(kLookupSequence456);
   return {42u, {}};
 n3710:
   PLUTO_ATTN_END(5112);
@@ -9469,13 +9469,13 @@ n3710:
     case 5069:
       goto n3691;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n3709:
-  PLUTO_ATTN_RUN(kAttention6Sequence457);
+  PLUTO_ATTN_RUN(kLookupSequence457);
   return {1287u, {}};
 n3702:
-  PLUTO_ATTN_RUN(kAttention6Sequence458);
+  PLUTO_ATTN_RUN(kLookupSequence458);
   return {1312u, {}};
 n3698:
   PLUTO_ATTN_MATCH(5061, 5120);
@@ -9483,10 +9483,10 @@ n3698:
   PLUTO_ATTN_MATCH(5053, 5106);
   return {52u, {}};
 n3695:
-  PLUTO_ATTN_RUN(kAttention6Sequence459);
+  PLUTO_ATTN_RUN(kLookupSequence459);
   return {843u, {}};
 n3691:
-  PLUTO_ATTN_RUN(kAttention6Sequence460);
+  PLUTO_ATTN_RUN(kLookupSequence460);
   goto n3687;
 n3687:
   PLUTO_ATTN_MATCH(5069, 5111);
@@ -9517,10 +9517,10 @@ n3686:
     case 5098:
       return {3402u, {}};
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n3685:
-  PLUTO_ATTN_RUN(kAttention6Sequence461);
+  PLUTO_ATTN_RUN(kLookupSequence461);
   return {1480u, {}};
 n3678:
   PLUTO_ATTN_END(5125);
@@ -9534,19 +9534,19 @@ n3678:
     case 5094:
       goto n3647;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n3677:
-  PLUTO_ATTN_RUN(kAttention6Sequence462);
+  PLUTO_ATTN_RUN(kLookupSequence462);
   return {256u, {}};
 n3663:
-  PLUTO_ATTN_RUN(kAttention6Sequence463);
+  PLUTO_ATTN_RUN(kLookupSequence463);
   return {277u, {}};
 n3656:
-  PLUTO_ATTN_RUN(kAttention6Sequence464);
+  PLUTO_ATTN_RUN(kLookupSequence464);
   return {1270u, {}};
 n3647:
-  PLUTO_ATTN_RUN(kAttention6Sequence465);
+  PLUTO_ATTN_RUN(kLookupSequence465);
   return {645u, {}};
 n3638:
   PLUTO_ATTN_END(5133);
@@ -9560,7 +9560,7 @@ n3638:
     case 5096:
       goto n3619;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n3637:
   PLUTO_ATTN_MATCH(5072, 5105);
@@ -9568,10 +9568,10 @@ n3637:
   PLUTO_ATTN_MATCH(5061, 5112);
   return {313u, {}};
 n3634:
-  PLUTO_ATTN_RUN(kAttention6Sequence466);
+  PLUTO_ATTN_RUN(kLookupSequence466);
   return {1757u, {}};
 n3626:
-  PLUTO_ATTN_RUN(kAttention6Sequence467);
+  PLUTO_ATTN_RUN(kLookupSequence467);
   return {544u, {}};
 n3619:
   PLUTO_ATTN_MATCH(5057, 5143);
@@ -9586,17 +9586,17 @@ n3616:
     case 5067:
       goto n3608;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n3615:
-  PLUTO_ATTN_RUN(kAttention6Sequence468);
+  PLUTO_ATTN_RUN(kLookupSequence468);
   goto n3610;
 n3610:
   PLUTO_ATTN_MATCH(5094, 5106);
   PLUTO_ATTN_MATCH(5066, 5112);
   return {16u, {}};
 n3608:
-  PLUTO_ATTN_RUN(kAttention6Sequence469);
+  PLUTO_ATTN_RUN(kLookupSequence469);
   return {587u, {}};
 n3602:
   PLUTO_ATTN_END(5120);
@@ -9614,22 +9614,22 @@ n3602:
     case 5094:
       return {3568u, {}};
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n3601:
-  PLUTO_ATTN_RUN(kAttention6Sequence470);
+  PLUTO_ATTN_RUN(kLookupSequence470);
   goto n3591;
 n3591:
   PLUTO_ATTN_MATCH(5061, 5102);
   return {1u, {}};
 n3590:
-  PLUTO_ATTN_RUN(kAttention6Sequence471);
+  PLUTO_ATTN_RUN(kLookupSequence471);
   return {2584u, {}};
 n3584:
   PLUTO_ATTN_MATCH(5071, 5117);
   return {3583u, {}};
 }
-Attention6Step Attention6Part15(
+LookupStep LookupPart15(
     std::uint32_t node,
     [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
@@ -9663,7 +9663,7 @@ Attention6Step Attention6Part15(
     case 3851u:
       goto n3851;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n4095:
   PLUTO_ATTN_MATCH(5069, 5124);
@@ -9680,7 +9680,7 @@ n4092:
     case 5090:
       goto n4085;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n4091:
   PLUTO_ATTN_MATCH(5061, 5133);
@@ -9705,19 +9705,19 @@ n4084:
     case 5094:
       goto n4071;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n4083:
-  PLUTO_ATTN_RUN(kAttention6Sequence472);
+  PLUTO_ATTN_RUN(kLookupSequence472);
   return {1006u, {}};
 n4077:
-  PLUTO_ATTN_RUN(kAttention6Sequence473);
+  PLUTO_ATTN_RUN(kLookupSequence473);
   goto n4072;
 n4072:
   PLUTO_ATTN_MATCH(5094, 5117);
   return {1189u, {}};
 n4071:
-  PLUTO_ATTN_RUN(kAttention6Sequence474);
+  PLUTO_ATTN_RUN(kLookupSequence474);
   return {3569u, {}};
 n4065:
   PLUTO_ATTN_END(5109);
@@ -9733,13 +9733,13 @@ n4065:
     case 5074:
       goto n4042;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n4064:
-  PLUTO_ATTN_RUN(kAttention6Sequence475);
+  PLUTO_ATTN_RUN(kLookupSequence475);
   return {2700u, {}};
 n4059:
-  PLUTO_ATTN_RUN(kAttention6Sequence476);
+  PLUTO_ATTN_RUN(kLookupSequence476);
   return {123u, {}};
 n4053:
   PLUTO_ATTN_MATCH(5069, 5120);
@@ -9747,10 +9747,10 @@ n4053:
   PLUTO_ATTN_MATCH(5067, 5112);
   return {220u, {}};
 n4050:
-  PLUTO_ATTN_RUN(kAttention6Sequence477);
+  PLUTO_ATTN_RUN(kLookupSequence477);
   return {2499u, {}};
 n4042:
-  PLUTO_ATTN_RUN(kAttention6Sequence478);
+  PLUTO_ATTN_RUN(kLookupSequence478);
   return {1312u, {}};
 n4036:
   PLUTO_ATTN_END(5127);
@@ -9764,19 +9764,19 @@ n4036:
     case 5096:
       goto n4008;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n4035:
-  PLUTO_ATTN_RUN(kAttention6Sequence479);
+  PLUTO_ATTN_RUN(kLookupSequence479);
   return {809u, {}};
 n4028:
-  PLUTO_ATTN_RUN(kAttention6Sequence480);
+  PLUTO_ATTN_RUN(kLookupSequence480);
   return {16u, {}};
 n4019:
-  PLUTO_ATTN_RUN(kAttention6Sequence481);
+  PLUTO_ATTN_RUN(kLookupSequence481);
   return {16u, {}};
 n4008:
-  PLUTO_ATTN_RUN(kAttention6Sequence482);
+  PLUTO_ATTN_RUN(kLookupSequence482);
   return {1046u, {}};
 n4001:
   PLUTO_ATTN_END(5105);
@@ -9802,40 +9802,40 @@ n4001:
     case 5090:
       goto n3942;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n4000:
-  PLUTO_ATTN_RUN(kAttention6Sequence483);
+  PLUTO_ATTN_RUN(kLookupSequence483);
   return {373u, {}};
 n3993:
-  PLUTO_ATTN_RUN(kAttention6Sequence484);
+  PLUTO_ATTN_RUN(kLookupSequence484);
   return {2u, {}};
 n3989:
-  PLUTO_ATTN_RUN(kAttention6Sequence485);
+  PLUTO_ATTN_RUN(kLookupSequence485);
   return {139u, {}};
 n3977:
-  PLUTO_ATTN_RUN(kAttention6Sequence486);
+  PLUTO_ATTN_RUN(kLookupSequence486);
   return {1393u, {}};
 n3971:
-  PLUTO_ATTN_RUN(kAttention6Sequence487);
+  PLUTO_ATTN_RUN(kLookupSequence487);
   return {1140u, {}};
 n3966:
-  PLUTO_ATTN_RUN(kAttention6Sequence488);
+  PLUTO_ATTN_RUN(kLookupSequence488);
   return {52u, {}};
 n3959:
-  PLUTO_ATTN_RUN(kAttention6Sequence489);
+  PLUTO_ATTN_RUN(kLookupSequence489);
   goto n3954;
 n3954:
   PLUTO_ATTN_MATCH(5094, 5133);
   return {1177u, {}};
 n3953:
-  PLUTO_ATTN_RUN(kAttention6Sequence490);
+  PLUTO_ATTN_RUN(kLookupSequence490);
   return {90u, {}};
 n3947:
-  PLUTO_ATTN_RUN(kAttention6Sequence491);
+  PLUTO_ATTN_RUN(kLookupSequence491);
   return {374u, {}};
 n3942:
-  PLUTO_ATTN_RUN(kAttention6Sequence492);
+  PLUTO_ATTN_RUN(kLookupSequence492);
   return {1545u, {}};
 n3932:
   PLUTO_ATTN_END(5110);
@@ -9853,26 +9853,26 @@ n3932:
     case 5094:
       goto n3899;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n3931:
-  PLUTO_ATTN_RUN(kAttention6Sequence493);
+  PLUTO_ATTN_RUN(kLookupSequence493);
   return {97u, {}};
 n3922:
-  PLUTO_ATTN_RUN(kAttention6Sequence494);
+  PLUTO_ATTN_RUN(kLookupSequence494);
   return {256u, {}};
 n3917:
-  PLUTO_ATTN_RUN(kAttention6Sequence495);
+  PLUTO_ATTN_RUN(kLookupSequence495);
   return {681u, {}};
 n3906:
   PLUTO_ATTN_MATCH(5069, 5120);
   PLUTO_ATTN_MATCH(5063, 5120);
   return {2661u, {}};
 n3904:
-  PLUTO_ATTN_RUN(kAttention6Sequence496);
+  PLUTO_ATTN_RUN(kLookupSequence496);
   return {2249u, {}};
 n3899:
-  PLUTO_ATTN_RUN(kAttention6Sequence497);
+  PLUTO_ATTN_RUN(kLookupSequence497);
   return {52u, {}};
 n3894:
   PLUTO_ATTN_END(5126);
@@ -9884,13 +9884,13 @@ n3894:
     case 5094:
       goto n3887;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n3893:
-  PLUTO_ATTN_RUN(kAttention6Sequence498);
+  PLUTO_ATTN_RUN(kLookupSequence498);
   return {16u, {}};
 n3887:
-  PLUTO_ATTN_RUN(kAttention6Sequence499);
+  PLUTO_ATTN_RUN(kLookupSequence499);
   goto n3883;
 n3883:
   PLUTO_ATTN_MATCH(5066, 5117);
@@ -9919,19 +9919,19 @@ n3882:
     case 5090:
       return {3821u, {}};
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n3881:
-  PLUTO_ATTN_RUN(kAttention6Sequence500);
+  PLUTO_ATTN_RUN(kLookupSequence500);
   goto n3868;
 n3868:
   PLUTO_ATTN_MATCH(5067, 5111);
   return {1u, {}};
 n3867:
-  PLUTO_ATTN_RUN(kAttention6Sequence501);
+  PLUTO_ATTN_RUN(kLookupSequence501);
   return {3527u, {}};
 n3860:
-  PLUTO_ATTN_RUN(kAttention6Sequence502);
+  PLUTO_ATTN_RUN(kLookupSequence502);
   return {3222u, {}};
 n3852:
   PLUTO_ATTN_MATCH(5061, 5131);
@@ -9945,7 +9945,7 @@ n3850:
   PLUTO_ATTN_MATCH(5061, 5133);
   return {1048u, {}};
 n3847:
-  PLUTO_ATTN_RUN(kAttention6Sequence503);
+  PLUTO_ATTN_RUN(kLookupSequence503);
   return {1287u, {}};
 n3842:
   PLUTO_ATTN_MATCH(5061, 5143);
@@ -9953,7 +9953,7 @@ n3842:
   PLUTO_ATTN_MATCH(5061, 5138);
   return {1983u, {}};
 }
-Attention6Step Attention6Part16(
+LookupStep LookupPart16(
     std::uint32_t node,
     [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
@@ -10009,44 +10009,44 @@ Attention6Step Attention6Part16(
     case 4110u:
       goto n4110;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n4351:
-  PLUTO_ATTN_RUN(kAttention6Sequence504);
+  PLUTO_ATTN_RUN(kLookupSequence504);
   return {1u, {}};
 n4345:
-  PLUTO_ATTN_RUN(kAttention6Sequence505);
+  PLUTO_ATTN_RUN(kLookupSequence505);
   return {231u, {}};
 n4339:
-  PLUTO_ATTN_RUN(kAttention6Sequence506);
+  PLUTO_ATTN_RUN(kLookupSequence506);
   return {1075u, {}};
 n4331:
-  PLUTO_ATTN_RUN(kAttention6Sequence507);
+  PLUTO_ATTN_RUN(kLookupSequence507);
   goto n4326;
 n4326:
   PLUTO_ATTN_MATCH(5069, 5106);
   return {1046u, {}};
 n4325:
-  PLUTO_ATTN_RUN(kAttention6Sequence508);
+  PLUTO_ATTN_RUN(kLookupSequence508);
   return {1333u, {}};
 n4319:
-  PLUTO_ATTN_RUN(kAttention6Sequence509);
+  PLUTO_ATTN_RUN(kLookupSequence509);
   return {2276u, {}};
 n4313:
-  PLUTO_ATTN_RUN(kAttention6Sequence510);
+  PLUTO_ATTN_RUN(kLookupSequence510);
   goto n4123;
 n4301:
-  PLUTO_ATTN_RUN(kAttention6Sequence511);
+  PLUTO_ATTN_RUN(kLookupSequence511);
   return {1247u, {}};
 n4293:
-  PLUTO_ATTN_RUN(kAttention6Sequence512);
+  PLUTO_ATTN_RUN(kLookupSequence512);
   return {2u, {}};
 n4289:
   PLUTO_ATTN_MATCH(5069, 5129);
   PLUTO_ATTN_MATCH(5094, 5106);
   goto n4287;
 n4287:
-  PLUTO_ATTN_RUN(kAttention6Sequence513);
+  PLUTO_ATTN_RUN(kLookupSequence513);
   return {26u, {}};
 n4281:
   PLUTO_ATTN_MATCH(5069, 5110);
@@ -10054,10 +10054,10 @@ n4281:
   PLUTO_ATTN_MATCH(5069, 5103);
   return {1851u, {}};
 n4278:
-  PLUTO_ATTN_RUN(kAttention6Sequence514);
+  PLUTO_ATTN_RUN(kLookupSequence514);
   return {326u, {}};
 n4274:
-  PLUTO_ATTN_RUN(kAttention6Sequence515);
+  PLUTO_ATTN_RUN(kLookupSequence515);
   return {2906u, {}};
 n4269:
   PLUTO_ATTN_END(5117);
@@ -10071,16 +10071,16 @@ n4269:
     case 5090:
       goto n4247;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n4268:
-  PLUTO_ATTN_RUN(kAttention6Sequence516);
+  PLUTO_ATTN_RUN(kLookupSequence516);
   goto n4261;
 n4261:
   PLUTO_ATTN_MATCH(5069, 5111);
   return {277u, {}};
 n4260:
-  PLUTO_ATTN_RUN(kAttention6Sequence517);
+  PLUTO_ATTN_RUN(kLookupSequence517);
   return {139u, {}};
 n4250:
   PLUTO_ATTN_MATCH(5069, 5111);
@@ -10088,7 +10088,7 @@ n4250:
   PLUTO_ATTN_MATCH(5088, 5131);
   return {26u, {}};
 n4247:
-  PLUTO_ATTN_RUN(kAttention6Sequence518);
+  PLUTO_ATTN_RUN(kLookupSequence518);
   return {465u, {}};
 n4243:
   PLUTO_ATTN_END(5119);
@@ -10098,7 +10098,7 @@ n4243:
     case 5094:
       goto n4238;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n4242:
   PLUTO_ATTN_MATCH(5063, 5111);
@@ -10133,10 +10133,10 @@ n4235:
     case 5090:
       goto n4193;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n4234:
-  PLUTO_ATTN_RUN(kAttention6Sequence519);
+  PLUTO_ATTN_RUN(kLookupSequence519);
   return {2u, {}};
 n4222:
   PLUTO_ATTN_MATCH(5061, 5125);
@@ -10147,13 +10147,13 @@ n4221:
   PLUTO_ATTN_MATCH(5063, 5138);
   return {458u, {}};
 n4218:
-  PLUTO_ATTN_RUN(kAttention6Sequence520);
+  PLUTO_ATTN_RUN(kLookupSequence520);
   return {2428u, {}};
 n4207:
-  PLUTO_ATTN_RUN(kAttention6Sequence521);
+  PLUTO_ATTN_RUN(kLookupSequence521);
   return {1523u, {}};
 n4201:
-  PLUTO_ATTN_RUN(kAttention6Sequence522);
+  PLUTO_ATTN_RUN(kLookupSequence522);
   return {1006u, {}};
 n4196:
   PLUTO_ATTN_MATCH(5091, 5111);
@@ -10163,7 +10163,7 @@ n4194:
   PLUTO_ATTN_MATCH(5069, 5131);
   return {3433u, {}};
 n4193:
-  PLUTO_ATTN_RUN(kAttention6Sequence523);
+  PLUTO_ATTN_RUN(kLookupSequence523);
   return {1920u, {}};
 n4189:
   PLUTO_ATTN_END(5100);
@@ -10183,25 +10183,25 @@ n4189:
     case 5094:
       goto n4151;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n4188:
-  PLUTO_ATTN_RUN(kAttention6Sequence524);
+  PLUTO_ATTN_RUN(kLookupSequence524);
   return {2u, {}};
 n4184:
-  PLUTO_ATTN_RUN(kAttention6Sequence525);
+  PLUTO_ATTN_RUN(kLookupSequence525);
   goto n4180;
 n4180:
   PLUTO_ATTN_MATCH(5069, 5111);
   return {1046u, {}};
 n4179:
-  PLUTO_ATTN_RUN(kAttention6Sequence526);
+  PLUTO_ATTN_RUN(kLookupSequence526);
   return {3520u, {}};
 n4174:
-  PLUTO_ATTN_RUN(kAttention6Sequence527);
+  PLUTO_ATTN_RUN(kLookupSequence527);
   return {809u, {}};
 n4164:
-  PLUTO_ATTN_RUN(kAttention6Sequence528);
+  PLUTO_ATTN_RUN(kLookupSequence528);
   return {1075u, {}};
 n4154:
   PLUTO_ATTN_MATCH(5071, 5105);
@@ -10234,25 +10234,25 @@ n4149:
     case 5090:
       return {4095u, {}};
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n4148:
-  PLUTO_ATTN_RUN(kAttention6Sequence529);
+  PLUTO_ATTN_RUN(kLookupSequence529);
   return {256u, {}};
 n4141:
-  PLUTO_ATTN_RUN(kAttention6Sequence530);
+  PLUTO_ATTN_RUN(kLookupSequence530);
   return {2626u, {}};
 n4135:
-  PLUTO_ATTN_RUN(kAttention6Sequence531);
+  PLUTO_ATTN_RUN(kLookupSequence531);
   return {1006u, {}};
 n4129:
-  PLUTO_ATTN_RUN(kAttention6Sequence532);
+  PLUTO_ATTN_RUN(kLookupSequence532);
   goto n4123;
 n4123:
   PLUTO_ATTN_MATCH(5069, 5131);
   return {1685u, {}};
 n4122:
-  PLUTO_ATTN_RUN(kAttention6Sequence533);
+  PLUTO_ATTN_RUN(kLookupSequence533);
   return {1u, {}};
 n4113:
   PLUTO_ATTN_MATCH(5069, 5124);
@@ -10263,13 +10263,13 @@ n4110:
   PLUTO_ATTN_MATCH(5071, 5106);
   return {113u, {}};
 n4109:
-  PLUTO_ATTN_RUN(kAttention6Sequence534);
+  PLUTO_ATTN_RUN(kLookupSequence534);
   return {1287u, {}};
 n4103:
-  PLUTO_ATTN_RUN(kAttention6Sequence535);
+  PLUTO_ATTN_RUN(kLookupSequence535);
   return {113u, {}};
 }
-Attention6Step Attention6Part17(
+LookupStep LookupPart17(
     std::uint32_t node,
     [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
@@ -10311,13 +10311,13 @@ Attention6Step Attention6Part17(
     case 4358u:
       goto n4358;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n4607:
-  PLUTO_ATTN_RUN(kAttention6Sequence536);
+  PLUTO_ATTN_RUN(kLookupSequence536);
   return {2660u, {}};
 n4598:
-  PLUTO_ATTN_RUN(kAttention6Sequence537);
+  PLUTO_ATTN_RUN(kLookupSequence537);
   return {1312u, {}};
 n4592:
   PLUTO_ATTN_MATCH(5061, 5125);
@@ -10325,13 +10325,13 @@ n4592:
   PLUTO_ATTN_MATCH(5069, 5127);
   return {1157u, {}};
 n4589:
-  PLUTO_ATTN_RUN(kAttention6Sequence538);
+  PLUTO_ATTN_RUN(kLookupSequence538);
   goto n4580;
 n4580:
   PLUTO_ATTN_MATCH(5094, 5112);
   return {89u, {}};
 n4579:
-  PLUTO_ATTN_RUN(kAttention6Sequence539);
+  PLUTO_ATTN_RUN(kLookupSequence539);
   return {477u, {}};
 n4568:
   PLUTO_ATTN_MATCH(5071, 5135);
@@ -10339,7 +10339,7 @@ n4568:
   PLUTO_ATTN_MATCH(5094, 5127);
   return {3718u, {}};
 n4565:
-  PLUTO_ATTN_RUN(kAttention6Sequence540);
+  PLUTO_ATTN_RUN(kLookupSequence540);
   return {16u, {}};
 n4561:
   PLUTO_ATTN_END(5106);
@@ -10393,16 +10393,16 @@ n4561:
     case 5094:
       goto n4434;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n4560:
-  PLUTO_ATTN_RUN(kAttention6Sequence541);
+  PLUTO_ATTN_RUN(kLookupSequence541);
   goto n4555;
 n4555:
   PLUTO_ATTN_MATCH(5061, 5133);
   return {2276u, {}};
 n4554:
-  PLUTO_ATTN_RUN(kAttention6Sequence542);
+  PLUTO_ATTN_RUN(kLookupSequence542);
   return {2766u, {}};
 n4550:
   PLUTO_ATTN_MATCH(5067, 5110);
@@ -10410,19 +10410,19 @@ n4550:
   PLUTO_ATTN_MATCH(5061, 5133);
   return {1134u, {}};
 n4547:
-  PLUTO_ATTN_RUN(kAttention6Sequence543);
+  PLUTO_ATTN_RUN(kLookupSequence543);
   return {374u, {}};
 n4539:
-  PLUTO_ATTN_RUN(kAttention6Sequence544);
+  PLUTO_ATTN_RUN(kLookupSequence544);
   return {26u, {}};
 n4535:
-  PLUTO_ATTN_RUN(kAttention6Sequence545);
+  PLUTO_ATTN_RUN(kLookupSequence545);
   return {256u, {}};
 n4526:
-  PLUTO_ATTN_RUN(kAttention6Sequence546);
+  PLUTO_ATTN_RUN(kLookupSequence546);
   return {3883u, {}};
 n4520:
-  PLUTO_ATTN_RUN(kAttention6Sequence547);
+  PLUTO_ATTN_RUN(kLookupSequence547);
   return {2u, {}};
 n4510:
   PLUTO_ATTN_MATCH(5069, 5131);
@@ -10438,7 +10438,7 @@ n4506:
   PLUTO_ATTN_MATCH(5067, 5143);
   return {489u, {}};
 n4503:
-  PLUTO_ATTN_RUN(kAttention6Sequence548);
+  PLUTO_ATTN_RUN(kLookupSequence548);
   return {81u, {}};
 n4492:
   PLUTO_ATTN_MATCH(5061, 5127);
@@ -10446,16 +10446,16 @@ n4492:
   PLUTO_ATTN_MATCH(5069, 5106);
   return {458u, {}};
 n4489:
-  PLUTO_ATTN_RUN(kAttention6Sequence549);
+  PLUTO_ATTN_RUN(kLookupSequence549);
   return {1843u, {}};
 n4485:
-  PLUTO_ATTN_RUN(kAttention6Sequence550);
+  PLUTO_ATTN_RUN(kLookupSequence550);
   return {1448u, {}};
 n4477:
   PLUTO_ATTN_MATCH(5067, 5143);
   return {81u, {}};
 n4476:
-  PLUTO_ATTN_RUN(kAttention6Sequence551);
+  PLUTO_ATTN_RUN(kLookupSequence551);
   goto n4470;
 n4470:
   PLUTO_ATTN_MATCH(5069, 5112);
@@ -10465,22 +10465,22 @@ n4469:
   PLUTO_ATTN_MATCH(5067, 5103);
   return {601u, {}};
 n4467:
-  PLUTO_ATTN_RUN(kAttention6Sequence552);
+  PLUTO_ATTN_RUN(kLookupSequence552);
   return {52u, {}};
 n4457:
-  PLUTO_ATTN_RUN(kAttention6Sequence553);
+  PLUTO_ATTN_RUN(kLookupSequence553);
   return {1596u, {}};
 n4453:
-  PLUTO_ATTN_RUN(kAttention6Sequence554);
+  PLUTO_ATTN_RUN(kLookupSequence554);
   return {252u, {}};
 n4447:
-  PLUTO_ATTN_RUN(kAttention6Sequence555);
+  PLUTO_ATTN_RUN(kLookupSequence555);
   return {465u, {}};
 n4440:
-  PLUTO_ATTN_RUN(kAttention6Sequence556);
+  PLUTO_ATTN_RUN(kLookupSequence556);
   return {1920u, {}};
 n4434:
-  PLUTO_ATTN_RUN(kAttention6Sequence557);
+  PLUTO_ATTN_RUN(kLookupSequence557);
   return {256u, {}};
 n4424:
   PLUTO_ATTN_END(5115);
@@ -10498,14 +10498,14 @@ n4424:
     case 5071:
       goto n4402;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n4423:
   PLUTO_ATTN_MATCH(5061, 5133);
   PLUTO_ATTN_MATCH(5069, 5127);
   return {2626u, {}};
 n4421:
-  PLUTO_ATTN_RUN(kAttention6Sequence558);
+  PLUTO_ATTN_RUN(kLookupSequence558);
   goto n4415;
 n4415:
   PLUTO_ATTN_MATCH(5094, 5120);
@@ -10516,7 +10516,7 @@ n4414:
   PLUTO_ATTN_MATCH(5063, 5131);
   return {1046u, {}};
 n4411:
-  PLUTO_ATTN_RUN(kAttention6Sequence559);
+  PLUTO_ATTN_RUN(kLookupSequence559);
   return {1082u, {}};
 n4405:
   PLUTO_ATTN_MATCH(5072, 5136);
@@ -10526,7 +10526,7 @@ n4403:
   PLUTO_ATTN_MATCH(5069, 5133);
   return {326u, {}};
 n4402:
-  PLUTO_ATTN_RUN(kAttention6Sequence560);
+  PLUTO_ATTN_RUN(kLookupSequence560);
   return {601u, {}};
 n4392:
   PLUTO_ATTN_END(5132);
@@ -10568,19 +10568,19 @@ n4392:
     case 5098:
       return {4274u, {}};
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n4391:
-  PLUTO_ATTN_RUN(kAttention6Sequence561);
+  PLUTO_ATTN_RUN(kLookupSequence561);
   return {3868u, {}};
 n4377:
-  PLUTO_ATTN_RUN(kAttention6Sequence562);
+  PLUTO_ATTN_RUN(kLookupSequence562);
   return {52u, {}};
 n4371:
-  PLUTO_ATTN_RUN(kAttention6Sequence563);
+  PLUTO_ATTN_RUN(kLookupSequence563);
   return {502u, {}};
 n4367:
-  PLUTO_ATTN_RUN(kAttention6Sequence564);
+  PLUTO_ATTN_RUN(kLookupSequence564);
   goto n4359;
 n4359:
   PLUTO_ATTN_MATCH(5094, 5131);
@@ -10589,10 +10589,10 @@ n4358:
   PLUTO_ATTN_MATCH(5069, 5112);
   return {2u, {}};
 n4357:
-  PLUTO_ATTN_RUN(kAttention6Sequence565);
+  PLUTO_ATTN_RUN(kLookupSequence565);
   return {1291u, {}};
 }
-Attention6Step Attention6Part18(
+LookupStep LookupPart18(
     std::uint32_t node,
     [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
@@ -10622,7 +10622,7 @@ Attention6Step Attention6Part18(
     case 4610u:
       goto n4610;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n4863:
   PLUTO_ATTN_MATCH(5094, 5108);
@@ -10630,7 +10630,7 @@ n4863:
   PLUTO_ATTN_MATCH(5067, 5111);
   return {2312u, {}};
 n4860:
-  PLUTO_ATTN_RUN(kAttention6Sequence566);
+  PLUTO_ATTN_RUN(kLookupSequence566);
   return {172u, {}};
 n4852:
   PLUTO_ATTN_END(5122);
@@ -10674,25 +10674,25 @@ n4852:
     case 5094:
       goto n4724;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n4851:
-  PLUTO_ATTN_RUN(kAttention6Sequence567);
+  PLUTO_ATTN_RUN(kLookupSequence567);
   return {1194u, {}};
 n4836:
-  PLUTO_ATTN_RUN(kAttention6Sequence568);
+  PLUTO_ATTN_RUN(kLookupSequence568);
   return {2249u, {}};
 n4830:
-  PLUTO_ATTN_RUN(kAttention6Sequence569);
+  PLUTO_ATTN_RUN(kLookupSequence569);
   return {374u, {}};
 n4825:
-  PLUTO_ATTN_RUN(kAttention6Sequence570);
+  PLUTO_ATTN_RUN(kLookupSequence570);
   goto n4821;
 n4821:
   PLUTO_ATTN_MATCH(5065, 5131);
   return {113u, {}};
 n4820:
-  PLUTO_ATTN_RUN(kAttention6Sequence571);
+  PLUTO_ATTN_RUN(kLookupSequence571);
   return {139u, {}};
 n4813:
   PLUTO_ATTN_MATCH(5069, 5127);
@@ -10700,7 +10700,7 @@ n4813:
   PLUTO_ATTN_MATCH(5094, 5106);
   return {2366u, {}};
 n4810:
-  PLUTO_ATTN_RUN(kAttention6Sequence572);
+  PLUTO_ATTN_RUN(kLookupSequence572);
   return {139u, {}};
 n4801:
   PLUTO_ATTN_END(5111);
@@ -10710,19 +10710,19 @@ n4801:
     case 5094:
       goto n4794;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n4800:
-  PLUTO_ATTN_RUN(kAttention6Sequence573);
+  PLUTO_ATTN_RUN(kLookupSequence573);
   return {1553u, {}};
 n4794:
-  PLUTO_ATTN_RUN(kAttention6Sequence574);
+  PLUTO_ATTN_RUN(kLookupSequence574);
   return {339u, {}};
 n4790:
-  PLUTO_ATTN_RUN(kAttention6Sequence575);
+  PLUTO_ATTN_RUN(kLookupSequence575);
   return {1177u, {}};
 n4783:
-  PLUTO_ATTN_RUN(kAttention6Sequence576);
+  PLUTO_ATTN_RUN(kLookupSequence576);
   return {339u, {}};
 n4778:
   PLUTO_ATTN_MATCH(5061, 5120);
@@ -10730,19 +10730,19 @@ n4778:
   PLUTO_ATTN_MATCH(5061, 5106);
   return {1006u, {}};
 n4775:
-  PLUTO_ATTN_RUN(kAttention6Sequence577);
+  PLUTO_ATTN_RUN(kLookupSequence577);
   return {113u, {}};
 n4771:
-  PLUTO_ATTN_RUN(kAttention6Sequence578);
+  PLUTO_ATTN_RUN(kLookupSequence578);
   goto n4764;
 n4764:
   PLUTO_ATTN_MATCH(5063, 5138);
   return {16u, {}};
 n4763:
-  PLUTO_ATTN_RUN(kAttention6Sequence579);
+  PLUTO_ATTN_RUN(kLookupSequence579);
   return {1977u, {}};
 n4755:
-  PLUTO_ATTN_RUN(kAttention6Sequence580);
+  PLUTO_ATTN_RUN(kLookupSequence580);
   return {1006u, {}};
 n4748:
   PLUTO_ATTN_MATCH(5067, 5130);
@@ -10750,19 +10750,19 @@ n4748:
   PLUTO_ATTN_MATCH(5094, 5120);
   return {4470u, {}};
 n4745:
-  PLUTO_ATTN_RUN(kAttention6Sequence581);
+  PLUTO_ATTN_RUN(kLookupSequence581);
   return {4358u, {}};
 n4731:
-  PLUTO_ATTN_RUN(kAttention6Sequence582);
+  PLUTO_ATTN_RUN(kLookupSequence582);
   return {192u, {}};
 n4724:
-  PLUTO_ATTN_RUN(kAttention6Sequence583);
+  PLUTO_ATTN_RUN(kLookupSequence583);
   goto n4720;
 n4720:
   PLUTO_ATTN_MATCH(5067, 5112);
   return {2202u, {}};
 n4719:
-  PLUTO_ATTN_RUN(kAttention6Sequence584);
+  PLUTO_ATTN_RUN(kLookupSequence584);
   return {28u, {}};
 n4712:
   PLUTO_ATTN_END(5120);
@@ -10780,16 +10780,16 @@ n4712:
     case 5094:
       goto n4685;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n4711:
-  PLUTO_ATTN_RUN(kAttention6Sequence585);
+  PLUTO_ATTN_RUN(kLookupSequence585);
   return {2178u, {}};
 n4706:
-  PLUTO_ATTN_RUN(kAttention6Sequence586);
+  PLUTO_ATTN_RUN(kLookupSequence586);
   return {16u, {}};
 n4700:
-  PLUTO_ATTN_RUN(kAttention6Sequence587);
+  PLUTO_ATTN_RUN(kLookupSequence587);
   return {2u, {}};
 n4693:
   PLUTO_ATTN_MATCH(5069, 5133);
@@ -10797,10 +10797,10 @@ n4693:
   PLUTO_ATTN_MATCH(5060, 5138);
   return {458u, {}};
 n4690:
-  PLUTO_ATTN_RUN(kAttention6Sequence588);
+  PLUTO_ATTN_RUN(kLookupSequence588);
   return {502u, {}};
 n4685:
-  PLUTO_ATTN_RUN(kAttention6Sequence589);
+  PLUTO_ATTN_RUN(kLookupSequence589);
   return {192u, {}};
 n4679:
   PLUTO_ATTN_END(5111);
@@ -10820,31 +10820,31 @@ n4679:
     case 5094:
       goto n4647;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n4678:
-  PLUTO_ATTN_RUN(kAttention6Sequence590);
+  PLUTO_ATTN_RUN(kLookupSequence590);
   return {1635u, {}};
 n4671:
-  PLUTO_ATTN_RUN(kAttention6Sequence591);
+  PLUTO_ATTN_RUN(kLookupSequence591);
   return {3514u, {}};
 n4664:
-  PLUTO_ATTN_RUN(kAttention6Sequence592);
+  PLUTO_ATTN_RUN(kLookupSequence592);
   return {2114u, {}};
 n4659:
   PLUTO_ATTN_MATCH(5094, 5111);
   return {4287u, {}};
 n4658:
-  PLUTO_ATTN_RUN(kAttention6Sequence593);
+  PLUTO_ATTN_RUN(kLookupSequence593);
   return {559u, {}};
 n4654:
-  PLUTO_ATTN_RUN(kAttention6Sequence594);
+  PLUTO_ATTN_RUN(kLookupSequence594);
   goto n4648;
 n4648:
   PLUTO_ATTN_MATCH(5094, 5120);
   return {1603u, {}};
 n4647:
-  PLUTO_ATTN_RUN(kAttention6Sequence595);
+  PLUTO_ATTN_RUN(kLookupSequence595);
   return {2003u, {}};
 n4640:
   PLUTO_ATTN_END(5108);
@@ -10860,23 +10860,23 @@ n4640:
     case 5094:
       goto n4617;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n4639:
-  PLUTO_ATTN_RUN(kAttention6Sequence596);
+  PLUTO_ATTN_RUN(kLookupSequence596);
   return {1u, {}};
 n4634:
-  PLUTO_ATTN_RUN(kAttention6Sequence597);
+  PLUTO_ATTN_RUN(kLookupSequence597);
   return {374u, {}};
 n4628:
   PLUTO_ATTN_MATCH(5090, 5127);
   PLUTO_ATTN_MATCH(5094, 5127);
   return {1274u, {}};
 n4626:
-  PLUTO_ATTN_RUN(kAttention6Sequence598);
+  PLUTO_ATTN_RUN(kLookupSequence598);
   return {172u, {}};
 n4617:
-  PLUTO_ATTN_RUN(kAttention6Sequence599);
+  PLUTO_ATTN_RUN(kLookupSequence599);
   return {2u, {}};
 n4610:
   PLUTO_ATTN_END(5133);
@@ -10896,14 +10896,14 @@ n4610:
     case 5094:
       return {4565u, {}};
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n4609:
   PLUTO_ATTN_MATCH(5067, 5138);
   PLUTO_ATTN_MATCH(5092, 5133);
   return {4607u, {}};
 }
-Attention6Step Attention6Part19(
+LookupStep LookupPart19(
     std::uint32_t node,
     [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
@@ -10949,55 +10949,55 @@ Attention6Step Attention6Part19(
     case 4869u:
       goto n4869;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n5119:
-  PLUTO_ATTN_RUN(kAttention6Sequence600);
+  PLUTO_ATTN_RUN(kLookupSequence600);
   return {488u, {}};
 n5113:
-  PLUTO_ATTN_RUN(kAttention6Sequence601);
+  PLUTO_ATTN_RUN(kLookupSequence601);
   return {1233u, {}};
 n5107:
-  PLUTO_ATTN_RUN(kAttention6Sequence602);
+  PLUTO_ATTN_RUN(kLookupSequence602);
   return {4359u, {}};
 n5102:
   PLUTO_ATTN_MATCH(5061, 5122);
   return {52u, {}};
 n5101:
-  PLUTO_ATTN_RUN(kAttention6Sequence603);
+  PLUTO_ATTN_RUN(kLookupSequence603);
   return {231u, {}};
 n5093:
-  PLUTO_ATTN_RUN(kAttention6Sequence604);
+  PLUTO_ATTN_RUN(kLookupSequence604);
   return {52u, {}};
 n5086:
-  PLUTO_ATTN_RUN(kAttention6Sequence605);
+  PLUTO_ATTN_RUN(kLookupSequence605);
   return {277u, {}};
 n5080:
-  PLUTO_ATTN_RUN(kAttention6Sequence606);
+  PLUTO_ATTN_RUN(kLookupSequence606);
   return {851u, {}};
 n5073:
-  PLUTO_ATTN_RUN(kAttention6Sequence607);
+  PLUTO_ATTN_RUN(kLookupSequence607);
   return {1978u, {}};
 n5067:
-  PLUTO_ATTN_RUN(kAttention6Sequence608);
+  PLUTO_ATTN_RUN(kLookupSequence608);
   goto n5062;
 n5062:
   PLUTO_ATTN_MATCH(5061, 5133);
   return {150u, {}};
 n5061:
-  PLUTO_ATTN_RUN(kAttention6Sequence609);
+  PLUTO_ATTN_RUN(kLookupSequence609);
   return {611u, {}};
 n5056:
-  PLUTO_ATTN_RUN(kAttention6Sequence610);
+  PLUTO_ATTN_RUN(kLookupSequence610);
   return {3800u, {}};
 n5048:
-  PLUTO_ATTN_RUN(kAttention6Sequence611);
+  PLUTO_ATTN_RUN(kLookupSequence611);
   return {795u, {}};
 n5043:
-  PLUTO_ATTN_RUN(kAttention6Sequence612);
+  PLUTO_ATTN_RUN(kLookupSequence612);
   return {3131u, {}};
 n5037:
-  PLUTO_ATTN_RUN(kAttention6Sequence613);
+  PLUTO_ATTN_RUN(kLookupSequence613);
   return {113u, {}};
 n5031:
   PLUTO_ATTN_END(5131);
@@ -11053,10 +11053,10 @@ n5031:
     case 5098:
       goto n4908;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n5030:
-  PLUTO_ATTN_RUN(kAttention6Sequence614);
+  PLUTO_ATTN_RUN(kLookupSequence614);
   return {97u, {}};
 n5023:
   PLUTO_ATTN_MATCH(5067, 5124);
@@ -11064,16 +11064,16 @@ n5023:
   PLUTO_ATTN_MATCH(5094, 5117);
   return {242u, {}};
 n5020:
-  PLUTO_ATTN_RUN(kAttention6Sequence615);
+  PLUTO_ATTN_RUN(kLookupSequence615);
   return {818u, {}};
 n5012:
-  PLUTO_ATTN_RUN(kAttention6Sequence616);
+  PLUTO_ATTN_RUN(kLookupSequence616);
   return {97u, {}};
 n5007:
-  PLUTO_ATTN_RUN(kAttention6Sequence617);
+  PLUTO_ATTN_RUN(kLookupSequence617);
   return {81u, {}};
 n5002:
-  PLUTO_ATTN_RUN(kAttention6Sequence618);
+  PLUTO_ATTN_RUN(kLookupSequence618);
   return {256u, {}};
 n4997:
   PLUTO_ATTN_MATCH(5090, 5125);
@@ -11084,37 +11084,37 @@ n4994:
   PLUTO_ATTN_MATCH(5061, 5137);
   return {1u, {}};
 n4993:
-  PLUTO_ATTN_RUN(kAttention6Sequence619);
+  PLUTO_ATTN_RUN(kLookupSequence619);
   return {277u, {}};
 n4988:
   PLUTO_ATTN_MATCH(5061, 5140);
   return {16u, {}};
 n4987:
-  PLUTO_ATTN_RUN(kAttention6Sequence620);
+  PLUTO_ATTN_RUN(kLookupSequence620);
   return {890u, {}};
 n4981:
-  PLUTO_ATTN_RUN(kAttention6Sequence621);
+  PLUTO_ATTN_RUN(kLookupSequence621);
   return {2944u, {}};
 n4976:
-  PLUTO_ATTN_RUN(kAttention6Sequence622);
+  PLUTO_ATTN_RUN(kLookupSequence622);
   return {1433u, {}};
 n4970:
-  PLUTO_ATTN_RUN(kAttention6Sequence623);
+  PLUTO_ATTN_RUN(kLookupSequence623);
   return {52u, {}};
 n4963:
-  PLUTO_ATTN_RUN(kAttention6Sequence624);
+  PLUTO_ATTN_RUN(kLookupSequence624);
   return {2u, {}};
 n4954:
-  PLUTO_ATTN_RUN(kAttention6Sequence625);
+  PLUTO_ATTN_RUN(kLookupSequence625);
   return {2931u, {}};
 n4950:
-  PLUTO_ATTN_RUN(kAttention6Sequence626);
+  PLUTO_ATTN_RUN(kLookupSequence626);
   return {1u, {}};
 n4943:
-  PLUTO_ATTN_RUN(kAttention6Sequence627);
+  PLUTO_ATTN_RUN(kLookupSequence627);
   return {1u, {}};
 n4934:
-  PLUTO_ATTN_RUN(kAttention6Sequence628);
+  PLUTO_ATTN_RUN(kLookupSequence628);
   return {2157u, {}};
 n4928:
   PLUTO_ATTN_MATCH(5061, 5126);
@@ -11125,16 +11125,16 @@ n4926:
   PLUTO_ATTN_MATCH(5070, 5106);
   return {1516u, {}};
 n4924:
-  PLUTO_ATTN_RUN(kAttention6Sequence629);
+  PLUTO_ATTN_RUN(kLookupSequence629);
   return {1685u, {}};
 n4919:
-  PLUTO_ATTN_RUN(kAttention6Sequence630);
+  PLUTO_ATTN_RUN(kLookupSequence630);
   return {1233u, {}};
 n4914:
-  PLUTO_ATTN_RUN(kAttention6Sequence631);
+  PLUTO_ATTN_RUN(kLookupSequence631);
   return {220u, {}};
 n4908:
-  PLUTO_ATTN_RUN(kAttention6Sequence632);
+  PLUTO_ATTN_RUN(kLookupSequence632);
   return {326u, {}};
 n4900:
   PLUTO_ATTN_END(5114);
@@ -11150,23 +11150,23 @@ n4900:
     case 5069:
       goto n4875;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n4899:
   PLUTO_ATTN_MATCH(5061, 5117);
   PLUTO_ATTN_MATCH(5067, 5133);
   return {818u, {}};
 n4897:
-  PLUTO_ATTN_RUN(kAttention6Sequence633);
+  PLUTO_ATTN_RUN(kLookupSequence633);
   return {3177u, {}};
 n4887:
-  PLUTO_ATTN_RUN(kAttention6Sequence634);
+  PLUTO_ATTN_RUN(kLookupSequence634);
   return {1797u, {}};
 n4881:
-  PLUTO_ATTN_RUN(kAttention6Sequence635);
+  PLUTO_ATTN_RUN(kLookupSequence635);
   return {52u, {}};
 n4875:
-  PLUTO_ATTN_RUN(kAttention6Sequence636);
+  PLUTO_ATTN_RUN(kLookupSequence636);
   return {113u, {}};
 n4869:
   PLUTO_ATTN_END(5119);
@@ -11176,13 +11176,13 @@ n4869:
     case 5071:
       return {4860u, {}};
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n4868:
-  PLUTO_ATTN_RUN(kAttention6Sequence637);
+  PLUTO_ATTN_RUN(kLookupSequence637);
   return {4863u, {}};
 }
-Attention6Step Attention6Part20(
+LookupStep LookupPart20(
     std::uint32_t node,
     [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
@@ -11234,10 +11234,10 @@ Attention6Step Attention6Part20(
     case 5166u:
       goto n5166;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n5375:
-  PLUTO_ATTN_RUN(kAttention6Sequence638);
+  PLUTO_ATTN_RUN(kLookupSequence638);
   return {172u, {}};
 n5369:
   PLUTO_ATTN_MATCH(5090, 5131);
@@ -11255,10 +11255,10 @@ n5363:
   PLUTO_ATTN_MATCH(5072, 5131);
   return {1171u, {}};
 n5362:
-  PLUTO_ATTN_RUN(kAttention6Sequence639);
+  PLUTO_ATTN_RUN(kLookupSequence639);
   return {2700u, {}};
 n5357:
-  PLUTO_ATTN_RUN(kAttention6Sequence640);
+  PLUTO_ATTN_RUN(kLookupSequence640);
   return {339u, {}};
 n5353:
   PLUTO_ATTN_END(5119);
@@ -11268,7 +11268,7 @@ n5353:
     case 5069:
       goto n5352;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n5352:
   PLUTO_ATTN_MATCH(5061, 5106);
@@ -11276,28 +11276,28 @@ n5352:
   PLUTO_ATTN_MATCH(5063, 5117);
   return {1046u, {}};
 n5349:
-  PLUTO_ATTN_RUN(kAttention6Sequence641);
+  PLUTO_ATTN_RUN(kLookupSequence641);
   return {1448u, {}};
 n5345:
-  PLUTO_ATTN_RUN(kAttention6Sequence642);
+  PLUTO_ATTN_RUN(kLookupSequence642);
   return {2440u, {}};
 n5339:
-  PLUTO_ATTN_RUN(kAttention6Sequence643);
+  PLUTO_ATTN_RUN(kLookupSequence643);
   return {443u, {}};
 n5333:
-  PLUTO_ATTN_RUN(kAttention6Sequence644);
+  PLUTO_ATTN_RUN(kLookupSequence644);
   return {150u, {}};
 n5328:
-  PLUTO_ATTN_RUN(kAttention6Sequence645);
+  PLUTO_ATTN_RUN(kLookupSequence645);
   goto n5322;
 n5322:
   PLUTO_ATTN_MATCH(5072, 5131);
   return {443u, {}};
 n5321:
-  PLUTO_ATTN_RUN(kAttention6Sequence646);
+  PLUTO_ATTN_RUN(kLookupSequence646);
   return {3388u, {}};
 n5312:
-  PLUTO_ATTN_RUN(kAttention6Sequence647);
+  PLUTO_ATTN_RUN(kLookupSequence647);
   return {231u, {}};
 n5306:
   PLUTO_ATTN_MATCH(5063, 5126);
@@ -11374,7 +11374,7 @@ n5297:
     case 5094:
       return {3820u, {}};
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n5296:
   PLUTO_ATTN_END(5102);
@@ -11474,53 +11474,53 @@ n5296:
     case 5098:
       return {5037u, {}};
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n5295:
-  PLUTO_ATTN_RUN(kAttention6Sequence648);
+  PLUTO_ATTN_RUN(kLookupSequence648);
   return {3222u, {}};
 n5288:
   PLUTO_ATTN_MATCH(5069, 5124);
   PLUTO_ATTN_MATCH(5094, 5120);
   return {1929u, {}};
 n5286:
-  PLUTO_ATTN_RUN(kAttention6Sequence649);
+  PLUTO_ATTN_RUN(kLookupSequence649);
   goto n5219;
 n5282:
-  PLUTO_ATTN_RUN(kAttention6Sequence650);
+  PLUTO_ATTN_RUN(kLookupSequence650);
   return {231u, {}};
 n5277:
-  PLUTO_ATTN_RUN(kAttention6Sequence651);
+  PLUTO_ATTN_RUN(kLookupSequence651);
   return {3815u, {}};
 n5273:
-  PLUTO_ATTN_RUN(kAttention6Sequence652);
+  PLUTO_ATTN_RUN(kLookupSequence652);
   return {3738u, {}};
 n5269:
-  PLUTO_ATTN_RUN(kAttention6Sequence653);
+  PLUTO_ATTN_RUN(kLookupSequence653);
   return {314u, {}};
 n5264:
-  PLUTO_ATTN_RUN(kAttention6Sequence654);
+  PLUTO_ATTN_RUN(kLookupSequence654);
   goto n5260;
 n5260:
   PLUTO_ATTN_MATCH(5067, 5133);
   return {1046u, {}};
 n5259:
-  PLUTO_ATTN_RUN(kAttention6Sequence655);
+  PLUTO_ATTN_RUN(kLookupSequence655);
   return {2951u, {}};
 n5251:
-  PLUTO_ATTN_RUN(kAttention6Sequence656);
+  PLUTO_ATTN_RUN(kLookupSequence656);
   return {3142u, {}};
 n5246:
-  PLUTO_ATTN_RUN(kAttention6Sequence657);
+  PLUTO_ATTN_RUN(kLookupSequence657);
   return {620u, {}};
 n5241:
-  PLUTO_ATTN_RUN(kAttention6Sequence658);
+  PLUTO_ATTN_RUN(kLookupSequence658);
   return {724u, {}};
 n5232:
-  PLUTO_ATTN_RUN(kAttention6Sequence659);
+  PLUTO_ATTN_RUN(kLookupSequence659);
   return {252u, {}};
 n5228:
-  PLUTO_ATTN_RUN(kAttention6Sequence660);
+  PLUTO_ATTN_RUN(kLookupSequence660);
   return {4720u, {}};
 n5222:
   PLUTO_ATTN_MATCH(5061, 5138);
@@ -11532,37 +11532,37 @@ n5219:
   PLUTO_ATTN_MATCH(5094, 5120);
   return {1993u, {}};
 n5217:
-  PLUTO_ATTN_RUN(kAttention6Sequence661);
+  PLUTO_ATTN_RUN(kLookupSequence661);
   return {192u, {}};
 n5210:
-  PLUTO_ATTN_RUN(kAttention6Sequence662);
+  PLUTO_ATTN_RUN(kLookupSequence662);
   return {63u, {}};
 n5205:
-  PLUTO_ATTN_RUN(kAttention6Sequence663);
+  PLUTO_ATTN_RUN(kLookupSequence663);
   return {696u, {}};
 n5201:
-  PLUTO_ATTN_RUN(kAttention6Sequence664);
+  PLUTO_ATTN_RUN(kLookupSequence664);
   return {52u, {}};
 n5194:
-  PLUTO_ATTN_RUN(kAttention6Sequence665);
+  PLUTO_ATTN_RUN(kLookupSequence665);
   return {458u, {}};
 n5185:
-  PLUTO_ATTN_RUN(kAttention6Sequence666);
+  PLUTO_ATTN_RUN(kLookupSequence666);
   return {663u, {}};
 n5178:
-  PLUTO_ATTN_RUN(kAttention6Sequence667);
+  PLUTO_ATTN_RUN(kLookupSequence667);
   return {258u, {}};
 n5174:
-  PLUTO_ATTN_RUN(kAttention6Sequence668);
+  PLUTO_ATTN_RUN(kLookupSequence668);
   goto n5166;
 n5166:
   PLUTO_ATTN_MATCH(5069, 5131);
   return {458u, {}};
 n5165:
-  PLUTO_ATTN_RUN(kAttention6Sequence669);
+  PLUTO_ATTN_RUN(kLookupSequence669);
   return {326u, {}};
 n5156:
-  PLUTO_ATTN_RUN(kAttention6Sequence670);
+  PLUTO_ATTN_RUN(kLookupSequence670);
   return {277u, {}};
 n5152:
   PLUTO_ATTN_MATCH(5061, 5134);
@@ -11573,10 +11573,10 @@ n5151:
   PLUTO_ATTN_MATCH(5069, 5133);
   return {3851u, {}};
 n5148:
-  PLUTO_ATTN_RUN(kAttention6Sequence671);
+  PLUTO_ATTN_RUN(kLookupSequence671);
   return {16u, {}};
 n5139:
-  PLUTO_ATTN_RUN(kAttention6Sequence672);
+  PLUTO_ATTN_RUN(kLookupSequence672);
   return {326u, {}};
 n5134:
   PLUTO_ATTN_MATCH(5061, 5121);
@@ -11590,10 +11590,10 @@ n5132:
     case 5069:
       goto n5126;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n5131:
-  PLUTO_ATTN_RUN(kAttention6Sequence673);
+  PLUTO_ATTN_RUN(kLookupSequence673);
   return {5062u, {}};
 n5126:
   PLUTO_ATTN_MATCH(5067, 5106);
@@ -11601,10 +11601,10 @@ n5126:
   PLUTO_ATTN_MATCH(5061, 5120);
   return {749u, {}};
 n5123:
-  PLUTO_ATTN_RUN(kAttention6Sequence674);
+  PLUTO_ATTN_RUN(kLookupSequence674);
   return {1523u, {}};
 }
-Attention6Step Attention6Part21(
+LookupStep LookupPart21(
     std::uint32_t node,
     [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
@@ -11638,13 +11638,13 @@ Attention6Step Attention6Part21(
     case 5445u:
       goto n5445;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n5631:
-  PLUTO_ATTN_RUN(kAttention6Sequence675);
+  PLUTO_ATTN_RUN(kLookupSequence675);
   return {26u, {}};
 n5626:
-  PLUTO_ATTN_RUN(kAttention6Sequence676);
+  PLUTO_ATTN_RUN(kLookupSequence676);
   return {1531u, {}};
 n5620:
   PLUTO_ATTN_MATCH(5061, 5106);
@@ -11652,14 +11652,14 @@ n5620:
   PLUTO_ATTN_MATCH(5069, 5117);
   return {783u, {}};
 n5617:
-  PLUTO_ATTN_RUN(kAttention6Sequence677);
+  PLUTO_ATTN_RUN(kLookupSequence677);
   return {2547u, {}};
 n5613:
   PLUTO_ATTN_MATCH(5061, 5143);
   PLUTO_ATTN_MATCH(5061, 5111);
   goto n5535;
 n5611:
-  PLUTO_ATTN_RUN(kAttention6Sequence678);
+  PLUTO_ATTN_RUN(kLookupSequence678);
   return {4358u, {}};
 n5606:
   PLUTO_ATTN_END(5106);
@@ -11669,13 +11669,13 @@ n5606:
     case 5094:
       goto n5596;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n5605:
-  PLUTO_ATTN_RUN(kAttention6Sequence679);
+  PLUTO_ATTN_RUN(kLookupSequence679);
   return {3800u, {}};
 n5596:
-  PLUTO_ATTN_RUN(kAttention6Sequence680);
+  PLUTO_ATTN_RUN(kLookupSequence680);
   return {52u, {}};
 n5592:
   PLUTO_ATTN_END(5109);
@@ -11719,26 +11719,26 @@ n5592:
     case 5096:
       goto n5501;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n5591:
-  PLUTO_ATTN_RUN(kAttention6Sequence681);
+  PLUTO_ATTN_RUN(kLookupSequence681);
   return {2499u, {}};
 n5586:
   PLUTO_ATTN_MATCH(5067, 5102);
   PLUTO_ATTN_MATCH(5096, 5133);
   return {633u, {}};
 n5584:
-  PLUTO_ATTN_RUN(kAttention6Sequence682);
+  PLUTO_ATTN_RUN(kLookupSequence682);
   return {749u, {}};
 n5579:
-  PLUTO_ATTN_RUN(kAttention6Sequence683);
+  PLUTO_ATTN_RUN(kLookupSequence683);
   goto n5571;
 n5571:
   PLUTO_ATTN_MATCH(5061, 5106);
   return {113u, {}};
 n5570:
-  PLUTO_ATTN_RUN(kAttention6Sequence684);
+  PLUTO_ATTN_RUN(kLookupSequence684);
   return {752u, {}};
 n5557:
   PLUTO_ATTN_MATCH(5072, 5105);
@@ -11746,7 +11746,7 @@ n5557:
   PLUTO_ATTN_MATCH(5071, 5120);
   return {3306u, {}};
 n5554:
-  PLUTO_ATTN_RUN(kAttention6Sequence685);
+  PLUTO_ATTN_RUN(kLookupSequence685);
   return {16u, {}};
 n5548:
   PLUTO_ATTN_MATCH(5065, 5111);
@@ -11754,10 +11754,10 @@ n5548:
   PLUTO_ATTN_MATCH(5067, 5112);
   return {4180u, {}};
 n5545:
-  PLUTO_ATTN_RUN(kAttention6Sequence686);
+  PLUTO_ATTN_RUN(kLookupSequence686);
   return {3222u, {}};
 n5541:
-  PLUTO_ATTN_RUN(kAttention6Sequence687);
+  PLUTO_ATTN_RUN(kLookupSequence687);
   return {231u, {}};
 n5536:
   PLUTO_ATTN_MATCH(5061, 5131);
@@ -11766,29 +11766,29 @@ n5535:
   PLUTO_ATTN_MATCH(5067, 5106);
   return {90u, {}};
 n5534:
-  PLUTO_ATTN_RUN(kAttention6Sequence688);
+  PLUTO_ATTN_RUN(kLookupSequence688);
   return {1291u, {}};
 n5528:
-  PLUTO_ATTN_RUN(kAttention6Sequence689);
+  PLUTO_ATTN_RUN(kLookupSequence689);
   return {3219u, {}};
 n5524:
-  PLUTO_ATTN_RUN(kAttention6Sequence690);
+  PLUTO_ATTN_RUN(kLookupSequence690);
   return {1545u, {}};
 n5519:
   PLUTO_ATTN_MATCH(5061, 5123);
   return {2224u, {}};
 n5518:
-  PLUTO_ATTN_RUN(kAttention6Sequence691);
+  PLUTO_ATTN_RUN(kLookupSequence691);
   return {52u, {}};
 n5510:
-  PLUTO_ATTN_RUN(kAttention6Sequence692);
+  PLUTO_ATTN_RUN(kLookupSequence692);
   return {52u, {}};
 n5503:
   PLUTO_ATTN_MATCH(5069, 5115);
   PLUTO_ATTN_MATCH(5061, 5131);
   return {865u, {}};
 n5501:
-  PLUTO_ATTN_RUN(kAttention6Sequence693);
+  PLUTO_ATTN_RUN(kLookupSequence693);
   return {5166u, {}};
 n5495:
   PLUTO_ATTN_END(5143);
@@ -11804,19 +11804,19 @@ n5495:
     case 5090:
       goto n5467;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n5494:
-  PLUTO_ATTN_RUN(kAttention6Sequence694);
+  PLUTO_ATTN_RUN(kLookupSequence694);
   return {458u, {}};
 n5489:
-  PLUTO_ATTN_RUN(kAttention6Sequence695);
+  PLUTO_ATTN_RUN(kLookupSequence695);
   return {139u, {}};
 n5482:
-  PLUTO_ATTN_RUN(kAttention6Sequence696);
+  PLUTO_ATTN_RUN(kLookupSequence696);
   return {277u, {}};
 n5473:
-  PLUTO_ATTN_RUN(kAttention6Sequence697);
+  PLUTO_ATTN_RUN(kLookupSequence697);
   return {482u, {}};
 n5467:
   PLUTO_ATTN_MATCH(5067, 5106);
@@ -11824,7 +11824,7 @@ n5467:
   PLUTO_ATTN_MATCH(5090, 5106);
   return {724u, {}};
 n5464:
-  PLUTO_ATTN_RUN(kAttention6Sequence698);
+  PLUTO_ATTN_RUN(kLookupSequence698);
   return {1716u, {}};
 n5460:
   PLUTO_ATTN_END(5115);
@@ -11834,13 +11834,13 @@ n5460:
     case 5090:
       goto n5458;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n5459:
   PLUTO_ATTN_MATCH(5069, 5111);
   return {1483u, {}};
 n5458:
-  PLUTO_ATTN_RUN(kAttention6Sequence699);
+  PLUTO_ATTN_RUN(kLookupSequence699);
   return {113u, {}};
 n5450:
   PLUTO_ATTN_END(5108);
@@ -11854,7 +11854,7 @@ n5450:
     case 5094:
       goto n5390;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n5449:
   PLUTO_ATTN_END(5120);
@@ -11874,7 +11874,7 @@ n5449:
     case 5094:
       goto n5429;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n5448:
   PLUTO_ATTN_MATCH(5094, 5108);
@@ -11885,19 +11885,19 @@ n5445:
   PLUTO_ATTN_MATCH(5069, 5127);
   return {231u, {}};
 n5444:
-  PLUTO_ATTN_RUN(kAttention6Sequence700);
+  PLUTO_ATTN_RUN(kLookupSequence700);
   return {3610u, {}};
 n5440:
   PLUTO_ATTN_MATCH(5069, 5124);
   return {1233u, {}};
 n5439:
-  PLUTO_ATTN_RUN(kAttention6Sequence701);
+  PLUTO_ATTN_RUN(kLookupSequence701);
   return {3219u, {}};
 n5434:
-  PLUTO_ATTN_RUN(kAttention6Sequence702);
+  PLUTO_ATTN_RUN(kLookupSequence702);
   return {1u, {}};
 n5429:
-  PLUTO_ATTN_RUN(kAttention6Sequence703);
+  PLUTO_ATTN_RUN(kLookupSequence703);
   return {427u, {}};
 n5425:
   PLUTO_ATTN_END(5108);
@@ -11911,22 +11911,22 @@ n5425:
     case 5090:
       goto n5397;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n5424:
-  PLUTO_ATTN_RUN(kAttention6Sequence704);
+  PLUTO_ATTN_RUN(kLookupSequence704);
   return {172u, {}};
 n5416:
-  PLUTO_ATTN_RUN(kAttention6Sequence705);
+  PLUTO_ATTN_RUN(kLookupSequence705);
   return {3800u, {}};
 n5406:
-  PLUTO_ATTN_RUN(kAttention6Sequence706);
+  PLUTO_ATTN_RUN(kLookupSequence706);
   return {2u, {}};
 n5397:
   PLUTO_ATTN_MATCH(5069, 5124);
   return {1122u, {}};
 n5396:
-  PLUTO_ATTN_RUN(kAttention6Sequence707);
+  PLUTO_ATTN_RUN(kLookupSequence707);
   return {257u, {}};
 n5390:
   PLUTO_ATTN_END(5112);
@@ -11972,10 +11972,10 @@ n5390:
     case 5098:
       return {5300u, {}};
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n5389:
-  PLUTO_ATTN_RUN(kAttention6Sequence708);
+  PLUTO_ATTN_RUN(kLookupSequence708);
   return {2499u, {}};
 n5381:
   PLUTO_ATTN_MATCH(5061, 5110);
@@ -11990,7 +11990,7 @@ n5377:
   PLUTO_ATTN_MATCH(5069, 5131);
   return {5375u, {}};
 }
-Attention6Step Attention6Part22(
+LookupStep LookupPart22(
     std::uint32_t node,
     [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
@@ -12020,10 +12020,10 @@ Attention6Step Attention6Part22(
     case 5645u:
       goto n5645;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n5887:
-  PLUTO_ATTN_RUN(kAttention6Sequence709);
+  PLUTO_ATTN_RUN(kLookupSequence709);
   return {26u, {}};
 n5880:
   PLUTO_ATTN_MATCH(5067, 5103);
@@ -12036,10 +12036,10 @@ n5877:
   PLUTO_ATTN_MATCH(5069, 5133);
   return {63u, {}};
 n5874:
-  PLUTO_ATTN_RUN(kAttention6Sequence710);
+  PLUTO_ATTN_RUN(kLookupSequence710);
   return {502u, {}};
 n5864:
-  PLUTO_ATTN_RUN(kAttention6Sequence711);
+  PLUTO_ATTN_RUN(kLookupSequence711);
   return {4764u, {}};
 n5857:
   PLUTO_ATTN_END(5120);
@@ -12077,10 +12077,10 @@ n5857:
     case 5094:
       goto n5779;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n5856:
-  PLUTO_ATTN_RUN(kAttention6Sequence712);
+  PLUTO_ATTN_RUN(kLookupSequence712);
   return {1393u, {}};
 n5848:
   PLUTO_ATTN_MATCH(5061, 5111);
@@ -12089,10 +12089,10 @@ n5847:
   PLUTO_ATTN_MATCH(5069, 5102);
   return {598u, {}};
 n5846:
-  PLUTO_ATTN_RUN(kAttention6Sequence713);
+  PLUTO_ATTN_RUN(kLookupSequence713);
   return {994u, {}};
 n5842:
-  PLUTO_ATTN_RUN(kAttention6Sequence714);
+  PLUTO_ATTN_RUN(kLookupSequence714);
   return {1u, {}};
 n5836:
   PLUTO_ATTN_MATCH(5065, 5109);
@@ -12100,7 +12100,7 @@ n5836:
   PLUTO_ATTN_MATCH(5072, 5105);
   return {3883u, {}};
 n5833:
-  PLUTO_ATTN_RUN(kAttention6Sequence715);
+  PLUTO_ATTN_RUN(kLookupSequence715);
   return {339u, {}};
 n5828:
   PLUTO_ATTN_MATCH(5071, 5127);
@@ -12111,22 +12111,22 @@ n5825:
   PLUTO_ATTN_MATCH(5094, 5106);
   return {1332u, {}};
 n5824:
-  PLUTO_ATTN_RUN(kAttention6Sequence716);
+  PLUTO_ATTN_RUN(kLookupSequence716);
   return {2419u, {}};
 n5817:
-  PLUTO_ATTN_RUN(kAttention6Sequence717);
+  PLUTO_ATTN_RUN(kLookupSequence717);
   return {373u, {}};
 n5810:
-  PLUTO_ATTN_RUN(kAttention6Sequence718);
+  PLUTO_ATTN_RUN(kLookupSequence718);
   return {4326u, {}};
 n5806:
-  PLUTO_ATTN_RUN(kAttention6Sequence719);
+  PLUTO_ATTN_RUN(kLookupSequence719);
   return {16u, {}};
 n5799:
-  PLUTO_ATTN_RUN(kAttention6Sequence720);
+  PLUTO_ATTN_RUN(kLookupSequence720);
   return {2945u, {}};
 n5795:
-  PLUTO_ATTN_RUN(kAttention6Sequence721);
+  PLUTO_ATTN_RUN(kLookupSequence721);
   return {16u, {}};
 n5783:
   PLUTO_ATTN_MATCH(5065, 5126);
@@ -12137,7 +12137,7 @@ n5780:
   PLUTO_ATTN_MATCH(5067, 5106);
   return {752u, {}};
 n5779:
-  PLUTO_ATTN_RUN(kAttention6Sequence722);
+  PLUTO_ATTN_RUN(kLookupSequence722);
   return {5298u, {}};
 n5775:
   PLUTO_ATTN_END(5127);
@@ -12153,10 +12153,10 @@ n5775:
     case 5091:
       goto n5754;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n5774:
-  PLUTO_ATTN_RUN(kAttention6Sequence723);
+  PLUTO_ATTN_RUN(kLookupSequence723);
   return {257u, {}};
 n5767:
   PLUTO_ATTN_MATCH(5069, 5120);
@@ -12168,10 +12168,10 @@ n5764:
   PLUTO_ATTN_MATCH(5071, 5133);
   return {477u, {}};
 n5762:
-  PLUTO_ATTN_RUN(kAttention6Sequence724);
+  PLUTO_ATTN_RUN(kLookupSequence724);
   return {4555u, {}};
 n5754:
-  PLUTO_ATTN_RUN(kAttention6Sequence725);
+  PLUTO_ATTN_RUN(kLookupSequence725);
   return {52u, {}};
 n5742:
   PLUTO_ATTN_END(5112);
@@ -12183,16 +12183,16 @@ n5742:
     case 5090:
       goto n5732;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n5741:
-  PLUTO_ATTN_RUN(kAttention6Sequence726);
+  PLUTO_ATTN_RUN(kLookupSequence726);
   return {1560u, {}};
 n5737:
-  PLUTO_ATTN_RUN(kAttention6Sequence727);
+  PLUTO_ATTN_RUN(kLookupSequence727);
   return {1u, {}};
 n5732:
-  PLUTO_ATTN_RUN(kAttention6Sequence728);
+  PLUTO_ATTN_RUN(kLookupSequence728);
   return {5322u, {}};
 n5725:
   PLUTO_ATTN_END(5111);
@@ -12228,19 +12228,19 @@ n5725:
     case 5096:
       goto n5649;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n5724:
-  PLUTO_ATTN_RUN(kAttention6Sequence729);
+  PLUTO_ATTN_RUN(kLookupSequence729);
   return {4110u, {}};
 n5716:
-  PLUTO_ATTN_RUN(kAttention6Sequence730);
+  PLUTO_ATTN_RUN(kLookupSequence730);
   return {1u, {}};
 n5710:
   PLUTO_ATTN_MATCH(5061, 5100);
   return {1423u, {}};
 n5709:
-  PLUTO_ATTN_RUN(kAttention6Sequence731);
+  PLUTO_ATTN_RUN(kLookupSequence731);
   return {2312u, {}};
 n5703:
   PLUTO_ATTN_MATCH(5094, 5125);
@@ -12248,35 +12248,35 @@ n5703:
   PLUTO_ATTN_MATCH(5061, 5138);
   return {5363u, {}};
 n5700:
-  PLUTO_ATTN_RUN(kAttention6Sequence732);
+  PLUTO_ATTN_RUN(kLookupSequence732);
   return {611u, {}};
 n5691:
-  PLUTO_ATTN_RUN(kAttention6Sequence733);
+  PLUTO_ATTN_RUN(kLookupSequence733);
   return {1032u, {}};
 n5684:
-  PLUTO_ATTN_RUN(kAttention6Sequence734);
+  PLUTO_ATTN_RUN(kLookupSequence734);
   return {3718u, {}};
 n5678:
-  PLUTO_ATTN_RUN(kAttention6Sequence735);
+  PLUTO_ATTN_RUN(kLookupSequence735);
   return {1287u, {}};
 n5671:
-  PLUTO_ATTN_RUN(kAttention6Sequence736);
+  PLUTO_ATTN_RUN(kLookupSequence736);
   return {128u, {}};
 n5666:
-  PLUTO_ATTN_RUN(kAttention6Sequence737);
+  PLUTO_ATTN_RUN(kLookupSequence737);
   return {4507u, {}};
 n5659:
-  PLUTO_ATTN_RUN(kAttention6Sequence738);
+  PLUTO_ATTN_RUN(kLookupSequence738);
   return {172u, {}};
 n5655:
-  PLUTO_ATTN_RUN(kAttention6Sequence739);
+  PLUTO_ATTN_RUN(kLookupSequence739);
   return {1u, {}};
 n5651:
   PLUTO_ATTN_MATCH(5063, 5112);
   PLUTO_ATTN_MATCH(5071, 5131);
   return {458u, {}};
 n5649:
-  PLUTO_ATTN_RUN(kAttention6Sequence740);
+  PLUTO_ATTN_RUN(kLookupSequence740);
   return {5571u, {}};
 n5645:
   PLUTO_ATTN_END(5105);
@@ -12296,17 +12296,17 @@ n5645:
     case 5071:
       return {5611u, {}};
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n5644:
-  PLUTO_ATTN_RUN(kAttention6Sequence741);
+  PLUTO_ATTN_RUN(kLookupSequence741);
   return {258u, {}};
 n5633:
   PLUTO_ATTN_MATCH(5061, 5104);
   PLUTO_ATTN_MATCH(5067, 5106);
   return {5631u, {}};
 }
-Attention6Step Attention6Part23(
+LookupStep LookupPart23(
     std::uint32_t node,
     [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
@@ -12330,17 +12330,17 @@ Attention6Step Attention6Part23(
     case 6006u:
       goto n6006;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n6143:
   PLUTO_ATTN_MATCH(5072, 5131);
   PLUTO_ATTN_MATCH(5069, 5117);
   return {559u, {}};
 n6141:
-  PLUTO_ATTN_RUN(kAttention6Sequence742);
+  PLUTO_ATTN_RUN(kLookupSequence742);
   return {4994u, {}};
 n6137:
-  PLUTO_ATTN_RUN(kAttention6Sequence743);
+  PLUTO_ATTN_RUN(kLookupSequence743);
   return {306u, {}};
 n6131:
   PLUTO_ATTN_END(5134);
@@ -12352,19 +12352,19 @@ n6131:
     case 5090:
       goto n6118;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n6130:
-  PLUTO_ATTN_RUN(kAttention6Sequence744);
+  PLUTO_ATTN_RUN(kLookupSequence744);
   return {2u, {}};
 n6124:
-  PLUTO_ATTN_RUN(kAttention6Sequence745);
+  PLUTO_ATTN_RUN(kLookupSequence745);
   return {90u, {}};
 n6118:
-  PLUTO_ATTN_RUN(kAttention6Sequence746);
+  PLUTO_ATTN_RUN(kLookupSequence746);
   return {2488u, {}};
 n6114:
-  PLUTO_ATTN_RUN(kAttention6Sequence747);
+  PLUTO_ATTN_RUN(kLookupSequence747);
   return {4415u, {}};
 n6104:
   PLUTO_ATTN_END(5106);
@@ -12376,16 +12376,16 @@ n6104:
     case 5071:
       goto n6094;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n6103:
-  PLUTO_ATTN_RUN(kAttention6Sequence748);
+  PLUTO_ATTN_RUN(kLookupSequence748);
   return {4194u, {}};
 n6095:
   PLUTO_ATTN_MATCH(5069, 5106);
   return {5780u, {}};
 n6094:
-  PLUTO_ATTN_RUN(kAttention6Sequence749);
+  PLUTO_ATTN_RUN(kLookupSequence749);
   return {26u, {}};
 n6088:
   PLUTO_ATTN_END(5112);
@@ -12403,25 +12403,25 @@ n6088:
     case 5082:
       goto n6054;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n6087:
-  PLUTO_ATTN_RUN(kAttention6Sequence750);
+  PLUTO_ATTN_RUN(kLookupSequence750);
   return {231u, {}};
 n6080:
-  PLUTO_ATTN_RUN(kAttention6Sequence751);
+  PLUTO_ATTN_RUN(kLookupSequence751);
   return {339u, {}};
 n6074:
-  PLUTO_ATTN_RUN(kAttention6Sequence752);
+  PLUTO_ATTN_RUN(kLookupSequence752);
   return {113u, {}};
 n6063:
-  PLUTO_ATTN_RUN(kAttention6Sequence753);
+  PLUTO_ATTN_RUN(kLookupSequence753);
   return {1685u, {}};
 n6058:
-  PLUTO_ATTN_RUN(kAttention6Sequence754);
+  PLUTO_ATTN_RUN(kLookupSequence754);
   return {326u, {}};
 n6054:
-  PLUTO_ATTN_RUN(kAttention6Sequence755);
+  PLUTO_ATTN_RUN(kLookupSequence755);
   return {326u, {}};
 n6049:
   PLUTO_ATTN_END(5109);
@@ -12455,7 +12455,7 @@ n6049:
     case 5094:
       return {5460u, {}};
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n6048:
   PLUTO_ATTN_END(5133);
@@ -12467,13 +12467,13 @@ n6048:
     case 5079:
       goto n6033;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n6047:
-  PLUTO_ATTN_RUN(kAttention6Sequence756);
+  PLUTO_ATTN_RUN(kLookupSequence756);
   return {258u, {}};
 n6041:
-  PLUTO_ATTN_RUN(kAttention6Sequence757);
+  PLUTO_ATTN_RUN(kLookupSequence757);
   return {3288u, {}};
 n6033:
   PLUTO_ATTN_MATCH(5061, 5111);
@@ -12498,31 +12498,31 @@ n6030:
     case 5094:
       goto n5989;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n6029:
-  PLUTO_ATTN_RUN(kAttention6Sequence758);
+  PLUTO_ATTN_RUN(kLookupSequence758);
   return {768u, {}};
 n6021:
-  PLUTO_ATTN_RUN(kAttention6Sequence759);
+  PLUTO_ATTN_RUN(kLookupSequence759);
   return {587u, {}};
 n6015:
-  PLUTO_ATTN_RUN(kAttention6Sequence760);
+  PLUTO_ATTN_RUN(kLookupSequence760);
   return {1480u, {}};
 n6010:
-  PLUTO_ATTN_RUN(kAttention6Sequence761);
+  PLUTO_ATTN_RUN(kLookupSequence761);
   goto n6006;
 n6006:
   PLUTO_ATTN_MATCH(5069, 5106);
   return {818u, {}};
 n6005:
-  PLUTO_ATTN_RUN(kAttention6Sequence762);
+  PLUTO_ATTN_RUN(kLookupSequence762);
   return {81u, {}};
 n5997:
-  PLUTO_ATTN_RUN(kAttention6Sequence763);
+  PLUTO_ATTN_RUN(kLookupSequence763);
   return {1177u, {}};
 n5989:
-  PLUTO_ATTN_RUN(kAttention6Sequence764);
+  PLUTO_ATTN_RUN(kLookupSequence764);
   return {221u, {}};
 n5983:
   PLUTO_ATTN_END(5131);
@@ -12554,16 +12554,16 @@ n5983:
     case 5098:
       goto n5921;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n5982:
-  PLUTO_ATTN_RUN(kAttention6Sequence765);
+  PLUTO_ATTN_RUN(kLookupSequence765);
   return {1u, {}};
 n5975:
   PLUTO_ATTN_MATCH(5065, 5120);
   return {427u, {}};
 n5974:
-  PLUTO_ATTN_RUN(kAttention6Sequence766);
+  PLUTO_ATTN_RUN(kLookupSequence766);
   return {113u, {}};
 n5967:
   PLUTO_ATTN_MATCH(5082, 5138);
@@ -12571,7 +12571,7 @@ n5967:
   PLUTO_ATTN_MATCH(5061, 5115);
   return {809u, {}};
 n5964:
-  PLUTO_ATTN_RUN(kAttention6Sequence767);
+  PLUTO_ATTN_RUN(kLookupSequence767);
   return {1797u, {}};
 n5959:
   PLUTO_ATTN_MATCH(5067, 5112);
@@ -12579,10 +12579,10 @@ n5959:
   PLUTO_ATTN_MATCH(5061, 5131);
   return {663u, {}};
 n5956:
-  PLUTO_ATTN_RUN(kAttention6Sequence768);
+  PLUTO_ATTN_RUN(kLookupSequence768);
   return {1312u, {}};
 n5947:
-  PLUTO_ATTN_RUN(kAttention6Sequence769);
+  PLUTO_ATTN_RUN(kLookupSequence769);
   return {3059u, {}};
 n5940:
   PLUTO_ATTN_MATCH(5067, 5134);
@@ -12594,13 +12594,13 @@ n5937:
   PLUTO_ATTN_MATCH(5067, 5117);
   return {4821u, {}};
 n5935:
-  PLUTO_ATTN_RUN(kAttention6Sequence770);
+  PLUTO_ATTN_RUN(kLookupSequence770);
   return {256u, {}};
 n5929:
-  PLUTO_ATTN_RUN(kAttention6Sequence771);
+  PLUTO_ATTN_RUN(kLookupSequence771);
   return {373u, {}};
 n5921:
-  PLUTO_ATTN_RUN(kAttention6Sequence772);
+  PLUTO_ATTN_RUN(kLookupSequence772);
   return {3800u, {}};
 n5917:
   PLUTO_ATTN_END(5125);
@@ -12628,7 +12628,7 @@ n5917:
     case 5094:
       return {5864u, {}};
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n5916:
   PLUTO_ATTN_MATCH(5061, 5122);
@@ -12639,19 +12639,19 @@ n5914:
   PLUTO_ATTN_MATCH(5072, 5131);
   return {2318u, {}};
 n5912:
-  PLUTO_ATTN_RUN(kAttention6Sequence773);
+  PLUTO_ATTN_RUN(kLookupSequence773);
   return {231u, {}};
 n5905:
-  PLUTO_ATTN_RUN(kAttention6Sequence774);
+  PLUTO_ATTN_RUN(kLookupSequence774);
   return {2u, {}};
 n5900:
-  PLUTO_ATTN_RUN(kAttention6Sequence775);
+  PLUTO_ATTN_RUN(kLookupSequence775);
   return {2374u, {}};
 n5892:
-  PLUTO_ATTN_RUN(kAttention6Sequence776);
+  PLUTO_ATTN_RUN(kLookupSequence776);
   return {1369u, {}};
 }
-Attention6Step Attention6Part24(
+LookupStep LookupPart24(
     std::uint32_t node,
     [[maybe_unused]] absl::Span<const DiscreteHiddenState> history,
     [[maybe_unused]] std::size_t& position) {
@@ -12659,7 +12659,7 @@ Attention6Step Attention6Part24(
     case 6373u:
       goto n6373;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n6373:
   PLUTO_ATTN_SKIP(5067);
@@ -12684,7 +12684,7 @@ n6373:
     case 5094:
       return {350u, {}};
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n6371:
   PLUTO_ATTN_END(5106);
@@ -12718,7 +12718,7 @@ n6371:
     case 5094:
       return {2967u, {}};
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n6370:
   PLUTO_ATTN_END(5106);
@@ -12734,7 +12734,7 @@ n6370:
     case 5094:
       goto n6301;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n6369:
   PLUTO_ATTN_END(5106);
@@ -12750,25 +12750,25 @@ n6369:
     case 5069:
       goto n6356;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n6368:
-  PLUTO_ATTN_RUN(kAttention6Sequence777);
+  PLUTO_ATTN_RUN(kLookupSequence777);
   return {1332u, {}};
 n6363:
   PLUTO_ATTN_MATCH(5072, 5120);
   return {1920u, {}};
 n6362:
-  PLUTO_ATTN_RUN(kAttention6Sequence778);
+  PLUTO_ATTN_RUN(kLookupSequence778);
   return {1189u, {}};
 n6357:
   PLUTO_ATTN_MATCH(5069, 5102);
   return {2895u, {}};
 n6356:
-  PLUTO_ATTN_RUN(kAttention6Sequence779);
+  PLUTO_ATTN_RUN(kLookupSequence779);
   return {593u, {}};
 n6349:
-  PLUTO_ATTN_RUN(kAttention6Sequence780);
+  PLUTO_ATTN_RUN(kLookupSequence780);
   return {4072u, {}};
 n6343:
   PLUTO_ATTN_END(5120);
@@ -12788,19 +12788,19 @@ n6343:
     case 5096:
       goto n6310;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n6342:
-  PLUTO_ATTN_RUN(kAttention6Sequence781);
+  PLUTO_ATTN_RUN(kLookupSequence781);
   return {482u, {}};
 n6333:
-  PLUTO_ATTN_RUN(kAttention6Sequence782);
+  PLUTO_ATTN_RUN(kLookupSequence782);
   return {326u, {}};
 n6327:
-  PLUTO_ATTN_RUN(kAttention6Sequence783);
+  PLUTO_ATTN_RUN(kLookupSequence783);
   return {1757u, {}};
 n6321:
-  PLUTO_ATTN_RUN(kAttention6Sequence784);
+  PLUTO_ATTN_RUN(kLookupSequence784);
   return {2104u, {}};
 n6317:
   PLUTO_ATTN_MATCH(5090, 5111);
@@ -12808,13 +12808,13 @@ n6317:
   PLUTO_ATTN_MATCH(5061, 5106);
   return {724u, {}};
 n6314:
-  PLUTO_ATTN_RUN(kAttention6Sequence785);
+  PLUTO_ATTN_RUN(kLookupSequence785);
   return {4403u, {}};
 n6310:
-  PLUTO_ATTN_RUN(kAttention6Sequence786);
+  PLUTO_ATTN_RUN(kLookupSequence786);
   return {809u, {}};
 n6306:
-  PLUTO_ATTN_RUN(kAttention6Sequence787);
+  PLUTO_ATTN_RUN(kLookupSequence787);
   return {4261u, {}};
 n6301:
   PLUTO_ATTN_END(5112);
@@ -12824,16 +12824,16 @@ n6301:
     case 5067:
       goto n6296;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n6300:
-  PLUTO_ATTN_RUN(kAttention6Sequence788);
+  PLUTO_ATTN_RUN(kLookupSequence788);
   return {838u, {}};
 n6296:
-  PLUTO_ATTN_RUN(kAttention6Sequence789);
+  PLUTO_ATTN_RUN(kLookupSequence789);
   return {3245u, {}};
 n6292:
-  PLUTO_ATTN_RUN(kAttention6Sequence790);
+  PLUTO_ATTN_RUN(kLookupSequence790);
   return {3954u, {}};
 n6287:
   PLUTO_ATTN_END(5135);
@@ -12861,7 +12861,7 @@ n6287:
     case 5094:
       return {6088u, {}};
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n6286:
   PLUTO_ATTN_END(5106);
@@ -12873,16 +12873,16 @@ n6286:
     case 5094:
       goto n6276;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n6285:
-  PLUTO_ATTN_RUN(kAttention6Sequence791);
+  PLUTO_ATTN_RUN(kLookupSequence791);
   return {90u, {}};
 n6280:
-  PLUTO_ATTN_RUN(kAttention6Sequence792);
+  PLUTO_ATTN_RUN(kLookupSequence792);
   return {724u, {}};
 n6276:
-  PLUTO_ATTN_RUN(kAttention6Sequence793);
+  PLUTO_ATTN_RUN(kLookupSequence793);
   return {27u, {}};
 n6270:
   PLUTO_ATTN_END(5133);
@@ -12896,10 +12896,10 @@ n6270:
     case 5094:
       goto n6249;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n6269:
-  PLUTO_ATTN_RUN(kAttention6Sequence794);
+  PLUTO_ATTN_RUN(kLookupSequence794);
   return {2823u, {}};
 n6262:
   PLUTO_ATTN_MATCH(5061, 5133);
@@ -12907,16 +12907,16 @@ n6262:
   PLUTO_ATTN_MATCH(5069, 5133);
   return {5825u, {}};
 n6259:
-  PLUTO_ATTN_RUN(kAttention6Sequence795);
+  PLUTO_ATTN_RUN(kLookupSequence795);
   return {458u, {}};
 n6249:
-  PLUTO_ATTN_RUN(kAttention6Sequence796);
+  PLUTO_ATTN_RUN(kLookupSequence796);
   return {4580u, {}};
 n6241:
-  PLUTO_ATTN_RUN(kAttention6Sequence797);
+  PLUTO_ATTN_RUN(kLookupSequence797);
   return {587u, {}};
 n6236:
-  PLUTO_ATTN_RUN(kAttention6Sequence798);
+  PLUTO_ATTN_RUN(kLookupSequence798);
   return {482u, {}};
 n6230:
   PLUTO_ATTN_END(5111);
@@ -12932,19 +12932,19 @@ n6230:
     case 5071:
       goto n6206;
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n6229:
-  PLUTO_ATTN_RUN(kAttention6Sequence799);
+  PLUTO_ATTN_RUN(kLookupSequence799);
   return {5445u, {}};
 n6224:
-  PLUTO_ATTN_RUN(kAttention6Sequence800);
+  PLUTO_ATTN_RUN(kLookupSequence800);
   return {52u, {}};
 n6216:
-  PLUTO_ATTN_RUN(kAttention6Sequence801);
+  PLUTO_ATTN_RUN(kLookupSequence801);
   return {1797u, {}};
 n6211:
-  PLUTO_ATTN_RUN(kAttention6Sequence802);
+  PLUTO_ATTN_RUN(kLookupSequence802);
   return {819u, {}};
 n6206:
   PLUTO_ATTN_MATCH(5067, 5106);
@@ -12977,26 +12977,26 @@ n6205:
     case 5094:
       return {6141u, {}};
     default:
-      return {kAttention6Done, {}};
+      return {kLookupDone, {}};
   }
 n6204:
-  PLUTO_ATTN_RUN(kAttention6Sequence803);
+  PLUTO_ATTN_RUN(kLookupSequence803);
   return {172u, {}};
 n6194:
-  PLUTO_ATTN_RUN(kAttention6Sequence804);
+  PLUTO_ATTN_RUN(kLookupSequence804);
   return {1u, {}};
 n6190:
   PLUTO_ATTN_MATCH(5091, 5125);
   PLUTO_ATTN_MATCH(5067, 5111);
   return {4648u, {}};
 n6188:
-  PLUTO_ATTN_RUN(kAttention6Sequence805);
+  PLUTO_ATTN_RUN(kLookupSequence805);
   return {2276u, {}};
 n6184:
-  PLUTO_ATTN_RUN(kAttention6Sequence806);
+  PLUTO_ATTN_RUN(kLookupSequence806);
   return {6006u, {}};
 n6175:
-  PLUTO_ATTN_RUN(kAttention6Sequence807);
+  PLUTO_ATTN_RUN(kLookupSequence807);
   return {26u, {}};
 n6169:
   PLUTO_ATTN_MATCH(5069, 5112);
@@ -13004,16 +13004,16 @@ n6169:
   PLUTO_ATTN_MATCH(5067, 5106);
   return {1978u, {}};
 n6166:
-  PLUTO_ATTN_RUN(kAttention6Sequence808);
+  PLUTO_ATTN_RUN(kLookupSequence808);
   return {97u, {}};
 n6158:
-  PLUTO_ATTN_RUN(kAttention6Sequence809);
+  PLUTO_ATTN_RUN(kLookupSequence809);
   return {494u, {}};
 n6154:
-  PLUTO_ATTN_RUN(kAttention6Sequence810);
+  PLUTO_ATTN_RUN(kLookupSequence810);
   return {3527u, {}};
 n6148:
-  PLUTO_ATTN_RUN(kAttention6Sequence811);
+  PLUTO_ATTN_RUN(kLookupSequence811);
   return {6143u, {}};
 }
 #undef PLUTO_ATTN_END
@@ -13023,96 +13023,109 @@ n6148:
 #undef PLUTO_ATTN_RUN
 }  // namespace
 
-TransitionResult Attention6(absl::Span<const DiscreteHiddenState> history) {
+std::optional<DiscreteHiddenState> Lookup(
+    absl::Span<const DiscreteHiddenState> history) {
   std::size_t position = 0;
   std::uint32_t node = 6373u;
   for (;;) {
-    Attention6Step step;
+    LookupStep step;
     switch (node / 256u) {
       case 0u:
-        step = Attention6Part0(node, history, position);
+        step = LookupPart0(node, history, position);
         break;
       case 1u:
-        step = Attention6Part1(node, history, position);
+        step = LookupPart1(node, history, position);
         break;
       case 2u:
-        step = Attention6Part2(node, history, position);
+        step = LookupPart2(node, history, position);
         break;
       case 3u:
-        step = Attention6Part3(node, history, position);
+        step = LookupPart3(node, history, position);
         break;
       case 4u:
-        step = Attention6Part4(node, history, position);
+        step = LookupPart4(node, history, position);
         break;
       case 5u:
-        step = Attention6Part5(node, history, position);
+        step = LookupPart5(node, history, position);
         break;
       case 6u:
-        step = Attention6Part6(node, history, position);
+        step = LookupPart6(node, history, position);
         break;
       case 7u:
-        step = Attention6Part7(node, history, position);
+        step = LookupPart7(node, history, position);
         break;
       case 8u:
-        step = Attention6Part8(node, history, position);
+        step = LookupPart8(node, history, position);
         break;
       case 9u:
-        step = Attention6Part9(node, history, position);
+        step = LookupPart9(node, history, position);
         break;
       case 10u:
-        step = Attention6Part10(node, history, position);
+        step = LookupPart10(node, history, position);
         break;
       case 11u:
-        step = Attention6Part11(node, history, position);
+        step = LookupPart11(node, history, position);
         break;
       case 12u:
-        step = Attention6Part12(node, history, position);
+        step = LookupPart12(node, history, position);
         break;
       case 13u:
-        step = Attention6Part13(node, history, position);
+        step = LookupPart13(node, history, position);
         break;
       case 14u:
-        step = Attention6Part14(node, history, position);
+        step = LookupPart14(node, history, position);
         break;
       case 15u:
-        step = Attention6Part15(node, history, position);
+        step = LookupPart15(node, history, position);
         break;
       case 16u:
-        step = Attention6Part16(node, history, position);
+        step = LookupPart16(node, history, position);
         break;
       case 17u:
-        step = Attention6Part17(node, history, position);
+        step = LookupPart17(node, history, position);
         break;
       case 18u:
-        step = Attention6Part18(node, history, position);
+        step = LookupPart18(node, history, position);
         break;
       case 19u:
-        step = Attention6Part19(node, history, position);
+        step = LookupPart19(node, history, position);
         break;
       case 20u:
-        step = Attention6Part20(node, history, position);
+        step = LookupPart20(node, history, position);
         break;
       case 21u:
-        step = Attention6Part21(node, history, position);
+        step = LookupPart21(node, history, position);
         break;
       case 22u:
-        step = Attention6Part22(node, history, position);
+        step = LookupPart22(node, history, position);
         break;
       case 23u:
-        step = Attention6Part23(node, history, position);
+        step = LookupPart23(node, history, position);
         break;
       case 24u:
-        step = Attention6Part24(node, history, position);
+        step = LookupPart24(node, history, position);
         break;
       default:
         return {};
     }
-    if (step.next == kAttention6Done)
+    if (step.next == kLookupDone)
       return step.result;
     node = step.next;
   }
 }
+
+class Attention6Impl final : public CausalAttention {
+ public:
+  std::optional<DiscreteHiddenState> operator()(
+      absl::Span<const DiscreteHiddenState> history) override {
+    return Lookup(history);
+  }
+};
 }  // namespace
-AttentionTable GeneratedAttention6() { return {Attention6}; }
+
+CausalAttention& GeneratedAttention6() {
+  static Attention6Impl instance;
+  return instance;
+}
 
 }  // namespace pluto::llm::discretized

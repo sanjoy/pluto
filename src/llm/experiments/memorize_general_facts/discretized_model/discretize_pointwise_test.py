@@ -121,6 +121,7 @@ class PointwiseTest(unittest.TestCase):
         self.assertEqual(stats["position_exceptions"], 1)
         self.assertIn("case vocab::A.value:", body)
         self.assertIn("position == 3", body)
+        self.assertIn("position < 0", body)
         self.assertIn("position > 3", body)
         self.assertIn("return {};", body)
         self.assertEqual(stats["source_bytes"], len(body.encode()))
@@ -134,7 +135,7 @@ class PointwiseTest(unittest.TestCase):
                 for rows in ([[bad, 0, 0]], [[0, 0, bad]]):
                     with self.assertRaisesRegex(ValueError, "IDs"):
                         render_entry("Bad", rows, {0: "vocab::A"})
-        for position in (-1, 4294967296, True, 1.5):
+        for position in (-1, 2147483648, 4294967295, 4294967296, True, 1.5):
             with self.assertRaisesRegex(ValueError, "position"):
                 render_entry("Bad", [[0, position, 0]], {0: "vocab::A"})
 
@@ -145,7 +146,6 @@ class PointwiseTest(unittest.TestCase):
                         "struct DiscreteHiddenState { int value=0; constexpr auto operator<=>(const DiscreteHiddenState&) const = default; constexpr explicit operator DiscreteToken() const; };",
                         "struct DiscreteToken { int value=0; constexpr auto operator<=>(const DiscreteToken&) const = default; constexpr explicit operator DiscreteHiddenState() const { return {value}; } };",
                         "constexpr DiscreteHiddenState::operator DiscreteToken() const { return {value}; }",
-                        "struct TransitionResult { std::optional<DiscreteHiddenState> output; };",
                         "namespace vocab { constexpr DiscreteToken A{0}, B{1}, C{2}, D{3}, Far{1000000000}, Max{2147483647}; }"]
         declarations.append("namespace vocab {" + " ".join(f"constexpr DiscreteToken Token{i}{{{i}}};" for i in range(128)) + "}")
         checks = []
@@ -170,12 +170,13 @@ class PointwiseTest(unittest.TestCase):
             declarations.append(render_pointwise(name, rows, token_names)[0])
             for state in [-2147483648] + list(range(-2, 130)) + list(range(2147483640, 2147483648)):
                 output, supported = evaluate_pointwise(rows, state)
-                checks.append(f"{{ auto r={name}(DiscreteHiddenState{{{state}}}); if(r.output.value_or(DiscreteHiddenState{{0}}).value!={output} || r.output.has_value()!={str(supported).lower()}) return 1; }}")
+                checks.append(f"{{ auto r={name}(DiscreteHiddenState{{{state}}}); if(r.value_or(DiscreteHiddenState{{0}}).value!={output} || r.has_value()!={str(supported).lower()}) return 1; }}")
         entries = {
             "Entry": [[0, 0, 20], [0, 2, 20], [0, 3, 21], [1, 1, 21], [3, 0, 20]],
             "WideMask": [[0, 31, 20], [1, 31, 21]],
             "Sparse": [[0, 0, 20], [1000000000, 0, 21]],
             "WidePosition": [[0, 100, 20]],
+            "MaxPosition": [[0, 2147483647, 0]],
             "ZeroEntry": [[0, 0, 0]],
             "MaxEntry": [[0, 0, 2147483647], [1, 0, 2147483646]],
             "MaxToken": [[2147483647, 0, 2147483647]],
@@ -184,9 +185,9 @@ class PointwiseTest(unittest.TestCase):
         for name, rows in entries.items():
             declarations.append(render_entry(name, rows, names)[0])
             for token in [-2147483648, -1, 0, 1, 2, 3, 4, 1000000000, 2147483647]:
-                for position in [0, 1, 2, 3, 4, 31, 32, 63, 64, 100, 101, 4294967295]:
+                for position in [-2147483648, -1, 0, 1, 2, 3, 4, 31, 32, 63, 64, 100, 101, 2147483647]:
                     output, supported = evaluate_entry(rows, token, position)
-                    checks.append(f"{{ auto r={name}(DiscreteToken{{{token}}},{position}u); if(r.output.value_or(DiscreteHiddenState{{0}}).value!={output} || r.output.has_value()!={str(supported).lower()}) return 2; }}")
+                    checks.append(f"{{ auto r={name}(DiscreteToken{{{token}}},{position}); if(r.value_or(DiscreteHiddenState{{0}}).value!={output} || r.has_value()!={str(supported).lower()}) return 2; }}")
         program = "\n".join(declarations) + "\nint main(){\n" + "\n".join(checks) + "\nreturn 0;}\n"
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)

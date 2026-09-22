@@ -6,9 +6,10 @@
 #include "vocabulary_tokens.h"
 
 namespace pluto::llm::discretized {
-TransitionResult GeneratedEntryFunction(DiscreteToken token,
-                                        uint32_t position) {
-  if (token.value < 0 || token.value > 4473 || position > 25)
+namespace {
+std::optional<DiscreteHiddenState> Lookup(DiscreteToken token,
+                                          int32_t position) {
+  if (token.value < 0 || token.value > 4473 || position < 0 || position > 25)
     return {};
   static constexpr uint16_t kTokenPatterns[] = {
       1,    2,    3,    4,    5,    6,    7,    7,    7,    8,    7,    7,
@@ -699,6 +700,20 @@ TransitionResult GeneratedEntryFunction(DiscreteToken token,
       break;
   }
   return {DiscreteHiddenState{4475 + static_cast<int>(packed >> 26)}};
+}
+
+class PositionEmbeddingImpl final : public PositionEmbedding {
+ public:
+  std::optional<DiscreteHiddenState> operator()(DiscreteToken token,
+                                                int32_t position) override {
+    return Lookup(token, position);
+  }
+};
+}  // namespace
+
+PositionEmbedding& GeneratedPositionEmbedding() {
+  static PositionEmbeddingImpl instance;
+  return instance;
 }
 
 }  // namespace pluto::llm::discretized
