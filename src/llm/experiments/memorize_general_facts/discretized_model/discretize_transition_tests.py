@@ -145,7 +145,7 @@ def _array(typename, name, values, per_line=1):
 
 
 def _result(supported, output):
-    return f"StateId{{{output}}}" if supported else "std::nullopt"
+    return f"{{StateId{{{output}}}}}" if supported else "{std::nullopt}"
 
 
 def render_transition_test(model, token_names):
@@ -209,7 +209,7 @@ struct EntryProbe {{ TokenId token; uint32_t position; TransitionResult expected
                     for token, position, supported, output in entry_probes))
     body += f'''
 void ExpectTransition(TransitionResult actual, TransitionResult expected) {{
-  EXPECT_EQ(actual, expected);
+  EXPECT_EQ(actual.output, expected.output);
 }}
 
 TEST(GeneratedTransitionBoundaries, EverySamplePositionAtEveryBoundary) {{
@@ -230,7 +230,7 @@ TEST(GeneratedTransitionBoundaries, EverySamplePositionAtEveryBoundary) {{
     for (size_t position = 0; position < sample.length; ++position) {{
       SCOPED_TRACE(::testing::Message() << "entry position " << position);
       ExpectTransition(model.entry_function(tokens[position], position),
-                       expected[position]);
+                       {{expected[position]}});
     }}
     for (size_t block = 0; block < kLayers; ++block) {{
       SCOPED_TRACE(::testing::Message() << "block " << block);
@@ -243,9 +243,9 @@ TEST(GeneratedTransitionBoundaries, EverySamplePositionAtEveryBoundary) {{
         // Two compensating boundary mistakes therefore cannot pass this test.
         ExpectTransition(model.attention[block].function(
                              absl::MakeConstSpan(input, position + 1)),
-                         after_attention[position]);
+                         {{after_attention[position]}});
         ExpectTransition(model.mlp[block].function(after_attention[position]),
-                         after_mlp[position]);
+                         {{after_mlp[position]}});
       }}
     }}
     const auto* final_states = expected + (2 * kLayers) * sample.length;
@@ -254,7 +254,7 @@ TEST(GeneratedTransitionBoundaries, EverySamplePositionAtEveryBoundary) {{
       SCOPED_TRACE(::testing::Message() << "snap position " << position);
       const StateId target = position + 1 < sample.length
           ? tokens[position + 1] : {token_names[model['eos_token']]};
-      ExpectTransition(model.snap.function(final_states[position]), target);
+      ExpectTransition(model.snap.function(final_states[position]), {{target}});
     }}
   }}
 }}
@@ -265,7 +265,7 @@ TEST(GeneratedTransitionBoundaries, EverySourceSnapConstraint) {{
   for (size_t index = 0; index < {len(model['snap'])}; ++index) {{
     const auto& row = kSnapRows[index];
     SCOPED_TRACE(::testing::Message() << "snap state " << row.input);
-    ExpectTransition(model.snap.function(row.input), row.output);
+    ExpectTransition(model.snap.function(row.input), {{row.output}});
   }}
 }}
 

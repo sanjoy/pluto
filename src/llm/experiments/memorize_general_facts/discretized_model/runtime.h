@@ -45,7 +45,9 @@ struct AttentionRow {
 // A compiled transition's output, or nullopt for an unsupported input. An
 // engaged zero is a valid vocabulary ID, not a failure sentinel. Transition
 // functions must be pure: they cannot retain history across calls.
-using TransitionResult = std::optional<StateId>;
+struct TransitionResult {
+  std::optional<StateId> output;  // Result symbol, or nullopt if unsupported.
+};
 
 // One attention residual boundary, represented by rows or a pure function.
 // Both forms consume the entire ordered causal prefix at a position.

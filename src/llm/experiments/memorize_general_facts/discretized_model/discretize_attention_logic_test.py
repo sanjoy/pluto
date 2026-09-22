@@ -148,26 +148,26 @@ class AttentionLogicTest(unittest.TestCase):
 #include <vector>
 namespace absl { template<class T> using Span = std::span<T>; }
 using StateId = std::uint32_t;
-using TransitionResult = std::optional<StateId>;
+struct TransitionResult { std::optional<StateId> output; };
 """ + generated + pure + empty + narrow + """
 int main() {
   std::vector<StateId> narrow_key;
-  if (NarrowAttention(narrow_key).has_value()) return 4;
+  if (NarrowAttention(narrow_key).output.has_value()) return 4;
   for (StateId length = 1; length <= 8; ++length) {
     narrow_key.push_back(length);
-    if (NarrowAttention(narrow_key) != TransitionResult{length - 1}) return 5;
+    if (NarrowAttention(narrow_key).output != std::optional<StateId>{length - 1}) return 5;
   }
   narrow_key.push_back(9);
-  if (NarrowAttention(narrow_key).has_value()) return 6;
+  if (NarrowAttention(narrow_key).output.has_value()) return 6;
   std::size_t count;
   while (std::cin >> count) {
     std::vector<StateId> key(count);
     for (auto& symbol : key) std::cin >> symbol;
-    if (EmptyAttention(key).has_value()) return 2;
+    if (EmptyAttention(key).output.has_value()) return 2;
     auto result = CompiledAttention(key);
     auto original = PureAttention(key);
-    if (result != original) return 3;
-    if (result.has_value()) std::cout << *result << '\\n';
+    if (result.output != original.output) return 3;
+    if (result.output.has_value()) std::cout << *result.output << '\\n';
     else std::cout << "unsupported\\n";
   }
 }
