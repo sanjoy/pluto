@@ -286,6 +286,10 @@ std::string Timestamp() {
                           absl::UTCTimeZone());
 }
 
+// Linear warmup tempers early AdamW updates while its moment estimates settle.
+// After warmup, cosine decay over the remaining step budget makes updates
+// smaller for refinement; a 10%-of-peak floor keeps remaining errors trainable.
+// Steps are one-based, so zero warmup skips the ramp entirely.
 float LearningRate(int step) {
   const double peak = absl::GetFlag(FLAGS_learning_rate);
   const int warmup = absl::GetFlag(FLAGS_warmup_steps);
