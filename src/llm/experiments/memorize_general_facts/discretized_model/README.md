@@ -110,7 +110,7 @@ including their forced downstream merges, eliminating 215,044 original states.
 The final exhaustive sweep found **no compatible within-boundary pair**. This
 includes distant pairs: nearest-neighbor search only ordered the initial work.
 Pairs whose terminal vocabulary labels already differ are provably incompatible
-and can be skipped. The certificate in `generated/provenance.json` records
+and can be skipped. The historical certificate in `generated/generation_report.txt` records
 `no_compatible_pair`, `pairwise_irreducible: true`, and
 `global_minimum_proven: false`. A different earlier merge order could produce a
 different, potentially smaller quotient; this is not a global minimum claim.
@@ -119,15 +119,9 @@ A separate checker, which imports no reducer code and trusts no cached search
 results, independently proves that **all 8,423,754 same-boundary pairs** are
 incompatible. It works backward from distinct vocabulary labels through
 injective MLP tables and 8,990 explicit attention-input pair collision checks.
-The complete argument summary is also recorded in generated provenance. Run it
-on a saved model with:
-
-```sh
-python3 -B src/llm/experiments/memorize_general_facts/discretized_model/discretize_certificate.py \
-  --model=/tmp/pluto-discretize.AcuKzZ/search-final.json
-```
-
-The saved JSON is a local search artifact, not a runtime dependency. The checker
+The complete argument summary is also recorded in the generation report.
+The C++ generator runs this independent checker directly on the in-memory
+quotient when reduction reports pairwise irreducibility. The checker
 reports `inconclusive` if its sufficient backward argument cannot be completed;
 it never interprets a missing proof as success or proves corpus accuracy by
 itself. The separate autoregressive verifier establishes that accuracy.
@@ -168,9 +162,10 @@ Two files support inspection without affecting inference:
   every class. Original IDs refer to the exact baseline, not to a different
   layer or a vocabulary token. No merge crosses a boundary.
 
-Generate these with `--state_index`. For older intermediate models without
-membership metadata, `--original_model=/path/to/exact-baseline.json` reconstructs
-and checks the complete quotient mapping from the original transition tables.
+Generate these with `--state_index`. Reduction preserves the complete quotient
+mapping from the originally captured states in memory; it needs no saved
+baseline or intermediate model file. An unreduced model needs no membership
+table because each symbol still represents exactly one original state.
 The inspection files are not compiled, linked, or read by the inference model.
 Merged states preserve the agreed corpus completions, not numerical vectors or
 all possible neural-model behavior. A class can group unrelated meanings; its
@@ -268,7 +263,7 @@ or the test fixtures. All amounts are bytes.
 The corresponding formatted production transition source shrinks from
 7,482,106 to 3,012,829 bytes (**59.7%**). Vocabulary strings, the text-prefix
 encoder, runtime scaffolding, and independent test fixtures are excluded from
-these transition-only totals. `generated/transition_patterns.json` records the
+these transition-only totals. `generated/transition_patterns.txt` records the
 chosen representation and source statistics for each function. Some small data
 arrays deliberately remain: replacing irregular masks/sequence literals with
 more branches made the executable larger. A pure-control-flow prototype was
@@ -289,13 +284,15 @@ Additional tests exercise unsupported histories, sparse-domain holes, truncated
 and extended sequences, zero outputs, and 32-bit limits. These fixtures are in a
 dedicated test target, not linked by the production model or CLI.
 
-To reproduce the current representation from the saved reduced model:
+To generate a compact representation directly from the native checkpoint:
 
 ```sh
 bazel run -c opt //src/llm/experiments/memorize_general_facts/discretized_model:generate_discretized_model -- \
-  --model=/path/to/reduced-model.json \
-  --compact_transitions --state_index \
-  --save_model=/tmp/facts-compact.json --output=/tmp/facts-compact-generated
+  --checkpoint=/path/to/run/layers_8/step_16128 \
+  --tokenizer=/path/to/run/inputs/tokenizer \
+  --corpus=testdata/general_facts_dataset.txt \
+  --reduce --compact_transitions --state_index \
+  --output=/tmp/facts-compact-generated
 ```
 
 The output path must be fresh. Omit `--compact_transitions` to emit private
@@ -339,59 +336,65 @@ private to the generated package; only the model factory is exported by its
 shared library. The CLI links prompt encoding and verification separately, so
 production model inference cannot access those fixtures.
 
-All generation logic and its Python tests
+All generation logic and its C++ tests
 live alongside this README: the driver, C++ emitter, state reduction,
 irreducibility checker, and compact-transition helpers. Generated C++ stays in
 `generated/`. Benchmarking and training-sweep utilities remain in
 `scripts/memorize_general_facts/`.
 
-## Reproduce execution trace snapshot and code generation
+## Single-step GPU conversion
 
-Use a fresh output path. `snapshot_execution_trace` runs the checkpoint over the
-corpus on CUDA and exports activation snapshots for the Python code generator;
-the resulting C++ inference does not use CUDA.
-The JSONL capture and intermediate JSON model are local build/research artifacts,
-not checked-in weight files. Bazel supplies Python 3.11 and all generator modules;
+Use a fresh output path. The C++ `generate_discretized_model` binary loads the
+checkpoint and tokenizer, captures exact BF16 activations on CUDA, constructs
+and optionally reduces the symbolic network in memory, then emits formatted
+CPU-only C++. There is no JSON/JSONL capture, saved-model file, Python process,
+or second conversion command. The existing tokenizer's `tokenizer.json` remains
+an input asset, not an intermediate model.
+
 `clang-format` must be installed and on `PATH`. Its repository configuration is
 included in the executable's runfiles, so generation does not depend on running
 inside the checkout. Relative input/output paths passed to `bazel run` resolve
 from the directory where you invoked Bazel.
 
 ```sh
-bazel build -c opt //src/llm/experiments/memorize_general_facts/discretized_model:snapshot_execution_trace
 facts_run=/home/ubuntu/checkpoints/memorize_general_facts/compact_batch_32_no_clip_0
 
-bazel-bin/src/llm/experiments/memorize_general_facts/discretized_model/snapshot_execution_trace \
+bazel run -c opt //src/llm/experiments/memorize_general_facts/discretized_model:generate_discretized_model -- \
   --checkpoint="$facts_run/layers_8/step_16128" \
   --tokenizer="$facts_run/inputs/tokenizer" \
   --corpus=testdata/general_facts_dataset.txt \
-  --output=/tmp/facts-capture.jsonl --verify_greedy=true
-
-bazel run -c opt //src/llm/experiments/memorize_general_facts/discretized_model:generate_discretized_model -- \
-  --capture=/tmp/facts-capture.jsonl --save_model=/tmp/facts-discrete.json \
-  --output=/tmp/facts-generated \
-  --checkpoint="$facts_run/layers_8/step_16128" \
-  --corpus=testdata/general_facts_dataset.txt \
-  --tokenizer_json="$facts_run/inputs/tokenizer/tokenizer.json"
+  --compact_transitions --state_index \
+  --output=/tmp/facts-generated
 ```
 
-The generator refuses existing output directories, verifies all continuations,
-formats the sources, and records file hashes in `manifest.json` and
-`provenance.json`. Copy a freshly generated package into the workspace to build
-it with Bazel. This is an explicit `py_binary` invocation, not a genrule or an
-automatic rewrite of checked-in generated code. The reusable Python modules
-are in the `:discretization` library; the `:generator` library exposes the driver
-to tests and other tools.
+This command keeps all exact states. Add `--reduce` to search for compatible
+within-boundary merges; `--neighbors`, `--max_passes`, `--max_attempts`, and
+`--exhaustive_pair_limit` bound that search. No intermediate checkpoint is saved:
+an interrupted conversion must restart. The 6,514-state checked-in model and its
+historical measurements above are preserved; a new search can choose a different
+quotient depending on candidate order and search limits.
 
-Reduction additionally supports optional NumPy/SciPy nearest-neighbor
-acceleration when invoking the script directly with a Python installation that
-provides those packages. The Bazel executable uses the standard-library fallback
-and does not install that optional accelerator.
-`--model=/tmp/facts-discrete.json --reduce` starts from a saved
-model; `--save_model` is also an atomic, verified resumable checkpoint during
-search. State counts and the precise stopping condition are recorded in that
-artifact and in generated provenance. Test the Python libraries and actual
-Bazel executable (including copied-runfiles portability) with:
+Defaults describe the selected checkpoint: width 16, eight blocks, one head,
+MLP width 64, 1,024 samples, and five prompt tokens. `--layers`,
+`--attention_heads`, `--feed_forward_width`, `--expected_samples`, and
+`--prompt_tokens` allow matching another checkpoint/corpus. Native autonomous
+completion and bitwise causal-prefix verification are enabled by default
+(`--verify_greedy=true`), as is symbolic suffix/EOS verification. Do not disable
+native greedy verification when establishing a new checkpoint's correctness.
+
+The generator refuses existing output paths, including symlinks, formats sources,
+and only then atomically publishes the completed directory. Readable statistics,
+verification results, and input/output hashes are in `generation_report.txt`;
+compact transition measurements are in `transition_patterns.txt`. Inspection
+TSVs are optional. No JSON reports are produced.
+
+Copy a freshly generated package into the workspace to build it with Bazel.
+This is an explicit `cc_binary` invocation, not a genrule or an automatic rewrite
+of checked-in generated code. The `:discretization` C++ library contains the
+CPU reduction/emission algorithms; `:generator` adds the GPU capture and driver.
+None of these dependencies enter the generated inference library.
+
+Test the C++ libraries and real-GPU conversion with:
 
 ```sh
 bazel test //src/llm/experiments/memorize_general_facts/discretized_model:generator_tests
