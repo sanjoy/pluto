@@ -21,6 +21,105 @@ Model Fixture() {
   return Model{1024, 1, 3, vocabulary, entry, attention, mlp, {snap}};
 }
 
+Model FunctionFixture() {
+  auto model = Fixture();
+  model.entry = {};
+  model.entry_function = [](TokenId token,
+                            uint32_t position) -> TransitionResult {
+    if (position == 0) {
+      if (token == 0)
+        return {4, true};
+      if (token == 1)
+        return {7, true};
+    }
+    if (position == 1 && token >= 1 && token <= 2)
+      return {static_cast<StateId>(token + 4), true};
+    return {};
+  };
+  static const AttentionTable attention[] = {
+      {{}, {}, [](absl::Span<const StateId> prefix) -> TransitionResult {
+         if (prefix.size() == 1 && prefix[0] == 4)
+           return {8, true};
+         if (prefix.size() == 1 && prefix[0] == 7)
+           return {11, true};
+         if (prefix.size() == 2 && prefix[0] == 4 && prefix[1] >= 5 &&
+             prefix[1] <= 6)
+           return {prefix[1] + 4, true};
+         return {};
+       }}};
+  static const StateTable mlp[] = {{{}, [](StateId state) -> TransitionResult {
+                                      if (state >= 8 && state <= 11)
+                                        return {state + 4, true};
+                                      return {};
+                                    }}};
+  model.attention = attention;
+  model.mlp = mlp;
+  model.snap = {{}, [](StateId state) -> TransitionResult {
+                  switch (state) {
+                    case 12:
+                      return {1, true};
+                    case 13:
+                    case 15:
+                      return {3, true};
+                    case 14:
+                      return {0, true};
+                    default:
+                      return {};
+                  }
+                }};
+  return model;
+}
+
+TEST(IntegerRuntime, CompiledFunctionsMatchTablesIncludingUnsupportedInputs) {
+  const auto table = Fixture();
+  const auto functions = FunctionFixture();
+  ASSERT_TRUE(ValidateModel(functions).ok());
+  // Exhaust the small fixture domain, including repeated/reordered histories
+  // and unsupported entries; merely matching the successful sentence is weak.
+  for (int length = 1; length <= 4; ++length) {
+    const int combinations = 1 << (2 * length);
+    for (int encoded = 0; encoded < combinations; ++encoded) {
+      std::vector<TokenId> tokens;
+      for (int index = 0; index < length; ++index)
+        tokens.push_back((encoded >> (2 * index)) & 3);
+      const auto expected = PredictNext(table, tokens);
+      const auto actual = PredictNext(functions, tokens);
+      ASSERT_EQ(actual.status().code(), expected.status().code());
+      EXPECT_EQ(actual.value_or(0), expected.value_or(0));
+    }
+  }
+  auto generated = Generate(functions, std::vector<TokenId>{0}, 9);
+  ASSERT_TRUE(generated.ok());
+  EXPECT_EQ(*generated, (std::vector<TokenId>{1, 3}));
+}
+
+TEST(IntegerRuntime, RejectsAmbiguousRepresentationsAndInvalidFunctionOutputs) {
+  auto model = FunctionFixture();
+  model.entry = Fixture().entry;
+  EXPECT_FALSE(ValidateModel(model).ok());
+  model = FunctionFixture();
+  auto attention = model.attention[0];
+  attention.rows = Fixture().attention[0].rows;
+  model.attention = absl::Span<const AttentionTable>(&attention, 1);
+  EXPECT_FALSE(ValidateModel(model).ok());
+  model = FunctionFixture();
+  model.snap.rows = Fixture().snap.rows;
+  EXPECT_FALSE(ValidateModel(model).ok());
+
+  model = FunctionFixture();
+  model.entry_function = [](TokenId, uint32_t) -> TransitionResult {
+    return {0, true};
+  };
+  EXPECT_EQ(PredictNext(model, std::vector<TokenId>{0}).status().code(),
+            absl::StatusCode::kDataLoss);
+  model = FunctionFixture();
+  const StateTable invalid_mlp[] = {
+      {{}, [](StateId) -> TransitionResult { return {1, true}; }}};
+  model.mlp = invalid_mlp;
+  EXPECT_EQ(PredictNext(model, std::vector<TokenId>{0}).status().code(),
+            absl::StatusCode::kDataLoss);
+}
+
 TEST(IntegerRuntime, ExecutesAllBoundariesAndPredictsEosAutoregressively) {
   const auto model = Fixture();
   ASSERT_TRUE(ValidateModel(model).ok());

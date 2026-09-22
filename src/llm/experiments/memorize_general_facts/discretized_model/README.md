@@ -24,7 +24,8 @@ TokenId` name in the `vocab` namespace, such as `vocab::kThe_216`,
 out spaces/punctuation; other bytes use `ByteXX`. The compact-ID suffix makes
 names unique even when a long name is shortened. Comments retain the exact token
 bytes and original GPT-2 IDs. Entry/readout tables, EOS configuration, and token
-arrays use these constants; token IDs and internal numeric states are unchanged.
+arrays use these constants; vocabulary IDs are unchanged. The optional control-
+flow pass renames internal symbols, with a complete mapping recorded below.
 Initially, internal symbols are numeric IDs for exact native BF16 residual
 vectors. In the reduced model they identify equivalence classes of those states.
 There are 17 internal boundaries: summed token/position embeddings, then the
@@ -48,10 +49,11 @@ there are 239,666 internal-state occurrences before exact deduplication.
 ## Generation and verification plan
 
 The GPU capture records exact activation bits and native top-1 predictions.
-A separate generator checks every duplicate key, emits ordinary C++ arrays in
-multiple source files, and formats them. There are no Bazel generation rules.
-Generated source is checked into `generated/`. Inference uses integer table
-lookups only; it does not load weights or use CUDA. Expected sentence suffixes
+A separate generator checks every duplicate key, emits ordinary C++ arrays or
+condensed transition functions in multiple source files, and formats them. There
+are no Bazel generation rules. Generated source is checked into `generated/`.
+Inference uses integer transitions only; it does not load weights or use CUDA.
+Expected sentence suffixes
 are verification fixtures, never prediction tables consulted by the runtime.
 
 Tests cover table consistency, unknown keys, causal history ordering, EOS,
@@ -77,7 +79,7 @@ merely exhausting a nearest-neighbor candidate set; neither alone proves a
 globally smallest representation.
 
 No merge crosses a boundary, removes a layer, or bypasses an attention/MLP
-table. This is a study of a layered symbolic representation, not a replacement
+transition. This is a study of a layered symbolic representation, not a replacement
 of the whole model with a sentence-completion dictionary.
 
 ## Exact baseline milestone
@@ -150,8 +152,8 @@ These counts measure state alphabets, not the information or bytes in the
 history-keyed tables; reducing states is not the same as compressing the model.
 
 All original 221,558 states are accounted for by the quotient membership map.
-The generator preserves all eight attention tables, all eight MLP tables, the
-position-entry table, and the final vocabulary snap. The generated code has
+The generator preserves all eight attention transitions, all eight MLP transitions,
+the position-entry function, and the final vocabulary snap. The generated code has
 boundary/row-layout comments and readable, byte-exact vocabulary literals.
 
 Two files support inspection without affecting inference:
@@ -171,7 +173,7 @@ The inspection files are not compiled, linked, or read by the inference model.
 Merged states preserve the agreed corpus completions, not numerical vectors or
 all possible neural-model behavior. A class can group unrelated meanings; its
 example contexts are evidence for further interpretation, not semantic proof.
-The final result passes all 72 repository Bazel test targets and all 216
+The final result passes all 73 repository Bazel test targets and all 247
 general-facts Python tests. Its executable and build dependency graph remain
 CUDA-free, and generated C++ is formatted with the repository's Google style.
 
@@ -191,6 +193,110 @@ Unknown entries, attention histories, MLP inputs, and readouts are errors.
 After merging, a previously unseen raw-token prefix may map to known abstract
 lookup keys; the lookup mechanism does not promise to reject every out-of-corpus
 token sequence. The text encoder deliberately accepts only recorded prefixes.
+
+## Transition patterns and condensed control flow
+
+`--compact_transitions` compiles the same finite functions into smaller programs.
+It preserves their support and outputs under the recorded symbol renaming. It
+does **not** merge more states, remove layers, or use cross-layer prediction
+shortcuts. All 6,514 residual classes remain, with
+their BF16 representatives and original memberships. The generator records the
+within-boundary renaming in `generated/state_relabeling.tsv`; numeric IDs can now
+have gaps. Private recognizer program counters are code locations, not additional
+activation classes.
+
+Patterns found:
+
+- **MLPs are bijections between boundary alphabets.** For blocks 0–6, choosing
+  output names in input order makes each MLP a range check plus a constant
+  addition. For example, block 0 accepts 4527–4574 and returns `state + 48`.
+  The separate MLP function is still called at every position.
+- **The final MLP and snap are bijective onto their required token labels.**
+  Name the last attention states `5189 + token_id` and final states
+  `9664 + token_id`. The final MLP adds 4475; the snap subtracts 9664. Each has
+  its own 560-byte support mask to reject the 1,575 unused labels. These masks
+  are essential: a range check alone would accept states that never existed.
+- **Entry is nearly token-only on this quotient.** Of 4,474 input tokens, 4,466
+  have the same entry symbol at all observed positions. Only eight need one
+  positional exception each. Deduplicated `(position-support mask, default
+  symbol)` patterns plus those explicit exceptions replace 8,175 triples.
+- **Attention shares prefixes and suffix programs.** Its 84,191 histories form
+  prefix-closed tries; bottom-up minimization yields 59,300 recognizer nodes.
+  Most nodes have one outgoing edge. Generated code groups branching cases,
+  shares identical tails, and checks longer straight-line runs with small typed
+  `(expected symbol, current output)` sequences. A shared matcher avoids
+  expanding every comparison into separate machine instructions. Helpers have
+  at most 256 recognizer nodes, keeping compilation practical and parallel across
+  the eight source files. The complete ordered history is still checked.
+
+These are **patterns in the finite symbolic quotient, not evidence that the
+original neural MLPs or head are affine**. Arithmetic offsets arise from our
+choice of names. The attention compression is structural sharing, not a newly
+discovered semantic rule. Simple current-state rules were insufficient: their
+majority outputs made 3,850–8,611 errors per attention block; adding sequence
+length or a short suffix did not fix this. No approximate rule was adopted.
+
+### Measured size
+
+Same machine and `bazel build -c opt`, comparing the named table version
+(`b076f03`) against the generated compact functions. The following counts are
+`size`'s text + data + BSS totals for each non-PIC model object: allocated code,
+read-only constants and runtime data, **not** object-file metadata, debug symbols,
+or the test fixtures. All amounts are bytes.
+
+| Boundary | Tables | Compact logic | Reduction |
+| --- | ---: | ---: | ---: |
+| Entry | 98,156 | 14,772 | 85.0% |
+| Attention 0 | 535,580 | 156,446 | 70.8% |
+| Attention 1 | 530,184 | 154,568 | 70.8% |
+| Attention 2 | 527,432 | 158,918 | 69.9% |
+| Attention 3 | 524,676 | 157,348 | 70.0% |
+| Attention 4 | 523,028 | 154,722 | 70.4% |
+| Attention 5 | 519,740 | 158,290 | 69.5% |
+| Attention 6 | 518,104 | 162,080 | 68.7% |
+| Attention 7 | 516,664 | 135,434 | 73.8% |
+| MLP 0–3, each | 440 | 132 | 70.0% |
+| MLP 4–5, each | 432 | 132 | 69.4% |
+| MLP 6 | 416 | 132 | 68.3% |
+| MLP 7 | 23,256 | 744 | 96.8% |
+| Snap | 23,256 | 728 | 96.9% |
+| **All transition objects** | **4,343,116** | **1,254,974** | **71.1%** |
+
+The corresponding formatted production transition source shrinks from
+7,482,106 to 3,012,829 bytes (**59.7%**). Vocabulary strings, the text-prefix
+encoder, runtime scaffolding, and independent test fixtures are excluded from
+these transition-only totals. `generated/transition_patterns.json` records the
+chosen representation and source statistics for each function. Some small data
+arrays deliberately remain: replacing irregular masks/sequence literals with
+more branches made the executable larger. A pure-control-flow prototype was
+also correct but larger than the selected shared-sequence version.
+The complete CLI's allocated sections, including its unchanged vocabulary,
+prompt encoder, and corpus-verification support, shrink from 6,520,292 to
+3,480,820 bytes (46.6%).
+
+### Equivalence checks
+
+In addition to all 1,024 autonomous completions, a separate C++ test reconstructs
+histories from 239,666 independently computed expected boundary states. Every
+callback receives the **source table's** inputs, not the preceding callback's
+actual outputs, so compensating mistakes cannot pass. Distinct-key coverage was
+checked against all 98,497 source entry, attention, MLP, and snap records.
+Additional tests exercise unsupported histories, sparse-domain holes, truncated
+and extended sequences, zero outputs, and 32-bit limits. These fixtures are in a
+dedicated test target, not linked by the production model or CLI.
+
+To reproduce the current representation from the saved reduced model:
+
+```sh
+python3 -B scripts/memorize_general_facts/generate_discretized_model.py \
+  --model=/tmp/pluto-discretize.AcuKzZ/search-final.json \
+  --compact_transitions --state_index \
+  --save_model=/tmp/facts-compact.json --output=/tmp/facts-compact-generated
+```
+
+The output path must be fresh. Omit `--compact_transitions` to emit the original
+per-boundary tables for comparison. Generator utilities and their tests remain
+in `scripts/memorize_general_facts/`; generated C++ stays here.
 
 ## Reproduce capture and code generation
 

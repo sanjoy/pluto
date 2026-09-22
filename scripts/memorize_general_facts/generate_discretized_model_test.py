@@ -90,6 +90,23 @@ class GenerateDriverTest(unittest.TestCase):
                          certificate["same_boundary_pairs"])
         self.assertFalse(certificate["global_minimum_proven"])
 
+    def test_compact_transitions_preserve_boundaries_and_emit_separate_tests(self):
+        args = self.arguments("--reduce", "--compact_transitions", "--state_index")
+        with contextlib.redirect_stdout(io.StringIO()):
+            model = driver.generate(args)
+        manifest = json.loads((args.output / "manifest.json").read_text())
+        self.assertEqual(manifest["transition_representation"], "control_flow")
+        self.assertTrue((args.output / "state_relabeling.tsv").exists())
+        self.assertTrue((args.output / "generated_transition_test.cc").exists())
+        self.assertIn("GeneratedEntryFunction", (args.output / "model.cc").read_text())
+        self.assertIn("Mlp0", (args.output / "mlp_0.cc").read_text())
+        self.assertNotIn("const StateRow kRows", (args.output / "mlp_0.cc").read_text())
+        self.assertEqual(model["stats"]["verification"]["errors"], 0)
+        self.assertEqual(len(model["attention"]), 1)
+        self.assertEqual(len(model["mlp"]), 1)
+        for name, digest in manifest["files"].items():
+            self.assertEqual(driver.sha256(args.output / name), digest)
+
     def test_wrong_sample_count_has_no_output(self):
         args = self.arguments("--expected_samples=2")
         with self.assertRaises(ValueError):

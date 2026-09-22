@@ -21,4 +21,5 @@ AttentionTable GeneratedAttention6();
 StateTable GeneratedMlp6();
 AttentionTable GeneratedAttention7();
 StateTable GeneratedMlp7();
+TransitionResult GeneratedEntryFunction(TokenId, uint32_t);
 }  // namespace pluto::llm::discretized
