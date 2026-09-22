@@ -8,7 +8,8 @@
 
 namespace pluto::llm::discretized {
 // Separate generated targets. Neither is visible to the integer model.
-absl::Status VerifyGeneratedModel(const Model& model, std::ostream& output);
+absl::Status VerifyGeneratedModel(const DiscreteModel& model,
+                                  std::ostream& output);
 absl::StatusOr<std::vector<DiscreteToken>> EncodeGeneratedPrompt(
     absl::string_view text);
 }  // namespace pluto::llm::discretized

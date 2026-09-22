@@ -8,7 +8,7 @@
 namespace pluto::llm::discretized {
 namespace {
 
-absl::Status CheckPrompt(const Model& model,
+absl::Status CheckPrompt(const DiscreteModel& model,
                          absl::Span<const DiscreteToken> tokens) {
   RETURN_IF_ERROR(ValidateModel(model));
   if (tokens.empty() || tokens.size() > model.context_length)
@@ -35,11 +35,12 @@ absl::StatusOr<DiscreteHiddenState> LookupState(Map& map,
 
 }  // namespace
 
-absl::Status ValidateModel(const Model& model) {
+absl::Status ValidateModel(const DiscreteModel& model) {
   if (model.context_length == 0 ||
       model.context_length >
           static_cast<uint32_t>(std::numeric_limits<int32_t>::max()) ||
-      model.prompt_tokens == 0 || model.prompt_tokens > model.context_length ||
+      model.prompt_token_count == 0 ||
+      model.prompt_token_count > model.context_length ||
       model.vocabulary.empty() ||
       model.vocabulary.size() >
           static_cast<size_t>(std::numeric_limits<int>::max()) ||
@@ -50,7 +51,7 @@ absl::Status ValidateModel(const Model& model) {
 }
 
 absl::StatusOr<DiscreteToken> PredictNext(
-    const Model& model, absl::Span<const DiscreteToken> tokens) {
+    const DiscreteModel& model, absl::Span<const DiscreteToken> tokens) {
   RETURN_IF_ERROR(CheckPrompt(model, tokens));
   std::vector<DiscreteHiddenState> states;
   states.reserve(tokens.size());
@@ -103,7 +104,7 @@ absl::StatusOr<DiscreteToken> PredictNext(
 }
 
 absl::StatusOr<std::vector<DiscreteToken>> Generate(
-    const Model& model, absl::Span<const DiscreteToken> prompt,
+    const DiscreteModel& model, absl::Span<const DiscreteToken> prompt,
     size_t max_new_tokens) {
   auto status = CheckPrompt(model, prompt);
   if (!status.ok())
@@ -123,7 +124,7 @@ absl::StatusOr<std::vector<DiscreteToken>> Generate(
   return generated;
 }
 
-absl::StatusOr<std::string> Decode(const Model& model,
+absl::StatusOr<std::string> Decode(const DiscreteModel& model,
                                    absl::Span<const DiscreteToken> tokens) {
   std::string result;
   for (DiscreteToken token : tokens) {

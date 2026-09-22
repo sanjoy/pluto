@@ -190,8 +190,8 @@ def _span(name, count):
 def _transition_object(body, interface, factory):
     """Give a private pure lookup its boundary's public polymorphic interface.
 
-    Each factory owns one stateless instance with static lifetime. Model stores
-    references to these objects, so they outlive every lookup.
+    Each factory owns one stateless instance with static lifetime. DiscreteModel
+    stores references to these objects, so they outlive every lookup.
     """
     parameters, arguments = {
         "CausalAttention": ("absl::Span<const DiscreteHiddenState> history", "history"),
@@ -358,12 +358,12 @@ std::optional<DiscreteHiddenState> Lookup(absl::Span<const DiscreteHiddenState> 
         f"Readout: final {_boundary_name(2*layers)} state -> compact next-token ID.\n"
         "Outputs are token IDs, including EOS; no continuation sequence is stored here.",
         token_names=token_names)
-    body = "const Model& GeneratedModel() {\n"
+    body = "const DiscreteModel& GeneratedModel() {\n"
     if layers:
         body += "  static " + _array("Transformer", "kTransformers", (
             f"{{GeneratedAttention{i}(), GeneratedMlp{i}()}}" for i in range(layers)))
     transformers = _span("kTransformers", layers) if layers else "{}"
-    body += f"  static const Model model{{1024, {model['prompt_tokens']}, vocab::{token_names[model['eos_token']]}, GeneratedVocabulary(), {transformers}, GeneratedLanguageModelingHead(), GeneratedPositionEmbedding()}};\n  return model;\n}}"
+    body += f"  static const DiscreteModel model{{1024, {model['prompt_tokens']}, vocab::{token_names[model['eos_token']]}, GeneratedVocabulary(), {transformers}, GeneratedLanguageModelingHead(), GeneratedPositionEmbedding()}};\n  return model;\n}}"
     files["model.cc"] = _source(body, vocabulary=True, description=
         "Integer network in original boundary order: entry -> (attention residual -> MLP residual) per block -> language modeling head.\n"
         "All attention and MLP boundaries remain separate. State IDs never identify corpus lines.")
@@ -375,7 +375,7 @@ std::optional<DiscreteHiddenState> Lookup(absl::Span<const DiscreteHiddenState> 
 #include "vocabulary_tokens.h"
 #include "gtest/gtest.h"
 namespace {NAMESPACE} {{
-absl::Status VerifyGeneratedModel(const Model&, std::ostream&);
+absl::Status VerifyGeneratedModel(const DiscreteModel&, std::ostream&);
 TEST(GeneratedIntegerModel, NamedVocabularyCoversEveryCompactId) {{
   constexpr DiscreteToken kTokens[] = {{
 {named_tokens}
@@ -506,15 +506,15 @@ def _render_verification(model, token_names):
         tokens.extend(sample["tokens"])
     body = "namespace {\nstruct Sample { size_t offset; size_t length; };\n"
     body += _array("DiscreteToken", "kExpectedTokens", (f"vocab::{token_names[token]}" for token in tokens)) + _array("Sample", "kSamples", rows) + "}\n"
-    body += '''absl::Status VerifyGeneratedModel(const Model& model, std::ostream& output) {
+    body += '''absl::Status VerifyGeneratedModel(const DiscreteModel& model, std::ostream& output) {
   size_t targets = 0;
   size_t sentences = 0;
   for (const auto& sample : kSamples) {
     const auto original = absl::MakeConstSpan(kExpectedTokens + sample.offset, sample.length);
-    auto generated = Generate(model, original.first(model.prompt_tokens),
-                              sample.length - model.prompt_tokens + 1);
+    auto generated = Generate(model, original.first(model.prompt_token_count),
+                              sample.length - model.prompt_token_count + 1);
     if (!generated.ok()) return generated.status();
-    std::vector<DiscreteToken> expected(original.begin() + model.prompt_tokens, original.end());
+    std::vector<DiscreteToken> expected(original.begin() + model.prompt_token_count, original.end());
     expected.push_back(model.eos_token);
     if (*generated != expected) {
       output << "mismatch at verification sentence " << sentences + 1 << "\\n";
