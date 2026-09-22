@@ -6,7 +6,6 @@
 #include <utility>
 #include <vector>
 
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -90,10 +89,6 @@ struct AttentionProgram {
   size_t trie_nodes;
   auto operator<=>(const AttentionProgram&) const = default;
 };
-
-// Shared by all transition emitters; rejects C++ keywords, reserved
-// identifiers, and text that could escape a function declaration.
-absl::Status ValidateTransitionFunctionName(absl::string_view name);
 
 absl::StatusOr<AttentionProgram> BuildAttention(
     absl::Span<const AttentionTransition> rows);

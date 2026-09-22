@@ -13,6 +13,7 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "src/llm/experiments/memorize_general_facts/discretized_model/naming_utils.h"
 #include "src/util/status_macros.h"
 
 namespace pluto::llm::discretized::generator {
