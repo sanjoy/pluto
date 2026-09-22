@@ -46,6 +46,8 @@ CommandLineOptions GenerationOptions() {
   options.mode = "infer_model";
   options.tokenizer = "/tokenizer";
   options.infer_checkpoint = "/model";
+  options.output_trace_html_mode = "activations";
+  options.model_width = 16;
   return options;
 }
 
@@ -131,6 +133,8 @@ TEST(MemorizeGeneralFactsCliTest, FiltersEveryFlagByExecutionPath) {
       {"prompt", false, true, false},
       {"generation_tokens", false, true, false},
       {"print_attention_probs", false, true, false},
+      {"output_trace_html_file", false, true, false},
+      {"output_trace_html_mode", false, true, false},
       {"verify_checkpoint", false, false, true},
   };
   for (const auto& test : cases) {
@@ -161,14 +165,14 @@ TEST(MemorizeGeneralFactsCliTest, AcceptsCompleteFlagSetsForEachPath) {
                 "checkpoint_every", "learning_rate", "warmup_steps",
                 "training_seconds", "corpus", "output_dir", "batch_size"})
           .ok());
-  EXPECT_TRUE(
-      Validate(Mode::kInferModel,
-               {"mode", "tokenizer", "layers", "model_width", "attention_heads",
-                "feed_forward_width", "compact_vocabulary", "seed",
-                "infer_checkpoint", "prompt", "generation_tokens",
-                "print_attention_probs"},
-               "/model", "", "/tokenizer", "")
-          .ok());
+  EXPECT_TRUE(Validate(Mode::kInferModel,
+                       {"mode", "tokenizer", "layers", "model_width",
+                        "attention_heads", "feed_forward_width",
+                        "compact_vocabulary", "seed", "infer_checkpoint",
+                        "prompt", "generation_tokens", "print_attention_probs",
+                        "output_trace_html_file", "output_trace_html_mode"},
+                       "/model", "", "/tokenizer", "")
+                  .ok());
   EXPECT_TRUE(
       Validate(Mode::kInferModel,
                {"mode", "tokenizer", "layers", "model_width", "attention_heads",
@@ -312,6 +316,98 @@ TEST(MemorizeGeneralFactsCliTest, EmptyPromptIsAllowedOnlyWhenOmitted) {
                 "--prompt must be nonempty when supplied");
   options.prompt = "A fact about Earth";
   EXPECT_TRUE(ValidateOptions(options, {"prompt"}).ok());
+}
+
+TEST(MemorizeGeneralFactsCliTest, TraceUsesDefaultOrExplicitActivationsMode) {
+  auto options = GenerationOptions();
+  options.output_trace_html_file = "/trace.html";
+  // The caller supplies the default mode in the snapshot, even when omitted
+  // from the command line. It need not be explicitly repeated to enable
+  // tracing.
+  EXPECT_TRUE(ValidateOptions(options, {"output_trace_html_file"}).ok());
+  EXPECT_TRUE(ValidateOptions(
+                  options, {"output_trace_html_file", "output_trace_html_mode"})
+                  .ok());
+  options.prompt = "The capital";
+  EXPECT_TRUE(ValidateOptions(
+                  options, {"prompt", "print_attention_probs",
+                            "output_trace_html_file", "output_trace_html_mode"})
+                  .ok());
+}
+
+TEST(MemorizeGeneralFactsCliTest, TraceRequiresANonemptyOutputFilename) {
+  auto options = GenerationOptions();
+  EXPECT_TRUE(ValidateOptions(options).ok());
+  ExpectInvalid(ValidateOptions(options, {"output_trace_html_file"}),
+                "--output_trace_html_file must be nonempty");
+  ExpectInvalid(ValidateOptions(options, {"output_trace_html_mode"}),
+                "--output_trace_html_mode requires --output_trace_html_file");
+  ExpectInvalid(ValidateOptions(options, {"output_trace_html_file",
+                                          "output_trace_html_mode"}),
+                "--output_trace_html_file must be nonempty");
+}
+
+TEST(MemorizeGeneralFactsCliTest, RejectsMalformedOrUnsupportedTraceModes) {
+  auto options = GenerationOptions();
+  options.output_trace_html_file = "/trace.html";
+  for (absl::string_view mode :
+       {"", "|", "activations|", "|activations", "activations||activations",
+        "Activations", "activations ", "unknown", "activations|unknown",
+        "unknown|activations", "activations,unknown",
+        "activations|activations"}) {
+    SCOPED_TRACE(mode);
+    options.output_trace_html_mode = std::string(mode);
+    ExpectInvalid(ValidateOptions(options, {"output_trace_html_file",
+                                            "output_trace_html_mode"}),
+                  "--output_trace_html_mode");
+  }
+  options.output_trace_html_mode = "activations|activations";
+  ExpectInvalid(ValidateOptions(options), "duplicate");
+}
+
+TEST(MemorizeGeneralFactsCliTest,
+     TraceRequiresWidth16WithoutRestrictingInference) {
+  auto options = GenerationOptions();
+  options.output_trace_html_file = "/trace.html";
+  for (int width : {0, 1, 15, 17, 32, 512}) {
+    SCOPED_TRACE(width);
+    options.model_width = width;
+    ExpectInvalid(ValidateOptions(options, {"output_trace_html_file"}),
+                  "requires --model_width=16");
+  }
+  options.model_width = 16;
+  EXPECT_TRUE(ValidateOptions(options, {"output_trace_html_file"}).ok());
+  options.output_trace_html_file.clear();
+  options.model_width = 512;
+  EXPECT_TRUE(ValidateOptions(options, {"model_width"}).ok());
+}
+
+TEST(MemorizeGeneralFactsCliTest, DefaultTraceOptionsDoNotEnableTracing) {
+  auto options = GenerationOptions();
+  options.model_width = 512;
+  EXPECT_TRUE(ValidateOptions(options).ok());
+  // Like other unused settings, an unconsumed mode value is not validated.
+  options.output_trace_html_mode = "unknown";
+  EXPECT_TRUE(ValidateOptions(options).ok());
+}
+
+TEST(MemorizeGeneralFactsCliTest, ExplicitTraceFlagsAreGenerationOnly) {
+  for (auto options : {TrainingOptions(), VerificationOptions()}) {
+    SCOPED_TRACE(options.mode);
+    SCOPED_TRACE(options.verify_checkpoint);
+    options.output_trace_html_mode = "activations";
+    options.model_width = 16;
+    for (absl::string_view flag :
+         {"output_trace_html_file", "output_trace_html_mode"}) {
+      SCOPED_TRACE(flag);
+      // Reject the flag even when it has its empty/default value.
+      ExpectInvalid(ValidateOptions(options, {flag}), "is not valid");
+      options.output_trace_html_file = "/trace.html";
+      ExpectInvalid(ValidateOptions(options, {flag}), "is not valid");
+      options.output_trace_html_file.clear();
+    }
+    EXPECT_TRUE(ValidateOptions(options).ok());
+  }
 }
 
 TEST(MemorizeGeneralFactsCliTest,

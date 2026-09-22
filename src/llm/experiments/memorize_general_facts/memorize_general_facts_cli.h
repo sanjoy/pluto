@@ -24,6 +24,9 @@ struct CommandLineOptions {
   std::string prompt;
   std::string corpus;
   std::string output_dir;
+  std::string output_trace_html_file;
+  std::string output_trace_html_mode;
+  int model_width = 0;
   int generation_tokens = 0;
   int batch_size = 0;
   int steps = 0;

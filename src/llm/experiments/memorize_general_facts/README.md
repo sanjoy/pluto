@@ -92,6 +92,46 @@ FlashAttention computation remains unchanged; an extra cuTile pass materializes
 its attention probabilities only when inspection is enabled. This costs
 quadratic device memory and can produce substantial output for long prompts.
 
+### Standalone HTML activation trace
+
+For a width-16 model, add these options to prompt inference:
+
+```sh
+--output_trace_html_file=/tmp/facts-activations.html \
+--output_trace_html_mode=activations
+```
+
+Open the resulting file directly in a browser. It needs no server, internet
+connection, JavaScript, downloaded fonts, or other external assets. `activations`
+is also the default mode when a file is supplied. The mode flag accepts a pipe-separated
+list for future extensions, but currently only `activations` is supported;
+unknown, empty, or repeated modes are errors. Both options are exclusive to
+prompt inference, and this visualization requires `--model_width=16`.
+
+Columns show token positions, with prompt and generated tokens distinguished.
+Rows show the token-plus-position embedding (the input to the first transformer)
+and the residual stream after each complete transformer block, before the final
+LayerNorm. Every cell displays eight 2D coordinate planes in two columns and four
+rows, pairing dimensions `(0,1)` through `(14,15)`. Arrows run from the origin to
+the raw coordinate pair; positive y points up. One symmetric scale is shared by
+all cells within a prompt, so arrows retain their relative magnitudes. Hover to
+see each pair's values, or expand a cell to read all 16 dimensions.
+
+These are each token's **own activations**, not the previous token's state that
+predicted it. After generation, one extra causal forward pass over the complete
+prompt and continuation captures every token, including the last emitted token.
+Only real token rows are copied through pinned host memory; EOS and right-padding
+rows are omitted. Original GPT-2 token IDs and byte-aware text labels are shown
+even for compact-vocabulary models. An immediate EOS or `--generation_tokens=0`
+still produces a trace of the prompt with an empty continuation.
+
+The feature works with both `--prompt` and the interactive prompt loop, and can
+be combined with `--print_attention_probs`. In interactive use, completed prompts
+accumulate as separate sections; each successful completion atomically replaces
+the requested file with a complete document. The parent directory must already
+exist. Existing content at that filename is replaced, so choose a report path,
+not a checkpoint or input file. Large traces can produce large HTML files.
+
 `--generation_tokens=0` echoes a valid prompt without generating. An explicitly
 empty `--prompt` is rejected; blank interactive lines are skipped. If a preferred
 GPT-2 token is absent, the compact tokenizer tries an exact encoding with retained

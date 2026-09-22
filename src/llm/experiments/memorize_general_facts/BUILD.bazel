@@ -3,6 +3,73 @@ load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 
 cc_library(
+    name = "activation_trace",
+    srcs = ["activation_trace.cc"],
+    hdrs = ["activation_trace.h"],
+    deps = [
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/llm:layer",
+        "//src/llm:layer_hooks",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_test(
+    name = "activation_trace_test",
+    srcs = ["activation_trace_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":activation_trace",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/llm:layer",
+        "//src/llm:layer_hooks",
+        "//src/llm/experiments/gpt2_shakespeare:gpt2",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "activation_trace_html",
+    srcs = ["activation_trace_html.cc"],
+    hdrs = ["activation_trace_html.h"],
+    deps = [
+        ":activation_trace",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "activation_trace_html_test",
+    size = "small",
+    srcs = ["activation_trace_html_test.cc"],
+    deps = [
+        ":activation_trace",
+        ":activation_trace_html",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "attention_inspection",
     srcs = ["attention_inspection.cc"],
     hdrs = ["attention_inspection.h"],
@@ -75,6 +142,8 @@ cc_binary(
     name = "memorize_general_facts",
     srcs = ["memorize_general_facts.cc"],
     deps = [
+        ":activation_trace",
+        ":activation_trace_html",
         ":attention_inspection",
         ":memorize_general_facts_cli",
         "//src/cuda:buffer",

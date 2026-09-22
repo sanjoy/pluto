@@ -37,6 +37,8 @@
 #include "src/llm/batch_validation.h"
 #include "src/llm/checkpoint.h"
 #include "src/llm/experiments/gpt2_shakespeare/gpt2.h"
+#include "src/llm/experiments/memorize_general_facts/activation_trace.h"
+#include "src/llm/experiments/memorize_general_facts/activation_trace_html.h"
 #include "src/llm/experiments/memorize_general_facts/attention_inspection.h"
 #include "src/llm/experiments/memorize_general_facts/memorize_general_facts_cli.h"
 #include "src/llm/extract_top1_ids.h"
@@ -67,6 +69,12 @@ ABSL_FLAG(int, generation_tokens, 64,
 ABSL_FLAG(bool, print_attention_probs, false,
           "In prompt inference, print each layer/head's causal attention "
           "probabilities for each generated token (can produce large output)");
+ABSL_FLAG(std::string, output_trace_html_file, "",
+          "In prompt inference, write a self-contained HTML trace; interactive "
+          "prompts accumulate in this file, replaced after each completion");
+ABSL_FLAG(std::string, output_trace_html_mode, "activations",
+          "Pipe-separated HTML trace modes; only activations is currently "
+          "supported and requires model_width=16");
 ABSL_FLAG(std::string, output_dir,
           "src/llm/experiments/memorize_general_facts/runs/baseline",
           "Experiment artifacts");
@@ -115,6 +123,8 @@ absl::StatusOr<Mode> RunModeFromFlags() {
   AddIfExplicitlySet(FLAGS_prompt, &explicitly_set);
   AddIfExplicitlySet(FLAGS_generation_tokens, &explicitly_set);
   AddIfExplicitlySet(FLAGS_print_attention_probs, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_output_trace_html_file, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_output_trace_html_mode, &explicitly_set);
   AddIfExplicitlySet(FLAGS_output_dir, &explicitly_set);
   AddIfExplicitlySet(FLAGS_layers, &explicitly_set);
   AddIfExplicitlySet(FLAGS_model_width, &explicitly_set);
@@ -139,6 +149,9 @@ absl::StatusOr<Mode> RunModeFromFlags() {
        .prompt = absl::GetFlag(FLAGS_prompt),
        .corpus = absl::GetFlag(FLAGS_corpus),
        .output_dir = absl::GetFlag(FLAGS_output_dir),
+       .output_trace_html_file = absl::GetFlag(FLAGS_output_trace_html_file),
+       .output_trace_html_mode = absl::GetFlag(FLAGS_output_trace_html_mode),
+       .model_width = absl::GetFlag(FLAGS_model_width),
        .generation_tokens = absl::GetFlag(FLAGS_generation_tokens),
        .batch_size = absl::GetFlag(FLAGS_batch_size),
        .steps = absl::GetFlag(FLAGS_steps),
@@ -623,6 +636,9 @@ absl::Status RunInference(cuda::Executor& executor,
   RETURN_IF_ERROR(ReadFromDirectory(executor, *model, checkpoint,
                                     /*allow_prefix=*/false));
 
+  const std::filesystem::path trace_file(
+      absl::GetFlag(FLAGS_output_trace_html_file));
+  std::vector<ActivationTrace> traces;
   const auto complete = [&](const std::string& prompt) -> absl::Status {
     ASSIGN_OR_RETURN(auto encoded, model_tokenizer->Encode(executor, prompt));
     // A fresh inspector per prompt also discards a final EOS pass, whose
@@ -656,6 +672,36 @@ absl::Status RunInference(cuda::Executor& executor,
         GenerateGreedyContinuation(
             executor, *model, encoded.span(), model_tokenizer->vocab_size(),
             eos_token, absl::GetFlag(FLAGS_generation_tokens), options));
+    ActivationTrace trace;
+    if (!trace_file.empty()) {
+      // A generated token's own activation exists only after that token is
+      // supplied as input. Replay the completed sequence once to include the
+      // last emitted token too; causal attention preserves all earlier rows.
+      ASSIGN_OR_RETURN(auto complete_tokens,
+                       cuda::PageLockedHostArray<int>::Allocate(
+                           executor, encoded.size() + generated.size()));
+      std::copy(encoded.begin(), encoded.end(), complete_tokens.begin());
+      std::copy(generated.begin(), generated.end(),
+                complete_tokens.begin() + encoded.size());
+      ASSIGN_OR_RETURN(trace.boundaries,
+                       CaptureActivationBoundaries(
+                           executor, *model, complete_tokens.span(),
+                           model_tokenizer->vocab_size(), eos_token,
+                           config.transformer_block_count, config.model_width));
+      trace.prompt = prompt;
+      trace.prompt_token_count = encoded.size();
+      trace.model_width = config.model_width;
+      // Display original GPT-2 IDs and bytes, never interpret compact IDs as
+      // base-vocabulary indices. Store tokens individually for column labels.
+      for (int token : complete_tokens) {
+        if (vocabulary != nullptr) {
+          ASSIGN_OR_RETURN(token, vocabulary->OriginalId(token));
+        }
+        trace.token_ids.push_back(token);
+        ASSIGN_OR_RETURN(auto token_text, detokenizer->Decode({&token, 1}));
+        trace.token_texts.push_back(std::move(token_text));
+      }
+    }
     if (vocabulary != nullptr) {
       for (int& token : generated) {
         ASSIGN_OR_RETURN(token, vocabulary->OriginalId(token));
@@ -665,6 +711,11 @@ absl::Status RunInference(cuda::Executor& executor,
     // UTF-8 characters. GenerateGreedyContinuation omits EOS, so it is never
     // printed.
     ASSIGN_OR_RETURN(auto text, detokenizer->Decode(generated.span()));
+    if (!trace_file.empty()) {
+      trace.continuation = text;
+      traces.push_back(std::move(trace));
+      RETURN_IF_ERROR(WriteActivationTraceHtmlFile(traces, trace_file));
+    }
     std::cout << prompt << text << std::endl;
     return absl::OkStatus();
   };

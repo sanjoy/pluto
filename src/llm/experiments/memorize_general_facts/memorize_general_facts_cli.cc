@@ -7,6 +7,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "src/util/status_macros.h"
@@ -48,6 +49,8 @@ constexpr FlagRule kFlagRules[] = {
     {"prompt", kGenerate},
     {"generation_tokens", kGenerate},
     {"print_attention_probs", kGenerate},
+    {"output_trace_html_file", kGenerate},
+    {"output_trace_html_mode", kGenerate},
     {"verify_checkpoint", kVerify},
 };
 
@@ -56,6 +59,48 @@ const FlagRule* FindRule(absl::string_view name) {
     if (rule.name == name)
       return &rule;
   return nullptr;
+}
+
+// An output file opts into tracing; the default mode alone does not. Keep this
+// validation separate from file creation so malformed flags have no effects.
+absl::Status ValidateOutputTrace(
+    const CommandLineOptions& options,
+    absl::Span<const absl::string_view> explicitly_set_flags) {
+  const auto is_explicit = [&](absl::string_view name) {
+    return std::find(explicitly_set_flags.begin(), explicitly_set_flags.end(),
+                     name) != explicitly_set_flags.end();
+  };
+  if (options.output_trace_html_file.empty()) {
+    if (is_explicit("output_trace_html_file"))
+      return absl::InvalidArgumentError(
+          "--output_trace_html_file must be nonempty when supplied");
+    if (is_explicit("output_trace_html_mode"))
+      return absl::InvalidArgumentError(
+          "--output_trace_html_mode requires --output_trace_html_file");
+    return absl::OkStatus();
+  }
+
+  // Parse the pipe-separated list even while there is only one mode, so empty
+  // entries and duplicate modes cannot silently change meaning in the future.
+  bool has_activations = false;
+  for (absl::string_view mode :
+       absl::StrSplit(options.output_trace_html_mode, '|')) {
+    if (mode.empty())
+      return absl::InvalidArgumentError(
+          "--output_trace_html_mode must not contain empty modes");
+    if (mode != "activations")
+      return absl::InvalidArgumentError(
+          absl::StrCat("unknown --output_trace_html_mode: ", mode,
+                       "; supported modes: activations"));
+    if (has_activations)
+      return absl::InvalidArgumentError(
+          "duplicate --output_trace_html_mode: activations");
+    has_activations = true;
+  }
+  if (options.model_width != 16)
+    return absl::InvalidArgumentError(
+        "--output_trace_html_mode=activations requires --model_width=16");
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -77,6 +122,7 @@ absl::StatusOr<Mode> ParseAndValidateRunMode(
         options.prompt.empty())
       return absl::InvalidArgumentError(
           "--prompt must be nonempty when supplied");
+    RETURN_IF_ERROR(ValidateOutputTrace(options, explicitly_set_flags));
     return mode;
   }
 
