@@ -42,7 +42,7 @@ class GenerateDriverTest(unittest.TestCase):
         for compact in (False, True):
             with self.subTest(compact=compact):
                 output = self.root / ("compact" if compact else "tables")
-                command = [sys.executable, "-B", str(Path(driver.__file__).resolve()),
+                command = [sys.executable, "-B", str(Path(driver.__file__).absolute()),
                            "--capture", str(self.capture), "--output", str(output),
                            "--expected_samples=1"]
                 if compact:
@@ -56,15 +56,17 @@ class GenerateDriverTest(unittest.TestCase):
 
     def test_emitter_is_loaded_from_experiment_directory(self):
         import inspect
-        repository = Path(driver.__file__).resolve().parents[5]
-        self.assertEqual(Path(inspect.getfile(driver.emit_model)).resolve(),
-                         Path(driver.__file__).resolve().with_name("discretize_emit.py"))
+        # Retain the logical runfiles path: resolving symlinks would silently
+        # read the checkout rather than the files declared as test data.
+        repository = Path(driver.__file__).absolute().parents[5]
+        self.assertEqual(Path(inspect.getfile(driver.emit_model)).absolute(),
+                         Path(driver.__file__).absolute().with_name("discretize_emit.py"))
         self.assertFalse((repository / "scripts/memorize_general_facts/discretize_emit.py").exists())
-        self.assertFalse((Path(driver.__file__).resolve().parent.parent /
+        self.assertFalse((Path(driver.__file__).absolute().parent.parent /
                           "discretize_emit.py").exists())
 
     def test_all_generator_modules_and_tests_are_colocated(self):
-        directory = Path(driver.__file__).resolve().parent
+        directory = Path(driver.__file__).absolute().parent
         repository = directory.parents[4]
         modules = ["generate_discretized_model", "discretize_core",
                    "discretize_certificate", "discretize_emit", "discretize_logic",

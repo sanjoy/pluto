@@ -292,7 +292,7 @@ dedicated test target, not linked by the production model or CLI.
 To reproduce the current representation from the saved reduced model:
 
 ```sh
-python3 -B src/llm/experiments/memorize_general_facts/discretized_model/generate_discretized_model.py \
+bazel run -c opt //src/llm/experiments/memorize_general_facts/discretized_model:generate_discretized_model -- \
   --model=/path/to/reduced-model.json \
   --compact_transitions --state_index \
   --save_model=/tmp/facts-compact.json --output=/tmp/facts-compact-generated
@@ -351,8 +351,11 @@ Use a fresh output path. `snapshot_execution_trace` runs the checkpoint over the
 corpus on CUDA and exports activation snapshots for the Python code generator;
 the resulting C++ inference does not use CUDA.
 The JSONL capture and intermediate JSON model are local build/research artifacts,
-not checked-in weight files. Python requires only its standard library for
-baseline generation; `clang-format` must be installed.
+not checked-in weight files. Bazel supplies Python 3.11 and all generator modules;
+`clang-format` must be installed and on `PATH`. Its repository configuration is
+included in the executable's runfiles, so generation does not depend on running
+inside the checkout. Relative input/output paths passed to `bazel run` resolve
+from the directory where you invoked Bazel.
 
 ```sh
 bazel build -c opt //src/llm/experiments/memorize_general_facts/discretized_model:snapshot_execution_trace
@@ -364,7 +367,7 @@ bazel-bin/src/llm/experiments/memorize_general_facts/discretized_model/snapshot_
   --corpus=testdata/general_facts_dataset.txt \
   --output=/tmp/facts-capture.jsonl --verify_greedy=true
 
-python3 -B src/llm/experiments/memorize_general_facts/discretized_model/generate_discretized_model.py \
+bazel run -c opt //src/llm/experiments/memorize_general_facts/discretized_model:generate_discretized_model -- \
   --capture=/tmp/facts-capture.jsonl --save_model=/tmp/facts-discrete.json \
   --output=/tmp/facts-generated \
   --checkpoint="$facts_run/layers_8/step_16128" \
@@ -375,15 +378,21 @@ python3 -B src/llm/experiments/memorize_general_facts/discretized_model/generate
 The generator refuses existing output directories, verifies all continuations,
 formats the sources, and records file hashes in `manifest.json` and
 `provenance.json`. Copy a freshly generated package into the workspace to build
-it with Bazel. Do not add a generation rule to the build.
+it with Bazel. This is an explicit `py_binary` invocation, not a genrule or an
+automatic rewrite of checked-in generated code. The reusable Python modules
+are in the `:discretization` library; the `:generator` library exposes the driver
+to tests and other tools.
 
 Reduction additionally supports optional NumPy/SciPy nearest-neighbor
-acceleration. `--model=/tmp/facts-discrete.json --reduce` starts from a saved
+acceleration when invoking the script directly with a Python installation that
+provides those packages. The Bazel executable uses the standard-library fallback
+and does not install that optional accelerator.
+`--model=/tmp/facts-discrete.json --reduce` starts from a saved
 model; `--save_model` is also an atomic, verified resumable checkpoint during
 search. State counts and the precise stopping condition are recorded in that
-artifact and in generated provenance. Test the Python utilities with:
+artifact and in generated provenance. Test the Python libraries and actual
+Bazel executable (including copied-runfiles portability) with:
 
 ```sh
-python3 -B -m unittest discover \
-  -s src/llm/experiments/memorize_general_facts/discretized_model -p '*_test.py'
+bazel test //src/llm/experiments/memorize_general_facts/discretized_model:generator_tests
 ```

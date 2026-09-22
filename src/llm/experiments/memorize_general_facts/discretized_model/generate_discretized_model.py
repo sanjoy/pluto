@@ -11,14 +11,20 @@ import argparse
 from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
 import sys
 
-# The emitter lives with the experiment. Resolve its package from this file,
-# not the caller's working directory, including for direct CLI invocations.
-sys.path.insert(0, str(Path(__file__).resolve().parents[5]))
+# Keep imports and resources in the same logical tree as this executable.
+# Bazel runfiles may contain symlinked source files: resolving those links would
+# escape the declared runfiles and accidentally rely on a source checkout.
+# The same layout also supports direct Python invocation from any directory.
+_MODULE_DIRECTORY = Path(__file__).absolute().parent
+_REPOSITORY_ROOT = _MODULE_DIRECTORY.parents[4]
+sys.path.insert(0, str(_MODULE_DIRECTORY))
+sys.path.insert(0, str(_REPOSITORY_ROOT))
 
 from discretize_core import (build_model, evaluate_model, load_model, reduce_model,
                              restore_membership, save_model)
@@ -90,9 +96,12 @@ def format_sources(directory):
     paths = sorted(path for path in directory.rglob("*")
                    if path.suffix in (".h", ".cc"))
     # Output normally lives in /tmp before installation. Explicitly use the
-    # repository's Google style rather than inheriting a temporary directory's
-    # configuration (or clang-format's LLVM fallback).
-    style = Path(__file__).resolve().parents[5] / ".clang-format"
+    # declared Google-style configuration rather than inheriting a temporary
+    # directory's settings (or clang-format's LLVM fallback). Bazel declares
+    # this file as data at the same logical root as the generator's sources.
+    style = _REPOSITORY_ROOT / ".clang-format"
+    if not style.is_file():
+        raise ValueError(f"missing declared clang-format configuration: {style}")
     # Independent translation units also format independently. Bound formatter
     # parallelism rather than making a huge shell argument list.
     with ThreadPoolExecutor(max_workers=4) as pool:
@@ -199,8 +208,14 @@ def generate(args):
 
 
 def main():
-    args = parser().parse_args()
     try:
+        # `bazel run` starts its binary in the runfiles tree. User arguments
+        # still name files relative to the directory where Bazel was invoked.
+        # Keep this CLI-only: importing or calling generate() never changes cwd.
+        working_directory = os.environ.get("BUILD_WORKING_DIRECTORY")
+        if working_directory:
+            os.chdir(working_directory)
+        args = parser().parse_args()
         generate(args)
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
         print(f"generation failed: {error}", file=sys.stderr)
