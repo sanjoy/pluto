@@ -1,96 +1,177 @@
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
-load("@rules_python//python:py_binary.bzl", "py_binary")
-load("@rules_python//python:py_library.bzl", "py_library")
-load("@rules_python//python:py_test.bzl", "py_test")
 
-# Explicit source lists make the portable runfiles independent of the checkout.
-# The local import root preserves the modules' standalone Python interfaces.
-py_library(
-    name = "discretization",
-    srcs = [
-        "discretize_attention_logic.py",
-        "discretize_certificate.py",
-        "discretize_core.py",
-        "discretize_emit.py",
-        "discretize_logic.py",
-        "discretize_pointwise.py",
-        "discretize_transition_tests.py",
+cc_library(
+    name = "generator_io",
+    srcs = ["generator_io.cc"],
+    hdrs = ["generator_io.h"],
+    deps = [
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@nlohmann_json//:json",
     ],
-    imports = ["."],
 )
 
-# The driver is also a library so tests and other tools can call generate().
-py_library(
+cc_test(
+    name = "generator_io_test",
+    size = "small",
+    srcs = ["generator_io_test.cc"],
+    deps = [
+        ":generator_io",
+        "@googletest//:gtest_main",
+    ],
+)
+
+# CPU algorithms used by the GPU-backed conversion driver. All intermediate
+# state stays in memory; none of these targets reads/writes model JSON files.
+cc_library(
+    name = "discretization",
+    srcs = [
+        "discretize_attention_logic.cc",
+        "discretize_certificate.cc",
+        "discretize_core.cc",
+        "discretize_emit.cc",
+        "discretize_logic.cc",
+        "discretize_pointwise.cc",
+        "discretize_reducer.cc",
+        "discretize_transition_tests.cc",
+    ],
+    hdrs = [
+        "discretize_attention_logic.h",
+        "discretize_certificate.h",
+        "discretize_core.h",
+        "discretize_emit.h",
+        "discretize_logic.h",
+        "discretize_pointwise.h",
+        "discretize_transition_tests.h",
+        "generator_model_validation.h",
+    ],
+    deps = [
+        ":generator_io",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/memory",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/strings:str_format",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "generator",
-    srcs = ["generate_discretized_model.py"],
-    data = ["//:clang_format_config"],
-    imports = ["."],
-    deps = [":discretization"],
+    srcs = [
+        "generate_discretized_model.cc",
+        "generator_capture.cc",
+    ],
+    hdrs = [
+        "generate_discretized_model.h",
+        "generator_capture.h",
+    ],
+    deps = [
+        ":discretization",
+        ":generator_io",
+        ":snapshot_execution_trace_lib",
+        "//src/cuda:executor",
+        "//src/dataset:compact_vocabulary",
+        "//src/dataset:gpt2_detokenizer",
+        "//src/dataset:gpt2_tokenizer",
+        "//src/dataset:padded_line_dataset",
+        "//src/llm:checkpoint",
+        "//src/llm:gpt2",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+    ],
 )
 
 # Run explicitly with bazel run; generated C++ remains checked-in source, not a
-# genrule output. clang-format is the only required host tool at generation time.
-py_binary(
+# genrule output. Conversion uses CUDA; the generated model is CPU-only.
+cc_binary(
     name = "generate_discretized_model",
-    srcs = ["generate_discretized_model.py"],
-    deps = [":generator"],
+    srcs = ["generate_discretized_model_main.cc"],
+    data = ["//:clang_format_config"],
+    deps = [
+        ":generator",
+        ":generator_io",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/memory",
+        "@rules_cc//cc/runfiles",
+    ],
 )
 
 [
-    py_test(
+    cc_test(
         name = name,
         size = "small",
-        srcs = [name + ".py"],
-        deps = [":discretization"],
+        srcs = [name + ".cc"],
+        deps = [
+            ":discretization",
+            ":generator_io",
+            "@googletest//:gtest_main",
+        ],
     )
     for name in [
-        "discretize_attention_logic_test",
         "discretize_certificate_test",
         "discretize_core_test",
-        "discretize_emit_test",
-        "discretize_pointwise_test",
-        "discretize_transition_tests_test",
+        "generator_compact_test",
+        "generator_emit_test",
     ]
 ]
 
-py_test(
+cc_test(
     name = "generate_discretized_model_test",
     size = "small",
-    srcs = ["generate_discretized_model_test.py"],
-    # The driver tests also check source layout and the runtime/public API split.
-    data = [
-        "discretize_attention_logic_test.py",
-        "discretize_certificate_test.py",
-        "discretize_core_test.py",
-        "discretize_emit_test.py",
-        "discretize_pointwise_test.py",
-        "discretize_transition_tests_test.py",
-        "runtime.h",
+    srcs = ["generate_discretized_model_test.cc"],
+    data = ["//:clang_format_config"],
+    deps = [
+        ":discretization",
+        ":generator",
+        ":generator_io",
+        "@googletest//:gtest_main",
     ],
-    deps = [":generator"],
-)
-
-py_test(
-    name = "generate_discretized_model_bazel_test",
-    size = "medium",
-    srcs = ["generate_discretized_model_bazel_test.py"],
-    args = ["$(rootpath :generate_discretized_model)"],
-    data = [":generate_discretized_model"],
 )
 
 test_suite(
     name = "generator_tests",
     tests = [
-        ":discretize_attention_logic_test",
         ":discretize_certificate_test",
         ":discretize_core_test",
-        ":discretize_emit_test",
-        ":discretize_pointwise_test",
-        ":discretize_transition_tests_test",
-        ":generate_discretized_model_bazel_test",
         ":generate_discretized_model_test",
+        ":generator_capture_test",
+        ":generator_compact_test",
+        ":generator_emit_test",
+        ":generator_io_test",
+    ],
+)
+
+cc_test(
+    name = "generator_capture_test",
+    size = "small",
+    srcs = ["generator_capture_test.cc"],
+    data = [
+        ":generate_discretized_model",
+        "//:clang_format_config",
+    ],
+    tags = ["requires-gpu"],
+    deps = [
+        ":discretization",
+        ":generator",
+        ":generator_io",
+        "//src/cuda:executor",
+        "//src/dataset:compact_vocabulary",
+        "//src/dataset:gpt2_tokenizer",
+        "//src/llm:checkpoint",
+        "//src/llm:gpt2",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -115,30 +196,6 @@ cc_library(
         "@abseil-cpp//absl/strings",
         "@abseil-cpp//absl/types:span",
         "@cuda//:cuda_runtime",
-    ],
-)
-
-cc_binary(
-    name = "snapshot_execution_trace",
-    srcs = ["snapshot_execution_trace_main.cc"],
-    deps = [
-        ":snapshot_execution_trace_lib",
-        "//src/cuda:executor",
-        "//src/dataset",
-        "//src/dataset:compact_vocabulary",
-        "//src/dataset:gpt2_detokenizer",
-        "//src/dataset:gpt2_tokenizer",
-        "//src/dataset:padded_line_dataset",
-        "//src/llm:checkpoint",
-        "//src/llm:gpt2",
-        "//src/util:status_macros",
-        "@abseil-cpp//absl/flags:flag",
-        "@abseil-cpp//absl/flags:parse",
-        "@abseil-cpp//absl/memory",
-        "@abseil-cpp//absl/status",
-        "@abseil-cpp//absl/status:statusor",
-        "@abseil-cpp//absl/strings",
-        "@abseil-cpp//absl/types:span",
     ],
 )
 
