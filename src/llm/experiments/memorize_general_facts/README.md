@@ -1,5 +1,10 @@
 # General-facts memorization experiment
 
+The [discrete-model experiment](discretized_model/README.md) compiles recorded
+checkpoint activations into a CPU-only symbolic network while retaining all
+transformer boundaries. Its guarantee is the exact corpus-completion task, not
+arbitrary-prompt equivalence to the neural model.
+
 Objective: find small GPT-2-style models with exact top-1 training-set
 completions. The defaults select the smallest configuration verified so far:
 **four blocks, width 10, MLP width 20, and 48,680 parameters**. Each of the

@@ -16,7 +16,8 @@ import shutil
 import subprocess
 import sys
 
-from discretize_core import build_model, evaluate_model, load_model, reduce_model, save_model
+from discretize_core import (build_model, evaluate_model, load_model, reduce_model,
+                             restore_membership, save_model)
 from discretize_emit import emit_model
 
 
@@ -30,13 +31,27 @@ def sha256(path):
 
 def provenance(args, model):
     """Identify the concrete inputs without checking checkpoint weights into Git."""
+    stats = dict(model.get("stats", {}))
+    # The resumable model retains the complete per-trial journal. The committed
+    # provenance keeps an identifying hash and a readable summary, not tens of
+    # thousands of repetitive records. State membership is inspectable separately.
+    merges = stats.pop("accepted_merges", [])
+    if merges:
+        encoded = json.dumps(merges, sort_keys=True, separators=(",", ":")).encode()
+        stats["accepted_merges_sha256"] = hashlib.sha256(encoded).hexdigest()
+        stats["accepted_merge_records"] = len(merges)
+        stats["merge_distance_summary"] = {
+            "minimum": min(row["euclidean_distance"] for row in merges),
+            "maximum": max(row["euclidean_distance"] for row in merges),
+            "induced_unions": sum(row["induced_unions"] for row in merges),
+        }
     result = {
         "schema": 1,
         "protocol": f"first {model['prompt_tokens']} tokens; autonomous suffix and explicit EOS",
         "source": str(args.capture or args.model),
         "source_sha256": sha256(args.capture or args.model),
         "verification": evaluate_model(model),
-        "stats": model.get("stats", {}),
+        "stats": stats,
     }
     if args.checkpoint is not None:
         files = sorted(args.checkpoint.glob("weight_*.bin"))
@@ -52,6 +67,8 @@ def provenance(args, model):
         if path is not None:
             result[name] = str(path)
             result[name + "_sha256"] = sha256(path)
+    if args.original_model is not None:
+        result["original_model_sha256"] = sha256(args.original_model)
     return result
 
 
@@ -77,6 +94,10 @@ def parser():
                         help="Fresh destination for generated source")
     result.add_argument("--save_model", type=Path,
                         help="Intermediate/resumable JSON; keep outside Git")
+    result.add_argument("--original_model", type=Path,
+                        help="Exact baseline for recovering original state membership")
+    result.add_argument("--state_index", action="store_true",
+                        help="Emit inspection-only state examples and BF16 representatives")
     result.add_argument("--expected_samples", type=int, default=1024)
     result.add_argument("--reduce", action="store_true")
     result.add_argument("--neighbors", type=int, default=8)
@@ -103,6 +124,8 @@ def generate(args):
         model = load_model(args.model)
         if len(model["samples"]) != args.expected_samples:
             raise ValueError("saved model has the wrong number of samples")
+    if args.original_model is not None:
+        model = restore_membership(model, load_model(args.original_model))
     print(json.dumps({"phase": "baseline", **evaluate_model(model),
                       "states": len(model["states"])}), flush=True)
     if args.reduce:
@@ -116,7 +139,7 @@ def generate(args):
     record = provenance(args, model)
     if args.save_model is not None:
         save_model(model, args.save_model)
-    emit_model(model, args.output)
+    emit_model(model, args.output, include_state_index=args.state_index)
     format_sources(args.output)
     # The emitter hashes its unformatted source. Publish hashes for the actual
     # formatted files that will be committed and compiled instead.

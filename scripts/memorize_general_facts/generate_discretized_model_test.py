@@ -58,6 +58,13 @@ class GenerateDriverTest(unittest.TestCase):
             driver.generate(args)
         self.assertEqual(sentinel.read_text(), "keep")
 
+    def test_optional_state_index_is_inspection_only(self):
+        args = self.arguments("--state_index")
+        with contextlib.redirect_stdout(io.StringIO()):
+            driver.generate(args)
+        self.assertTrue((args.output / "state_index.tsv").is_file())
+        self.assertNotIn("state_index.tsv", (args.output / "BUILD.bazel").read_text())
+
     def test_wrong_sample_count_has_no_output(self):
         args = self.arguments("--expected_samples=2")
         with self.assertRaises(ValueError):

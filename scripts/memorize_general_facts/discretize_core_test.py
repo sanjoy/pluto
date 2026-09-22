@@ -4,13 +4,15 @@
 import copy
 import json
 import random
+import signal
 from pathlib import Path
 import tempfile
 import unittest
 from unittest import mock
 
 from discretize_core import (IntegerModel, ModelError, QuotientReducer, build_model,
-                             evaluate_model, load_model, reduce_model, save_model)
+                             evaluate_model, load_model, reduce_model, restore_membership,
+                             save_model, _candidate_pairs, _eligible_pair_count)
 
 
 def header(prompt_tokens=1):
@@ -232,6 +234,62 @@ class DiscretizeCoreTest(unittest.TestCase):
         # or already-unified candidate must not repeatedly trigger at attempt 0.
         self.assertEqual(len(updates), 5)
         self.assertTrue(all(update["attempted"] == 0 for update in updates))
+
+    def test_terminal_pruning_covers_every_unknown_label_pair(self):
+        model = header()
+        model.update(states=[{"id": 3 + i, "stage": i // 4, "bits": [100 + i]}
+                             for i in range(12)], samples=[], entry=[],
+                     attention=[[[[3 + i], 7 + i] for i in range(4)]],
+                     mlp=[[[7 + i, 11 + i] for i in range(4)]], snap=[[12, 0], [13, 1]])
+        reducer = QuotientReducer(model)
+        for stage in (1, 2):
+            start = 3 + 4 * stage
+            pairs = {(first, second) for _, first, second in _candidate_pairs(reducer, stage, 1, exhaustive=True)}
+            expected = {(start + first, start + second) for first in range(4)
+                        for second in range(first + 1, 4)} - {(start + 1, start + 2)}
+            self.assertEqual(pairs, expected)
+        self.assertEqual(_eligible_pair_count(reducer), 16)
+
+    def test_membership_survives_resume_and_upgrades_old_checkpoint(self):
+        original = self.mergeable()
+        reducer = QuotientReducer(original)
+        reducer.try_merge(self.state(original, 2, 300), self.state(original, 2, 301))
+        partial = reducer.export()
+        self.assertEqual(sum(row["member_count"] for row in partial["states"]), 6)
+        old = copy.deepcopy(partial)
+        for row in old["states"]:
+            del row["members"]
+            del row["member_count"]
+        self.assertFalse(QuotientReducer(old).export()["stats"]["membership_complete"])
+        restored = restore_membership(old, original)
+        self.assertEqual(restored["states"], partial["states"])
+        resumed = QuotientReducer(restored)
+        resumed.try_merge(self.state(restored, 0, 100), self.state(restored, 0, 101))
+        result = resumed.export()
+        self.assertEqual([row["member_count"] for row in result["states"]], [2, 2, 2])
+        self.assertEqual(sorted(member for row in result["states"] for member in row["members"]),
+                         sorted(row["id"] for row in original["states"]))
+        bad = copy.deepcopy(old)
+        bad["snap"][0][1] = 0
+        with self.assertRaisesRegex(ModelError, "token label"):
+            restore_membership(bad, original)
+
+    def test_sigint_waits_for_complete_merge_then_saves_verified_checkpoint(self):
+        model = self.mergeable()
+        path = self.directory / "interrupted.json"
+        previous = signal.getsignal(signal.SIGINT)
+        original_try_merge = QuotientReducer.try_merge
+        def interrupt_during_trial(reducer, first, second):
+            signal.raise_signal(signal.SIGINT)
+            return original_try_merge(reducer, first, second)
+        with mock.patch.object(QuotientReducer, "try_merge", interrupt_during_trial):
+            with self.assertRaises(KeyboardInterrupt):
+                reduce_model(model, checkpoint_path=path)
+        saved = load_model(path)
+        self.assertEqual(len(saved["states"]), 3)
+        self.assertEqual(saved["stats"]["verification"]["explicit_eos"], 2)
+        self.assertTrue(saved["stats"]["search"]["interrupted"])
+        self.assertIs(signal.getsignal(signal.SIGINT), previous)
 
 
 if __name__ == "__main__":

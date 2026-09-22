@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """CPU-only emitter invariants and separation of model versus evidence."""
 
+import ast
 import copy
 import hashlib
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -35,9 +37,9 @@ class EmitModelTest(unittest.TestCase):
         self.root = Path(self.temporary.name)
         self.model = fixture()
 
-    def emit(self, name="generated", model=None):
+    def emit(self, name="generated", model=None, **options):
         destination = self.root / name
-        manifest = discretize_emit.emit_model(self.model if model is None else model, destination)
+        manifest = discretize_emit.emit_model(self.model if model is None else model, destination, **options)
         return destination, manifest
 
     def test_plain_split_sources_reproducible_under_input_table_order(self):
@@ -89,8 +91,70 @@ class EmitModelTest(unittest.TestCase):
     def test_arbitrary_bytes_are_escaped_without_utf8_roundtrip(self):
         self.model["vocabulary"][0]["hex"] = "0080ff225c0a"
         destination, _ = self.emit()
-        self.assertIn(r'"\x00\x80\xff\x22\x5c\x0a", 6',
+        self.assertIn(r'"\000\200\377\"\\\n", 6',
                       (destination / "vocabulary.cc").read_text())
+
+    def test_readable_literal_preserves_all_byte_values_and_escape_boundaries(self):
+        contents = bytes(range(256)) + b"\xffa012\x00a7\"\\\n"
+        literal = discretize_emit._literal(contents)
+        self.assertEqual(ast.literal_eval(literal).encode("latin1"), contents)
+        self.assertEqual(discretize_emit._literal(b" The capital of France"),
+                         '" The capital of France"')
+        self.assertIn(r"\377a012", literal)
+
+    def test_generated_sources_explain_strict_boundaries_and_safe_token_comments(self):
+        self.model["vocabulary"][0]["hex"] = b'*/\n// injected\n\\'.hex()
+        destination, _ = self.emit()
+        entry = (destination / "entry.cc").read_text()
+        self.assertIn("zero_based_position", entry)
+        self.assertIn(r'// token "*/\n// injected\n\\"', entry)
+        self.assertNotIn("\n// injected", entry)
+        self.assertIn("complete causal state prefix", (destination / "attention_0.cc").read_text())
+        self.assertIn("pointwise MLP boundary", (destination / "mlp_0.cc").read_text())
+        self.assertIn("All attention and MLP boundaries remain separate", (destination / "model.cc").read_text())
+
+    def test_optional_state_index_counts_real_positions_and_names_every_boundary(self):
+        self.model["samples"].append({"tokens": [0, 1]})
+        destination, manifest = self.emit(include_state_index=True)
+        self.assertTrue(manifest["state_index_included"])
+        index = (destination / "state_index.tsv").read_text()
+        self.assertIn("not semantic labels", index)
+        lines = [line for line in index.splitlines() if not line.startswith("#")]
+        rows = {int(fields[0]): fields for fields in (line.split("\t") for line in lines[1:])}
+        self.assertEqual(set(rows), set(range(4, 16)))
+        self.assertEqual(rows[4][1:4], ["token_plus_position_embedding", "0004 0000", "2"])
+        self.assertEqual(rows[9][1], "block_0.after_attention_residual")
+        self.assertEqual(rows[13][1], "block_0.after_mlp_residual")
+        self.assertEqual(rows[6][3], "0")
+        self.assertEqual(json.loads(rows[6][4]), [])
+        self.assertEqual(json.loads(rows[13][4]), [{"compact_ids": [0, 1], "text": "AB"}])
+        self.assertEqual(sum(int(row[3]) for row in rows.values()), 5 * 3)
+        self.assertNotIn("state_index.tsv", (destination / "BUILD.bazel").read_text())
+        second, repeated = self.emit("repeat", include_state_index=True)
+        self.assertEqual(index, (second / "state_index.tsv").read_text())
+        self.assertEqual(manifest, repeated)
+
+    def test_index_examples_are_capped_and_long_text_is_explicitly_truncated(self):
+        self.model.update(layers=0, states=[{"id": 4, "stage": 0, "bits": [4, 0]}],
+                          entry=[[0, 0, 4], [0, 1, 4], [1, 0, 4], [2, 0, 4]],
+                          attention=[], mlp=[], snap=[[4, 3]],
+                          samples=[{"tokens": [0]}, {"tokens": [1]}, {"tokens": [2]}, {"tokens": [0, 0]}])
+        self.model["vocabulary"][0]["hex"] = (b"A" * 200).hex()
+        destination, _ = self.emit(include_state_index=True)
+        fields = (destination / "state_index.tsv").read_text().splitlines()[-1].split("\t")
+        self.assertEqual(fields[3], "5")
+        examples = json.loads(fields[4])
+        self.assertEqual(len(examples), 3)
+        self.assertEqual(examples[0], {"compact_ids": [0], "text": "A" * 160,
+                                       "text_truncated_after_bytes": 160})
+
+    def test_index_is_opt_in_and_cannot_alter_model_tables(self):
+        ordinary, _ = self.emit()
+        inspected, _ = self.emit("inspected", include_state_index=True)
+        self.assertFalse((ordinary / "state_index.tsv").exists())
+        for file in ordinary.iterdir():
+            if file.name != "manifest.json":
+                self.assertEqual(file.read_bytes(), (inspected / file.name).read_bytes())
 
     def test_existing_output_is_never_modified(self):
         destination, _ = self.emit()
@@ -98,6 +162,23 @@ class EmitModelTest(unittest.TestCase):
         with self.assertRaises(FileExistsError):
             self.emit()
         self.assertEqual(before, {p.name: p.read_bytes() for p in destination.iterdir()})
+
+    def test_state_membership_is_separate_and_exact(self):
+        for row in self.model["states"]:
+            row["members"] = [row["id"] * 10, row["id"] * 10 + 1]
+            row["member_count"] = 2
+        destination, _ = self.emit(include_state_index=True)
+        index = (destination / "state_index.tsv").read_text()
+        rows = [line.split("\t") for line in index.splitlines() if not line.startswith("#")][1:]
+        self.assertTrue(all(row[-1] == "2" for row in rows))
+        members = (destination / "state_members.tsv").read_text()
+        self.assertIn("[40,41]", members)
+        self.assertNotIn("state_members.tsv", (destination / "BUILD.bazel").read_text())
+
+    def test_unknown_membership_is_not_fabricated(self):
+        destination, _ = self.emit(include_state_index=True)
+        self.assertIn("\tunknown\n", (destination / "state_index.tsv").read_text())
+        self.assertFalse((destination / "state_members.tsv").exists())
 
     def test_publication_race_refuses_even_empty_directory(self):
         publish = discretize_emit._publish

@@ -11,8 +11,10 @@ import hashlib
 import json
 import math
 from pathlib import Path
+import signal
 import struct
 import tempfile
+import threading
 import time
 
 
@@ -220,6 +222,49 @@ def load_model(path, *, verify=True):
     return model
 
 
+def restore_membership(model, original_model):
+    """Recover exact original-state membership from a quotient's integer tables.
+
+    This also upgrades older checkpoints that did not save membership. It checks
+    the homomorphism at every boundary and cannot infer memberships merely from
+    the surviving representative vectors. Neither input dictionary is modified.
+    """
+    for key in ("schema", "width", "layers", "vocab_size", "eos_token", "prompt_tokens", "vocabulary"):
+        if model[key] != original_model[key]:
+            raise ModelError(f"membership source disagrees on {key}")
+    quotient = IntegerModel(model)
+    mapping = {}
+    try:
+        for token, position, state in original_model["entry"]:
+            _put(mapping, state, quotient.entry[token, position], "state membership")
+        for layer in range(model["layers"]):
+            for inputs, output in original_model["attention"][layer]:
+                transformed = tuple(mapping[state] for state in inputs)
+                _put(mapping, output, quotient.attention[layer][transformed], "state membership")
+            for source, output in original_model["mlp"][layer]:
+                _put(mapping, output, quotient.mlp[layer][mapping[source]], "state membership")
+        for state, token in original_model["snap"]:
+            if quotient.snap[mapping[state]] != token:
+                raise ModelError("membership source disagrees on a required token label")
+    except KeyError as error:
+        raise ModelError(f"model is not a complete quotient of the membership source: {error}") from error
+    members = {row["id"]: [] for row in model["states"]}
+    stages = {row["id"]: row["stage"] for row in model["states"]}
+    for row in original_model["states"]:
+        target = mapping.get(row["id"])
+        if target not in members or row["stage"] != stages[target]:
+            raise ModelError("membership state is missing or crosses a boundary")
+        members[target].extend(row.get("members", [row["id"]]))
+    if any(not group for group in members.values()):
+        raise ModelError("quotient contains a state without an original member")
+    result = dict(model)
+    result["states"] = [dict(row, members=sorted(members[row["id"]]),
+                             member_count=len(members[row["id"]])) for row in model["states"]]
+    result["stats"] = dict(model.get("stats", {}), membership_complete=True,
+                           membership_original_states=sum(len(group) for group in members.values()))
+    return result
+
+
 class QuotientReducer:
     """Incremental congruence closure with complete rollback of rejected seeds.
 
@@ -323,7 +368,8 @@ class QuotientReducer:
             first, second = (self.find(index) for index in pending.popleft())
             if first == second:
                 continue
-            if self.label[first] >= 0 and self.label[second] >= 0 and self.label[first] != self.label[second]:
+            first_label, second_label = self.terminal_label(first), self.terminal_label(second)
+            if first_label >= 0 and second_label >= 0 and first_label != second_label:
                 self._rollback(undo)
                 self.rejected_pairs.add(pair)
                 return False
@@ -354,7 +400,10 @@ class QuotientReducer:
                     undo.append(("dictionary", signature, None))
                     self.signatures[signature] = term
                 else:
-                    pending.append((out, self.terms[other][2]))
+                    # Follow one implication toward terminal labels promptly.
+                    # Breadth-first closure can expand thousands of doomed
+                    # intermediate unions before reaching the first conflict.
+                    pending.appendleft((out, self.terms[other][2]))
         if count:
             self.accepted += 1
             self.unions += count
@@ -393,6 +442,17 @@ class QuotientReducer:
                   ("schema", "width", "layers", "vocab_size", "eos_token", "prompt_tokens", "vocabulary", "samples")}
         result["states"] = [{"id": renumber[root], "stage": self.stage[root],
                               "bits": self.states[root]["bits"]} for root in roots]
+        # Old reduced checkpoints need restore_membership once; treating their
+        # newly numbered representatives as original IDs would invent provenance.
+        complete_membership = (not self.model.get("stats", {}).get("state_unions", 0)
+                               or all("members" in row for row in self.states))
+        if complete_membership:
+            members = {root: [] for root in roots}
+            for index, row in enumerate(self.states):
+                members[self.find(index)].extend(row.get("members", [row["id"]]))
+            for row, root in zip(result["states"], roots):
+                row["members"] = sorted(members[root])
+                row["member_count"] = len(members[root])
         result["entry"] = [[token, position, state_id(out)] for token, position, out in self.model["entry"]]
         result["attention"], result["mlp"] = [], []
         for layer in range(self.model["layers"]):
@@ -410,6 +470,9 @@ class QuotientReducer:
         result["stats"] = dict(self.model.get("stats", {}))
         previous = self.model.get("stats", {})
         result["stats"].update(states=len(roots),
+            membership_complete=complete_membership,
+            membership_original_states=(sum(row["member_count"] for row in result["states"])
+                                        if complete_membership else None),
             states_per_stage=[sum(self.stage[root] == stage for root in roots)
                               for stage in range(2 * self.model["layers"] + 1)],
             attempted_seeds=previous.get("attempted_seeds", 0) + self.attempted,
@@ -509,9 +572,57 @@ def _eligible_pair_count(reducer):
     return total
 
 
+class _CooperativeInterrupt:
+    """Defer SIGINT until a trial union has committed or completely rolled back."""
+
+    def __init__(self):
+        self.requested = False
+        self.checkpoint = None
+        self.previous = None
+        self.installed = False
+
+    def __enter__(self):
+        if threading.current_thread() is threading.main_thread():
+            self.previous = signal.getsignal(signal.SIGINT)
+            signal.signal(signal.SIGINT, self._request)
+            self.installed = True
+        return self
+
+    def _request(self, signum, frame):
+        self.requested = True
+
+    def check(self):
+        if self.requested:
+            self.requested = False
+            if self.checkpoint is not None:
+                self.checkpoint()
+            raise KeyboardInterrupt("reduction interrupted at a safe checkpoint boundary")
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        if self.installed:
+            signal.signal(signal.SIGINT, self.previous)
+
+
 def reduce_model(model, *, neighbors=4, max_passes=10, max_attempts=None,
                  exhaustive_pair_limit=100_000, checkpoint_path=None,
                  checkpoint_seconds=60, progress=None):
+    """Reduce a model; SIGINT atomically saves a verified checkpoint if supplied.
+
+    Distances order candidate attempts but never restrict the final exhaustive
+    sweep. Resume by loading the saved model and calling this function again.
+    """
+    with _CooperativeInterrupt() as interrupt:
+        result = _reduce_model(model, neighbors=neighbors, max_passes=max_passes,
+            max_attempts=max_attempts, exhaustive_pair_limit=exhaustive_pair_limit,
+            checkpoint_path=checkpoint_path, checkpoint_seconds=checkpoint_seconds,
+            progress=progress, interrupt=interrupt)
+        interrupt.check()
+        return result
+
+
+def _reduce_model(model, *, neighbors, max_passes, max_attempts,
+                  exhaustive_pair_limit, checkpoint_path,
+                  checkpoint_seconds, progress, interrupt):
     """Reduce nearby states and honestly report the achieved stopping condition.
 
     A saved checkpoint is a complete verified model and can be passed back here
@@ -524,10 +635,15 @@ def reduce_model(model, *, neighbors=4, max_passes=10, max_attempts=None,
     start = last_checkpoint = last_report_time = time.monotonic()
     last_report_attempt = 0
     history = []
+    if checkpoint_path is not None:
+        interrupt.checkpoint = lambda: reducer.save_checkpoint(checkpoint_path,
+            search={"history": history, "interrupted": True,
+                    "pairwise_irreducible": False, "global_minimum_proven": False})
     stop = "pass_limit"
     pairwise_irreducible = False
     def report(phase, pass_number):
         nonlocal last_checkpoint, last_report_attempt, last_report_time
+        interrupt.check()
         roots = reducer.roots()
         counts = [0] * (2 * model["layers"] + 1)
         for root in roots:
@@ -555,11 +671,13 @@ def reduce_model(model, *, neighbors=4, max_passes=10, max_attempts=None,
         exhausted_budget = False
         for stage in range(2 * model["layers"] + 1):
             for _, first, second in _candidate_pairs(reducer, stage, neighbors):
+                interrupt.check()
                 if max_attempts is not None and reducer.attempted >= max_attempts:
                     exhausted_budget = True
                     break
                 if reducer.find(reducer.index[first]) != reducer.find(reducer.index[second]):
                     reducer.try_merge(first, second)
+                interrupt.check()
                 if report_due():
                     report("nearest", pass_number)
             report("nearest", pass_number)
@@ -581,11 +699,13 @@ def reduce_model(model, *, neighbors=4, max_passes=10, max_attempts=None,
             exhausted_budget = False
             for stage in range(2 * model["layers"] + 1):
                 for _, first, second in _candidate_pairs(reducer, stage, neighbors, exhaustive=True):
+                    interrupt.check()
                     if max_attempts is not None and reducer.attempted >= max_attempts:
                         exhausted_budget = True
                         break
                     if reducer.find(reducer.index[first]) != reducer.find(reducer.index[second]):
                         reducer.try_merge(first, second)
+                    interrupt.check()
                     if report_due():
                         report("exhaustive", sweep)
                 report("exhaustive", sweep)
