@@ -18,12 +18,12 @@ import sys
 
 # The emitter lives with the experiment. Resolve its package from this file,
 # not the caller's working directory, including for direct CLI invocations.
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[5]))
 
 from discretize_core import (build_model, evaluate_model, load_model, reduce_model,
                              restore_membership, save_model)
 from discretize_certificate import certify_model
-from src.llm.experiments.memorize_general_facts.discretize_emit import emit_model
+from src.llm.experiments.memorize_general_facts.discretized_model.discretize_emit import emit_model
 
 
 def sha256(path):
@@ -92,7 +92,7 @@ def format_sources(directory):
     # Output normally lives in /tmp before installation. Explicitly use the
     # repository's Google style rather than inheriting a temporary directory's
     # configuration (or clang-format's LLVM fallback).
-    style = Path(__file__).resolve().parents[2] / ".clang-format"
+    style = Path(__file__).resolve().parents[5] / ".clang-format"
     # Independent translation units also format independently. Bound formatter
     # parallelism rather than making a huge shell argument list.
     with ThreadPoolExecutor(max_workers=4) as pool:

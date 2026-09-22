@@ -14,9 +14,9 @@ import unittest
 from unittest import mock
 
 # Keep direct test execution and discovery independent of the current directory.
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[5]))
 
-from src.llm.experiments.memorize_general_facts import discretize_emit
+from src.llm.experiments.memorize_general_facts.discretized_model import discretize_emit
 
 
 def fixture():
@@ -110,13 +110,13 @@ import json
 from pathlib import Path
 import sys
 sys.path.insert(0, sys.argv[1])
-from src.llm.experiments.memorize_general_facts.discretize_emit import emit_model
+from src.llm.experiments.memorize_general_facts.discretized_model.discretize_emit import emit_model
 emit_model(json.loads(Path(sys.argv[2]).read_text()), Path(sys.argv[3]),
            compact_transitions=True)
 """
         result = subprocess.run(
             [sys.executable, "-B", "-c", command,
-             str(Path(__file__).resolve().parents[2]), str(model_path), str(output)],
+             str(Path(__file__).resolve().parents[5]), str(model_path), str(output)],
             cwd=self.root, capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads((output / "manifest.json").read_text())[

@@ -5,6 +5,10 @@ training/evaluation code, dataset, GPU kernels, and Bazel tests remain in
 [`src/llm/experiments/memorize_general_facts`](../../src/llm/experiments/memorize_general_facts).
 Neither the native binary nor its libraries depend on these scripts.
 
+Discrete-model generation and its tests live with the
+[discretized model](../../src/llm/experiments/memorize_general_facts/discretized_model/README.md),
+not in this benchmarking/sweeping directory.
+
 | Utility | Purpose |
 | --- | --- |
 | `run_depth_search.py` | Train and independently verify successive depths. |
