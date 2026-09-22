@@ -1,97 +1,15 @@
 #include "src/llm/experiments/memorize_general_facts/discretized_model/discretize_logic.h"
 
-#include <optional>
 #include <string>
-#include <type_traits>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
 #include "src/llm/experiments/memorize_general_facts/discretized_model/discretize_attention_logic.h"
 #include "src/llm/experiments/memorize_general_facts/discretized_model/discretize_pointwise.h"
 #include "src/llm/experiments/memorize_general_facts/discretized_model/discretize_transition_tests.h"
 #include "src/util/status_macros.h"
 
 namespace pluto::llm::discretized::generator {
-namespace {
-
-absl::string_view RepresentationName(TransitionRepresentation representation) {
-  switch (representation) {
-    case TransitionRepresentation::kEmpty:
-      return "empty";
-    case TransitionRepresentation::kGuardedAffine:
-      return "guarded_affine";
-    case TransitionRepresentation::kSparseAffineSupportMask:
-      return "sparse_affine_support_mask";
-    case TransitionRepresentation::kAffineRangesAndSwitch:
-      return "affine_ranges_and_switch";
-    case TransitionRepresentation::kGuardedOutputArray:
-      return "guarded_output_array";
-    case TransitionRepresentation::kExactTokenPositionSwitch:
-      return "exact_token_position_switch";
-    case TransitionRepresentation::kPackedSupportPatternsAndExceptions:
-      return "packed_support_patterns_and_exceptions";
-    case TransitionRepresentation::kSharedSuffixControlFlow:
-      return "shared_suffix_control_flow";
-  }
-  return "unknown";
-}
-
-template <class T>
-void AppendOptional(std::string& report, absl::string_view name,
-                    const std::optional<T>& value) {
-  if (!value)
-    return;
-  if constexpr (std::is_same_v<T, bool>)
-    absl::StrAppend(&report, "  ", name, ": ", *value ? "true" : "false", "\n");
-  else
-    absl::StrAppend(&report, "  ", name, ": ", *value, "\n");
-}
-
-void AppendStatistics(std::string& report, const TransitionStatistics& stats) {
-  absl::StrAppend(
-      &report, "  representation: ", RepresentationName(stats.representation),
-      "\n  rows: ", stats.rows, "\n  source_bytes: ", stats.source_bytes, "\n");
-#define APPEND_MEASUREMENT(field) AppendOptional(report, #field, stats.field)
-  if (stats.strategy)
-    absl::StrAppend(&report, "  strategy: ",
-                    *stats.strategy == AttentionStrategy::kHybrid
-                        ? "hybrid"
-                        : "control_flow",
-                    "\n");
-  APPEND_MEASUREMENT(table_bytes);
-  APPEND_MEASUREMENT(affine_ranges);
-  APPEND_MEASUREMENT(switch_cases);
-  APPEND_MEASUREMENT(supported_span);
-  APPEND_MEASUREMENT(named_anchor);
-  APPEND_MEASUREMENT(named_outputs);
-  APPEND_MEASUREMENT(tokens);
-  APPEND_MEASUREMENT(patterns);
-  APPEND_MEASUREMENT(position_bits);
-  APPEND_MEASUREMENT(token_only_defaults);
-  APPEND_MEASUREMENT(position_exceptions);
-  APPEND_MEASUREMENT(named_exception_tokens);
-  APPEND_MEASUREMENT(flat_key_scalars);
-  APPEND_MEASUREMENT(flat_scalars);
-  APPEND_MEASUREMENT(trie_nodes);
-  APPEND_MEASUREMENT(nodes);
-  APPEND_MEASUREMENT(edges);
-  APPEND_MEASUREMENT(unary_nodes);
-  APPEND_MEASUREMENT(branch_nodes);
-  APPEND_MEASUREMENT(branch_edges);
-  APPEND_MEASUREMENT(control_blocks);
-  APPEND_MEASUREMENT(helpers);
-  APPEND_MEASUREMENT(helper_node_limit);
-  APPEND_MEASUREMENT(entry_cases);
-  APPEND_MEASUREMENT(scalar_estimate);
-  APPEND_MEASUREMENT(literal_sequence_patterns);
-  APPEND_MEASUREMENT(literal_sequence_steps);
-  APPEND_MEASUREMENT(literal_sequence_calls);
-  APPEND_MEASUREMENT(literal_sequence_word_bits);
-#undef APPEND_MEASUREMENT
-}
-
-}  // namespace
 
 absl::Status RenderCompact(const SymbolicModel& model,
                            const std::vector<std::string>& token_names,
@@ -102,11 +20,7 @@ absl::Status RenderCompact(const SymbolicModel& model,
     qualified_names.push_back(absl::StrCat("vocab::", token_names[index]));
     names[index] = qualified_names.back();
   }
-  std::string report =
-      "Exact individual transition domains; no cross-layer folding.\n"
-      "Source measurements are unformatted bytes, not executable size.\n";
-  auto install = [&](const std::string& filename,
-                     const RenderedTransition& rendered,
+  auto install = [&](const std::string& filename, absl::string_view source,
                      absl::string_view interface, absl::string_view factory,
                      absl::string_view description,
                      bool vocabulary = false) -> absl::Status {
@@ -114,15 +28,8 @@ absl::Status RenderCompact(const SymbolicModel& model,
     if (found == files.end())
       return absl::InternalError(
           absl::StrCat("missing plain generated file: ", filename));
-    size_t before = found->second.size();
-    found->second =
-        Source(TransitionObject(rendered.source, interface, factory),
-               "\"tables.h\"", description, vocabulary);
-    absl::StrAppend(&report, "\n", filename, "\n");
-    AppendStatistics(report, rendered.stats);
-    absl::StrAppend(
-        &report, "  unformatted_source_bytes_before: ", before,
-        "\n  unformatted_source_bytes_after: ", found->second.size(), "\n");
+    found->second = Source(TransitionObject(source, interface, factory),
+                           "\"tables.h\"", description, vocabulary);
     return absl::OkStatus();
   };
   ASSIGN_OR_RETURN(auto entry, RenderEntry("Lookup", model.entry, names));
@@ -164,23 +71,6 @@ absl::Status RenderCompact(const SymbolicModel& model,
       "Final residual symbol -> named vocabulary token.\n"
       "No unobserved input is assigned a default prediction.",
       true));
-  absl::StrAppend(&report, "\nWithin-boundary relabeling\n");
-  if (model.stats.pointwise_relabeling) {
-    const auto& stats = *model.stats.pointwise_relabeling;
-    absl::StrAppend(
-        &report,
-        "  eligible_layers: ", absl::StrJoin(stats.eligible_layers, ", "),
-        "\n  skipped_layers: ", absl::StrJoin(stats.skipped_layers, ", "),
-        "\n  changed_states: ", stats.changed_states,
-        "\n  layer_boundaries_preserved: ",
-        stats.layer_boundaries_preserved ? "true" : "false",
-        "\n  vocabulary_aligned_final_boundaries: ",
-        stats.vocabulary_aligned_final_boundaries ? "true" : "false", "\n");
-    AppendOptional(report, "last_attention_base", stats.last_attention_base);
-    AppendOptional(report, "final_state_base", stats.final_state_base);
-    AppendOptional(report, "reserved_range_size", stats.reserved_range_size);
-  }
-  files["transition_patterns.txt"] = std::move(report);
   if (!model.state_relabeling.empty()) {
     std::string mapping =
         "# Pure within-boundary renaming relative to generator input.\n"

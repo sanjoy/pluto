@@ -263,10 +263,9 @@ or the test fixtures. All amounts are bytes.
 The corresponding formatted production transition source shrinks from
 7,482,106 to 3,012,829 bytes (**59.7%**). Vocabulary strings, the text-prefix
 encoder, runtime scaffolding, and independent test fixtures are excluded from
-these transition-only totals. `generated/transition_patterns.txt` records the
-chosen representation and source statistics for each function. Some small data
-arrays deliberately remain: replacing irregular masks/sequence literals with
-more branches made the executable larger. A pure-control-flow prototype was
+these transition-only totals. Some small data arrays deliberately remain:
+replacing irregular masks/sequence literals with more branches made the
+executable larger. A pure-control-flow prototype was
 also correct but larger than the selected shared-sequence version.
 The complete CLI's allocated sections, including its unchanged vocabulary,
 prompt encoder, and corpus-verification support, shrink from 6,520,292 to
@@ -395,9 +394,8 @@ native greedy verification when establishing a new checkpoint's correctness.
 
 The generator refuses existing output paths, including symlinks, formats sources,
 and only then atomically publishes the completed directory. Readable statistics,
-verification results, and input/output hashes are in `generation_report.txt`;
-compact transition measurements are in `transition_patterns.txt`. Inspection
-TSVs are optional.
+verification results, and input/output hashes are in `generation_report.txt`.
+Inspection TSVs are optional.
 
 Copy a freshly generated package into the workspace to build it with Bazel.
 This is an explicit `cc_binary` invocation, not a genrule or an automatic rewrite

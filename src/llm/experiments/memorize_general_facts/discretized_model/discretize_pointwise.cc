@@ -13,6 +13,7 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "src/llm/experiments/memorize_general_facts/discretized_model/discretize_attention_logic.h"
 #include "src/llm/experiments/memorize_general_facts/discretized_model/naming_utils.h"
 #include "src/util/status_macros.h"
 
@@ -75,10 +76,8 @@ void Array(Lines& lines, absl::string_view name, absl::string_view type,
   lines.emplace_back("  };");
 }
 
-RenderedTransition Finish(const Lines& lines, TransitionStatistics stats) {
-  std::string body = StrCat(absl::StrJoin(lines, "\n"), "\n");
-  stats.source_bytes = body.size();
-  return {std::move(body), std::move(stats)};
+std::string Finish(const Lines& lines) {
+  return StrCat(absl::StrJoin(lines, "\n"), "\n");
 }
 
 std::string AffineExpression(int source, int output, const TokenNames* names) {
@@ -257,7 +256,7 @@ absl::StatusOr<SymbolicModel> RelabelMlpOutputs(const SymbolicModel& model) {
   return result;
 }
 
-absl::StatusOr<RenderedTransition> RenderPointwise(
+absl::StatusOr<std::string> RenderPointwise(
     absl::string_view name, absl::Span<const StateTransition> rows,
     const TokenNames* token_names) {
   RETURN_IF_ERROR(ValidateTransitionFunctionName(name));
@@ -270,9 +269,7 @@ absl::StatusOr<RenderedTransition> RenderPointwise(
                         "(DiscreteHiddenState state) {")};
   if (mapping.empty()) {
     begin.insert(begin.end(), {"  (void)state;", "  return {};", "}"});
-    return Finish(begin, {.representation = TransitionRepresentation::kEmpty,
-                          .rows = 0,
-                          .table_bytes = 0});
+    return Finish(begin);
   }
   int low = mapping.begin()->first, high = mapping.rbegin()->first;
   const std::string guard = StrCat("  if (state.value < ", low,
@@ -299,14 +296,9 @@ absl::StatusOr<RenderedTransition> RenderPointwise(
     lines.push_back(guard);
     add_named_comment(lines);
     lines.insert(lines.end(), {affine_return(), "}"});
-    return Finish(lines,
-                  {.representation = TransitionRepresentation::kGuardedAffine,
-                   .rows = mapping.size(),
-                   .table_bytes = 0,
-                   .affine_ranges = 1,
-                   .named_anchor = token_names != nullptr});
+    return Finish(lines);
   }
-  std::optional<RenderedTransition> affine_candidate;
+  std::optional<std::string> affine_candidate;
   int64_t support_bytes = (static_cast<int64_t>(high) - low + 8) / 8;
   if (affine &&
       support_bytes <= std::min<int64_t>(1'048'576, mapping.size() * 8)) {
@@ -328,13 +320,7 @@ absl::StatusOr<RenderedTransition> RenderPointwise(
         "  if ((kSupport[offset >> 3] & (uint32_t{1} << (offset & 7u))) == 0) "
         "return {};");
     lines.insert(lines.end(), {affine_return(), "}"});
-    affine_candidate = Finish(
-        lines,
-        {.representation = TransitionRepresentation::kSparseAffineSupportMask,
-         .rows = mapping.size(),
-         .table_bytes = support_bytes,
-         .supported_span = static_cast<int64_t>(high) - low + 1,
-         .named_anchor = token_names != nullptr});
+    affine_candidate = Finish(lines);
   }
   struct Run {
     int first, last;
@@ -354,10 +340,8 @@ absl::StatusOr<RenderedTransition> RenderPointwise(
   Lines branches = begin;
   branches.push_back(guard);
   Mapping singletons;
-  int affine_ranges = 0;
   for (auto [first, last, delta] : runs) {
     if (last - first >= 2) {
-      ++affine_ranges;
       Lines conditions;
       if (first != 0)
         conditions.push_back(StrCat("state.value >= ", first));
@@ -388,15 +372,8 @@ absl::StatusOr<RenderedTransition> RenderPointwise(
     branches.emplace_back("  return {};");
   }
   branches.emplace_back("}");
-  auto branch = Finish(
-      branches,
-      {.representation = TransitionRepresentation::kAffineRangesAndSwitch,
-       .rows = mapping.size(),
-       .table_bytes = 0,
-       .affine_ranges = affine_ranges,
-       .switch_cases = singletons.size()});
-  if (affine_candidate.has_value() &&
-      affine_candidate->source.size() < branch.source.size())
+  auto branch = Finish(branches);
+  if (affine_candidate.has_value() && affine_candidate->size() < branch.size())
     return *affine_candidate;
   if (dense) {
     bool small =
@@ -413,21 +390,16 @@ absl::StatusOr<RenderedTransition> RenderPointwise(
     vector.push_back(StrCat(
         "  return {DiscreteHiddenState{kOutputs[state.value - ", low, "]}};"));
     vector.emplace_back("}");
-    auto candidate =
-        Finish(vector,
-               {.representation = TransitionRepresentation::kGuardedOutputArray,
-                .rows = mapping.size(),
-                .table_bytes = mapping.size() * (small ? 2 : 4),
-                .named_outputs = token_names != nullptr});
-    if (candidate.source.size() < branch.source.size())
+    auto candidate = Finish(vector);
+    if (candidate.size() < branch.size())
       return candidate;
   }
   return branch;
 }
 
-absl::StatusOr<RenderedTransition> RenderEntry(
-    absl::string_view name, absl::Span<const EntryTransition> rows,
-    const TokenNames& token_names) {
+absl::StatusOr<std::string> RenderEntry(absl::string_view name,
+                                        absl::Span<const EntryTransition> rows,
+                                        const TokenNames& token_names) {
   RETURN_IF_ERROR(ValidateTransitionFunctionName(name));
   ASSIGN_OR_RETURN(auto entry, MakeEntryMapping(rows));
   for (const auto& [key, output] : entry)
@@ -438,9 +410,7 @@ absl::StatusOr<RenderedTransition> RenderEntry(
   if (entry.empty()) {
     begin.insert(begin.end(),
                  {"  (void)token;", "  (void)position;", "  return {};", "}"});
-    return Finish(begin, {.representation = TransitionRepresentation::kEmpty,
-                          .rows = 0,
-                          .table_bytes = 0});
+    return Finish(begin);
   }
   std::map<int, Mapping> tokens;
   std::set<int> state_set;
@@ -474,12 +444,7 @@ absl::StatusOr<RenderedTransition> RenderEntry(
       lines.insert(lines.end(), {"        default: return {};", "      }"});
     }
     lines.insert(lines.end(), {"    default: return {};", "  }", "}"});
-    return Finish(
-        lines,
-        {.representation = TransitionRepresentation::kExactTokenPositionSwitch,
-         .rows = entry.size(),
-         .table_bytes = 0,
-         .tokens = tokens.size()});
+    return Finish(lines);
   }
   std::vector<uint64_t> patterns{0};
   std::map<uint64_t, size_t> pattern_index{{0, 0}};
@@ -554,7 +519,6 @@ absl::StatusOr<RenderedTransition> RenderEntry(
     }
     lines.insert(lines.end(), {"    default: break;", "  }"});
   }
-  size_t state_bytes = 0;
   if (states.size() ==
       static_cast<size_t>(states.back()) - states.front() + 1) {
     lines.push_back(StrCat("  return {DiscreteHiddenState{", states.front(),
@@ -565,23 +529,11 @@ absl::StatusOr<RenderedTransition> RenderEntry(
     for (int state : states)
       values.push_back(StrCat(state));
     Array(lines, "kStates", "int", values);
-    state_bytes = 4 * states.size();
     lines.push_back(StrCat("  return {DiscreteHiddenState{kStates[packed >> ",
                            position_bits, "]}};"));
   }
   lines.emplace_back("}");
-  return Finish(
-      lines, {.representation =
-                  TransitionRepresentation::kPackedSupportPatternsAndExceptions,
-              .rows = entry.size(),
-              .table_bytes = index_bytes * indices.size() +
-                             word_bytes * patterns.size() + state_bytes,
-              .tokens = tokens.size(),
-              .patterns = patterns.size(),
-              .position_bits = position_bits,
-              .token_only_defaults = tokens.size(),
-              .position_exceptions = exceptions.size(),
-              .named_exception_tokens = true});
+  return Finish(lines);
 }
 
 }  // namespace pluto::llm::discretized::generator
