@@ -65,6 +65,31 @@ class GenerateDriverTest(unittest.TestCase):
         self.assertTrue((args.output / "state_index.tsv").is_file())
         self.assertNotIn("state_index.tsv", (args.output / "BUILD.bazel").read_text())
 
+    def test_temporary_output_uses_repository_style(self):
+        # A different style next to the generated files must not override the
+        # repository's Google style (notably its left-aligned references).
+        (self.root / ".clang-format").write_text(
+            "BasedOnStyle: LLVM\nDerivePointerAlignment: false\n"
+            "PointerAlignment: Right\n")
+        args = self.arguments()
+        with contextlib.redirect_stdout(io.StringIO()):
+            driver.generate(args)
+        source = (args.output / "model.cc").read_text()
+        self.assertIn("const Model& GeneratedModel()", source)
+        self.assertNotIn("const Model &GeneratedModel()", source)
+
+    def test_completed_reduction_gets_independent_certificate(self):
+        args = self.arguments("--reduce")
+        with contextlib.redirect_stdout(io.StringIO()):
+            model = driver.generate(args)
+        record = json.loads((args.output / "provenance.json").read_text())
+        certificate = record["irreducibility_certificate"]
+        self.assertEqual(certificate["status"], "proven")
+        self.assertEqual(certificate["states"], len(model["states"]))
+        self.assertEqual(certificate["proven_pairs"],
+                         certificate["same_boundary_pairs"])
+        self.assertFalse(certificate["global_minimum_proven"])
+
     def test_wrong_sample_count_has_no_output(self):
         args = self.arguments("--expected_samples=2")
         with self.assertRaises(ValueError):
