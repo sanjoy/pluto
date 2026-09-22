@@ -8,7 +8,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "src/llm/experiments/memorize_general_facts/discretized_model/generator_io.h"
+#include "src/llm/experiments/memorize_general_facts/discretized_model/generator_model.h"
 
 namespace pluto::llm::discretized::generator {
 
@@ -30,7 +30,7 @@ std::string TransitionObject(absl::string_view body,
 
 // Validate the source model and render CPU-only C++ with separate inference,
 // prompt-encoding, and test-only corpus-verification targets.
-absl::StatusOr<FileMap> RenderModel(const Json& model,
+absl::StatusOr<FileMap> RenderModel(const SymbolicModel& model,
                                     bool include_state_index = false,
                                     bool compact_transitions = false);
 
@@ -38,7 +38,7 @@ absl::StatusOr<FileMap> RenderModel(const Json& model,
 // symlinks and empty directories, are never replaced.
 absl::Status PublishFiles(const FileMap& files,
                           const std::filesystem::path& destination);
-absl::Status EmitModel(const Json& model,
+absl::Status EmitModel(const SymbolicModel& model,
                        const std::filesystem::path& destination,
                        bool include_state_index = false,
                        bool compact_transitions = false);

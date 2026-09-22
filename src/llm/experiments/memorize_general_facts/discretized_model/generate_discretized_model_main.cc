@@ -8,6 +8,7 @@
 #include "absl/memory/memory.h"
 #include "rules_cc/cc/runfiles/runfiles.h"
 #include "src/llm/experiments/memorize_general_facts/discretized_model/generate_discretized_model.h"
+#include "src/llm/experiments/memorize_general_facts/discretized_model/generator_report.h"
 
 ABSL_FLAG(std::string, checkpoint, "",
           "Source compact GPT-2 checkpoint directory");
@@ -96,8 +97,8 @@ int main(int argc, char** argv) {
   }
   if (attempts >= 0)
     options.reduction.max_attempts = attempts;
-  options.progress = [](const generator::Json& progress) {
-    std::cout << generator::TextReport(progress) << std::endl;
+  options.progress = [](const generator::ProgressEvent& progress) {
+    std::cout << generator::FormatProgress(progress) << std::endl;
   };
   auto result = generator::Generate(options);
   if (!result.ok()) {

@@ -5,7 +5,7 @@
 
 #include "absl/status/statusor.h"
 #include "src/llm/experiments/memorize_general_facts/discretized_model/discretize_core.h"
-#include "src/llm/experiments/memorize_general_facts/discretized_model/generator_io.h"
+#include "src/llm/experiments/memorize_general_facts/discretized_model/generator_model.h"
 
 namespace pluto::llm::discretized::generator {
 
@@ -29,16 +29,11 @@ struct GeneratorOptions {
   bool reduce = false;
   bool compact_transitions = false;
   ReductionOptions reduction;
-  std::function<void(const Json&)> progress;
+  std::function<void(const ProgressEvent&)> progress;
 };
 
 // One-step GPU checkpoint -> native trace -> verified CPU-only generated C++.
-absl::StatusOr<Json> Generate(const GeneratorOptions& options);
-
-// Run reduction, emission, formatting, and verification without saving any
-// intermediate model. The structured value is an internal representation, never
-// a disk round trip. Output is published atomically after every step succeeds.
-absl::StatusOr<Json> GenerateFromModel(Json model,
-                                       const GeneratorOptions& options);
+// Output is published atomically after capture, reduction, and verification.
+absl::StatusOr<SymbolicModel> Generate(const GeneratorOptions& options);
 
 }  // namespace pluto::llm::discretized::generator

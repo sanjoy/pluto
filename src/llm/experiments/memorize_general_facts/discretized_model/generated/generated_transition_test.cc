@@ -1,6 +1,7 @@
 // Generated independent boundary fixtures; test-only, never inference input.
-// Expectations replay the source JSON, independently of compiled control flow.
-// Histories are reconstructed from boundary vectors at real positions only.
+// Expectations replay source transitions independently of compiled control
+// flow. Histories are reconstructed from boundary vectors at real positions
+// only.
 #include <cstddef>
 
 #include "gtest/gtest.h"
