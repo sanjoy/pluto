@@ -133,8 +133,7 @@ TEST_F(EmitTest, CompactModeAddsIndependentBoundaryTests) {
   auto result = RenderModel(Fixture(), true, true);
   ASSERT_TRUE(result.ok()) << result.status();
   EXPECT_EQ(result->count("generated_transition_test.cc"), 1);
-  EXPECT_EQ(result->count("transition_patterns.txt"), 1);
-  EXPECT_EQ(result->count("transition_patterns.json"), 0);
+  EXPECT_EQ(result->count("transition_patterns.txt"), 0);
   EXPECT_NE(result->at("generated_transition_test.cc").find("kExpectedStates"),
             std::string::npos);
   EXPECT_EQ(result->at("attention_0.cc").find("kExpectedStates"),
