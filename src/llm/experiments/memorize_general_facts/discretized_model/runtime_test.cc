@@ -1,5 +1,6 @@
 #include "src/llm/experiments/memorize_general_facts/discretized_model/runtime.h"
 
+#include <functional>
 #include <initializer_list>
 #include <limits>
 #include <type_traits>
@@ -10,10 +11,6 @@
 namespace pluto::llm::discretized {
 namespace {
 
-// Keep callback results distinct from arbitrary optional states and token IDs.
-static_assert(!std::is_convertible_v<std::optional<DiscreteHiddenState>,
-                                     TransitionResult>);
-static_assert(!std::is_convertible_v<DiscreteHiddenState, TransitionResult>);
 static_assert(!std::is_convertible_v<DiscreteToken, DiscreteHiddenState>);
 static_assert(!std::is_convertible_v<DiscreteHiddenState, DiscreteToken>);
 static_assert(!std::is_convertible_v<int, DiscreteHiddenState>);
@@ -22,6 +19,12 @@ static_assert(!std::is_convertible_v<DiscreteHiddenState, int>);
 static_assert(!std::is_convertible_v<DiscreteToken, int>);
 static_assert(sizeof(DiscreteHiddenState) == sizeof(int));
 static_assert(sizeof(DiscreteToken) == sizeof(int));
+static_assert(std::is_abstract_v<CausalAttention>);
+static_assert(std::is_abstract_v<Map>);
+static_assert(std::is_abstract_v<PositionEmbedding>);
+static_assert(std::has_virtual_destructor_v<CausalAttention>);
+static_assert(std::has_virtual_destructor_v<Map>);
+static_assert(std::has_virtual_destructor_v<PositionEmbedding>);
 
 std::vector<DiscreteToken> Tokens(std::initializer_list<int> values) {
   std::vector<DiscreteToken> tokens;
@@ -43,60 +46,113 @@ TEST(DiscreteIds, ExplicitConversionsPreserveLabels) {
   static_assert(static_cast<DiscreteToken>(state) == token);
 }
 
-TransitionResult Entry(DiscreteToken token, uint32_t position) {
+std::optional<DiscreteHiddenState> Entry(DiscreteToken token,
+                                         int32_t position) {
   if (position == 0) {
     if (token.value == 0)
-      return {DiscreteHiddenState{4}};
+      return DiscreteHiddenState{4};
     if (token.value == 1)
-      return {DiscreteHiddenState{7}};
+      return DiscreteHiddenState{7};
   }
   if (position == 1 && token.value >= 1 && token.value <= 2)
-    return {DiscreteHiddenState{token.value + 4}};
-  return {};
+    return DiscreteHiddenState{token.value + 4};
+  return std::nullopt;
 }
 
-TransitionResult Attention(absl::Span<const DiscreteHiddenState> prefix) {
+std::optional<DiscreteHiddenState> Attention(
+    absl::Span<const DiscreteHiddenState> prefix) {
   if (prefix.size() == 1 && prefix[0].value == 4)
-    return {DiscreteHiddenState{8}};
+    return DiscreteHiddenState{8};
   if (prefix.size() == 1 && prefix[0].value == 7)
-    return {DiscreteHiddenState{11}};
+    return DiscreteHiddenState{11};
   if (prefix.size() == 2 && prefix[0].value == 4 && prefix[1].value >= 5 &&
       prefix[1].value <= 6)
-    return {DiscreteHiddenState{prefix[1].value + 4}};
-  return {};
+    return DiscreteHiddenState{prefix[1].value + 4};
+  return std::nullopt;
 }
 
-TransitionResult Mlp(DiscreteHiddenState state) {
+std::optional<DiscreteHiddenState> Mlp(DiscreteHiddenState state) {
   if (state.value >= 8 && state.value <= 11)
-    return {DiscreteHiddenState{state.value + 4}};
-  return {};
+    return DiscreteHiddenState{state.value + 4};
+  return std::nullopt;
 }
 
-TransitionResult LanguageModelingHead(DiscreteHiddenState state) {
+std::optional<DiscreteHiddenState> LanguageModelingHead(
+    DiscreteHiddenState state) {
   switch (state.value) {
     case 12:
-      return {DiscreteHiddenState{1}};
+      return DiscreteHiddenState{1};
     case 13:
     case 15:
-      return {DiscreteHiddenState{3}};
+      return DiscreteHiddenState{3};
     case 14:
-      return {DiscreteHiddenState{0}};
+      return DiscreteHiddenState{0};
     default:
-      return {};
+      return std::nullopt;
   }
 }
 
-Model Fixture() {
-  static const VocabularyRow vocabulary[] = {
+// Mutable callbacks are test-only: they make it possible to change exactly one
+// polymorphic boundary without rebuilding the fixture's non-null references.
+class TestAttention final : public CausalAttention {
+ public:
+  std::function<std::optional<DiscreteHiddenState>(
+      absl::Span<const DiscreteHiddenState>)>
+      function = Attention;
+
+  std::optional<DiscreteHiddenState> operator()(
+      absl::Span<const DiscreteHiddenState> prefix) override {
+    return function(prefix);
+  }
+};
+
+class TestMap final : public Map {
+ public:
+  std::function<std::optional<DiscreteHiddenState>(DiscreteHiddenState)>
+      function = Mlp;
+
+  std::optional<DiscreteHiddenState> operator()(
+      DiscreteHiddenState state) override {
+    return function(state);
+  }
+};
+
+class TestPositionEmbedding final : public PositionEmbedding {
+ public:
+  std::function<std::optional<DiscreteHiddenState>(DiscreteToken, int32_t)>
+      function = Entry;
+
+  std::optional<DiscreteHiddenState> operator()(DiscreteToken token,
+                                                int32_t position) override {
+    return function(token, position);
+  }
+};
+
+// This object owns everything referenced by model and must not be copied.
+struct Fixture {
+  Fixture() { language_modeling_head.function = LanguageModelingHead; }
+  Fixture(const Fixture&) = delete;
+  Fixture& operator=(const Fixture&) = delete;
+
+  const VocabularyRow vocabulary[4] = {
       {10, "A"}, {11, "B"}, {12, "C"}, {13, "<eos>"}};
-  static const AttentionTable attention[] = {{Attention}};
-  static const StateTable mlp[] = {{Mlp}};
-  return Model{1024,      1,   DiscreteToken{3},       vocabulary,
-               attention, mlp, {LanguageModelingHead}, Entry};
-}
+  TestAttention attention;
+  TestMap mlp;
+  TestMap language_modeling_head;
+  TestPositionEmbedding position_embedding;
+  const Transformer transformers[1] = {{attention, mlp}};
+  Model model{1024,
+              1,
+              DiscreteToken{3},
+              vocabulary,
+              transformers,
+              language_modeling_head,
+              position_embedding};
+};
 
 TEST(IntegerRuntime, FunctionsMatchEntireFiniteDomain) {
-  const auto model = Fixture();
+  Fixture fixture;
+  const auto& model = fixture.model;
   ASSERT_TRUE(ValidateModel(model).ok());
   // These are all four supported prompts, specified independently of the
   // boundary functions. Exhaust repeated, reordered, and extended histories
@@ -110,9 +166,9 @@ TEST(IntegerRuntime, FunctionsMatchEntireFiniteDomain) {
       std::optional<DiscreteToken> expected;
       if (tokens == Tokens({0}))
         expected = DiscreteToken{1};
-      else if (tokens == Tokens({1}) || tokens == (Tokens({0, 1})))
+      else if (tokens == Tokens({1}) || tokens == Tokens({0, 1}))
         expected = DiscreteToken{3};
-      else if (tokens == (Tokens({0, 2})))
+      else if (tokens == Tokens({0, 2}))
         expected = DiscreteToken{0};
       const auto actual = PredictNext(model, tokens);
       EXPECT_EQ(actual.status().code(), expected.has_value()
@@ -124,255 +180,206 @@ TEST(IntegerRuntime, FunctionsMatchEntireFiniteDomain) {
   }
 }
 
-TEST(IntegerRuntime, RejectsMissingRequiredFunctionsBeforeCallingThem) {
-  const AttentionTable missing_attention[] = {{nullptr}};
-  const StateTable missing_mlp[] = {{nullptr}};
+TEST(IntegerRuntime, RejectsInvalidFunctionOutputs) {
   for (int boundary = 0; boundary < 4; ++boundary) {
     SCOPED_TRACE(boundary);
-    auto model = Fixture();
-    switch (boundary) {
-      case 0:
-        model.entry_function = nullptr;
-        break;
-      case 1:
-        model.attention = missing_attention;
-        break;
-      case 2:
-        model.mlp = missing_mlp;
-        break;
-      case 3:
-        model.language_modeling_head.function = nullptr;
-        break;
-    }
-    EXPECT_EQ(ValidateModel(model).code(), absl::StatusCode::kInvalidArgument);
-    EXPECT_EQ(PredictNext(model, Tokens({0})).status().code(),
-              absl::StatusCode::kInvalidArgument);
-    // Even a zero generation budget must validate the model and never invoke a
-    // null callback; inference does not require a prior ValidateModel call.
-    for (size_t budget : {0, 1})
-      EXPECT_EQ(Generate(model, Tokens({0}), budget).status().code(),
-                absl::StatusCode::kInvalidArgument);
+    Fixture fixture;
+    if (boundary == 0)
+      fixture.position_embedding.function = [](DiscreteToken, int32_t) {
+        return DiscreteHiddenState{0};
+      };
+    else if (boundary == 1)
+      fixture.attention.function = [](absl::Span<const DiscreteHiddenState>) {
+        return DiscreteHiddenState{2};
+      };
+    else if (boundary == 2)
+      fixture.mlp.function = [](DiscreteHiddenState) {
+        return DiscreteHiddenState{1};
+      };
+    else
+      fixture.language_modeling_head.function = [](DiscreteHiddenState) {
+        return DiscreteHiddenState{4};
+      };
+    EXPECT_EQ(PredictNext(fixture.model, Tokens({0})).status().code(),
+              absl::StatusCode::kDataLoss);
   }
-
-  // Validation covers every block, not just the first one.
-  auto model = Fixture();
-  const AttentionTable attention[] = {{Attention}, {Attention}};
-  const StateTable mlp[] = {{Mlp}, {nullptr}};
-  model.attention = attention;
-  model.mlp = mlp;
-  EXPECT_EQ(ValidateModel(model).code(), absl::StatusCode::kInvalidArgument);
-  const AttentionTable bad_attention[] = {{Attention}, {nullptr}};
-  const StateTable good_mlp[] = {{Mlp}, {Mlp}};
-  model.attention = bad_attention;
-  model.mlp = good_mlp;
-  EXPECT_EQ(ValidateModel(model).code(), absl::StatusCode::kInvalidArgument);
-}
-
-TEST(IntegerRuntime, RejectsInvalidFunctionOutputs) {
-  auto model = Fixture();
-  model.entry_function = [](DiscreteToken, uint32_t) -> TransitionResult {
-    return {DiscreteHiddenState{0}};
+  Fixture fixture;
+  fixture.language_modeling_head.function = [](DiscreteHiddenState) {
+    return DiscreteHiddenState{std::numeric_limits<int>::max()};
   };
-  EXPECT_EQ(PredictNext(model, Tokens({0})).status().code(),
-            absl::StatusCode::kDataLoss);
-  model = Fixture();
-  const AttentionTable invalid_attention[] = {
-      {[](absl::Span<const DiscreteHiddenState>) -> TransitionResult {
-        return {DiscreteHiddenState{2}};
-      }}};
-  model.attention = invalid_attention;
-  EXPECT_EQ(PredictNext(model, Tokens({0})).status().code(),
-            absl::StatusCode::kDataLoss);
-  model = Fixture();
-  const StateTable invalid_mlp[] = {
-      {[](DiscreteHiddenState) -> TransitionResult {
-        return {DiscreteHiddenState{1}};
-      }}};
-  model.mlp = invalid_mlp;
-  EXPECT_EQ(PredictNext(model, Tokens({0})).status().code(),
-            absl::StatusCode::kDataLoss);
-  model = Fixture();
-  model.language_modeling_head = {[](DiscreteHiddenState) -> TransitionResult {
-    return {DiscreteHiddenState{4}};
-  }};
-  EXPECT_EQ(PredictNext(model, Tokens({0})).status().code(),
-            absl::StatusCode::kDataLoss);
-  model.language_modeling_head = {[](DiscreteHiddenState) -> TransitionResult {
-    return {DiscreteHiddenState{std::numeric_limits<int>::max()}};
-  }};
-  EXPECT_EQ(PredictNext(model, Tokens({0})).status().code(),
+  EXPECT_EQ(PredictNext(fixture.model, Tokens({0})).status().code(),
             absl::StatusCode::kDataLoss);
 }
 
 TEST(IntegerRuntime, OptionalTransitionsDistinguishZeroFromUnsupported) {
-  auto model = Fixture();
-  const auto zero =
-      model.language_modeling_head.function(DiscreteHiddenState{14});
-  ASSERT_TRUE(zero.output.has_value());
-  EXPECT_EQ(*zero.output, DiscreteHiddenState{0});
-  EXPECT_EQ(
-      model.language_modeling_head.function(DiscreteHiddenState{16}).output,
-      std::nullopt);
+  Fixture fixture;
+  const auto& model = fixture.model;
+  const auto zero = model.language_modeling_head(DiscreteHiddenState{14});
+  ASSERT_TRUE(zero.has_value());
+  EXPECT_EQ(*zero, DiscreteHiddenState{0});
+  EXPECT_EQ(model.language_modeling_head(DiscreteHiddenState{16}),
+            std::nullopt);
   const auto prediction = PredictNext(model, Tokens({0, 2}));
   ASSERT_TRUE(prediction.ok());
   EXPECT_EQ(*prediction, DiscreteToken{0});
 
-  // Each callback propagates an empty optional as unsupported, rather than
-  // interpreting an absent value as vocabulary ID zero or using a fallback.
-  model.entry_function = [](DiscreteToken, uint32_t) -> TransitionResult {
-    return {};
-  };
-  EXPECT_EQ(PredictNext(model, Tokens({0})).status().code(),
-            absl::StatusCode::kNotFound);
-  model = Fixture();
-  const AttentionTable missing_attention[] = {
-      {[](absl::Span<const DiscreteHiddenState>) -> TransitionResult {
-        return {};
-      }}};
-  model.attention = missing_attention;
-  EXPECT_EQ(PredictNext(model, Tokens({0})).status().code(),
-            absl::StatusCode::kNotFound);
-  model = Fixture();
-  const StateTable missing_mlp[] = {
-      {[](DiscreteHiddenState) -> TransitionResult { return {}; }}};
-  model.mlp = missing_mlp;
-  EXPECT_EQ(PredictNext(model, Tokens({0})).status().code(),
-            absl::StatusCode::kNotFound);
-  model = Fixture();
-  model.language_modeling_head = {
-      [](DiscreteHiddenState) -> TransitionResult { return {}; }};
-  EXPECT_EQ(PredictNext(model, Tokens({0})).status().code(),
-            absl::StatusCode::kNotFound);
+  // Each virtual operation propagates an empty optional as unsupported, rather
+  // than interpreting an absent value as vocabulary ID zero or using a
+  // fallback.
+  for (int boundary = 0; boundary < 4; ++boundary) {
+    SCOPED_TRACE(boundary);
+    Fixture unsupported;
+    if (boundary == 0)
+      unsupported.position_embedding.function = [](DiscreteToken, int32_t) {
+        return std::nullopt;
+      };
+    else if (boundary == 1)
+      unsupported.attention.function =
+          [](absl::Span<const DiscreteHiddenState>) { return std::nullopt; };
+    else if (boundary == 2)
+      unsupported.mlp.function = [](DiscreteHiddenState) {
+        return std::nullopt;
+      };
+    else
+      unsupported.language_modeling_head.function = [](DiscreteHiddenState) {
+        return std::nullopt;
+      };
+    EXPECT_EQ(PredictNext(unsupported.model, Tokens({0})).status().code(),
+              absl::StatusCode::kNotFound);
+  }
 }
 
 TEST(IntegerRuntime, RejectsNegativeLabelsAtEveryBoundary) {
-  const AttentionTable attention[] = {
-      {[](absl::Span<const DiscreteHiddenState>) -> TransitionResult {
-        return {DiscreteHiddenState{-1}};
-      }}};
-  const StateTable pointwise[] = {{[](DiscreteHiddenState) -> TransitionResult {
-    return {DiscreteHiddenState{-1}};
-  }}};
   for (int boundary = 0; boundary < 4; ++boundary) {
-    auto model = Fixture();
+    SCOPED_TRACE(boundary);
+    Fixture fixture;
     if (boundary == 0)
-      model.entry_function = [](DiscreteToken, uint32_t) -> TransitionResult {
-        return {DiscreteHiddenState{-1}};
+      fixture.position_embedding.function = [](DiscreteToken, int32_t) {
+        return DiscreteHiddenState{-1};
       };
     else if (boundary == 1)
-      model.attention = attention;
+      fixture.attention.function = [](absl::Span<const DiscreteHiddenState>) {
+        return DiscreteHiddenState{-1};
+      };
     else if (boundary == 2)
-      model.mlp = pointwise;
+      fixture.mlp.function = [](DiscreteHiddenState) {
+        return DiscreteHiddenState{-1};
+      };
     else
-      model.language_modeling_head = pointwise[0];
-    EXPECT_EQ(PredictNext(model, Tokens({0})).status().code(),
+      fixture.language_modeling_head.function = [](DiscreteHiddenState) {
+        return DiscreteHiddenState{-1};
+      };
+    EXPECT_EQ(PredictNext(fixture.model, Tokens({0})).status().code(),
               absl::StatusCode::kDataLoss);
   }
 }
 
 TEST(IntegerRuntime, ExecutesAllBoundariesAndPredictsEosAutoregressively) {
-  const auto model = Fixture();
-  ASSERT_TRUE(ValidateModel(model).ok());
-  auto result = Generate(model, Tokens({0}), 9);
+  Fixture fixture;
+  ASSERT_TRUE(ValidateModel(fixture.model).ok());
+  auto result = Generate(fixture.model, Tokens({0}), 9);
   ASSERT_TRUE(result.ok()) << result.status();
   EXPECT_EQ(*result, (Tokens({1, 3})));
-  auto text = Decode(model, Tokens({0, 1, 2}));
+  auto text = Decode(fixture.model, Tokens({0, 1, 2}));
   ASSERT_TRUE(text.ok());
   EXPECT_EQ(*text, "ABC");
 }
 
 TEST(IntegerRuntime, EachBlockConsumesThePreviousBlocksWholeOutput) {
-  auto model = Fixture();
-  const AttentionTable attention[] = {
-      {Attention},
-      {[](absl::Span<const DiscreteHiddenState> prefix) -> TransitionResult {
-        if (prefix.size() == 1 && prefix[0].value == 12)
-          return {DiscreteHiddenState{16}};
-        if (prefix.size() == 2 && prefix[0].value == 12 &&
-            prefix[1].value == 13)
-          return {DiscreteHiddenState{17}};
-        return {};
-      }}};
-  const StateTable mlp[] = {{Mlp},
-                            {[](DiscreteHiddenState state) -> TransitionResult {
-                              if (state.value >= 16 && state.value <= 17)
-                                return {DiscreteHiddenState{state.value + 4}};
-                              return {};
-                            }}};
-  model.attention = attention;
-  model.mlp = mlp;
-  model.language_modeling_head = {
-      [](DiscreteHiddenState state) -> TransitionResult {
-        if (state.value == 20)
-          return {DiscreteHiddenState{1}};
-        if (state.value == 21)
-          return {DiscreteHiddenState{3}};
-        return {};
-      }};
-  const auto generated = Generate(model, Tokens({0}), 9);
+  Fixture fixture;
+  TestAttention second_attention;
+  TestMap second_mlp;
+  std::vector<std::vector<DiscreteHiddenState>> observed_prefixes;
+  second_attention.function = [&](absl::Span<const DiscreteHiddenState> prefix)
+      -> std::optional<DiscreteHiddenState> {
+    observed_prefixes.emplace_back(prefix.begin(), prefix.end());
+    if (prefix.size() == 1 && prefix[0].value == 12)
+      return DiscreteHiddenState{16};
+    if (prefix.size() == 2 && prefix[0].value == 12 && prefix[1].value == 13)
+      return DiscreteHiddenState{17};
+    return std::nullopt;
+  };
+  second_mlp.function =
+      [](DiscreteHiddenState state) -> std::optional<DiscreteHiddenState> {
+    if (state.value >= 16 && state.value <= 17)
+      return DiscreteHiddenState{state.value + 4};
+    return std::nullopt;
+  };
+  const Transformer transformers[] = {{fixture.attention, fixture.mlp},
+                                      {second_attention, second_mlp}};
+  fixture.model.transformers = transformers;
+  fixture.language_modeling_head.function =
+      [](DiscreteHiddenState state) -> std::optional<DiscreteHiddenState> {
+    if (state.value == 20)
+      return DiscreteHiddenState{1};
+    if (state.value == 21)
+      return DiscreteHiddenState{3};
+    return std::nullopt;
+  };
+  const auto generated = Generate(fixture.model, Tokens({0}), 9);
   ASSERT_TRUE(generated.ok()) << generated.status();
   EXPECT_EQ(*generated, (Tokens({1, 3})));
+  const std::vector<std::vector<DiscreteHiddenState>> expected_prefixes = {
+      {{12}}, {{12}}, {{12}, {13}}};
+  EXPECT_EQ(observed_prefixes, expected_prefixes);
+
+  // A failure in a later polymorphic block must not reuse an earlier result.
+  second_attention.function = [](absl::Span<const DiscreteHiddenState>) {
+    return std::nullopt;
+  };
+  EXPECT_EQ(PredictNext(fixture.model, Tokens({0})).status().code(),
+            absl::StatusCode::kNotFound);
 }
 
 TEST(IntegerRuntime, CompleteHistoryMattersEvenWithIdenticalLastState) {
-  const auto model = Fixture();
-  auto good = PredictNext(model, Tokens({0, 1}));
+  Fixture fixture;
+  auto good = PredictNext(fixture.model, Tokens({0, 1}));
   ASSERT_TRUE(good.ok());
   EXPECT_EQ(*good, DiscreteToken{3});
-  auto bad = PredictNext(model, Tokens({1, 1}));
+  auto bad = PredictNext(fixture.model, Tokens({1, 1}));
   EXPECT_EQ(bad.status().code(), absl::StatusCode::kNotFound);
   EXPECT_NE(bad.status().message().find("attention history"),
             absl::string_view::npos);
 }
 
 TEST(IntegerRuntime, FunctionsDetermineAnswersWithoutCorpusOrSuffixCache) {
-  auto model = Fixture();
-  model.language_modeling_head = {
-      [](DiscreteHiddenState state) -> TransitionResult {
-        return state.value == 13 ? TransitionResult{DiscreteHiddenState{2}}
-                                 : LanguageModelingHead(state);
-      }};
-  auto changed = PredictNext(model, Tokens({0, 1}));
-  ASSERT_TRUE(changed.ok());
-  EXPECT_EQ(*changed, DiscreteToken{2});
-
-  model = Fixture();
-  const StateTable changed_mlp[] = {
-      {[](DiscreteHiddenState state) -> TransitionResult {
-        return state.value == 9 ? TransitionResult{DiscreteHiddenState{14}}
-                                : Mlp(state);
-      }}};
-  model.mlp = changed_mlp;
-  changed = PredictNext(model, Tokens({0, 1}));
-  ASSERT_TRUE(changed.ok());
-  EXPECT_EQ(*changed, DiscreteToken{0});
-
-  model = Fixture();
-  const AttentionTable changed_attention[] = {
-      {[](absl::Span<const DiscreteHiddenState> prefix) -> TransitionResult {
+  for (int boundary = 0; boundary < 4; ++boundary) {
+    SCOPED_TRACE(boundary);
+    Fixture fixture;
+    if (boundary == 0)
+      fixture.position_embedding.function = [](DiscreteToken token,
+                                               int32_t position) {
+        return token.value == 1 && position == 1
+                   ? std::optional{DiscreteHiddenState{6}}
+                   : Entry(token, position);
+      };
+    else if (boundary == 1)
+      fixture.attention.function =
+          [](absl::Span<const DiscreteHiddenState> prefix)
+          -> std::optional<DiscreteHiddenState> {
         if (prefix.size() == 2 && prefix[0].value == 4 && prefix[1].value == 5)
-          return {DiscreteHiddenState{10}};
+          return DiscreteHiddenState{10};
         return Attention(prefix);
-      }}};
-  model.attention = changed_attention;
-  changed = PredictNext(model, Tokens({0, 1}));
-  ASSERT_TRUE(changed.ok());
-  EXPECT_EQ(*changed, DiscreteToken{0});
-
-  model = Fixture();
-  model.entry_function = [](DiscreteToken token,
-                            uint32_t position) -> TransitionResult {
-    return token.value == 1 && position == 1
-               ? TransitionResult{DiscreteHiddenState{6}}
-               : Entry(token, position);
-  };
-  changed = PredictNext(model, Tokens({0, 1}));
-  ASSERT_TRUE(changed.ok());
-  EXPECT_EQ(*changed, DiscreteToken{0});
+      };
+    else if (boundary == 2)
+      fixture.mlp.function = [](DiscreteHiddenState state) {
+        return state.value == 9 ? std::optional{DiscreteHiddenState{14}}
+                                : Mlp(state);
+      };
+    else
+      fixture.language_modeling_head.function = [](DiscreteHiddenState state) {
+        return state.value == 13 ? std::optional{DiscreteHiddenState{2}}
+                                 : LanguageModelingHead(state);
+      };
+    const auto changed = PredictNext(fixture.model, Tokens({0, 1}));
+    ASSERT_TRUE(changed.ok());
+    EXPECT_EQ(*changed, DiscreteToken{boundary == 3 ? 2 : 0});
+  }
 }
 
 TEST(IntegerRuntime, ZeroBudgetAndInvalidPrompts) {
-  const auto model = Fixture();
+  Fixture fixture;
+  const auto& model = fixture.model;
   auto empty = Generate(model, Tokens({0}), 0);
   ASSERT_TRUE(empty.ok());
   EXPECT_TRUE(empty->empty());
@@ -388,24 +395,24 @@ TEST(IntegerRuntime, ZeroBudgetAndInvalidPrompts) {
 }
 
 TEST(IntegerRuntime, GenerationHonorsBudgetContextAndUnknownHistories) {
-  auto model = Fixture();
-  auto one = Generate(model, Tokens({0}), 1);
+  Fixture fixture;
+  auto one = Generate(fixture.model, Tokens({0}), 1);
   ASSERT_TRUE(one.ok());
   EXPECT_EQ(*one, (Tokens({1})));
-  model.context_length = 1;
-  auto full = Generate(model, Tokens({0}), 9);
+  fixture.model.context_length = 1;
+  auto full = Generate(fixture.model, Tokens({0}), 9);
   ASSERT_TRUE(full.ok());
   EXPECT_TRUE(full->empty());
-  model = Fixture();
-  EXPECT_EQ(Generate(model, Tokens({0, 2}), 2).status().code(),
+  fixture.model.context_length = 1024;
+  EXPECT_EQ(Generate(fixture.model, Tokens({0, 2}), 2).status().code(),
             absl::StatusCode::kNotFound);
 }
 
 TEST(IntegerRuntime, IndependentCallsAreBitExactAndCannotLeakHistory) {
-  const auto model = Fixture();
+  Fixture fixture;
   for (int i = 0; i < 12; ++i) {
-    auto a = PredictNext(model, Tokens({0, 1}));
-    auto b = PredictNext(model, Tokens({0, 2}));
+    auto a = PredictNext(fixture.model, Tokens({0, 1}));
+    auto b = PredictNext(fixture.model, Tokens({0, 2}));
     ASSERT_TRUE(a.ok());
     ASSERT_TRUE(b.ok());
     EXPECT_EQ(*a, DiscreteToken{3});
@@ -416,7 +423,8 @@ TEST(IntegerRuntime, IndependentCallsAreBitExactAndCannotLeakHistory) {
 TEST(IntegerRuntime, RejectsInvalidModelDimensionsBeforeInference) {
   for (int field = 0; field < 7; ++field) {
     SCOPED_TRACE(field);
-    auto model = Fixture();
+    Fixture fixture;
+    auto& model = fixture.model;
     switch (field) {
       case 0:
         model.context_length = 0;
@@ -438,9 +446,12 @@ TEST(IntegerRuntime, RejectsInvalidModelDimensionsBeforeInference) {
             DiscreteToken{static_cast<int>(model.vocabulary.size())};
         break;
       case 6:
-        model.mlp = {};
+        model.context_length =
+            static_cast<uint32_t>(std::numeric_limits<int32_t>::max()) + 1;
         break;
     }
+    // Validation must happen even for a zero generation budget, before any
+    // virtual operation can receive an invalid token or signed position.
     EXPECT_EQ(ValidateModel(model).code(), absl::StatusCode::kInvalidArgument);
     EXPECT_EQ(PredictNext(model, Tokens({0})).status().code(),
               absl::StatusCode::kInvalidArgument);
@@ -451,19 +462,18 @@ TEST(IntegerRuntime, RejectsInvalidModelDimensionsBeforeInference) {
 
 TEST(IntegerRuntime,
      ZeroTransformerBlocksStillRunEntryAndLanguageModelingHead) {
-  auto model = Fixture();
-  model.attention = {};
-  model.mlp = {};
-  model.language_modeling_head = {
-      [](DiscreteHiddenState state) -> TransitionResult {
-        if (state.value == 4)
-          return {DiscreteHiddenState{1}};
-        if (state.value == 5)
-          return {DiscreteHiddenState{3}};
-        return {};
-      }};
-  ASSERT_TRUE(ValidateModel(model).ok());
-  const auto generated = Generate(model, Tokens({0}), 9);
+  Fixture fixture;
+  fixture.model.transformers = {};
+  fixture.language_modeling_head.function =
+      [](DiscreteHiddenState state) -> std::optional<DiscreteHiddenState> {
+    if (state.value == 4)
+      return DiscreteHiddenState{1};
+    if (state.value == 5)
+      return DiscreteHiddenState{3};
+    return std::nullopt;
+  };
+  ASSERT_TRUE(ValidateModel(fixture.model).ok());
+  const auto generated = Generate(fixture.model, Tokens({0}), 9);
   ASSERT_TRUE(generated.ok()) << generated.status();
   EXPECT_EQ(*generated, (Tokens({1, 3})));
 }

@@ -6,7 +6,7 @@
 
 namespace pluto::llm::discretized {
 namespace {
-TransitionResult LanguageModelingHead(DiscreteHiddenState state) {
+std::optional<DiscreteHiddenState> Lookup(DiscreteHiddenState state) {
   if (state.value < 9664 || state.value > 14138)
     return {};
   // State labels encode vocabulary IDs; no neural-head linearity is implied.
@@ -73,7 +73,19 @@ TransitionResult LanguageModelingHead(DiscreteHiddenState state) {
     return {};
   return {DiscreteHiddenState{vocab::kComma_0.value + (state.value - 9664)}};
 }
+
+class LanguageModelingHeadImpl final : public Map {
+ public:
+  std::optional<DiscreteHiddenState> operator()(
+      DiscreteHiddenState state) override {
+    return Lookup(state);
+  }
+};
 }  // namespace
-StateTable GeneratedLanguageModelingHead() { return {LanguageModelingHead}; }
+
+Map& GeneratedLanguageModelingHead() {
+  static LanguageModelingHeadImpl instance;
+  return instance;
+}
 
 }  // namespace pluto::llm::discretized

@@ -131,10 +131,10 @@ def render_attention(name, rows, *, chunk_size=256, strategy="hybrid"):
     """Return (C++ definitions, statistics) for an exact attention callback.
 
     The public signature is:
-      TransitionResult name(absl::Span<const DiscreteHiddenState> history)
-    TransitionResult contains std::optional<DiscreteHiddenState> output: a value (including
-    zero) is a supported output, and std::nullopt is an unsupported history. The
-    caller supplies its declaration and standard size/integer types via runtime.h.
+      std::optional<DiscreteHiddenState> name(absl::Span<const DiscreteHiddenState> history)
+    A value (including zero) is a supported output, and std::nullopt is an
+    unsupported history. The caller supplies its declaration and standard
+    size/integer types via runtime.h.
 
     Generated MATCH statements are literal symbol tests, not packed old-table
     rows. Hybrid emission factors longer unary runs into short typed sequences;
@@ -162,7 +162,7 @@ def render_attention(name, rows, *, chunk_size=256, strategy="hybrid"):
         "// No hash, nearest-state fallback, corpus ID, or answer cache is used.",
         "namespace {",
         f"constexpr std::uint32_t {done} = 0xffffffffu;",
-        f"struct {result_type} {{ std::uint32_t next; TransitionResult result; }};",
+        f"struct {result_type} {{ std::uint32_t next; std::optional<DiscreteHiddenState> result; }};",
         "#define PLUTO_ATTN_END(output) \\",
         f"  do {{ if (position == history.size()) return {{{done}, {{DiscreteHiddenState{{output}}}}}}; }} while (false)",
         "#define PLUTO_ATTN_MORE() \\",
@@ -284,7 +284,7 @@ def render_attention(name, rows, *, chunk_size=256, strategy="hybrid"):
     lines += ["#undef PLUTO_ATTN_END", "#undef PLUTO_ATTN_MORE",
               "#undef PLUTO_ATTN_MATCH", "#undef PLUTO_ATTN_SKIP", "#undef PLUTO_ATTN_RUN",
               "}  // namespace", "",
-              f"TransitionResult {name}(absl::Span<const DiscreteHiddenState> history) {{",
+              f"std::optional<DiscreteHiddenState> {name}(absl::Span<const DiscreteHiddenState> history) {{",
               "  std::size_t position = 0;",
               f"  std::uint32_t node = {program.root}u;",
               "  for (;;) {",

@@ -145,7 +145,7 @@ def render_pointwise(name, rows, token_names=None):
            or not 0 <= source <= _MAX_ID or not 0 <= output <= _MAX_ID
            for source, output in ordered):
         raise ValueError("pointwise IDs must be nonnegative and fit int")
-    begin = [f"TransitionResult {name}(DiscreteHiddenState state) {{"]
+    begin = [f"std::optional<DiscreteHiddenState> {name}(DiscreteHiddenState state) {{"]
     if not ordered:
         return _finish(begin + ["  (void)state;", "  return {};", "}"],
                        representation="empty", rows=0, table_bytes=0)
@@ -236,13 +236,13 @@ def render_entry(name, rows, token_names):
         if (type(token) is not int or type(output) is not int
                 or not 0 <= token <= _MAX_ID or not 0 <= output <= _MAX_ID):
             raise ValueError("entry IDs must be nonnegative and fit int")
-        if type(position) is not int or not 0 <= position <= 0xffffffff:
-            raise ValueError("entry position must fit uint32_t")
+        if type(position) is not int or not 0 <= position <= _MAX_ID:
+            raise ValueError("entry position must be nonnegative and fit int32_t")
         key = (token, position)
         if key in entry and entry[key] != output:
             raise ValueError("conflicting entry mapping")
         entry[key] = output
-    begin = [f"TransitionResult {name}(DiscreteToken token, uint32_t position) {{"]
+    begin = [f"std::optional<DiscreteHiddenState> {name}(DiscreteToken token, int32_t position) {{"]
     if not entry:
         return _finish(begin + ["  (void)token;", "  (void)position;", "  return {};", "}"],
                        representation="empty", rows=0, table_bytes=0)
@@ -285,7 +285,7 @@ def render_entry(name, rows, token_names):
     index_bytes = 1 if len(patterns) <= 256 else (2 if len(patterns) <= 65536 else 4)
     index_type = f"uint{index_bytes * 8}_t"
     suffix = "u" if word_bytes == 4 else "ull"
-    lines = begin + [f"  if (token.value < {low} || token.value > {high} || position > {max_position}) return {{}};"]
+    lines = begin + [f"  if (token.value < {low} || token.value > {high} || position < 0 || position > {max_position}) return {{}};"]
     lines += _array("kTokenPatterns", index_type, indices)
     lines += _array("kPatterns", word_type, [f"0x{value:x}{suffix}" for value in patterns], columns=8)
     lines += [f"  const {word_type} packed = kPatterns[kTokenPatterns[token.value - {low}]];",
