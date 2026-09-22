@@ -1,13 +1,14 @@
 #pragma once
 
 // Native-checkpoint bridge for the Python discretization generator. The
-// snapshot_checkpoint binary loads a checkpoint and runs the corpus on the GPU,
-// then writes JSONL containing vocabulary metadata, tokens, top-1 predictions,
+// snapshot_execution_trace binary loads a checkpoint and runs the corpus on the
+// GPU, then writes JSONL with vocabulary metadata, tokens, top-1 predictions,
 // and exact BF16 residual activations for generate_discretized_model.py to
 // read. This snapshots execution, not just the weights: the Python generator
 // needs observed layer transitions to build a finite, CPU-only symbolic model.
-// This library records/validates the activations; snapshot_checkpoint_main.cc
-// handles loading the checkpoint and corpus and writing the JSONL snapshot.
+// This library records/validates the activations.
+// snapshot_execution_trace_main.cc loads the checkpoint and corpus and writes
+// the JSONL snapshot.
 
 #include <array>
 #include <cstdint>

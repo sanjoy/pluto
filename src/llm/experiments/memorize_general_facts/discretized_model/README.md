@@ -301,9 +301,9 @@ irreducibility checker, and compact-transition helpers. Generated C++ stays in
 `generated/`. Benchmarking and training-sweep utilities remain in
 `scripts/memorize_general_facts/`.
 
-## Reproduce checkpoint snapshot and code generation
+## Reproduce execution trace snapshot and code generation
 
-Use a fresh output path. `snapshot_checkpoint` runs the checkpoint over the
+Use a fresh output path. `snapshot_execution_trace` runs the checkpoint over the
 corpus on CUDA and exports activation snapshots for the Python code generator;
 the resulting C++ inference does not use CUDA.
 The JSONL capture and intermediate JSON model are local build/research artifacts,
@@ -311,10 +311,10 @@ not checked-in weight files. Python requires only its standard library for
 baseline generation; `clang-format` must be installed.
 
 ```sh
-bazel build -c opt //src/llm/experiments/memorize_general_facts/discretized_model:snapshot_checkpoint
+bazel build -c opt //src/llm/experiments/memorize_general_facts/discretized_model:snapshot_execution_trace
 facts_run=/home/ubuntu/checkpoints/memorize_general_facts/compact_batch_32_no_clip_0
 
-bazel-bin/src/llm/experiments/memorize_general_facts/discretized_model/snapshot_checkpoint \
+bazel-bin/src/llm/experiments/memorize_general_facts/discretized_model/snapshot_execution_trace \
   --checkpoint="$facts_run/layers_8/step_16128" \
   --tokenizer="$facts_run/inputs/tokenizer" \
   --corpus=testdata/general_facts_dataset.txt \
