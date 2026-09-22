@@ -18,6 +18,13 @@ corpus, not an exact replacement for the neural model on arbitrary text.
 ## Representation
 
 Vocabulary symbols have their original token bytes and GPT-2 IDs as labels.
+`generated/vocabulary_tokens.h` gives every compact token an `inline constexpr
+TokenId` name in the `vocab` namespace, such as `vocab::kThe_216`,
+`vocab::kSpace_France_1516`, and `vocab::kEos_4474`. Names preserve case and spell
+out spaces/punctuation; other bytes use `ByteXX`. The compact-ID suffix makes
+names unique even when a long name is shortened. Comments retain the exact token
+bytes and original GPT-2 IDs. Entry/readout tables, EOS configuration, and token
+arrays use these constants; token IDs and internal numeric states are unchanged.
 Initially, internal symbols are numeric IDs for exact native BF16 residual
 vectors. In the reduced model they identify equivalence classes of those states.
 There are 17 internal boundaries: summed token/position embeddings, then the
@@ -164,7 +171,7 @@ The inspection files are not compiled, linked, or read by the inference model.
 Merged states preserve the agreed corpus completions, not numerical vectors or
 all possible neural-model behavior. A class can group unrelated meanings; its
 example contexts are evidence for further interpretation, not semantic proof.
-The final result passes all 72 repository Bazel test targets and all 209
+The final result passes all 72 repository Bazel test targets and all 216
 general-facts Python tests. Its executable and build dependency graph remain
 CUDA-free, and generated C++ is formatted with the repository's Google style.
 

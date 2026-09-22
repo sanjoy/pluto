@@ -3,6 +3,7 @@
 // MLP residual) per block -> snap. All attention and MLP boundaries remain
 // separate. State IDs never identify corpus lines.
 #include "tables.h"
+#include "vocabulary_tokens.h"
 
 namespace pluto::llm::discretized {
 const Model& GeneratedModel() {
@@ -17,7 +18,7 @@ const Model& GeneratedModel() {
   };
   static const Model model{1024,
                            5,
-                           4474,
+                           vocab::kEos_4474,
                            GeneratedVocabulary(),
                            GeneratedEntry(),
                            {kAttention, 8},

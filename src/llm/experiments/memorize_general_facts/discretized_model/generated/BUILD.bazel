@@ -4,6 +4,12 @@ load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 
 cc_library(
+    name = "vocabulary_tokens",
+    hdrs = ["vocabulary_tokens.h"],
+    visibility = ["//visibility:public"],
+    deps = ["//src/llm/experiments/memorize_general_facts/discretized_model:runtime"],
+)
+cc_library(
     name = "model",
     srcs = [
         "attention_0.cc",
@@ -29,17 +35,17 @@ cc_library(
     ],
     hdrs = ["tables.h"],
     visibility = ["//visibility:public"],
-    deps = ["//src/llm/experiments/memorize_general_facts/discretized_model:runtime"],
+    deps = [":vocabulary_tokens", "//src/llm/experiments/memorize_general_facts/discretized_model:runtime"],
 )
 cc_library(
     name = "prompt_encoder",
     srcs = ["prompt_encoder.cc"],
-    deps = ["//src/llm/experiments/memorize_general_facts/discretized_model:runtime"],
+    deps = [":vocabulary_tokens", "//src/llm/experiments/memorize_general_facts/discretized_model:runtime"],
 )
 cc_library(
     name = "verification",
     srcs = ["verification.cc"],
-    deps = ["//src/llm/experiments/memorize_general_facts/discretized_model:runtime"],
+    deps = [":vocabulary_tokens", "//src/llm/experiments/memorize_general_facts/discretized_model:runtime"],
 )
 cc_binary(
     name = "discretized_model",
@@ -49,5 +55,5 @@ cc_binary(
 cc_test(
     name = "generated_model_test",
     srcs = ["generated_model_test.cc"],
-    deps = [":model", ":verification", "//src/llm/experiments/memorize_general_facts/discretized_model:runtime", "@googletest//:gtest_main"],
+    deps = [":model", ":verification", ":vocabulary_tokens", "//src/llm/experiments/memorize_general_facts/discretized_model:runtime", "@googletest//:gtest_main"],
 )
