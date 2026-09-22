@@ -226,7 +226,9 @@ absl::StatusOr<Metrics> EvaluateExact(
       bool exact = true;
       for (int position = 0; position < batch.sequence_length; ++position) {
         const int row = sample * batch.sequence_length + position;
-        if (targets[row] == -1) continue;
+        // Prompt targets and padding are masked out of loss and accuracy.
+        if (targets[row] == -1)
+          continue;
         if (ids[row] < 0 || !std::isfinite(losses[row]))
           return absl::DataLossError(
               "nonfinite logits/loss in full-corpus evaluation");
