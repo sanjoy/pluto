@@ -37,8 +37,8 @@ absl::StatusOr<StateId> LookupState(StateTable table, StateId key,
                                     absl::string_view boundary, size_t block) {
   if (table.function != nullptr) {
     const auto result = table.function(key);
-    if (result.supported)
-      return result.output;
+    if (result.has_value())
+      return *result;
     return absl::NotFoundError(absl::StrCat(
         "unsupported ", boundary, " state at block ", block, ": ", key));
   }
@@ -132,13 +132,13 @@ absl::StatusOr<TokenId> PredictNext(const Model& model,
   for (size_t position = 0; position < tokens.size(); ++position) {
     if (model.entry_function != nullptr) {
       const auto result = model.entry_function(tokens[position], position);
-      if (!result.supported)
+      if (!result.has_value())
         return absl::NotFoundError(
             absl::StrCat("unsupported token/position entry: ", tokens[position],
                          "/", position));
-      if (result.output < model.vocabulary.size())
+      if (*result < model.vocabulary.size())
         return absl::DataLossError("entry function produced an invalid state");
-      states.push_back(result.output);
+      states.push_back(*result);
       continue;
     }
     const auto key =
@@ -170,17 +170,16 @@ absl::StatusOr<TokenId> PredictNext(const Model& model,
             });
         if (row != attention.rows.end() &&
             Compare(attention.keys.subspan(row->offset, row->length), key) == 0)
-          attended = {row->output, true};
+          attended = row->output;
       }
-      if (!attended.supported)
+      if (!attended.has_value())
         return absl::NotFoundError(
             absl::StrCat("unsupported attention history at block ", block,
                          ", position ", position));
-      if (attended.output < model.vocabulary.size())
+      if (*attended < model.vocabulary.size())
         return absl::DataLossError(
             "attention function produced an invalid state");
-      auto output =
-          LookupState(model.mlp[block], attended.output, "MLP", block);
+      auto output = LookupState(model.mlp[block], *attended, "MLP", block);
       if (!output.ok())
         return output.status();
       if (*output < model.vocabulary.size())

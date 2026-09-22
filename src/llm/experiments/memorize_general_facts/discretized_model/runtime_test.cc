@@ -28,28 +28,28 @@ Model FunctionFixture() {
                             uint32_t position) -> TransitionResult {
     if (position == 0) {
       if (token == 0)
-        return {4, true};
+        return 4;
       if (token == 1)
-        return {7, true};
+        return 7;
     }
     if (position == 1 && token >= 1 && token <= 2)
-      return {static_cast<StateId>(token + 4), true};
+      return static_cast<StateId>(token + 4);
     return {};
   };
   static const AttentionTable attention[] = {
       {{}, {}, [](absl::Span<const StateId> prefix) -> TransitionResult {
          if (prefix.size() == 1 && prefix[0] == 4)
-           return {8, true};
+           return 8;
          if (prefix.size() == 1 && prefix[0] == 7)
-           return {11, true};
+           return 11;
          if (prefix.size() == 2 && prefix[0] == 4 && prefix[1] >= 5 &&
              prefix[1] <= 6)
-           return {prefix[1] + 4, true};
+           return prefix[1] + 4;
          return {};
        }}};
   static const StateTable mlp[] = {{{}, [](StateId state) -> TransitionResult {
                                       if (state >= 8 && state <= 11)
-                                        return {state + 4, true};
+                                        return state + 4;
                                       return {};
                                     }}};
   model.attention = attention;
@@ -57,12 +57,12 @@ Model FunctionFixture() {
   model.snap = {{}, [](StateId state) -> TransitionResult {
                   switch (state) {
                     case 12:
-                      return {1, true};
+                      return 1;
                     case 13:
                     case 15:
-                      return {3, true};
+                      return 3;
                     case 14:
-                      return {0, true};
+                      return 0;
                     default:
                       return {};
                   }
@@ -108,16 +108,53 @@ TEST(IntegerRuntime, RejectsAmbiguousRepresentationsAndInvalidFunctionOutputs) {
 
   model = FunctionFixture();
   model.entry_function = [](TokenId, uint32_t) -> TransitionResult {
-    return {0, true};
+    return 0;
   };
   EXPECT_EQ(PredictNext(model, std::vector<TokenId>{0}).status().code(),
             absl::StatusCode::kDataLoss);
   model = FunctionFixture();
   const StateTable invalid_mlp[] = {
-      {{}, [](StateId) -> TransitionResult { return {1, true}; }}};
+      {{}, [](StateId) -> TransitionResult { return 1; }}};
   model.mlp = invalid_mlp;
   EXPECT_EQ(PredictNext(model, std::vector<TokenId>{0}).status().code(),
             absl::StatusCode::kDataLoss);
+}
+
+TEST(IntegerRuntime, OptionalTransitionsDistinguishZeroFromUnsupported) {
+  auto model = FunctionFixture();
+  const auto zero = model.snap.function(14);
+  ASSERT_TRUE(zero.has_value());
+  EXPECT_EQ(*zero, 0);
+  EXPECT_EQ(model.snap.function(16), std::nullopt);
+  const auto prediction = PredictNext(model, std::vector<TokenId>{0, 2});
+  ASSERT_TRUE(prediction.ok());
+  EXPECT_EQ(*prediction, 0);
+
+  // Each kind of callback must propagate an empty optional as unsupported,
+  // rather than interpreting an absent value as vocabulary ID zero.
+  model.entry_function = [](TokenId, uint32_t) -> TransitionResult {
+    return std::nullopt;
+  };
+  EXPECT_EQ(PredictNext(model, std::vector<TokenId>{0}).status().code(),
+            absl::StatusCode::kNotFound);
+  model = FunctionFixture();
+  const AttentionTable missing_attention[] = {
+      {{}, {}, [](absl::Span<const StateId>) -> TransitionResult {
+         return std::nullopt;
+       }}};
+  model.attention = missing_attention;
+  EXPECT_EQ(PredictNext(model, std::vector<TokenId>{0}).status().code(),
+            absl::StatusCode::kNotFound);
+  model = FunctionFixture();
+  const StateTable missing_mlp[] = {
+      {{}, [](StateId) -> TransitionResult { return std::nullopt; }}};
+  model.mlp = missing_mlp;
+  EXPECT_EQ(PredictNext(model, std::vector<TokenId>{0}).status().code(),
+            absl::StatusCode::kNotFound);
+  model = FunctionFixture();
+  model.snap = {{}, [](StateId) -> TransitionResult { return std::nullopt; }};
+  EXPECT_EQ(PredictNext(model, std::vector<TokenId>{0}).status().code(),
+            absl::StatusCode::kNotFound);
 }
 
 TEST(IntegerRuntime, ExecutesAllBoundariesAndPredictsEosAutoregressively) {
