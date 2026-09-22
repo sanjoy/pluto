@@ -166,6 +166,10 @@ Generate these with `--state_index`. Compaction preserves the complete quotient
 mapping from the originally captured states in memory; it needs no saved
 baseline or intermediate model file. An uncompacted model needs no membership
 table because each symbol still represents exactly one original state.
+Newly generated state indexes omit the representative-vector column: the
+symbolic `CapturedModel` does not retain vectors. The older checked-in index
+keeps those historical observations; optional in-memory vector hints are used
+only by the compaction search.
 The inspection files are not compiled, linked, or read by the inference model.
 Compacted states preserve the agreed corpus completions, not numerical vectors or
 all possible neural-model behavior. A class can group unrelated meanings; its
@@ -286,7 +290,7 @@ dedicated test target, not linked by the production model or CLI.
 To generate a compact representation directly from the native checkpoint:
 
 ```sh
-bazel run -c opt //src/llm/experiments/memorize_general_facts/discretized_model:generate_discretized_model -- \
+bazel run -c opt //src/llm/experiments/memorize_general_facts/discretized_model/discrete_model_generator:generate_discretized_model -- \
   --checkpoint=/path/to/run/layers_8/step_16128 \
   --tokenizer=/path/to/run/inputs/tokenizer \
   --corpus=testdata/general_facts_dataset.txt \
@@ -335,10 +339,11 @@ private to the generated package; only the model factory is exported by its
 shared library. The CLI links prompt encoding and verification separately, so
 production model inference cannot access those fixtures.
 
-All generation logic and its C++ tests
-live alongside this README: the driver, C++ emitter, state compactor,
-compaction certificate checker, and compact-transition helpers. Generated C++ stays in
-`generated/`. Benchmarking and training-sweep utilities remain in
+All generation logic and its C++ tests live in
+[`discrete_model_generator/`](discrete_model_generator/README.md): recording,
+state compaction, per-layer C++ lowering, verification, and publication.
+The CPU runtime stays here; generated C++ stays in `generated/`.
+Benchmarking and training-sweep utilities remain in
 `scripts/memorize_general_facts/`.
 
 ## Single-step GPU conversion
@@ -349,13 +354,22 @@ and optionally compacts the symbolic network in memory, then emits formatted
 CPU-only C++ in a single process. The existing tokenizer's `tokenizer.json` is
 an input asset loaded by the tokenizer library.
 
-`Generate(options)` is the public conversion entry point; its model-processing
-continuation is private to the driver. `generator_model.h` defines the typed
-in-memory representation: `ExecutionSample` holds observed BF16 rows,
-`SymbolicModel` contains metadata and boundary-specific transition records, and
-dedicated structures describe verification, compaction, and relabeling results.
-Progress callbacks receive a `ProgressEvent` variant. Reports format these
-structures directly as text; the algorithms never parse report strings.
+`Generate(options)` connects three independently usable stages:
+
+1. `ModelRecorder::Record(ModelRecorderOptions, ...)` loads the inputs and returns
+   a `CapturedModel`. Its transformers contain `CapturedCausalAttention` and
+   `CapturedMap` records, mirroring the CPU `DiscreteModel` structure.
+2. `CompactModel` returns a new captured model with compatible states combined.
+   Optional `StateVectorHints` preserve proximity-based candidate ordering;
+   vectors are separate from the model and never determine acceptance.
+3. `RenderModel` lowers each captured layer into a `SerializedCppProgram` and
+   assembles the generated files. Formatting and atomic disk publication happen
+   afterward, independently of the per-layer lowerers.
+
+`GeneratorOptions::recorder` contains only recording configuration, not output
+paths or formatting settings. The full pipeline requests vector hints only when
+state compaction is enabled. Progress callbacks receive a `ProgressEvent` variant.
+Reports format typed results directly; the algorithms never parse report strings.
 
 `clang-format` must be installed and on `PATH`. Its repository configuration is
 included in the executable's runfiles, so generation does not depend on running
@@ -365,7 +379,7 @@ from the directory where you invoked Bazel.
 ```sh
 facts_run=/home/ubuntu/checkpoints/memorize_general_facts/compact_batch_32_no_clip_0
 
-bazel run -c opt //src/llm/experiments/memorize_general_facts/discretized_model:generate_discretized_model -- \
+bazel run -c opt //src/llm/experiments/memorize_general_facts/discretized_model/discrete_model_generator:generate_discretized_model -- \
   --checkpoint="$facts_run/layers_8/step_16128" \
   --tokenizer="$facts_run/inputs/tokenizer" \
   --corpus=testdata/general_facts_dataset.txt \
@@ -399,9 +413,10 @@ Inspection TSVs are optional.
 
 Copy a freshly generated package into the workspace to build it with Bazel.
 This is an explicit `cc_binary` invocation, not a genrule or an automatic rewrite
-of checked-in generated code. The `:discretization` C++ library contains the
-CPU compaction/emission algorithms; `:generator` adds the GPU capture and driver.
-None of these dependencies enter the generated inference library.
+of checked-in generated code. The generator package has separate
+`:captured_model`, `:state_compactor`, `:code_generator`, and `:model_recorder`
+libraries; `:generator` connects them. Only recording needs CUDA. None of these
+dependencies enter the generated inference library.
 
 The compaction API consists of `CompactModel`, `CompactionOptions`, and
 `StateCompactor::TryCompact`. Progress and statistics use `CompactionProgress`
@@ -411,5 +426,5 @@ pairwise compaction is complete without claiming a globally minimal partition.
 Test the C++ libraries and real-GPU conversion with:
 
 ```sh
-bazel test //src/llm/experiments/memorize_general_facts/discretized_model:generator_tests
+bazel test //src/llm/experiments/memorize_general_facts/discretized_model/discrete_model_generator:generator_tests
 ```

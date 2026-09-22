@@ -1,0 +1,440 @@
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+
+cc_library(
+    name = "captured_model",
+    srcs = [],
+    hdrs = [
+        "captured_model.h",
+        "model_statistics.h",
+    ],
+    deps = [],
+)
+
+cc_library(
+    name = "state_vector_hints",
+    srcs = [],
+    hdrs = ["state_vector_hints.h"],
+    deps = ["@abseil-cpp//absl/container:flat_hash_map"],
+)
+
+cc_library(
+    name = "utils",
+    srcs = ["utils.cc"],
+    hdrs = ["utils.h"],
+    deps = [
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/strings:str_format",
+    ],
+)
+
+cc_library(
+    name = "captured_model_util",
+    srcs = ["captured_model_util.cc"],
+    hdrs = [
+        "captured_model_util.h",
+        "generator_model_validation.h",
+    ],
+    deps = [
+        ":captured_model",
+        ":state_vector_hints",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_set",
+    ],
+)
+
+cc_library(
+    name = "state_compactor",
+    srcs = [
+        "state_compactor.cc",
+        "discretize_certificate.cc",
+    ],
+    hdrs = [
+        "state_compactor.h",
+        "discretize_certificate.h",
+    ],
+    deps = [
+        ":captured_model",
+        ":captured_model_util",
+        ":state_vector_hints",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/memory",
+    ],
+)
+
+cc_library(
+    name = "serialized_cpp_program",
+    srcs = [],
+    hdrs = ["serialized_cpp_program.h"],
+    deps = [],
+)
+
+cc_library(
+    name = "discretize_attention",
+    srcs = [
+        "discretize_attention.cc",
+        "discretize_attention_test_util.h",
+    ],
+    hdrs = ["discretize_attention.h"],
+    deps = [
+        ":captured_model",
+        ":serialized_cpp_program",
+        ":utils",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "discretize_map",
+    srcs = ["discretize_map.cc"],
+    hdrs = ["discretize_map.h"],
+    deps = [
+        ":captured_model",
+        ":serialized_cpp_program",
+        ":utils",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/strings:str_format",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "discretize_attention_test_util",
+    testonly = True,
+    hdrs = ["discretize_attention_test_util.h"],
+    deps = [":discretize_attention"],
+)
+
+cc_library(
+    name = "discretize_position_embedding",
+    srcs = ["discretize_position_embedding.cc"],
+    hdrs = ["discretize_position_embedding.h"],
+    deps = [
+        ":captured_model",
+        ":serialized_cpp_program",
+        ":utils",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/strings:str_format",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "code_generator",
+    srcs = [
+        "code_generator.cc",
+        "layer_codegen.cc",
+        "discretize_transition_tests.cc",
+    ],
+    hdrs = [
+        "code_generator.h",
+        "layer_codegen.h",
+        "discretize_transition_tests.h",
+    ],
+    deps = [
+        ":captured_model",
+        ":captured_model_util",
+        ":discretize_attention",
+        ":discretize_map",
+        ":discretize_position_embedding",
+        ":serialized_cpp_program",
+        ":utils",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "generator_report",
+    srcs = ["generator_report.cc"],
+    hdrs = ["generator_report.h"],
+    deps = [
+        ":captured_model",
+        ":state_compactor",
+        ":utils",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "snapshot_execution_trace",
+    srcs = ["snapshot_execution_trace.cc"],
+    hdrs = ["snapshot_execution_trace.h"],
+    deps = [
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/llm:extract_top1_ids",
+        "//src/llm:layer",
+        "//src/llm:layer_hooks",
+        "@cuda//:cuda_runtime",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "model_recorder",
+    srcs = ["model_recorder.cc"],
+    hdrs = ["model_recorder.h"],
+    deps = [
+        ":captured_model",
+        ":captured_model_util",
+        ":state_vector_hints",
+        ":snapshot_execution_trace",
+        ":utils",
+        "//src/cuda:executor",
+        "//src/dataset:compact_vocabulary",
+        "//src/dataset:gpt2_detokenizer",
+        "//src/dataset:gpt2_tokenizer",
+        "//src/dataset:padded_line_dataset",
+        "//src/llm:checkpoint",
+        "//src/llm:gpt2",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "generator",
+    srcs = ["generate_discretized_model.cc"],
+    hdrs = ["generate_discretized_model.h"],
+    deps = [
+        ":captured_model",
+        ":captured_model_util",
+        ":state_compactor",
+        ":state_vector_hints",
+        ":code_generator",
+        ":generator_report",
+        ":model_recorder",
+        ":utils",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+    ],
+)
+
+# Explicit GPU conversion; no genrule and no dependency from CPU inference.
+cc_binary(
+    name = "generate_discretized_model",
+    srcs = ["generate_discretized_model_main.cc"],
+    data = ["//:clang_format_config"],
+    deps = [
+        ":generator",
+        ":generator_report",
+        ":utils",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/memory",
+        "@rules_cc//cc/runfiles",
+    ],
+)
+
+cc_test(
+    name = "generator_io_test",
+    size = "small",
+    srcs = ["generator_io_test.cc"],
+    deps = [
+        ":utils",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "naming_utils_test",
+    size = "small",
+    srcs = ["naming_utils_test.cc"],
+    deps = [
+        ":utils",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "discretize_certificate_test",
+    size = "small",
+    srcs = ["discretize_certificate_test.cc"],
+    deps = [
+        ":captured_model_util",
+        ":state_compactor",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "discretize_core_test",
+    size = "small",
+    srcs = ["discretize_core_test.cc"],
+    deps = [
+        ":captured_model_util",
+        ":state_compactor",
+        ":utils",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "generator_compact_test",
+    size = "small",
+    srcs = ["generator_compact_test.cc"],
+    deps = [
+        ":discretize_attention",
+        ":discretize_attention_test_util",
+        ":discretize_map",
+        ":discretize_position_embedding",
+        ":state_compactor",
+        ":captured_model_util",
+        ":code_generator",
+        ":utils",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "generator_emit_test",
+    size = "small",
+    srcs = ["generator_emit_test.cc"],
+    deps = [
+        ":captured_model_util",
+        ":code_generator",
+        ":utils",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "generator_report_test",
+    size = "small",
+    srcs = ["generator_report_test.cc"],
+    deps = [
+        ":generator_report",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "generate_discretized_model_test",
+    size = "small",
+    srcs = [
+        "generate_discretized_model_test.cc",
+        "generator_test_util.h",
+    ],
+    data = ["//:clang_format_config"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":generator",
+        ":model_recorder",
+        ":captured_model_util",
+        ":code_generator",
+        ":utils",
+        "//src/cuda:executor",
+        "//src/dataset:compact_vocabulary",
+        "//src/dataset:gpt2_tokenizer",
+        "//src/llm:checkpoint",
+        "//src/llm:gpt2",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "model_recorder_test",
+    size = "small",
+    srcs = [
+        "model_recorder_test.cc",
+        "generator_test_util.h",
+    ],
+    data = [
+        "//:clang_format_config",
+        ":generate_discretized_model",
+    ],
+    tags = ["requires-gpu"],
+    deps = [
+        ":generator",
+        ":model_recorder",
+        ":captured_model_util",
+        ":code_generator",
+        ":utils",
+        "//src/cuda:executor",
+        "//src/dataset:compact_vocabulary",
+        "//src/dataset:gpt2_tokenizer",
+        "//src/llm:checkpoint",
+        "//src/llm:gpt2",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "snapshot_execution_trace_test",
+    srcs = ["snapshot_execution_trace_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":snapshot_execution_trace",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/llm:extract_top1_ids",
+        "//src/llm:layer",
+        "//src/llm:layer_hooks",
+        "@cuda//:cuda_runtime",
+        "//src/llm:gpt2",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@googletest//:gtest_main",
+    ],
+)
+
+test_suite(
+    name = "generator_tests",
+    tests = [
+        ":generator_io_test",
+        ":naming_utils_test",
+        ":discretize_certificate_test",
+        ":discretize_core_test",
+        ":generator_compact_test",
+        ":generator_emit_test",
+        ":generator_report_test",
+        ":generate_discretized_model_test",
+        ":model_recorder_test",
+        ":snapshot_execution_trace_test",
+    ],
+)
