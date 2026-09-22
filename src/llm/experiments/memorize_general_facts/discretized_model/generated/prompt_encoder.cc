@@ -31613,12 +31613,12 @@ const PromptRow kPrompts[] = {
      106949,
      11},
 };
-} // namespace
-absl::StatusOr<std::vector<TokenId>>
-EncodeGeneratedPrompt(absl::string_view text) {
+}  // namespace
+absl::StatusOr<std::vector<TokenId>> EncodeGeneratedPrompt(
+    absl::string_view text) {
   auto row = std::lower_bound(
       std::begin(kPrompts), std::end(kPrompts), text,
-      [](const PromptRow &r, absl::string_view key) { return r.text < key; });
+      [](const PromptRow& r, absl::string_view key) { return r.text < key; });
   if (row == std::end(kPrompts) || row->text != text)
     return absl::NotFoundError(
         "unsupported text encoding: use a captured corpus prefix at a token "
@@ -31626,4 +31626,4 @@ EncodeGeneratedPrompt(absl::string_view text) {
   return std::vector<TokenId>(kTokens + row->offset,
                               kTokens + row->offset + row->length);
 }
-} // namespace pluto::llm::discretized
+}  // namespace pluto::llm::discretized

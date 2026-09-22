@@ -18,7 +18,8 @@ corpus, not an exact replacement for the neural model on arbitrary text.
 ## Representation
 
 Vocabulary symbols have their original token bytes and GPT-2 IDs as labels.
-Internal symbols are numeric IDs for exact native BF16 residual vectors.
+Initially, internal symbols are numeric IDs for exact native BF16 residual
+vectors. In the reduced model they identify equivalence classes of those states.
 There are 17 internal boundaries: summed token/position embeddings, then the
 attention and MLP residual outputs of each of eight blocks. Each boundary has
 its own state alphabet; IDs are globally distinct.
@@ -88,13 +89,58 @@ library list contain **no CUDA dependency**. It needs no checkpoint, tokenizer
 installation, or GPU at inference time. All 72 repository Bazel test targets and
 186 general-facts Python tests passed at this milestone.
 
-## Current reduced milestone: 6,654 internal states
+## Reduced result: 6,514 internal states
 
-The checked-in generated package now has **6,654 internal states** (about **97%
+The checked-in generated package now has **6,514 internal states** (**97.06%
 fewer** than the exact baseline), with the same 4,475 vocabulary symbols. Its
 compiled CPU verifier still reports 0/10,002 errors, 1,024/1,024 exact sentences,
-and 1,024 explicit EOS predictions. This is an intermediate search checkpoint,
-not a claim of irreducibility; an exhaustive within-boundary search is continuing.
+and 1,024 explicit EOS predictions. The reduction accepted 89,345 seed merges,
+including their forced downstream merges, eliminating 215,044 original states.
+
+The final exhaustive sweep found **no compatible within-boundary pair**. This
+includes distant pairs: nearest-neighbor search only ordered the initial work.
+Pairs whose terminal vocabulary labels already differ are provably incompatible
+and can be skipped. The certificate in `generated/provenance.json` records
+`no_compatible_pair`, `pairwise_irreducible: true`, and
+`global_minimum_proven: false`. A different earlier merge order could produce a
+different, potentially smaller quotient; this is not a global minimum claim.
+
+A separate checker, which imports no reducer code and trusts no cached search
+results, independently proves that **all 8,423,754 same-boundary pairs** are
+incompatible. It works backward from distinct vocabulary labels through
+injective MLP tables and 8,990 explicit attention-input pair collision checks.
+The complete argument summary is also recorded in generated provenance. Run it
+on a saved model with:
+
+```sh
+python3 -B scripts/memorize_general_facts/discretize_certificate.py \
+  --model=/tmp/pluto-discretize.AcuKzZ/search-final.json
+```
+
+The saved JSON is a local search artifact, not a runtime dependency. The checker
+reports `inconclusive` if its sufficient backward argument cannot be completed;
+it never interprets a missing proof as success or proves corpus accuracy by
+itself. The separate autoregressive verifier establishes that accuracy.
+
+The input/position boundary has 52 states. Subsequent boundaries are:
+
+| Block | After attention + residual | After MLP + residual |
+| --- | ---: | ---: |
+| 0 | 48 | 48 |
+| 1 | 48 | 48 |
+| 2 | 48 | 48 |
+| 3 | 48 | 48 |
+| 4 | 47 | 47 |
+| 5 | 47 | 47 |
+| 6 | 45 | 45 |
+| 7 | 2,900 | 2,900 |
+
+There are 2,900 distinct required next-token labels. Both final boundaries have
+reached that lower bound: the final MLP and snap are pointwise functions, so
+different required labels cannot share an input state. Earlier attention tables
+can expand a small alphabet into many outputs by inspecting ordered histories.
+These counts measure state alphabets, not the information or bytes in the
+history-keyed tables; reducing states is not the same as compressing the model.
 
 All original 221,558 states are accounted for by the quotient membership map.
 The generator preserves all eight attention tables, all eight MLP tables, the
@@ -115,6 +161,12 @@ Generate these with `--state_index`. For older intermediate models without
 membership metadata, `--original_model=/path/to/exact-baseline.json` reconstructs
 and checks the complete quotient mapping from the original transition tables.
 The inspection files are not compiled, linked, or read by the inference model.
+Merged states preserve the agreed corpus completions, not numerical vectors or
+all possible neural-model behavior. A class can group unrelated meanings; its
+example contexts are evidence for further interpretation, not semantic proof.
+The final result passes all 72 repository Bazel test targets and all 209
+general-facts Python tests. Its executable and build dependency graph remain
+CUDA-free, and generated C++ is formatted with the repository's Google style.
 
 ```sh
 bazel build -c opt //src/llm/experiments/memorize_general_facts/discretized_model/generated:discretized_model
@@ -129,6 +181,9 @@ boundaries. It is intentionally not a general BPE tokenizer. Alternatively,
 `--token_ids=ID,ID,...` supplies compact IDs directly. The model's predictions do
 not consult this text encoder or the separately compiled verification fixtures.
 Unknown entries, attention histories, MLP inputs, and readouts are errors.
+After merging, a previously unseen raw-token prefix may map to known abstract
+lookup keys; the lookup mechanism does not promise to reject every out-of-corpus
+token sequence. The text encoder deliberately accepts only recorded prefixes.
 
 ## Reproduce capture and code generation
 

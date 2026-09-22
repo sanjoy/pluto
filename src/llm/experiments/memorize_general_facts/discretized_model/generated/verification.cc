@@ -1392,11 +1392,11 @@ const Sample kSamples[] = {
     {13985, 12}, {13997, 10}, {14007, 13}, {14020, 15}, {14035, 16},
     {14051, 13}, {14064, 13}, {14077, 10}, {14087, 11},
 };
-} // namespace
-absl::Status VerifyGeneratedModel(const Model &model, std::ostream &output) {
+}  // namespace
+absl::Status VerifyGeneratedModel(const Model& model, std::ostream& output) {
   size_t targets = 0;
   size_t sentences = 0;
-  for (const auto &sample : kSamples) {
+  for (const auto& sample : kSamples) {
     const auto original =
         absl::MakeConstSpan(kExpectedTokens + sample.offset, sample.length);
     auto generated = Generate(model, original.first(model.prompt_tokens),
@@ -1419,4 +1419,4 @@ absl::Status VerifyGeneratedModel(const Model &model, std::ostream &output) {
          << " autoregressive=true integer_only=true\n";
   return absl::OkStatus();
 }
-} // namespace pluto::llm::discretized
+}  // namespace pluto::llm::discretized

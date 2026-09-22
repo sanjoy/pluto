@@ -4485,4 +4485,4 @@ const VocabularyRow kRows[] = {
 };
 }
 absl::Span<const VocabularyRow> GeneratedVocabulary() { return {kRows, 4475}; }
-} // namespace pluto::llm::discretized
+}  // namespace pluto::llm::discretized

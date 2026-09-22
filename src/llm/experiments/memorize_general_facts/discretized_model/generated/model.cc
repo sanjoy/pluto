@@ -5,7 +5,7 @@
 #include "tables.h"
 
 namespace pluto::llm::discretized {
-const Model &GeneratedModel() {
+const Model& GeneratedModel() {
   static const AttentionTable kAttention[] = {
       GeneratedAttention0(), GeneratedAttention1(), GeneratedAttention2(),
       GeneratedAttention3(), GeneratedAttention4(), GeneratedAttention5(),
@@ -25,4 +25,4 @@ const Model &GeneratedModel() {
                            GeneratedSnap()};
   return model;
 }
-} // namespace pluto::llm::discretized
+}  // namespace pluto::llm::discretized
