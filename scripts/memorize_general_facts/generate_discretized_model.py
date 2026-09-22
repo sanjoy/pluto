@@ -18,6 +18,7 @@ import sys
 
 from discretize_core import (build_model, evaluate_model, load_model, reduce_model,
                              restore_membership, save_model)
+from discretize_certificate import certify_model
 from discretize_emit import emit_model
 
 
@@ -53,6 +54,12 @@ def provenance(args, model):
         "verification": evaluate_model(model),
         "stats": stats,
     }
+    if stats.get("search", {}).get("pairwise_irreducible"):
+        # Independently check the completed quotient without trusting the
+        # reducer's rejection cache. This sufficient backward proof may be
+        # inconclusive on other models, which is recorded honestly. Do not run
+        # quadratic pair checks on the much larger unreduced baseline.
+        result["irreducibility_certificate"] = certify_model(model)
     if args.checkpoint is not None:
         files = sorted(args.checkpoint.glob("weight_*.bin"))
         mapping = args.checkpoint / "compact_vocabulary.tsv"
@@ -78,11 +85,16 @@ def format_sources(directory):
         raise ValueError("clang-format must be installed to format generated C++")
     paths = sorted(path for path in directory.rglob("*")
                    if path.suffix in (".h", ".cc"))
+    # Output normally lives in /tmp before installation. Explicitly use the
+    # repository's Google style rather than inheriting a temporary directory's
+    # configuration (or clang-format's LLVM fallback).
+    style = Path(__file__).resolve().parents[2] / ".clang-format"
     # Independent translation units also format independently. Bound formatter
     # parallelism rather than making a huge shell argument list.
     with ThreadPoolExecutor(max_workers=4) as pool:
         list(pool.map(lambda path: subprocess.run(
-            [formatter, "-i", str(path)], check=True), paths))
+            [formatter, "--style=file:" + str(style), "-i", str(path)],
+            check=True), paths))
 
 
 def parser():
