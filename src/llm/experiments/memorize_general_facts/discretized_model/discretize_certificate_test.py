@@ -24,7 +24,7 @@ def model_with_distinct_outputs(size=2):
         "entry": [[index, 0, first + index] for index in range(size)],
         "attention": [[[[first + index], middle + index] for index in range(size)]],
         "mlp": [[[middle + index, final + index] for index in range(size)]],
-        "snap": [[final + index, index] for index in range(size)],
+        "language_modeling_head": [[final + index, index] for index in range(size)],
     }
 
 
@@ -44,7 +44,7 @@ class DiscretizeCertificateTest(unittest.TestCase):
 
     def test_mergeable_counterexample_cannot_receive_certificate(self):
         model = model_with_distinct_outputs()
-        model["snap"][1][1] = model["snap"][0][1]
+        model["language_modeling_head"][1][1] = model["language_modeling_head"][0][1]
         model["stats"] = {"search": {"pairwise_irreducible": True}}
         result = certify_model(model)
         self.assertEqual(result["status"], "inconclusive")
@@ -52,9 +52,9 @@ class DiscretizeCertificateTest(unittest.TestCase):
         self.assertFalse(result["pairwise_irreducible_proven"])
         self.assertEqual(result["proven_pairs"], 0)
 
-    def test_unknown_snap_label_is_inconclusive(self):
+    def test_unknown_language_modeling_head_label_is_inconclusive(self):
         model = model_with_distinct_outputs()
-        model["snap"].pop()
+        model["language_modeling_head"].pop()
         result = certify_model(model)
         self.assertEqual(result["status"], "inconclusive")
         self.assertIn("fixed readout label", result["reason"])
@@ -65,7 +65,7 @@ class DiscretizeCertificateTest(unittest.TestCase):
         with self.assertRaisesRegex(CertificateError, "state bits"):
             certify_model(model)
         model = model_with_distinct_outputs()
-        model["attention"][0][0][1] = model["snap"][0][0]
+        model["attention"][0][0][1] = model["language_modeling_head"][0][0]
         with self.assertRaisesRegex(CertificateError, "boundary 1"):
             certify_model(model)
 
@@ -113,7 +113,7 @@ class DiscretizeCertificateTest(unittest.TestCase):
                 self.assertEqual(code, expected_code)
                 self.assertEqual(result["status"], expected_status)
                 self.assertEqual(len(result["model_sha256"]), 64)
-                model["snap"].pop()
+                model["language_modeling_head"].pop()
             path.write_text("not JSON", encoding="utf-8")
             output = io.StringIO()
             with contextlib.redirect_stdout(output):

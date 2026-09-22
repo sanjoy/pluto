@@ -26,7 +26,7 @@ def fixture():
             [[100, 1000], [110, 1010], [115, 1015], [120, 1020]],
             [[2000, 3000], [2010, 3010], [2015, 3015], [2020, 3020]],
         ],
-        "snap": [[3000, 1], [3010, 3], [3015, 0], [3020, 3]],
+        "language_modeling_head": [[3000, 1], [3010, 3], [3015, 0], [3020, 3]],
     }
 
 
@@ -56,12 +56,12 @@ class TransitionFixturesTest(unittest.TestCase):
         self.assertEqual(states[6:], [2000, 2010, 3000, 3010,
                                      30, 120, 1020, 2020, 3020])
 
-    def test_all_snap_constraints_including_unreachable_ones_are_emitted(self):
+    def test_all_language_modeling_head_constraints_including_unreachable_ones_are_emitted(self):
         source = render_transition_test(fixture(), _NAMES)
-        for state, token in fixture()["snap"]:
+        for state, token in fixture()["language_modeling_head"]:
             self.assertIn(f"{{{{{state}}}, static_cast<DiscreteHiddenState>({_NAMES[token]})}}", source)
-        self.assertIn("EverySourceSnapConstraint", source)
-        self.assertIn("model.snap.function(row.input), {row.output}", source)
+        self.assertIn("EverySourceLanguageModelingHeadConstraint", source)
+        self.assertIn("model.language_modeling_head.function(row.input), {row.output}", source)
 
     def test_optional_expectations_preserve_supported_zero(self):
         self.assertEqual(_result(True, 0), "{DiscreteHiddenState{0}}")
@@ -72,18 +72,18 @@ class TransitionFixturesTest(unittest.TestCase):
         self.assertIn("EXPECT_EQ(actual.output, expected.output);", source)
         self.assertNotIn(".supported", source)
 
-    def test_prompt_only_states_need_not_have_snap_constraints(self):
+    def test_prompt_only_states_need_not_have_language_modeling_head_constraints(self):
         model = fixture()
         model["prompt_tokens"] = 2
         model["samples"] = model["samples"][:1]
-        model["snap"] = [row for row in model["snap"] if row[0] != 3000]
+        model["language_modeling_head"] = [row for row in model["language_modeling_head"] if row[0] != 3000]
         _, states, _ = _replay_samples(model)
         self.assertEqual(states[-2:], [3000, 3010])
         source = render_transition_test(model, _NAMES)
         self.assertIn("for (size_t position = 1; position < sample.length;", source)
 
     def test_missing_source_rows_fail_before_cpp_generation(self):
-        for location in ("entry", "attention", "mlp", "snap"):
+        for location in ("entry", "attention", "mlp", "language_modeling_head"):
             with self.subTest(location=location):
                 model = fixture()
                 if location in ("attention", "mlp"):
@@ -95,7 +95,7 @@ class TransitionFixturesTest(unittest.TestCase):
 
     def test_wrong_source_readout_is_rejected(self):
         model = fixture()
-        model["snap"][0][1] = 0
+        model["language_modeling_head"][0][1] = 0
         with self.assertRaisesRegex(ValueError, "source readout disagrees"):
             render_transition_test(model, _NAMES)
 
@@ -182,7 +182,7 @@ class TransitionFixturesTest(unittest.TestCase):
         source = render_transition_test(model, _NAMES)
         self.assertEqual(model, before)
         model["entry"].reverse()
-        model["snap"].reverse()
+        model["language_modeling_head"].reverse()
         for rows in model["attention"] + model["mlp"]:
             rows.reverse()
         self.assertEqual(render_transition_test(model, _NAMES), source)

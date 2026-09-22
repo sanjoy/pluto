@@ -61,7 +61,7 @@ struct AttentionTable {
 };
 
 // Maps one residual symbol to a post-MLP residual symbol, or to a compact
-// vocabulary token ID for the final snap.
+// vocabulary token ID for the language modeling head.
 struct StateTable {
   // Required pure function; unsupported inputs produce an empty output.
   TransitionResult (*function)(DiscreteHiddenState) = nullptr;
@@ -82,7 +82,7 @@ struct Model {
   // MLP residual boundaries, one per attention block in the same order.
   absl::Span<const StateTable> mlp;
   // Final LayerNorm/top-1 readout: residual symbols -> compact tokens.
-  StateTable snap;
+  StateTable language_modeling_head;
   // Required pure lookup: (compact token, absolute position) -> state.
   TransitionResult (*entry_function)(DiscreteToken, uint32_t) = nullptr;
 };
@@ -92,9 +92,9 @@ struct Model {
 // Inference also calls this inexpensive structural check before dispatch.
 absl::Status ValidateModel(const Model& model);
 
-// Executes entry -> (causal attention -> pointwise MLP)* -> final snap.
-// Recomputes all real positions. Unknown keys fail explicitly; there is no
-// nearest-state fallback and no corpus-line or continuation lookup.
+// Executes entry -> (causal attention -> pointwise MLP)* -> language modeling
+// head. Recomputes all real positions. Unknown keys fail explicitly; there is
+// no nearest-state fallback and no corpus-line or continuation lookup.
 absl::StatusOr<DiscreteToken> PredictNext(
     const Model& model, absl::Span<const DiscreteToken> tokens);
 

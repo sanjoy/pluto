@@ -84,7 +84,7 @@ class DiscretizeCoreTest(unittest.TestCase):
         self.assertEqual(evaluate_model(model)["targets"], 3)
         bad = copy.deepcopy(model)
         final = self.state(model, 2, 302)
-        next(row for row in bad["snap"] if row[0] == final)[1] = 0
+        next(row for row in bad["language_modeling_head"] if row[0] == final)[1] = 0
         with self.assertRaisesRegex(ModelError, "expected 2, got 0"):
             evaluate_model(bad)
         with self.assertRaisesRegex(ModelError, "undefined"):
@@ -100,10 +100,10 @@ class DiscretizeCoreTest(unittest.TestCase):
         self.assertNotEqual(two_token_rows[0][1], two_token_rows[1][1])
         self.assertEqual(evaluate_model(model)["errors"], 0)
 
-    def test_prompt_outputs_are_not_snap_constraints(self):
+    def test_prompt_outputs_are_not_language_modeling_head_constraints(self):
         model = self.build([sample([0, 1], [[100, 101], [200, 201], [300, 301]], [0, 2])],
                            header(prompt_tokens=2))
-        self.assertEqual(len(model["snap"]), 1)
+        self.assertEqual(len(model["language_modeling_head"]), 1)
         reducer = QuotientReducer(model)
         self.assertTrue(reducer.try_merge(self.state(model, 2, 300), self.state(model, 2, 301)))
         self.assertEqual(evaluate_model(reducer.export())["explicit_eos"], 1)
@@ -150,7 +150,7 @@ class DiscretizeCoreTest(unittest.TestCase):
             model.update(states=[{"id": 3 + i, "stage": i // 7, "bits": [100 + i]}
                                  for i in range(21)], samples=[], entry=[], attention=[[]],
                          mlp=[[[10 + i, 17 + randomizer.randrange(7)] for i in range(7)]],
-                         snap=[[17 + i, randomizer.randrange(3)] for i in range(7)])
+                         language_modeling_head=[[17 + i, randomizer.randrange(3)] for i in range(7)])
             prefixes = sorted({tuple(3 + randomizer.randrange(7) for _ in range(length))
                                for length in (1, 2, 3) for _ in range(20)})
             model["attention"][0] = [[list(prefix), 10 + randomizer.randrange(7)] for prefix in prefixes]
@@ -177,7 +177,7 @@ class DiscretizeCoreTest(unittest.TestCase):
                         else:
                             signatures[signature] = output
                     labels = {}
-                    for state, token in model["snap"]:
+                    for state, token in model["language_modeling_head"]:
                         root = candidate[state - 3]
                         if root in labels and labels[root] != token:
                             return None
@@ -240,7 +240,7 @@ class DiscretizeCoreTest(unittest.TestCase):
         model.update(states=[{"id": 3 + i, "stage": i // 4, "bits": [100 + i]}
                              for i in range(12)], samples=[], entry=[],
                      attention=[[[[3 + i], 7 + i] for i in range(4)]],
-                     mlp=[[[7 + i, 11 + i] for i in range(4)]], snap=[[12, 0], [13, 1]])
+                     mlp=[[[7 + i, 11 + i] for i in range(4)]], language_modeling_head=[[12, 0], [13, 1]])
         reducer = QuotientReducer(model)
         for stage in (1, 2):
             start = 3 + 4 * stage
@@ -270,7 +270,7 @@ class DiscretizeCoreTest(unittest.TestCase):
         self.assertEqual(sorted(member for row in result["states"] for member in row["members"]),
                          sorted(row["id"] for row in original["states"]))
         bad = copy.deepcopy(old)
-        bad["snap"][0][1] = 0
+        bad["language_modeling_head"][0][1] = 0
         with self.assertRaisesRegex(ModelError, "token label"):
             restore_membership(bad, original)
 
