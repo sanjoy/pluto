@@ -74,6 +74,6 @@ TransitionResult Snap(StateId state) {
   return {static_cast<StateId>(vocab::kComma_0) + (state - 9664u)};
 }
 }  // namespace
-StateTable GeneratedSnap() { return {{}, Snap}; }
+StateTable GeneratedSnap() { return {Snap}; }
 
 }  // namespace pluto::llm::discretized

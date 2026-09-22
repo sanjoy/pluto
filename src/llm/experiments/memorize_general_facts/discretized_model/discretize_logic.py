@@ -26,7 +26,6 @@ def render_compact(model, token_names, files, source):
                         "unformatted_source_bytes_after": len(files[filename].encode())})
 
     body, stats = render_entry("GeneratedEntryFunction", model["entry"], names)
-    body += "\nabsl::Span<const EntryRow> GeneratedEntry() { return {}; }\n"
     install("entry.cc", body, stats,
             "Entry: compact token and absolute position -> residual symbol.\n"
             "A default symbol plus exceptional positions describes each token;\n"
@@ -35,7 +34,7 @@ def render_compact(model, token_names, files, source):
         function = f"Attention{block}"
         body, stats = render_attention(function, rows)
         body = ("namespace {\n" + body + "}\n" +
-                f"AttentionTable GeneratedAttention{block}() {{ return {{{{}}, {{}}, {function}}}; }}\n")
+                f"AttentionTable GeneratedAttention{block}() {{ return {{{function}}}; }}\n")
         install(f"attention_{block}.cc", body, stats,
                 f"Block {block}: exact causal-history decision program.\n"
                 "Shared suffixes and sequence checks compress this boundary only.\n"
@@ -43,13 +42,13 @@ def render_compact(model, token_names, files, source):
         function = f"Mlp{block}"
         body, stats = render_pointwise(function, model["mlp"][block])
         body = ("namespace {\n" + body + "}\n" +
-                f"StateTable GeneratedMlp{block}() {{ return {{{{}}, {function}}}; }}\n")
+                f"StateTable GeneratedMlp{block}() {{ return {{{function}}}; }}\n")
         install(f"mlp_{block}.cc", body, stats,
                 f"Block {block}: pointwise MLP residual transition.\n"
                 "Symbol renaming may expose a guarded offset. This function and\n"
                 "both boundary alphabets remain separate; it is not a layer bypass.")
     body, stats = render_pointwise("Snap", model["snap"], names)
-    body = "namespace {\n" + body + "}\nStateTable GeneratedSnap() { return {{}, Snap}; }\n"
+    body = "namespace {\n" + body + "}\nStateTable GeneratedSnap() { return {Snap}; }\n"
     install("snap.cc", body, stats,
             "Final residual symbol -> named vocabulary token.\n"
             "No unobserved input is assigned a default prediction.", True)

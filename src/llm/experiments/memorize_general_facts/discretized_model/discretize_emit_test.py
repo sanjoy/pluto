@@ -4,9 +4,11 @@
 import ast
 import copy
 import hashlib
+import itertools
 import json
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -143,6 +145,143 @@ emit_model(json.loads(Path(sys.argv[2]).read_text()), Path(sys.argv[3]),
         self.assertNotIn(str(self.root), "".join(p.read_text() for p in first.iterdir()))
         for name, digest in manifest["files"].items():
             self.assertEqual(hashlib.sha256((first / name).read_bytes()).hexdigest(), digest)
+
+    def test_plain_rows_are_private_and_every_boundary_exposes_a_function(self):
+        destination, _ = self.emit()
+        header = (destination / "tables.h").read_text()
+        self.assertNotIn("EntryRow", header)
+        self.assertNotIn("StateRow", header)
+        self.assertNotIn("AttentionRow", header)
+        self.assertNotIn("GeneratedEntry()", header)
+        self.assertIn("TransitionResult GeneratedEntryFunction(TokenId, uint32_t);", header)
+        model = (destination / "model.cc").read_text()
+        self.assertIn("GeneratedSnap(), GeneratedEntryFunction", model)
+        self.assertNotIn("GeneratedEntry()", model)
+        for name in ("entry.cc", "attention_0.cc", "mlp_0.cc", "snap.cc"):
+            text = (destination / name).read_text()
+            self.assertRegex(text, r"namespace \{\nstruct (Entry|Attention|State)Row")
+            self.assertIn("TransitionResult", text)
+
+    def _compile_and_check_partial_functions(self, model, compact):
+        """Run the actual emitted production TUs, independent of lookup strategy.
+
+        A minimal header supplies only the public data/function interfaces and
+        a standard span alias; no lookup algorithm is duplicated by this shim.
+        This keeps the Python test CPU-only and independent of a Bazel cache.
+        Repository C++ tests separately exercise the actual runtime itself.
+        """
+        directory, _ = self.emit(model=model, compact_transitions=compact)
+        include = self.root / "include"
+        header = include / discretize_emit.RUNTIME
+        header.parent.mkdir(parents=True)
+        header.write_text('''#pragma once
+#include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <span>
+#include <string_view>
+namespace absl { template<class T> using Span = std::span<T>; }
+namespace pluto::llm::discretized {
+using StateId = uint32_t;
+using TokenId = int32_t;
+struct VocabularyRow { int32_t original_id; std::string_view bytes; };
+struct TransitionResult { std::optional<StateId> output; };
+struct AttentionTable {
+  TransitionResult (*function)(absl::Span<const StateId>) = nullptr;
+};
+struct StateTable { TransitionResult (*function)(StateId) = nullptr; };
+struct Model {
+  uint32_t context_length;
+  uint32_t prompt_tokens;
+  TokenId eos_token;
+  absl::Span<const VocabularyRow> vocabulary;
+  absl::Span<const AttentionTable> attention;
+  absl::Span<const StateTable> mlp;
+  StateTable snap;
+  TransitionResult (*entry_function)(TokenId, uint32_t) = nullptr;
+};
+const Model& GeneratedModel();
+}
+''')
+        checks = []
+
+        def check(expression, expected):
+            output = ("std::nullopt" if expected is None else
+                      f"std::optional<StateId>({expected}u)")
+            label = len(checks)
+            checks.append(f'if (({expression}).output != {output}) {{ '
+                          f'std::cerr << "partial function check {label} failed\\n"; return 1; }}')
+
+        entries = {(token, position): output for token, position, output in model["entry"]}
+        for token in [-1, *range(model["vocab_size"] + 1), 2147483647]:
+            for position in [*range(5), 4294967295]:
+                check(f"model.entry_function({token}, {position}u)", entries.get((token, position)))
+        pointwise = [(f"model.mlp[{block}].function", dict(rows))
+                     for block, rows in enumerate(model["mlp"])]
+        pointwise.append(("model.snap.function", dict(model["snap"])))
+        for function, rows in pointwise:
+            for state in [*range(20), *rows, 4294967294, 4294967295]:
+                check(f"{function}({state}u)", rows.get(state))
+        for block, rows in enumerate(model["attention"]):
+            by_key = {tuple(prefix): output for prefix, output in rows}
+            alphabet = sorted({0, 4, 5, 6, 7, 4294967295} |
+                              {state for prefix, _ in rows for state in prefix})
+            probes = {()} | set(by_key)
+            for length in range(1, 4):
+                probes.update(itertools.product(alphabet, repeat=length))
+            for prefix in sorted(probes):
+                literal = ", ".join(f"{state}u" for state in prefix)
+                check(f"model.attention[{block}].function(std::vector<StateId>{{{literal}}})",
+                      by_key.get(prefix))
+        source = directory / "partial_functions_test.cc"
+        source.write_text('''#include <iostream>
+#include <vector>
+#include "tables.h"
+using namespace pluto::llm::discretized;
+int main() {
+  const Model& model = GeneratedModel();
+''' + f'''  if (!model.entry_function || !model.snap.function ||
+      model.attention.size() != {model["layers"]} || model.mlp.size() != {model["layers"]})
+    return 1;
+''' + "\n".join(checks) + "\nreturn 0;\n}\n")
+        sources = [directory / name for name in ("entry.cc", "model.cc", "snap.cc", "vocabulary.cc")]
+        sources += [directory / f"{kind}_{block}.cc" for kind in ("attention", "mlp")
+                    for block in range(model["layers"])]
+        executable = directory / "partial_functions_test"
+        compiled = subprocess.run(
+            ["c++", "-std=c++20", "-O1", "-Wall", "-Wextra", "-Werror",
+             "-I", str(include), *map(str, sources), str(source), "-o", str(executable)],
+            capture_output=True, text=True, timeout=60)
+        self.assertEqual(compiled.returncode, 0, compiled.stderr)
+        ran = subprocess.run([str(executable)], capture_output=True, text=True, timeout=10)
+        self.assertEqual(ran.returncode, 0, ran.stderr)
+
+    @unittest.skipUnless(shutil.which("c++"), "C++ compiler unavailable")
+    def test_plain_compiled_functions_match_exact_domains_and_supported_zero(self):
+        # Unsorted inputs exercise sorting before the binary-search emission.
+        self.model["entry"].reverse()
+        self.model["attention"][0].reverse()
+        self.model["mlp"][0].reverse()
+        self.model["snap"].reverse()
+        self._compile_and_check_partial_functions(self.model, compact=False)
+
+    @unittest.skipUnless(shutil.which("c++"), "C++ compiler unavailable")
+    def test_compact_functions_expose_the_same_interface_and_partial_domains(self):
+        self._compile_and_check_partial_functions(self.model, compact=True)
+
+    @unittest.skipUnless(shutil.which("c++"), "C++ compiler unavailable")
+    def test_plain_empty_attention_and_mlp_reject_every_input(self):
+        self.model["attention"] = [[]]
+        self.model["mlp"] = [[]]
+        self._compile_and_check_partial_functions(self.model, compact=False)
+
+    @unittest.skipUnless(shutil.which("c++"), "C++ compiler unavailable")
+    def test_plain_zero_blocks_and_maximum_state_ids(self):
+        self.model.update(layers=0,
+                          states=[{"id": 4294967295, "stage": 0, "bits": [0, 0]}],
+                          entry=[[0, 0, 4294967295]], attention=[], mlp=[],
+                          snap=[[4294967295, 0]], samples=[{"tokens": [0]}])
+        self._compile_and_check_partial_functions(self.model, compact=False)
 
     def test_expected_suffixes_never_enter_production_model_sources(self):
         first, _ = self.emit("first")
