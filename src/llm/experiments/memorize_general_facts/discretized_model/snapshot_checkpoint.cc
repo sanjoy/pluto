@@ -1,4 +1,4 @@
-#include "src/llm/experiments/memorize_general_facts/discretized_model/capture.h"
+#include "src/llm/experiments/memorize_general_facts/discretized_model/snapshot_checkpoint.h"
 
 #include <cuda_runtime_api.h>
 

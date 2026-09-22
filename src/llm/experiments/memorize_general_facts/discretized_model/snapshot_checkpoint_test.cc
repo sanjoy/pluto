@@ -1,4 +1,4 @@
-#include "src/llm/experiments/memorize_general_facts/discretized_model/capture.h"
+#include "src/llm/experiments/memorize_general_facts/discretized_model/snapshot_checkpoint.h"
 
 #include <cuda_runtime_api.h>
 
@@ -173,9 +173,8 @@ class CaptureTest : public testing::Test {
     executor_ = std::move(*executor);
   }
   void TearDown() override {
-    if (executor_ != nullptr) {
+    if (executor_ != nullptr)
       EXPECT_TRUE(executor_->Synchronize().ok());
-    }
   }
   std::unique_ptr<cuda::Executor> executor_;
 };
