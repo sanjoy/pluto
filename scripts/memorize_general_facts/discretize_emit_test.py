@@ -6,6 +6,7 @@ import copy
 import hashlib
 import json
 from pathlib import Path
+import re
 import tempfile
 import unittest
 from unittest import mock
@@ -28,6 +29,57 @@ def fixture():
         "snap": [[12, 1], [13, 3], [14, 0], [15, 3]],
         "stats": {},
     }
+
+
+class TokenNamesTest(unittest.TestCase):
+    def assert_identifier(self, name):
+        self.assertRegex(name, r"\Ak[A-Za-z0-9_]+_[0-9]+\Z")
+        self.assertTrue(name.isascii())
+        self.assertNotIn("__", name)
+        stem, compact_id = name[1:].rsplit("_", 1)
+        self.assertLessEqual(len(stem), 80)
+        self.assertTrue(compact_id.isdecimal())
+
+    def test_leading_spaces_case_and_eos_are_explicit(self):
+        self.assertEqual(discretize_emit._token_name(b" France", 123, 999), "kSpace_France_123")
+        self.assertEqual(discretize_emit._token_name(b"France", 123, 999), "kFrance_123")
+        self.assertEqual(discretize_emit._token_name(b"The", 456, 999), "kThe_456")
+        self.assertEqual(discretize_emit._token_name(b"the", 456, 999), "kthe_456")
+        self.assertEqual(discretize_emit._token_name(b"<|endoftext|>", 4474, 4474), "kEos_4474")
+        self.assertEqual(discretize_emit._token_name(b"unusual EOS bytes", 2, 2), "kEos_2")
+
+    def test_id_suffix_prevents_mnemonic_and_duplicate_byte_collisions(self):
+        tokens = [b" ", b"Space", b"_", b"Underscore", b"/", b"Slash",
+                  b" a", b"Space_a", b"a-b", b"a_b", b"a b", b"a", b"a"]
+        names = [discretize_emit._token_name(token, index, 999)
+                 for index, token in enumerate(tokens)]
+        self.assertEqual(len(names), len(set(names)))
+        self.assertIn("Underscore", names[2])
+        for name in names:
+            self.assert_identifier(name)
+
+    def test_every_byte_and_source_injection_text_remain_safe_identifiers(self):
+        tokens = [bytes([byte]) for byte in range(256)]
+        tokens.extend([b'*/\n#error injected\n//', b'"; namespace bad {',
+                       b"\\\r\n", b"__reserved", bytes(range(256)),
+                       "\u00e9\u00e8\U0001f642".encode("utf-8")])
+        for index, token in enumerate(tokens):
+            with self.subTest(token=token):
+                name = discretize_emit._token_name(token, index, 999)
+                self.assert_identifier(name)
+                self.assertEqual(name, discretize_emit._token_name(token, index, 999))
+
+    def test_cpp_keywords_numbers_and_long_tokens_are_legal_and_distinct(self):
+        for index, token in enumerate([b"class", b"int", b"namespace", b"0", b"123abc"]):
+            name = discretize_emit._token_name(token, index, 999)
+            self.assertEqual(name, "k" + token.decode("ascii") + "_" + str(index))
+            self.assert_identifier(name)
+        common = b"A" * 200
+        names = [discretize_emit._token_name(token, index, 999)
+                 for index, token in enumerate([common + b"B", common + b"C", b"_" * 100])]
+        self.assertEqual(len(names), len(set(names)))
+        for name in names:
+            self.assert_identifier(name)
 
 
 class EmitModelTest(unittest.TestCase):
@@ -69,7 +121,7 @@ class EmitModelTest(unittest.TestCase):
         alternate = copy.deepcopy(self.model)
         alternate["samples"] = [{"tokens": [0, 2]}, {"tokens": [1]}]
         second, _ = self.emit("second", alternate)
-        production = ["tables.h", "model.cc", "entry.cc", "attention_0.cc",
+        production = ["tables.h", "vocabulary_tokens.h", "model.cc", "entry.cc", "attention_0.cc",
                       "mlp_0.cc", "snap.cc", "vocabulary.cc"]
         for name in production:
             self.assertEqual((first / name).read_bytes(), (second / name).read_bytes())
@@ -78,6 +130,58 @@ class EmitModelTest(unittest.TestCase):
             self.assertNotIn("sample", text.lower())
         self.assertNotEqual((first / "verification.cc").read_bytes(),
                             (second / "verification.cc").read_bytes())
+
+    def test_named_vocabulary_constants_have_exact_ids_and_cover_all_token_references(self):
+        destination, manifest = self.emit()
+        header = (destination / "vocabulary_tokens.h").read_text()
+        declarations = dict(re.findall(r"inline\s+constexpr\s+TokenId\s+(\w+)\s*=\s*(\d+)\s*;", header))
+        self.assertEqual(declarations, {"kA_0": "0", "kB_1": "1", "kC_2": "2", "kEos_3": "3"})
+        self.assertIn(discretize_emit.NAMESPACE + "::vocab", header)
+        self.assertIn("vocabulary_tokens.h", manifest["files"])
+        names = ["kA_0", "kB_1", "kC_2", "kEos_3"]
+        entry = (destination / "entry.cc").read_text()
+        for token, position, state in self.model["entry"]:
+            self.assertIn(f"{{vocab::{names[token]}, {position}, {state}}}", entry)
+        snap = (destination / "snap.cc").read_text()
+        for state, token in self.model["snap"]:
+            self.assertIn(f"{{{state}, vocab::{names[token]}}}", snap)
+        self.assertIn("1024, 1, vocab::kEos_3", (destination / "model.cc").read_text())
+        for filename, array, expected in (
+                ("prompt_encoder.cc", "kTokens", ["kA_0", "kA_0", "kB_1", "kB_1"]),
+                ("verification.cc", "kExpectedTokens", ["kA_0", "kB_1", "kB_1"])):
+            text = (destination / filename).read_text()
+            body = re.search(r"const TokenId " + array + r"\[\]\s*=\s*\{(.*?)\};", text, re.S)
+            self.assertIsNotNone(body)
+            values = [value.strip() for value in body.group(1).split(",") if value.strip()]
+            self.assertEqual(values, ["vocab::" + name for name in expected])
+        # Attention and MLP symbols remain numeric hidden-state IDs.
+        self.assertNotIn("vocab::", (destination / "attention_0.cc").read_text())
+        self.assertNotIn("vocab::", (destination / "mlp_0.cc").read_text())
+        self.assertIn("{8, 12}", (destination / "mlp_0.cc").read_text())
+
+    def test_named_vocabulary_header_has_shared_explicit_build_dependencies(self):
+        destination, _ = self.emit()
+        build = ast.parse((destination / "BUILD.bazel").read_text())
+        rules = {}
+        for node in build.body:
+            if (isinstance(node, ast.Expr) and isinstance(node.value, ast.Call)
+                    and isinstance(node.value.func, ast.Name)
+                    and node.value.func.id == "cc_library"):
+                fields = {keyword.arg: ast.literal_eval(keyword.value)
+                          for keyword in node.value.keywords}
+                rules[fields["name"]] = fields
+        self.assertEqual(rules["vocabulary_tokens"]["hdrs"], ["vocabulary_tokens.h"])
+        for target in ("model", "prompt_encoder", "verification"):
+            self.assertIn(":vocabulary_tokens", rules[target]["deps"])
+
+    def test_duplicate_token_bytes_get_distinct_named_constants(self):
+        # The duplicate is unused by the text encoder, avoiding its separate
+        # rejection of ambiguous prefix tokenization.
+        self.model["vocabulary"][2]["hex"] = self.model["vocabulary"][0]["hex"]
+        destination, _ = self.emit()
+        header = (destination / "vocabulary_tokens.h").read_text()
+        self.assertIn("kA_0 = 0", header)
+        self.assertIn("kA_2 = 2", header)
 
     def test_exact_history_keys_are_flat_integer_sequences_not_hashes(self):
         destination, _ = self.emit()
