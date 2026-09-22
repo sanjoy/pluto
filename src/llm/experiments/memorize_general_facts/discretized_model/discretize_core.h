@@ -9,21 +9,21 @@
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "src/llm/experiments/memorize_general_facts/discretized_model/generator_io.h"
+#include "src/llm/experiments/memorize_general_facts/discretized_model/generator_model.h"
 
 namespace pluto::llm::discretized::generator {
 
 // Checks all externally supplied shapes, IDs, boundary types, and memberships.
 // Validation does not claim that the supplied model completes its corpus.
-absl::Status ValidateModel(const Json& model);
+absl::Status ValidateModel(const SymbolicModel& model);
 // Interns exact BF16 boundary vectors from an in-memory execution trace.
-absl::StatusOr<Json> BuildModel(const Json& metadata,
-                                const std::vector<Json>& samples,
-                                int expected_samples = -1);
-absl::StatusOr<Json> RestoreMembership(const Json& model,
-                                       const Json& original_model);
-absl::StatusOr<Json> EvaluateModel(const Json& model);
-absl::StatusOr<int> PredictNext(const Json& model,
+absl::StatusOr<SymbolicModel> BuildModel(
+    const ModelMetadata& metadata, const std::vector<ExecutionSample>& samples,
+    int expected_samples = -1);
+absl::StatusOr<SymbolicModel> RestoreMembership(
+    const SymbolicModel& model, const SymbolicModel& original_model);
+absl::StatusOr<VerificationResult> EvaluateModel(const SymbolicModel& model);
+absl::StatusOr<int> PredictNext(const SymbolicModel& model,
                                 const std::vector<int>& tokens);
 
 // Search limits are explicit: exhausting a shortlist never proves minimality.
@@ -32,7 +32,7 @@ struct ReductionOptions {
   int max_passes = 10;
   std::optional<int64_t> max_attempts;
   int64_t exhaustive_pair_limit = 100000;
-  std::function<void(const Json&)> progress;
+  std::function<void(const ReductionProgress&)> progress;
   // Optional cooperative cancellation, checked only between complete trials.
   std::function<bool()> interrupted;
 };
@@ -42,10 +42,10 @@ struct ReductionOptions {
 class QuotientReducer {
  public:
   static absl::StatusOr<std::unique_ptr<QuotientReducer>> Create(
-      const Json& model);
+      const SymbolicModel& model);
   ~QuotientReducer();
   absl::StatusOr<bool> TryMerge(int first_id, int second_id);
-  Json Export() const;
+  SymbolicModel Export() const;
   int RootForState(int state_id) const;
 
   struct Impl;
@@ -57,7 +57,7 @@ class QuotientReducer {
 };
 
 // SIGINT and optional cancellation return Cancelled between atomic trials.
-absl::StatusOr<Json> ReduceModel(const Json& model,
-                                 const ReductionOptions& options = {});
+absl::StatusOr<SymbolicModel> ReduceModel(const SymbolicModel& model,
+                                          const ReductionOptions& options = {});
 
 }  // namespace pluto::llm::discretized::generator

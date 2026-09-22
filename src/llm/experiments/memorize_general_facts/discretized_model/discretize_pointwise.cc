@@ -24,22 +24,13 @@ using Mapping = std::map<int, int>;
 using EntryMapping = std::map<std::pair<int, int>, int>;
 constexpr int kMaxId = std::numeric_limits<int32_t>::max();
 
-bool IsId(const Json& value) {
-  if (value.is_number_unsigned())
-    return value.get<uint64_t>() <= kMaxId;
-  return value.is_number_integer() && value.get<int64_t>() >= 0 &&
-         value.get<int64_t>() <= kMaxId;
-}
-
-absl::StatusOr<Mapping> MakeMapping(const Json& rows) {
-  if (!rows.is_array())
-    return absl::InvalidArgumentError("pointwise rows must be an array");
+absl::StatusOr<Mapping> MakeMapping(absl::Span<const StateTransition> rows) {
   Mapping result;
   for (const auto& row : rows) {
-    if (!row.is_array() || row.size() != 2 || !IsId(row[0]) || !IsId(row[1]))
+    if (row.input < 0 || row.output < 0)
       return absl::InvalidArgumentError(
           "pointwise IDs must be nonnegative and fit int");
-    int source = row[0], output = row[1];
+    int source = row.input, output = row.output;
     auto [it, inserted] = result.emplace(source, output);
     if (!inserted && it->second != output)
       return absl::InvalidArgumentError("conflicting pointwise mapping");
@@ -47,19 +38,18 @@ absl::StatusOr<Mapping> MakeMapping(const Json& rows) {
   return result;
 }
 
-absl::StatusOr<EntryMapping> MakeEntryMapping(const Json& rows) {
-  if (!rows.is_array())
-    return absl::InvalidArgumentError("entry rows must be an array");
+absl::StatusOr<EntryMapping> MakeEntryMapping(
+    absl::Span<const EntryTransition> rows) {
   EntryMapping result;
   for (const auto& row : rows) {
-    if (!row.is_array() || row.size() != 3 || !IsId(row[0]) || !IsId(row[2]))
+    if (row.token < 0 || row.output < 0)
       return absl::InvalidArgumentError(
           "entry IDs must be nonnegative and fit int");
-    if (!IsId(row[1]))
+    if (row.position < 0)
       return absl::InvalidArgumentError(
           "entry position must be nonnegative and fit int32_t");
-    std::pair<int, int> key{row[0].get<int>(), row[1].get<int>()};
-    int output = row[2];
+    std::pair<int, int> key{row.token, row.position};
+    int output = row.output;
     auto [it, inserted] = result.emplace(key, output);
     if (!inserted && it->second != output)
       return absl::InvalidArgumentError("conflicting entry mapping");
@@ -84,9 +74,9 @@ void Array(Lines& lines, absl::string_view name, absl::string_view type,
   lines.emplace_back("  };");
 }
 
-RenderedTransition Finish(const Lines& lines, Json stats) {
+RenderedTransition Finish(const Lines& lines, TransitionStatistics stats) {
   std::string body = StrCat(absl::StrJoin(lines, "\n"), "\n");
-  stats["source_bytes"] = body.size();
+  stats.source_bytes = body.size();
   return {std::move(body), std::move(stats)};
 }
 
@@ -116,8 +106,8 @@ std::set<int> Values(const Mapping& mapping) {
 
 }  // namespace
 
-absl::StatusOr<std::optional<int>> EvaluatePointwise(const Json& rows,
-                                                     int state) {
+absl::StatusOr<std::optional<int>> EvaluatePointwise(
+    absl::Span<const StateTransition> rows, int state) {
   ASSIGN_OR_RETURN(auto mapping, MakeMapping(rows));
   auto found = mapping.find(state);
   if (found == mapping.end())
@@ -125,8 +115,8 @@ absl::StatusOr<std::optional<int>> EvaluatePointwise(const Json& rows,
   return std::optional<int>{found->second};
 }
 
-absl::StatusOr<std::optional<int>> EvaluateEntry(const Json& rows, int token,
-                                                 int position) {
+absl::StatusOr<std::optional<int>> EvaluateEntry(
+    absl::Span<const EntryTransition> rows, int token, int position) {
   ASSIGN_OR_RETURN(auto mapping, MakeEntryMapping(rows));
   auto found = mapping.find({token, position});
   if (found == mapping.end())
@@ -134,31 +124,20 @@ absl::StatusOr<std::optional<int>> EvaluateEntry(const Json& rows, int token,
   return std::optional<int>{found->second};
 }
 
-absl::StatusOr<Json> RelabelMlpOutputs(const Json& model) {
-  if (!model.is_object() || !model.contains("states") ||
-      !model["states"].is_array() || !model.contains("mlp") ||
-      !model["mlp"].is_array() || !model.contains("layers") ||
-      !IsId(model["layers"]) || !model.contains("vocab_size") ||
-      !IsId(model["vocab_size"]) || model["vocab_size"] == 0 ||
-      !model.contains("entry") || !model.contains("attention") ||
-      !model["attention"].is_array() ||
-      !model.contains("language_modeling_head"))
+absl::StatusOr<SymbolicModel> RelabelMlpOutputs(const SymbolicModel& model) {
+  if (model.metadata.layers < 0 || model.metadata.vocab_size <= 0)
     return absl::InvalidArgumentError("malformed model for MLP relabeling");
-  int layers = model["layers"], vocab_size = model["vocab_size"];
-  if (static_cast<size_t>(layers) != model["mlp"].size() ||
-      static_cast<size_t>(layers) != model["attention"].size() ||
+  int layers = model.metadata.layers, vocab_size = model.metadata.vocab_size;
+  if (static_cast<size_t>(layers) != model.transformers.size() ||
       layers > kMaxId / 2)
     return absl::InvalidArgumentError("inconsistent layer count");
-  if (model.contains("stats") && !model["stats"].is_object())
-    return absl::InvalidArgumentError("relabeling stats must be an object");
-  std::map<int, Json> states;
+  std::map<int, SymbolicState> states;
   std::map<int, std::set<int>> stage_states;
   Mapping renaming;
-  for (const auto& row : model["states"]) {
-    if (!row.is_object() || !row.contains("id") || !IsId(row["id"]) ||
-        !row.contains("stage") || !IsId(row["stage"]))
+  for (const auto& row : model.states) {
+    if (row.id < 0 || row.boundary < 0)
       return absl::InvalidArgumentError("malformed state for MLP relabeling");
-    int id = row["id"], stage = row["stage"];
+    int id = row.id, stage = row.boundary;
     if (stage > 2 * layers)
       return absl::InvalidArgumentError("state stage exceeds model boundaries");
     if (!states.emplace(id, row).second)
@@ -167,34 +146,34 @@ absl::StatusOr<Json> RelabelMlpOutputs(const Json& model) {
     renaming[id] = id;
   }
   std::vector<Mapping> mlp;
-  for (const auto& table : model["mlp"]) {
-    ASSIGN_OR_RETURN(auto mapping, MakeMapping(table));
+  for (const auto& transformer : model.transformers) {
+    ASSIGN_OR_RETURN(auto mapping, MakeMapping(transformer.mlp));
     for (auto [input, output] : mapping)
       if (!states.contains(input) || !states.contains(output))
         return absl::InvalidArgumentError("MLP references missing state");
     mlp.push_back(std::move(mapping));
   }
-  ASSIGN_OR_RETURN(auto head, MakeMapping(model["language_modeling_head"]));
+  ASSIGN_OR_RETURN(auto head, MakeMapping(model.language_modeling_head));
   for (auto [input, output] : head)
     if (!states.contains(input))
       return absl::InvalidArgumentError(
           "language modeling head references missing state");
-  ASSIGN_OR_RETURN(auto entry, MakeEntryMapping(model["entry"]));
+  ASSIGN_OR_RETURN(auto entry, MakeEntryMapping(model.entry));
   for (const auto& [key, output] : entry)
     if (!states.contains(output))
       return absl::InvalidArgumentError("entry references missing state");
-  for (const auto& table : model["attention"]) {
-    ASSIGN_OR_RETURN(auto program, BuildAttention(table));
-    for (const auto& row : table) {
-      if (!states.contains(row[1].get<int>()))
+  for (const auto& transformer : model.transformers) {
+    ASSIGN_OR_RETURN(auto program, BuildAttention(transformer.attention));
+    for (const auto& row : transformer.attention) {
+      if (!states.contains(row.output))
         return absl::InvalidArgumentError("attention references missing state");
-      for (const auto& input : row[0])
-        if (!states.contains(input.get<int>()))
+      for (int input : row.prefix)
+        if (!states.contains(input))
           return absl::InvalidArgumentError(
               "attention references missing state");
     }
   }
-  Json eligible = Json::array(), skipped = Json::array();
+  RelabelStatistics stats;
   for (int layer = 0; layer < layers; ++layer) {
     auto inputs = Keys(mlp[layer]), outputs = Values(mlp[layer]);
     if (inputs.empty() || inputs.size() != outputs.size() ||
@@ -204,15 +183,14 @@ absl::StatusOr<Json> RelabelMlpOutputs(const Json& model) {
             static_cast<size_t>(*outputs.rbegin()) - *outputs.begin() + 1 ||
         inputs != stage_states[2 * layer + 1] ||
         outputs != stage_states[2 * layer + 2]) {
-      skipped.push_back(layer);
+      stats.skipped_layers.push_back(layer);
       continue;
     }
-    eligible.push_back(layer);
+    stats.eligible_layers.push_back(layer);
     for (auto [input, output] : mlp[layer])
       renaming[output] =
           static_cast<int64_t>(*outputs.begin()) + input - *inputs.begin();
   }
-  Json alignment = {{"vocabulary_aligned_final_boundaries", false}};
   if (layers > 0) {
     const auto& before = stage_states[2 * layers - 1];
     const auto& after = stage_states[2 * layers];
@@ -225,7 +203,7 @@ absl::StatusOr<Json> RelabelMlpOutputs(const Json& model) {
                                 [&](int token) { return token < vocab_size; });
     int64_t prefix_max = vocab_size - 1;
     for (const auto& [state, row] : states)
-      if (row["stage"].get<int>() < 2 * layers - 1)
+      if (row.boundary < 2 * layers - 1)
         prefix_max = std::max(prefix_max, static_cast<int64_t>(state));
     int64_t attention_base = prefix_max + 1;
     int64_t final_base = attention_base + vocab_size;
@@ -234,61 +212,53 @@ absl::StatusOr<Json> RelabelMlpOutputs(const Json& model) {
         renaming[state] = attention_base + head[output];
       for (auto [state, token] : head)
         renaming[state] = final_base + token;
-      alignment = {{"vocabulary_aligned_final_boundaries", true},
-                   {"last_attention_base", attention_base},
-                   {"final_state_base", final_base},
-                   {"reserved_range_size", vocab_size}};
+      stats.vocabulary_aligned_final_boundaries = true;
+      stats.last_attention_base = attention_base;
+      stats.final_state_base = final_base;
+      stats.reserved_range_size = vocab_size;
     }
   }
-  Json result = model;
-  for (auto& row : result["states"])
-    row["id"] = renaming[row["id"].get<int>()];
-  std::sort(
-      result["states"].begin(), result["states"].end(),
-      [](const Json& left, const Json& right) {
-        return std::pair{left["stage"].get<int>(), left["id"].get<int>()} <
-               std::pair{right["stage"].get<int>(), right["id"].get<int>()};
-      });
-  for (auto& row : result["entry"])
-    row[2] = renaming[row[2].get<int>()];
-  std::sort(result["entry"].begin(), result["entry"].end());
-  for (auto& table : result["attention"]) {
-    for (auto& row : table) {
-      for (auto& state : row[0])
-        state = renaming[state.get<int>()];
-      row[1] = renaming[row[1].get<int>()];
+  SymbolicModel result = model;
+  for (auto& row : result.states)
+    row.id = renaming.at(row.id);
+  std::sort(result.states.begin(), result.states.end(),
+            [](const SymbolicState& left, const SymbolicState& right) {
+              return std::pair{left.boundary, left.id} <
+                     std::pair{right.boundary, right.id};
+            });
+  for (auto& row : result.entry)
+    row.output = renaming.at(row.output);
+  std::sort(result.entry.begin(), result.entry.end());
+  for (auto& transformer : result.transformers) {
+    for (auto& row : transformer.attention) {
+      for (int& state : row.prefix)
+        state = renaming.at(state);
+      row.output = renaming.at(row.output);
     }
-    std::sort(table.begin(), table.end());
-  }
-  for (auto& table : result["mlp"]) {
-    for (auto& row : table) {
-      row[0] = renaming[row[0].get<int>()];
-      row[1] = renaming[row[1].get<int>()];
+    std::sort(transformer.attention.begin(), transformer.attention.end());
+    for (auto& row : transformer.mlp) {
+      row.input = renaming.at(row.input);
+      row.output = renaming.at(row.output);
     }
-    std::sort(table.begin(), table.end());
+    std::sort(transformer.mlp.begin(), transformer.mlp.end());
   }
-  for (auto& row : result["language_modeling_head"])
-    row[0] = renaming[row[0].get<int>()];
-  std::sort(result["language_modeling_head"].begin(),
-            result["language_modeling_head"].end());
-  int changed_states = 0;
-  result["state_relabeling"] = Json::array();
+  for (auto& row : result.language_modeling_head)
+    row.input = renaming.at(row.input);
+  std::sort(result.language_modeling_head.begin(),
+            result.language_modeling_head.end());
+  result.state_relabeling.clear();
   for (auto [old_id, new_id] : renaming) {
-    changed_states += old_id != new_id;
-    result["state_relabeling"].push_back(
-        {old_id, new_id, states[old_id]["stage"]});
+    stats.changed_states += old_id != new_id;
+    result.state_relabeling.push_back(
+        {old_id, new_id, states.at(old_id).boundary});
   }
-  Json stats = {{"eligible_layers", eligible},
-                {"skipped_layers", skipped},
-                {"changed_states", changed_states},
-                {"layer_boundaries_preserved", true}};
-  stats.update(alignment);
-  result["stats"]["pointwise_relabeling"] = std::move(stats);
+  result.stats.pointwise_relabeling = std::move(stats);
   return result;
 }
 
 absl::StatusOr<RenderedTransition> RenderPointwise(
-    absl::string_view name, const Json& rows, const TokenNames* token_names) {
+    absl::string_view name, absl::Span<const StateTransition> rows,
+    const TokenNames* token_names) {
   RETURN_IF_ERROR(ValidateTransitionFunctionName(name));
   ASSIGN_OR_RETURN(auto mapping, MakeMapping(rows));
   if (token_names != nullptr)
@@ -299,8 +269,9 @@ absl::StatusOr<RenderedTransition> RenderPointwise(
                         "(DiscreteHiddenState state) {")};
   if (mapping.empty()) {
     begin.insert(begin.end(), {"  (void)state;", "  return {};", "}"});
-    return Finish(
-        begin, {{"representation", "empty"}, {"rows", 0}, {"table_bytes", 0}});
+    return Finish(begin, {.representation = TransitionRepresentation::kEmpty,
+                          .rows = 0,
+                          .table_bytes = 0});
   }
   int low = mapping.begin()->first, high = mapping.rbegin()->first;
   const std::string guard = StrCat("  if (state.value < ", low,
@@ -327,11 +298,12 @@ absl::StatusOr<RenderedTransition> RenderPointwise(
     lines.push_back(guard);
     add_named_comment(lines);
     lines.insert(lines.end(), {affine_return(), "}"});
-    return Finish(lines, {{"representation", "guarded_affine"},
-                          {"rows", mapping.size()},
-                          {"affine_ranges", 1},
-                          {"table_bytes", 0},
-                          {"named_anchor", token_names != nullptr}});
+    return Finish(lines,
+                  {.representation = TransitionRepresentation::kGuardedAffine,
+                   .rows = mapping.size(),
+                   .table_bytes = 0,
+                   .affine_ranges = 1,
+                   .named_anchor = token_names != nullptr});
   }
   std::optional<RenderedTransition> affine_candidate;
   int64_t support_bytes = (static_cast<int64_t>(high) - low + 8) / 8;
@@ -355,12 +327,13 @@ absl::StatusOr<RenderedTransition> RenderPointwise(
         "  if ((kSupport[offset >> 3] & (uint32_t{1} << (offset & 7u))) == 0) "
         "return {};");
     lines.insert(lines.end(), {affine_return(), "}"});
-    affine_candidate =
-        Finish(lines, {{"representation", "sparse_affine_support_mask"},
-                       {"rows", mapping.size()},
-                       {"table_bytes", support_bytes},
-                       {"supported_span", static_cast<int64_t>(high) - low + 1},
-                       {"named_anchor", token_names != nullptr}});
+    affine_candidate = Finish(
+        lines,
+        {.representation = TransitionRepresentation::kSparseAffineSupportMask,
+         .rows = mapping.size(),
+         .table_bytes = support_bytes,
+         .supported_span = static_cast<int64_t>(high) - low + 1,
+         .named_anchor = token_names != nullptr});
   }
   struct Run {
     int first, last;
@@ -414,12 +387,13 @@ absl::StatusOr<RenderedTransition> RenderPointwise(
     branches.emplace_back("  return {};");
   }
   branches.emplace_back("}");
-  auto branch =
-      Finish(branches, {{"representation", "affine_ranges_and_switch"},
-                        {"rows", mapping.size()},
-                        {"affine_ranges", affine_ranges},
-                        {"switch_cases", singletons.size()},
-                        {"table_bytes", 0}});
+  auto branch = Finish(
+      branches,
+      {.representation = TransitionRepresentation::kAffineRangesAndSwitch,
+       .rows = mapping.size(),
+       .table_bytes = 0,
+       .affine_ranges = affine_ranges,
+       .switch_cases = singletons.size()});
   if (affine_candidate.has_value() &&
       affine_candidate->source.size() < branch.source.size())
     return *affine_candidate;
@@ -439,19 +413,20 @@ absl::StatusOr<RenderedTransition> RenderPointwise(
         "  return {DiscreteHiddenState{kOutputs[state.value - ", low, "]}};"));
     vector.emplace_back("}");
     auto candidate =
-        Finish(vector, {{"representation", "guarded_output_array"},
-                        {"rows", mapping.size()},
-                        {"table_bytes", mapping.size() * (small ? 2 : 4)},
-                        {"named_outputs", token_names != nullptr}});
+        Finish(vector,
+               {.representation = TransitionRepresentation::kGuardedOutputArray,
+                .rows = mapping.size(),
+                .table_bytes = mapping.size() * (small ? 2 : 4),
+                .named_outputs = token_names != nullptr});
     if (candidate.source.size() < branch.source.size())
       return candidate;
   }
   return branch;
 }
 
-absl::StatusOr<RenderedTransition> RenderEntry(absl::string_view name,
-                                               const Json& rows,
-                                               const TokenNames& token_names) {
+absl::StatusOr<RenderedTransition> RenderEntry(
+    absl::string_view name, absl::Span<const EntryTransition> rows,
+    const TokenNames& token_names) {
   RETURN_IF_ERROR(ValidateTransitionFunctionName(name));
   ASSIGN_OR_RETURN(auto entry, MakeEntryMapping(rows));
   for (const auto& [key, output] : entry)
@@ -462,8 +437,9 @@ absl::StatusOr<RenderedTransition> RenderEntry(absl::string_view name,
   if (entry.empty()) {
     begin.insert(begin.end(),
                  {"  (void)token;", "  (void)position;", "  return {};", "}"});
-    return Finish(
-        begin, {{"representation", "empty"}, {"rows", 0}, {"table_bytes", 0}});
+    return Finish(begin, {.representation = TransitionRepresentation::kEmpty,
+                          .rows = 0,
+                          .table_bytes = 0});
   }
   std::map<int, Mapping> tokens;
   std::set<int> state_set;
@@ -497,10 +473,12 @@ absl::StatusOr<RenderedTransition> RenderEntry(absl::string_view name,
       lines.insert(lines.end(), {"        default: return {};", "      }"});
     }
     lines.insert(lines.end(), {"    default: return {};", "  }", "}"});
-    return Finish(lines, {{"representation", "exact_token_position_switch"},
-                          {"rows", entry.size()},
-                          {"tokens", tokens.size()},
-                          {"table_bytes", 0}});
+    return Finish(
+        lines,
+        {.representation = TransitionRepresentation::kExactTokenPositionSwitch,
+         .rows = entry.size(),
+         .table_bytes = 0,
+         .tokens = tokens.size()});
   }
   std::vector<uint64_t> patterns{0};
   std::map<uint64_t, size_t> pattern_index{{0, 0}};
@@ -592,16 +570,17 @@ absl::StatusOr<RenderedTransition> RenderEntry(absl::string_view name,
   }
   lines.emplace_back("}");
   return Finish(
-      lines, {{"representation", "packed_support_patterns_and_exceptions"},
-              {"rows", entry.size()},
-              {"tokens", tokens.size()},
-              {"patterns", patterns.size()},
-              {"position_bits", position_bits},
-              {"token_only_defaults", tokens.size()},
-              {"position_exceptions", exceptions.size()},
-              {"table_bytes", index_bytes * indices.size() +
-                                  word_bytes * patterns.size() + state_bytes},
-              {"named_exception_tokens", true}});
+      lines, {.representation =
+                  TransitionRepresentation::kPackedSupportPatternsAndExceptions,
+              .rows = entry.size(),
+              .table_bytes = index_bytes * indices.size() +
+                             word_bytes * patterns.size() + state_bytes,
+              .tokens = tokens.size(),
+              .patterns = patterns.size(),
+              .position_bits = position_bits,
+              .token_only_defaults = tokens.size(),
+              .position_exceptions = exceptions.size(),
+              .named_exception_tokens = true});
 }
 
 }  // namespace pluto::llm::discretized::generator

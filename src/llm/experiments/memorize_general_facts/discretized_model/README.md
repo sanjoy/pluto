@@ -58,7 +58,7 @@ Expected sentence suffixes
 are verification fixtures, never prediction tables consulted by the runtime.
 
 Tests cover table consistency, unknown keys, causal history ordering, EOS,
-serialization, and merge rollback. End-to-end validation checks both the native
+code emission, and merge rollback. End-to-end validation checks both the native
 checkpoint and the compiled model with autonomous first-five-token generation.
 
 ## State reduction
@@ -90,8 +90,8 @@ The exact baseline is preserved in commit `3e983ab`. Exact deduplication yields
 symbols. The native checkpoint and the compiled C++ network both pass all
 **10,002 predictions, 1,024 complete sentences, and 1,024 explicit EOS checks**.
 For every generated prefix, all 17 native BF16 boundaries exactly match the
-full-sentence capture. Repeating capture in a new process produced identical
-JSONL bytes (SHA256 `d89e1ffcc85b1d40ea26cdb5ec002b43c51c7f525aa3a7ba7ce766c055da6712`).
+full-sentence capture. Repeating capture in a new process reproduced identical
+predictions and BF16 boundary states.
 
 The generated package is approximately 16 MiB of source, split into independent
 attention/MLP translation units. Both its Bazel dependency graph and its dynamic
@@ -347,9 +347,16 @@ irreducibility checker, and compact-transition helpers. Generated C++ stays in
 Use a fresh output path. The C++ `generate_discretized_model` binary loads the
 checkpoint and tokenizer, captures exact BF16 activations on CUDA, constructs
 and optionally reduces the symbolic network in memory, then emits formatted
-CPU-only C++. There is no JSON/JSONL capture, saved-model file, Python process,
-or second conversion command. The existing tokenizer's `tokenizer.json` remains
-an input asset, not an intermediate model.
+CPU-only C++ in a single process. The existing tokenizer's `tokenizer.json` is
+an input asset loaded by the tokenizer library.
+
+`Generate(options)` is the public conversion entry point; its model-processing
+continuation is private to the driver. `generator_model.h` defines the typed
+in-memory representation: `ExecutionSample` holds observed BF16 rows,
+`SymbolicModel` contains metadata and boundary-specific transition records, and
+dedicated structures describe verification, reduction, and relabeling results.
+Progress callbacks receive a `ProgressEvent` variant. Reports format these
+structures directly as text; the algorithms never parse report strings.
 
 `clang-format` must be installed and on `PATH`. Its repository configuration is
 included in the executable's runfiles, so generation does not depend on running
@@ -386,7 +393,7 @@ The generator refuses existing output paths, including symlinks, formats sources
 and only then atomically publishes the completed directory. Readable statistics,
 verification results, and input/output hashes are in `generation_report.txt`;
 compact transition measurements are in `transition_patterns.txt`. Inspection
-TSVs are optional. No JSON reports are produced.
+TSVs are optional.
 
 Copy a freshly generated package into the workspace to build it with Bazel.
 This is an explicit `cc_binary` invocation, not a genrule or an automatic rewrite

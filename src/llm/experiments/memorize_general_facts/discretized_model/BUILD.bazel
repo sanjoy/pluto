@@ -11,7 +11,6 @@ cc_library(
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings",
-        "@nlohmann_json//:json",
     ],
 )
 
@@ -26,7 +25,7 @@ cc_test(
 )
 
 # CPU algorithms used by the GPU-backed conversion driver. All intermediate
-# state stays in memory; none of these targets reads/writes model JSON files.
+# state stays in memory as typed models, transitions, and statistics.
 cc_library(
     name = "discretization",
     srcs = [
@@ -38,6 +37,7 @@ cc_library(
         "discretize_pointwise.cc",
         "discretize_reducer.cc",
         "discretize_transition_tests.cc",
+        "generator_report.cc",
     ],
     hdrs = [
         "discretize_attention_logic.h",
@@ -47,7 +47,9 @@ cc_library(
         "discretize_logic.h",
         "discretize_pointwise.h",
         "discretize_transition_tests.h",
+        "generator_model.h",
         "generator_model_validation.h",
+        "generator_report.h",
     ],
     deps = [
         ":generator_io",
@@ -98,6 +100,7 @@ cc_binary(
     srcs = ["generate_discretized_model_main.cc"],
     data = ["//:clang_format_config"],
     deps = [
+        ":discretization",
         ":generator",
         ":generator_io",
         "@abseil-cpp//absl/flags:flag",
@@ -123,18 +126,29 @@ cc_binary(
         "discretize_core_test",
         "generator_compact_test",
         "generator_emit_test",
+        "generator_report_test",
     ]
 ]
 
 cc_test(
     name = "generate_discretized_model_test",
     size = "small",
-    srcs = ["generate_discretized_model_test.cc"],
+    srcs = [
+        "generate_discretized_model_test.cc",
+        "generator_test_util.h",
+    ],
     data = ["//:clang_format_config"],
+    tags = ["requires-gpu"],
     deps = [
         ":discretization",
         ":generator",
         ":generator_io",
+        "//src/cuda:executor",
+        "//src/dataset:compact_vocabulary",
+        "//src/dataset:gpt2_tokenizer",
+        "//src/llm:checkpoint",
+        "//src/llm:gpt2",
+        "@cuda//:cuda_runtime",
         "@googletest//:gtest_main",
     ],
 )
@@ -149,13 +163,17 @@ test_suite(
         ":generator_compact_test",
         ":generator_emit_test",
         ":generator_io_test",
+        ":generator_report_test",
     ],
 )
 
 cc_test(
     name = "generator_capture_test",
     size = "small",
-    srcs = ["generator_capture_test.cc"],
+    srcs = [
+        "generator_capture_test.cc",
+        "generator_test_util.h",
+    ],
     data = [
         ":generate_discretized_model",
         "//:clang_format_config",

@@ -34,18 +34,9 @@ constexpr absl::string_view kGen = "pluto::llm::discretized::gen";
 constexpr absl::string_view kInternal =
     "pluto::llm::discretized::gen::internal";
 
-// Validation checks canonical hex before this conversion is reached.
-std::string Unhex(const std::string& hex) {
-  std::string bytes;
-  auto digit = [](char c) { return c <= '9' ? c - '0' : c - 'a' + 10; };
-  for (size_t i = 0; i < hex.size(); i += 2)
-    bytes.push_back(
-        static_cast<char>((digit(hex[i]) << 4) | digit(hex[i + 1])));
-  return bytes;
-}
-
-std::vector<Json> Sorted(const Json& rows) {
-  std::vector<Json> result(rows.begin(), rows.end());
+template <class T>
+std::vector<T> Sorted(const std::vector<T>& rows) {
+  std::vector<T> result(rows.begin(), rows.end());
   std::sort(result.begin(), result.end());
   return result;
 }
@@ -68,45 +59,13 @@ std::string BoundaryName(int stage) {
       stage % 2 ? ".after_attention_residual" : ".after_mlp_residual");
 }
 
-// JSON strings require UTF-8, while GPT-2 tokens are arbitrary byte strings.
-// Preserve valid UTF-8 and spell invalid bytes as literal \\xNN characters,
-// matching Python's backslashreplace decoder for readable inspection output.
-std::string Utf8Preview(absl::string_view bytes) {
-  std::string result;
-  for (size_t i = 0; i < bytes.size();) {
-    const auto c = static_cast<unsigned char>(bytes[i]);
-    size_t length = c < 0x80                 ? 1
-                    : c >= 0xc2 && c <= 0xdf ? 2
-                    : c >= 0xe0 && c <= 0xef ? 3
-                    : c >= 0xf0 && c <= 0xf4 ? 4
-                                             : 0;
-    bool valid = length != 0 && i + length <= bytes.size();
-    for (size_t j = 1; valid && j < length; ++j)
-      valid = (static_cast<unsigned char>(bytes[i + j]) & 0xc0) == 0x80;
-    if (valid && length >= 3) {
-      const auto second = static_cast<unsigned char>(bytes[i + 1]);
-      valid = !(c == 0xe0 && second < 0xa0) && !(c == 0xed && second >= 0xa0) &&
-              !(c == 0xf0 && second < 0x90) && !(c == 0xf4 && second >= 0x90);
-    }
-    if (valid) {
-      result.append(bytes.data() + i, length);
-      i += length;
-    } else {
-      char escaped[5];
-      std::snprintf(escaped, sizeof escaped, "\\x%02x", c);
-      result += escaped;
-      ++i;
-    }
-  }
-  return result;
-}
-
-std::string StateSource(absl::string_view factory, const Json& rows,
+std::string StateSource(absl::string_view factory,
+                        const std::vector<StateTransition>& rows,
                         absl::string_view description,
                         const std::vector<std::string>* token_names = nullptr) {
   std::vector<std::string> values;
   for (const auto& row : Sorted(rows)) {
-    const int input = row[0], output = row[1];
+    const int input = row.input, output = row.output;
     values.push_back(
         token_names
             ? absl::StrCat("{{", input,
@@ -118,26 +77,24 @@ std::string StateSource(absl::string_view factory, const Json& rows,
       "struct StateRow { DiscreteHiddenState input; DiscreteHiddenState "
       "output; };\n";
   body += Array("StateRow", "kRows", values);
-  absl::StrAppend(
-      &body, R"cpp(std::optional<DiscreteHiddenState> Lookup(
-                       DiscreteHiddenState state) {
-                     size_t first = 0;
-                     size_t last =)cpp",
-      rows.size(), R"cpp(;
-                         while (first < last) {
-                           const size_t middle = first + (last - first) / 2;
-                           if (kRows[middle].input < state)
-                             first = middle + 1;
-                           else
-                             last = middle;
-                         }
+  absl::StrAppend(&body, R"cpp(std::optional<DiscreteHiddenState> Lookup(
+                                   DiscreteHiddenState state) {
+                                 size_t first = 0;
+                                 size_t last =)cpp",
+                  rows.size(), R"cpp(;
+                                     while (first < last) {
+                                       const size_t middle = first + (last - first) / 2;
+                                       if (kRows[middle].input < state)
+                                         first = middle + 1;
+                                       else
+                                         last = middle;
+                                     }
   if (first ==)cpp",
-      rows.size(),
-      R"cpp(                                                  || kRows[first].input != state)
-    return {};
-                                                              return {kRows[first].output};
-                                                              }
-      )cpp");
+                  rows.size(),
+                  " || kRows[first].input != state)\n"
+                  "    return {};\n"
+                  "  return {kRows[first].output};\n"
+                  "}\n");
   return Source(TransitionObject(body, "Map", factory), "\"tables.h\"",
                 absl::StrCat(description,
                              "\nRows: {input_state, output_state_or_token}, "
@@ -146,14 +103,13 @@ std::string StateSource(absl::string_view factory, const Json& rows,
 }
 
 absl::StatusOr<std::string> RenderEncoder(
-    const Json& model, const std::vector<std::string>& names) {
+    const SymbolicModel& model, const std::vector<std::string>& names) {
   std::map<std::string, std::vector<int>> prefixes;
-  for (const auto& sample : model["samples"]) {
+  for (const auto& sample : model.samples) {
     std::string text;
     std::vector<int> ids;
-    for (const auto& token_json : sample["tokens"]) {
-      const int token = token_json;
-      text += Unhex(model["vocabulary"][token]["hex"]);
+    for (int token : sample.tokens) {
+      text += model.metadata.vocabulary[token].bytes;
       ids.push_back(token);
       auto [it, inserted] = prefixes.emplace(text, ids);
       if (!inserted && it->second != ids)
@@ -192,13 +148,13 @@ absl::StatusOr<std::string> RenderEncoder(
          Source(body, "\"cli_support.h\"", "", true);
 }
 
-std::string RenderVerification(const Json& model,
+std::string RenderVerification(const SymbolicModel& model,
                                const std::vector<std::string>& names) {
   std::vector<std::string> tokens, rows;
-  for (const auto& sample : model["samples"]) {
+  for (const auto& sample : model.samples) {
     rows.push_back(
-        absl::StrCat("{", tokens.size(), ", ", sample["tokens"].size(), "}"));
-    for (int token : sample["tokens"])
+        absl::StrCat("{", tokens.size(), ", ", sample.tokens.size(), "}"));
+    for (int token : sample.tokens)
       tokens.push_back(absl::StrCat("vocab::", names[token]));
   }
   std::string body =
@@ -315,48 +271,50 @@ cc_library(
   return text;
 }
 
-absl::StatusOr<std::string> RenderStateIndex(const Json& model) {
+absl::StatusOr<std::string> RenderStateIndex(const SymbolicModel& model) {
   std::map<std::pair<int, int>, int> entries;
-  for (const auto& row : model["entry"])
-    entries[{row[0], row[1]}] = row[2];
-  const int layers = model["layers"];
+  for (const auto& row : model.entry)
+    entries[{row.token, row.position}] = row.output;
+  const int layers = model.metadata.layers;
   std::vector<std::map<std::vector<int>, int>> attention(layers);
   std::vector<std::map<int, int>> mlp(layers);
   for (int block = 0; block < layers; ++block) {
-    for (const auto& row : model["attention"][block])
-      attention[block][row[0].get<std::vector<int>>()] = row[1];
-    for (const auto& row : model["mlp"][block])
-      mlp[block][row[0]] = row[1];
+    for (const auto& row : model.transformers[block].attention)
+      attention[block][row.prefix] = row.output;
+    for (const auto& row : model.transformers[block].mlp)
+      mlp[block][row.input] = row.output;
   }
   std::map<int, size_t> counts;
-  std::map<int, Json> examples;
+  // Store complete readable examples, not a generic serialization tree.
+  // C++ literal escaping keeps embedded tabs/newlines and arbitrary token bytes
+  // inside one TSV field without losing their exact byte values.
+  std::map<int, std::vector<std::string>> examples;
   auto observe = [&](const std::vector<int>& states,
-                     const std::vector<Json>& prefixes) {
+                     const std::vector<std::string>& prefixes) {
     for (size_t position = 0; position < states.size(); ++position) {
       const int state = states[position];
       ++counts[state];
-      auto [it, inserted] = examples.try_emplace(state, Json::array());
-      Json& selected = it->second;
+      auto& selected = examples[state];
       if (selected.size() < 3 &&
           std::find(selected.begin(), selected.end(), prefixes[position]) ==
               selected.end())
         selected.push_back(prefixes[position]);
     }
   };
-  for (const auto& sample : model["samples"]) {
+  for (const auto& sample : model.samples) {
     std::string text;
-    std::vector<Json> prefixes;
+    std::vector<std::string> prefixes;
     std::vector<int> states;
-    Json ids = Json::array();
-    for (size_t position = 0; position < sample["tokens"].size(); ++position) {
-      const int token = sample["tokens"][position];
+    std::vector<int> ids;
+    for (size_t position = 0; position < sample.tokens.size(); ++position) {
+      const int token = sample.tokens[position];
       ids.push_back(token);
-      text += Unhex(model["vocabulary"][token]["hex"]);
-      Json context = {
-          {"compact_ids", ids},
-          {"text", Utf8Preview(absl::string_view(text).substr(0, 160))}};
+      text += model.metadata.vocabulary[token].bytes;
+      std::string context = absl::StrCat(
+          "tokens=[", absl::StrJoin(ids, ","),
+          "]; text=", Literal(absl::string_view(text).substr(0, 160)));
       if (text.size() > 160)
-        context["text_truncated_after_bytes"] = 160;
+        context += "; truncated_after_bytes=160";
       prefixes.push_back(std::move(context));
       auto entry = entries.find({token, position});
       if (entry == entries.end())
@@ -400,26 +358,21 @@ absl::StatusOr<std::string> RenderStateIndex(const Json& model) {
       "# Each example has complete compact token IDs and text preview of at "
       "most 160 original bytes; at most three distinct examples per state.\n"
       "state_id\tboundary\trepresentative_bf16_hex\tobserved_"
-      "occurrences\tempirical_prefix_examples_json\toriginal_member_count\n";
-  auto states = Sorted(model["states"]);
-  std::sort(states.begin(), states.end(),
-            [](const Json& a, const Json& b) { return a["id"] < b["id"]; });
+      "occurrences\tempirical_prefix_examples\toriginal_member_count\n";
+  auto states = Sorted(model.states);
   for (const auto& row : states) {
-    const int state = row["id"];
+    const int state = row.id;
     std::vector<std::string> vector;
-    for (int bits : row["bits"]) {
+    for (int bits : row.bits) {
       char hex[5];
       std::snprintf(hex, sizeof hex, "%04x", bits);
       vector.emplace_back(hex);
     }
-    const Json contexts =
-        examples.contains(state) ? examples[state] : Json::array();
-    absl::StrAppend(
-        &output, state, "\t", BoundaryName(row["stage"]), "\t",
-        absl::StrJoin(vector, " "), "\t", counts[state], "\t",
-        contexts.dump(-1, ' ', true), "\t",
-        row.contains("member_count") ? row["member_count"].dump() : "unknown",
-        "\n");
+    absl::StrAppend(&output, state, "\t", BoundaryName(row.boundary), "\t",
+                    absl::StrJoin(vector, " "), "\t", counts[state], "\t",
+                    absl::StrJoin(examples[state], " | "), "\t",
+                    row.members ? absl::StrCat(row.members->size()) : "unknown",
+                    "\n");
   }
   return output;
 }
@@ -546,14 +499,15 @@ std::string TransitionObject(absl::string_view body,
       "() {\n  static ", implementation, " instance;\n  return instance;\n}\n");
 }
 
-absl::StatusOr<FileMap> RenderModel(const Json& model, bool include_state_index,
+absl::StatusOr<FileMap> RenderModel(const SymbolicModel& model,
+                                    bool include_state_index,
                                     bool compact_transitions) {
   RETURN_IF_ERROR(ValidateModel(model));
-  const int layers = model["layers"], eos = model["eos_token"];
-  const auto& vocab = model["vocabulary"];
+  const int layers = model.metadata.layers, eos = model.metadata.eos_token;
+  const auto& vocab = model.metadata.vocabulary;
   std::vector<std::string> names;
   for (size_t i = 0; i < vocab.size(); ++i)
-    names.push_back(TokenName(Unhex(vocab[i]["hex"]), i, eos));
+    names.push_back(TokenName(vocab[i].bytes, i, eos));
   FileMap files;
   std::string declarations =
       "PositionEmbedding& GeneratedPositionEmbedding();\nabsl::Span<const "
@@ -603,15 +557,15 @@ absl::StatusOr<FileMap> RenderModel(const Json& model, bool include_state_index,
       "// terminator. Internal residual-state IDs intentionally remain "
       "numeric.\n");
   for (size_t i = 0; i < vocab.size(); ++i)
-    absl::StrAppend(&tokens_header, "// ", Literal(Unhex(vocab[i]["hex"])),
-                    "; original GPT-2 ID ", vocab[i]["original_id"].get<int>(),
+    absl::StrAppend(&tokens_header, "// ", Literal(vocab[i].bytes),
+                    "; original GPT-2 ID ", vocab[i].original_id,
                     ".\ninline constexpr DiscreteToken ", names[i], "{", i,
                     "};\n");
   files["vocabulary_tokens.h"] =
       absl::StrCat(tokens_header, "}  // namespace ", kInternal, "::vocab\n");
   std::vector<std::string> rows;
-  for (const auto& row : Sorted(model["entry"])) {
-    const int token = row[0], position = row[1], state = row[2];
+  for (const auto& row : Sorted(model.entry)) {
+    const int token = row.token, position = row.position, state = row.output;
     rows.push_back(absl::StrCat("{vocab::", names[token], ", ", position, ", {",
                                 state, "}}"));
   }
@@ -636,11 +590,11 @@ absl::StatusOr<FileMap> RenderModel(const Json& model, bool include_state_index,
                          }
   if (first ==)cpp",
       rows.size(),
-      R"cpp(                                      || kRows[first].token != token ||
-      kRows[first].position != position)
-    return {};
-                                                  return {kRows[first].state};
-                                                  })cpp");
+      " || kRows[first].token != token ||\n"
+      "      kRows[first].position != position)\n"
+      "    return {};\n"
+      "  return {kRows[first].state};\n"
+      "}\n");
   files["entry.cc"] = Source(
       TransitionObject(body, "PositionEmbedding", "GeneratedPositionEmbedding"),
       "\"tables.h\"",
@@ -649,9 +603,9 @@ absl::StatusOr<FileMap> RenderModel(const Json& model, bool include_state_index,
       true);
   rows.clear();
   for (const auto& row : vocab) {
-    const std::string bytes = Unhex(row["hex"]);
-    rows.push_back(absl::StrCat("{", row["original_id"].get<int>(), ", {",
-                                Literal(bytes), ", ", bytes.size(), "}}"));
+    const std::string& bytes = row.bytes;
+    rows.push_back(absl::StrCat("{", row.original_id, ", {", Literal(bytes),
+                                ", ", bytes.size(), "}}"));
   }
   body = "namespace {\n" + Array("VocabularyRow", "kRows", rows) + "}\n";
   absl::StrAppend(
@@ -664,10 +618,10 @@ absl::StatusOr<FileMap> RenderModel(const Json& model, bool include_state_index,
   for (int block = 0; block < layers; ++block) {
     std::vector<std::string> keys;
     rows.clear();
-    for (const auto& row : Sorted(model["attention"][block])) {
-      rows.push_back(absl::StrCat("{", keys.size(), ", ", row[0].size(), ", {",
-                                  row[1].get<int>(), "}}"));
-      for (int state : row[0])
+    for (const auto& row : Sorted(model.transformers[block].attention)) {
+      rows.push_back(absl::StrCat("{", keys.size(), ", ", row.prefix.size(),
+                                  ", {", row.output, "}}"));
+      for (int state : row.prefix)
         keys.push_back(absl::StrCat("{", state, "}"));
     }
     body =
@@ -705,11 +659,10 @@ absl::StatusOr<FileMap> RenderModel(const Json& model, bool include_state_index,
                            }
   if (first ==)cpp",
         rows.size(),
-        R"cpp(                                          || ComparePrefix(kRows[first], prefix) != 0)
-    return {};
-                                                        return {kRows[first].output};
-                                                        }
-        )cpp");
+        " || ComparePrefix(kRows[first], prefix) != 0)\n"
+        "    return {};\n"
+        "  return {kRows[first].output};\n"
+        "}\n");
     files[absl::StrCat("attention_", block, ".cc")] =
         Source(TransitionObject(body, "CausalAttention",
                                 absl::StrCat("GeneratedAttention", block)),
@@ -718,13 +671,13 @@ absl::StatusOr<FileMap> RenderModel(const Json& model, bool include_state_index,
                             BoundaryName(2 * block), " -> ",
                             BoundaryName(2 * block + 1), "."));
     files[absl::StrCat("mlp_", block, ".cc")] = StateSource(
-        absl::StrCat("GeneratedMlp", block), model["mlp"][block],
+        absl::StrCat("GeneratedMlp", block), model.transformers[block].mlp,
         absl::StrCat("Block ", block, " pointwise MLP residual boundary: ",
                      BoundaryName(2 * block + 1), " -> ",
                      BoundaryName(2 * block + 2), "."));
   }
   files["language_modeling_head.cc"] = StateSource(
-      "GeneratedLanguageModelingHead", model["language_modeling_head"],
+      "GeneratedLanguageModelingHead", model.language_modeling_head,
       "Final residual symbol -> compact next-token ID, including EOS.", &names);
   body = "const DiscreteModel& GeneratedModel() {\n";
   if (layers) {
@@ -736,7 +689,7 @@ absl::StatusOr<FileMap> RenderModel(const Json& model, bool include_state_index,
   }
   absl::StrAppend(
       &body, "  static const DiscreteModel model{1024, ",
-      model["prompt_tokens"].get<int>(), ", internal::vocab::", names[eos],
+      model.metadata.prompt_tokens, ", internal::vocab::", names[eos],
       ", internal::GeneratedVocabulary(), ",
       layers ? absl::StrCat("{kTransformers, ", layers, "}") : "{}",
       ", internal::GeneratedLanguageModelingHead(), "
@@ -777,20 +730,20 @@ absl::StatusOr<FileMap> RenderModel(const Json& model, bool include_state_index,
   if (include_state_index) {
     ASSIGN_OR_RETURN(files["state_index.tsv"], RenderStateIndex(model));
     bool all_members = true;
-    for (const auto& row : model["states"])
-      all_members &= row.contains("members");
+    for (const auto& row : model.states)
+      all_members &= row.members.has_value();
     if (all_members) {
-      std::map<int, Json> states;
-      for (const auto& row : model["states"])
-        states[row["id"]] = row;
+      std::map<int, SymbolicState> states;
+      for (const auto& row : model.states)
+        states[row.id] = row;
       std::string members =
           "# Inspection only: IDs refer to the exact, unreduced "
-          "baseline.\nstate_id\tboundary\toriginal_state_ids_json\n";
+          "baseline.\nstate_id\tboundary\toriginal_state_ids\n";
       for (const auto& [id, row] : states) {
-        Json original = row["members"];
+        std::vector<int> original = *row.members;
         std::sort(original.begin(), original.end());
-        absl::StrAppend(&members, id, "\t", BoundaryName(row["stage"]), "\t",
-                        original.dump(), "\n");
+        absl::StrAppend(&members, id, "\t", BoundaryName(row.boundary), "\t[",
+                        absl::StrJoin(original, ","), "]\n");
       }
       files["state_members.tsv"] = std::move(members);
     }
@@ -885,7 +838,7 @@ absl::Status PublishFiles(const FileMap& files,
   return absl::OkStatus();
 }
 
-absl::Status EmitModel(const Json& model,
+absl::Status EmitModel(const SymbolicModel& model,
                        const std::filesystem::path& destination,
                        bool include_state_index, bool compact_transitions) {
   ASSIGN_OR_RETURN(auto files,

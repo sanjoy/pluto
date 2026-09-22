@@ -1,64 +1,21 @@
 #include "src/llm/experiments/memorize_general_facts/discretized_model/generate_discretized_model.h"
 
-#include <unistd.h>
-
 #include <cstdlib>
 #include <filesystem>
 #include <string>
+#include <variant>
+#include <vector>
 
 #include "gtest/gtest.h"
 #include "src/llm/experiments/memorize_general_facts/discretized_model/discretize_core.h"
 #include "src/llm/experiments/memorize_general_facts/discretized_model/generator_io.h"
+#include "src/llm/experiments/memorize_general_facts/discretized_model/generator_test_util.h"
 
 namespace pluto::llm::discretized::generator {
 namespace {
 namespace fs = std::filesystem;
 
-absl::StatusOr<Json> Fixture() {
-  Json header = {{"schema", 1},
-                 {"width", 16},
-                 {"layers", 1},
-                 {"vocab_size", 3},
-                 {"eos_token", 2},
-                 {"prompt_tokens", 1},
-                 {"vocabulary",
-                  {{{"original_id", 0}, {"hex", "48656c6c6f"}},
-                   {{"original_id", 1}, {"hex", "20776f726c64"}},
-                   {{"original_id", 2}, {"hex", "3c454f533e"}}}}};
-  Json boundaries = Json::array();
-  for (int stage = 0; stage < 3; ++stage)
-    boundaries.push_back({std::vector<int>(16, 16256 + stage * 2),
-                          std::vector<int>(16, 16257 + stage * 2)});
-  return BuildModel(header,
-                    {{{"tokens", {0, 1}},
-                      {"predictions", {1, 2}},
-                      {"boundaries", boundaries}}},
-                    1);
-}
-
-class GeneratorTest : public testing::Test {
- protected:
-  void SetUp() override {
-    std::string path = testing::TempDir() + "/generator-driver.XXXXXX";
-    ASSERT_NE(mkdtemp(path.data()), nullptr);
-    directory_ = path;
-    auto model = Fixture();
-    ASSERT_TRUE(model.ok()) << model.status();
-    model_ = *model;
-    options_.output = directory_ / "generated";
-    options_.expected_samples = 1;
-    const char* root = std::getenv("TEST_SRCDIR");
-    ASSERT_NE(root, nullptr);
-    options_.clang_format_config = fs::path(root) / "_main/.clang-format";
-  }
-  void TearDown() override {
-    std::error_code ignored;
-    fs::remove_all(directory_, ignored);
-  }
-  fs::path directory_;
-  Json model_;
-  GeneratorOptions options_;
-};
+class GeneratorTest : public GeneratorTestBase {};
 
 TEST_F(GeneratorTest, BothRepresentationsGenerateWithoutIntermediateFiles) {
   for (bool compact : {false, true}) {
@@ -66,7 +23,7 @@ TEST_F(GeneratorTest, BothRepresentationsGenerateWithoutIntermediateFiles) {
     options_.compact_transitions = compact;
     options_.state_index = true;
     options_.reduce = compact;
-    auto result = GenerateFromModel(model_, options_);
+    auto result = Generate(options_);
     ASSERT_TRUE(result.ok()) << result.status();
     EXPECT_TRUE(EvaluateModel(*result).ok());
     EXPECT_TRUE(fs::exists(options_.output / "state_index.tsv"));
@@ -74,30 +31,37 @@ TEST_F(GeneratorTest, BothRepresentationsGenerateWithoutIntermediateFiles) {
     EXPECT_EQ(fs::exists(options_.output / "transition_patterns.txt"), compact);
     EXPECT_EQ(fs::exists(options_.output / "generated_transition_test.cc"),
               compact);
-    for (const auto& file : fs::recursive_directory_iterator(directory_)) {
-      EXPECT_NE(file.path().extension(), ".json");
-      EXPECT_NE(file.path().extension(), ".jsonl");
-    }
+    ExpectNoIntermediateFiles();
     auto report = ReadFile(options_.output / "generation_report.txt");
     ASSERT_TRUE(report.ok());
     EXPECT_NE(report->find("errors: 0"), std::string::npos);
     EXPECT_NE(report->find("explicit_eos: 1"), std::string::npos);
-    EXPECT_NE(report->find("targets: 2"), std::string::npos);
+    EXPECT_NE(report->find("targets: 1"), std::string::npos);
     auto bytes = ReadFile(options_.output / "model.cc");
     ASSERT_TRUE(bytes.ok());
     EXPECT_NE(bytes->find("const DiscreteModel& GeneratedModel()"),
               std::string::npos);
     EXPECT_NE(report->find(Sha256(*bytes)), std::string::npos);
+    for (const auto& file : fs::directory_iterator(options_.output)) {
+      if (file.path().filename() == "generation_report.txt")
+        continue;
+      auto digest = Sha256File(file.path());
+      ASSERT_TRUE(digest.ok()) << digest.status();
+      EXPECT_NE(report->find(*digest), std::string::npos) << file.path();
+    }
+    auto weights_digest = Sha256File(options_.checkpoint / "weight_0.bin");
+    ASSERT_TRUE(weights_digest.ok()) << weights_digest.status();
+    EXPECT_NE(report->find(*weights_digest), std::string::npos);
   }
 }
 
 TEST_F(GeneratorTest, RepeatConversionIsDeterministic) {
   options_.compact_transitions = true;
   options_.reduce = true;
-  ASSERT_TRUE(GenerateFromModel(model_, options_).ok());
+  ASSERT_TRUE(Generate(options_).ok());
   const auto first = options_.output;
   options_.output = directory_ / "repeat";
-  ASSERT_TRUE(GenerateFromModel(model_, options_).ok());
+  ASSERT_TRUE(Generate(options_).ok());
   for (const auto& file : fs::directory_iterator(first)) {
     // Runtime measurements are deliberately not deterministic. Generated
     // source, domain fixtures, and all state/transition reports must be.
@@ -120,7 +84,7 @@ TEST_F(GeneratorTest, NeverOverwritesExistingPathsIncludingDanglingSymlinks) {
       ASSERT_TRUE(WriteFile(options_.output, "keep").ok());
     else
       fs::create_symlink(directory_ / "absent", options_.output);
-    auto result = GenerateFromModel(model_, options_);
+    auto result = Generate(options_);
     EXPECT_EQ(result.status().code(), absl::StatusCode::kAlreadyExists);
   }
   EXPECT_EQ(*ReadFile(directory_ / "1"), "keep");
@@ -128,14 +92,19 @@ TEST_F(GeneratorTest, NeverOverwritesExistingPathsIncludingDanglingSymlinks) {
 }
 
 TEST_F(GeneratorTest, MalformedInputsHaveNoOutput) {
-  EXPECT_FALSE(GenerateFromModel(Json::object(), options_).ok());
+  const auto corpus = options_.corpus;
+  options_.corpus = directory_ / "absent_corpus";
+  EXPECT_FALSE(Generate(options_).ok());
   EXPECT_FALSE(fs::exists(options_.output));
+  options_.corpus = corpus;
   options_.expected_samples = 2;
-  EXPECT_FALSE(GenerateFromModel(model_, options_).ok());
+  EXPECT_FALSE(Generate(options_).ok());
   EXPECT_FALSE(fs::exists(options_.output));
   options_.expected_samples = 1;
-  model_["language_modeling_head"][0][1] = 2;
-  EXPECT_FALSE(GenerateFromModel(model_, options_).ok());
+  // Zero weights always select EOS; a second corpus token makes this an
+  // incorrect completion, which must fail before publishing generated code.
+  ASSERT_TRUE(WriteFile(options_.corpus, "xx\n").ok());
+  EXPECT_FALSE(Generate(options_).ok());
   EXPECT_FALSE(fs::exists(options_.output));
 }
 
@@ -143,7 +112,7 @@ TEST_F(GeneratorTest, FormattingUsesDeclaredConfigurationNotDestinationStyle) {
   ASSERT_TRUE(WriteFile(directory_ / ".clang-format",
                         "BasedOnStyle: LLVM\nPointerAlignment: Right\n")
                   .ok());
-  ASSERT_TRUE(GenerateFromModel(model_, options_).ok());
+  ASSERT_TRUE(Generate(options_).ok());
   auto source = ReadFile(options_.output / "model.cc");
   ASSERT_TRUE(source.ok());
   EXPECT_NE(source->find("const DiscreteModel& GeneratedModel()"),
@@ -154,7 +123,7 @@ TEST_F(GeneratorTest, MissingFormatterDoesNotPublishPartialSources) {
   const char* old = std::getenv("PATH");
   const std::string saved = old == nullptr ? "" : old;
   ASSERT_EQ(setenv("PATH", directory_.c_str(), 1), 0);
-  auto result = GenerateFromModel(model_, options_);
+  auto result = Generate(options_);
   if (old != nullptr)
     ASSERT_EQ(setenv("PATH", saved.c_str(), 1), 0);
   else
@@ -164,24 +133,41 @@ TEST_F(GeneratorTest, MissingFormatterDoesNotPublishPartialSources) {
 }
 
 TEST_F(GeneratorTest, MissingDeclaredStyleAndMissingCheckpointFail) {
+  const auto style = options_.clang_format_config;
   options_.clang_format_config = directory_ / "absent";
-  EXPECT_FALSE(GenerateFromModel(model_, options_).ok());
+  EXPECT_FALSE(Generate(options_).ok());
   EXPECT_FALSE(fs::exists(options_.output));
-  options_.clang_format_config =
-      fs::path(std::getenv("TEST_SRCDIR")) / "_main/.clang-format";
+  options_.clang_format_config = style;
+  options_.checkpoint = directory_ / "missing_checkpoint";
   EXPECT_FALSE(Generate(options_).ok());
   EXPECT_FALSE(fs::exists(options_.output));
 }
 
 TEST_F(GeneratorTest, ReportsProgressAndIndependentCertificate) {
   options_.reduce = true;
-  std::vector<Json> progress;
-  options_.progress = [&](const Json& event) { progress.push_back(event); };
-  auto result = GenerateFromModel(model_, options_);
+  std::vector<ProgressEvent> progress;
+  options_.progress = [&](const ProgressEvent& event) {
+    progress.push_back(event);
+  };
+  auto result = Generate(options_);
   ASSERT_TRUE(result.ok()) << result.status();
-  ASSERT_GE(progress.size(), 2u);
-  EXPECT_EQ(progress.front()["phase"], "baseline");
-  EXPECT_EQ(progress.back()["phase"], "generated");
+  ASSERT_GE(progress.size(), 3u);
+  ASSERT_TRUE(std::holds_alternative<CaptureProgress>(progress.front()));
+  EXPECT_EQ(std::get<CaptureProgress>(progress.front()).samples, 1);
+  bool saw_baseline = false;
+  bool saw_reduction = false;
+  for (const auto& event : progress) {
+    if (const auto* phase = std::get_if<GenerationProgress>(&event))
+      saw_baseline |= phase->phase == GenerationPhase::kBaseline;
+    saw_reduction |= std::holds_alternative<ReductionProgress>(event);
+  }
+  EXPECT_TRUE(saw_baseline);
+  EXPECT_TRUE(saw_reduction);
+  ASSERT_TRUE(std::holds_alternative<GenerationProgress>(progress.back()));
+  const auto& generated = std::get<GenerationProgress>(progress.back());
+  EXPECT_EQ(generated.phase, GenerationPhase::kGenerated);
+  EXPECT_EQ(generated.verification.errors, 0);
+  EXPECT_EQ(generated.verification.explicit_eos, 1);
   auto report = ReadFile(options_.output / "generation_report.txt");
   ASSERT_TRUE(report.ok());
   EXPECT_NE(report->find("irreducibility_certificate:"), std::string::npos);

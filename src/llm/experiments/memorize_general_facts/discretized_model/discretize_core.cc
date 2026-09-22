@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <limits>
 #include <map>
 #include <set>
 #include <string>
@@ -22,54 +21,21 @@ absl::Status Error(const std::string& message) {
   return absl::InvalidArgumentError(message);
 }
 
-const Json& Field(const Json& object, const char* key) {
-  static const Json missing;
-  if (!object.is_object())
-    return missing;
-  auto iterator = object.find(key);
-  return iterator == object.end() ? missing : *iterator;
-}
-
-absl::Status Integer(const Json& value, const std::string& name,
-                     int64_t minimum = 0,
-                     int64_t maximum = std::numeric_limits<int32_t>::max()) {
-  if (!value.is_number_integer() ||
-      (value.is_number_unsigned() &&
-       value.get<uint64_t>() > uint64_t(maximum)) ||
-      (!value.is_number_unsigned() &&
-       (value.get<int64_t>() < minimum || value.get<int64_t>() > maximum)) ||
-      (value.is_number_unsigned() && value.get<uint64_t>() < uint64_t(minimum)))
-    return Error(absl::StrCat(name, " must be an integer in [", minimum, ", ",
-                              maximum, "]"));
-  return absl::OkStatus();
-}
-
-absl::Status Array(const Json& value, const std::string& name,
-                   int64_t size = -1) {
-  if (!value.is_array() ||
-      (size >= 0 && value.size() != static_cast<size_t>(size)))
-    return Error(
-        absl::StrCat(name, " must be an array",
-                     size < 0 ? "" : absl::StrCat(" of length ", size)));
-  return absl::OkStatus();
-}
-
-absl::Status Vocabulary(const Json& vocabulary, int size) {
-  RETURN_IF_ERROR(Array(vocabulary, "vocabulary", size));
+absl::Status ValidateMetadata(const ModelMetadata& m, bool full) {
+  if (m.layers < 0 || m.layers > 1024 || m.width < 1 || m.vocab_size < 1)
+    return Error("invalid model dimensions");
+  if (!full)
+    return absl::OkStatus();
+  if (m.prompt_tokens < 1 || m.prompt_tokens > 1024 || m.eos_token < 0 ||
+      m.eos_token >= m.vocab_size ||
+      m.vocabulary.size() != static_cast<size_t>(m.vocab_size))
+    return Error("invalid model vocabulary or prompt metadata");
   absl::flat_hash_set<int> originals;
-  for (const auto& row : vocabulary) {
-    RETURN_IF_ERROR(Integer(Field(row, "original_id"), "original_id"));
-    if (!originals.insert(row["original_id"].get<int>()).second)
-      return Error("duplicate original vocabulary ID");
-    const auto& hex = Field(row, "hex");
-    if (!hex.is_string())
-      return Error("vocabulary bytes require nonempty canonical lowercase hex");
-    const auto& bytes = hex.get_ref<const std::string&>();
-    if (bytes.empty() || bytes.size() % 2 != 0 ||
-        !std::all_of(bytes.begin(), bytes.end(), [](char ch) {
-          return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f');
-        }))
-      return Error("vocabulary bytes require nonempty canonical lowercase hex");
+  for (const auto& token : m.vocabulary) {
+    if (token.original_id < 0 || !originals.insert(token.original_id).second)
+      return Error("invalid or duplicate original vocabulary ID");
+    if (token.bytes.empty())
+      return Error("vocabulary token bytes must not be empty");
   }
   return absl::OkStatus();
 }
@@ -82,27 +48,26 @@ absl::Status Put(Map& table, const Key& key, int value, const char* name) {
   return absl::OkStatus();
 }
 
-// Ordered maps give the same stable table ordering as the original format.
+// Ordered lookup indexes keep evaluation independent of reduction internals.
 struct IntegerModel {
   std::map<std::pair<int, int>, int> entry;
   std::vector<std::map<std::vector<int>, int>> attention;
   std::vector<std::map<int, int>> mlp;
   std::map<int, int> language_modeling_head;
 
-  explicit IntegerModel(const Json& model) {
-    const int layers = model["layers"];
-    attention.resize(layers);
-    mlp.resize(layers);
-    for (const auto& row : model["entry"])
-      entry.emplace(std::pair<int, int>{row[0], row[1]}, row[2]);
-    for (int layer = 0; layer < layers; ++layer) {
-      for (const auto& row : model["attention"][layer])
-        attention[layer].emplace(row[0].get<std::vector<int>>(), row[1]);
-      for (const auto& row : model["mlp"][layer])
-        mlp[layer].emplace(row[0], row[1]);
+  explicit IntegerModel(const SymbolicModel& model) {
+    attention.resize(model.metadata.layers);
+    mlp.resize(model.metadata.layers);
+    for (const auto& row : model.entry)
+      entry.emplace(std::pair{row.token, row.position}, row.output);
+    for (int layer = 0; layer < model.metadata.layers; ++layer) {
+      for (const auto& row : model.transformers[layer].attention)
+        attention[layer].emplace(row.prefix, row.output);
+      for (const auto& row : model.transformers[layer].mlp)
+        mlp[layer].emplace(row.input, row.output);
     }
-    for (const auto& row : model["language_modeling_head"])
-      language_modeling_head.emplace(row[0], row[1]);
+    for (const auto& row : model.language_modeling_head)
+      language_modeling_head.emplace(row.input, row.output);
   }
 
   absl::StatusOr<int> Predict(const std::vector<int>& tokens) const {
@@ -122,8 +87,7 @@ struct IntegerModel {
       current.push_back(row->second);
     }
     for (size_t layer = 0; layer < attention.size(); ++layer) {
-      std::vector<int> history;
-      std::vector<int> next;
+      std::vector<int> history, next;
       for (int state : current) {
         history.push_back(state);
         auto attention_row = attention[layer].find(history);
@@ -142,213 +106,155 @@ struct IntegerModel {
     return row->second;
   }
 };
-
 }  // namespace
 
 namespace internal {
-absl::Status ValidateTables(const Json& model, bool full) {
-  if (!model.is_object())
-    return Error("expected integer model schema 1");
-  RETURN_IF_ERROR(Integer(Field(model, "schema"), "schema", 1, 1));
-  RETURN_IF_ERROR(Integer(Field(model, "layers"), "layers", 0, 1024));
-  RETURN_IF_ERROR(Integer(Field(model, "width"), "width", 1));
-  RETURN_IF_ERROR(Integer(Field(model, "vocab_size"), "vocab_size", 1));
-  const int layers = model["layers"], width = model["width"],
-            vocab = model["vocab_size"];
-  if (full) {
-    RETURN_IF_ERROR(
-        Integer(Field(model, "prompt_tokens"), "prompt_tokens", 1, 1024));
-    RETURN_IF_ERROR(
-        Integer(Field(model, "eos_token"), "eos_token", 0, vocab - 1));
-    RETURN_IF_ERROR(Vocabulary(Field(model, "vocabulary"), vocab));
-  }
-  RETURN_IF_ERROR(Array(Field(model, "states"), "states"));
+absl::Status ValidateTables(const SymbolicModel& model, bool full) {
+  RETURN_IF_ERROR(ValidateMetadata(model.metadata, full));
+  const int layers = model.metadata.layers, width = model.metadata.width,
+            vocab = model.metadata.vocab_size;
+  if (model.states.size() > static_cast<size_t>(INT32_MAX - vocab))
+    return Error("too many discrete states");
   absl::flat_hash_map<int, int> states;
   absl::flat_hash_set<int> members;
   std::vector<int> stage_sizes(2 * layers + 1);
-  for (const auto& row : model["states"]) {
-    RETURN_IF_ERROR(Integer(Field(row, "id"), "state ID", vocab));
-    RETURN_IF_ERROR(Integer(Field(row, "stage"), "state stage", 0, 2 * layers));
-    RETURN_IF_ERROR(Array(Field(row, "bits"), "state bits", width));
-    const int state = row["id"], stage = row["stage"];
-    if (!states.emplace(state, stage).second)
+  for (const auto& row : model.states) {
+    if (row.id < vocab || row.boundary < 0 || row.boundary > 2 * layers ||
+        row.bits.size() != static_cast<size_t>(width))
+      return Error("invalid state ID, boundary, or vector width");
+    if (!states.emplace(row.id, row.boundary).second)
       return Error("duplicate state ID");
-    ++stage_sizes[stage];
-    for (const auto& bits : row["bits"]) {
-      RETURN_IF_ERROR(Integer(bits, "state bits", 0, 65535));
-      if ((bits.get<int>() & 0x7f80) == 0x7f80)
+    ++stage_sizes[row.boundary];
+    for (uint16_t bits : row.bits)
+      if ((bits & 0x7f80) == 0x7f80)
         return Error("nonfinite BF16 boundary vector");
-    }
-    if (row.contains("members")) {
-      RETURN_IF_ERROR(Array(row["members"], "original-state members"));
-      RETURN_IF_ERROR(Integer(Field(row, "member_count"), "member_count", 1));
-      if (row["members"].empty() ||
-          row["member_count"] != row["members"].size())
-        return Error("invalid original-state membership count");
-      for (const auto& member : row["members"]) {
-        RETURN_IF_ERROR(Integer(member, "original state ID", vocab));
-        if (!members.insert(member.get<int>()).second)
-          return Error("original state belongs to multiple classes");
-      }
+    if (row.members) {
+      if (row.members->empty())
+        return Error("original-state membership must not be empty");
+      for (int member : *row.members)
+        if (member < vocab || !members.insert(member).second)
+          return Error("invalid or duplicate original-state member");
     }
   }
   if (std::find(stage_sizes.begin(), stage_sizes.end(), 0) != stage_sizes.end())
     return Error("every boundary must contain at least one state");
-  auto state_at = [&](const Json& value, int stage) -> absl::Status {
-    RETURN_IF_ERROR(Integer(value, "referenced state", vocab));
-    auto found = states.find(value.get<int>());
+  auto state_at = [&](int value, int stage) -> absl::Status {
+    auto found = states.find(value);
     if (found == states.end() || found->second != stage)
-      return Error(absl::StrCat("state ", value.get<int>(),
+      return Error(absl::StrCat("state ", value,
                                 " does not belong to boundary ", stage));
     return absl::OkStatus();
   };
-  if (full && model.contains("state_relabeling")) {
-    RETURN_IF_ERROR(
-        Array(model["state_relabeling"], "state_relabeling", states.size()));
+  if (full && !model.state_relabeling.empty()) {
+    if (model.state_relabeling.size() != states.size())
+      return Error("state relabeling must cover every state");
     absl::flat_hash_set<int> old_ids, new_ids;
-    for (const auto& row : model["state_relabeling"]) {
-      RETURN_IF_ERROR(Array(row, "state relabeling row", 3));
-      RETURN_IF_ERROR(Integer(row[0], "original relabeled state ID", vocab));
-      RETURN_IF_ERROR(Integer(row[2], "relabeling boundary", 0, 2 * layers));
-      RETURN_IF_ERROR(state_at(row[1], row[2].get<int>()));
-      if (!old_ids.insert(row[0].get<int>()).second ||
-          !new_ids.insert(row[1].get<int>()).second)
+    for (const auto& row : model.state_relabeling) {
+      if (row.old_id < vocab || row.boundary < 0 || row.boundary > 2 * layers)
+        return Error("invalid state relabeling ID or boundary");
+      RETURN_IF_ERROR(state_at(row.new_id, row.boundary));
+      if (!old_ids.insert(row.old_id).second ||
+          !new_ids.insert(row.new_id).second)
         return Error("state relabeling must be a bijection within boundaries");
     }
   }
-  RETURN_IF_ERROR(Array(Field(model, "entry"), "entry"));
   std::set<std::pair<int, int>> entry_keys;
-  for (const auto& row : model["entry"]) {
-    RETURN_IF_ERROR(Array(row, "entry row", 3));
-    RETURN_IF_ERROR(Integer(row[0], "entry token", 0, vocab - 1));
-    RETURN_IF_ERROR(Integer(row[1], "entry position", 0, 1023));
-    RETURN_IF_ERROR(state_at(row[2], 0));
-    if (!entry_keys.emplace(row[0].get<int>(), row[1].get<int>()).second)
+  for (const auto& row : model.entry) {
+    if (row.token < 0 || row.token >= vocab || row.position < 0 ||
+        row.position >= 1024)
+      return Error("invalid entry token or position");
+    RETURN_IF_ERROR(state_at(row.output, 0));
+    if (!entry_keys.emplace(row.token, row.position).second)
       return Error("duplicate entry key");
   }
   if (entry_keys.empty())
     return Error("entry table must not be empty");
-  RETURN_IF_ERROR(Array(Field(model, "attention"), "attention", layers));
-  RETURN_IF_ERROR(Array(Field(model, "mlp"), "MLP", layers));
+  if (model.transformers.size() != static_cast<size_t>(layers))
+    return Error("transformer count disagrees with metadata");
   for (int layer = 0; layer < layers; ++layer) {
-    RETURN_IF_ERROR(Array(model["attention"][layer], "attention table"));
-    RETURN_IF_ERROR(Array(model["mlp"][layer], "MLP table"));
     std::set<std::vector<int>> attention_keys;
     absl::flat_hash_set<int> mlp_keys;
-    for (const auto& row : model["attention"][layer]) {
-      RETURN_IF_ERROR(Array(row, "attention row", 2));
-      RETURN_IF_ERROR(Array(row[0], "attention prefix"));
-      if (row[0].empty() || row[0].size() > 1024)
+    for (const auto& row : model.transformers[layer].attention) {
+      if (row.prefix.empty() || row.prefix.size() > 1024)
         return Error("invalid attention history length");
-      for (const auto& state : row[0])
+      for (int state : row.prefix)
         RETURN_IF_ERROR(state_at(state, 2 * layer));
-      RETURN_IF_ERROR(state_at(row[1], 2 * layer + 1));
-      if (!attention_keys.insert(row[0].get<std::vector<int>>()).second)
+      RETURN_IF_ERROR(state_at(row.output, 2 * layer + 1));
+      if (!attention_keys.insert(row.prefix).second)
         return Error("duplicate attention key");
     }
-    for (const auto& row : model["mlp"][layer]) {
-      RETURN_IF_ERROR(Array(row, "MLP row", 2));
-      RETURN_IF_ERROR(state_at(row[0], 2 * layer + 1));
-      RETURN_IF_ERROR(state_at(row[1], 2 * layer + 2));
-      if (!mlp_keys.insert(row[0].get<int>()).second)
+    for (const auto& row : model.transformers[layer].mlp) {
+      RETURN_IF_ERROR(state_at(row.input, 2 * layer + 1));
+      RETURN_IF_ERROR(state_at(row.output, 2 * layer + 2));
+      if (!mlp_keys.insert(row.input).second)
         return Error("duplicate MLP key");
     }
   }
-  RETURN_IF_ERROR(
-      Array(Field(model, "language_modeling_head"), "language modeling head"));
   absl::flat_hash_set<int> head_keys;
-  for (const auto& row : model["language_modeling_head"]) {
-    RETURN_IF_ERROR(Array(row, "language modeling head row", 2));
-    RETURN_IF_ERROR(state_at(row[0], 2 * layers));
-    RETURN_IF_ERROR(
-        Integer(row[1], "language modeling head token", 0, vocab - 1));
-    if (!head_keys.insert(row[0].get<int>()).second)
+  for (const auto& row : model.language_modeling_head) {
+    RETURN_IF_ERROR(state_at(row.input, 2 * layers));
+    if (row.output < 0 || row.output >= vocab)
+      return Error("invalid language modeling head token");
+    if (!head_keys.insert(row.input).second)
       return Error("duplicate language modeling head key");
   }
   if (full) {
-    RETURN_IF_ERROR(Array(Field(model, "samples"), "samples"));
-    if (head_keys.empty() || model["samples"].empty())
+    if (head_keys.empty() || model.samples.empty())
       return Error("missing readout or verification samples");
-    for (const auto& sample : model["samples"]) {
-      RETURN_IF_ERROR(Array(Field(sample, "tokens"), "sample tokens"));
-      if (sample["tokens"].size() < model["prompt_tokens"].get<size_t>() ||
-          sample["tokens"].size() >= 1024)
+    for (const auto& sample : model.samples) {
+      if (sample.tokens.size() <
+              static_cast<size_t>(model.metadata.prompt_tokens) ||
+          sample.tokens.size() >= 1024)
         return Error("verification sample cannot fit prompt and EOS");
-      for (size_t position = 0; position < sample["tokens"].size();
-           ++position) {
-        const auto& token = sample["tokens"][position];
-        RETURN_IF_ERROR(Integer(token, "sample token", 0, vocab - 1));
-        // Greedy generation terminates on its first EOS. An EOS inside the
-        // required suffix would make suffix-plus-final-EOS verification
-        // impossible, even if repeatedly predicting EOS matched the table.
-        if (position >= model["prompt_tokens"].get<size_t>() &&
-            token == model["eos_token"])
+      for (size_t position = 0; position < sample.tokens.size(); ++position) {
+        int token = sample.tokens[position];
+        if (token < 0 || token >= vocab)
+          return Error("invalid verification sample token");
+        // Generation stops at its first EOS; an EOS inside the required suffix
+        // would prevent verification of all remaining tokens and the final EOS.
+        if (position >= static_cast<size_t>(model.metadata.prompt_tokens) &&
+            token == model.metadata.eos_token)
           return Error("verification sample suffix must not contain EOS");
       }
     }
   }
-  if (model.contains("stats") && !model["stats"].is_object())
-    return Error("stats must be an object");
-  if (model.contains("stats")) {
-    const auto& stats = model["stats"];
-    for (const char* key : {"state_unions", "attempted_seeds", "accepted_seeds",
-                            "cached_rejections"})
-      if (stats.contains(key))
-        RETURN_IF_ERROR(Integer(stats[key], key, 0, INT64_MAX));
-    if (stats.contains("accepted_merges")) {
-      RETURN_IF_ERROR(Array(stats["accepted_merges"], "accepted_merges"));
-      int64_t induced_total = 0;
-      for (const auto& merge : stats["accepted_merges"]) {
-        const auto& distance = Field(merge, "euclidean_distance");
-        if (!distance.is_number() || !std::isfinite(distance.get<double>()) ||
-            distance.get<double>() < 0)
-          return Error(
-              "accepted merge distance must be finite and nonnegative");
-        RETURN_IF_ERROR(Integer(Field(merge, "induced_unions"),
-                                "induced_unions", 0, INT64_MAX));
-        const auto induced = merge["induced_unions"].get<int64_t>();
-        if (induced > INT64_MAX - induced_total)
-          return Error("accepted merge induced union count overflows int64");
-        induced_total += induced;
-      }
-    }
-    if (stats.contains("search")) {
-      const auto& search = stats["search"];
-      if (!search.is_object())
-        return Error("search statistics must be an object");
-      if (search.contains("pairwise_irreducible") &&
-          !search["pairwise_irreducible"].is_boolean())
-        return Error("pairwise_irreducible must be a boolean");
-    }
+  const auto& stats = model.stats;
+  if (stats.state_unions < 0 || stats.attempted_seeds < 0 ||
+      stats.accepted_seeds < 0 || stats.cached_rejections < 0)
+    return Error("reduction counters must not be negative");
+  int64_t induced_total = 0;
+  for (const auto& merge : stats.accepted_merges) {
+    if (!std::isfinite(merge.euclidean_distance) ||
+        merge.euclidean_distance < 0)
+      return Error("accepted merge distance must be finite and nonnegative");
+    if (merge.induced_unions < 0 ||
+        merge.induced_unions > INT64_MAX - induced_total)
+      return Error(
+          "accepted merge induced union count is invalid or overflows");
+    induced_total += merge.induced_unions;
   }
   return absl::OkStatus();
 }
 }  // namespace internal
 
-absl::Status ValidateModel(const Json& model) {
+absl::Status ValidateModel(const SymbolicModel& model) {
   return internal::ValidateTables(model, true);
 }
 
-absl::StatusOr<Json> BuildModel(const Json& header,
-                                const std::vector<Json>& captured_samples,
-                                int expected_samples) {
-  if (!header.is_object())
-    return Error("execution trace must begin with metadata");
-  RETURN_IF_ERROR(Integer(Field(header, "schema"), "schema", 1, 1));
-  RETURN_IF_ERROR(Integer(Field(header, "width"), "width", 1));
-  RETURN_IF_ERROR(Integer(Field(header, "layers"), "layers", 1, 1024));
-  RETURN_IF_ERROR(Integer(Field(header, "vocab_size"), "vocab_size", 1));
-  RETURN_IF_ERROR(
-      Integer(Field(header, "prompt_tokens"), "prompt_tokens", 1, 1024));
-  const int width = header["width"], layers = header["layers"],
-            vocab = header["vocab_size"], prompt = header["prompt_tokens"];
-  RETURN_IF_ERROR(
-      Integer(Field(header, "eos_token"), "eos_token", 0, vocab - 1));
-  const int eos = header["eos_token"];
-  RETURN_IF_ERROR(Vocabulary(Field(header, "vocabulary"), vocab));
-  Json states = Json::array(), samples = Json::array();
-  std::vector<std::map<std::vector<int>, int>> intern(2 * layers + 1),
-      attention(layers);
+absl::StatusOr<SymbolicModel> BuildModel(
+    const ModelMetadata& metadata,
+    const std::vector<ExecutionSample>& captured_samples,
+    int expected_samples) {
+  RETURN_IF_ERROR(ValidateMetadata(metadata, true));
+  if (metadata.layers < 1)
+    return Error("execution capture must contain at least one transformer");
+  const int width = metadata.width, layers = metadata.layers,
+            vocab = metadata.vocab_size, prompt = metadata.prompt_tokens,
+            eos = metadata.eos_token;
+  SymbolicModel result;
+  result.metadata = metadata;
+  std::vector<std::map<std::vector<uint16_t>, int>> intern(2 * layers + 1);
+  std::vector<std::map<std::vector<int>, int>> attention(layers);
   std::vector<std::map<int, int>> mlp(layers);
   std::map<std::pair<int, int>, int> entry;
   std::map<int, int> head;
@@ -356,52 +262,47 @@ absl::StatusOr<Json> BuildModel(const Json& header,
   int sample_number = 0;
   for (const auto& sample : captured_samples) {
     ++sample_number;
-    if (!sample.is_object())
-      return Error("execution trace sample must be an object");
-    RETURN_IF_ERROR(Array(Field(sample, "tokens"), "tokens"));
-    const auto& token_json = sample["tokens"];
-    if (token_json.size() < static_cast<size_t>(prompt) ||
-        token_json.size() >= 1024)
+    const auto& tokens = sample.tokens;
+    if (tokens.size() < static_cast<size_t>(prompt) || tokens.size() >= 1024)
       return Error("invalid token sequence length");
-    for (const auto& token : token_json)
-      RETURN_IF_ERROR(Integer(token, "token", 0, vocab - 1));
-    auto tokens = token_json.get<std::vector<int>>();
+    for (int token : tokens)
+      if (token < 0 || token >= vocab)
+        return Error("invalid captured token");
     if (std::find(tokens.begin() + prompt, tokens.end(), eos) != tokens.end())
       return Error("execution trace sample suffix must not contain EOS");
-    RETURN_IF_ERROR(
-        Array(Field(sample, "predictions"), "predictions", tokens.size()));
-    for (const auto& token : sample["predictions"])
-      RETURN_IF_ERROR(Integer(token, "prediction", 0, vocab - 1));
-    auto predictions = sample["predictions"].get<std::vector<int>>();
+    if (sample.predictions.size() != tokens.size())
+      return Error("prediction count must match tokens");
+    for (int token : sample.predictions)
+      if (token < 0 || token >= vocab)
+        return Error("invalid captured prediction");
     for (int position = prompt - 1; position < static_cast<int>(tokens.size());
          ++position)
-      if (predictions[position] !=
+      if (sample.predictions[position] !=
           (position + 1 == static_cast<int>(tokens.size())
                ? eos
                : tokens[position + 1]))
         return Error(absl::StrCat(
             "reference suffix/EOS is incorrect at sample ", sample_number));
-    RETURN_IF_ERROR(
-        Array(Field(sample, "boundaries"), "boundaries", intern.size()));
+    if (sample.boundaries.size() != intern.size())
+      return Error("captured residual boundary count disagrees with model");
     std::vector<std::vector<int>> encoded(intern.size());
     for (int stage = 0; stage < static_cast<int>(intern.size()); ++stage) {
-      const auto& vectors = sample["boundaries"][stage];
-      RETURN_IF_ERROR(Array(vectors, "boundary vectors", tokens.size()));
-      for (const auto& words : vectors) {
-        RETURN_IF_ERROR(Array(words, "boundary vector", width));
-        for (const auto& word : words) {
-          RETURN_IF_ERROR(Integer(word, "BF16 bits", 0, 65535));
-          if ((word.get<int>() & 0x7f80) == 0x7f80)
+      const auto& vectors = sample.boundaries[stage];
+      if (vectors.size() != tokens.size())
+        return Error("captured boundary row count disagrees with tokens");
+      for (const auto& bits : vectors) {
+        if (bits.size() != static_cast<size_t>(width))
+          return Error("captured vector width disagrees with model");
+        for (uint16_t word : bits)
+          if ((word & 0x7f80) == 0x7f80)
             return Error("invalid or nonfinite BF16 boundary vector");
-        }
-        auto bits = words.get<std::vector<int>>();
-        if (states.size() >= static_cast<size_t>(INT32_MAX - vocab))
+        if (result.states.size() >= static_cast<size_t>(INT32_MAX - vocab))
           return Error("too many discrete states");
         auto [iterator, inserted] =
-            intern[stage].emplace(bits, vocab + states.size());
+            intern[stage].emplace(bits, vocab + result.states.size());
         if (inserted)
-          states.push_back(
-              {{"id", iterator->second}, {"stage", stage}, {"bits", bits}});
+          result.states.push_back(
+              {iterator->second, stage, bits, std::nullopt});
         encoded[stage].push_back(iterator->second);
       }
     }
@@ -419,60 +320,55 @@ absl::StatusOr<Json> BuildModel(const Json& header,
       }
       if (position >= prompt - 1)
         RETURN_IF_ERROR(Put(head, encoded.back()[position],
-                            predictions[position], "language modeling head"));
+                            sample.predictions[position],
+                            "language modeling head"));
     }
     targets += tokens.size() - prompt + 1;
-    samples.push_back({{"tokens", tokens}});
+    result.samples.push_back({tokens});
   }
-  if (samples.empty() ||
+  if (result.samples.empty() ||
       (expected_samples >= 0 &&
-       samples.size() != static_cast<size_t>(expected_samples)))
-    return Error(absl::StrCat("unexpected sample count: ", samples.size()));
-  Json result;
-  for (const char* key : {"schema", "width", "layers", "vocab_size",
-                          "eos_token", "prompt_tokens", "vocabulary"})
-    result[key] = header[key];
-  result["states"] = std::move(states);
-  result["samples"] = std::move(samples);
-  result["entry"] = Json::array();
+       result.samples.size() != static_cast<size_t>(expected_samples)))
+    return Error(
+        absl::StrCat("unexpected sample count: ", result.samples.size()));
   for (const auto& [key, output] : entry)
-    result["entry"].push_back({key.first, key.second, output});
-  result["attention"] = Json::array();
-  result["mlp"] = Json::array();
+    result.entry.push_back({key.first, key.second, output});
+  result.transformers.resize(layers);
   for (int layer = 0; layer < layers; ++layer) {
-    Json attention_rows = Json::array(), mlp_rows = Json::array();
     for (const auto& [key, output] : attention[layer])
-      attention_rows.push_back({key, output});
+      result.transformers[layer].attention.push_back({key, output});
     for (const auto& [key, output] : mlp[layer])
-      mlp_rows.push_back({key, output});
-    result["attention"].push_back(std::move(attention_rows));
-    result["mlp"].push_back(std::move(mlp_rows));
+      result.transformers[layer].mlp.push_back({key, output});
   }
-  result["language_modeling_head"] = Json::array();
   for (const auto& [key, output] : head)
-    result["language_modeling_head"].push_back({key, output});
-  result["stats"] = {{"captured_samples", result["samples"].size()},
-                     {"scored_targets", targets},
-                     {"exact_states", result["states"].size()}};
-  ASSIGN_OR_RETURN(result["stats"]["verification"], EvaluateModel(result));
+    result.language_modeling_head.push_back({key, output});
+  result.stats.captured_samples = result.samples.size();
+  result.stats.scored_targets = targets;
+  result.stats.exact_states = result.states.size();
+  result.stats.states = result.states.size();
+  result.stats.states_per_stage.resize(2 * layers + 1);
+  for (const auto& state : result.states)
+    ++result.stats.states_per_stage[state.boundary];
+  ASSIGN_OR_RETURN(result.stats.verification, EvaluateModel(result));
   return result;
 }
 
-absl::StatusOr<int> PredictNext(const Json& model,
+absl::StatusOr<int> PredictNext(const SymbolicModel& model,
                                 const std::vector<int>& tokens) {
   RETURN_IF_ERROR(ValidateModel(model));
   return IntegerModel(model).Predict(tokens);
 }
 
-absl::StatusOr<Json> EvaluateModel(const Json& model) {
+absl::StatusOr<VerificationResult> EvaluateModel(const SymbolicModel& model) {
   RETURN_IF_ERROR(ValidateModel(model));
   IntegerModel runtime(model);
-  const int prompt = model["prompt_tokens"], eos = model["eos_token"];
+  const int prompt = model.metadata.prompt_tokens,
+            eos = model.metadata.eos_token;
   int64_t targets = 0;
   int number = 0;
-  for (const auto& sample : model["samples"]) {
+  for (const auto& sample : model.samples) {
     ++number;
-    auto expected = sample["tokens"].get<std::vector<int>>();
+    auto expected = sample.tokens;
     std::vector<int> prefix(expected.begin(), expected.begin() + prompt);
     expected.push_back(eos);
     for (int position = prompt; position < static_cast<int>(expected.size());
@@ -487,37 +383,36 @@ absl::StatusOr<Json> EvaluateModel(const Json& model) {
         prefix.push_back(predicted);
     }
   }
-  return Json{{"samples", model["samples"].size()},
-              {"targets", targets},
-              {"errors", 0},
-              {"explicit_eos", model["samples"].size()}};
+  return VerificationResult{
+      .samples = static_cast<int64_t>(model.samples.size()),
+      .targets = targets,
+      .errors = 0,
+      .explicit_eos = static_cast<int64_t>(model.samples.size())};
 }
 
-absl::StatusOr<Json> RestoreMembership(const Json& model,
-                                       const Json& original_model) {
+absl::StatusOr<SymbolicModel> RestoreMembership(
+    const SymbolicModel& model, const SymbolicModel& original_model) {
   RETURN_IF_ERROR(ValidateModel(model));
   RETURN_IF_ERROR(ValidateModel(original_model));
-  for (const char* key : {"schema", "width", "layers", "vocab_size",
-                          "eos_token", "prompt_tokens", "vocabulary"})
-    if (model[key] != original_model[key])
-      return Error(absl::StrCat("membership source disagrees on ", key));
+  if (model.metadata != original_model.metadata)
+    return Error("membership source disagrees on model metadata");
   IntegerModel quotient(model);
   absl::flat_hash_map<int, int> mapping;
   auto missing = [] {
     return Error("model is not a complete quotient of the membership source");
   };
-  for (const auto& row : original_model["entry"]) {
-    auto found = quotient.entry.find({row[0], row[1]});
+  for (const auto& row : original_model.entry) {
+    auto found = quotient.entry.find({row.token, row.position});
     if (found == quotient.entry.end())
       return missing();
     RETURN_IF_ERROR(
-        Put(mapping, row[2].get<int>(), found->second, "state membership"));
+        Put(mapping, row.output, found->second, "state membership"));
   }
-  for (int layer = 0; layer < model["layers"].get<int>(); ++layer) {
-    for (const auto& row : original_model["attention"][layer]) {
+  for (int layer = 0; layer < model.metadata.layers; ++layer) {
+    for (const auto& row : original_model.transformers[layer].attention) {
       std::vector<int> transformed;
-      for (const auto& input : row[0]) {
-        auto found = mapping.find(input.get<int>());
+      for (int input : row.prefix) {
+        auto found = mapping.find(input);
         if (found == mapping.end())
           return missing();
         transformed.push_back(found->second);
@@ -526,60 +421,58 @@ absl::StatusOr<Json> RestoreMembership(const Json& model,
       if (found == quotient.attention[layer].end())
         return missing();
       RETURN_IF_ERROR(
-          Put(mapping, row[1].get<int>(), found->second, "state membership"));
+          Put(mapping, row.output, found->second, "state membership"));
     }
-    for (const auto& row : original_model["mlp"][layer]) {
-      auto source = mapping.find(row[0].get<int>());
+    for (const auto& row : original_model.transformers[layer].mlp) {
+      auto source = mapping.find(row.input);
       if (source == mapping.end())
         return missing();
       auto found = quotient.mlp[layer].find(source->second);
       if (found == quotient.mlp[layer].end())
         return missing();
       RETURN_IF_ERROR(
-          Put(mapping, row[1].get<int>(), found->second, "state membership"));
+          Put(mapping, row.output, found->second, "state membership"));
     }
   }
-  for (const auto& row : original_model["language_modeling_head"]) {
-    auto source = mapping.find(row[0].get<int>());
+  for (const auto& row : original_model.language_modeling_head) {
+    auto source = mapping.find(row.input);
     if (source == mapping.end())
       return missing();
     auto found = quotient.language_modeling_head.find(source->second);
     if (found == quotient.language_modeling_head.end())
       return missing();
-    if (found->second != row[1].get<int>())
+    if (found->second != row.output)
       return Error("membership source disagrees on a required token label");
   }
   std::map<int, std::vector<int>> members;
   absl::flat_hash_map<int, int> stages;
-  for (const auto& row : model["states"]) {
-    members[row["id"].get<int>()] = {};
-    stages[row["id"].get<int>()] = row["stage"];
+  for (const auto& row : model.states) {
+    members[row.id] = {};
+    stages[row.id] = row.boundary;
   }
-  for (const auto& row : original_model["states"]) {
-    auto found = mapping.find(row["id"].get<int>());
+  for (const auto& row : original_model.states) {
+    auto found = mapping.find(row.id);
     if (found == mapping.end() || !stages.contains(found->second) ||
-        stages[found->second] != row["stage"].get<int>())
+        stages[found->second] != row.boundary)
       return Error("membership state is missing or crosses a boundary");
     auto& group = members[found->second];
-    if (row.contains("members"))
-      for (const auto& member : row["members"])
-        group.push_back(member.get<int>());
+    if (row.members)
+      group.insert(group.end(), row.members->begin(), row.members->end());
     else
-      group.push_back(row["id"].get<int>());
+      group.push_back(row.id);
   }
-  Json result = model;
+  SymbolicModel result = model;
   int64_t count = 0;
-  for (auto& row : result["states"]) {
-    auto& group = members[row["id"].get<int>()];
+  for (auto& row : result.states) {
+    auto& group = members[row.id];
     if (group.empty())
       return Error("quotient contains a state without an original member");
     std::sort(group.begin(), group.end());
     count += group.size();
-    row["members"] = group;
-    row["member_count"] = group.size();
+    row.members = group;
   }
-  result["stats"]["membership_complete"] = true;
-  result["stats"]["membership_original_states"] = count;
+  result.stats.membership_complete = true;
+  result.stats.membership_original_states = count;
   return result;
 }
 }  // namespace pluto::llm::discretized::generator

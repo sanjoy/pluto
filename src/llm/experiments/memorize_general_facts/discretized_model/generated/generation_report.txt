@@ -18,8 +18,9 @@ The former manifest.json, provenance.json, and transition_patterns.json
 reports were converted to these readable text reports and removed; their
 original bytes remain recoverable from Git history, with hashes below.
 
-current_generated_files_sha256 was recomputed during this metadata-only
-migration. It covers every current file in this generated directory except
+current_generated_files_sha256 includes the updated transition-test comment;
+the generated transition behavior is unchanged. It covers every current file
+in this generated directory except
 this self-referential report, including transition_patterns.txt. It excludes
 all three removed JSON reports. Historical hash lists are retained separately
 and deliberately include the names of artifacts that no longer exist here.
@@ -37,7 +38,7 @@ current_generated_files_sha256:
   cli_support.h: "23e5e95ba2d6887da0fc89a8ae930380df75fdcdff0f6178e0a3c29dfdc058a5"
   entry.cc: "2cecbec761668b4cc341aa9902f27be38129863aea0892f7db25f078cb1e0f78"
   generated_model_test.cc: "1333fa510604753a4844d432f5933dd162174bb85c5d26dd925a426d3c2a74a3"
-  generated_transition_test.cc: "9673f234b28888d1b6490a2ed2d515b602d5842d5c974ec46d465e20b51ca613"
+  generated_transition_test.cc: "87d16d1de644f530d66b96917cc2fb1ee5c9ed59f653c932abc1940b2e0884ee"
   language_modeling_head.cc: "8f97ee3ff4c2b7b673156ee44a014e5cb4018623dfa7cf1d21be0757924cb8a8"
   mlp_0.cc: "ebe5cbbd5f05a8e90237110495c44ec6353f26aac2c8c589f6cd300c7e463dfd"
   mlp_1.cc: "76cdc23b0d8f21979dee63aa93db86168173959954916766026443c09a240c78"

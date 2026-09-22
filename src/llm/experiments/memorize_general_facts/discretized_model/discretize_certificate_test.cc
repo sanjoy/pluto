@@ -6,106 +6,98 @@
 
 namespace pluto::llm::discretized::generator {
 namespace {
-Json DistinctOutputs(int size = 2) {
+SymbolicModel DistinctOutputs(int size = 2) {
   int vocabulary = std::max(size, 3);
-  Json model = {{"schema", 1},
-                {"width", 1},
-                {"layers", 1},
-                {"vocab_size", vocabulary},
-                {"states", Json::array()},
-                {"entry", Json::array()},
-                {"attention", Json::array({Json::array()})},
-                {"mlp", Json::array({Json::array()})},
-                {"language_modeling_head", Json::array()}};
+  SymbolicModel model;
+  // A certificate needs only the typed transition system; it never accesses
+  // corpus samples, vocabulary spellings, or reduction/search metadata.
+  model.metadata = {.width = 1, .layers = 1, .vocab_size = vocabulary};
+  model.transformers.resize(1);
   for (int stage = 0; stage < 3; ++stage)
     for (int i = 0; i < size; ++i)
-      model["states"].push_back({{"id", vocabulary + stage * size + i},
-                                 {"stage", stage},
-                                 {"bits", Json::array({0})}});
+      model.states.push_back({.id = vocabulary + stage * size + i,
+                              .boundary = stage,
+                              .bits = {0}});
   for (int i = 0; i < size; ++i) {
-    model["entry"].push_back({i, 0, vocabulary + i});
-    model["attention"][0].push_back(
-        {Json::array({vocabulary + i}), vocabulary + size + i});
-    model["mlp"][0].push_back(
+    model.entry.push_back({i, 0, vocabulary + i});
+    model.transformers[0].attention.push_back(
+        {{vocabulary + i}, vocabulary + size + i});
+    model.transformers[0].mlp.push_back(
         {vocabulary + size + i, vocabulary + 2 * size + i});
-    model["language_modeling_head"].push_back({vocabulary + 2 * size + i, i});
+    model.language_modeling_head.push_back({vocabulary + 2 * size + i, i});
   }
   return model;
 }
 TEST(DiscretizeCertificateTest,
      ProvesWithoutTrustingSearchMetadataOrMutatingInput) {
   auto model = DistinctOutputs();
-  model["stats"] = {{"search", {{"pairwise_irreducible", false}}}};
+  model.stats.search = SearchStatistics{.pairwise_irreducible = false};
   const auto before = model;
   auto result = CertifyModel(model);
   ASSERT_TRUE(result.ok()) << result.status();
-  EXPECT_EQ((*result)["status"], "proven");
-  EXPECT_EQ((*result)["proven_pairs"], 3);
-  EXPECT_EQ((*result)["same_boundary_pairs"], 3);
-  EXPECT_EQ((*result)["attention_pairs_checked"], 1);
-  EXPECT_EQ((*result)["global_minimum_proven"], false);
+  EXPECT_EQ(result->status, CertificateStatus::kProven);
+  EXPECT_EQ(result->proven_pairs, 3);
+  EXPECT_EQ(result->same_boundary_pairs, 3);
+  EXPECT_EQ(result->attention_pairs_checked, 1);
+  EXPECT_EQ(result->global_minimum_proven, false);
   EXPECT_EQ(model, before);
 }
 TEST(DiscretizeCertificateTest, DuplicateOrMissingReadoutIsInconclusive) {
   auto model = DistinctOutputs();
-  model["language_modeling_head"][1][1] = 0;
-  model["stats"] = {{"search", {{"pairwise_irreducible", true}}}};
+  model.language_modeling_head[1].output = 0;
+  model.stats.search = SearchStatistics{.pairwise_irreducible = true};
   auto result = CertifyModel(model);
   ASSERT_TRUE(result.ok());
-  EXPECT_EQ((*result)["status"], "inconclusive");
-  EXPECT_EQ((*result)["unresolved_stage"], 2);
-  EXPECT_EQ((*result)["proven_pairs"], 0);
-  model["language_modeling_head"].erase(1);
+  EXPECT_EQ(result->status, CertificateStatus::kInconclusive);
+  EXPECT_EQ(result->unresolved_stage, 2);
+  EXPECT_EQ(result->proven_pairs, 0);
+  model.language_modeling_head.erase(model.language_modeling_head.begin() + 1);
   result = CertifyModel(model);
   ASSERT_TRUE(result.ok());
-  EXPECT_EQ((*result)["status"], "inconclusive");
+  EXPECT_EQ(result->status, CertificateStatus::kInconclusive);
 }
 TEST(DiscretizeCertificateTest, ShapeAndBoundaryErrorsReturnStatus) {
   auto model = DistinctOutputs();
-  model["states"][0]["bits"] = {0, 1};
+  model.states[0].bits = {0, 1};
   EXPECT_FALSE(CertifyModel(model).ok());
   model = DistinctOutputs();
-  model["attention"][0][0][1] = 7;
+  model.transformers[0].attention[0].output = 7;
   EXPECT_FALSE(CertifyModel(model).ok());
 }
 TEST(DiscretizeCertificateTest, ComparesTwoRewrittenHistories) {
   auto model = DistinctOutputs();
-  model["attention"] =
-      Json::array({Json::array({Json::array({Json::array({3, 4}), 5}),
-                                Json::array({Json::array({4, 3}), 6})})});
+  model.transformers[0].attention = {{{3, 4}, 5}, {{4, 3}, 6}};
   auto result = CertifyModel(model);
   ASSERT_TRUE(result.ok()) << result.status();
-  EXPECT_EQ((*result)["status"], "proven");
+  EXPECT_EQ(result->status, CertificateStatus::kProven);
 }
 TEST(DiscretizeCertificateTest, DifferentHistoryLengthsDoNotCollide) {
   auto model = DistinctOutputs();
-  model["attention"] =
-      Json::array({Json::array({Json::array({Json::array({3}), 5}),
-                                Json::array({Json::array({4, 3}), 6})})});
+  model.transformers[0].attention = {{{3}, 5}, {{4, 3}, 6}};
   auto result = CertifyModel(model);
   ASSERT_TRUE(result.ok()) << result.status();
-  EXPECT_EQ((*result)["status"], "inconclusive");
-  EXPECT_EQ((*result)["unresolved_stage"], 0);
-  EXPECT_EQ((*result)["unresolved_pair"], Json::array({3, 4}));
+  EXPECT_EQ(result->status, CertificateStatus::kInconclusive);
+  EXPECT_EQ(result->unresolved_stage, 0);
+  EXPECT_EQ(result->unresolved_pair, (std::array<int, 2>{3, 4}));
 }
 TEST(DiscretizeCertificateTest, NonInjectiveOrMissingMlpIsInconclusive) {
   auto model = DistinctOutputs();
-  model["mlp"][0][1][1] = model["mlp"][0][0][1];
+  model.transformers[0].mlp[1].output = model.transformers[0].mlp[0].output;
   auto result = CertifyModel(model);
   ASSERT_TRUE(result.ok());
-  EXPECT_EQ((*result)["status"], "inconclusive");
-  EXPECT_EQ((*result)["unresolved_stage"], 1);
-  model["mlp"][0].erase(1);
+  EXPECT_EQ(result->status, CertificateStatus::kInconclusive);
+  EXPECT_EQ(result->unresolved_stage, 1);
+  model.transformers[0].mlp.erase(model.transformers[0].mlp.begin() + 1);
   result = CertifyModel(model);
   ASSERT_TRUE(result.ok());
-  EXPECT_EQ((*result)["status"], "inconclusive");
+  EXPECT_EQ(result->status, CertificateStatus::kInconclusive);
 }
 TEST(DiscretizeCertificateTest, LargeAlphabetHasNoByteEncodingRestriction) {
   auto result = CertifyModel(DistinctOutputs(257));
   ASSERT_TRUE(result.ok()) << result.status();
-  EXPECT_EQ((*result)["status"], "proven");
-  EXPECT_EQ((*result)["attention_pairs_checked"], 257 * 256 / 2);
-  EXPECT_EQ((*result)["proven_pairs"], 3 * 257 * 256 / 2);
+  EXPECT_EQ(result->status, CertificateStatus::kProven);
+  EXPECT_EQ(result->attention_pairs_checked, 257 * 256 / 2);
+  EXPECT_EQ(result->proven_pairs, 3 * 257 * 256 / 2);
 }
 }  // namespace
 }  // namespace pluto::llm::discretized::generator

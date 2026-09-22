@@ -19,16 +19,11 @@ namespace {
 using absl::StrCat;
 using Lines = std::vector<std::string>;
 
-absl::StatusOr<int> State(const Json& value) {
-  const bool valid =
-      value.is_number_unsigned()
-          ? value.get<uint64_t>() <= std::numeric_limits<int32_t>::max()
-          : value.is_number_integer() && value.get<int64_t>() >= 0 &&
-                value.get<int64_t>() <= std::numeric_limits<int32_t>::max();
-  if (!valid)
+absl::StatusOr<int> State(int value) {
+  if (value < 0)
     return absl::InvalidArgumentError(
         "attention symbols and outputs must be nonnegative int32 integers");
-  return value.get<int>();
+  return value;
 }
 
 bool ValidName(absl::string_view name) {
@@ -81,23 +76,19 @@ absl::Status ValidateTransitionFunctionName(absl::string_view name) {
   return absl::OkStatus();
 }
 
-absl::StatusOr<AttentionProgram> BuildAttention(const Json& rows) {
-  if (!rows.is_array())
-    return absl::InvalidArgumentError("attention rows must be an array");
+absl::StatusOr<AttentionProgram> BuildAttention(
+    absl::Span<const AttentionTransition> rows) {
   std::map<std::vector<int>, int> table;
   for (const auto& row : rows) {
-    if (!row.is_array() || row.size() != 2)
-      return absl::InvalidArgumentError(
-          "attention row must contain a history and output");
-    if (!row[0].is_array() || row[0].empty())
+    if (row.prefix.empty())
       return absl::InvalidArgumentError(
           "attention history must be a nonempty sequence");
     std::vector<int> key;
-    for (const auto& symbol : row[0]) {
+    for (int symbol : row.prefix) {
       ASSIGN_OR_RETURN(auto id, State(symbol));
       key.push_back(id);
     }
-    ASSIGN_OR_RETURN(auto output, State(row[1]));
+    ASSIGN_OR_RETURN(auto output, State(row.output));
     auto [it, inserted] = table.emplace(std::move(key), output);
     if (!inserted && it->second != output)
       return absl::InvalidArgumentError(
@@ -158,10 +149,9 @@ std::optional<int> EvaluateAttention(const AttentionProgram& program,
   return program.nodes[node].output;
 }
 
-absl::StatusOr<RenderedTransition> RenderAttention(absl::string_view name,
-                                                   const Json& rows,
-                                                   int chunk_size,
-                                                   absl::string_view strategy) {
+absl::StatusOr<RenderedTransition> RenderAttention(
+    absl::string_view name, absl::Span<const AttentionTransition> rows,
+    int chunk_size, absl::string_view strategy) {
   RETURN_IF_ERROR(ValidateTransitionFunctionName(name));
   if (chunk_size < 1)
     return absl::InvalidArgumentError("chunk_size must be a positive integer");
@@ -417,28 +407,29 @@ absl::StatusOr<RenderedTransition> RenderAttention(absl::string_view name,
   }
   for (const auto& [chunk, values] : entries)
     entry_cases += values.size();
-  Json stats = {
-      {"representation", "shared_suffix_control_flow"},
-      {"strategy", std::string(strategy)},
-      {"rows", program.rows},
-      {"flat_key_scalars", program.key_scalars},
-      {"flat_scalars", program.key_scalars + 3 * program.rows},
-      {"trie_nodes", program.trie_nodes},
-      {"nodes", program.nodes.size()},
-      {"edges", edges},
-      {"unary_nodes", unary_nodes},
-      {"branch_nodes", branch_nodes},
-      {"branch_edges", branch_edges},
-      {"control_blocks", starts.size()},
-      {"helpers", entries.size()},
-      {"helper_node_limit", chunk_size},
-      {"entry_cases", entry_cases},
-      {"scalar_estimate", 3 * program.nodes.size() + 2 * branch_edges},
-      {"literal_sequence_patterns", sequences.size()},
-      {"literal_sequence_steps", sequence_steps},
-      {"literal_sequence_calls", sequence_calls},
-      {"literal_sequence_word_bits", sequence_bits},
-      {"source_bytes", source.size()}};
+  TransitionStatistics stats;
+  stats.representation = TransitionRepresentation::kSharedSuffixControlFlow;
+  stats.strategy = strategy == "hybrid" ? AttentionStrategy::kHybrid
+                                        : AttentionStrategy::kControlFlow;
+  stats.rows = program.rows;
+  stats.flat_key_scalars = program.key_scalars;
+  stats.flat_scalars = program.key_scalars + 3 * program.rows;
+  stats.trie_nodes = program.trie_nodes;
+  stats.nodes = program.nodes.size();
+  stats.edges = edges;
+  stats.unary_nodes = unary_nodes;
+  stats.branch_nodes = branch_nodes;
+  stats.branch_edges = branch_edges;
+  stats.control_blocks = starts.size();
+  stats.helpers = entries.size();
+  stats.helper_node_limit = chunk_size;
+  stats.entry_cases = entry_cases;
+  stats.scalar_estimate = 3 * program.nodes.size() + 2 * branch_edges;
+  stats.literal_sequence_patterns = sequences.size();
+  stats.literal_sequence_steps = sequence_steps;
+  stats.literal_sequence_calls = sequence_calls;
+  stats.literal_sequence_word_bits = sequence_bits;
+  stats.source_bytes = source.size();
   return RenderedTransition{std::move(source), std::move(stats)};
 }
 
