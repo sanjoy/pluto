@@ -9,7 +9,7 @@ namespace {
 TransitionResult Mlp5(StateId state) {
   if (state < 5005u || state > 5051u)
     return {};
-  return {state + 47u, true};
+  return state + 47u;
 }
 }  // namespace
 StateTable GeneratedMlp5() { return {{}, Mlp5}; }

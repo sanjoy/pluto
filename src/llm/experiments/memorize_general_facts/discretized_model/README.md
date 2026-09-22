@@ -239,7 +239,7 @@ length or a short suffix did not fix this. No approximate rule was adopted.
 ### Measured size
 
 Same machine and `bazel build -c opt`, comparing the named table version
-(`b076f03`) against the generated compact functions. The following counts are
+(`b076f03`) against the compact functions at `336a535`. The following counts are
 `size`'s text + data + BSS totals for each non-PIC model object: allocated code,
 read-only constants and runtime data, **not** object-file metadata, debug symbols,
 or the test fixtures. All amounts are bytes.

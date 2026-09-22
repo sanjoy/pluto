@@ -16,10 +16,10 @@ struct Attention4Step {
   std::uint32_t next;
   TransitionResult result;
 };
-#define PLUTO_ATTN_END(output)                  \
-  do {                                          \
-    if (position == history.size())             \
-      return {kAttention4Done, {output, true}}; \
+#define PLUTO_ATTN_END(output)                   \
+  do {                                           \
+    if (position == history.size())              \
+      return {kAttention4Done, StateId{output}}; \
   } while (false)
 #define PLUTO_ATTN_MORE()           \
   do {                              \
@@ -48,7 +48,7 @@ Attention4Step Attention4MatchSequence(const Attention4MatchStep* steps,
                                        std::size_t& position) {
   for (std::size_t index = 0; index < count; ++index) {
     if (position == history.size())
-      return {kAttention4Done, {steps[index].output, true}};
+      return {kAttention4Done, StateId{steps[index].output}};
     if (history[position++] != steps[index].symbol)
       return {kAttention4Done, {}};
   }

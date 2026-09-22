@@ -6,7 +6,7 @@ import re
 import unittest
 
 from discretize_transition_tests import (
-    _attention_probes, _entry_probes, _pointwise_probes, _replay_samples,
+    _attention_probes, _entry_probes, _pointwise_probes, _replay_samples, _result,
     render_transition_test,
 )
 
@@ -61,7 +61,14 @@ class TransitionFixturesTest(unittest.TestCase):
         for state, token in fixture()["snap"]:
             self.assertIn(f"{{{state}, {_NAMES[token]}}}", source)
         self.assertIn("EverySourceSnapConstraint", source)
-        self.assertIn("model.snap.function(row.input), {row.output, true}", source)
+        self.assertIn("model.snap.function(row.input), row.output", source)
+
+    def test_optional_expectations_preserve_supported_zero(self):
+        self.assertEqual(_result(True, 0), "StateId{0}")
+        self.assertEqual(_result(False, 0), "std::nullopt")
+        source = render_transition_test(fixture(), _NAMES)
+        self.assertIn("EXPECT_EQ(actual, expected);", source)
+        self.assertNotIn(".supported", source)
 
     def test_prompt_only_states_need_not_have_snap_constraints(self):
         model = fixture()

@@ -71,7 +71,7 @@ TransitionResult Snap(StateId state) {
   const uint32_t offset = state - 9664u;
   if ((kSupport[offset >> 3] & (uint32_t{1} << (offset & 7u))) == 0)
     return {};
-  return {static_cast<StateId>(vocab::kComma_0) + (state - 9664u), true};
+  return static_cast<StateId>(vocab::kComma_0) + (state - 9664u);
 }
 }  // namespace
 StateTable GeneratedSnap() { return {{}, Snap}; }

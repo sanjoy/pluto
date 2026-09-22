@@ -100,7 +100,7 @@ class PointwiseTest(unittest.TestCase):
         self.assertEqual(stats["representation"], "guarded_affine")
         self.assertEqual(stats["table_bytes"], 0)
         self.assertIn("state < 10u || state > 12u", body)
-        self.assertIn("return {state + 10u, true}", body)
+        self.assertIn("return state + 10u;", body)
         named, stats = render_pointwise("Snap", [[10 + i, (i * 7) % 20] for i in range(20)],
                                         {i: f"vocab::Token{i}" for i in range(20)})
         self.assertIn("vocab::Token19", named)
@@ -119,8 +119,9 @@ class PointwiseTest(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which("c++"), "C++ compiler unavailable")
     def test_compiled_functions_match_exact_partial_domains(self):
-        declarations = ["#include <cstdint>", "using StateId = uint32_t; using TokenId = int32_t;",
-                        "struct TransitionResult { StateId output; bool supported; };",
+        declarations = ["#include <cstdint>", "#include <optional>",
+                        "using StateId = uint32_t; using TokenId = int32_t;",
+                        "using TransitionResult = std::optional<StateId>;",
                         "namespace vocab { constexpr TokenId A=0, B=1, C=2, D=3, Far=1000000000; }"]
         declarations.append("namespace vocab {" + " ".join(f"constexpr TokenId Token{i}={i};" for i in range(128)) + "}")
         checks = []
@@ -145,12 +146,13 @@ class PointwiseTest(unittest.TestCase):
                 literal = f"static_cast<StateId>({state})" if state < 0 else f"{state}u"
                 # Negative C++ inputs convert to uint32_t before the lookup.
                 output, supported = evaluate_pointwise(rows, state & 0xffffffff)
-                checks.append(f"{{ auto r={name}({literal}); if(r.output!={output}u || r.supported!={str(supported).lower()}) return 1; }}")
+                checks.append(f"{{ auto r={name}({literal}); if(r.value_or(0)!={output}u || r.has_value()!={str(supported).lower()}) return 1; }}")
         entries = {
             "Entry": [[0, 0, 20], [0, 2, 20], [0, 3, 21], [1, 1, 21], [3, 0, 20]],
             "WideMask": [[0, 31, 20], [1, 31, 21]],
             "Sparse": [[0, 0, 20], [1000000000, 0, 21]],
             "WidePosition": [[0, 100, 20]],
+            "ZeroEntry": [[0, 0, 0]],
             "UnsignedEntry": [[0, 0, 4294967295], [1, 0, 4294967294]],
             "EmptyEntry": []}
         for name, rows in entries.items():
@@ -158,7 +160,7 @@ class PointwiseTest(unittest.TestCase):
             for token in [-1, 0, 1, 2, 3, 4, 1000000000]:
                 for position in [0, 1, 2, 3, 4, 31, 32, 63, 64, 100, 101, 4294967295]:
                     output, supported = evaluate_entry(rows, token, position)
-                    checks.append(f"{{ auto r={name}({token},{position}u); if(r.output!={output} || r.supported!={str(supported).lower()}) return 2; }}")
+                    checks.append(f"{{ auto r={name}({token},{position}u); if(r.value_or(0)!={output} || r.has_value()!={str(supported).lower()}) return 2; }}")
         program = "\n".join(declarations) + "\nint main(){\n" + "\n".join(checks) + "\nreturn 0;}\n"
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)

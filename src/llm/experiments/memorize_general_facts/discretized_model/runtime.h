@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -15,62 +16,75 @@ namespace pluto::llm::discretized {
 using TokenId = int32_t;
 using StateId = uint32_t;
 
+// One vocabulary token, indexed by its compact TokenId in Model::vocabulary.
 struct VocabularyRow {
-  int32_t original_id;
-  absl::string_view bytes;
+  int32_t original_id;      // Token ID before compact-vocabulary remapping.
+  absl::string_view bytes;  // Exact decoded bytes, not necessarily valid UTF-8.
 };
+
+// Token/absolute-position lookup implementing the combined embedding boundary.
 struct EntryRow {
-  TokenId token;
-  uint32_t position;
-  StateId state;
+  TokenId token;      // Input compact vocabulary ID.
+  uint32_t position;  // Zero-based position within the causal sequence.
+  StateId state;      // Residual-stream symbol after token/position embeddings.
 };
+
+// One pointwise transition in an MLP residual boundary or vocabulary snap.
 struct StateRow {
-  StateId input;
-  StateId output;
+  StateId input;   // Residual symbol in this boundary's input alphabet.
+  StateId output;  // Output residual symbol, or compact token ID for the snap.
 };
+
+// An attention transition keyed by a complete causal prefix in shared storage.
 struct AttentionRow {
-  uint32_t offset;
-  uint32_t length;
-  StateId output;
+  uint32_t offset;  // First StateId of this prefix in AttentionTable::keys.
+  uint32_t length;  // Number of prefix symbols, including the current position.
+  StateId output;   // Current position's symbol after the attention residual.
 };
 
-// A compiled transition must report unsupported inputs explicitly. Zero is a
-// valid vocabulary ID, so it cannot double as a failure sentinel. Functions
-// implementing these transitions are pure and cannot carry history across
-// calls.
-struct TransitionResult {
-  StateId output = 0;
-  bool supported = false;
-};
+// A compiled transition's output, or nullopt for an unsupported input. An
+// engaged zero is a valid vocabulary ID, not a failure sentinel. Transition
+// functions must be pure: they cannot retain history across calls.
+using TransitionResult = std::optional<StateId>;
 
+// One attention residual boundary, represented by rows or a pure function.
+// Both forms consume the entire ordered causal prefix at a position.
 struct AttentionTable {
+  // Flattened prefix storage; each row selects a contiguous slice.
   absl::Span<const StateId> keys;
-  // Sorted lexicographically by the complete sequence in keys.
+  // Unique transitions, sorted lexicographically by their prefix in keys.
   absl::Span<const AttentionRow> rows;
-  // Alternative to stored rows: generated exact-domain control flow. Never
-  // populate both forms. The complete ordered causal prefix is still supplied.
+  // Optional compiled lookup; when non-null, both keys and rows must be empty.
   TransitionResult (*function)(absl::Span<const StateId>) = nullptr;
 };
+
+// A pointwise MLP or snap boundary, represented by rows or a pure function.
 struct StateTable {
-  // Sorted by input, with no duplicate inputs.
+  // Transitions sorted by input symbol, with no duplicate inputs.
   absl::Span<const StateRow> rows;
+  // Optional compiled lookup; when non-null, rows must be empty.
   TransitionResult (*function)(StateId) = nullptr;
 };
 
 // A finite integer network. Tables or pure functions implement each boundary;
 // no sample identity, corpus text, expected suffix, or floating-point weights
-// are available to this object. All spans must outlive its use.
+// are available to this object. Referenced storage must remain immutable and
+// outlive the model's use.
 struct Model {
-  uint32_t context_length;
-  uint32_t prompt_tokens;
-  TokenId eos_token;
+  uint32_t context_length;  // Maximum number of tokens in a causal sequence.
+  uint32_t prompt_tokens;   // Prefix length for corpus verification.
+  TokenId eos_token;        // Compact ID that terminates generation.
+  // Indexed by compact TokenId; its bytes are also used for decoding.
   absl::Span<const VocabularyRow> vocabulary;
-  // Sorted by (token, position).
+  // Embedding rows sorted by (token, position); empty with entry_function.
   absl::Span<const EntryRow> entry;
+  // Attention residual boundaries in transformer-block order.
   absl::Span<const AttentionTable> attention;
+  // MLP residual boundaries, one per attention block in the same order.
   absl::Span<const StateTable> mlp;
+  // Final LayerNorm/top-1 readout: residual symbols -> compact tokens.
   StateTable snap;
-  // Alternative to entry rows, with the same token/position domain.
+  // Optional pure embedding lookup; when non-null, entry must be empty.
   TransitionResult (*entry_function)(TokenId, uint32_t) = nullptr;
 };
 
