@@ -21,4 +21,4 @@ AttentionTable GeneratedAttention6();
 StateTable GeneratedMlp6();
 AttentionTable GeneratedAttention7();
 StateTable GeneratedMlp7();
-}  // namespace pluto::llm::discretized
+} // namespace pluto::llm::discretized

@@ -1,5 +1,10 @@
 # General-facts memorization experiment
 
+The [discrete-model experiment](discretized_model/README.md) compiles recorded
+checkpoint activations into a CPU-only symbolic network while retaining all
+transformer boundaries. Its guarantee is the exact corpus-completion task, not
+arbitrary-prompt equivalence to the neural model.
+
 Objective: start with eight GPT-2-style transformer blocks, require exact top-1
 training-set completions, and reduce depth until memorization fails. Each of the
 1,024 dataset lines is a separate sample, right-padded to `--context_length`

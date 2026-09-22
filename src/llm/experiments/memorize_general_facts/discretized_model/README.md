@@ -74,7 +74,8 @@ of the whole model with a sentence-completion dictionary.
 
 ## Exact baseline milestone
 
-Exact deduplication yields **221,558 internal states**, plus 4,475 vocabulary
+The exact baseline is preserved in commit `3e983ab`. Exact deduplication yields
+**221,558 internal states**, plus 4,475 vocabulary
 symbols. The native checkpoint and the compiled C++ network both pass all
 **10,002 predictions, 1,024 complete sentences, and 1,024 explicit EOS checks**.
 For every generated prefix, all 17 native BF16 boundaries exactly match the
@@ -86,6 +87,34 @@ attention/MLP translation units. Both its Bazel dependency graph and its dynamic
 library list contain **no CUDA dependency**. It needs no checkpoint, tokenizer
 installation, or GPU at inference time. All 72 repository Bazel test targets and
 186 general-facts Python tests passed at this milestone.
+
+## Current reduced milestone: 6,654 internal states
+
+The checked-in generated package now has **6,654 internal states** (about **97%
+fewer** than the exact baseline), with the same 4,475 vocabulary symbols. Its
+compiled CPU verifier still reports 0/10,002 errors, 1,024/1,024 exact sentences,
+and 1,024 explicit EOS predictions. This is an intermediate search checkpoint,
+not a claim of irreducibility; an exhaustive within-boundary search is continuing.
+
+All original 221,558 states are accounted for by the quotient membership map.
+The generator preserves all eight attention tables, all eight MLP tables, the
+position-entry table, and the final vocabulary snap. The generated code has
+boundary/row-layout comments and readable, byte-exact vocabulary literals.
+
+Two files support inspection without affecting inference:
+
+- `generated/state_index.tsv`: boundary name, representative BF16 vector,
+  corpus occurrence count, up to three observed prefix examples, and original
+  member count for each numeric symbol. Examples are observations, not asserted
+  semantic labels; a representative is just one member of a merged class.
+- `generated/state_members.tsv`: the complete original-state ID membership of
+  every class. Original IDs refer to the exact baseline, not to a different
+  layer or a vocabulary token. No merge crosses a boundary.
+
+Generate these with `--state_index`. For older intermediate models without
+membership metadata, `--original_model=/path/to/exact-baseline.json` reconstructs
+and checks the complete quotient mapping from the original transition tables.
+The inspection files are not compiled, linked, or read by the inference model.
 
 ```sh
 bazel build -c opt //src/llm/experiments/memorize_general_facts/discretized_model/generated:discretized_model
