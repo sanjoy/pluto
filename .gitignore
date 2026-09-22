@@ -3,6 +3,7 @@
 # General-facts experiment Python caches and generated training/sweep artifacts.
 /src/llm/experiments/memorize_general_facts/**/__pycache__/
 /src/llm/experiments/memorize_general_facts/runs/
+/scripts/**/__pycache__/
 
 # Generated research evidence is retained locally.
 /ai-slop/research/weight_memorization/autoregressive_word_evidence.tar.gz

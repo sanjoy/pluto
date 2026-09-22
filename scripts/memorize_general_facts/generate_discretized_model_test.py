@@ -1,0 +1,76 @@
+"""Driver safety/provenance tests; no checkpoint or CUDA device is needed."""
+
+import contextlib
+import io
+import json
+from pathlib import Path
+import tempfile
+import unittest
+
+import generate_discretized_model as driver
+
+
+def write_capture(path):
+    header = {"schema": 1, "width": 16, "layers": 1, "vocab_size": 3,
+              "eos_token": 2, "prompt_tokens": 1,
+              "vocabulary": [{"original_id": i, "hex": word.encode().hex()}
+                             for i, word in enumerate(["Hello", " world", "<EOS>"])]}
+    sample = {"tokens": [0, 1], "predictions": [1, 2],
+              "boundaries": [[[16256 + 2 * stage + row] * 16 for row in range(2)]
+                             for stage in range(3)]}
+    path.write_text(json.dumps(header) + "\n" + json.dumps(sample) + "\n")
+
+
+class GenerateDriverTest(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        self.capture = self.root / "capture.jsonl"
+        write_capture(self.capture)
+
+    def arguments(self, *extra):
+        return driver.parser().parse_args([
+            "--capture", str(self.capture), "--output", str(self.root / "generated"),
+            "--expected_samples=1", *extra])
+
+    def test_generate_format_verify_and_record_hashes(self):
+        args = self.arguments("--save_model", str(self.root / "model.json"))
+        with contextlib.redirect_stdout(io.StringIO()):
+            model = driver.generate(args)
+        record = json.loads((args.output / "provenance.json").read_text())
+        self.assertEqual(record["source_sha256"], driver.sha256(self.capture))
+        self.assertEqual(record["verification"], {
+            "samples": 1, "targets": 2, "errors": 0, "explicit_eos": 1})
+        self.assertTrue(any(args.output.glob("*.cc")))
+        self.assertTrue(record["generated_sources_sha256"])
+        manifest = json.loads((args.output / "manifest.json").read_text())
+        for name, digest in manifest["files"].items():
+            self.assertEqual(driver.sha256(args.output / name), digest)
+        self.assertEqual(len(model["states"]), 6)
+
+    def test_existing_output_is_not_overwritten(self):
+        args = self.arguments()
+        args.output.mkdir()
+        sentinel = args.output / "sentinel"
+        sentinel.write_text("keep")
+        with self.assertRaisesRegex(ValueError, "refusing to overwrite"):
+            driver.generate(args)
+        self.assertEqual(sentinel.read_text(), "keep")
+
+    def test_wrong_sample_count_has_no_output(self):
+        args = self.arguments("--expected_samples=2")
+        with self.assertRaises(ValueError):
+            driver.generate(args)
+        self.assertFalse(args.output.exists())
+
+    def test_malformed_capture_has_no_output(self):
+        self.capture.write_text("not json\n")
+        args = self.arguments()
+        with self.assertRaises(ValueError):
+            driver.generate(args)
+        self.assertFalse(args.output.exists())
+
+
+if __name__ == "__main__":
+    unittest.main()
