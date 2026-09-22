@@ -112,6 +112,8 @@ def parser():
                         help="Emit inspection-only state examples and BF16 representatives")
     result.add_argument("--expected_samples", type=int, default=1024)
     result.add_argument("--reduce", action="store_true")
+    result.add_argument("--compact_transitions", action="store_true",
+                        help="Compile exact boundary transitions into condensed control flow")
     result.add_argument("--neighbors", type=int, default=8)
     result.add_argument("--max_passes", type=int, default=100)
     result.add_argument("--max_attempts", type=int)
@@ -148,11 +150,27 @@ def generate(args):
             checkpoint_path=args.save_model,
             checkpoint_seconds=args.checkpoint_seconds,
             progress=lambda message: print(json.dumps(message), flush=True))
+    if args.compact_transitions:
+        from discretize_pointwise import relabel_mlp_outputs
+        model, mapping = relabel_mlp_outputs(model)
+        model["state_relabeling"] = mapping
+        # Renaming cannot alter the corpus task, but verify this independently
+        # before compiling any tables into programs.
+        evaluate_model(model)
     record = provenance(args, model)
     if args.save_model is not None:
         save_model(model, args.save_model)
-    emit_model(model, args.output, include_state_index=args.state_index)
+    emit_model(model, args.output, include_state_index=args.state_index,
+               compact_transitions=args.compact_transitions)
     format_sources(args.output)
+    if args.compact_transitions:
+        patterns_path = args.output / "transition_patterns.json"
+        patterns = json.loads(patterns_path.read_text(encoding="utf-8"))
+        for transition in patterns["transitions"]:
+            transition["formatted_source_bytes"] = (
+                args.output / transition["file"]).stat().st_size
+        patterns_path.write_text(json.dumps(patterns, indent=2, sort_keys=True) + "\n",
+                                 encoding="utf-8")
     # The emitter hashes its unformatted source. Publish hashes for the actual
     # formatted files that will be committed and compiled instead.
     manifest_path = args.output / "manifest.json"

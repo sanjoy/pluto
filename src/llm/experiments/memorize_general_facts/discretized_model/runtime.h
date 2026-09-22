@@ -33,17 +33,31 @@ struct AttentionRow {
   uint32_t length;
   StateId output;
 };
+
+// A compiled transition must report unsupported inputs explicitly. Zero is a
+// valid vocabulary ID, so it cannot double as a failure sentinel. Functions
+// implementing these transitions are pure and cannot carry history across
+// calls.
+struct TransitionResult {
+  StateId output = 0;
+  bool supported = false;
+};
+
 struct AttentionTable {
   absl::Span<const StateId> keys;
   // Sorted lexicographically by the complete sequence in keys.
   absl::Span<const AttentionRow> rows;
+  // Alternative to stored rows: generated exact-domain control flow. Never
+  // populate both forms. The complete ordered causal prefix is still supplied.
+  TransitionResult (*function)(absl::Span<const StateId>) = nullptr;
 };
 struct StateTable {
   // Sorted by input, with no duplicate inputs.
   absl::Span<const StateRow> rows;
+  TransitionResult (*function)(StateId) = nullptr;
 };
 
-// A finite integer network. Tables encode the individual neural boundaries;
+// A finite integer network. Tables or pure functions implement each boundary;
 // no sample identity, corpus text, expected suffix, or floating-point weights
 // are available to this object. All spans must outlive its use.
 struct Model {
@@ -56,10 +70,14 @@ struct Model {
   absl::Span<const AttentionTable> attention;
   absl::Span<const StateTable> mlp;
   StateTable snap;
+  // Alternative to entry rows, with the same token/position domain.
+  TransitionResult (*entry_function)(TokenId, uint32_t) = nullptr;
 };
 
 // Validate a newly loaded/generated model once before inference. Runtime
 // tables are immutable; this checks key order, ranges, and storage bounds.
+// Compiled functions are verified against the source transitions by generation
+// tests; here we reject ambiguous table/function representations.
 absl::Status ValidateModel(const Model& model);
 
 // Executes entry -> (causal attention -> pointwise MLP)* -> final snap.

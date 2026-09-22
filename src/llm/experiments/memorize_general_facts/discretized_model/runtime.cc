@@ -35,6 +35,13 @@ absl::Status CheckPrompt(const Model& model, absl::Span<const TokenId> tokens) {
 
 absl::StatusOr<StateId> LookupState(StateTable table, StateId key,
                                     absl::string_view boundary, size_t block) {
+  if (table.function != nullptr) {
+    const auto result = table.function(key);
+    if (result.supported)
+      return result.output;
+    return absl::NotFoundError(absl::StrCat(
+        "unsupported ", boundary, " state at block ", block, ": ", key));
+  }
   auto row = std::lower_bound(
       table.rows.begin(), table.rows.end(), key,
       [](const StateRow& r, StateId k) { return r.input < k; });
@@ -45,6 +52,10 @@ absl::StatusOr<StateId> LookupState(StateTable table, StateId key,
 }
 
 absl::Status CheckStateTable(StateTable table, bool snap, size_t vocabulary) {
+  if (table.function != nullptr)
+    return table.rows.empty()
+               ? absl::OkStatus()
+               : absl::InvalidArgumentError("ambiguous state table/function");
   bool first = true;
   StateId previous = 0;
   for (const StateRow& row : table.rows) {
@@ -66,9 +77,12 @@ absl::Status ValidateModel(const Model& model) {
           static_cast<size_t>(std::numeric_limits<TokenId>::max()) ||
       model.eos_token < 0 ||
       static_cast<size_t>(model.eos_token) >= model.vocabulary.size() ||
-      model.attention.size() != model.mlp.size() || model.entry.empty() ||
-      model.snap.rows.empty())
+      model.attention.size() != model.mlp.size() ||
+      (model.entry.empty() && model.entry_function == nullptr) ||
+      (model.snap.rows.empty() && model.snap.function == nullptr))
     return absl::InvalidArgumentError("invalid integer model dimensions");
+  if (!model.entry.empty() && model.entry_function != nullptr)
+    return absl::InvalidArgumentError("ambiguous entry table/function");
   const EntryRow* previous = nullptr;
   for (const EntryRow& row : model.entry) {
     if (row.token < 0 ||
@@ -83,6 +97,9 @@ absl::Status ValidateModel(const Model& model) {
   }
   for (size_t block = 0; block < model.attention.size(); ++block) {
     const auto& table = model.attention[block];
+    if (table.function != nullptr &&
+        (!table.rows.empty() || !table.keys.empty()))
+      return absl::InvalidArgumentError("ambiguous attention table/function");
     absl::Span<const StateId> last;
     for (const AttentionRow& row : table.rows) {
       if (row.length == 0 || row.length > model.context_length ||
@@ -113,6 +130,17 @@ absl::StatusOr<TokenId> PredictNext(const Model& model,
   std::vector<StateId> states;
   states.reserve(tokens.size());
   for (size_t position = 0; position < tokens.size(); ++position) {
+    if (model.entry_function != nullptr) {
+      const auto result = model.entry_function(tokens[position], position);
+      if (!result.supported)
+        return absl::NotFoundError(
+            absl::StrCat("unsupported token/position entry: ", tokens[position],
+                         "/", position));
+      if (result.output < model.vocabulary.size())
+        return absl::DataLossError("entry function produced an invalid state");
+      states.push_back(result.output);
+      continue;
+    }
     const auto key =
         std::make_pair(tokens[position], static_cast<uint32_t>(position));
     auto row =
@@ -131,19 +159,32 @@ absl::StatusOr<TokenId> PredictNext(const Model& model,
     std::vector<StateId> next(states.size());
     for (size_t position = 0; position < states.size(); ++position) {
       const auto key = absl::MakeConstSpan(states).first(position + 1);
-      auto row = std::lower_bound(
-          attention.rows.begin(), attention.rows.end(), key,
-          [&](const AttentionRow& r, absl::Span<const StateId> k) {
-            return Compare(attention.keys.subspan(r.offset, r.length), k) < 0;
-          });
-      if (row == attention.rows.end() ||
-          Compare(attention.keys.subspan(row->offset, row->length), key) != 0)
+      TransitionResult attended;
+      if (attention.function != nullptr) {
+        attended = attention.function(key);
+      } else {
+        auto row = std::lower_bound(
+            attention.rows.begin(), attention.rows.end(), key,
+            [&](const AttentionRow& r, absl::Span<const StateId> k) {
+              return Compare(attention.keys.subspan(r.offset, r.length), k) < 0;
+            });
+        if (row != attention.rows.end() &&
+            Compare(attention.keys.subspan(row->offset, row->length), key) == 0)
+          attended = {row->output, true};
+      }
+      if (!attended.supported)
         return absl::NotFoundError(
             absl::StrCat("unsupported attention history at block ", block,
                          ", position ", position));
-      auto output = LookupState(model.mlp[block], row->output, "MLP", block);
+      if (attended.output < model.vocabulary.size())
+        return absl::DataLossError(
+            "attention function produced an invalid state");
+      auto output =
+          LookupState(model.mlp[block], attended.output, "MLP", block);
       if (!output.ok())
         return output.status();
+      if (*output < model.vocabulary.size())
+        return absl::DataLossError("MLP function produced an invalid state");
       next[position] = *output;
     }
     states.swap(next);
