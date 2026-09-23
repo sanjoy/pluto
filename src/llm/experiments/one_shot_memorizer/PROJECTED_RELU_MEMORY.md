@@ -139,6 +139,12 @@ counted; they are not silently deduplicated.
 The learned GPT-2 has 114,256 trainable scalars, whose FP32 master values take
 **457,024 bytes** before checkpoint metadata. Thus the new numeric artifact
 is smaller even after charging eight bytes rather than four per stored value.
+However, the [capacity accounting](CAPACITY_NOTES.md) gives 264,672 bytes for
+the learned model's actual inference precisions, or 200,800 numeric bytes
+after excluding position rows unused by the corpus. These are representation
+bounds, not implemented checkpoint formats. The projected artifact is **not**
+smaller than that latter bound; its benefit is direct construction, not a
+claim of best compression of the learned model.
 This is **not** a like-for-like neural parameter-efficiency or compression
 result. It uses 30,003 ReLU units, a nine-token scalar-coded input, exact FP64
 integer arithmetic, and a scalar token-ID output. GPT-2 uses narrow BF16

@@ -32,18 +32,32 @@ kernel adds an FP32 position value before rounding the resulting activation;
 it does not first round the position value to BF16.
 
 Thus storing the BF16-consumed values plus the remaining FP32 values needs
-264,672 bytes instead of 457,024 bytes, excluding metadata. This is an
-inference representation bound, not a measured compressor result. Check exact
-logits after canonicalizing those BF16 operands before claiming an implemented
-equivalence. Resuming training still requires the FP32 master values and
-optimizer state; the mixed representation does not preserve that trajectory.
+264,672 bytes instead of 457,024 bytes, excluding metadata. The completed
+`baseline_bf16_matrix_masters` control in `/tmp/one_shot_capacity_0/` rounds
+all 96,176 relevant values and retains all 10,002 target decisions and all
+1,024 complete suffixes plus EOS. This verifies corpus behavior, not every
+logit's bit pattern or a written mixed-precision checkpoint format. The byte
+count remains a representation bound rather than a measured compressor
+result. Resuming training still requires FP32 master values and optimizer
+state; the mixed representation does not preserve that trajectory.
 
-An older corpus audit reports a longest sentence of 26 tokens. **Verify this
-against the current tokenizer/corpus before using it.** If true, position rows
-26..1023 are unnecessary for these corpus completions: 15,968 parameters, or
-63,872 FP32 bytes. Causality, ignored padding targets, and zero weight decay
-predict that these rows remain at initialization; compare the checkpoint bytes
-to confirm. This does not make those positions irrelevant to arbitrary prompts.
+The current complete tokenizer audit in
+`/tmp/projected_relu_memory_0/verification.tsv` confirms a longest sentence
+of 26 tokens. Corpus completion only queries input positions 0..25, including
+the query predicting EOS. Position rows 26..1023 are therefore unused for this
+task: 15,968 parameters, or 63,872 FP32 bytes. A direct byte comparison of
+`weight_1.bin` after offset `26*16*4 = 1664` confirms these rows are identical
+between the original `step_0` and `step_16128` checkpoints. This is also
+consistent with causality, ignored padding targets, and zero weight decay.
+It does not make these positions irrelevant to arbitrary longer prompts.
+
+Removing those unused rows from the mixed-precision accounting above gives
+**200,800 numeric bytes**, excluding shapes, tokenizer, and other metadata.
+No such shortened checkpoint format has been implemented here. In particular,
+the new 240,156-byte projected ReLU artifact is smaller than the learned FP32
+master checkpoint but **not** smaller than this corpus-specific inference
+representation bound. Its useful result is explicit construction without
+training, not best-known compression of the trained model.
 
 ## Why one sentence can change many weights
 
