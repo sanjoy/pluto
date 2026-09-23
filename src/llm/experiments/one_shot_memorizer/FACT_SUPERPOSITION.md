@@ -63,3 +63,88 @@ task-vector methods. A successful formula would be a two-fact construction,
 not evidence that 1,024 facts superpose independently. Differences between
 joint and isolated activations and Adam moments remain part of what is tested.
 Generated checkpoints and reports remain local. Budget: under one hour.
+
+## Result: neither fixed combination recovers the pair
+
+The matched-schedule runs completed. The jointly trained endpoint and its
+repeat are byte-identical. Each masked endpoint memorizes its own retained
+sentence, so this is not a test of combining two unfinished component models.
+
+| Model | France targets | Greece targets | Total targets | Exact suffixes plus EOS |
+| --- | ---: | ---: | ---: | ---: |
+| Jointly trained | 10/10 | 8/8 | 18/18 | 2/2 |
+| France contribution only | 10/10 | 1/8 | 11/18 | 1/2 |
+| Greece contribution only | 1/10 | 8/8 | 9/18 | 1/2 |
+| SUM | 2/10 | 4/8 | 6/18 | 0/2 |
+| MEAN | 1/10 | 3/8 | 4/18 | 0/2 |
+
+Both constructions fail on the **first** generated token, immediately after
+the five-token prompt. SUM predicts `.` for both countries (compact ID 2,
+original GPT-2 ID 13); MEAN predicts `,` for both (compact ID 0, original
+GPT-2 ID 11), instead of ` Paris` or ` Athens`. The target counts above use
+teacher forcing over the entire gold continuation; those partial scores are
+not successful free-running continuations. The separate greedy check feeds
+back predictions only and stops each case at its first mismatch.
+
+The masked France-only model instead predicts ` Paris` for Greece, and the
+Greece-only model predicts ` Athens` for France. Those simple confusions are
+different from the punctuation predictions caused by combining their weights.
+
+### The step-one positive control succeeds exactly
+
+The first scheduled update is France. At step one, the Greece-contribution
+run remains byte-identical to initialization, the France-contribution run
+matches the joint run, and **SUM matches every joint FP32 parameter byte**.
+Thus the same arithmetic and checkpoint ordering work in the case where
+only one fact has contributed. Failure at step 1,024 is not an unavoidable
+failure of the addition implementation or a swapped component label.
+
+All four runs start with identical parameter bytes and matching compact
+vocabularies. The trainer checks its duplicate baseline after every update;
+the probe independently checks the final duplicate checkpoint. Each of the
+five evaluation conditions uses a fresh model, preserving the tied embedding
+alias. Every upload matches its intended parameter bytes, and inference and
+saving leave those bytes unchanged. All 12 loaded source checkpoints are
+strictly reloaded at the end: their weight bytes are unchanged and their
+compact mappings still match. Unrelated checkpoint metadata is not audited.
+
+Against the joint endpoint's 114,256 unique FP32 parameters, the global
+relative L2 errors are 0.793659 for SUM and 0.587266 for MEAN. MEAN is closer
+in this parameter-space metric but has fewer correct teacher-forced targets;
+Euclidean weight distance is not a behavioral accuracy measure.
+
+This rejects **these two predeclared whole-model composition formulas** on
+this matched-clock pair. It does not reject all task-vector methods, learned
+per-layer combinations, or nonlinear constructions. Adam's moment histories
+and the activations producing later gradients differ between joint and
+masked training even though the schedule, initialization, normalization and
+global optimizer clock match. The constructed endpoints may be off
+distribution. No coefficients were tuned after observing the failures, and
+no whole-corpus or arbitrary-prompt fidelity is claimed.
+
+### Reproduction and local artifacts
+
+Build and run the checked-in probe against the completed local training run:
+
+```sh
+bazel build -c opt //src/llm/experiments/one_shot_memorizer:checkpoint_fact_superposition_probe
+facts=/home/ubuntu/checkpoints/memorize_general_facts/compact_batch_32_no_clip_0
+pair=/tmp/fact_superposition_pair_0
+bazel-bin/src/llm/experiments/one_shot_memorizer/checkpoint_fact_superposition_probe \
+  --initial_checkpoint="$facts/layers_8/step_0" \
+  --joint_checkpoint="$pair/baseline/step_1024" \
+  --omit_line_1_checkpoint="$pair/omit_line_1/step_1024" \
+  --omit_line_2_checkpoint="$pair/omit_line_2/step_1024" \
+  --tokenizer="$facts/inputs/tokenizer" \
+  --corpus=/tmp/fact_superposition_pair.txt \
+  --control_step1_dir="$pair" \
+  --output_dir=/tmp/fact_superposition_probe_new
+```
+
+The completed report is `/tmp/fact_superposition_probe_0`. It contains
+`conditions.tsv`, `per_sentence.tsv`, `parameter_errors.tsv`, `controls.tsv`
+and a completed manifest. The two constructed checkpoints are
+`sum/step_1024` and `mean/step_1024`, each with its compact vocabulary. These
+generated artifacts are local, not checked into Git. The CPU arithmetic tests
+cover SUM/MEAN symmetry, the one-component step-one control, FP64 cancellation,
+ties-to-even FP32 rounding, invalid inputs, overflow and subnormal underflow.

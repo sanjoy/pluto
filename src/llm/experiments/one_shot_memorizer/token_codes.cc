@@ -9,36 +9,12 @@
 #include <vector>
 
 #include "absl/status/status.h"
+#include "src/llm/experiments/one_shot_memorizer/split_mix64.h"
 
 namespace pluto::llm::one_shot_memorizer {
 namespace {
 
-// All arithmetic deliberately wraps modulo 2^64. Specifying the generator
-// and rejection rule keeps code assignments reproducible across platforms.
-class SplitMix64 {
- public:
-  explicit SplitMix64(uint64_t seed) : state_(seed) {}
-
-  uint64_t Bounded(uint64_t bound) {
-    // Removing the first 2^64 % bound values leaves an exact multiple of bound.
-    const uint64_t threshold = (uint64_t{0} - bound) % bound;
-    uint64_t value;
-    do {
-      value = Next();
-    } while (value < threshold);
-    return value % bound;
-  }
-
- private:
-  uint64_t Next() {
-    uint64_t value = (state_ += UINT64_C(0x9e3779b97f4a7c15));
-    value = (value ^ (value >> 30)) * UINT64_C(0xbf58476d1ce4e5b9);
-    value = (value ^ (value >> 27)) * UINT64_C(0x94d049bb133111eb);
-    return value ^ (value >> 31);
-  }
-
-  uint64_t state_;
-};
+using internal::SplitMix64;
 
 size_t BalancedCapacity(int width) {
   size_t combinations = 1;

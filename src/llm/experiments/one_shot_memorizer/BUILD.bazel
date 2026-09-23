@@ -805,6 +805,7 @@ cc_library(
     srcs = ["token_codes.cc"],
     hdrs = ["token_codes.h"],
     deps = [
+        ":split_mix64",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/types:span",
@@ -1460,5 +1461,97 @@ cc_binary(
         "@abseil-cpp//absl/strings",
         "@abseil-cpp//absl/types:span",
         "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_library(
+    name = "split_mix64",
+    hdrs = ["split_mix64.h"],
+)
+
+cc_library(
+    name = "projected_relu_memory",
+    srcs = ["projected_relu_memory.cc"],
+    hdrs = ["projected_relu_memory.h"],
+    deps = [
+        ":split_mix64",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "projected_relu_memory_test",
+    size = "small",
+    srcs = ["projected_relu_memory_test.cc"],
+    deps = [
+        ":projected_relu_memory",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "fact_superposition",
+    srcs = ["fact_superposition.cc"],
+    hdrs = ["fact_superposition.h"],
+    deps = [
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "fact_superposition_test",
+    size = "small",
+    srcs = ["fact_superposition_test.cc"],
+    deps = [
+        ":fact_superposition",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "checkpoint_fact_superposition_probe",
+    srcs = ["checkpoint_fact_superposition_probe.cc"],
+    deps = [
+        ":fact_superposition",
+        ":mlp_probe",
+        ":sentence_ablation",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset",
+        "//src/dataset:compact_vocabulary",
+        "//src/dataset:gpt2_tokenizer",
+        "//src/dataset:padded_line_dataset",
+        "//src/llm:checkpoint",
+        "//src/llm:gpt2",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/strings",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_binary(
+    name = "projected_relu_memorizer",
+    srcs = ["projected_relu_memorizer.cc"],
+    deps = [
+        ":projected_relu_memory",
+        "//src/cuda:executor",
+        "//src/dataset",
+        "//src/dataset:gpt2_detokenizer",
+        "//src/dataset:gpt2_tokenizer",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/strings",
     ],
 )

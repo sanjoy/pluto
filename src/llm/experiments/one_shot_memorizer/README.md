@@ -33,15 +33,26 @@ and 7 while replacing the other five: it reaches 1,023/1,024 entire
 completions, with only the condensation sentence still failing. It remains
 teacher-assisted, and removing regularization does not eliminate the measured
 quadratic fitting residual.
+The [matched fact-update experiment](FACT_SUPERPOSITION.md) asks whether
+independently learned France/Greece updates add: each component memorizes its
+own fact, but the two fixed sum/mean constructions complete neither. Their
+step-one positive control matches the joint model's weights bit-for-bit.
+Separately, the [projected ReLU memory](PROJECTED_RELU_MEMORY.md) constructs
+all 1,024 exact corpus completions from text and tokenizer alone, with a
+240,156-byte saved artifact. This is a wide FP64 hash-matching architecture,
+not a derivation of the learned transformer, and unseen prompts can alias.
 
 ## Time-bounded sentence and capacity experiments
 
-The current research checkpoint is due **2026-09-23 15:52 UTC**. The approved
+The current research checkpoint is due **2026-09-23 15:18 UTC**, following the
+user's request at 12:18 UTC to stop and summarize in three hours. Stop starting
+new experiments by 14:30 UTC and use the remaining time for verification and
+the report. Independent GPU workloads may overlap when memory permits;
+performance timings must remain isolated. The approved
 first stage is a 512-update duplicate baseline and three single-sentence
 deletions, plus a separate single-fact training run. Positive and negative
 results count; timeouts and unchanged accuracy are not evidence of impossible
-construction or exclusive fact ownership. Reserve the final hour for checking
-the evidence and writing conclusions rather than starting new sweeps.
+construction or exclusive fact ownership.
 
 `checkpoint_sentence_ablation` loads the same original `step_0` weights and
 frozen full-corpus compact vocabulary for every condition. Adam starts with
