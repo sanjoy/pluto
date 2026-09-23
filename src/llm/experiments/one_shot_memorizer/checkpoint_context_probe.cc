@@ -41,6 +41,9 @@ ABSL_FLAG(std::vector<std::string>, windows,
           (std::vector<std::string>{"0", "1", "3", "5", "9", "12", "16", "24"}),
           "Retained suffix sizes, comma-separated; unmodified control always "
           "runs first");
+ABSL_FLAG(std::string, replacement, "both",
+          "Prefix replacement: eos, other_sentence, or both; eos also "
+          "supports a corpus containing just one sentence");
 
 namespace pluto::llm::one_shot_memorizer {
 namespace {
@@ -50,6 +53,15 @@ absl::Status RunProbe() {
   const fs::path output_dir = absl::GetFlag(FLAGS_output_dir);
   const auto tokenizer_path = absl::GetFlag(FLAGS_tokenizer);
   const int prompt_tokens = absl::GetFlag(FLAGS_prompt_tokens);
+  const auto replacement_name = absl::GetFlag(FLAGS_replacement);
+  std::vector<PrefixReplacement> replacements;
+  if (replacement_name == "eos" || replacement_name == "both")
+    replacements.push_back(PrefixReplacement::kEos);
+  if (replacement_name == "other_sentence" || replacement_name == "both")
+    replacements.push_back(PrefixReplacement::kOtherSentence);
+  if (replacements.empty())
+    return absl::InvalidArgumentError(
+        "replacement must be eos, other_sentence, or both");
   if (checkpoint.empty() || output_dir.empty() || tokenizer_path.empty() ||
       prompt_tokens <= 0)
     return absl::InvalidArgumentError(
@@ -104,6 +116,7 @@ absl::Status RunProbe() {
          << "\n# tokenizer=" << tokenizer_path
          << "\n# batch_size=" << absl::GetFlag(FLAGS_batch_size)
          << "\n# prompt_tokens=" << prompt_tokens
+         << "\n# replacement=" << replacement_name
          << "\n# Independent next-token interventions, NOT autoregressive "
             "completion scores.\n"
          << "replacement\twindow\ttargets\tmodified_"
@@ -142,8 +155,7 @@ absl::Status RunProbe() {
     return absl::OkStatus();
   };
   RETURN_IF_ERROR(run(-1, PrefixReplacement::kEos));
-  for (auto replacement :
-       {PrefixReplacement::kEos, PrefixReplacement::kOtherSentence})
+  for (auto replacement : replacements)
     for (int window : windows)
       RETURN_IF_ERROR(run(window, replacement));
   report << "# Complete\n";

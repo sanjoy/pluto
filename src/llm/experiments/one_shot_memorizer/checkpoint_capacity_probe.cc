@@ -55,6 +55,9 @@ ABSL_FLAG(int, feed_forward_width, 64, "MLP expansion width");
 ABSL_FLAG(std::vector<std::string>, bits,
           (std::vector<std::string>{"8", "4", "2"}),
           "Per-tensor symmetric signed quantizer widths, comma-separated");
+ABSL_FLAG(bool, joint_branches, false,
+          "Quantize all transformer attention/MLP branches together instead "
+          "of individually; leaves embeddings and final norm unchanged");
 
 namespace pluto::llm::one_shot_memorizer {
 namespace {
@@ -249,10 +252,11 @@ absl::Status WriteHtml(const fs::path& directory, const fs::path& checkpoint,
       << ".</p>"
          "<p>Each condition starts by restoring <strong>all original "
          "weights</strong>. "
-         "Only the named branch is quantized, including its LayerNorm and "
+         "Only the named branch or joint group is quantized, including its "
+         "LayerNorm and "
          "biases. "
-         "Attention and MLP conditions are separate interventions, not "
-         "cumulative. "
+         "Individual and joint groups are explicitly named; cases are never "
+         "cumulative across evaluations. "
          "A final restored control checks that the original model remains "
          "intact.</p>"
          "<p>Uniform symmetric quantization uses one double-precision scale "
@@ -354,6 +358,15 @@ absl::Status Run() {
                                      .context_length = kGpt2ContextLength,
                                      .transformer_block_count = blocks}));
   ASSIGN_OR_RETURN(auto groups, MakeGroups(layout, blocks));
+  if (absl::GetFlag(FLAGS_joint_branches)) {
+    Group joint{.name = "all_transformer_branches", .branch = "joint"};
+    for (const auto& group : groups) {
+      joint.parameters += group.parameters;
+      joint.tensors.insert(joint.tensors.end(), group.tensors.begin(),
+                           group.tensors.end());
+    }
+    groups = {std::move(joint)};
+  }
   ASSIGN_OR_RETURN(auto executor, cuda::Executor::Create());
   ASSIGN_OR_RETURN(auto corpus, LoadTextCorpus(absl::GetFlag(FLAGS_corpus)));
   ASSIGN_OR_RETURN(auto dataset,
@@ -406,6 +419,7 @@ absl::Status Run() {
              << "\n# context_length=" << kGpt2ContextLength
              << "\n# batch_size=" << dataset->options().batch_size
              << "\n# prompt_tokens=" << dataset->options().prompt_tokens
+             << "\n# joint_branches=" << absl::GetFlag(FLAGS_joint_branches)
              << "\n# Each branch intervention starts from all original "
                 "weights. No training."
                 "\n# Nominal budgets count integer codes plus one 64-bit scale "

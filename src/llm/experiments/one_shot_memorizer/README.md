@@ -1018,8 +1018,25 @@ especially sensitive at four bits; later blocks differ substantially despite
 equal parameter counts. A successful eight-bit attention branch has a nominal
 9,344-bit code (1,120 values plus six FP64 scales); an MLP has 17,664 bits.
 These are sufficient *individual* replacement descriptions with all other
-weights fixed. Joint eight-bit safety has not yet been tested, and failure of
-uniform four-bit quantization is not a lower bound for other representations.
+weights fixed. Failure of uniform four-bit quantization is not a lower bound
+for other representations.
+
+A subsequent **joint** test quantized every attention/MLP branch, including
+all branch norms and biases, simultaneously (`--joint_branches --bits=8,6,4`).
+Embeddings and final normalization remained original. Results in
+`/tmp/one_shot_capacity_joint_0/` are:
+
+| Joint branch precision | Correct targets / 10,002 | Exact facts / 1,024 |
+| --- | ---: | ---: |
+| 8 bits | 10,002 | 1,024 |
+| 6 bits | 9,995 | 1,017 |
+| 4 bits | 6,044 | 37 |
+
+All 26,240 branch coefficients across 96 tensors fit a nominal 216,064-bit
+description at eight bits, including 96 FP64 scales. With all other masters
+still FP32, nominal model size is 379,072 bytes, excluding file/layout metadata.
+This is coding accounting, not an implemented packed model or an entropy
+measurement. The original bytes were restored and full exactness reverified.
 
 ## Causal single-fact embedding controls (2026-09-23)
 
@@ -1078,6 +1095,53 @@ update before the first omission. The in-memory matched-step baseline history
 uses approximately 7.5 GB of host memory. The process has a three-hour runtime
 cap, well inside the 15:52 UTC reporting deadline.
 
+```sh
+bazel-bin/src/llm/experiments/one_shot_memorizer/checkpoint_sentence_ablation \
+  --initial_checkpoint=/home/ubuntu/checkpoints/memorize_general_facts/compact_batch_32_no_clip_0/layers_8/step_0 \
+  --tokenizer=/home/ubuntu/checkpoints/memorize_general_facts/compact_batch_32_no_clip_0/inputs/tokenizer \
+  --output_dir=/tmp/long_durian_pair_new --steps=16384 \
+  --omitted_lines=631 --single_fact_line=0 --norepeat_baseline \
+  --checkpoint_every=512 --evaluate_every=4096
+```
+
+The completed baseline reached 1,000 exact facts at 12,288 updates but only
+**740/1,024 at 16,384** (9,632/10,002 targets). Durian itself remained exact,
+10/10 targets. Saved weights at 512, 4,096, 12,288, and 15,872 were compared
+byte-for-byte with the earlier pilot or original run and match. The original
+metrics also show nonmonotonic late accuracy: 960 exact at 15,872, 1,022 at
+16,000, and 1,024 at its stopping point 16,128. Continuing the same optimizer
+past a successful checkpoint therefore cannot be assumed to preserve success.
+The omission run finished at 08:53 UTC with **1,023/1,024 exact facts** and
+9,993/10,002 targets. Durian is its only nonexact sentence (1/10 targets);
+every other fact is completely memorized. Compared at the same 16,384 update,
+739 facts are exact in both models, 284 only in the omission, and Durian only
+in the baseline. Thus the omitted model successfully learns all remaining
+data, but the endpoint weight difference is not deletion from a stably,
+fully memorized baseline. Both runs and all original byte checks completed.
+
+The matched 12,288-update comparison is now complete. Baseline and omission
+score 9,974 and 9,973 of 10,002 targets, respectively, with 1,000 and 1,006
+exact sentences. Durian falls from **10/10 and exact** to **1/10 and not
+exact**. Across all facts, 984 are exact in both, 16 only in the baseline,
+22 only in the omission, and two in neither. Excluding Durian, 15 facts lose
+exactness and 22 gain it. Thus a strong effect on the omitted fact coexists
+with collateral trajectory changes, not an exclusive storage address.
+The fixed-budget 16,384 endpoint remains the prespecified outcome; choosing
+12,288 for mechanistic follow-up is explicitly posthoc because both models
+are nearly memorized there. The perfect historical 16,128 baseline must not
+be compared against a differently timed omission as a matched deletion.
+
+At 12,288, the largest baseline-minus-omission embedding-row L2 changes are
+still ` smell` (2.6573), ` strong` (2.5971), prompt token `Dur` (2.5850),
+and ` creamy` (2.4521). Other target rows range from rank 29 (EOS) to 3,918
+(` its`), so this ranking does not recover the whole sentence. The full
+embedding difference has L2 43.5756 and cosine only 0.05792 with its
+512-update counterpart: content-specific rows remain conspicuous while the
+dense difference evolves. This rejects a naive interpretation as repeatedly
+adding the same fixed sentence vector. Local evidence is
+`/tmp/paired_embedding_trajectory_12288.tsv` plus the paired per-sentence
+`predictions_12288.tsv` files.
+
 ### Prospective single-fact token-set validation
 
 An exploratory CPU analysis of the Durian-only trajectory found this simple
@@ -1094,7 +1158,8 @@ At the saved 128-, 256-, 384-, and 512-update Durian checkpoints, the selected
 IDs are exactly the ten distinct suffix/EOS target IDs, with no additional
 vocabulary rows. The criterion takes no target IDs as input; reference labels
 are used afterward to score the selected set. This is nevertheless an
-**exploratory discovery on this sentence**, not yet validation on other facts.
+**exploratory discovery on this sentence**, separate from the subsequent
+prospective validation below.
 It recovers neither token order nor repetitions, and not the five-token
 prompt. The first-update result is imperfect. In particular, this is not a
 decoder of an arbitrary trained model without its initialization.
@@ -1107,28 +1172,297 @@ as the Durian-only condition. Score precision/recall on **distinct** suffix
 plus EOS token IDs, reporting prompt-only rows separately. Do not tune the
 threshold or change the selected lines after observing these results.
 
-These short validations are queued after the approved long pair and the
+These short validations ran after the approved long pair and the
 five-token trace. The existing ablation runner can produce each condition
 with `--batch_size=1 --omitted_lines= --norepeat_baseline
 --single_fact_line=LINE --steps=512`; its accompanying full-corpus batch-one
 baseline is not an exposure-matched control and is not used to derive this
 rule. All model checkpoints and diagnostic tables remain local artifacts.
 
+All three prespecified **512-update** endpoints pass the frozen FP32-delta
+rule without threshold adjustment: France selects exactly 10 target IDs,
+mammals six, and Prasad 11, each with zero false positives or false negatives.
+Every selected fact is also greedily memorized by its own trained model.
+These are cross-sentence replications at one shared initialization, not
+independent-seed or arbitrary-model validation. Secondary saved endpoints
+show one extra token at update 128 for mammals and Prasad, but no errors at
+256 or 384; France is exact at all four saved endpoints. BF16-endpoint and
+trained-table-only exploratory variants also pass at 512. Prompt-only means
+the prompt-token set minus the target-token set, since tokens can overlap.
+The rule still recovers a **set**, not order or multiplicity. Evidence:
+`/tmp/sign_replication_eval.JAtM05/` and
+`/tmp/one_shot_single_replication_line_{80,1,258}_0/`.
+
+A separate GPU context intervention on the Durian-only model preserves all
+10/10 targets when keeping just the immediately preceding token and replacing
+every older prefix token with EOS. Keeping **zero** lexical tokens (constant
+EOS input, reading different absolute positions) gets only 1/10. Thus lexical
+input matters, but this single-fact model does not need the full sentence
+history under that replacement. This is independent target evaluation, not
+an autoregressive audit, and positions remain available; it does not prove
+a position-free bigram implementation. Evidence:
+`/tmp/one_shot_single_fact_context_0/`.
+
+The CPU-only `checkpoint_embedding_sign_readout` implements the rule, with
+unit-tested shape/finite-value validation and no label argument in its core.
+Optional `--target_ids` only scores the already-selected rows. It also reports
+BF16 endpoint differences (round each table, then subtract), and separate
+exploratory trained-table-only variants. At Durian step 512, update-rule target
+scores span [-0.69287,-0.61445], versus [0.12752,0.84201] for all other rows;
+the BF16 check preserves this separation. The trained-table-only rule also
+selects the same ten IDs here, but does not replace the frozen primary rule.
+Off-fact rows participated in every softmax denominator: they are not held-out
+negative classes. These geometric scores are coordinate/gauge-dependent and
+do not identify a universal, functionally invariant storage format.
+
 ```sh
-bazel-bin/src/llm/experiments/one_shot_memorizer/checkpoint_sentence_ablation \
-  --initial_checkpoint=/home/ubuntu/checkpoints/memorize_general_facts/compact_batch_32_no_clip_0/layers_8/step_0 \
-  --tokenizer=/home/ubuntu/checkpoints/memorize_general_facts/compact_batch_32_no_clip_0/inputs/tokenizer \
-  --output_dir=/tmp/long_durian_pair_new --steps=16384 \
-  --omitted_lines=631 --single_fact_line=0 --norepeat_baseline \
-  --checkpoint_every=512 --evaluate_every=4096
+bazel build -c opt //src/llm/experiments/one_shot_memorizer:checkpoint_embedding_sign_readout
+bazel-bin/src/llm/experiments/one_shot_memorizer/checkpoint_embedding_sign_readout \
+  --initial_embeddings=/home/ubuntu/checkpoints/memorize_general_facts/compact_batch_32_no_clip_0/layers_8/step_0/weight_0.bin \
+  --trained_embeddings=/tmp/one_shot_sentence_pilot_0/only_line_631/step_512/weight_0.bin \
+  --width=16 --target_ids=124,328,792,2147,86,3735,4018,2483,2,4474
 ```
 
-Once the GPU is free, the next requested experiment traces exact five-token
+### Why so many embedding rows move: the first Adam update
+
+`single_fact_first_update_probe` is a CPU-only explanatory replay of a
+**known** training fact, not a decoder. It loads the initial weights, runs
+the existing scalar reference forward/backward with the original ten Durian
+suffix/EOS targets, and predicts the first embedding update. With fresh
+moments and zero weight decay, bias-corrected first-step Adam simplifies in
+exact arithmetic to
+
+```
+delta_E[i,j] = -learning_rate * gradient[i,j] /
+               (abs(gradient[i,j]) + epsilon)
+```
+
+The tied embedding gradient includes the output head and input lookup. The
+4,460 tokens absent from both input and targets have no input-lookup term,
+but each still gets a softmax head gradient. If initial probabilities were
+uniform, their head gradients would be the same averaged hidden vector
+divided by vocabulary size. Actual probabilities are not exactly uniform;
+the approximation has 11.33% relative gradient error, with matching signs
+in 68,208/71,360 absent-row coordinates. Adam's coordinate normalization
+turns similar gradients into similar-sized updates. The common absent-row
+mean accounts for 89.46% of observed first-update energy in those rows.
+
+Using the actual reference gradients rather than the uniform approximation,
+the simplified update reproduces **71,457/71,600 resulting embedding weights
+bit-identically** and every update sign. Relative L2 error of the update is
+0.00013739 (about 0.014%). Remaining differences can include scalar CPU versus
+GPU arithmetic and the optimizer's explicit FP32 moment/bias-correction
+operations. Context lengths 16, 32, and 1,024 produce byte-identical CPU
+coordinate reports, validating removal of ignored future padding here.
+Invalid IDs, context lengths, nonfinite epsilon and excessive prompt length
+are rejected. This explains much of the widespread early movement; it does
+not reconstruct the ordered sentence from a converged checkpoint or prove
+that later updates remain a single common shift.
+
+```sh
+bazel build -c opt //src/llm/experiments/one_shot_memorizer:single_fact_first_update_probe
+bazel-bin/src/llm/experiments/one_shot_memorizer/single_fact_first_update_probe \
+  --initial_checkpoint=/home/ubuntu/checkpoints/memorize_general_facts/compact_batch_32_no_clip_0/layers_8/step_0 \
+  --first_update_checkpoint=/tmp/one_shot_sentence_pilot_0/only_line_631/step_1 \
+  --output_dir=/tmp/first_update_probe_new
+```
+
+## Five-token execution tracing
+
+The requested GPU experiment traces exact five-token
 prompts through a **single sixth-token prediction**, comparing Paris/Athens/Lima
 factual retrieval with `Pras -> ad`, lexical `to -> nour`, and grammatical
 `known -> for` continuation. Raw traces will be paired with independent branch
 and donor interventions; attention weights or intermediate vocabulary readouts
 alone do not establish a causal explanation.
+
+`checkpoint_token_trace` supplies only those five IDs; all later positions are
+EOS padding, and only query row 4 is scored. It records every prefix activation
+and triangular attention matrix. Each intervention starts an independent
+forward: zero an attention/MLP branch while keeping its skip, transplant one
+same-position residual or Q/K/V slice between the three capital prompts, or
+optionally zero one query-row GELU neuron. No corpus suffix is model input.
+Uninstrumented/captured logits and identity donor patches must be bit-identical;
+structurally disconnected donor patches must also be identities.
+
+Two descriptive views accompany these causal tests. The readout lens applies
+the original final LayerNorm/head to earlier residuals. Fixed-final-normalizer
+accounting instead decomposes the **actual final target-versus-rival margin**
+over observed residual increments and the final norm bias. The latter fixes
+the final normalization denominator so contributions telescope, reporting
+FP32/BF16 numerical discrepancies separately. Neither is an early prediction,
+nor a causal effect: those require the separate interventions. Raw vectors,
+readouts, margins and interventions are written to TSV and self-contained HTML.
+
+```sh
+bazel build -c opt //src/llm/experiments/one_shot_memorizer:checkpoint_token_trace
+bazel-bin/src/llm/experiments/one_shot_memorizer/checkpoint_token_trace \
+  --checkpoint=/home/ubuntu/checkpoints/memorize_general_facts/compact_batch_32_no_clip_0/layers_8/step_16128 \
+  --tokenizer=/home/ubuntu/checkpoints/memorize_general_facts/compact_batch_32_no_clip_0/inputs/tokenizer \
+  --output_dir=/tmp/five_token_trace_new
+```
+
+Default lines are 80,406,411,1,258,631. Optional
+`--mlp_neuron_ablation_blocks=0,4` independently ablates each GELU channel of
+those blocks at the final query row only. The original weights never change.
+
+### CPU-reference replay and GPU corroboration
+
+The existing `LayerReference` primitives allow a CPU-only replay with no
+Executor or CUDA runtime. A local C++ prototype uses context 16 (reference
+dense layers require a multiple of 16), loads all 100 unique checkpoint
+tensors, and keeps only position rows 0..15. Causality makes future positions
+irrelevant to the first five rows. As a control, changing every future padding
+token left all five prefix rows byte-identical at all 20 observed boundaries
+for all six cases. CPU and GPU accumulation/math differ, so this is not a
+claim of bitwise equivalence to GPU execution.
+
+The CPU replay correctly predicts all six sixth tokens, around 4.4 ms per
+query. Diagnostic final-head readouts show an informative contrast:
+
+| Fact / target piece | After final attention | After final MLP |
+| --- | ---: | ---: |
+| France / ` Paris` | 0.00000406 | 0.92024 |
+| Greece / ` Athens` | 0.00000145 | 0.9832 |
+| Peru / ` Lima` | 0.01755 | 0.9770 |
+| Mammals / ` nour` | 0.98195 | 0.98468 |
+| Prasad / `ad` | 0.000102 | 0.9876 |
+| Durian / ` for` | 0.1479 | 0.9875 |
+
+Entries are probabilities, not percentages. Earlier readouts are
+counterfactual applications of the final LayerNorm/head, not predictions
+actually emitted early. For the capitals, the last MLP makes the answer
+compatible with that head. Earlier MLPs still matter under ablation: removing
+block 4 or 5 severely damages these answers despite their poor direct early
+readouts. This is consistent with intermediate computation preparing a useful
+representation, not proof of a specific symbolic code or storage address.
+The mammals case differs: the last attention raises ` nour` from about 0.01158
+to 0.98195, and the final MLP adds little. Under single-branch deletion France
+loses its correct answer in all 16 cases, while Peru tolerates several branch
+deletions. Neither joint removal of attention nor joint removal of MLPs works
+for any of the six prompts. These interventions can leave the training
+distribution; they establish sensitivity under the specified changes, not
+universal necessity or exclusive fact ownership.
+
+Reference backward additionally provides gradients of the target-minus-best-
+rival logit margin at each observed boundary. Because BF16 rounding is treated
+straight-through, these are **training-surrogate sensitivities**, not literal
+derivatives of the quantized forward function. For example, the mammals query
+has a much larger initial-position gradient norm on `Female` (about 61.1) than
+on ` mammals` (2.86), while capital queries are sensitive to the country row
+and also generic template tokens. A large gradient on `The` does not mean the
+capital fact is stored there. After the last attention, every nonquery row's
+gradient is exactly zero, as the remaining operations are pointwise. All
+master weights were byte-checked unchanged after backward.
+
+Local CPU evidence: `/tmp/cpu_reference_gpt2_trace.cc`,
+`/tmp/cpu_reference_gpt2_trace.tsv`, and
+`/tmp/cpu_reference_gpt2_interventions_gradients.tsv`. The subsequent GPU
+trace agrees on top-1 and target rank for all 204 matched baseline, branch,
+and lens conditions. Maximum target-probability discrepancy is 3.53e-7; all
+1,824 compared BF16 query-row activation coordinates are exactly equal.
+
+A second CPU diagnostic swaps one same-position Q/K/V slice between France,
+Greece, and Peru, at blocks 0, 1, and 7. All 108 cross-prompt single-slice
+interventions failed to transfer the donor capital as top-1. This is a negative
+result for these specific interventions, not proof that the capital has no
+localized representation. All 78 structurally required identity interventions
+passed, as did 48 bytewise checks that positions before the country have the
+same Q/K/V across all three prompts and all eight blocks.
+
+The last attention mixes a fixed `The` anchor and the country position with
+very different weights: approximately 96.06%/3.15% for France, 43.17%/52.90%
+for Greece, and 18.11%/81.03% for Peru. Block 5 instead places 84--96% on the
+constant ` capital` position. These earlier positions cannot encode the later
+country, and the exact shared-prefix checks confirm that they do not vary.
+Attention can therefore transform a context-dependent query by mixing fixed
+anchors; the most-attended token is not necessarily a fact's storage location.
+This is a candidate mechanism, not yet a complete causal circuit.
+
+Q/K/V interventions are asymmetric. At block 7, transplanting Peru's country
+key into France reduces ` Paris` from 0.92024 to about 0.000915, while the
+corresponding value transplant leaves it near 0.91656. France's country value
+transplanted into Peru instead reduces ` Lima` from 0.97701 to 2.39e-12. At
+block 1, Peru's country-position query transplanted into France reduces
+` Paris` to 5.65e-5: this query only changes the country row at that block,
+which later blocks can read. The same query transplant at the last block has
+exactly no effect on the later prediction row, as causality requires.
+These results suggest multi-stage country processing and attention gating,
+not a single answer-bearing attention weight. Local evidence is
+`/tmp/cpu_reference_qkv_patch.{cc,tsv}`. The GPU study subsequently confirms
+all 108 overlapping slice interventions, with maximum probability difference
+2.50e-7, and extends the negative transfer result to all **288** Q/K/V swaps
+across eight blocks.
+
+A broader CPU scan enumerated all 1,024 tokenized sentences from the verified
+constructed automaton, checked distinct five-token prefixes, and supplied
+only those prefixes plus EOS padding to the neural reference model. Its
+ordinary sixth-token predictions are **1,024/1,024 correct**. The same final
+LayerNorm/head applied at each residual boundary gives:
+
+| Boundary | After attention | After MLP |
+| --- | ---: | ---: |
+| Block 0 | 4 | 7 |
+| Block 1 | 10 | 15 |
+| Block 2 | 23 | 52 |
+| Block 3 | 46 | 45 |
+| Block 4 | 48 | 44 |
+| Block 5 | 48 | 94 |
+| Block 6 | 92 | 190 |
+| Block 7 | 268 | 1,024 |
+
+Embedding-plus-position alone gives 3/1,024. These are correct top-1 counts,
+not full-suffix completions. The final MLP turns 756 wrong final-head readouts
+into correct ones, increasing the target-minus-best-rival margin for 1,006
+prompts. Unlike an earlier lens, the last-attention lens also equals bypassing
+the remaining pointwise MLP branch at the query: the only subsequent layers
+are the original final norm/head. This supports a broad computational role
+for the final MLP but not exclusive fact storage there. Earlier blocks can
+prepare information that this MLP makes readable. All final-lens query logits
+were byte-identical to ordinary reference execution. CPU evidence:
+`/tmp/cpu_all_facts_lens_0.{tsv,summary}`; case indices are DFS order, **not**
+corpus line numbers. Direct GPU corroboration in
+`/tmp/gpu_prefix_mlp_probe_0/` gives exactly the same **1,024 versus 268**
+correct sixth tokens, with all 1,024 subsequent unpatched controls restoring
+every query logit bit-for-bit.
+
+### What the GPU interventions establish
+
+The main trace report is `/tmp/one_shot_token_trace_0/report.html`, with raw
+TSV vectors, probabilities and scores beside it. It completed 690 conditions:
+six baselines, six identity donor copies, 102 readout lenses, 96 branch
+ablations, and 480 donor interventions. All hook/no-hook and structurally
+required identity checks preserve exact logits. Attention rows normalize
+within 1.28e-7; linear readout accounting closes within 6.22e-15.
+
+Full country-position residual swaps after block 0 transfer the donor capital
+in all six ordered France/Greece/Peru pairs. Success falls across blocks to
+5/6, 5/6, 4/6, 3/6, 2/6, then 0/6 after block 6; swaps after the last attention
+are disconnected identities. Full query-state swaps after the final attention
+transfer all six answers, as expected when only pointwise computation remains.
+By contrast, all six query-state swaps after block 6 produce a third answer,
+not the recipient or donor capital. Mixing an intermediate query with another
+history can be incompatible. These tests locate information flow, not a
+context-independent fact vector or exclusive ownership.
+
+An additional 384 independent last-MLP GELU-neuron deletions find two
+single-neuron top-1 flips among these six prompts. Zeroing channel 12 changes
+France from ` Paris` (92.02%) to ` capital` (48.07%; Paris remains 32.13%).
+Zeroing channel 34 changes Greece from ` Athens` (98.32%) to ` divided`
+(44.90%; Athens remains 35.92%). No individual deletion flips the other four
+answers. These channels are necessary for these particular decisions under
+zero ablation, not proven exclusive owners of those facts. Evidence:
+`/tmp/one_shot_token_neurons_7_0/`.
+
+Attribution also depends on the question asked. Against the **final** nearest
+rival ` north`, France's final MLP has a negative fixed-normalizer margin
+term. Against the **pre-MLP winner** ` original`, it has a positive 44.53 term,
+with neuron 12 the largest positive term (11.56). The actual Paris-minus-
+original margin rises from -11.23 to +23.62. Athens-minus-` usually` rises
+from -13.14 to +14.39, with neuron 34 its largest positive projection term.
+The frozen-normalizer terms are not the actual pre/post margin changes:
+normalization and rival selection must not be silently conflated. CPU
+accounting from GPU captures is in `/tmp/cpu_pre_mlp_rival_accounting.tsv`.
 
 ## Tests
 
@@ -1158,5 +1492,7 @@ clone equivalence, and unchanged original parameters. Decision tests additionall
 check exact real-valued LayerNorm/head algebra, nonzero bias changing winners,
 contradictory labels, unseen rivals, negative common margins, coefficient/gauge
 bounds, deterministic cutting planes, and explicit budget outcomes.
-All 88 repository test
-targets passed with fresh execution after these additions.
+All **91 repository test targets passed with fresh execution** after adding
+the five-token, sign-readout, and margin-accounting probes. The real-checkpoint
+trace, independent neuron sweep, corpus-wide final-MLP bypass, paired training,
+and prospective single-fact replications also completed their controls.

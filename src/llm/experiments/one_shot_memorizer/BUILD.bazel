@@ -84,6 +84,67 @@ cc_test(
     ],
 )
 
+cc_library(
+    name = "token_trace",
+    srcs = ["token_trace.cc"],
+    hdrs = ["token_trace.h"],
+    deps = [
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/llm:layer",
+        "//src/llm:layer_hooks",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_test(
+    name = "token_trace_test",
+    srcs = ["token_trace_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":token_trace",
+        "//src/cuda:page_locked_host_array",
+        "//src/llm:layer_hooks",
+        "//src/util:status_macros",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "checkpoint_token_trace",
+    srcs = ["checkpoint_token_trace.cc"],
+    deps = [
+        ":feature_capture",
+        ":sentence_ablation",
+        ":token_trace",
+        ":trace_readout_attribution",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset",
+        "//src/dataset:compact_vocabulary",
+        "//src/dataset:gpt2_detokenizer",
+        "//src/dataset:gpt2_tokenizer",
+        "//src/llm:checkpoint",
+        "//src/llm:gpt2",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
 cc_binary(
     name = "single_fact_probe",
     srcs = ["single_fact_probe.cc"],
