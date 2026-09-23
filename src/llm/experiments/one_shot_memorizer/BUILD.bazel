@@ -2,6 +2,63 @@ load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 
+cc_library(
+    name = "embedding_sign_readout",
+    srcs = ["embedding_sign_readout.cc"],
+    hdrs = ["embedding_sign_readout.h"],
+    deps = [
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "embedding_sign_readout_test",
+    srcs = ["embedding_sign_readout_test.cc"],
+    deps = [
+        ":embedding_sign_readout",
+        "@abseil-cpp//absl/status",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "checkpoint_embedding_sign_readout",
+    srcs = ["checkpoint_embedding_sign_readout.cc"],
+    deps = [
+        ":embedding_sign_readout",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "trace_readout_attribution",
+    srcs = ["trace_readout_attribution.cc"],
+    hdrs = ["trace_readout_attribution.h"],
+    deps = [
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "trace_readout_attribution_test",
+    srcs = ["trace_readout_attribution_test.cc"],
+    deps = [
+        ":trace_readout_attribution",
+        "@googletest//:gtest_main",
+    ],
+)
+
 cc_binary(
     name = "single_fact_probe",
     srcs = ["single_fact_probe.cc"],
