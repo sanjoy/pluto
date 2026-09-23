@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <vector>
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -31,5 +32,29 @@ struct FirstAdamUpdateScore {
 absl::StatusOr<FirstAdamUpdateScore> ScoreFirstAdamUpdate(
     absl::Span<const float> initial, absl::Span<const float> observed,
     absl::Span<const float> gradients, float learning_rate, float epsilon);
+
+// One unordered prompt hypothesis; each distinct ID appears exactly once.
+struct FirstUpdatePromptSet {
+  std::vector<int> token_ids;  // Five ascending compact vocabulary IDs.
+  int removed_token = -1;      // Original ID replaced, or -1 for the base set.
+  int added_token = -1;        // Suffix ID inserted, or -1 for the base set.
+};
+
+// Returns the original five-ID set, followed by every distinct set obtained
+// by replacing one original ID with one distinct non-EOS suffix ID. The base
+// set comes first; subsequent sets follow ascending removed-ID/added-ID order.
+// Repeated suffix IDs are deduplicated, EOS is ignored, and replacements that
+// duplicate a retained prompt ID or reproduce the base set are skipped. An
+// empty suffix (or one containing only EOS/existing prompt IDs) yields only
+// the base set. Input order does not affect output order.
+//
+// Requires exactly five distinct non-EOS prompt IDs, a positive vocabulary
+// size, and every ID/EOS in range. This is an exploratory one-error repair
+// hypothesis, not a fact decoder: it reads no weights, labels, text or corpus,
+// and cannot recover repeated prompt IDs or multiple missing prompt IDs.
+absl::StatusOr<std::vector<FirstUpdatePromptSet>>
+BuildOneTokenReplacementPromptSets(absl::Span<const int> prompt_ids,
+                                   absl::Span<const int> suffix_ids,
+                                   int vocabulary_size, int eos_token);
 
 }  // namespace pluto::llm::one_shot_memorizer

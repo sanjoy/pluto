@@ -1,10 +1,14 @@
 #include "src/llm/experiments/one_shot_memorizer/first_update_match.h"
 
+#include <algorithm>
 #include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <set>
+#include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
 
@@ -54,6 +58,43 @@ absl::StatusOr<FirstAdamUpdateScore> ScoreFirstAdamUpdate(
                                    std::bit_cast<uint32_t>(observed[i]);
   }
   return score;
+}
+
+absl::StatusOr<std::vector<FirstUpdatePromptSet>>
+BuildOneTokenReplacementPromptSets(absl::Span<const int> prompt_ids,
+                                   absl::Span<const int> suffix_ids,
+                                   int vocabulary_size, int eos_token) {
+  if (vocabulary_size <= 0 || eos_token < 0 || eos_token >= vocabulary_size ||
+      prompt_ids.size() != 5)
+    return absl::InvalidArgumentError(
+        "prompt repair requires five IDs and a valid vocabulary/EOS");
+  std::vector<int> original(prompt_ids.begin(), prompt_ids.end());
+  for (int token : original)
+    if (token < 0 || token >= vocabulary_size || token == eos_token)
+      return absl::InvalidArgumentError("invalid prompt repair token ID");
+  std::sort(original.begin(), original.end());
+  if (std::adjacent_find(original.begin(), original.end()) != original.end())
+    return absl::InvalidArgumentError("prompt repair IDs must be distinct");
+  std::set<int> donors;
+  for (int token : suffix_ids) {
+    if (token < 0 || token >= vocabulary_size)
+      return absl::InvalidArgumentError("invalid suffix repair token ID");
+    if (token != eos_token)
+      donors.insert(token);
+  }
+  std::vector<FirstUpdatePromptSet> result{{original, -1, -1}};
+  std::set<std::vector<int>> seen{original};
+  for (size_t slot = 0; slot < original.size(); ++slot)
+    for (int added : donors) {
+      auto ids = original;
+      const int removed = ids[slot];
+      ids[slot] = added;
+      std::sort(ids.begin(), ids.end());
+      if (std::adjacent_find(ids.begin(), ids.end()) == ids.end() &&
+          seen.insert(ids).second)
+        result.push_back({std::move(ids), removed, added});
+    }
+  return result;
 }
 
 }  // namespace pluto::llm::one_shot_memorizer

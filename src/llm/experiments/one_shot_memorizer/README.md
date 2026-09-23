@@ -1616,9 +1616,14 @@ clone equivalence, and unchanged original parameters. Decision tests additionall
 check exact real-valued LayerNorm/head algebra, nonzero bias changing winners,
 contradictory labels, unseen rivals, negative common margins, coefficient/gauge
 bounds, deterministic cutting planes, and explicit budget outcomes.
-All **93 repository test targets passed with fresh execution**, including
+All **95 repository test targets passed with fresh execution**, including
 the five-token, sign-readout, margin-accounting, exact path-solver, and
-first-update score tests.
+first-update score tests. New tests cover isolated-fact selection/provenance,
+unrestricted greedy history, repetition/coverage and generation caps, and
+deterministic one-token prompt-set repair. The six real-checkpoint greedy
+suffix reports reproduce their prototypes exactly; the 6,720-candidate
+overlap repair and original 120-candidate mode also preserve every compared
+numerical score and ranking.
 The real-checkpoint
 trace, independent neuron sweep, corpus-wide final-MLP bypass, paired training,
 paired weight transplants, and prospective single-fact replications also

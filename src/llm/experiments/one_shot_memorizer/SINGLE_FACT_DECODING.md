@@ -12,7 +12,9 @@ algorithm, or an explanation of every internal weight. It also assumes each
 selected non-EOS token occurs **exactly once**; repeated tokens are unsupported.
 The later sections add prompt-set recovery and recover its order using the
 saved first training update, reconstructing all four complete facts under
-these additional assumptions. The final checkpoint alone is not sufficient
+these additional assumptions. Subsequent stress tests expose repetition and
+prompt-overlap failures; explicitly post-hoc extensions recover two further
+complete single-fact examples. The final checkpoint alone is not sufficient
 for the demonstrated procedure.
 
 ## Frozen token-set readout
@@ -452,3 +454,131 @@ and finding a functionally invariant semantic representation.
 
 Evidence: `/tmp/single_fact_gauge_readout_631_0/`, with the existing behavioral
 control in `/tmp/one_shot_single_fact_probe_0/conditions.tsv`.
+
+## Exploratory extensions after the frozen stress tests
+
+### Retaining generated history recovers the repeated suffix
+
+The memoryless edge search is not the only way to use the learned model.
+The following **post-hoc** procedure uses the same weight-selected suffix set
+but retains the model's actual generated history:
+
+1. For each selected non-EOS token, use five EOS placeholders followed by that
+   token as a candidate beginning. No actual prompt token is supplied.
+2. Generate unrestricted full-vocabulary greedy successors from that growing
+   history. Do not mask away unselected tokens or force an EOS.
+3. Permit at most twice the number of distinct selected non-EOS IDs as
+   non-EOS suffix occurrences. This bound does not use the real suffix length.
+4. Accept only EOS-terminated sequences staying within the selected set and
+   covering every selected non-EOS ID at least once. Repetitions are allowed.
+5. Rank accepted sequences by the sum of full-vocabulary log probabilities
+   of successors and EOS. The seeded first token has score zero, so this is
+   not the model's probability of the complete suffix from five EOS tokens.
+
+Exactly one start is accepted for each of the **six** single-fact models.
+All six recover the entire suffix and EOS, including all three repeated
+tokens in the reflection sentence. No first token, order, multiplicity, or
+true suffix length is provided to the search. The unchanged frozen decoder's
+failure above remains a negative result; this is an additional strategy.
+
+| Model | Successor/EOS log score | Accepted starts |
+| --- | ---: | ---: |
+| Mammals, line 1 | -4.3666 | 1 |
+| France, line 80 | -14.5510 | 1 |
+| Prasad, line 258 | -9.5170 | 1 |
+| Durian, line 631 | -7.4338 | 1 |
+| Reflection, line 32 | -10.7543 | 1 |
+| Mouse/mice, line 2 | -10.9879 | 1 |
+
+This is not exhaustive sequence search, a confidence estimate, or proof of
+general extraction. It tests at most one greedy continuation per possible
+start. It can reject a real training suffix if an artificial history changes
+its generation, and a wrong selected set can make acceptance impossible.
+It retains the initial checkpoint and vocabulary as side information for
+token-set selection. Nothing here partitions multiple sentences in a jointly
+trained checkpoint.
+
+**Simpler controls matter.** Starting with only five EOS placeholders and no
+seeded suffix token gives immediate EOS in all six cases: 0/6 exact suffixes.
+Starting with five comma tokens instead gives exact suffixes for mouse/mice,
+Prasad and Durian: **3/6**, without a selected-set search. France produces only
+` a city on the Seine.`, reflection repeats ` the angle of` incorrectly, and
+the mammals model repeats `Cast` until the fixed cap. Outputs were recorded
+before comparing with the text. Thus seeded search succeeds on all six tested
+models, but is not necessary for every case; ordinary arbitrary prompts
+already elicit some single-fact memorization. Five EOS is also a special
+out-of-distribution prefix, not a universal null prompt.
+
+Local evidence: `/tmp/single_fact_actual_history_greedy_{1,80,258,631,32,2}_0/`
+and `/tmp/single_fact_dummy_prefix_{1,80,258,631,32,2}_0/`.
+
+### Recovering the overlapping prompt token from the first update
+
+The mouse/mice example's four correct prompt candidates plus one background
+candidate can be repaired without supplying the missing token by hand. Try
+the original five-ID set and **every** distinct set replacing one of its IDs
+with any selected non-EOS suffix ID. For each, evaluate all 120 prompt orders
+with the existing first-update replay. Here that gives 56 sets and 6,720
+candidates, not a specially chosen replacement. The recovered suffix is held
+fixed, and the primary score remains the full embedding update error.
+
+The unique best result is `[395,1240,0,61,3474]`, decoded afterward as
+`In English, the plural`. It replaces background ID 3092 with shared ID 61.
+Its embedding error is 1.069e-8, versus 1.978e-4 for the runner-up; it is the
+only candidate with zero update-sign mismatches. All original model weights
+remain byte-identical throughout the 6,720 gradient replays. The CPU prototype
+took about 74 seconds; this is not a benchmark guarantee.
+
+This is a **post-hoc, one-error repair hypothesis**. It cannot fix two missing
+prompt IDs, repeated prompt IDs, a wrong suffix, unknown initialization, or
+unknown optimizer history. It requires the saved first update, so it is not
+an inversion of the late checkpoint alone. The corpus was compared only
+after the complete rankings were saved.
+
+Local evidence: `/tmp/single_fact_overlap_prompt_search_2_0/`.
+
+The repeated-token case's recovered suffix can likewise be passed to the
+original 120-order prompt search. It uniquely recovers
+`At a smooth reflecting surface`, with embedding error 1.827e-7 versus
+1.488e-4 for the runner-up and one zero-sign-mismatch candidate. This yields
+the complete text of all six single-fact examples under the stated side
+information, using the new overlap repair for line 2. It is still not a
+reconstruction of the jointly trained corpus.
+Evidence: `/tmp/single_fact_repeated_suffix_prompt_order_32_0/`.
+
+The successful extensions are available through the existing C++ tools.
+For example, recover the overlap case's suffix without reading its prompt:
+
+```sh
+bazel build -c opt \
+  //src/llm/experiments/one_shot_memorizer:checkpoint_single_fact_position_path \
+  //src/llm/experiments/one_shot_memorizer:single_fact_first_update_probe
+initial=/home/ubuntu/checkpoints/memorize_general_facts/compact_batch_32_no_clip_0/layers_8/step_0
+single=/tmp/one_shot_single_stress_line_2_0/only_line_2
+decoded=/tmp/greedy_overlap_suffix_new
+bazel-bin/src/llm/experiments/one_shot_memorizer/checkpoint_single_fact_position_path \
+  --initial_checkpoint="$initial" --checkpoint="$single/step_512" \
+  --tokenizer=/home/ubuntu/checkpoints/memorize_general_facts/compact_batch_32_no_clip_0/inputs/tokenizer \
+  --search_mode=greedy_history --output_dir="$decoded"
+
+# Read the unordered candidate prompt set and recovered suffix, omitting EOS.
+# No original corpus line or true prompt supplies these IDs.
+recovered_tokens=$(awk -F '\t' '
+  FNR==NR { if (FNR>1 && $6==1) { ids=ids sep $2; sep="," }; next }
+  FNR==2 { n=split($4,a,","); for (i=1;i<n;++i) ids=ids "," a[i] }
+  END { print ids }
+' "$decoded/prompt_candidates.tsv" "$decoded/paths.tsv")
+bazel-bin/src/llm/experiments/one_shot_memorizer/single_fact_first_update_probe \
+  --permute_prompt --replace_one_prompt_token_from_suffix \
+  --token_ids="$recovered_tokens" --max_search_seconds=300 \
+  --initial_checkpoint="$initial" --first_update_checkpoint="$single/step_1" \
+  --output_dir=/tmp/greedy_overlap_prompt_new
+```
+
+`greedy_candidates.tsv` reports every start, including rejection reasons;
+`greedy_steps.tsv` includes unrestricted predictions and cap-rejected steps.
+An empty accepted `paths.tsv` is an explicit negative result, not a fallback
+to known text. The default `hamiltonian` search remains unchanged. Prompt
+repair is opt-in and records whether all candidate permutations completed.
+Production runs are in `/tmp/single_fact_greedy_bazel_{1,80,258,631,32,2}_0/`
+and `/tmp/single_fact_overlap_prompt_search_production_2_0/`.

@@ -29,6 +29,7 @@ cc_binary(
     srcs = ["checkpoint_single_fact_position_path.cc"],
     deps = [
         ":embedding_sign_readout",
+        ":greedy_suffix_readout",
         ":position_path",
         ":token_trace",
         "//src/cuda:executor",
@@ -45,6 +46,29 @@ cc_binary(
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings",
         "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "greedy_suffix_readout",
+    srcs = ["greedy_suffix_readout.cc"],
+    hdrs = ["greedy_suffix_readout.h"],
+    deps = [
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "greedy_suffix_readout_test",
+    size = "small",
+    srcs = ["greedy_suffix_readout_test.cc"],
+    deps = [
+        ":greedy_suffix_readout",
+        "@abseil-cpp//absl/status",
+        "@googletest//:gtest_main",
     ],
 )
 

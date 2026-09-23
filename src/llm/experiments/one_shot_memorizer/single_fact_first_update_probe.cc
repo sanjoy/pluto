@@ -69,8 +69,14 @@ ABSL_FLAG(
     "as an unordered set; remaining IDs are a fixed recovered suffix. Requires "
     "explicit token_ids and an observed first update with fresh Adam moments "
     "and zero weight decay. No optimizer update is applied during search");
-ABSL_FLAG(int, max_search_seconds, 120,
-          "CPU time cap for prompt search; report partial results on timeout");
+ABSL_FLAG(
+    int, max_search_seconds, 120,
+    "Wall-clock cap for CPU prompt search; report partial results on timeout");
+ABSL_FLAG(
+    bool, replace_one_prompt_token_from_suffix, false,
+    "Exploratory one-error repair: also replace each prompt-set ID with "
+    "each distinct non-EOS suffix ID, then permute each distinct set. "
+    "Requires permute_prompt and explicit token_ids; suffix order is fixed");
 
 namespace pluto::llm::one_shot_memorizer {
 namespace {
@@ -103,6 +109,7 @@ struct Options {
   float learning_rate;
   float epsilon;
   bool permute_prompt;
+  bool replace_one_prompt_token_from_suffix = false;
   int max_search_seconds;
 };
 
@@ -117,7 +124,14 @@ absl::StatusOr<Options> ReadOptions() {
       .learning_rate = static_cast<float>(absl::GetFlag(FLAGS_learning_rate)),
       .epsilon = static_cast<float>(absl::GetFlag(FLAGS_epsilon)),
       .permute_prompt = absl::GetFlag(FLAGS_permute_prompt),
+      .replace_one_prompt_token_from_suffix =
+          absl::GetFlag(FLAGS_replace_one_prompt_token_from_suffix),
       .max_search_seconds = absl::GetFlag(FLAGS_max_search_seconds)};
+  if (out.replace_one_prompt_token_from_suffix &&
+      (!out.permute_prompt || !FLAGS_token_ids.IsSpecifiedOnCommandLine()))
+    return absl::InvalidArgumentError(
+        "replace_one_prompt_token_from_suffix requires permute_prompt and "
+        "explicit token_ids");
   // Never silently reuse the diagnostic's labeled example in decoding mode.
   if (out.permute_prompt && !FLAGS_token_ids.IsSpecifiedOnCommandLine())
     return absl::InvalidArgumentError(
@@ -339,6 +353,8 @@ struct PromptCandidate {
   FirstAdamUpdateScore all_embeddings;
   FirstAdamUpdateScore prompt_rows;
   double seconds = 0;
+  size_t candidate_set_index =
+      0;  // Replacement provenance, not part of scoring.
 };
 
 absl::Status RunPermutationSearch(const Options& options) {
@@ -358,6 +374,13 @@ absl::Status RunPermutationSearch(const Options& options) {
   const absl::Span<const int> suffix(
       options.tokens.data() + options.prompt_count,
       options.tokens.size() - options.prompt_count);
+  std::vector<FirstUpdatePromptSet> candidate_sets{{prompt_set, -1, -1}};
+  if (options.replace_one_prompt_token_from_suffix) {
+    ASSIGN_OR_RETURN(candidate_sets,
+                     BuildOneTokenReplacementPromptSets(
+                         prompt_set, suffix, kVocabulary, options.eos));
+  }
+  const size_t expected_permutations = candidate_sets.size() * 120;
 
   // Forward/backward may change only activation/gradient buffers. Verify every
   // candidate starts and ends with the same complete set of master weights,
@@ -407,8 +430,20 @@ absl::Status RunPermutationSearch(const Options& options) {
       << "\nheads\t" << kHeads << "\nfeed_forward_width\t" << kExpansion
       << "\nphase_side_information\tfirst_update_fresh_moments_masked_suffix_"
          "loss"
-      << "\nlimitation\tsearch_cannot_correct_wrong_candidate_set_or_suffix"
+      << "\nlimitation\t"
+      << (options.replace_one_prompt_token_from_suffix
+              ? "at_most_one_prompt_ID_replaced_from_suffix_no_repeated_"
+                "prompt_IDs_no_suffix_repair"
+              : "search_cannot_correct_wrong_candidate_set_or_suffix")
       << "\nmax_search_seconds\t" << options.max_search_seconds << '\n';
+  if (options.replace_one_prompt_token_from_suffix)
+    manifest
+        << "replace_one_prompt_token_from_suffix\ttrue\nexploratory_"
+           "repair\ttrue\n"
+        << "candidate_policy\toriginal_set_then_all_distinct_one_slot_"
+           "replacements_by_unique_nonEOS_suffix_IDs\n"
+        << "candidate_set_count\t" << candidate_sets.size()
+        << "\nsecondary_prompt_rows\tcurrent_candidate_set_not_original_set\n";
   const char* columns =
       "ordinal\tprompt_ids\tl2\tsquared_l2\tprompt_rows_l2\t"
       "sign_mismatches\tprompt_sign_mismatches\tbit_equal_"
@@ -430,53 +465,62 @@ absl::Status RunPermutationSearch(const Options& options) {
 
   std::vector<PromptCandidate> results;
   const auto started = std::chrono::steady_clock::now();
-  do {
-    const auto candidate_started = std::chrono::steady_clock::now();
-    Options candidate = options;
-    std::copy(permutation.begin(), permutation.end(), candidate.tokens.begin());
-    ASSIGN_OR_RETURN(auto backward, ComputeFactGradient(candidate, model));
-    const auto* gradient_data =
-        static_cast<const float*>(model.front()->gradients()[0].data());
-    const absl::Span<const float> gradient(gradient_data, kEmbeddingElements);
-    ASSIGN_OR_RETURN(auto score, ScoreFirstAdamUpdate(
-                                     initial, observed, gradient,
-                                     options.learning_rate, options.epsilon));
-    std::vector<float> prompt_initial, prompt_observed, prompt_gradient;
-    for (int token : prompt_set)
-      for (int column = 0; column < kWidth; ++column) {
-        const size_t index = static_cast<size_t>(token) * kWidth + column;
-        prompt_initial.push_back(initial[index]);
-        prompt_observed.push_back(observed[index]);
-        prompt_gradient.push_back(gradient[index]);
+  bool timed_out = false;
+  for (size_t set_index = 0; set_index < candidate_sets.size() && !timed_out;
+       ++set_index) {
+    permutation = candidate_sets[set_index].token_ids;
+    do {
+      const auto candidate_started = std::chrono::steady_clock::now();
+      Options candidate = options;
+      std::copy(permutation.begin(), permutation.end(),
+                candidate.tokens.begin());
+      ASSIGN_OR_RETURN(auto backward, ComputeFactGradient(candidate, model));
+      const auto* gradient_data =
+          static_cast<const float*>(model.front()->gradients()[0].data());
+      const absl::Span<const float> gradient(gradient_data, kEmbeddingElements);
+      ASSIGN_OR_RETURN(auto score, ScoreFirstAdamUpdate(
+                                       initial, observed, gradient,
+                                       options.learning_rate, options.epsilon));
+      std::vector<float> prompt_initial, prompt_observed, prompt_gradient;
+      for (int token : candidate_sets[set_index].token_ids)
+        for (int column = 0; column < kWidth; ++column) {
+          const size_t index = static_cast<size_t>(token) * kWidth + column;
+          prompt_initial.push_back(initial[index]);
+          prompt_observed.push_back(observed[index]);
+          prompt_gradient.push_back(gradient[index]);
+        }
+      ASSIGN_OR_RETURN(
+          auto prompt_score,
+          ScoreFirstAdamUpdate(prompt_initial, prompt_observed, prompt_gradient,
+                               options.learning_rate, options.epsilon));
+      for (size_t i = 0; i < weights.size(); ++i)
+        if (std::memcmp(weights[i].data(), weight_bytes[i].data(),
+                        weight_bytes[i].size()) != 0)
+          return absl::InternalError(
+              "candidate modified initial master weights");
+      const double seconds =
+          std::chrono::duration<double>(std::chrono::steady_clock::now() -
+                                        candidate_started)
+              .count();
+      results.push_back({permutation, score, prompt_score, seconds, set_index});
+      write(candidates, results.size(), results.back());
+      candidates.flush();
+      if (!candidates)
+        return absl::DataLossError("failed writing candidate score");
+      if (results.size() % 10 == 0)
+        std::cout << "evaluated=" << results.size() << " elapsed_seconds="
+                  << std::chrono::duration<double>(
+                         std::chrono::steady_clock::now() - started)
+                         .count()
+                  << std::endl;
+      if (std::chrono::duration<double>(std::chrono::steady_clock::now() -
+                                        started)
+              .count() > options.max_search_seconds) {
+        timed_out = true;
+        break;
       }
-    ASSIGN_OR_RETURN(
-        auto prompt_score,
-        ScoreFirstAdamUpdate(prompt_initial, prompt_observed, prompt_gradient,
-                             options.learning_rate, options.epsilon));
-    for (size_t i = 0; i < weights.size(); ++i)
-      if (std::memcmp(weights[i].data(), weight_bytes[i].data(),
-                      weight_bytes[i].size()) != 0)
-        return absl::InternalError("candidate modified initial master weights");
-    const double seconds =
-        std::chrono::duration<double>(std::chrono::steady_clock::now() -
-                                      candidate_started)
-            .count();
-    results.push_back({permutation, score, prompt_score, seconds});
-    write(candidates, results.size(), results.back());
-    candidates.flush();
-    if (!candidates)
-      return absl::DataLossError("failed writing candidate score");
-    if (results.size() % 10 == 0)
-      std::cout << "evaluated=" << results.size() << " elapsed_seconds="
-                << std::chrono::duration<double>(
-                       std::chrono::steady_clock::now() - started)
-                       .count()
-                << std::endl;
-    if (std::chrono::duration<double>(std::chrono::steady_clock::now() -
-                                      started)
-            .count() > options.max_search_seconds)
-      break;
-  } while (std::next_permutation(permutation.begin(), permutation.end()));
+    } while (std::next_permutation(permutation.begin(), permutation.end()));
+  }
 
   std::vector<size_t> order(results.size());
   std::iota(order.begin(), order.end(), 0);
@@ -495,13 +539,24 @@ absl::Status RunPermutationSearch(const Options& options) {
         return row.all_embeddings.squared_error ==
                best.all_embeddings.squared_error;
       });
-  const bool complete = results.size() == 120;
-  manifest << "evaluated\t" << results.size()
-           << "\nexpected_permutations\t120\ncomplete\t" << complete
+  const bool complete = results.size() == expected_permutations;
+  manifest << "evaluated\t" << results.size() << "\nexpected_permutations\t"
+           << expected_permutations << "\ncomplete\t" << complete
            << "\nall_candidate_weights_unchanged\ttrue\nbest_prompt_ids\t"
            << TokenIds(best.prompt) << "\nbest_l2\t"
            << std::sqrt(best.all_embeddings.squared_error)
            << "\nexact_best_score_ties\t" << ties;
+  if (options.replace_one_prompt_token_from_suffix) {
+    const auto& chosen = candidate_sets[best.candidate_set_index];
+    manifest << "\nbest_candidate_set_index\t" << best.candidate_set_index
+             << "\nbest_removed_prompt_token\t" << chosen.removed_token
+             << "\nbest_added_suffix_token\t" << chosen.added_token
+             << "\nzero_update_sign_mismatch_candidates\t"
+             << std::count_if(results.begin(), results.end(),
+                              [](const auto& row) {
+                                return row.all_embeddings.sign_mismatches == 0;
+                              });
+  }
   if (order.size() >= 2)
     manifest << "\nrunner_up_l2\t"
              << std::sqrt(results[order[1]].all_embeddings.squared_error)

@@ -1,8 +1,9 @@
 // Exploratory suffix decoder, not a universal decoder of trained knowledge.
 // Required side information: initialization, trained weights, architecture,
 // compact vocabulary/tokenizer, and the task's known five-token prompt length.
-// The frozen sign rule selects a token SET. Search assumes each selected
-// non-EOS ID occurs exactly once; multiplicities and missing IDs are unknown.
+// The frozen sign rule selects a token SET. Default Hamiltonian search assumes
+// each selected non-EOS ID occurs once; greedy_history separately permits
+// repeated predictions. Neither mode receives multiplicities or missing IDs.
 // A separate exploratory report ranks a candidate prompt SET, assuming five
 // distinct prompt IDs disjoint from that suffix set; it does not infer order
 // and never supplies candidate prompt tokens to inference or path search.
@@ -17,6 +18,7 @@
 #include <iterator>
 #include <limits>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/flags/flag.h"
@@ -31,6 +33,7 @@
 #include "src/dataset/gpt2_tokenizer.h"
 #include "src/llm/checkpoint.h"
 #include "src/llm/experiments/one_shot_memorizer/embedding_sign_readout.h"
+#include "src/llm/experiments/one_shot_memorizer/greedy_suffix_readout.h"
 #include "src/llm/experiments/one_shot_memorizer/position_path.h"
 #include "src/llm/experiments/one_shot_memorizer/token_trace.h"
 #include "src/llm/gpt2.h"
@@ -49,6 +52,9 @@ ABSL_FLAG(int, layers, 8, "Transformer block count");
 ABSL_FLAG(int, model_width, 16, "Residual width");
 ABSL_FLAG(int, attention_heads, 1, "Attention head count");
 ABSL_FLAG(int, feed_forward_width, 64, "MLP expansion width");
+ABSL_FLAG(std::string, search_mode, "hamiltonian",
+          "hamiltonian (original exact all-tokens-once search) or "
+          "greedy_history (post-hoc unrestricted continuation with coverage)");
 ABSL_FLAG(
     std::string, score_mode, "position_aware",
     "position_aware (primary), fixed_position, or mean_positions; the latter "
@@ -118,7 +124,127 @@ absl::StatusOr<std::vector<float>> ReadEmbedding(const fs::path& checkpoint,
   return values;
 }
 
+std::string GreedyRejectionReason(const GreedySuffixCandidate& candidate) {
+  if (candidate.accepted())
+    return "accepted";
+  std::string reason;
+  const auto add = [&](absl::string_view part) {
+    if (!reason.empty())
+      reason += ',';
+    reason.append(part);
+  };
+  if (candidate.hit_token_limit)
+    add("token_limit");
+  if (!candidate.terminated_with_eos)
+    add("missing_EOS");
+  if (!candidate.all_tokens_selected)
+    add("outside_selected_set");
+  if (!candidate.covers_selected_tokens)
+    add("incomplete_coverage");
+  return reason;
+}
+
+std::string JoinTokenIds(absl::Span<const int> tokens) {
+  std::string result;
+  for (int token : tokens) {
+    if (!result.empty())
+      result += ',';
+    result += std::to_string(token);
+  }
+  return result;
+}
+
+// Write per-start successes AND failures. Selected IDs only seed starts and
+// filter completed candidates; no logit mask, forced suffix, or gold length
+// enters a forward. Prompt candidates remain a separate, unused diagnostic.
+absl::StatusOr<size_t> WriteGreedyHistoryReport(
+    cuda::Executor& executor, const Layer& model,
+    const tokenizer::CompactVocabularyTokenizer& vocabulary,
+    const tokenizer::Gpt2Detokenizer& detokenizer,
+    absl::Span<const int> selected, const fs::path& directory,
+    std::ostream& paths, std::ostream& manifest) {
+  const TokenTraceOptions trace_options{
+      .vocabulary_size = vocabulary.vocab_size(),
+      .padding_token = vocabulary.eos_token_id()};
+  const GreedySuffixLogits evaluate =
+      [&](absl::Span<const int> history) -> absl::StatusOr<std::vector<float>> {
+    ASSIGN_OR_RETURN(auto trace,
+                     TraceNextToken(executor, model, history, trace_options));
+    return std::move(trace.logits);
+  };
+  ASSIGN_OR_RETURN(
+      auto result,
+      ReadGreedySuffix({.vocabulary_size = vocabulary.vocab_size(),
+                        .eos_token = vocabulary.eos_token_id(),
+                        .selected_token_ids = selected,
+                        .prompt_token_count = kKnownTaskPromptCount},
+                       evaluate));
+  std::ofstream candidates(directory / "greedy_candidates.tsv");
+  std::ofstream steps(directory / "greedy_steps.tsv");
+  if (!candidates || !steps)
+    return absl::UnknownError("cannot create greedy-history reports");
+  candidates << std::setprecision(17);
+  steps << std::setprecision(17);
+  candidates
+      << "start_compact\tlog_score\tterminated_EOS\tall_tokens_selected\t"
+         "all_selected_covered\tdistinct_covered\taccepted\thit_token_limit\t"
+         "nonEOS_length\treason\tcompact_ids\tdecoded_bytes\n";
+  steps << "start_compact\tstep\tabsolute_query_position\tnext_compact\t"
+           "log_probability\tappended\n";
+  for (const auto& candidate : result.candidates) {
+    ASSIGN_OR_RETURN(auto text,
+                     Decode(candidate.token_ids, vocabulary, detokenizer));
+    candidates << candidate.start_token << '\t' << candidate.log_score << '\t'
+               << candidate.terminated_with_eos << '\t'
+               << candidate.all_tokens_selected << '\t'
+               << candidate.covers_selected_tokens << '\t'
+               << candidate.distinct_selected_covered << '\t'
+               << candidate.accepted() << '\t' << candidate.hit_token_limit
+               << '\t'
+               << candidate.token_ids.size() - candidate.terminated_with_eos
+               << '\t' << GreedyRejectionReason(candidate) << '\t'
+               << JoinTokenIds(candidate.token_ids) << '\t'
+               << DisplayBytes(text) << '\n';
+    for (size_t index = 0; index < candidate.steps.size(); ++index) {
+      const auto& step = candidate.steps[index];
+      steps << candidate.start_token << '\t' << index << '\t'
+            << kKnownTaskPromptCount + index << '\t' << step.token << '\t'
+            << step.log_probability << '\t' << step.appended << '\n';
+    }
+  }
+  for (size_t rank = 0; rank < result.accepted_order.size(); ++rank) {
+    const auto& candidate = result.candidates[result.accepted_order[rank]];
+    const auto& best = result.candidates[result.accepted_order.front()];
+    ASSIGN_OR_RETURN(auto text,
+                     Decode(candidate.token_ids, vocabulary, detokenizer));
+    paths << rank + 1 << '\t' << candidate.log_score << '\t'
+          << best.log_score - candidate.log_score << '\t'
+          << JoinTokenIds(candidate.token_ids) << '\t' << DisplayBytes(text)
+          << '\n';
+    std::cout << "rank=" << rank + 1 << " score=" << candidate.log_score
+              << " decoded=" << DisplayBytes(text) << std::endl;
+  }
+  if (result.accepted_order.empty())
+    std::cout
+        << "No accepted greedy-history continuation; see greedy_candidates.tsv"
+        << std::endl;
+  manifest << "greedy_candidate_count\t" << result.candidates.size()
+           << "\ngreedy_accepted_count\t" << result.accepted_order.size()
+           << "\nmaximum_nonEOS_suffix_tokens\t" << result.max_non_eos_tokens
+           << '\n';
+  candidates.close();
+  steps.close();
+  if (!candidates || !steps)
+    return absl::DataLossError("failed writing greedy-history reports");
+  return result.model_query_count;
+}
+
 absl::Status PositionPathProbe() {
+  const std::string search_mode = absl::GetFlag(FLAGS_search_mode);
+  if (search_mode != "hamiltonian" && search_mode != "greedy_history")
+    return absl::InvalidArgumentError(
+        "search_mode must be hamiltonian or greedy_history");
+  const bool greedy_history = search_mode == "greedy_history";
   const std::string score_mode = absl::GetFlag(FLAGS_score_mode);
   PositionPathScoreMode mode;
   if (score_mode == "position_aware")
@@ -130,6 +256,9 @@ absl::Status PositionPathProbe() {
   else
     return absl::InvalidArgumentError(
         "score_mode must be position_aware, fixed_position, or mean_positions");
+  if (greedy_history && mode != PositionPathScoreMode::kPositionAware)
+    return absl::InvalidArgumentError(
+        "non-default score_mode is only valid with hamiltonian search");
   const fs::path initial = absl::GetFlag(FLAGS_initial_checkpoint);
   const fs::path checkpoint = absl::GetFlag(FLAGS_checkpoint);
   const fs::path directory = absl::GetFlag(FLAGS_output_dir);
@@ -182,7 +311,7 @@ absl::Status PositionPathProbe() {
       nodes.push_back(token);
   const int n = nodes.size();
   if (n < 1 || n > kMaxPositionPathNodes ||
-      kKnownTaskPromptCount + n > kGpt2ContextLength)
+      kKnownTaskPromptCount + (greedy_history ? 2 * n : n) > kGpt2ContextLength)
     return absl::FailedPreconditionError(
         "selected non-EOS count must be 1..16");
   const int query_positions =
@@ -199,13 +328,20 @@ absl::Status PositionPathProbe() {
   std::ofstream manifest(directory / "manifest.tsv");
   std::ofstream choices(directory / "selected_tokens.tsv");
   std::ofstream prompts(directory / "prompt_candidates.tsv");
-  std::ofstream scores(directory / "edge_scores.tsv");
+  std::ofstream scores;
   std::ofstream paths(directory / "paths.tsv");
-  std::ofstream path_edges(directory / "path_edges.tsv");
-  if (!manifest || !choices || !prompts || !scores || !paths || !path_edges)
+  std::ofstream path_edges;
+  std::vector<std::ofstream*> reports{&manifest, &choices, &prompts, &paths};
+  if (!greedy_history) {
+    scores.open(directory / "edge_scores.tsv");
+    path_edges.open(directory / "path_edges.tsv");
+    reports.push_back(&scores);
+    reports.push_back(&path_edges);
+  }
+  if (std::any_of(reports.begin(), reports.end(),
+                  [](auto* stream) { return !*stream; }))
     return absl::UnknownError("cannot create position path report");
-  for (auto* stream :
-       {&manifest, &choices, &prompts, &scores, &paths, &path_edges})
+  for (auto* stream : reports)
     *stream << std::setprecision(17);
   manifest
       << "initial_checkpoint\t" << initial.string() << "\ncheckpoint\t"
@@ -226,29 +362,46 @@ absl::Status PositionPathProbe() {
       << '\n'
       << "corpus_read\tfalse\ngold_labels_read\tfalse\n"
       << "known_task_prompt_count\t" << kKnownTaskPromptCount << '\n'
-      << "selected_non_eos_count\t" << n << '\n'
-      << "score_mode\t" << score_mode << '\n'
-      << "posthoc_score_control\t"
-      << (mode != PositionPathScoreMode::kPositionAware) << '\n'
-      << "queried_absolute_positions\t5.." << 4 + query_positions << '\n'
-      << "query_policy\tEOS_prefix_then_selected_token_at_position_5_plus_j\n"
-      << "normalization\tfull_vocabulary_softmax\n"
-      << "score_definition\t"
-      << (mode == PositionPathScoreMode::kMeanPositions
-              ? "mean_log_probabilities_no_renormalization"
-              : "log_probability")
-      << '\n'
-      << "path_policy\teach_selected_non_eos_ID_once_then_EOS\n"
-      << "start_policy\tuniform_score_zero_no_known_first_token\n"
-      << "multiplicity_inference\tunsupported\n"
-      << "corpus_suffix_length_used\tfalse\n"
-      << "side_information\tinitial_weights_trained_weights_architecture_"
-         "vocabulary_known_prompt_count\n"
-      << "tokenizer\t" << DisplayBytes(absl::GetFlag(FLAGS_tokenizer)) << '\n'
-      << "model_width\t" << config.model_width << '\n'
-      << "layers\t" << config.transformer_block_count << '\n'
-      << "attention_heads\t" << config.attention_heads << '\n'
-      << "feed_forward_width\t" << config.feed_forward_width << '\n';
+      << "selected_non_eos_count\t" << n << '\n';
+  if (greedy_history) {
+    manifest
+        << "search_mode\tgreedy_history\nposthoc_search_control\ttrue\n"
+           "query_policy\tactual_history_after_five_EOS_and_each_selected_"
+           "start\n"
+           "normalization\tfull_vocabulary_softmax_no_selected_mask\n"
+           "score_definition\tsum_appended_successor_and_EOS_logprob\n"
+           "path_policy\tEOS_terminated_all_selected_covered_no_outside_tokens_"
+           "repeats_allowed\n"
+           "start_policy\tuniform_score_zero_seed_not_scored\n"
+           "multiplicity_inference\tgenerated_not_supplied\n"
+           "prompt_order_supplied\tfalse\n"
+           "generation_cap_rule\ttwice_selected_nonEOS_count_not_gold_length\n";
+  } else {
+    manifest
+        << "score_mode\t" << score_mode << '\n'
+        << "posthoc_score_control\t"
+        << (mode != PositionPathScoreMode::kPositionAware) << '\n'
+        << "queried_absolute_positions\t5.." << 4 + query_positions << '\n'
+        << "query_policy\tEOS_prefix_then_selected_token_at_position_5_plus_j\n"
+        << "normalization\tfull_vocabulary_softmax\n"
+        << "score_definition\t"
+        << (mode == PositionPathScoreMode::kMeanPositions
+                ? "mean_log_probabilities_no_renormalization"
+                : "log_probability")
+        << '\n'
+        << "path_policy\teach_selected_non_eos_ID_once_then_EOS\n"
+        << "start_policy\tuniform_score_zero_no_known_first_token\n"
+        << "multiplicity_inference\tunsupported\n";
+  }
+  manifest << "corpus_suffix_length_used\tfalse\n"
+           << "side_information\tinitial_weights_trained_weights_architecture_"
+              "vocabulary_known_prompt_count\n"
+           << "tokenizer\t" << DisplayBytes(absl::GetFlag(FLAGS_tokenizer))
+           << '\n'
+           << "model_width\t" << config.model_width << '\n'
+           << "layers\t" << config.transformer_block_count << '\n'
+           << "attention_heads\t" << config.attention_heads << '\n'
+           << "feed_forward_width\t" << config.feed_forward_width << '\n';
   choices << "compact_id\toriginal_id\tsign_score\tis_eos\ttoken_bytes\n";
   for (int token : selected) {
     ASSIGN_OR_RETURN(auto text, token_text(token));
@@ -272,13 +425,15 @@ absl::Status PositionPathProbe() {
             << (rank < static_cast<size_t>(kKnownTaskPromptCount)) << '\t'
             << text << '\n';
   }
-  scores
-      << "suffix_index\tabsolute_query_position\tsource_compact\t"
-         "destination_compact\tis_eos\tlog_probability\tquery_top1_compact\n";
+  if (!greedy_history) {
+    scores
+        << "suffix_index\tabsolute_query_position\tsource_compact\t"
+           "destination_compact\tis_eos\tlog_probability\tquery_top1_compact\n";
+    path_edges << "path_rank\tsuffix_index\tsuffix_absolute_position\t"
+                  "source_compact\tsource_bytes\tdestination_compact\t"
+                  "destination_bytes\tedge_log_score\texp_edge_log_score\n";
+  }
   paths << "rank\tlog_score\tgap_from_best\tcompact_path\tdecoded_bytes\n";
-  path_edges << "path_rank\tsuffix_index\tsuffix_absolute_position\t"
-                "source_compact\tsource_bytes\tdestination_compact\t"
-                "destination_bytes\tedge_log_score\texp_edge_log_score\n";
   choices.flush();
   prompts.flush();
   manifest.flush();
@@ -286,6 +441,19 @@ absl::Status PositionPathProbe() {
   ASSIGN_OR_RETURN(auto model, CreateGpt2(*executor, DataType::BF16, 0, config));
   RETURN_IF_ERROR(
       ReadFromDirectory(*executor, *model, checkpoint.string(), false));
+  if (greedy_history) {
+    ASSIGN_OR_RETURN(
+        size_t queries,
+        WriteGreedyHistoryReport(*executor, *model, *vocabulary, *detokenizer,
+                                 selected, directory, paths, manifest));
+    manifest << "query_count\t" << queries << "\ncomplete\ttrue\n";
+    for (auto* stream : reports) {
+      stream->close();
+      if (!*stream)
+        return absl::DataLossError("failed writing greedy-history report");
+    }
+    return absl::OkStatus();
+  }
   const TokenTraceOptions options{.vocabulary_size = config.vocabulary_size,
                                   .padding_token = eos};
   std::vector<double> raw_edges(static_cast<size_t>(query_positions) * n *
@@ -358,8 +526,7 @@ absl::Status PositionPathProbe() {
     }
   }
   manifest << "query_count\t" << n * query_positions << "\ncomplete\ttrue\n";
-  for (auto* stream :
-       {&manifest, &choices, &prompts, &scores, &paths, &path_edges}) {
+  for (auto* stream : reports) {
     stream->close();
     if (!*stream)
       return absl::DataLossError("failed writing position path report");
