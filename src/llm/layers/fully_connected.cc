@@ -240,6 +240,10 @@ absl::Status FullyConnectedLayer::InitializeIdentity(float scale) {
                       weights_[0].size_bytes(), cudaMemcpyHostToDevice,
                       executor_.stream()),
       "cudaMemcpyAsync(identity matrix)"));
+  RETURN_IF_ERROR(cuda::CudaStatus(
+      cudaMemsetAsync(weights_[1].data(), 0, weights_[1].size_bytes(),
+                      executor_.stream()),
+      "cudaMemsetAsync(identity bias)"));
   // Pinned staging destruction queues its release after this upload.
   return absl::OkStatus();
 }

@@ -10,11 +10,63 @@
 
 #include "gtest/gtest.h"
 #include "src/cuda/buffer.h"
+#include "src/cuda/page_locked_host_array.h"
 #include "src/llm/layer.h"
 #include "src/llm/layers/test_util.h"
 
 namespace pluto::llm {
 namespace {
+
+TEST_F(LayersTest, InitializeIdentityClearsExistingBiasAndPreservesGradients) {
+  constexpr int kInputWidth = 32, kOutputWidth = 48;
+  constexpr float kScale = -0.75f;
+  for (DataType type : {DataType::FP16, DataType::BF16}) {
+    SCOPED_TRACE(static_cast<int>(type));
+    auto dense = FullyConnectedLayer::Create(*executor_, kInputWidth,
+                                             kOutputWidth, type);
+    ASSERT_TRUE(dense.ok()) << dense.status();
+    const auto weights = (*dense)->weights();
+    const auto gradients = (*dense)->gradients();
+    ASSERT_EQ(weights.size(), 2u);
+    ASSERT_EQ(gradients.size(), 2u);
+    const BufferVec buffers = {weights[0], weights[1], gradients[0],
+                               gradients[1]};
+    constexpr float kSentinels[] = {3.0f, 5.0f, 7.0f, -11.0f};
+    std::vector<cuda::PageLockedHostArray<float>> host;
+    for (size_t index = 0; index < buffers.size(); ++index) {
+      host.push_back(CopyToPageLockedHostArray(
+          *executor_,
+          std::vector<float>(buffers[index].size_bytes() / sizeof(float),
+                             kSentinels[index])));
+      ASSERT_EQ(cudaMemcpyAsync(buffers[index].data(), host.back().data(),
+                                buffers[index].size_bytes(),
+                                cudaMemcpyHostToDevice, executor_->stream()),
+                cudaSuccess);
+    }
+
+    // Do not synchronize between uploads, initialization, and downloads:
+    // initialization must order both parameter changes on this same stream.
+    const auto initialized = (*dense)->InitializeIdentity(kScale);
+    ASSERT_TRUE(initialized.ok()) << initialized;
+    for (size_t index = 0; index < buffers.size(); ++index)
+      ASSERT_EQ(cudaMemcpyAsync(host[index].data(), buffers[index].data(),
+                                buffers[index].size_bytes(),
+                                cudaMemcpyDeviceToHost, executor_->stream()),
+                cudaSuccess);
+    ASSERT_TRUE(executor_->Synchronize().ok());
+
+    for (int row = 0; row < kInputWidth; ++row)
+      for (int column = 0; column < kOutputWidth; ++column)
+        EXPECT_FLOAT_EQ(host[0][row * kOutputWidth + column],
+                        row == column ? kScale : 0.0f)
+            << "matrix row=" << row << " column=" << column;
+    for (float bias : host[1])
+      EXPECT_FLOAT_EQ(bias, 0.0f);
+    for (size_t index = 2; index < host.size(); ++index)
+      for (float gradient : host[index])
+        EXPECT_FLOAT_EQ(gradient, kSentinels[index]);
+  }
+}
 
 TEST_F(LayersTest, IdentityDenseLayerHasIdentityForwardAndBackward) {
   std::vector<float> input(kTestTokenCount * kTestModelWidth);
