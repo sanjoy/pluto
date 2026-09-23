@@ -989,6 +989,111 @@ the mechanism storing the Durian completion.
 See [capacity notes](CAPACITY_NOTES.md) for the outer-product gradient mechanism,
 precision accounting, and the distinction between influence and information.
 
+## Measured branch-precision tolerance (2026-09-23)
+
+The completed `/tmp/one_shot_capacity_0/` sweep tested the original fully
+memorized `step_16128`. Original, BF16-master, joint zero-key-bias, and restored
+controls all retained **10,002/10,002 targets and 1,024/1,024 greedy completions**.
+The BF16 control rounded all 96,176 relevant coefficients. The key-bias control
+zeroed 128 values across all eight blocks; it establishes corpus-level
+removability, not identical logits or arbitrary-prompt equivalence.
+
+Every branch independently retained all completions at eight bits. None did
+at four or two bits with this particular uniform quantizer:
+
+| Block | Attention, 4 bits | MLP, 4 bits | Attention, 2 bits | MLP, 2 bits |
+| --- | ---: | ---: | ---: | ---: |
+| 0 | 887 | 807 | 18 | 1 |
+| 1 | 997 | 987 | 6 | 1 |
+| 2 | 997 | 1,020 | 15 | 7 |
+| 3 | 1,022 | 1,021 | 114 | 42 |
+| 4 | 931 | 1,006 | 15 | 0 |
+| 5 | 993 | 1,021 | 59 | 16 |
+| 6 | 1,023 | 1,015 | 163 | 7 |
+| 7 | 1,011 | 975 | 43 | 5 |
+
+Entries count exact greedy completions out of 1,024, including EOS. The result
+is a **conditional robustness curve**, not bits of fact ownership. Block 0 is
+especially sensitive at four bits; later blocks differ substantially despite
+equal parameter counts. A successful eight-bit attention branch has a nominal
+9,344-bit code (1,120 values plus six FP64 scales); an MLP has 17,664 bits.
+These are sufficient *individual* replacement descriptions with all other
+weights fixed. Joint eight-bit safety has not yet been tested, and failure of
+uniform four-bit quantization is not a lower bound for other representations.
+
+## Causal single-fact embedding controls (2026-09-23)
+
+`single_fact_probe` reloaded the independently trained Durian-only checkpoint
+and its initialization. Reports are in `/tmp/one_shot_single_fact_probe_0/`.
+It computes `c = mean_token(E_trained - E_initial)` and independently restores
+the entire trained checkpoint before each intervention. All comparisons below
+score the ten suffix/EOS targets of line 631:
+
+| Intervention | Correct targets | Complete greedy suffix |
+| --- | ---: | ---: |
+| Trained baseline | 10/10 | yes |
+| Initialization | 0/10 | no |
+| Subtract common shift: `E := E_trained - c` | 5/10 | no |
+| Same subtraction, plus `P := P_trained + c` | 10/10 | yes |
+| Keep only common embedding shift: `E := E_initial + c` | 0/10 | no |
+| Restore initial embedding | 0/10 | no |
+| Restore initial position table | 10/10 | yes |
+| Keep trained embedding, initialize everything else | 0/10 | no |
+| Initialize both embedding and positions | 0/10 | no |
+| Restore original trained bytes | 10/10 | yes |
+
+The common shift accounts for **99.1902% of embedding-update squared norm**.
+Removing it alone is harmful, but moving it into the position table preserves
+this completion. In exact arithmetic, `E-c, P+c` preserves initial residuals
+and changes all tied-head logits by one shared offset; BF16 rounding means the
+actual GPU outcome still needs testing. This experiment passed the corpus case
+but does not assert universal or logit-level equality.
+
+Most embedding-update energy is therefore compatible with a change of origin,
+not thousands of independently encoded pieces of this sentence. The residual
+token-specific embedding changes and the learned remainder are both necessary
+under the tested restoration controls: neither the common shift alone nor the
+trained embedding with an initialized backbone suffices. Learned changes in
+the position table are dispensable for this one fact; its initialized position
+vectors can still provide a positional code.
+
+```sh
+bazel build -c opt //src/llm/experiments/one_shot_memorizer:single_fact_probe
+bazel-bin/src/llm/experiments/one_shot_memorizer/single_fact_probe \
+  --initial_checkpoint=/home/ubuntu/checkpoints/memorize_general_facts/compact_batch_32_no_clip_0/layers_8/step_0 \
+  --trained_checkpoint=/tmp/one_shot_sentence_pilot_0/only_line_631/step_512 \
+  --tokenizer=/home/ubuntu/checkpoints/memorize_general_facts/compact_batch_32_no_clip_0/inputs/tokenizer \
+  --selected_line=631 --output_dir=/tmp/single_fact_controls_new
+```
+
+## Approved longer follow-up
+
+The user approved extending the baseline and Durian-omitted pair to 16,384
+updates. This run began around 07:27 UTC on 2026-09-23; artifacts are in
+`/tmp/one_shot_sentence_durian_16384_0/`. It retains the 40,000-update learning
+rate horizon, saves every 512 updates, and evaluates every 4,096. A second full
+baseline repeat is intentionally omitted; the 512-update pilot established
+byte-identical repeats, and this run still checks all initial bytes and every
+update before the first omission. The in-memory matched-step baseline history
+uses approximately 7.5 GB of host memory. The process has a three-hour runtime
+cap, well inside the 15:52 UTC reporting deadline.
+
+```sh
+bazel-bin/src/llm/experiments/one_shot_memorizer/checkpoint_sentence_ablation \
+  --initial_checkpoint=/home/ubuntu/checkpoints/memorize_general_facts/compact_batch_32_no_clip_0/layers_8/step_0 \
+  --tokenizer=/home/ubuntu/checkpoints/memorize_general_facts/compact_batch_32_no_clip_0/inputs/tokenizer \
+  --output_dir=/tmp/long_durian_pair_new --steps=16384 \
+  --omitted_lines=631 --single_fact_line=0 --norepeat_baseline \
+  --checkpoint_every=512 --evaluate_every=4096
+```
+
+Once the GPU is free, the next requested experiment traces exact five-token
+prompts through a **single sixth-token prediction**, comparing Paris/Athens/Lima
+factual retrieval with `Pras -> ad`, lexical `to -> nour`, and grammatical
+`known -> for` continuation. Raw traces will be paired with independent branch
+and donor interventions; attention weights or intermediate vocabulary readouts
+alone do not establish a causal explanation.
+
 ## Tests
 
 ```sh
@@ -1017,5 +1122,5 @@ clone equivalence, and unchanged original parameters. Decision tests additionall
 check exact real-valued LayerNorm/head algebra, nonzero bias changing winners,
 contradictory labels, unseen rivals, negative common margins, coefficient/gauge
 bounds, deterministic cutting planes, and explicit budget outcomes.
-All 84 repository test
+All 88 repository test
 targets passed with fresh execution after these additions.

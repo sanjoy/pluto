@@ -2,6 +2,33 @@ load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 
+cc_binary(
+    name = "single_fact_probe",
+    srcs = ["single_fact_probe.cc"],
+    deps = [
+        ":mlp_probe",
+        ":sentence_ablation",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset",
+        "//src/dataset:compact_vocabulary",
+        "//src/dataset:gpt2_tokenizer",
+        "//src/dataset:padded_line_dataset",
+        "//src/llm:checkpoint",
+        "//src/llm:gpt2",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
 cc_library(
     name = "quantization",
     srcs = ["quantization.cc"],

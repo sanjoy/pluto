@@ -1,4 +1,4 @@
-// Controlled, short training counterfactuals from a shared checkpoint. Removing
+// Controlled training counterfactuals from a shared checkpoint. Removing
 // a sentence means erasing its loss gradient, NOT reshuffling the other data.
 #include <cuda_runtime_api.h>
 
@@ -43,7 +43,15 @@ ABSL_FLAG(std::string, output_dir, "",
           "Fresh directory for local experiment artifacts");
 ABSL_FLAG(
     int, steps, 512,
-    "Fixed update budget, independent of learning-rate horizon (max 4096)");
+    "Fixed update budget, independent of learning-rate horizon (max 16384)");
+ABSL_FLAG(bool, repeat_baseline, true,
+          "Repeat and byte-compare every baseline update; disable only when "
+          "intentionally omitting this full-run determinism control");
+ABSL_FLAG(int, checkpoint_every, 128,
+          "Save/log every N updates, also the first, first omission and final");
+ABSL_FLAG(int, evaluate_every, 0,
+          "Full teacher-forced/greedy evaluation every N updates; zero means "
+          "final only, and final evaluation is always performed");
 ABSL_FLAG(int, schedule_horizon, 40000, "Original cosine schedule horizon");
 ABSL_FLAG(int, warmup_steps, 100, "Linear warmup updates");
 ABSL_FLAG(double, learning_rate, 0.0006, "Peak AdamW learning rate");
@@ -293,8 +301,8 @@ absl::Status RunCondition(
           << first_omission_step << '\t' << delta.total.bitwise_changed_count
           << '\t' << std::setprecision(17) << delta.total.delta_l2 << '\t'
           << elapsed() << std::endl;
-    if (step % 128 == 0 || step == 1 || step == first_omission_step ||
-        step == absl::GetFlag(FLAGS_steps)) {
+    if (step % absl::GetFlag(FLAGS_checkpoint_every) == 0 || step == 1 ||
+        step == first_omission_step || step == absl::GetFlag(FLAGS_steps)) {
       RETURN_IF_ERROR(Save(executor, *model, vocabulary,
                            directory / absl::StrCat("step_", step)));
       std::cout << condition.name << " step=" << step
@@ -302,6 +310,16 @@ absl::Status RunCondition(
                 << " changed_vs_baseline=" << delta.total.bitwise_changed_count
                 << '/' << count << " delta_l2=" << delta.total.delta_l2
                 << std::endl;
+    }
+    const int evaluate_every = absl::GetFlag(FLAGS_evaluate_every);
+    if (evaluate_every > 0 && step % evaluate_every == 0 &&
+        step != absl::GetFlag(FLAGS_steps)) {
+      // This is a separate, unshuffled iterator. Evaluation may reset/advance
+      // it, but must not consume training batches or change their permutation.
+      // The final step is audited once below, even if it lies on this cadence.
+      RETURN_IF_ERROR(EvaluateRun(
+          executor, *model, evaluation, vocabulary.vocab_size(), directory,
+          summary, condition.name, step, fact_exposures, elapsed()));
     }
     final = std::move(current);
   }
@@ -342,12 +360,14 @@ absl::Status RunCondition(
 
 absl::Status Run() {
   const int steps = absl::GetFlag(FLAGS_steps);
-  if (steps <= 0 || steps > 4096 || absl::GetFlag(FLAGS_batch_size) <= 0 ||
+  if (steps <= 0 || steps > 16384 || absl::GetFlag(FLAGS_batch_size) <= 0 ||
+      absl::GetFlag(FLAGS_checkpoint_every) <= 0 ||
+      absl::GetFlag(FLAGS_evaluate_every) < 0 ||
       absl::GetFlag(FLAGS_initial_checkpoint).empty() ||
       absl::GetFlag(FLAGS_tokenizer).empty() ||
       absl::GetFlag(FLAGS_output_dir).empty() ||
       absl::GetFlag(FLAGS_single_fact_line) < 0)
-    return absl::InvalidArgumentError("invalid ablation pilot arguments");
+    return absl::InvalidArgumentError("invalid sentence-ablation arguments");
   ASSIGN_OR_RETURN(auto ignored_rate,
                    AblationLearningRate(1, absl::GetFlag(FLAGS_learning_rate),
                                         absl::GetFlag(FLAGS_warmup_steps),
@@ -360,7 +380,6 @@ absl::Status Run() {
     return absl::InvalidArgumentError(
         "initial_checkpoint must be step_0: optimizer state is initialized "
         "fresh");
-  ASSIGN_OR_RETURN(auto executor, cuda::Executor::Create());
   ASSIGN_OR_RETURN(
       auto base, tokenizer::Gpt2Tokenizer::Load(absl::GetFlag(FLAGS_tokenizer)));
   ASSIGN_OR_RETURN(auto vocabulary,
@@ -376,9 +395,9 @@ absl::Status Run() {
   if (!text.empty() && text.back() == '\n')
     text.remove_suffix(1);
   std::vector<std::string> lines = absl::StrSplit(text, '\n');
-  std::vector<Condition> conditions{
-      {.name = "baseline"},
-      {.name = "baseline_repeat", .repeat_baseline = true}};
+  std::vector<Condition> conditions{{.name = "baseline"}};
+  if (absl::GetFlag(FLAGS_repeat_baseline))
+    conditions.push_back({.name = "baseline_repeat", .repeat_baseline = true});
   absl::flat_hash_set<int> seen;
   for (const auto& value : absl::GetFlag(FLAGS_omitted_lines)) {
     int line;
@@ -395,6 +414,13 @@ absl::Status Run() {
   if (single_line > 0)
     conditions.push_back({.name = absl::StrCat("only_line_", single_line),
                           .single = static_cast<size_t>(single_line - 1)});
+  size_t selected_fact = single_line > 0 ? single_line - 1 : 0;
+  if (single_line == 0)
+    for (const auto& condition : conditions)
+      if (condition.omitted) {
+        selected_fact = *condition.omitted;
+        break;
+      }
   Gpt2Config config{
       .transformer_block_count = absl::GetFlag(FLAGS_layers),
       .model_width = absl::GetFlag(FLAGS_model_width),
@@ -408,6 +434,9 @@ absl::Status Run() {
       BuildGpt2ParameterLayout({vocabulary->vocab_size(), config.model_width,
                                 config.feed_forward_width, kGpt2ContextLength,
                                 config.transformer_block_count}));
+  // All flag, corpus-line, schedule and architecture validation above is CPU
+  // only. Do not allocate GPU resources for a malformed run specification.
+  ASSIGN_OR_RETURN(auto executor, cuda::Executor::Create());
   ASSIGN_OR_RETURN(auto evaluation,
                    PaddedLineDataSetIterator::Create(
                        *executor, text, *vocabulary,
@@ -422,6 +451,12 @@ absl::Status Run() {
       << "initial_checkpoint=" << checkpoint.directory.string()
       << "\ncorpus=" << absl::GetFlag(FLAGS_corpus)
       << "\ntokenizer=" << absl::GetFlag(FLAGS_tokenizer) << "\nsteps=" << steps
+      << "\nrepeat_baseline=" << absl::GetFlag(FLAGS_repeat_baseline)
+      << "\nfull_repeat_control="
+      << (absl::GetFlag(FLAGS_repeat_baseline) ? "enabled" : "not_performed")
+      << "\ncheckpoint_every=" << absl::GetFlag(FLAGS_checkpoint_every)
+      << "\nevaluate_every=" << absl::GetFlag(FLAGS_evaluate_every)
+      << "\nselected_fact_line_1based=" << selected_fact + 1
       << "\nschedule_horizon=" << absl::GetFlag(FLAGS_schedule_horizon)
       << "\nwarmup_steps=" << absl::GetFlag(FLAGS_warmup_steps)
       << "\npeak_learning_rate=" << absl::GetFlag(FLAGS_learning_rate)
@@ -437,8 +472,12 @@ absl::Status Run() {
       << "intervention=fixed-schedule loss-gradient deletion with original "
          "normalization\n"
       << "single_fact=batch 1 repeated; not exposure-matched to leave-one-out\n"
-      << "determinism=every baseline-repeat update byte-compared; omissions "
-         "byte-compared before first exposure\n";
+      << "determinism="
+      << (absl::GetFlag(FLAGS_repeat_baseline)
+              ? "every baseline-repeat update byte-compared; "
+              : "full baseline repeat NOT PERFORMED; ")
+      << "all initial weights byte-compared; omissions byte-compared before "
+         "first exposure\n";
   for (const auto& condition : conditions)
     if (condition.omitted || condition.single) {
       const size_t index =
@@ -455,9 +494,9 @@ absl::Status Run() {
   std::vector<Snapshot> baseline;
   baseline.reserve(steps + 1);
   for (const auto& condition : conditions)
-    RETURN_IF_ERROR(RunCondition(
-        *executor, condition, *vocabulary, config, text, lines, layout,
-        *evaluation, baseline, summary, single_line > 0 ? single_line - 1 : 0));
+    RETURN_IF_ERROR(RunCondition(*executor, condition, *vocabulary, config,
+                                 text, lines, layout, *evaluation, baseline,
+                                 summary, selected_fact));
   summary.close();
   if (!summary)
     return absl::InternalError("writing summary failed");
@@ -469,7 +508,10 @@ absl::Status Run() {
 }  // namespace pluto::llm::one_shot_memorizer
 
 int main(int argc, char** argv) {
-  absl::ParseCommandLine(argc, argv);
+  if (absl::ParseCommandLine(argc, argv).size() != 1) {
+    std::cerr << "unexpected positional arguments\n";
+    return 1;
+  }
   const auto status = pluto::llm::one_shot_memorizer::Run();
   if (!status.ok()) {
     std::cerr << status << std::endl;
