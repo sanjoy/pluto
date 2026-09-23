@@ -3,6 +3,51 @@ load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 
 cc_library(
+    name = "quantization",
+    srcs = ["quantization.cc"],
+    hdrs = ["quantization.h"],
+    deps = [
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "quantization_test",
+    srcs = ["quantization_test.cc"],
+    deps = [":quantization", "@googletest//:gtest_main"],
+)
+
+cc_binary(
+    name = "checkpoint_capacity_probe",
+    srcs = ["checkpoint_capacity_probe.cc"],
+    deps = [
+        ":mlp_probe",
+        ":quantization",
+        ":sentence_ablation",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset",
+        "//src/dataset:compact_vocabulary",
+        "//src/dataset:gpt2_tokenizer",
+        "//src/dataset:padded_line_dataset",
+        "//src/llm:checkpoint",
+        "//src/llm:gpt2",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_library(
     name = "sentence_ablation",
     srcs = ["sentence_ablation.cc"],
     hdrs = ["sentence_ablation.h"],

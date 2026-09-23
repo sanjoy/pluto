@@ -46,6 +46,31 @@ bazel-bin/src/llm/experiments/one_shot_memorizer/checkpoint_sentence_ablation \
 
 Generated checkpoints, coordinate maps, and HTML stay local, outside Git.
 
+### Operational layer-capacity probe
+
+`checkpoint_capacity_probe` quantizes one attention or MLP branch at a time,
+including its pre-LayerNorm and biases, and counts exact full-corpus
+completions. Each case restores the original model first. The defaults test
+8, 4, and 2 bits per coefficient with one FP64 scale per tensor. Reports count
+scale overhead but are **not** an entropy estimate, a packed checkpoint, or a
+lower bound on necessary bits. Successful independent interventions are not
+automatically jointly safe. The unchanged backbone, prompts, tokenizer, and
+compact mapping are side information.
+
+There are two controls: the original checkpoint must recall every sentence;
+BF16-rounding only already-BF16-consumed token/dense matrices should preserve
+completion accuracy. Finally, all original weights are restored, byte-checked,
+and re-evaluated. See [CAPACITY_NOTES.md](CAPACITY_NOTES.md) for storage counts,
+gradient mechanisms, and primary literature.
+
+```sh
+bazel build -c opt //src/llm/experiments/one_shot_memorizer:checkpoint_capacity_probe
+bazel-bin/src/llm/experiments/one_shot_memorizer/checkpoint_capacity_probe \
+  --checkpoint=/home/ubuntu/checkpoints/memorize_general_facts/compact_batch_32_no_clip_0/layers_8/step_16128 \
+  --tokenizer=/home/ubuntu/checkpoints/memorize_general_facts/compact_batch_32_no_clip_0/inputs/tokenizer \
+  --output_dir=/tmp/one_shot_capacity_new --bits=8,4,2
+```
+
 Research objective: construct a memorizer from the dataset and tokenizer without
 gradient descent, then establish how its representation relates to the learned
 114,256-parameter GPT-2 model. Exact corpus recall by an unrelated construction
@@ -858,6 +883,111 @@ Local evidence is in `label_projection.tsv` and `decision_projection.tsv`
 under `/tmp/one_shot_decision_probe_0`, `/tmp/one_shot_decision_probe_1`, and
 `/tmp/one_shot_decision_probe_dual_0`. These are generated run artifacts, not
 source files committed to Git.
+
+## Completed 512-update sentence pilot (2026-09-23)
+
+Local evidence is under `/tmp/one_shot_sentence_pilot_0`: `manifest.txt`,
+`summary.tsv`, and each condition's `trajectory.tsv`, `predictions_512.tsv`,
+`per_tensor.tsv`, `coordinates.tsv`, and `report.html`. `from_initial/` contains
+the corresponding initialization-relative maps. Final checkpoints are each
+condition's `step_512/`. These generated artifacts remain outside Git.
+
+| Condition | Correct targets / 10,002 | Exact greedy facts / 1,024 | Loop seconds |
+| --- | ---: | ---: | ---: |
+| Full corpus | 1,776 | 1 | 80.6033 |
+| Identical full-corpus repeat | 1,776 | 1 | 80.6763 |
+| Omit line 1: mammals / milk / nourish | 1,855 | 1 | 80.6960 |
+| Omit line 258: Rajendra Prasad / India / 1950 | 1,876 | 1 | 80.7043 |
+| Omit line 631: Durian / smell / creamy flesh | 1,881 | 1 | 80.6485 |
+| Train only on line 631 | 975 | 1 | 6.77946 |
+
+Loop times include the checkpoint/comparison work during training but exclude
+the subsequent full-corpus evaluation and report writing. Every one of the
+512 full-corpus repeat updates was byte-identical to its baseline counterpart.
+Each deletion also matched before its first affected batch. Those first updates
+were 31, 21, and 7 for lines 1, 258, and 631, respectively; they immediately
+changed 97,999, 97,971, and 94,447 FP32 coordinates. By update 512 each deletion
+changed **98,288 of 114,256** coordinates: all non-position parameters plus
+position rows 0..25. The remaining 15,968 position coefficients were unchanged.
+
+This is an **early-training influence pilot**, not deletion from a memorized
+model. The full-corpus baseline itself completes only 1/1,024 facts at this
+budget. The higher target counts after deletion do not establish a meaningful
+generalization improvement, nor selective forgetting. They show that these
+small objective changes alter the early learning trajectory. Each sentence
+has 16 scheduled occurrences in the full-corpus conditions; its deleted slots
+contribute no gradient. The single-fact condition instead has 512 exposures,
+batch size one, and a different loss normalizer. It is not exposure-matched.
+
+### Where the differences concentrate
+
+The table uses `baseline - omission` at step 512. A module's squared-norm share
+is the sum of its squared scalar differences divided by the same sum globally;
+it is coordinate-dependent, not a fraction of facts owned.
+
+| Omitted line | Global delta L2 | Embedding delta L2 / share | All attention L2 / share | All MLP L2 / share |
+| --- | ---: | ---: | ---: | ---: |
+| 1 | 1.77114 | 1.40211 / 62.67% | 1.00817 / 32.40% | 0.38509 / 4.73% |
+| 258 | 2.12928 | 1.66748 / 61.33% | 1.25352 / 34.66% | 0.41772 / 3.85% |
+| 631 | 2.43002 | 1.95745 / 64.89% | 1.36746 / 31.67% | 0.43619 / 3.22% |
+
+All 71,600 embedding coefficients, all 8,960 attention-branch parameters, and
+all 17,280 MLP-branch parameters differ in every omission. The largest
+attention-branch deltas occur at blocks 5 and 4 for line 1 (0.57211, 0.53115),
+blocks 5 and 7 for line 258 (0.81900, 0.55942), and blocks 6 and 5 for line 631
+(0.79029, 0.72708). Attention/MLP counts include their LayerNorms and biases.
+
+The largest embedding-row differences nevertheless reveal recognizable pieces
+of the omitted sentence. Leading spaces are significant tokenizer characters.
+
+| Omitted line | Token text | Compact ID | Original GPT-2 ID | Row delta L2 |
+| --- | --- | ---: | ---: | ---: |
+| 1 | ` nour` | 3,862 | 31,219 | 0.503253 |
+| 1 | ` young` | 774 | 1,862 | 0.138362 |
+| 258 | ` 1950` | 2,499 | 11,445 | 0.507294 |
+| 258 | ` became` | 1,004 | 2,627 | 0.472549 |
+| 258 | `ad` | 119 | 324 | 0.352600 |
+| 631 | ` creamy` | 3,735 | 27,892 | 0.507469 |
+| 631 | ` strong` | 792 | 1,913 | 0.500265 |
+| 631 | ` smell` | 2,147 | 8,508 | 0.480744 |
+
+IDs come from the saved `compact_vocabulary.tsv`, joined with the original
+tokenizer vocabulary. The `ad` row is consistent with the spelling of Prasad;
+these row rankings alone do not recover token order or a complete sentence.
+Tied softmax training updates vocabulary rows even when their tokens never
+occur as inputs. Large row deltas identify useful intervention candidates, not
+exclusive sentence ownership.
+
+These are not merely differences in invisible FP32 low bits. After comparing
+BF16-rounded values for matrices/token embeddings and FP32 values elsewhere,
+the changed-operand counts are 93,915, 94,335, and 95,041 for the three omissions.
+Only 37, 29, and 18 changed FP32 coordinates, respectively, have absolute deltas
+at most 1e-6. These operand counts are not a count of changed activations or a
+guarantee that every change matters to the output.
+
+### The single-Durian control
+
+Training only on line 631 achieves its **10/10 suffix/EOS targets and an actual
+exact greedy completion**; line 631 is its only exact completion in the full
+corpus audit. Relative to initialization it changes 98,096 coordinates,
+including every embedding coefficient and every attention/MLP parameter.
+Its changed position rows are exactly 0..13, versus 0..25 in the full-corpus
+baseline. These ranges were verified from coordinate maps and checkpoint
+comparisons; maximal text length still requires independent tokenizer metadata.
+
+Embedding changes account for 99.7013% of its squared parameter delta norm.
+Moreover 99.1902% of that embedding delta's squared norm is explained by a
+single common 16D row shift: project the delta onto the matrix whose every row
+equals the mean row. The corresponding mean-row fraction is 60.8071% for the
+full-corpus baseline, but only 1.38--1.84% for the three omission deltas.
+This is a concrete reason not to equate a huge dense delta with many independent
+facts. A common head-row shift cancels from softmax in exact arithmetic for
+fixed hidden states; tied input embeddings and BF16 rounding mean the complete
+model is not invariant to that change. This observation alone does not identify
+the mechanism storing the Durian completion.
+
+See [capacity notes](CAPACITY_NOTES.md) for the outer-product gradient mechanism,
+precision accounting, and the distinction between influence and information.
 
 ## Tests
 
