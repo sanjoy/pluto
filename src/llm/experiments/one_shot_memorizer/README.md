@@ -1078,6 +1078,42 @@ update before the first omission. The in-memory matched-step baseline history
 uses approximately 7.5 GB of host memory. The process has a three-hour runtime
 cap, well inside the 15:52 UTC reporting deadline.
 
+### Prospective single-fact token-set validation
+
+An exploratory CPU analysis of the Durian-only trajectory found this simple
+readout of embedding **updates**, requiring both initialization and trained
+weights:
+
+```
+delta[token] = E_trained[token] - E_initial[token]
+c = mean_token(delta[token])
+select token iff dot(delta[token], c) < 0
+```
+
+At the saved 128-, 256-, 384-, and 512-update Durian checkpoints, the selected
+IDs are exactly the ten distinct suffix/EOS target IDs, with no additional
+vocabulary rows. The criterion takes no target IDs as input; reference labels
+are used afterward to score the selected set. This is nevertheless an
+**exploratory discovery on this sentence**, not yet validation on other facts.
+It recovers neither token order nor repetitions, and not the five-token
+prompt. The first-update result is imperfect. In particular, this is not a
+decoder of an arbitrary trained model without its initialization.
+
+Before training further single-fact models, freeze the zero-threshold rule
+above and test lines **80 (France), 1 (mammals), and 258 (Rajendra Prasad)**.
+Each will use the same original initialization, frozen full-corpus vocabulary,
+batch-one training, optimizer, learning-rate schedule, and 512-update budget
+as the Durian-only condition. Score precision/recall on **distinct** suffix
+plus EOS token IDs, reporting prompt-only rows separately. Do not tune the
+threshold or change the selected lines after observing these results.
+
+These short validations are queued after the approved long pair and the
+five-token trace. The existing ablation runner can produce each condition
+with `--batch_size=1 --omitted_lines= --norepeat_baseline
+--single_fact_line=LINE --steps=512`; its accompanying full-corpus batch-one
+baseline is not an exposure-matched control and is not used to derive this
+rule. All model checkpoints and diagnostic tables remain local artifacts.
+
 ```sh
 bazel-bin/src/llm/experiments/one_shot_memorizer/checkpoint_sentence_ablation \
   --initial_checkpoint=/home/ubuntu/checkpoints/memorize_general_facts/compact_batch_32_no_clip_0/layers_8/step_0 \
