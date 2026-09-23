@@ -1,5 +1,51 @@
 # One-shot memorization and the learned encoding
 
+## Time-bounded sentence and capacity experiments
+
+The current research checkpoint is due **2026-09-23 15:52 UTC**. The approved
+first stage is a 512-update duplicate baseline and three single-sentence
+deletions, plus a separate single-fact training run. Positive and negative
+results count; timeouts and unchanged accuracy are not evidence of impossible
+construction or exclusive fact ownership. Reserve the final hour for checking
+the evidence and writing conclusions rather than starting new sweeps.
+
+`checkpoint_sentence_ablation` loads the same original `step_0` weights and
+frozen full-corpus compact vocabulary for every condition. Adam starts with
+zero moments. The full-corpus shuffle, batch slots, original cross-entropy
+normalizer, and optimizer clock are preserved. A deleted sentence's logits
+gradient is zeroed **after** loss backward, before model backward. All other
+samples keep their original scale. This is fixed-schedule objective deletion,
+not rebatching a shorter corpus. The pilot's update budget does not change the
+original 40,000-update learning-rate schedule. There is no gradient clipping.
+
+Every baseline-repeat update must match the baseline byte-for-byte. Deletion
+runs must also match before their first affected batch. Reports contain all
+changed physical parameter coordinates, their tensor names/shapes, token-row
+IDs where applicable, and Q/K/V partitions. The main reports use
+`full-corpus baseline - intervention`; `from_initial/` reports use
+`initial - trained`, the negative of the usual learned update. Reports include
+FP32 master differences, not just differences in effective BF16 operands.
+
+The single-fact condition uses batch size one and repeats the selected fact.
+It retains the same initialization and all vocabulary rows. Its number of
+exposures and loss normalizer intentionally differ from the deletion runs:
+512 updates provide 512 examples of that fact, versus 16 scheduled occurrences
+in a 1,024-sentence, batch-32, 512-update baseline. Scheduled occurrences in a
+deletion run contribute zero gradient. All final models are evaluated on the
+original full corpus, both teacher-forced and by actual greedy suffix/EOS
+completion. This short pilot need not itself memorize the full corpus.
+
+```sh
+bazel build -c opt //src/llm/experiments/one_shot_memorizer:checkpoint_sentence_ablation
+bazel-bin/src/llm/experiments/one_shot_memorizer/checkpoint_sentence_ablation \
+  --initial_checkpoint=/home/ubuntu/checkpoints/memorize_general_facts/compact_batch_32_no_clip_0/layers_8/step_0 \
+  --tokenizer=/home/ubuntu/checkpoints/memorize_general_facts/compact_batch_32_no_clip_0/inputs/tokenizer \
+  --output_dir=/tmp/one_shot_sentence_pilot_new \
+  --steps=512 --omitted_lines=1,258,631 --single_fact_line=631
+```
+
+Generated checkpoints, coordinate maps, and HTML stay local, outside Git.
+
 Research objective: construct a memorizer from the dataset and tokenizer without
 gradient descent, then establish how its representation relates to the learned
 114,256-parameter GPT-2 model. Exact corpus recall by an unrelated construction

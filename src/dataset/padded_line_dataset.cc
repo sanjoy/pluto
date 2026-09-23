@@ -142,6 +142,7 @@ PaddedLineDataSetIterator::PaddedLineDataSetIterator(
 }
 
 void PaddedLineDataSetIterator::BeginEpoch() {
+  last_batch_size_ = 0;
   std::iota(order_.begin(), order_.end(), 0);
   if (options_.shuffle)
     std::shuffle(order_.begin(), order_.end(), random_);
@@ -149,6 +150,9 @@ void PaddedLineDataSetIterator::BeginEpoch() {
 }
 
 absl::StatusOr<DataBatch> PaddedLineDataSetIterator::Next() {
+  // The previous batch's borrowed indices expire even if a copy below fails.
+  // Publish new identities only after every copy has been queued successfully.
+  last_batch_size_ = 0;
   if (next_sample_ == order_.size())
     BeginEpoch();
   const size_t samples = std::min(static_cast<size_t>(options_.batch_size),
@@ -177,6 +181,7 @@ absl::StatusOr<DataBatch> PaddedLineDataSetIterator::Next() {
     valid_rows += lengths_[source_index] - options_.prompt_tokens + 1;
   }
   next_sample_ += samples;
+  last_batch_size_ = samples;
   return DataBatch{.inputs = batch.inputs,
                    .targets = batch.targets,
                    .batch_size = static_cast<int32_t>(samples),
@@ -200,6 +205,12 @@ absl::Span<const int> PaddedLineDataSetIterator::sample_tokens(
   CHECK_LT(index, sample_count());
   return absl::MakeConstSpan(
       host_inputs_.data() + index * options_.context_length, lengths_[index]);
+}
+
+absl::Span<const size_t> PaddedLineDataSetIterator::last_batch_sample_indices()
+    const {
+  return absl::MakeConstSpan(order_).subspan(next_sample_ - last_batch_size_,
+                                             last_batch_size_);
 }
 
 }  // namespace pluto

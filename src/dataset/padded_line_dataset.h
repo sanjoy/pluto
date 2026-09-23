@@ -66,6 +66,13 @@ class PaddedLineDataSetIterator final : public DataSetIterator {
   // The returned view remains valid for this iterator's lifetime.
   absl::Span<const int> sample_tokens(size_t index) const;
 
+  // Original, zero-based corpus indices in the latest successful Next()'s
+  // batch order. Equal text on different lines still has different indices.
+  // Empty before Next(), after Reset(), or after a failed Next(). This borrows
+  // the existing permutation without allocating; consume or copy the view
+  // before the next Next()/Reset(), which can reshuffle its backing storage.
+  absl::Span<const size_t> last_batch_sample_indices() const;
+
  private:
   struct BatchBuffers {
     cuda::Buffer inputs;
@@ -90,6 +97,7 @@ class PaddedLineDataSetIterator final : public DataSetIterator {
   std::vector<size_t> order_;
   std::mt19937_64 random_;
   size_t next_sample_ = 0;
+  size_t last_batch_size_ = 0;
   int64_t supervised_row_count_ = 0;
 };
 

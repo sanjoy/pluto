@@ -3,6 +3,104 @@ load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 
 cc_library(
+    name = "sentence_ablation",
+    srcs = ["sentence_ablation.cc"],
+    hdrs = ["sentence_ablation.h"],
+    deps = [
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "sentence_ablation_test",
+    srcs = ["sentence_ablation_test.cc"],
+    deps = [":sentence_ablation", "@googletest//:gtest_main"],
+)
+
+cc_library(
+    name = "sentence_ablation_training",
+    srcs = ["sentence_ablation_training.cc"],
+    hdrs = ["sentence_ablation_training.h"],
+    deps = [
+        "//src/util:status_macros",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_test(
+    name = "sentence_ablation_training_test",
+    srcs = ["sentence_ablation_training_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":sentence_ablation_training",
+        "//src/cuda:page_locked_host_array",
+        "//src/llm:cross_entropy_loss",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "sentence_ablation_report",
+    srcs = ["sentence_ablation_report.cc"],
+    hdrs = ["sentence_ablation_report.h"],
+    deps = [
+        ":sentence_ablation",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/strings",
+    ],
+)
+
+cc_test(
+    name = "sentence_ablation_report_test",
+    srcs = ["sentence_ablation_report_test.cc"],
+    deps = [":sentence_ablation_report", "@googletest//:gtest_main"],
+)
+
+cc_binary(
+    name = "checkpoint_sentence_ablation",
+    srcs = ["checkpoint_sentence_ablation.cc"],
+    deps = [
+        ":mlp_probe",
+        ":sentence_ablation",
+        ":sentence_ablation_report",
+        ":sentence_ablation_training",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset",
+        "//src/dataset:compact_vocabulary",
+        "//src/dataset:gpt2_tokenizer",
+        "//src/dataset:padded_line_dataset",
+        "//src/llm:optimizer",
+        "//src/llm:batch_validation",
+        "//src/llm:checkpoint",
+        "//src/llm:cross_entropy_loss",
+        "//src/llm:gpt2",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_library(
     name = "decision_readout",
     srcs = ["decision_readout.cc"],
     hdrs = ["decision_readout.h"],

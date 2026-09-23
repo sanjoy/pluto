@@ -6,6 +6,8 @@
 #include <cstdlib>
 #include <filesystem>
 #include <memory>
+#include <numeric>
+#include <random>
 #include <string>
 #include <utility>
 #include <vector>
@@ -43,6 +45,28 @@ class PaddedLineDataSetTest : public testing::Test {
               cudaSuccess);
     EXPECT_TRUE(executor_->Synchronize().ok());
     return std::vector<int>(host->begin(), host->end());
+  }
+
+  void ExpectBatchMatchesSampleIndices(
+      const PaddedLineDataSetIterator& iterator, const DataBatch& batch) {
+    const auto indices = iterator.last_batch_sample_indices();
+    ASSERT_EQ(indices.size(), static_cast<size_t>(batch.batch_size));
+    const auto& options = iterator.options();
+    const size_t rows = indices.size() * batch.sequence_length;
+    std::vector<int> expected_inputs(rows, options.eos_token);
+    std::vector<int> expected_targets(rows, -1);
+    for (size_t slot = 0; slot < indices.size(); ++slot) {
+      ASSERT_LT(indices[slot], iterator.sample_count());
+      const auto tokens = iterator.sample_tokens(indices[slot]);
+      const size_t base = slot * batch.sequence_length;
+      std::copy(tokens.begin(), tokens.end(), expected_inputs.begin() + base);
+      for (size_t row = options.prompt_tokens - 1; row + 1 < tokens.size();
+           ++row)
+        expected_targets[base + row] = tokens[row + 1];
+      expected_targets[base + tokens.size() - 1] = options.eos_token;
+    }
+    EXPECT_EQ(Download(batch.inputs), expected_inputs);
+    EXPECT_EQ(Download(batch.targets), expected_targets);
   }
 
   std::unique_ptr<cuda::Executor> executor_;
@@ -230,6 +254,116 @@ TEST_F(PaddedLineDataSetTest, ShuffleVisitsEverySampleAndResetReplaysEpochs) {
   ASSERT_TRUE((*iterator)->Reset().ok());
   EXPECT_EQ(read_epoch(), first);
   EXPECT_EQ(read_epoch(), second);
+}
+
+TEST_F(PaddedLineDataSetTest,
+       SampleIndicesTrackSequentialPartialWrappedAndResetBatches) {
+  auto iterator = PaddedLineDataSetIterator::Create(
+      *executor_, "abc\nabc\nhijkl", tokenizer_,
+      {.batch_size = 2,
+       .context_length = 6,
+       .prompt_tokens = 2,
+       .eos_token = 255});
+  ASSERT_TRUE(iterator.ok()) << iterator.status();
+  auto& data = **iterator;
+  EXPECT_TRUE(data.last_batch_sample_indices().empty());
+  const auto expect_indices = [&](absl::Span<const size_t> expected) {
+    const auto actual = data.last_batch_sample_indices();
+    EXPECT_EQ(std::vector<size_t>(actual.begin(), actual.end()),
+              std::vector<size_t>(expected.begin(), expected.end()));
+  };
+
+  auto first = data.Next();
+  ASSERT_TRUE(first.ok()) << first.status();
+  // Duplicate lines are distinct examples; IDs must not be inferred from text.
+  expect_indices({0, 1});
+  ExpectBatchMatchesSampleIndices(data, *first);
+  const std::vector<size_t> saved_first(
+      data.last_batch_sample_indices().begin(),
+      data.last_batch_sample_indices().end());
+
+  auto partial = data.Next();
+  ASSERT_TRUE(partial.ok()) << partial.status();
+  expect_indices({2});
+  ExpectBatchMatchesSampleIndices(data, *partial);
+  EXPECT_EQ(saved_first, (std::vector<size_t>{0, 1}));
+
+  auto wrapped = data.Next();
+  ASSERT_TRUE(wrapped.ok()) << wrapped.status();
+  expect_indices({0, 1});
+  ExpectBatchMatchesSampleIndices(data, *wrapped);
+  EXPECT_EQ(wrapped->inputs.data(), first->inputs.data());
+  EXPECT_EQ(wrapped->targets.data(), first->targets.data());
+
+  ASSERT_TRUE(data.Reset().ok());
+  EXPECT_TRUE(data.last_batch_sample_indices().empty());
+  auto reset_first = data.Next();
+  ASSERT_TRUE(reset_first.ok()) << reset_first.status();
+  expect_indices({0, 1});
+  ExpectBatchMatchesSampleIndices(data, *reset_first);
+}
+
+TEST_F(PaddedLineDataSetTest,
+       SampleIndicesMatchExistingShuffleAcrossEpochsAndReset) {
+  auto iterator = PaddedLineDataSetIterator::Create(
+      *executor_, "aab\naab\nccde\ndde\neefg\nffg\ngghi\nhhi\nijkl", tokenizer_,
+      {.batch_size = 2,
+       .context_length = 6,
+       .prompt_tokens = 2,
+       .eos_token = 255,
+       .shuffle = true,
+       .seed = 19});
+  ASSERT_TRUE(iterator.ok()) << iterator.status();
+  auto& data = **iterator;
+  EXPECT_TRUE(data.last_batch_sample_indices().empty());
+  std::mt19937_64 random(19);
+  const auto read_epoch = [&]() {
+    std::vector<size_t> expected(data.sample_count());
+    std::iota(expected.begin(), expected.end(), 0);
+    std::shuffle(expected.begin(), expected.end(), random);
+    std::vector<size_t> observed;
+    for (size_t batch_index = 0; batch_index < data.batches_per_epoch();
+         ++batch_index) {
+      auto batch = data.Next();
+      EXPECT_TRUE(batch.ok()) << batch.status();
+      if (!batch.ok())
+        return std::vector<size_t>{};
+      ExpectBatchMatchesSampleIndices(data, *batch);
+      const auto indices = data.last_batch_sample_indices();
+      EXPECT_EQ(indices.size(), batch_index + 1 == data.batches_per_epoch()
+                                    ? size_t{1}
+                                    : size_t{2});
+      observed.insert(observed.end(), indices.begin(), indices.end());
+    }
+    EXPECT_EQ(observed, expected);
+    return observed;
+  };
+  const auto first = read_epoch();
+  const auto second = read_epoch();
+  EXPECT_NE(first, second);
+  ASSERT_TRUE(data.Reset().ok());
+  EXPECT_TRUE(data.last_batch_sample_indices().empty());
+  random.seed(19);
+  EXPECT_EQ(read_epoch(), first);
+  EXPECT_EQ(read_epoch(), second);
+}
+
+TEST_F(PaddedLineDataSetTest, SampleIndicesForBatchLargerThanCorpus) {
+  auto iterator =
+      PaddedLineDataSetIterator::Create(*executor_, "abc\ndef", tokenizer_,
+                                        {.batch_size = 10,
+                                         .context_length = 4,
+                                         .prompt_tokens = 2,
+                                         .eos_token = 255});
+  ASSERT_TRUE(iterator.ok()) << iterator.status();
+  for (int epoch = 0; epoch < 2; ++epoch) {
+    auto batch = (*iterator)->Next();
+    ASSERT_TRUE(batch.ok()) << batch.status();
+    const auto indices = (*iterator)->last_batch_sample_indices();
+    EXPECT_EQ(std::vector<size_t>(indices.begin(), indices.end()),
+              (std::vector<size_t>{0, 1}));
+    ExpectBatchMatchesSampleIndices(**iterator, *batch);
+  }
 }
 
 TEST_F(PaddedLineDataSetTest, ReturnedBuffersSurviveIteratorDestruction) {
