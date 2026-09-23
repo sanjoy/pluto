@@ -138,6 +138,21 @@ absl::StatusOr<QuadraticPrecisionVariant> FitVariant(
   return result;
 }
 
+absl::StatusOr<QuadraticUnregularizedFit> FitUnregularized(
+    absl::Span<const float> features, absl::Span<const float> targets,
+    absl::Span<const uint8_t> fitting_rows) {
+  const auto fitting_features =
+      SelectFitting(features, kFeatures, fitting_rows);
+  const auto fitting_targets = SelectFitting(targets, kWidth, fitting_rows);
+  QuadraticUnregularizedFit result;
+  ASSIGN_OR_RETURN(result.fitted_map,
+                   FitAffineMap(fitting_features, fitting_targets, kFeatures,
+                                kWidth, {.ridge = 0}));
+  ASSIGN_OR_RETURN(result.evaluation,
+                   Evaluate(result.fitted_map, features, targets, fitting_rows));
+  return result;
+}
+
 }  // namespace
 
 absl::StatusOr<std::vector<float>> MakeQuadraticAuditFeatures(
@@ -216,6 +231,11 @@ absl::StatusOr<QuadraticPrecisionAudit> AuditQuadraticPrecision(
                                               QuadraticProductPrecision::kFp32));
   ASSIGN_OR_RETURN(result.unrounded_products,
                    FitVariant(features, target_updates, fitting_rows));
+  result.ridge_zero_unrounded =
+      FitUnregularized(features, target_updates, fitting_rows);
+  if (!result.ridge_zero_unrounded.ok() &&
+      !absl::IsFailedPrecondition(result.ridge_zero_unrounded.status()))
+    return result.ridge_zero_unrounded.status();
   ASSIGN_OR_RETURN(features,
                    MakeQuadraticAuditFeatures(normalized_inputs,
                                               QuadraticProductPrecision::kBf16));

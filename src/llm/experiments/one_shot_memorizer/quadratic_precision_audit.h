@@ -51,16 +51,28 @@ struct QuadraticPrecisionVariant {
   QuadraticPrecisionEvaluation bf16_weights_fp32_bias;
 };
 
+// Separate penalty-free diagnostic on unrounded products. It uses the same
+// fitting rows and FP64 pivoted QR, with no parameter or output rounding.
+struct QuadraticUnregularizedFit {
+  ClosedFormMap fitted_map;                 // ridge=0; intercept unpenalized.
+  QuadraticPrecisionEvaluation evaluation;  // Fit and held rows scored apart.
+};
+
 struct QuadraticPrecisionAudit {
   size_t fitting_sentences = 0;  // Caller verifies 819 for the full corpus.
   size_t held_sentences = 0;     // Caller verifies 205 for the full corpus.
   QuadraticPrecisionVariant unrounded_products;  // No BF16 product rounding.
   QuadraticPrecisionVariant bf16_products;       // Production feature rounding.
+  // FailedPrecondition records rank deficiency/insufficient samples without
+  // discarding the primary ridge fits. No retry changes the QR tolerance.
+  absl::StatusOr<QuadraticUnregularizedFit> ridge_zero_unrounded;
 };
 
 // Fits and scores both variants using the SAME sentence split and fixed
-// ridge=1e-6, with an unpenalized intercept. Inputs and learned branch-update
-// targets have shape [rows,16] and must be decoded finite physical BF16.
+// ridge=1e-6, with an unpenalized intercept. A separate unrounded-product fit
+// uses ridge=0 and the solver's unchanged relative rank tolerance (1e-12).
+// Inputs and learned branch-update targets have shape [rows,16] and must be
+// decoded finite physical BF16.
 // sentence_lengths lists positive real-token counts in unshuffled corpus order;
 // its sum must equal rows. Every fifth sentence (0,5,10,...) is held out as a
 // whole. Targets from those rows never enter fitting or feature construction.

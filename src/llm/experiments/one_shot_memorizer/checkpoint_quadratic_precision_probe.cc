@@ -1,6 +1,7 @@
 // Captures one unmodified learned forward over the corpus, then audits whether
-// quadratic branch-fit error persists without BF16 product rounding. All fits
-// and diagnostic predictions run on the CPU. This is not an alternate model
+// quadratic branch-fit error persists without BF16 product rounding, and in a
+// separate penalty-free fit. All fits and diagnostic predictions run on the
+// CPU. This is not an alternate model
 // forward: downstream completion accuracy is not measured by this executable.
 #include <cuda_runtime_api.h>
 
@@ -119,6 +120,38 @@ absl::Status CheckParity(std::ostream& report, int block,
   return absl::OkStatus();
 }
 
+void WriteUnregularized(
+    std::ostream& fits, std::ostream& errors, std::ostream& coefficients,
+    int block, size_t fitting_rows,
+    const absl::StatusOr<QuadraticUnregularizedFit>& diagnostic) {
+  // Preserve the primary reports verbatim: penalty-free diagnostics have
+  // separate files. Rank failure is an observed outcome, not a retry trigger.
+  fits << block << '\t' << (diagnostic.ok() ? "OK" : "FAILED_PRECONDITION")
+       << '\t' << diagnostic.status().message() << '\t'
+       << AffineMapOptions{}.relative_rank_tolerance << '\t' << fitting_rows;
+  if (!diagnostic.ok()) {
+    fits << "\tNA\tNA\tNA\tNA\tNA\tNA\tNA\n";
+    return;
+  }
+  const auto& map = diagnostic->fitted_map;
+  const auto [min_qr, max_qr] = std::minmax_element(
+      map.qr_diagonal_magnitudes.begin(), map.qr_diagonal_magnitudes.end());
+  const auto [min_weight, max_weight] =
+      std::minmax_element(map.weights.begin(), map.weights.end());
+  const auto [min_bias, max_bias] =
+      std::minmax_element(map.biases.begin(), map.biases.end());
+  fits << '\t' << map.numerical_rank << '\t' << *min_qr << '\t' << *max_qr
+       << '\t' << *min_weight << '\t' << *max_weight << '\t' << *min_bias
+       << '\t' << *max_bias << '\n';
+  WriteErrors(errors, block, "fp32_products", "fp64", diagnostic->evaluation);
+  const absl::Span<const double> parts[] = {map.weights, map.biases};
+  const char* tensors[] = {"W2", "b2"};
+  for (int part = 0; part < 2; ++part)
+    for (size_t coordinate = 0; coordinate < parts[part].size(); ++coordinate)
+      coefficients << block << '\t' << tensors[part] << '\t' << coordinate
+                   << '\t' << parts[part][coordinate] << '\n';
+}
+
 absl::Status Run() {
   namespace fs = std::filesystem;
   const fs::path checkpoint = absl::GetFlag(FLAGS_checkpoint);
@@ -186,8 +219,14 @@ absl::Status Run() {
   std::ofstream manifest(output_dir / "manifest.tsv"),
       errors(output_dir / "errors.tsv"), fits(output_dir / "fits.tsv"),
       coefficients(output_dir / "coefficients.tsv"),
-      parity(output_dir / "parity.tsv");
-  for (auto* stream : {&manifest, &errors, &fits, &coefficients, &parity}) {
+      parity(output_dir / "parity.tsv"),
+      unregularized_fits(output_dir / "ridge_zero_unrounded_fits.tsv"),
+      unregularized_errors(output_dir / "ridge_zero_unrounded_errors.tsv"),
+      unregularized_coefficients(output_dir /
+                                 "ridge_zero_unrounded_coefficients.tsv");
+  for (auto* stream :
+       {&manifest, &errors, &fits, &coefficients, &parity, &unregularized_fits,
+        &unregularized_errors, &unregularized_coefficients}) {
     if (!*stream)
       return absl::UnknownError("cannot create precision audit reports");
     *stream << std::setprecision(17);
@@ -204,6 +243,9 @@ absl::Status Run() {
          "\nfeatures\tlinear16 then raw upper-triangle136; no scaling"
          "\nfit_target\tlearned physical BF16 branch updates"
          "\nfit_policy\tindependent FP64 ridge fit for each feature precision"
+         "\nridge_zero_unrounded\tseparate FP64 QR fit on the same unrounded "
+         "fitting rows; no penalty, coefficient rounding, or tolerance retry"
+         "\nridge_zero_relative_rank_tolerance\t1e-12"
          "\nprecision_policies\tFP64 coefficients; FP32 coefficients; "
          "BF16 weights with FP32 bias"
          "\nevaluation\tCPU FP64 dot products; NO output rounding or GPU MMA "
@@ -223,6 +265,14 @@ absl::Status Run() {
       << "block\tfeature_precision\ttensor\tflat_index\tfp64_coefficient\n";
   parity << "block\ttensor\tcoordinates\tbitwise_equal_fp32\tmaximum_absolute_"
             "difference\n";
+  unregularized_fits
+      << "block\tstatus\tstatus_message\trelative_rank_tolerance\tfit_rows\t"
+         "numerical_rank\tqr_min\tqr_max\tweight_min\tweight_max\tbias_min\t"
+         "bias_max\n";
+  unregularized_errors
+      << "block\tfeature_precision\tparameter_precision\tgroup\trows\trmse\t"
+         "relative_rmse\tcentered_relative_rmse\n";
+  unregularized_coefficients << "block\ttensor\tflat_index\tfp64_coefficient\n";
   std::cout << "Capturing one unmodified corpus pass..." << std::endl;
   ASSIGN_OR_RETURN(auto capture,
                    CaptureGpt2Mlps(*executor, *model, *dataset, kWidth, 64,
@@ -239,6 +289,8 @@ absl::Status Run() {
   manifest << "capture_targets\t10002/10002\ncapture_sentences\t1024/1024\n"
               "source_master_bytes_unchanged\tPASS\n";
   manifest.flush();
+  std::cout << "GPU capture and source-byte controls complete; CPU fits only."
+            << std::endl;
   // Everything after the capture and byte check is CPU-only. Reference W2/b2
   // are used exclusively for parity, never supplied to the regression solver.
   for (int block = 0; block < kBlocks; ++block) {
@@ -278,7 +330,12 @@ absl::Status Run() {
     }
     RETURN_IF_ERROR(CheckParity(parity, block, audit.bf16_products.fitted_map,
                                 reference[block]));
-    for (auto* stream : {&errors, &fits, &coefficients, &parity}) {
+    WriteUnregularized(unregularized_fits, unregularized_errors,
+                       unregularized_coefficients, block, fitting_rows,
+                       audit.ridge_zero_unrounded);
+    for (auto* stream :
+         {&errors, &fits, &coefficients, &parity, &unregularized_fits,
+          &unregularized_errors, &unregularized_coefficients}) {
       stream->flush();
       if (!*stream)
         return absl::UnknownError("precision audit report write failed");
@@ -293,6 +350,15 @@ absl::Status Run() {
                      std::chrono::steady_clock::now() - started)
                      .count()
               << " s" << std::endl;
+    if (audit.ridge_zero_unrounded.ok())
+      std::cout << "  ridge-zero unrounded: fit relative error="
+                << audit.ridge_zero_unrounded->evaluation.fitting.relative_rmse
+                << ", held relative error="
+                << audit.ridge_zero_unrounded->evaluation.held.relative_rmse
+                << std::endl;
+    else
+      std::cout << "  ridge-zero unrounded: "
+                << audit.ridge_zero_unrounded.status().message() << std::endl;
   }
   manifest << "rounded_feature_reference_parity\tPASS\ncompleted\ttrue\n";
   manifest.flush();

@@ -6,6 +6,7 @@
 #include <limits>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "gtest/gtest.h"
 
 namespace pluto::llm::one_shot_memorizer {
@@ -31,6 +32,33 @@ struct Samples {
     }
   }
 };
+
+Samples FullRankSamples() {
+  Samples samples;
+  // An unisolvent degree-two design: origin, +/- every axis, and every pair
+  // of positive axes. Duplicate it as one held and one fitting sentence so
+  // the fit has all 153 independent affine-quadratic rows, not a random rank.
+  samples.lengths = {153, 153};
+  samples.inputs.assign(306 * 16, 0);
+  size_t row = 1;
+  for (int i = 0; i < 16; ++i)
+    for (float sign : {-1.0f, 1.0f})
+      samples.inputs[row++ * 16 + i] = sign;
+  for (int i = 0; i < 16; ++i)
+    for (int j = i + 1; j < 16; ++j) {
+      samples.inputs[row * 16 + i] = 1;
+      samples.inputs[row++ * 16 + j] = 1;
+    }
+  for (size_t index = 0; index < 153 * 16; ++index)
+    samples.inputs[153 * 16 + index] = samples.inputs[index];
+  samples.targets.assign(samples.inputs.size(), 0);
+  for (size_t r = 0; r < 306; ++r) {
+    const float* x = samples.inputs.data() + r * 16;
+    samples.targets[r * 16] = x[0] * x[1] + 2 * x[2] * x[2] - 3 * x[3] + 4;
+    samples.targets[r * 16 + 1] = x[4] * x[5] - x[6];
+  }
+  return samples;
+}
 
 TEST(QuadraticPrecisionAuditTest, BasisHasFixedOrderAndNoScaling) {
   std::vector<float> inputs(32);
@@ -104,6 +132,75 @@ TEST(QuadraticPrecisionAuditTest, FixedSentenceSplitAndKnownQuadraticFit) {
             audit->bf16_products.fitted_map.weights);
   EXPECT_EQ(audit->unrounded_products.fitted_map.biases,
             audit->bf16_products.fitted_map.biases);
+}
+
+TEST(QuadraticPrecisionAuditTest, RidgeZeroRecoversExactKnownQuadratic) {
+  const auto samples = FullRankSamples();
+  const auto audit =
+      AuditQuadraticPrecision(samples.inputs, samples.targets, samples.lengths);
+  ASSERT_TRUE(audit.ok()) << audit.status();
+  ASSERT_TRUE(audit->ridge_zero_unrounded.ok())
+      << audit->ridge_zero_unrounded.status();
+  const auto& diagnostic = *audit->ridge_zero_unrounded;
+  EXPECT_DOUBLE_EQ(diagnostic.fitted_map.options.ridge, 0);
+  EXPECT_DOUBLE_EQ(diagnostic.fitted_map.options.relative_rank_tolerance,
+                   1e-12);
+  EXPECT_EQ(diagnostic.fitted_map.numerical_rank, 152u);
+  EXPECT_EQ(diagnostic.fitted_map.sample_count, 153u);
+  EXPECT_EQ(diagnostic.evaluation.fitting.rows, 153u);
+  EXPECT_EQ(diagnostic.evaluation.held.rows, 153u);
+  EXPECT_LT(diagnostic.evaluation.fitting.rmse, 1e-13);
+  EXPECT_LT(diagnostic.evaluation.held.rmse, 1e-13);
+  EXPECT_NEAR(diagnostic.fitted_map.biases[0], 4, 1e-13);
+  EXPECT_NEAR(diagnostic.fitted_map.weights[3 * 16], -3, 1e-13);
+  EXPECT_NEAR(diagnostic.fitted_map.weights[17 * 16], 1, 1e-13);
+  EXPECT_LT(diagnostic.evaluation.fitting.rmse,
+            audit->unrounded_products.fp64_parameters.fitting.rmse);
+  // The separate diagnostic must not change either primary fit's penalty.
+  EXPECT_DOUBLE_EQ(audit->unrounded_products.fitted_map.options.ridge, 1e-6);
+  EXPECT_DOUBLE_EQ(audit->bf16_products.fitted_map.options.ridge, 1e-6);
+}
+
+TEST(QuadraticPrecisionAuditTest, RidgeZeroReportsRankFailureWithoutRetry) {
+  auto samples = FullRankSamples();
+  samples.inputs.assign(samples.inputs.size(), 0);
+  const auto audit =
+      AuditQuadraticPrecision(samples.inputs, samples.targets, samples.lengths);
+  ASSERT_TRUE(audit.ok()) << audit.status();
+  EXPECT_TRUE(absl::IsFailedPrecondition(audit->ridge_zero_unrounded.status()));
+  EXPECT_NE(audit->ridge_zero_unrounded.status().message().find("rank 0"),
+            absl::string_view::npos);
+  EXPECT_EQ(audit->unrounded_products.fitted_map.numerical_rank, 152u);
+  const Samples insufficient;
+  const auto small = AuditQuadraticPrecision(
+      insufficient.inputs, insufficient.targets, insufficient.lengths);
+  ASSERT_TRUE(small.ok()) << small.status();
+  EXPECT_TRUE(absl::IsFailedPrecondition(small->ridge_zero_unrounded.status()));
+}
+
+TEST(QuadraticPrecisionAuditTest, HeldRowsCannotChangeUnregularizedFit) {
+  auto samples = FullRankSamples();
+  const auto original =
+      AuditQuadraticPrecision(samples.inputs, samples.targets, samples.lengths);
+  ASSERT_TRUE(original.ok()) << original.status();
+  ASSERT_TRUE(original->ridge_zero_unrounded.ok())
+      << original->ridge_zero_unrounded.status();
+  for (size_t index = 0; index < 153 * 16; ++index) {
+    samples.inputs[index] = 7;
+    samples.targets[index] = -100;
+  }
+  const auto changed =
+      AuditQuadraticPrecision(samples.inputs, samples.targets, samples.lengths);
+  ASSERT_TRUE(changed.ok()) << changed.status();
+  ASSERT_TRUE(changed->ridge_zero_unrounded.ok())
+      << changed->ridge_zero_unrounded.status();
+  EXPECT_EQ(original->ridge_zero_unrounded->fitted_map.weights,
+            changed->ridge_zero_unrounded->fitted_map.weights);
+  EXPECT_EQ(original->ridge_zero_unrounded->fitted_map.biases,
+            changed->ridge_zero_unrounded->fitted_map.biases);
+  EXPECT_DOUBLE_EQ(original->ridge_zero_unrounded->evaluation.fitting.rmse,
+                   changed->ridge_zero_unrounded->evaluation.fitting.rmse);
+  EXPECT_GT(changed->ridge_zero_unrounded->evaluation.held.rmse, 100);
 }
 
 TEST(QuadraticPrecisionAuditTest, HeldTargetsCannotChangeEitherFit) {

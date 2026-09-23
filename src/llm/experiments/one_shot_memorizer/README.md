@@ -28,6 +28,11 @@ separate local MLP approximation error from inherited input changes. Twenty of
 the 28 failed next-token queries tolerate every individual substitution;
 restoring block 0 alone rescues 24 queries. This is evidence of interacting
 representation errors, not exclusive fact ownership.
+The [fixed hybrid follow-up](QUADRATIC_HYBRIDS.md) retains learned MLPs 0, 1,
+and 7 while replacing the other five: it reaches 1,023/1,024 entire
+completions, with only the condensation sentence still failing. It remains
+teacher-assisted, and removing regularization does not eliminate the measured
+quadratic fitting residual.
 
 ## Time-bounded sentence and capacity experiments
 
