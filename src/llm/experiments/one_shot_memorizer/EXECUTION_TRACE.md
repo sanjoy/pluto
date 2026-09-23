@@ -61,6 +61,12 @@ country-pair swaps at the final block's query residual. These results reject
 the simple claim that the largest attention cell directly points to a stored
 answer. They do not prove there is no more specific attention mechanism.
 
+The follow-up [routing/value factorial](ATTENTION_ROUTING.md) swaps whole
+Q/K and V families at all five rows. It identifies their interaction and a
+simpler first-block computation: a scalar country-dependent gate mixes a
+fixed shared-word vector with the country's value vector. Later blocks
+also change the mixture among fixed anchor directions.
+
 ## MLP neurons have shared, relative effects
 
 Two final-MLP channels highlighted by the traces were tested across the full

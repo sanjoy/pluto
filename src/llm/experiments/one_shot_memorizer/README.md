@@ -9,9 +9,14 @@ from necessary or exclusively fact-owning neurons.
 The complementary [FINAL_MLP_INTERACTIONS.md](FINAL_MLP_INTERACTIONS.md)
 checks individual deletions, learned biases, and whether selected feature
 amplitudes transfer an answer between contexts.
-The next construction test is specified prospectively in
+The [attention routing study](ATTENTION_ROUTING.md) separates Q/K routing,
+V content, and their interaction, and reduces the first capital-prompt
+attention block to a gated country-vector transport.
+The fixed-feature construction test is specified prospectively in
 [FROZEN_MLP_BASIS.md](FROZEN_MLP_BASIS.md): fixed initialization directions,
 input-only moment standardization, and direct output-map reconstruction.
+Its completed results preserve 1,024 exact sentences with learned features,
+but only 13 with raw initial features and 6 after standardization.
 
 ## Time-bounded sentence and capacity experiments
 

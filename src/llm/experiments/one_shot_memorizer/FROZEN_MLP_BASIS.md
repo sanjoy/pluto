@@ -79,3 +79,79 @@ general interpolation or approximation guarantee. More broadly,
 study linear learning on randomized feature maps designed for kernel
 approximation; our particular standardized GELU map is not their Fourier
 feature construction.
+
+## Result: fixed initialization directions do not preserve memorization
+
+The prespecified run completed on 2026-09-23. All original/clone controls
+passed, including exact regenerated BF16 GELU values and full MLP updates.
+The source master weights remained byte-identical. Every reported exact
+sentence was independently verified by actual greedy suffix-plus-EOS
+generation, with sentence identities agreeing with teacher-forced exactness.
+
+| All eight MLPs together | Correct target decisions / 10,002 | Exact suffixes / 1,024 | Exact fit / 819 | Exact held / 205 |
+| --- | ---: | ---: | ---: | ---: |
+| Original or exact clones | 10,002 | 1,024 | 819 | 205 |
+| Learned expansion; directly refitted W2/b2 | 10,002 | 1,024 | 819 | 205 |
+| Raw initial expansion; directly refitted W2/b2 | 5,533 | 13 | 10 | 3 |
+| Standardized initial directions; directly refitted W2/b2 | 4,679 | 6 | 4 | 2 |
+
+The negative result is not caused solely by applying several imperfect
+replacements together. Single-block replacements also fail, although their
+effects differ substantially:
+
+| Replaced block | Raw initial: correct targets / exact sentences | Standardized initial: correct targets / exact sentences |
+| --- | ---: | ---: |
+| 0 | 7,906 / 202 | 7,937 / 204 |
+| 1 | 9,513 / 664 | 8,930 / 395 |
+| 2 | 9,989 / 1,013 | 9,846 / 885 |
+| 3 | 9,993 / 1,015 | 9,959 / 986 |
+| 4 | 9,907 / 937 | 9,616 / 726 |
+| 5 | 9,931 / 957 | 9,663 / 758 |
+| 6 | 9,940 / 963 | 9,833 / 873 |
+| 7 | 9,535 / 651 | 9,291 / 524 |
+
+Every learned-expansion/refitted-output **single-block** condition remains
+perfect as well. Thus the fitting, installation, and fresh-input evaluation
+path can preserve the original computation, but these fixed alternative
+features do not.
+
+On the 2,813 held-out activation rows, the relative update error
+`||U_replacement-U_original|| / ||U_original||` is 0.109%–0.144% for learned
+features, 9.26%–26.10% for raw initial features, and 16.98%–28.84% for the
+standardized features. These errors use the actual BF16 production outputs,
+not just the FP64 regression predictions. The fitting group contains 11,285
+activation rows. The reported QR ranks describe the **ridge-augmented**
+design, not the unregularized feature matrix's intrinsic rank; diagonal
+spread is a conditioning diagnostic, not a condition number.
+
+Unit-variance standardization did not solve the failure and generally made
+this particular replacement worse. That does not rule out other scales,
+thresholds, feature choices, widths, or fitting objectives. Nor do these
+measurements establish exclusive fact ownership in block 0: changing an
+early branch perturbs all subsequent representations.
+
+The constructive boundary is now clearer: the output maps can be rebuilt by
+a linear solve **given the learned features**; reproducing those nonlinear
+features with this fixed-width initialization basis is unsuccessful. This is
+not an end-to-end construction from text, and the learned direction geometry
+remains an unresolved part of the encoding.
+
+## Reproduction and artifacts
+
+```sh
+bazel build -c opt //src/llm/experiments/one_shot_memorizer:checkpoint_frozen_mlp_probe
+facts=/home/ubuntu/checkpoints/memorize_general_facts/compact_batch_32_no_clip_0
+bazel-bin/src/llm/experiments/one_shot_memorizer/checkpoint_frozen_mlp_probe \
+  --checkpoint="$facts/layers_8/step_16128" \
+  --initial_checkpoint="$facts/layers_8/step_0" \
+  --tokenizer="$facts/inputs/tokenizer" \
+  --output_dir=/tmp/frozen_mlp_basis_new --batch_size=32
+```
+
+Local evidence is `/tmp/frozen_mlp_basis_0/`, with execution output in
+`/tmp/frozen_mlp_basis_0.log`. The 30 complete condition evaluations took
+about 313 seconds in total, excluding capture and fitting. Files include
+aggregate and per-sentence scores, fits, actual update errors, replacement
+coefficients, post-GELU feature statistics, and the input-only standardization
+moments. `manifest.tsv` ends with `completed=true` only after source-weight
+and original-post controls pass. Generated numerical artifacts stay local.

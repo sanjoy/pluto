@@ -3,6 +3,55 @@ load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 
 cc_library(
+    name = "attention_factorial",
+    srcs = ["attention_factorial.cc"],
+    hdrs = ["attention_factorial.h"],
+    deps = [
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "attention_factorial_test",
+    size = "small",
+    srcs = ["attention_factorial_test.cc"],
+    deps = [
+        ":attention_factorial",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "checkpoint_attention_factorial_probe",
+    srcs = ["checkpoint_attention_factorial_probe.cc"],
+    deps = [
+        ":attention_factorial",
+        ":feature_capture",
+        ":sentence_ablation",
+        ":token_trace",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset",
+        "//src/dataset:compact_vocabulary",
+        "//src/dataset:gpt2_detokenizer",
+        "//src/dataset:gpt2_tokenizer",
+        "//src/llm:checkpoint",
+        "//src/llm:gpt2",
+        "//src/llm:layer",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_library(
     name = "feature_subset",
     srcs = ["feature_subset.cc"],
     hdrs = ["feature_subset.h"],
@@ -1164,6 +1213,60 @@ cc_binary(
         "//src/llm:checkpoint",
         "//src/llm:gpt2",
         "//src/llm:layer",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_library(
+    name = "frozen_mlp_basis",
+    srcs = ["frozen_mlp_basis.cc"],
+    hdrs = ["frozen_mlp_basis.h"],
+    deps = [
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "frozen_mlp_basis_test",
+    size = "small",
+    srcs = ["frozen_mlp_basis_test.cc"],
+    deps = [
+        ":frozen_mlp_basis",
+        "@abseil-cpp//absl/status",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "checkpoint_frozen_mlp_probe",
+    srcs = ["checkpoint_frozen_mlp_probe.cc"],
+    deps = [
+        ":closed_form_map",
+        ":frozen_mlp_basis",
+        ":mlp_probe",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset",
+        "//src/dataset:compact_vocabulary",
+        "//src/dataset:gpt2_tokenizer",
+        "//src/dataset:padded_line_dataset",
+        "//src/llm:checkpoint",
+        "//src/llm:combinators",
+        "//src/llm:fully_connected",
+        "//src/llm:gelu",
+        "//src/llm:gpt2",
         "//src/util:status_macros",
         "@abseil-cpp//absl/flags:flag",
         "@abseil-cpp//absl/flags:parse",
