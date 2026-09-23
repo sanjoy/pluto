@@ -3,6 +3,88 @@ load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 
 cc_library(
+    name = "closed_form_map",
+    srcs = ["closed_form_map.cc"],
+    hdrs = ["closed_form_map.h"],
+    deps = [
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "closed_form_map_test",
+    srcs = ["closed_form_map_test.cc"],
+    deps = [":closed_form_map", "@googletest//:gtest_main"],
+)
+
+cc_library(
+    name = "mlp_probe",
+    srcs = ["mlp_probe.cc"],
+    hdrs = ["mlp_probe.h"],
+    deps = [
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset:padded_line_dataset",
+        "//src/llm:batch_validation",
+        "//src/llm:extract_top1_ids",
+        "//src/llm:layer",
+        "//src/llm:layer_hooks",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_test(
+    name = "mlp_probe_test",
+    srcs = ["mlp_probe_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":mlp_probe",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset:plain_text_tokenizer",
+        "//src/llm:fully_connected",
+        "//src/llm:gpt2",
+        "//src/util:status_macros",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "checkpoint_mlp_probe",
+    srcs = ["checkpoint_mlp_probe.cc"],
+    deps = [
+        ":closed_form_map",
+        ":mlp_probe",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset",
+        "//src/dataset:compact_vocabulary",
+        "//src/dataset:gpt2_tokenizer",
+        "//src/dataset:padded_line_dataset",
+        "//src/llm:checkpoint",
+        "//src/llm:fully_connected",
+        "//src/llm:gpt2",
+        "//src/util:status_macros",
+        "//src/util:tee_stream",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_library(
     name = "associative_readout",
     srcs = ["associative_readout.cc"],
     hdrs = ["associative_readout.h"],

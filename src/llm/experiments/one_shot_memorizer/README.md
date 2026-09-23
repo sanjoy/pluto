@@ -122,8 +122,9 @@ mistaken for proof of a particular internal algorithm.
    architecture.
 2. A causal bridge between the constructed representation and the actual
    checkpoint: layerwise recoverability, substitutions, and selective edits.
-3. Whether a closed-form solve in fixed features can reproduce learned behavior,
-   or whether changes to the features are essential.
+3. How to construct the learned nonlinear features. Closed-form refits of all
+   eight MLP output projections now preserve exact corpus generation, but
+   removing those learned features with affine replacements does not (below).
 4. Why optimization finds this representation. Fixed-feature least-squares
    gradient descent and a pseudoinverse have a known connection, but it does not
    automatically describe joint BF16 GPT-2 training with AdamW/cross-entropy.
@@ -417,6 +418,159 @@ block's 100% rescue is the expected tokenwise-readout control. None of these
 counts assigns facts exclusively to a block or reconstructs the backbone's
 weights from the corpus.
 
+## Closed-form reconstruction of the MLP output maps
+
+`checkpoint_mlp_probe` captures three matrices per block: its pre-MLP LayerNorm
+output `X` (16 columns), GELU features `Z` (64 columns), and branch update `U`
+(16 columns, before residual addition). Capture includes **every real token**,
+including the supplied prompt, and excludes padding. Replacing a branch at all
+positions requires its prompt-position behavior too.
+
+Two fits distinguish reconstructing known features' output weights from
+eliminating the learned nonlinear feature map:
+
+- **Learned-feature refit:** solve `Z W + b ~= U`, retaining LayerNorm, the
+  learned 16-to-64 expansion, and GELU.
+- **Affine replacement:** solve `X A + c ~= U`, replacing the entire MLP after
+  its existing LayerNorm with a single 16-to-16 affine map.
+
+These are direct CPU solves, not gradient descent. Column-pivoted Householder
+QR avoids forming the squared-condition-number normal equations. Optional
+ridge minimizes `||X W + b - U||_F^2 / n + ridge * ||W||_F^2`, leaving the bias
+unpenalized. A numerical rank failure is reported, not silently repaired.
+
+The default split fits on 819 sentences and holds out every fifth sentence
+(205) from fitting. This gives 11,285 fitting and 2,813 held-out activation rows.
+The **backbone was trained on all 1,024 sentences**: this split tests whether
+the fitted map transfers to other recorded contexts, not factual generalization
+to unseen training examples. The targets are teacher hidden updates, not token
+labels or independently constructed representations.
+
+Each fitted projection is installed through a hook in a fresh model forward.
+It consumes that forward's actual features, including changes caused by earlier
+replacements. Neither fitting-row activations nor gold output vectors are
+replayed. Single-block and all-eight simultaneous interventions retain the
+residual connections and other learned layers. Original branches still execute
+before their outputs are replaced; these runs measure behavior, not speed.
+
+```sh
+bazel build -c opt //src/llm/experiments/one_shot_memorizer:checkpoint_mlp_probe
+facts_run=/home/ubuntu/checkpoints/memorize_general_facts/compact_batch_32_no_clip_0
+bazel-bin/src/llm/experiments/one_shot_memorizer/checkpoint_mlp_probe \
+  --checkpoint="$facts_run/layers_8/step_16128" \
+  --tokenizer="$facts_run/inputs/tokenizer" \
+  --output_dir=/tmp/one_shot_mlp_probe_new
+```
+
+The output directory contains:
+
+- `mlp_replacements.tsv`: teacher-forced target and exact-sentence counts,
+  separated into fitting/held-out sentences.
+- `mlp_greedy.tsv`: independent generated-prefix verification for every joint
+  intervention. It supplies only five prompt tokens, feeds back predictions,
+  and stops each case at its first mismatch or correctly timed EOS. Therefore
+  its generated-target count shrinks for failing models. Fitting/held-out
+  sentence counts are separate, and every sentence's exactness must agree with
+  its teacher-forced result, not merely the aggregate total.
+- `mlp_fits.tsv`: fit error, effective BF16 matrix error against the original
+  output projection where applicable, and QR diagonal spread. The latter is
+  a conditioning diagnostic, **not** a spectral condition number.
+- `mlp_update_errors.tsv`: fitting/held-out update errors, normalized by both raw
+  and mean-centered target energy. The known original map evaluated in double
+  precision establishes the discrepancy due to GPU finite-precision arithmetic.
+
+The clone control uses the original effective BF16 matrix and **FP32 bias**;
+both it and the replacement fits use the same GPU projection/hook path. Fitted
+weights are rounded to BF16 operands just like the original, and outputs remain
+BF16. A fit can closely approximate the original real-valued map without
+reproducing every rounded activation bit.
+
+### Measured replacements (2026-09-23)
+
+| All eight MLPs replaced together | Correct teacher-forced targets / 10,002 | Exact generated suffixes plus EOS / 1,024 |
+| --- | ---: | ---: |
+| Unmodified checkpoint | 10,002 | 1,024 |
+| Original output matrices/biases, cloned through the replacement path | 10,002 | 1,024 |
+| Learned GELU features, closed-form output fit, ridge 0 | 10,002 | 1,024 |
+| Learned GELU features, closed-form output fit, ridge 0.000001 | 10,002 | 1,024 |
+| Learned GELU features, closed-form output fit, ridge 0.001 | 10,000 | 1,022 |
+| Affine after LayerNorm, ridge 0.000001 | 2,616 | 0 |
+| Zero branch update | 144 | 0 |
+| Mean branch update from fitting rows | 137 | 0 |
+
+The zero-ridge and small-ridge learned-feature fits preserve all 205 held-out
+sentences as well as the 819 fitting sentences. Stronger ridge breaks two
+fitting sentences; its held-out sentences remain exact. Every **individual**
+learned-feature projection replacement is exact for all three tested ridges.
+Joint changes can compound even when every isolated intervention is safe.
+
+On held-out activation rows, the unregularized feature refits have **0.160% to
+0.167% relative update error**, almost the same as evaluating the known original
+map in double precision against recorded BF16 outputs (0.160% to 0.167%).
+Normalizing by mean-centered rather than raw target energy gives 0.169% to
+0.181%. The affine replacements instead have **23.4% to 41.0%** raw relative
+error, or 24.2% to 44.9% against centered energy. Their failure is not an artifact
+of a large constant mean making the fit error look small.
+
+Matching behavior is different from identifying original matrix coordinates.
+For example, block 3's unregularized refit differs from its original effective
+matrix by **109% relative Frobenius norm**, despite preserving exact completion
+when installed with all seven other refits. Its pivoted-QR diagonal spread is
+about 22,983, versus about 20 for block 7. This warns that coefficient recovery
+is sensitive to weak feature directions and quantized targets; diagonal spread
+alone neither locates that error nor proves an exact nullspace. Small ridge
+reduces block 3's matrix discrepancy to 2.61%, still preserving all completions.
+Neither fit is asserted to reproduce arbitrary-prompt behavior.
+
+For comparison, replacing only one MLP with an affine map after LayerNorm
+(ridge 0.000001) gives:
+
+| Block | Correct targets / 10,002 | All-correct teacher-forced sentences / 1,024 |
+| --- | ---: | ---: |
+| 0 | 5,533 | 20 |
+| 1 | 7,329 | 98 |
+| 2 | 9,483 | 632 |
+| 3 | 9,870 | 905 |
+| 4 | 9,284 | 554 |
+| 5 | 9,367 | 578 |
+| 6 | 9,151 | 476 |
+| 7 | 8,001 | 153 |
+
+This rejects this particular affine compression, not every possible affine
+replacement chosen by some other objective. It supports the importance of the
+learned nonlinear features for retaining this checkpoint's behavior. It does
+not assign an exclusive set of facts to a block.
+
+### A precise associative-memory interpretation, with a limitation
+
+Center the observed feature and update matrices to obtain `Zc` and `Uc`. In
+exact arithmetic, if `Zc` has full column rank and `Uc = Zc W`, then
+
+```
+W = (Zc^T Zc)^-1 Zc^T Uc
+u(z) = mean(U) + sum_i k(z, z_i) * (u_i - mean(U))
+k(z, z_i) = (z - mean(Z)) (Zc^T Zc)^-1 (z_i - mean(Z))^T.
+```
+
+Thus an MLP's output projection can be written as a covariance-corrected sum
+of stored example updates: similar **learned feature vectors** retrieve related
+updates. The coefficients can be negative; they are not attention probabilities
+or exclusive fact-ownership scores. With rank deficiency the identity is only
+identified on the observed span; ridge changes the operator. Quantized outputs
+make the real experiment approximate rather than an exact coefficient identity.
+This is the same fixed-feature bridge formalized in
+[MLPs are Hebbians](https://arxiv.org/html/2607.10034v1#S3.SS1).
+
+The crucial limitation is that `Z` and `U` already came from the trained model.
+This is **conditional system identification**, not a dataset-only construction
+of the GPT-2 backbone. In particular it does not explain the learned expansion
+weights, attention, or token/position embeddings. The earlier automaton/ReLU
+construction satisfies dataset-only exact recall, while this experiment explains
+a component of the actual checkpoint; those remain distinct results. It replaces
+8,320 of the model's 114,256 coefficients, with no parameter-count reduction.
+The algebraic identity applies regardless of how the original map was trained;
+it is not by itself an account of why AdamW discovers useful features.
+
 ## Tests
 
 ```sh
@@ -433,5 +587,9 @@ The new probes additionally test BF16 head reproduction, scope selection,
 masked/padded rows, malformed shapes, immutable query-only patching, both
 intervention directions, final partial batches, scoped/ambiguous sites,
 nonfinite results, covariance regularization, unseen target classes, and both
-row/group holdouts against literal refits. All 77 repository test targets
-passed with fresh execution after these additions.
+row/group holdouts against literal refits. MLP tests additionally check prompt
+rows, padded/partial batches, original-projection cloning, FP32 bias handling,
+fresh upstream features in simultaneous replacements, and greedy input histories
+with no gold-suffix leakage. QR tests cover pivoting, ridge scaling, bias,
+rank deficiency, ill-conditioning, and recovery of known 64-to-16 maps.
+All 79 repository test targets passed with fresh execution after these additions.
