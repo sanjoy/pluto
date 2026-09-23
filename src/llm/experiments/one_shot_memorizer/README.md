@@ -1,5 +1,9 @@
 # One-shot memorization and the learned encoding
 
+For the requested five-token-to-next-token execution study, start with
+[EXECUTION_TRACE.md](EXECUTION_TRACE.md): measured layer readouts, controlled
+interventions, common themes, and what they do **not** establish.
+
 ## Time-bounded sentence and capacity experiments
 
 The current research checkpoint is due **2026-09-23 15:52 UTC**. The approved
