@@ -52,6 +52,7 @@ cc_binary(
     name = "single_fact_first_update_probe",
     srcs = ["single_fact_first_update_probe.cc"],
     deps = [
+        ":first_update_match",
         "//src/host:buffer",
         "//src/llm:attention_reference",
         "//src/llm:combinators_reference",
@@ -70,6 +71,28 @@ cc_binary(
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings",
         "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "first_update_match",
+    srcs = ["first_update_match.cc"],
+    hdrs = ["first_update_match.h"],
+    deps = [
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "first_update_match_test",
+    size = "small",
+    srcs = ["first_update_match_test.cc"],
+    deps = [
+        ":first_update_match",
+        "@abseil-cpp//absl/status",
+        "@googletest//:gtest_main",
     ],
 )
 

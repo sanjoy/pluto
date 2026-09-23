@@ -1273,13 +1273,19 @@ bazel-bin/src/llm/experiments/one_shot_memorizer/checkpoint_embedding_sign_reado
 
 ### Why so many embedding rows move: the first Adam update
 
-A subsequent [weight-only suffix reconstruction](SINGLE_FACT_DECODING.md)
+A subsequent [checkpoint-history reconstruction](SINGLE_FACT_DECODING.md)
 orders the recovered token sets and exactly reconstructs all four single-fact
 suffixes plus EOS. It reads neither their text nor their prompts, but assumes
 each selected token occurs once and uses the known five-token prompt length.
 The simpler greedy-successor attempt fails on three of the four cases.
+An additional residual-update readout recovers the prompt-token sets; matching
+120 candidate first updates then uniquely recovers the correct prompt order
+for all four, completing the text reconstruction. This requires initialization,
+the saved first update, known optimizer/loss settings, and the 512-step
+single-fact checkpoint. It is not recovery of the 1,024-fact model or proof
+that arbitrary final checkpoints can be inverted.
 
-`single_fact_first_update_probe` is a CPU-only explanatory replay of a
+By default, `single_fact_first_update_probe` is a CPU-only explanatory replay of a
 **known** training fact, not a decoder. It loads the initial weights, runs
 the existing scalar reference forward/backward with the original ten Durian
 suffix/EOS targets, and predicts the first embedding update. With fresh
@@ -1597,8 +1603,9 @@ clone equivalence, and unchanged original parameters. Decision tests additionall
 check exact real-valued LayerNorm/head algebra, nonzero bias changing winners,
 contradictory labels, unseen rivals, negative common margins, coefficient/gauge
 bounds, deterministic cutting planes, and explicit budget outcomes.
-All **92 repository test targets passed with fresh execution**, including
-the five-token, sign-readout, margin-accounting, and exact path-solver tests.
+All **93 repository test targets passed with fresh execution**, including
+the five-token, sign-readout, margin-accounting, exact path-solver, and
+first-update score tests.
 The real-checkpoint
 trace, independent neuron sweep, corpus-wide final-MLP bypass, paired training,
 paired weight transplants, and prospective single-fact replications also

@@ -1,4 +1,4 @@
-# Recovering a single-fact suffix from learned weights
+# Recovering single-fact text from checkpoint history
 
 This experiment uses models trained on **one** fact for 512 updates, not the
 full-corpus checkpoint. The same procedure reconstructs the entire suffix and
@@ -10,6 +10,10 @@ This is a limited, empirical decoder of the learned representation. It is not
 a reconstruction of all 1,024 facts from the full-corpus model, a new training
 algorithm, or an explanation of every internal weight. It also assumes each
 selected non-EOS token occurs **exactly once**; repeated tokens are unsupported.
+The later sections add prompt-set recovery and recover its order using the
+saved first training update, reconstructing all four complete facts under
+these additional assumptions. The final checkpoint alone is not sufficient
+for the demonstrated procedure.
 
 ## Frozen token-set readout
 
@@ -168,6 +172,116 @@ decoding. All four production reruns reproduce the candidate sets and the
 previous suffixes; see `/tmp/single_fact_prompt_bazel_{1,80,258,631}_0/`.
 Six additional CPU tests check exclusion, ordering/ties, unchanged weights,
 zero mean, malformed/nonfinite inputs, and large finite inputs.
+
+## Recovering prompt order: forward probability fails, update matching works
+
+The forward-only control enumerates all 120 permutations of the recovered five
+prompt IDs. It scores the first recovered suffix token under each five-token
+input, using full-vocabulary log probability. Neither corpus text nor a known
+prompt order enters the search. **None** of its four winners is the actual
+training order:
+
+| Model | Original order's rank | Orders predicting the correct next token |
+| --- | ---: | ---: |
+| Mammals | 11 | 120/120 |
+| France | 6 | 72/120 |
+| Prasad | 6 | 120/120 |
+| Durian | 10 | 120/120 |
+
+For example, France's highest-scoring prompt is `The of capital France is`,
+not the original `The capital of France is`. These models were trained on
+one fact, not pretrained English. A higher completion probability is therefore
+not a reliable criterion for recovering the original input order. This
+control scores the first suffix token only, not an entire autoregressive
+completion. Every run checks repeated logits bit-for-bit. Evidence:
+`/tmp/single_fact_prompt_order_{1,80,258,631}_0/`.
+
+The successful second method uses **additional checkpoint information**:
+`step_0` and the first update, alongside the 512-update endpoint used for the
+token-set and suffix readouts. For each candidate prompt order, append the
+already recovered suffix, then compute the first gradient at the known
+initialization. Predict its first Adam embedding update using zero moments,
+zero weight decay, the recorded rate `6e-6`, epsilon `1e-8`, and the original
+mean suffix/EOS loss:
+
+```text
+normalized_gradient = FP32(g / (abs(g) + epsilon))
+predicted_E = FP32(initial_E - learning_rate * normalized_gradient)
+score = ||predicted_E - observed_step_1_E||_2
+```
+
+No candidate is trained iteratively: it receives one forward/backward at
+initialization, and all candidate runs leave the initial weights unchanged.
+The primary criterion uses all 71,600 embedding coordinates. The score is
+not tuned using the true prompt. Actual text/order is checked only afterward.
+All four unique minima recover the exact original prompt order:
+
+| Model | Best L2 error | Runner-up L2 error | Update-sign mismatches at winner |
+| --- | ---: | ---: | ---: |
+| Mammals | 6.37e-9 | 3.71e-4 | 0/71,600 |
+| France | 2.80e-8 | 2.01e-4 | 0/71,600 |
+| Prasad | 6.03e-9 | 2.06e-4 | 0/71,600 |
+| Durian | 2.20e-7 | 1.36e-4 | 0/71,600 |
+
+Zero sign mismatches also uniquely identify the winner in each case, a
+secondary check rather than a replacement for the frozen L2 rule. Looking
+only at prompt-row L2 leaves three tied minima for Durian: the dense head
+updates outside those five rows supply additional ordering evidence. The
+scalar CPU/BF16 backward and simplified Adam expression do not exactly match
+all GPU arithmetic, explaining the nonzero winning errors. Each 120-candidate
+search took roughly 1.4 CPU seconds; no CUDA runtime was linked.
+
+The committed `single_fact_first_update_probe --permute_prompt` mode reproduces
+every ranking and numerical score from all 480 local candidates, not just the
+four winners. Its original diagnostic mode still reproduces its previous
+coordinate/summary files byte-for-byte. Eleven new CPU tests cover the update
+score, epsilon, signs, signed zeros, FP32 rounding, shape/finite checks and
+overflow. Search mode rejects implicit use of the diagnostic's labeled default:
+`--token_ids` must be supplied explicitly.
+
+This example reads the **unordered candidate set and recovered suffix** from
+the earlier weight-only output, removing its terminal EOS before passing IDs
+to the backward probe. It does not read the corpus or a true prompt:
+
+```sh
+bazel build -c opt //src/llm/experiments/one_shot_memorizer:single_fact_first_update_probe
+decoded=/tmp/single_fact_prompt_bazel_631_0
+recovered_tokens=$(awk -F '\t' '
+  FNR==NR { if (FNR>1 && $6==1) { ids=ids sep $2; sep="," } ; next }
+  FNR==2 { n=split($4,a,","); for (i=1;i<n;++i) ids=ids "," a[i] }
+  END { print ids }
+' "$decoded/prompt_candidates.tsv" "$decoded/paths.tsv")
+bazel-bin/src/llm/experiments/one_shot_memorizer/single_fact_first_update_probe \
+  --permute_prompt --token_ids="$recovered_tokens" \
+  --initial_checkpoint=/home/ubuntu/checkpoints/memorize_general_facts/compact_batch_32_no_clip_0/layers_8/step_0 \
+  --first_update_checkpoint=/tmp/one_shot_sentence_pilot_0/only_line_631/step_1 \
+  --output_dir=/tmp/recovered_prompt_order_new
+```
+
+Production search reports are under
+`/tmp/single_fact_prompt_update_bazel_{1,80,258,631}_0/`.
+
+Local evidence: `/tmp/single_fact_prompt_update_search_{1,80,258,631}_0/`.
+This is an inversion over a small, already recovered candidate set, not a
+general inversion of arbitrary minibatches or late checkpoints. It assumes
+known initialization, first-step optimizer settings, loss definition, and a
+saved update attributable to this one fact. Together with the earlier stages,
+it recovers all four complete training sentences, but does not decode the
+1,024-fact model or construct its learned nonlinear features without training.
+
+The reconstructed text, checked against the corpus only after decoding, is:
+
+- `Female mammals produce milk to nourish their young.`
+- `The capital of France is Paris, a city on the Seine.`
+- `Rajendra Prasad became the first president of India in 1950.`
+- `Durian fruit is known for its strong smell and creamy edible flesh.`
+
+Importantly, **recoverability does not imply that the original order is
+required for the correct next-token choice**. The early update distinguishes
+the original order even though many reordered prompts produce the same later
+argmax. Probabilities still differ, so this does not prove the network ignores
+order. It distinguishes recovering exact training history from identifying
+what is necessary for the observed next-token decision.
 
 ## Relation to existing work
 
