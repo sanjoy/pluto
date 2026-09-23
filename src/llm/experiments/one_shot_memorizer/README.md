@@ -1,5 +1,9 @@
 # One-shot memorization and the learned encoding
 
+For the concise current synthesis, see [RESEARCH_SUMMARY.md](RESEARCH_SUMMARY.md).
+It separates successful constructions, measured mechanisms, negative results,
+and the learned-encoding questions that remain unresolved.
+
 For the requested five-token-to-next-token execution study, start with
 [EXECUTION_TRACE.md](EXECUTION_TRACE.md): measured layer readouts, controlled
 interventions, common themes, and what they do **not** establish.
