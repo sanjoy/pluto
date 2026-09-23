@@ -3,6 +3,142 @@ load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 
 cc_library(
+    name = "associative_readout",
+    srcs = ["associative_readout.cc"],
+    hdrs = ["associative_readout.h"],
+    deps = [
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "associative_readout_test",
+    srcs = ["associative_readout_test.cc"],
+    deps = [":associative_readout", "@googletest//:gtest_main"],
+)
+
+cc_library(
+    name = "feature_capture",
+    srcs = ["feature_capture.cc"],
+    hdrs = ["feature_capture.h"],
+    deps = [
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset",
+        "//src/llm:extract_top1_ids",
+        "//src/llm:layer",
+        "//src/llm:layer_hooks",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status:statusor",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_test(
+    name = "feature_capture_test",
+    srcs = ["feature_capture_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":feature_capture",
+        "//src/cuda:page_locked_host_array",
+        "//src/llm:gpt2",
+        "//src/util:status_macros",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "causal_trace",
+    srcs = ["causal_trace.cc"],
+    hdrs = ["causal_trace.h"],
+    deps = [
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/llm:extract_top1_ids",
+        "//src/llm:layer",
+        "//src/llm:layer_hooks",
+        "//src/llm:layer_util",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_test(
+    name = "causal_trace_test",
+    srcs = ["causal_trace_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":causal_trace",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/llm:layer",
+        "//src/llm:layer_hooks",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "checkpoint_readout_probe",
+    srcs = ["checkpoint_readout_probe.cc"],
+    deps = [
+        ":associative_readout",
+        ":feature_capture",
+        "//src/cuda:executor",
+        "//src/dataset",
+        "//src/dataset:compact_vocabulary",
+        "//src/dataset:gpt2_tokenizer",
+        "//src/dataset:padded_line_dataset",
+        "//src/llm:checkpoint",
+        "//src/llm:gpt2",
+        "//src/util:status_macros",
+        "//src/util:tee_stream",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_binary(
+    name = "checkpoint_causal_trace",
+    srcs = ["checkpoint_causal_trace.cc"],
+    deps = [
+        ":causal_trace",
+        "//src/cuda:executor",
+        "//src/dataset",
+        "//src/dataset:compact_vocabulary",
+        "//src/dataset:gpt2_tokenizer",
+        "//src/llm:checkpoint",
+        "//src/llm:gpt2",
+        "//src/util:status_macros",
+        "//src/util:tee_stream",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+    ],
+)
+
+cc_library(
     name = "automaton",
     srcs = ["automaton.cc"],
     hdrs = ["automaton.h"],
