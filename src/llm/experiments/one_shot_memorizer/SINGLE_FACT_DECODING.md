@@ -128,6 +128,47 @@ The post-hoc alternatives are `--score_mode=fixed_position` and
 Production reruns are under
 `/tmp/single_fact_path_bazel_{631,80,1,258}_{MODE}_0/`.
 
+## Exploratory prompt-token set readout
+
+A separate weight-only diagnostic excludes the already sign-selected suffix
+rows, then sorts the remaining rows by `||delta[t] - common||^2`, descending.
+Taking five rows uses the known prompt length, not the sentence text. This
+recovers **all five prompt-token IDs in each of the four models**, with no
+extras. The ranking code and both tested rules were frozen before reading the
+saved prompt labels; all four score files were written before that comparison.
+This is nevertheless exploratory, not prospective: these models and related
+facts had already been studied.
+
+| Model | Correct prompt IDs in top five | Fifth/sixth residual-norm ratio |
+| --- | ---: | ---: |
+| Mammals | 5/5 | 19.41 |
+| France | 5/5 | 23.34 |
+| Prasad | 5/5 | 19.17 |
+| Durian | 5/5 | 20.39 |
+
+The ratios describe observed separation, not thresholds used for selection.
+A secondary ranking by the component perpendicular to `common` also recovers
+all four sets. These prompts each contain five distinct IDs, none in the
+selected suffix set. A repeated prompt token or a token shared with the suffix
+would invalidate this naive five-distinct-remaining-rows assumption.
+
+An interpretation consistent with the gradient formula is that prompt tokens
+receive input-lookup gradients in addition to the dense tied-head gradient;
+subtracting the common direction exposes their distinct updates. This result
+alone does not establish that causal decomposition over the whole trajectory.
+It also does not recover order. The largest row happens to be the fifth input
+token in all four cases, but that is a post-hoc observation, not a validated
+general ordering rule. Local scores and provenance:
+`/tmp/single_fact_prompt_rank_{1,80,258,631}_0/`.
+
+The production suffix-decoder command now also emits `prompt_candidates.tsv`:
+20 rows ranked by the primary residual-norm rule, with the top five marked as
+an unordered candidate set. It never feeds those candidates into suffix
+decoding. All four production reruns reproduce the candidate sets and the
+previous suffixes; see `/tmp/single_fact_prompt_bazel_{1,80,258,631}_0/`.
+Six additional CPU tests check exclusion, ordering/ties, unchanged weights,
+zero mean, malformed/nonfinite inputs, and large finite inputs.
+
 ## Relation to existing work
 
 FILM similarly separates word-set recovery from ordering using model scores,

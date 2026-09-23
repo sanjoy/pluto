@@ -3,6 +3,9 @@
 // compact vocabulary/tokenizer, and the task's known five-token prompt length.
 // The frozen sign rule selects a token SET. Search assumes each selected
 // non-EOS ID occurs exactly once; multiplicities and missing IDs are unknown.
+// A separate exploratory report ranks a candidate prompt SET, assuming five
+// distinct prompt IDs disjoint from that suffix set; it does not infer order
+// and never supplies candidate prompt tokens to inference or path search.
 // No corpus, prompt text, gold labels, or known token order are read.
 #include <algorithm>
 #include <cmath>
@@ -164,6 +167,10 @@ absl::Status PositionPathProbe() {
   ASSIGN_OR_RETURN(auto decoded, ComputeEmbeddingSignReadout(
                                      initial_embedding, trained_embedding,
                                      config.model_width));
+  ASSIGN_OR_RETURN(
+      auto prompt_candidates,
+      RankEmbeddingResidualCandidates(initial_embedding, trained_embedding,
+                                      config.model_width));
   const int eos = vocabulary->eos_token_id();
   const auto& selected = decoded.delta_fp32.selected_ids;
   if (!std::binary_search(selected.begin(), selected.end(), eos))
@@ -191,17 +198,32 @@ absl::Status PositionPathProbe() {
                                       error.message());
   std::ofstream manifest(directory / "manifest.tsv");
   std::ofstream choices(directory / "selected_tokens.tsv");
+  std::ofstream prompts(directory / "prompt_candidates.tsv");
   std::ofstream scores(directory / "edge_scores.tsv");
   std::ofstream paths(directory / "paths.tsv");
   std::ofstream path_edges(directory / "path_edges.tsv");
-  if (!manifest || !choices || !scores || !paths || !path_edges)
+  if (!manifest || !choices || !prompts || !scores || !paths || !path_edges)
     return absl::UnknownError("cannot create position path report");
-  for (auto* stream : {&manifest, &choices, &scores, &paths, &path_edges})
+  for (auto* stream :
+       {&manifest, &choices, &prompts, &scores, &paths, &path_edges})
     *stream << std::setprecision(17);
   manifest
       << "initial_checkpoint\t" << initial.string() << "\ncheckpoint\t"
       << checkpoint.string() << "\nexploratory\ttrue\n"
       << "selection_rule\tdelta_fp32_dot_mean_lt_0\n"
+      << "prompt_candidate_rule\trank_squared_norm_delta_minus_mean_excluding_"
+         "negative_sign_rows\n"
+      << "prompt_candidate_exploratory_posthoc\ttrue\n"
+      << "prompt_candidate_assumption\tfive_distinct_prompt_IDs_disjoint_from_"
+         "sign_selected_suffix_EOS_IDs\n"
+      << "prompt_candidate_assumption_verified\tfalse\n"
+      << "prompt_candidate_order_inferred\tfalse\n"
+      << "prompt_candidates_used_for_inference\tfalse\n"
+      << "prompt_candidate_report_limit\t20\n"
+      << "prompt_candidate_set_size\t"
+      << std::min(prompt_candidates.size(),
+                  static_cast<size_t>(kKnownTaskPromptCount))
+      << '\n'
       << "corpus_read\tfalse\ngold_labels_read\tfalse\n"
       << "known_task_prompt_count\t" << kKnownTaskPromptCount << '\n'
       << "selected_non_eos_count\t" << n << '\n'
@@ -234,6 +256,22 @@ absl::Status PositionPathProbe() {
             << decoded.delta_fp32.scores[token] << '\t' << (token == eos)
             << '\t' << text << '\n';
   }
+  // Rank is evidence strength, NOT a recovered position in the prompt. The
+  // five-token task supplies the set size, never the IDs or their ordering.
+  prompts << "residual_rank\tcompact_id\toriginal_id\tresidual_squared_norm\t"
+             "sign_score\tin_top5_candidate_set\ttoken_bytes\n";
+  for (size_t rank = 0; rank < std::min<size_t>(20, prompt_candidates.size());
+       ++rank) {
+    const auto& candidate = prompt_candidates[rank];
+    const int token = candidate.row_id;
+    ASSIGN_OR_RETURN(auto text, token_text(token));
+    prompts << rank + 1 << '\t' << token << '\t'
+            << vocabulary->original_token_ids()[token] << '\t'
+            << candidate.residual_squared_norm << '\t'
+            << decoded.delta_fp32.scores[token] << '\t'
+            << (rank < static_cast<size_t>(kKnownTaskPromptCount)) << '\t'
+            << text << '\n';
+  }
   scores
       << "suffix_index\tabsolute_query_position\tsource_compact\t"
          "destination_compact\tis_eos\tlog_probability\tquery_top1_compact\n";
@@ -242,6 +280,7 @@ absl::Status PositionPathProbe() {
                 "source_compact\tsource_bytes\tdestination_compact\t"
                 "destination_bytes\tedge_log_score\texp_edge_log_score\n";
   choices.flush();
+  prompts.flush();
   manifest.flush();
   ASSIGN_OR_RETURN(auto executor, cuda::Executor::Create());
   ASSIGN_OR_RETURN(auto model, CreateGpt2(*executor, DataType::BF16, 0, config));
@@ -319,7 +358,8 @@ absl::Status PositionPathProbe() {
     }
   }
   manifest << "query_count\t" << n * query_positions << "\ncomplete\ttrue\n";
-  for (auto* stream : {&manifest, &choices, &scores, &paths, &path_edges}) {
+  for (auto* stream :
+       {&manifest, &choices, &prompts, &scores, &paths, &path_edges}) {
     stream->close();
     if (!*stream)
       return absl::DataLossError("failed writing position path report");

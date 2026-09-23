@@ -78,6 +78,7 @@ cc_library(
     srcs = ["embedding_sign_readout.cc"],
     hdrs = ["embedding_sign_readout.h"],
     deps = [
+        "//src/util:status_macros",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/types:span",

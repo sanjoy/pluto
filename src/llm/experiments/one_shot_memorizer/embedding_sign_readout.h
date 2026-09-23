@@ -39,4 +39,27 @@ absl::StatusOr<EmbeddingSignReadout> ComputeEmbeddingSignReadout(
     absl::Span<const float> initial, absl::Span<const float> trained,
     int width);
 
+// One row not selected by the FP32-delta negative-sign rule, ranked by its
+// distance from the common update direction. This is not a token position.
+struct EmbeddingResidualCandidate {
+  int row_id;                    // Original row index in the embedding table.
+  double residual_squared_norm;  // ||delta[row_id] - mean_rows(delta)||^2.
+};
+
+// Ranks rows by decreasing centered-update squared norm, breaking ties by
+// increasing row ID. Excludes precisely rows whose delta dot mean(delta) < 0;
+// the mean still includes ALL rows. Inputs obey the finite FP32 shape contract
+// above; arithmetic uses double, with no BF16 conversion. Zero mean/update is
+// valid: equal scores retain deterministic order but provide no identification
+// evidence. Neither labels, token text, prompt length, nor an exclusion list
+// enter this helper.
+//
+// In a post-hoc single-fact experiment, the top five recovered a candidate
+// prompt SET under the assumption of five distinct prompt IDs disjoint from
+// the sign-selected suffix/EOS IDs. This does not infer prompt order, token
+// repetitions, overlap, or prove that high-ranking rows are prompt tokens.
+absl::StatusOr<std::vector<EmbeddingResidualCandidate>>
+RankEmbeddingResidualCandidates(absl::Span<const float> initial,
+                                absl::Span<const float> trained, int width);
+
 }  // namespace pluto::llm::one_shot_memorizer

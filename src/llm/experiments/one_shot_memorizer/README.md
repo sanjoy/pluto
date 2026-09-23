@@ -1525,6 +1525,26 @@ match its original baseline bit-for-bit. Local evidence:
 **next-token** study, not 1,024 full-suffix ablations, and these two channels
 were chosen after the six-prompt experiment.
 
+A CPU projection of each channel's BF16 contraction-weight row through the
+final LayerNorm scale and tied BF16 head reinforces this distinction. Define
+`a[j,t] = dot(center(W2[j,:]), gamma * E[t,:])`, without the context-dependent
+normalization scale. Paris ranks only **1,084/4,475** along channel 12;
+Athens ranks **264/4,475** along channel 34. The highest-scoring token on both
+directions is `.`. These are shared voting directions, not isolated stored
+answer vectors. What matters is a *difference* against a competing token,
+multiplied by the context's signed GELU activation and combined with every
+other contribution. In the gas case, channel 12's negative activation times
+its gas-minus-liquid direction difference is positive (+0.0417 before
+normalization), even though gas's raw direction rank is only 3,971. Actual
+ablation margins also include changed normalization, final bias, and BF16
+rounding. Local calculations: `/tmp/neuron_vocab_direction_0/`.
+
+This is compatible with the key/value view of MLPs: activation patterns select
+a mixture of output directions, rather than necessarily selecting one cell
+per fact. The literature motivates inspecting these directions but does not
+guarantee human-readable individual channels in this much narrower model.
+[Geva et al., Transformer Feed-Forward Layers Are Key-Value Memories](https://aclanthology.org/2021.emnlp-main.446/).
+
 The committed trace tool supports targeted independent channel sweeps via
 `--mlp_neuron_ablation_blocks=7 --mlp_neuron_ablation_channels=12,34`.
 Empty channels retain the default sweep over every channel. Its reports also
