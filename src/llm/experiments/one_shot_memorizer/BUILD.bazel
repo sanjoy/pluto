@@ -1,0 +1,86 @@
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+
+cc_library(
+    name = "automaton",
+    srcs = ["automaton.cc"],
+    hdrs = ["automaton.h"],
+    deps = [
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "context_analysis",
+    srcs = ["context_analysis.cc"],
+    hdrs = ["context_analysis.h"],
+    deps = [
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "model_io",
+    srcs = ["model_io.cc"],
+    hdrs = ["model_io.h"],
+    deps = [
+        ":automaton",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+    ],
+)
+
+cc_binary(
+    name = "one_shot_memorizer",
+    srcs = ["one_shot_memorizer.cc"],
+    deps = [
+        ":automaton",
+        ":context_analysis",
+        ":model_io",
+        "//src/cuda:executor",
+        "//src/dataset",
+        "//src/dataset:gpt2_tokenizer",
+        "//src/dataset:gpt2_detokenizer",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "automaton_test",
+    size = "small",
+    srcs = ["automaton_test.cc"],
+    deps = [":automaton", "@googletest//:gtest_main"],
+)
+
+cc_test(
+    name = "context_analysis_test",
+    size = "small",
+    srcs = ["context_analysis_test.cc"],
+    deps = [":context_analysis", "@googletest//:gtest_main"],
+)
+
+cc_test(
+    name = "model_io_test",
+    size = "small",
+    srcs = ["model_io_test.cc"],
+    deps = [":automaton", ":model_io", "@googletest//:gtest_main"],
+)
