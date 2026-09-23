@@ -36,11 +36,33 @@ cc_library(
     hdrs = ["model_io.h"],
     deps = [
         ":automaton",
+        ":relu_memory",
         "//src/util:status_macros",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings",
     ],
+)
+
+cc_library(
+    name = "relu_memory",
+    srcs = ["relu_memory.cc"],
+    hdrs = ["relu_memory.h"],
+    deps = [
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "relu_memory_test",
+    size = "small",
+    srcs = ["relu_memory_test.cc"],
+    deps = [":relu_memory", "@googletest//:gtest_main"],
 )
 
 cc_binary(
@@ -50,11 +72,13 @@ cc_binary(
         ":automaton",
         ":context_analysis",
         ":model_io",
+        ":relu_memory",
         "//src/cuda:executor",
         "//src/dataset",
         "//src/dataset:gpt2_tokenizer",
         "//src/dataset:gpt2_detokenizer",
         "//src/util:status_macros",
+        "@abseil-cpp//absl/container:flat_hash_set",
         "@abseil-cpp//absl/flags:flag",
         "@abseil-cpp//absl/flags:parse",
         "@abseil-cpp//absl/status",
@@ -83,4 +107,63 @@ cc_test(
     size = "small",
     srcs = ["model_io_test.cc"],
     deps = [":automaton", ":model_io", "@googletest//:gtest_main"],
+)
+
+cc_library(
+    name = "checkpoint_probe",
+    srcs = ["checkpoint_probe.cc"],
+    hdrs = ["checkpoint_probe.h"],
+    deps = [
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/llm:layer",
+        "//src/llm:extract_top1_ids",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_test(
+    name = "checkpoint_probe_test",
+    srcs = ["checkpoint_probe_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":checkpoint_probe",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/llm:embedding",
+        "//src/llm:layer",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "checkpoint_context_probe",
+    srcs = ["checkpoint_context_probe.cc"],
+    deps = [
+        ":checkpoint_probe",
+        "//src/cuda:executor",
+        "//src/dataset",
+        "//src/dataset:compact_vocabulary",
+        "//src/dataset:gpt2_tokenizer",
+        "//src/llm:checkpoint",
+        "//src/llm:gpt2",
+        "//src/util:status_macros",
+        "//src/util:tee_stream",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+    ],
 )

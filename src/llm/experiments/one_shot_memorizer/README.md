@@ -37,7 +37,7 @@ bazel-bin/src/llm/experiments/one_shot_memorizer/one_shot_memorizer \
   --prompt='The capital of France is'
 ```
 
-The runtime rejects unseen prefixes. Ambiguous corpus prefixes use empirical
+The automaton runtime rejects unseen prefixes. Ambiguous corpus prefixes use empirical
 next-token frequencies with the lowest token ID breaking ties. This is NOT a
 claim of equivalence to the trained model on arbitrary prompts or probabilities.
 
@@ -117,9 +117,9 @@ mistaken for proof of a particular internal algorithm.
 
 ## What remains to explain
 
-1. A compact, explicit neural-weight construction, not only sparse automaton
-   matrices. An exact ReLU memory is a useful control, but its architecture and
-   parameter budget must be stated honestly.
+1. A compact neural-weight construction. The exact ReLU memory below is a
+   verified control, but is not as compact as GPT-2 and uses a different
+   architecture.
 2. A causal bridge between the constructed representation and the actual
    checkpoint: layerwise recoverability, substitutions, and selective edits.
 3. Whether a closed-form solve in fixed features can reproduce learned behavior,
@@ -133,6 +133,106 @@ constructs fact-storing MLPs, but its transformer experiments still include
 learned components and do not furnish an end-to-end GPT-2 compiler.
 [MLPs are Hebbians](https://arxiv.org/abs/2607.10034),
 [associative-memory transformer constructions](https://arxiv.org/abs/2412.06538).
+
+## Explicit one-shot ReLU weights
+
+Compile mode also builds and verifies a sparse two-hidden-layer ReLU network.
+Its query `q` is the nine most recent token IDs, padded on the left with -1 for
+short prefixes. For every distinct supervised query `k_i`, construct:
+
+```
+a_ij = ReLU(q_j - k_ij)
+b_ij = ReLU(k_ij - q_j)
+h_i  = ReLU(1 - sum_j(a_ij + b_ij))
+z    = sum_i h_i * code(next_token_i)
+```
+
+Here `code(t)` is a fixed 16-dimensional +/-1 binary code for token ID `t`.
+The first-layer sparse weights are +1/-1; its biases are the actual key token
+IDs with opposite signs. The second layer has -1 weights and +1 biases. Output
+weight columns contain the actual target codes. All stored values are FP32.
+
+Distinct integer keys are separated by L1 distance at least one. Therefore
+exactly the matching unit has activation one and every other unit is zero.
+The resulting output is precisely its target code. Its dot product with the
+matching vocabulary code is 16; every other code scores at most 14. This is a
+finite-precision-safe, explicit weight construction, not an optimization or a
+lookup call disguised inside the neural forward. Inference evaluates every
+unit's ReLU arithmetic. The exact-code decoder extracts bits as an optimization
+of the unique dot-product argmax; tests compare it against exhaustive decoding.
+
+The model rejects queries with no active unit. Unlike the automaton, it can
+accept new full prefixes whose final nine tokens match a compiled context.
+It does not claim calibrated probabilities or equivalence off the corpus.
+
+The real corpus run verified 1,024/1,024 autoregressive suffix-plus-EOS
+completions after serializing and reloading these weights. Construction took
+0.0027 seconds, excluding tokenization, context analysis, and verification.
+There are 10,001 second-layer units and 340,034 stored corpus-dependent floats
+(1,360,182 artifact bytes including metadata). This is about 3x the original
+model's **trainable** scalar count. It additionally has 360,036 fixed sparse
+weights, 10,001 fixed biases, and a generated 804,112-entry decoder codebook;
+these are not stored and do not encode corpus facts. This is not a
+parameter-efficiency result or a same-architecture GPT-2 checkpoint.
+
+```sh
+bazel-bin/src/llm/experiments/one_shot_memorizer/one_shot_memorizer \
+  --mode=infer --backend=relu --tokenizer="$tokenizer" \
+  --model_file=/tmp/one_shot_memorizer_new/relu.weights \
+  --prompt='The capital of France is'
+```
+
+An elementary optimization connection holds **for this control**, not yet for
+GPT-2. Freeze these indicator features and fit the output vectors with squared
+error. With one equally weighted example per distinct key, the feature matrix
+is the identity. The direct solution is exactly the target-code matrix `C`.
+For objective `0.5 * ||W-C||^2`, full-batch gradient descent from zero follows
+`W_s = (1-(1-eta)^s) C` for `0 < eta < 2`, converging to the same constructed
+weights. Learning the features jointly, using cross-entropy, and using AdamW
+change the problem; this formula must not be presented as their explanation.
+
+## Does the actual checkpoint use only nine tokens?
+
+`checkpoint_context_probe` holds each prediction's absolute position fixed and
+replaces earlier tokens, independently for every scored target. Two corruptions
+are tested: EOS filling, and tokens from the next corpus sentence, cycling if
+needed. The unmodified control must get every target right. All transfers use
+pinned host buffers, and all predictions use the existing cuTile top-1 kernel.
+
+```sh
+bazel build -c opt //src/llm/experiments/one_shot_memorizer:checkpoint_context_probe
+facts_run=/home/ubuntu/checkpoints/memorize_general_facts/compact_batch_32_no_clip_0
+bazel-bin/src/llm/experiments/one_shot_memorizer/checkpoint_context_probe \
+  --checkpoint="$facts_run/layers_8/step_16128" \
+  --tokenizer="$facts_run/inputs/tokenizer" \
+  --output_dir=/tmp/one_shot_context_probe_new
+```
+
+Measured errors on 2026-09-23, out of 10,002 independent next-token probes:
+
+| Retained suffix | Prefixes eligible for replacement | EOS-fill errors | Other-sentence errors |
+| --- | ---: | ---: | ---: |
+| Entire prefix (control) | 0 | 0 | 0 |
+| 1 token | 10,002 | 8,902 | 7,840 |
+| 3 tokens | 10,002 | 8,512 | 7,547 |
+| 5 tokens | 8,978 | 6,894 | 6,116 |
+| 9 tokens | 4,903 | 2,638 | 2,381 |
+| 12 tokens | 2,177 | 744 | 693 |
+| 16 tokens | 345 | 58 | 59 |
+| 24 tokens | 3 | 0 | 0 |
+
+The single entire-prefix control is shared by both replacement comparisons.
+Eligible positions are overwritten; donor tokens can coincide with originals.
+There were no nonfinite logit rows. These are not autoregressive completion
+failure counts: each token uses its own separately modified prefix.
+
+**What this establishes:** the checkpoint is not invariant to history preceding
+the sufficient nine-token suffix, whereas the constructed suffix model is.
+**What it does not establish:** a nine-token model could not fit the corpus
+(it does), which layer stores a fact, or that the extra history is indispensable
+on natural inputs. Both replacement schemes create unnatural histories. The
+next mechanistic step is layerwise intervention to explain this discrepancy,
+not a claim that the construction already explains the learned weights.
 
 ## Tests
 

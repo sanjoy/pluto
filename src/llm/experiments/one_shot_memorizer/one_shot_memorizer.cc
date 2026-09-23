@@ -4,10 +4,10 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <set>
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
 #include "absl/strings/str_cat.h"
@@ -19,9 +19,12 @@
 #include "src/llm/experiments/one_shot_memorizer/automaton.h"
 #include "src/llm/experiments/one_shot_memorizer/context_analysis.h"
 #include "src/llm/experiments/one_shot_memorizer/model_io.h"
+#include "src/llm/experiments/one_shot_memorizer/relu_memory.h"
 #include "src/util/status_macros.h"
 
 ABSL_FLAG(std::string, mode, "", "compile or infer");
+ABSL_FLAG(std::string, backend, "automaton",
+          "Inference backend: automaton or relu");
 ABSL_FLAG(std::string, tokenizer, "", "Original GPT-2 tokenizer directory");
 ABSL_FLAG(std::string, corpus, "testdata/general_facts_dataset.txt",
           "One fact per line; compile mode only");
@@ -88,7 +91,7 @@ absl::Status Compile(cuda::Executor& executor,
   // Verify the artifact representation, not only the builder's live object.
   ASSIGN_OR_RETURN(auto restored, DeserializeModel(bytes));
   size_t exact = 0, target_count = 0, input_tokens = 0;
-  std::set<int> active_tokens{tokenizer.eos_token_id()};
+  absl::flat_hash_set<int> active_tokens{tokenizer.eos_token_id()};
   for (const auto& sentence : sentences) {
     input_tokens += sentence.size();
     active_tokens.insert(sentence.begin(), sentence.end());
@@ -104,6 +107,30 @@ absl::Status Compile(cuda::Executor& executor,
       auto context,
       AnalyzeContexts(sentences, {.prompt_tokens = prompt_tokens,
                                   .eos_token = tokenizer.eos_token_id()}));
+  if (context.shortest_exact_window <= 0)
+    return absl::FailedPreconditionError(
+        "need a positive conflict-free context window for ReLU construction");
+  const auto relu_start = Clock::now();
+  ASSIGN_OR_RETURN(auto relu,
+                   BuildReluMemory(sentences, tokenizer.vocab_size(),
+                                   tokenizer.eos_token_id(), prompt_tokens,
+                                   context.shortest_exact_window));
+  const double relu_seconds =
+      std::chrono::duration<double>(Clock::now() - relu_start).count();
+  ASSIGN_OR_RETURN(auto relu_bytes, SerializeReluMemory(relu));
+  ASSIGN_OR_RETURN(auto restored_relu, DeserializeReluMemory(relu_bytes));
+  ASSIGN_OR_RETURN(auto relu_storage, GetReluMemoryStorageCounts(relu));
+  size_t relu_exact = 0;
+  std::cout << "Verifying constructed ReLU network..." << std::endl;
+  for (const auto& sentence : sentences) {
+    const auto prefix = absl::MakeConstSpan(sentence).first(prompt_tokens);
+    std::vector<int> expected(sentence.begin() + prompt_tokens, sentence.end());
+    expected.push_back(tokenizer.eos_token_id());
+    ASSIGN_OR_RETURN(auto actual,
+                     ReluMemoryGreedyContinuation(restored_relu, prefix,
+                                                  expected.size() + 1));
+    relu_exact += actual == expected;
+  }
   size_t edges = 0;
   for (const auto& state : model.states)
     edges += state.transitions.size();
@@ -118,6 +145,14 @@ absl::Status Compile(cuda::Executor& executor,
       "\ntransition_nonzeros\t", edges, "\nserialized_bytes\t", bytes.size(),
       "\nconstruction_seconds\t", compile_seconds,
       "\nshortest_exact_suffix_window\t", context.shortest_exact_window, "\n");
+  absl::StrAppend(
+      &summary, "relu_exact_autoregressive_completions\t", relu_exact,
+      "\nrelu_units\t", relu.units.size(), "\nrelu_data_dependent_floats\t",
+      relu_storage.data_dependent_float_count, "\nrelu_fixed_sparse_weights\t",
+      relu_storage.fixed_sparse_weight_count, "\nrelu_fixed_biases\t",
+      relu_storage.fixed_bias_count, "\nrelu_fixed_decoder_weights\t",
+      relu_storage.fixed_decoder_weight_count, "\nrelu_serialized_bytes\t",
+      relu_bytes.size(), "\nrelu_construction_seconds\t", relu_seconds, "\n");
   std::string windows =
       "window\tcontexts\tconflicting_contexts\tirreducible_errors\ttargets\n";
   for (const auto& window : context.windows)
@@ -137,11 +172,12 @@ absl::Status Compile(cuda::Executor& executor,
         "output_dir must be a fresh directory with an existing parent: ",
         error.message()));
   RETURN_IF_ERROR(Write(directory / "automaton.weights", bytes));
+  RETURN_IF_ERROR(Write(directory / "relu.weights", relu_bytes));
   RETURN_IF_ERROR(Write(directory / "summary.tsv", summary));
   RETURN_IF_ERROR(Write(directory / "context_windows.tsv", windows));
   RETURN_IF_ERROR(Write(directory / "target_contexts.tsv", targets));
   std::cout << summary << "Artifacts: " << directory << '\n';
-  if (exact != sentences.size())
+  if (exact != sentences.size() || relu_exact != sentences.size())
     return absl::FailedPreconditionError(
         "not all corpus completions are deterministic from the supplied "
         "prompt");
@@ -159,14 +195,28 @@ absl::Status Infer(cuda::Executor& executor,
         "infer needs model_file/prompt and nonnegative max_new_tokens, no "
         "output_dir");
   ASSIGN_OR_RETURN(auto file, LoadTextCorpus(absl::GetFlag(FLAGS_model_file)));
-  ASSIGN_OR_RETURN(auto model, DeserializeModel(file.text()));
-  if (model.vocabulary_size != tokenizer.vocab_size() ||
-      model.eos_token_id != tokenizer.eos_token_id())
-    return absl::InvalidArgumentError("tokenizer vocabulary/EOS mismatch");
   ASSIGN_OR_RETURN(auto prefix, tokenizer.Encode(executor, prompt));
-  ASSIGN_OR_RETURN(auto suffix,
-                   GreedyContinuation(model, prefix.span(), max_new));
-  if (!suffix.empty() && suffix.back() == model.eos_token_id)
+  std::vector<int> suffix;
+  if (absl::GetFlag(FLAGS_backend) == "automaton") {
+    ASSIGN_OR_RETURN(auto model, DeserializeModel(file.text()));
+    if (model.vocabulary_size != tokenizer.vocab_size() ||
+        model.eos_token_id != tokenizer.eos_token_id())
+      return absl::InvalidArgumentError("tokenizer vocabulary/EOS mismatch");
+    if (max_new != 0) {
+      ASSIGN_OR_RETURN(suffix,
+                       GreedyContinuation(model, prefix.span(), max_new));
+    }
+  } else {
+    ASSIGN_OR_RETURN(auto model, DeserializeReluMemory(file.text()));
+    if (model.vocabulary_size != tokenizer.vocab_size() ||
+        model.eos_token_id != tokenizer.eos_token_id())
+      return absl::InvalidArgumentError("tokenizer vocabulary/EOS mismatch");
+    if (max_new != 0) {
+      ASSIGN_OR_RETURN(
+          suffix, ReluMemoryGreedyContinuation(model, prefix.span(), max_new));
+    }
+  }
+  if (!suffix.empty() && suffix.back() == tokenizer.eos_token_id())
     suffix.pop_back();
   ASSIGN_OR_RETURN(auto decoder, tokenizer::Gpt2Detokenizer::Load(
                                      absl::GetFlag(FLAGS_tokenizer)));
@@ -179,6 +229,9 @@ absl::Status Run() {
   const auto mode = absl::GetFlag(FLAGS_mode);
   if (mode != "compile" && mode != "infer")
     return absl::InvalidArgumentError("--mode must be compile or infer");
+  if (absl::GetFlag(FLAGS_backend) != "automaton" &&
+      absl::GetFlag(FLAGS_backend) != "relu")
+    return absl::InvalidArgumentError("--backend must be automaton or relu");
   if (absl::GetFlag(FLAGS_tokenizer).empty())
     return absl::InvalidArgumentError("--tokenizer is required");
   ASSIGN_OR_RETURN(auto tokenizer, tokenizer::Gpt2Tokenizer::Load(

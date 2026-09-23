@@ -53,5 +53,24 @@ TEST(ModelIoTest, RejectsSemanticallyInvalidSerializedWeights) {
   (*bytes)[61] = '\x02';
   EXPECT_FALSE(DeserializeModel(*bytes).ok());
 }
+
+TEST(ModelIoTest, ReluWeightsRoundTripAndRejectMalformedArtifacts) {
+  auto model = BuildReluMemory({{1, 2, 3}, {4, 2, 3}}, 8, 7, 1, 2);
+  ASSERT_TRUE(model.ok()) << model.status();
+  auto bytes = SerializeReluMemory(*model);
+  ASSERT_TRUE(bytes.ok()) << bytes.status();
+  auto restored = DeserializeReluMemory(*bytes);
+  ASSERT_TRUE(restored.ok()) << restored.status();
+  EXPECT_EQ(*SerializeReluMemory(*restored), *bytes);
+  auto suffix =
+      ReluMemoryGreedyContinuation(*restored, std::vector<int>{4}, 10);
+  ASSERT_TRUE(suffix.ok()) << suffix.status();
+  EXPECT_EQ(*suffix, (std::vector<int>{2, 3, 7}));
+  for (size_t n = 0; n < bytes->size(); ++n)
+    EXPECT_FALSE(DeserializeReluMemory(bytes->substr(0, n)).ok()) << n;
+  EXPECT_FALSE(DeserializeReluMemory(*bytes + "x").ok());
+  bytes->replace(30, 8, std::string(8, '\xff'));  // Context window.
+  EXPECT_FALSE(DeserializeReluMemory(*bytes).ok());
+}
 }  // namespace
 }  // namespace pluto::llm::one_shot_memorizer
