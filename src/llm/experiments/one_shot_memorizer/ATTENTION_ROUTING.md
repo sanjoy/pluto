@@ -377,3 +377,100 @@ successful donor completion need not identify where a fact is stored, and a
 failed hybrid is not evidence that either component lacks donor information.
 Do not tune positions, channels or donor pairs based on the outcomes. Budget:
 one hour; the GPU run may overlap the independent block-0 experiment.
+
+### Late compatibility results
+
+The fixed protocol completed without changing the selected pairs, positions,
+or channels. Every condition below already has the donor's query residual
+after block 6; the columns describe the additional country-row repair in
+block 7. `Recipient ← donor` identifies the original prompt and the source
+of the copied activations. Quoted winners retain the token's leading space.
+
+| Recipient ← donor | Neither K nor V | K only | V only | Both K and V |
+| --- | --- | --- | --- | --- |
+| France ← Greece | `" full"` | `" Finland"` | `" Great"` | `" Athens"` |
+| France ← Peru | `" same"` | `" Spain"` | `" same"` | `" Lima"` |
+| Greece ← France | `" time"` | `" Paris"` | `" Paris"` | `" Paris"` |
+| Greece ← Peru | `" same"` | `" joined"` | `" Lima"` | `" Lima"` |
+| Peru ← France | `" body"` | `" Paris"` | `" bones"` | `" Paris"` |
+| Peru ← Greece | `" preserving"` | `" preserving"` | `" Athens"` | `" Athens"` |
+
+The donor answer wins in **0/6, 2/6, 3/6, and 6/6** conditions respectively;
+every other winner is a third answer, not the recipient's original answer.
+Thus neither K-only nor V-only repair is uniformly sufficient in these tested
+hybrids. Both nevertheless succeed individually in some pairs: this is not
+a claim that routing or values can never suffice on their own.
+
+Two pairs make the interaction especially clear:
+
+* **France ← Greece:** the probability of `" Athens"` is 0.7800% with the
+  query patch alone, 0.01756% after K-only repair, 16.1736% after V-only repair,
+  and 98.3199% after both. The V-only hybrid narrowly loses to `" Great"`:
+  Athens's margin against its strongest rival is −0.019995 logits. Both
+  repairs restore the donor's +5.424347 margin. K-only repair therefore makes
+  the donor answer less likely in this particular mismatched context even
+  though it restores the donor's attention routing exactly.
+* **France ← Peru:** the probability of `" Lima"` is approximately
+  3.43 × 10⁻⁷ with neither repair, 2.39 × 10⁻¹² with K only, 1.16 × 10⁻⁵
+  with V only, and 0.977008 with both. The respective strongest-rival margins
+  are −14.7868, −25.5426, −10.9049, and +5.7332 logits. Neither separate
+  repair restores the answer, whereas the matched pair does.
+
+These are non-additive changes in the final answer distribution, not an
+additive allocation of factual content between K and V. They include the
+attention calculation, residual addition, final MLP, LayerNorm and head.
+The **both-K/V donor match is an expected structural control**, not by itself
+the scientific finding: all inputs to the final query's attention operation
+and its residual skip have then been made donor-identical. The informative
+contrast is the variable behavior of the incomplete repairs, including the
+cases where an individually exact routing repair worsens the donor answer.
+
+### Late compatibility checks, artifacts and reproduction
+
+All **148 controls** passed. They cover ordinary-versus-captured baseline
+agreement, all 12 same-source patch identities, shared anchor rows, exact
+selected residual/Q/K/V bytes, donor query routing after K repair, unchanged
+probabilities after V repair, and restoration of donor query attention,
+final-MLP normalized input and GELU activations after both repairs. In all
+six both-repair cases, **every one of the 4,475 final logits** equals the
+donor's original logits bit-for-bit. All 24 ordinary post-intervention
+forwards reproduce the recipient, and the full source-weight snapshot is
+unchanged. The six query-only conditions exactly reproduce the winners,
+target probabilities, target margins and donor probabilities in the earlier
+`/tmp/one_shot_token_trace_0/conditions.tsv` report.
+
+The complete local result is `/tmp/query_country_compatibility_0`:
+
+* `conditions.tsv` records all 66 forwards, including controls, with both
+  target probabilities and margins against each target's strongest rival.
+  `logits.f32` contains 4,475 FP32 logits per row in that same order.
+* `probabilities.tsv` contains the captured attention matrices;
+  `activation_values.tsv` contains decoded activation coordinates.
+  `captures.tsv` indexes the corresponding exact bytes in
+  `activation_bytes.bin`.
+* `controls.tsv` records the 148 checks, and `manifest.tsv` records the fixed
+  protocol, source paths, output layout and completed status.
+
+Independent raw-file readback checked all 295,350 logits for finiteness and
+recomputed every winner, probability and margin with zero discrepancy.
+It also verified 45 complete baseline/identity/post/both-repair logit rows
+against their expected original rows bit-for-bit. The optimized build and
+uncached targeted trace tests passed; the subsequent full repository suite
+passed all 106 test targets. Generated experiment artifacts remain outside
+Git.
+
+```sh
+bazel build -c opt //src/llm/experiments/one_shot_memorizer:checkpoint_query_country_probe
+facts=/home/ubuntu/checkpoints/memorize_general_facts/compact_batch_32_no_clip_0
+bazel-bin/src/llm/experiments/one_shot_memorizer/checkpoint_query_country_probe \
+  --checkpoint="$facts/layers_8/step_16128" \
+  --tokenizer="$facts/inputs/tokenizer" \
+  --output_dir=/tmp/query_country_compatibility_new
+```
+
+This is a three-fact, one-token, off-manifold intervention study. It shows a
+late query/country compatibility requirement in these examples; it does not
+show exclusive ownership of a fact, identify individual factual weights, or
+establish how arbitrary prompts behave. The fixed prompt contains only the
+first five tokens; future inputs are EOS padding. Expected answers are used
+only to score the resulting logits, never supplied to the forward pass.

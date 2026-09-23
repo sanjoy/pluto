@@ -1555,3 +1555,24 @@ cc_binary(
         "@abseil-cpp//absl/strings",
     ],
 )
+
+cc_binary(
+    name = "checkpoint_query_country_probe",
+    srcs = ["checkpoint_query_country_probe.cc"],
+    deps = [
+        ":token_trace",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset",
+        "//src/dataset:compact_vocabulary",
+        "//src/dataset:gpt2_detokenizer",
+        "//src/dataset:gpt2_tokenizer",
+        "//src/llm:checkpoint",
+        "//src/llm:gpt2",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/strings",
+        "@cuda//:cuda_runtime",
+    ],
+)
