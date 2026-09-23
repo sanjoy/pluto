@@ -134,11 +134,26 @@ shared initialization, or averaging them, memorizes **neither**; both formulas
 fail immediately after the five-token prompt. The same addition reproduces
 step one byte-for-byte when only one fact has contributed. This rejects those
 two fixed composition formulas, not every linear alignment or nonlinear
-construction. The follow-up will test an ordered decomposition of gradient
-changes versus Adam's nonlinear history dependence in only the first two
-updates, using actual production-optimizer replays.
+construction. An exact two-update production-optimizer replay already finds
+98,062 differing coordinates. In its ordered decomposition, the fixed-gradient
+Adam-history component has L2 norm 0.001849, versus 0.00007463 for the effect of
+recomputing the second gradient after the first update. All 68 controls pass;
+the component vectors close exactly and partially cancel, so their norms are
+not percentages. The second gradient changes by 0.39576% in relative L2,
+including BF16 rounding-boundary effects. This demonstrates local non-additivity
+near initialization; it does **not** establish which mechanism explains the
+failed 1,024-step combinations or the full learned encoding.
 
 ## Information capacity is not a count of facts per layer
+
+The [shared embedding-offset diagnostic](EMBEDDING_SHIFT.md) gives an
+especially direct warning about parameter distance. A common 16D shift across
+embedding rows accounts for over 98% of the failed SUM/MEAN models' squared
+error relative to joint training. Correcting that shift with an oracle joint
+reference removes the dominant error, but target accuracy worsens from 6/18
+to 5/18 and from 4/18 to 1/18; neither sentence completes. It is not a
+dataset-only repair, and a large weight-space discrepancy is not a reliable
+measure of factual content or functional damage.
 
 The [capacity audit](CAPACITY_NOTES.md) counts physical parameters and their
 actual inference precision. All 26,240 transformer-branch parameters can be

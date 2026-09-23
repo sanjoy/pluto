@@ -149,7 +149,7 @@ generated artifacts are local, not checked into Git. The CPU arithmetic tests
 cover SUM/MEAN symmetry, the one-component step-one control, FP64 cancellation,
 ties-to-even FP32 rounding, invalid inputs, overflow and subnormal underflow.
 
-## Prospective follow-up: where non-additivity starts
+## Where non-additivity starts: a fixed two-update follow-up
 
 The endpoint failure does not distinguish two mechanisms: later gradients
 change as the network changes, and Adam combines gradients through nonlinear
@@ -195,3 +195,102 @@ per-tensor summaries and coordinate-level deltas locally. The two-step models
 are not expected to memorize either sentence; this is a test of the onset of
 weight-update interaction, not completion accuracy or the final model's
 factual storage. Budget: one hour, with no long training run.
+
+### Completed result: fixed-gradient optimizer interaction is already large
+
+The production replay completed with all **68 controls passing**. It includes
+all 100 unique tensors and 114,256 FP32 parameters, preserving the tied
+embedding/head gradient accumulator. Joint and SUM differ numerically at
+**98,062 coordinates** after only the two prescribed updates.
+
+| Measured FP64 difference vector | Global L2 norm |
+| --- | ---: |
+| Total: `joint - SUM` | 0.00184442377118544 |
+| Changed-gradient trajectory: `joint - frozen` | 0.00007463492140349 |
+| Fixed-gradient optimizer history: `frozen - SUM` | 0.00184869112363450 |
+
+The identity closes **exactly at every measured coordinate**. The two
+component vectors have inner product `-1.06650971919943e-8`, so they partly
+cancel: component norms are not additive shares or percentages. The
+fixed-gradient component's norm is about 24.8 times the changed-gradient
+component's norm in this ordered, local experiment.
+
+The second fact's gradient does change after the first update:
+`||gB(W1)-gB(W0)|| = 0.02064035416055`, compared with
+`||gB(W0)|| = 5.21534172017279`, a **0.39576% relative change**. This difference
+includes both the effect of updated weights on the forward/backward trajectory
+and crossings of BF16 rounding boundaries. The resulting `joint - frozen`
+term also includes Adam's response to the changed gradient; it is not a pure
+measure of learned-feature change or a smooth Hessian effect.
+
+Conversely, `frozen - SUM` keeps the gradient arrays fixed but changes how
+their first and second moments share an optimizer history. It also includes
+production FP32 arithmetic and the final construction cast. The final SUM
+cast alone has L2 rounding error `4.53968190039302e-7`, with maximum absolute
+error `5.96046447753906e-8`, much smaller than this component's observed norm.
+This rules out that one cast as the bulk explanation, not every numerical
+effect of production arithmetic.
+
+The result shows that the tested update-composition law already fails near
+initialization, even when later gradients are frozen. It does **not** show
+that optimizer history explains the failed 1,024-step endpoints: those runs
+have much longer, diverging activation, gradient and moment trajectories.
+Nor does it establish where either fact is stored. The decomposition is
+ordered and conditional on the France-then-Greece schedule; reverse-order,
+other-fact and late-training versions have not been measured here.
+
+### Production controls and provenance
+
+Both slots use the original production forward/backward and AdamW kernels.
+The learning rates are the stored FP32 values of `6e-6` and `1.2e-5`, with
+`beta1=0.9f`, `beta2=0.99f`, `epsilon=1e-8f`, zero decay and no clipping.
+There are 10 supervised France targets and 8 Greece targets, including EOS.
+Loss normalization is unchanged; masked controls zero the logits gradient
+**after** cross-entropy backward and still execute the model backward and
+optimizer update. Stored embedding rows remain 4,475; physical logit width is
+4,480, exactly as in the matched-pair trainer.
+
+The controls verify:
+
+* every fresh model starts at the same `W0`, with zero-moment optimizer state;
+* all three captured gradient arrays reproduce bit-for-bit on a second backward;
+* capture changes no weight bytes, and injected gradients match captured bytes;
+* every production optimizer step clears all gradient accumulators;
+* direct recomputing joint training equals the injected joint replay exactly;
+* both directly masked component runs equal their injected replays exactly;
+* the first update matches the existing matched-pair `baseline/step_1`;
+* A-only after two updates matches the independent `omit_line_2/step_2`;
+* the coordinatewise decomposition has zero closure error;
+* all three source checkpoints retain their weight bytes and compact mappings.
+
+Each borrowed dataset batch is fully consumed before another `Next()` call;
+captures return owned host snapshots. All device transfers use pinned staging.
+Weight/gradient alias checks require the tied embedding/head to share an
+accumulator and prohibit distinct weights from sharing one. There is no CPU
+Adam approximation or hidden fit. Ten CPU arithmetic/decomposition tests and
+the optimized probe build passed, followed by an independent code and artifact
+review. The independent readback reproduced all norms and 114,256 zero closure
+errors. Two-step completion accuracy was deliberately not used as evidence.
+
+### Reproduce the two-update study
+
+```sh
+bazel build -c opt //src/llm/experiments/one_shot_memorizer:checkpoint_two_step_interaction_probe
+facts=/home/ubuntu/checkpoints/memorize_general_facts/compact_batch_32_no_clip_0
+pair=/tmp/fact_superposition_pair_0
+bazel-bin/src/llm/experiments/one_shot_memorizer/checkpoint_two_step_interaction_probe \
+  --initial_checkpoint="$facts/layers_8/step_0" \
+  --baseline_step1="$pair/baseline/step_1" \
+  --a_only_step2="$pair/omit_line_2/step_2" \
+  --tokenizer="$facts/inputs/tokenizer" \
+  --corpus=/tmp/fact_superposition_pair.txt \
+  --output_dir=/tmp/fact_two_step_interaction_new
+```
+
+The completed local report is `/tmp/fact_two_step_interaction_0`:
+`coordinates.tsv` records every parameter, all three gradients and decomposition
+components; `tensor_summary.tsv` contains per-tensor and global norms;
+`controls.tsv` contains the 68 checks. The manifest specifies the row order for
+`gradients.f32` (three full vectors) and `weights.f32` (seven full vectors), both
+little-endian FP32. Source checkpoints are read-only, and generated artifacts
+remain outside Git.

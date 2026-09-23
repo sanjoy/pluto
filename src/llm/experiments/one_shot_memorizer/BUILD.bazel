@@ -1519,6 +1519,7 @@ cc_binary(
     name = "checkpoint_fact_superposition_probe",
     srcs = ["checkpoint_fact_superposition_probe.cc"],
     deps = [
+        ":embedding_mean_shift",
         ":fact_superposition",
         ":mlp_probe",
         ":sentence_ablation",
@@ -1574,5 +1575,54 @@ cc_binary(
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/strings",
         "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_binary(
+    name = "checkpoint_two_step_interaction_probe",
+    srcs = ["checkpoint_two_step_interaction_probe.cc"],
+    deps = [
+        ":fact_superposition",
+        ":sentence_ablation",
+        ":sentence_ablation_training",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset",
+        "//src/dataset:compact_vocabulary",
+        "//src/dataset:gpt2_tokenizer",
+        "//src/dataset:padded_line_dataset",
+        "//src/llm:batch_validation",
+        "//src/llm:checkpoint",
+        "//src/llm:cross_entropy_loss",
+        "//src/llm:gpt2",
+        "//src/llm:optimizer",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/strings",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_library(
+    name = "embedding_mean_shift",
+    srcs = ["embedding_mean_shift.cc"],
+    hdrs = ["embedding_mean_shift.h"],
+    deps = [
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "embedding_mean_shift_test",
+    size = "small",
+    srcs = ["embedding_mean_shift_test.cc"],
+    deps = [
+        ":embedding_mean_shift",
+        "@googletest//:gtest_main",
     ],
 )

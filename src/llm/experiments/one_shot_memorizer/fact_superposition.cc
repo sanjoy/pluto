@@ -1,5 +1,6 @@
 #include "src/llm/experiments/one_shot_memorizer/fact_superposition.h"
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <vector>
@@ -32,6 +33,38 @@ absl::StatusOr<std::vector<float>> SuperposeFactParameters(
         std::abs(value) > std::numeric_limits<float>::max())
       return absl::OutOfRangeError("superposition exceeds finite FP32");
     result[i] = static_cast<float>(value);
+  }
+  return result;
+}
+
+absl::StatusOr<FactSuperpositionDecomposition> DecomposeFactSuperposition(
+    absl::Span<const float> joint, absl::Span<const float> frozen,
+    absl::Span<const float> sum) {
+  if (joint.empty() || frozen.size() != joint.size() ||
+      sum.size() != joint.size())
+    return absl::InvalidArgumentError(
+        "decomposition requires equal nonempty arrays");
+  FactSuperpositionDecomposition result;
+  result.total.resize(joint.size());
+  result.gradient_trajectory.resize(joint.size());
+  result.optimizer_history.resize(joint.size());
+  for (size_t i = 0; i < joint.size(); ++i) {
+    if (!std::isfinite(joint[i]) || !std::isfinite(frozen[i]) ||
+        !std::isfinite(sum[i]))
+      return absl::InvalidArgumentError(
+          "decomposition parameters must be finite");
+    const double actual = joint[i], fixed = frozen[i], additive = sum[i];
+    result.total[i] = actual - additive;
+    result.gradient_trajectory[i] = actual - fixed;
+    result.optimizer_history[i] = fixed - additive;
+    const double closure = result.total[i] - (result.gradient_trajectory[i] +
+                                              result.optimizer_history[i]);
+    if (!std::isfinite(result.total[i]) ||
+        !std::isfinite(result.gradient_trajectory[i]) ||
+        !std::isfinite(result.optimizer_history[i]) || !std::isfinite(closure))
+      return absl::OutOfRangeError("decomposition exceeds finite FP64");
+    result.maximum_absolute_closure_error =
+        std::max(result.maximum_absolute_closure_error, std::abs(closure));
   }
   return result;
 }

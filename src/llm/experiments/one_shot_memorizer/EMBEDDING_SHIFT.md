@@ -39,7 +39,7 @@ For each existing SUM and MEAN candidate, compute one column-wise shift from
 the **jointly trained reference** embedding:
 
 ```
-c = mean_rows(E_joint) - mean_rows(E_candidate)
+c = mean_rows(FP64(E_joint) - FP64(E_candidate))
 E_repaired[row, column] = FP32(FP64(E_candidate[row, column]) + c[column])
 ```
 
@@ -69,3 +69,80 @@ shift, input preservation, malformed shapes, nonfinite values and FP32
 overflow. Runtime checks verify unchanged non-embedding tensors, tied aliases,
 fresh model state and unchanged sources. All generated checkpoints/reports
 remain local. Budget: 45 minutes, with no new training.
+
+## Result: much closer weights, worse answers
+
+The two predeclared repairs completed; no additional reference, scale,
+coordinate subset or repair was tried. The implementation computes the mean
+of FP64 pairwise differences, equivalent to the difference of column means
+in real arithmetic, then applies the one prescribed FP32 output cast.
+
+| Candidate | Correct teacher-forced targets | Exact suffixes plus EOS | L2 distance to joint weights |
+| --- | ---: | ---: | ---: |
+| SUM | 6/18 | 0/2 | 74.8787 |
+| SUM with oracle mean | 5/18 | 0/2 | 9.21096 |
+| MEAN | 4/18 | 0/2 | 55.4063 |
+| MEAN with oracle mean | 1/18 | 0/2 | 7.49733 |
+
+Embedding squared error falls from **5,573.693887 to 51.717389** for SUM and
+from **3,047.580503 to 33.928186** for MEAN. This removes more than 98% of the
+whole-model squared parameter error in either case. Nevertheless, target
+accuracy worsens, and neither entire sentence is recovered.
+
+The repaired SUM predicts a comma immediately after both five-token prompts.
+The repaired MEAN predicts Athens for France; for Greece it gets Athens right
+but then repeats Athens instead of the following comma. The teacher-forced
+counts above score gold contexts separately; they are not the number of
+correct tokens in a free-running completion. Greedy checks feed back only
+predictions and stop at the first mismatch.
+
+The result rejects this fixed shared-offset correction as a sufficient repair
+for the two constructed models. It does not show that the common offset is
+irrelevant: it changes their behavior, and it is tied to the input embeddings.
+Nor does it show that the small remaining parameter error exclusively owns
+either fact. It demonstrates why a very large Euclidean-error reduction can
+be a misleading proxy for restoring a co-adapted model's computation.
+
+### Verification and reproduction
+
+Six focused CPU tests cover column-wise centering, centered differences,
+zero-shift signed-zero identity, FP64 cancellation, invalid shapes/nonfinite
+values and output overflow. Runtime controls verify fresh model uploads,
+all seven input/head aliases, both unchanged 99-tensor tails, unchanged
+inference/save weights and source checkpoints. Independent saved-checkpoint
+readback verified all **143,200 repaired embedding values** against the
+prescribed arithmetic and every byte of the other 99 tensors in both models.
+The remaining mismatch of column means is at most `1.44e-8` for SUM and
+`1.11e-8` for MEAN, from the final FP32 rounding.
+
+The original five conditions reproduce their previous numeric outputs
+exactly, both in the flagged run and a separate unflagged run. Original SUM
+and MEAN checkpoint trees are byte-identical as well. Compared with the oldest
+saved artifact, `controls.tsv` has one already-landed wording correction:
+`all_source_checkpoint_bytes_unchanged` was narrowed to
+`all_source_weight_bytes_unchanged`; unrelated checkpoint metadata is not
+audited. This is not a numerical or behavioral change introduced by the repair.
+
+The optimized build, independent implementation review and full repository
+suite passed: **107 test targets**. The completed local report is
+`/tmp/fact_superposition_mean_shift_0/`; the unchanged-default repeat is
+`/tmp/fact_superposition_default_repeat_0/`. The flagged report adds
+`embedding_mean_shifts.tsv`, `embedding_mean_errors.tsv`, two condition rows,
+and saved checkpoints under `sum_oracle_embedding_mean/step_1024` and
+`mean_oracle_embedding_mean/step_1024`. Generated artifacts remain outside Git.
+
+```sh
+bazel build -c opt //src/llm/experiments/one_shot_memorizer:checkpoint_fact_superposition_probe
+facts=/home/ubuntu/checkpoints/memorize_general_facts/compact_batch_32_no_clip_0
+pair=/tmp/fact_superposition_pair_0
+bazel-bin/src/llm/experiments/one_shot_memorizer/checkpoint_fact_superposition_probe \
+  --initial_checkpoint="$facts/layers_8/step_0" \
+  --joint_checkpoint="$pair/baseline/step_1024" \
+  --omit_line_1_checkpoint="$pair/omit_line_1/step_1024" \
+  --omit_line_2_checkpoint="$pair/omit_line_2/step_1024" \
+  --tokenizer="$facts/inputs/tokenizer" \
+  --corpus=/tmp/fact_superposition_pair.txt \
+  --control_step1_dir="$pair" \
+  --match_joint_embedding_mean \
+  --output_dir=/tmp/fact_superposition_mean_shift_new
+```

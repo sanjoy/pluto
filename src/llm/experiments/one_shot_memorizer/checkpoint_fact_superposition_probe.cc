@@ -24,6 +24,7 @@
 #include "src/dataset/gpt2_tokenizer.h"
 #include "src/dataset/padded_line_dataset.h"
 #include "src/llm/checkpoint.h"
+#include "src/llm/experiments/one_shot_memorizer/embedding_mean_shift.h"
 #include "src/llm/experiments/one_shot_memorizer/fact_superposition.h"
 #include "src/llm/experiments/one_shot_memorizer/mlp_probe.h"
 #include "src/llm/experiments/one_shot_memorizer/sentence_ablation.h"
@@ -48,6 +49,10 @@ ABSL_FLAG(
     "Optional trainer output with baseline, baseline_repeat, omit_line_1, "
     "omit_line_2 subdirectories; verifies common step0, endpoint repeat, "
     "and exact step1 SUM before endpoint inference");
+ABSL_FLAG(
+    bool, match_joint_embedding_mean, false,
+    "Also test SUM/MEAN after an oracle row-common embedding shift to "
+    "match the joint model's column means; not dataset-only construction");
 
 namespace pluto::llm::one_shot_memorizer {
 namespace {
@@ -311,12 +316,66 @@ absl::Status Run() {
               "position\tpredicted_token\texpected_token\n";
   deltas << "condition\ttensor\tcoordinates\tbitwise_changed_vs_joint\tl2_"
             "error\tmax_abs_error\trelative_l2_vs_joint\n";
-  const std::pair<const char*, const Snapshot*> conditions[] = {
+  std::vector<std::pair<const char*, const Snapshot*>> conditions = {
       {"joint", &joint},
       {"France_only", &only_a},
       {"Greece_only", &only_b},
       {"sum", &sum},
       {"mean", &mean}};
+  Snapshot sum_matched, mean_matched;
+  if (absl::GetFlag(FLAGS_match_joint_embedding_mean)) {
+    // The joint endpoint is explicitly an oracle reference. No labels, search,
+    // fitted coefficients or token-specific corrections enter this operation.
+    if (layout.size() != 100 || layout.front().flat_offset != 0 ||
+        layout.front().name != "token_embedding.weight" ||
+        layout.front().element_count != kVocabulary * 16)
+      return absl::FailedPreconditionError("unexpected embedding inventory");
+    const size_t embedding_count = layout.front().element_count;
+    const auto oracle = absl::MakeConstSpan(joint).first(embedding_count);
+    std::ofstream shifts(output / "embedding_mean_shifts.tsv");
+    std::ofstream errors(output / "embedding_mean_errors.tsv");
+    shifts << std::setprecision(17) << "condition\tcolumn\tshift\n";
+    errors << std::setprecision(17)
+           << "condition\tembedding_squared_error_before\t"
+              "embedding_squared_error_after\n";
+    auto prepare = [&](const char* name, const Snapshot& source,
+                       Snapshot& destination) -> absl::Status {
+      ASSIGN_OR_RETURN(
+          auto shifted,
+          MatchEmbeddingMeans(
+              absl::MakeConstSpan(source).first(embedding_count), oracle, 16));
+      destination = source;
+      std::copy(shifted.values.begin(), shifted.values.end(),
+                destination.begin());
+      // The remaining 99 unique tensors, including positions and all norms,
+      // must be byte-identical to the corresponding unmodified construction.
+      if (std::memcmp(source.data() + embedding_count,
+                      destination.data() + embedding_count,
+                      (source.size() - embedding_count) * sizeof(float)) != 0)
+        return absl::DataLossError("embedding repair changed another tensor");
+      controls << name << "_other_99_tensors_unchanged\tPASS\n";
+      for (size_t column = 0; column < shifted.shift.size(); ++column)
+        shifts << name << '\t' << column << '\t' << shifted.shift[column]
+               << '\n';
+      errors << name << '\t' << shifted.squared_error_before << '\t'
+             << shifted.squared_error_after << '\n';
+      return absl::OkStatus();
+    };
+    RETURN_IF_ERROR(prepare("sum_oracle_embedding_mean", sum, sum_matched));
+    RETURN_IF_ERROR(prepare("mean_oracle_embedding_mean", mean, mean_matched));
+    shifts.close();
+    errors.close();
+    if (!shifts || !errors)
+      return absl::UnknownError("cannot write embedding mean repair reports");
+    conditions.push_back({"sum_oracle_embedding_mean", &sum_matched});
+    conditions.push_back({"mean_oracle_embedding_mean", &mean_matched});
+    manifest << "embedding_mean_reference\tORACLE joint trained embedding; "
+                "not dataset-only construction\n"
+                "embedding_mean_formula\tc[j]=mean_rows(double(Ejoint)-"
+                "double(Ecandidate)); Enew=FP32(double(Ecandidate)+c)\n"
+                "embedding_mean_scope\tonly tied token embedding/head; "
+                "other 99 tensors unchanged; no coefficient fitting\n";
+  }
   for (const auto& [name, values] : conditions) {
     ASSIGN_OR_RETURN(auto difference,
                      CompareParameterValues(layout, Views(layout, joint),
@@ -328,6 +387,13 @@ absl::Status Run() {
     // only a strict-loading/snapshot scratchpad and is never evaluated here.
     ASSIGN_OR_RETURN(auto model,
                      CreateGpt2(*executor, DataType::BF16, 0, config));
+    if (absl::GetFlag(FLAGS_match_joint_embedding_mean)) {
+      const auto all_weights = model->weights();
+      if (all_weights.size() != layout.size() + 1 ||
+          all_weights.front().data() != all_weights.back().data())
+        return absl::FailedPreconditionError("embedding/head alias was lost");
+      controls << name << "_embedding_head_tied\tPASS\n";
+    }
     ASSIGN_OR_RETURN(auto weights, UniqueWeights(*model, layout));
     RETURN_IF_ERROR(CopyH2D(*executor, *values, layout, weights));
     ASSIGN_OR_RETURN(auto before, CopyD2H(*executor, weights, layout));
@@ -372,7 +438,9 @@ absl::Status Run() {
       manifest << "warning\t" << name
                << " has not memorized its retained fact\n";
     }
-    if (std::string(name) == "sum" || std::string(name) == "mean") {
+    if (std::string(name) == "sum" || std::string(name) == "mean" ||
+        std::string(name) == "sum_oracle_embedding_mean" ||
+        std::string(name) == "mean_oracle_embedding_mean") {
       const fs::path predicted = output / name / "step_1024";
       RETURN_IF_ERROR(WriteToDirectory(*executor, *model, predicted));
       RETURN_IF_ERROR(
