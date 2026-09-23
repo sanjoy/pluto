@@ -304,3 +304,151 @@ many non-target rows receive a shared dense softmax contribution, and Adam
 makes their coordinate changes similar. This explains why a common direction
 can be informative. It does not establish that the separation persists for
 arbitrary facts, seeds, repeated-token sentences, or multi-fact training.
+
+## Prospective stress tests (protocol fixed before these runs)
+
+The four successful examples have distinct suffix IDs and no overlap between
+their prompt and suffix token sets. Before training further cases, fix the
+following tests of those assumptions. Use the original initialization, frozen
+compact vocabulary, seed, Adam settings, and learning-rate schedule; do not
+retune the decoder from the outcomes.
+
+1. **Line 32, repeated suffix:** the first corpus sentence whose suffix repeats
+   a non-punctuation token: `At a smooth reflecting surface, the angle of
+   reflection equals the angle of incidence.` Train alone for 512 updates.
+   Its suffix/EOS has 12 occurrences but nine distinct IDs. In particular,
+   ` the`, ` angle`, and ` of` each occur twice.
+2. **Line 2, prompt/suffix overlap:** the first corpus sentence sharing a token
+   between its first five tokens and suffix: `In English, the plural of mouse
+   is usually mice when referring to the animal.` Train alone for 512 updates.
+   The shared token is ` the`. This tests the prompt-readout exclusion rule.
+3. **France/Greece mixture, lines 80 and 406:** train the two facts together
+   with batch size one for 1,024 updates, saving every 128 updates. Evaluate
+   the frozen sign rule against the *union* of suffix/EOS IDs at 512 updates
+   and at the predeclared 1,024-update extension. These sets share comma,
+   period, ` city`, and EOS. At the endpoint each fact has 512 exposures, but
+   the global Adam clock differs from the single-fact runs. Record that
+   distinction rather than treating these as optimizer-matched conditions.
+
+The existing one-use-per-token path decoder is deliberately unchanged for
+the first assessment. A wrong order, wrong length, or explicit rejection is
+a negative result, not permission to supply missing multiplicities. Record
+prompt-candidate failures too. The trainer's accompanying full-corpus
+baseline is retained for provenance, not called an exposure-matched control.
+Training text is joined to the weight readout only for scoring afterward.
+
+### Stress-test results
+
+Both new single-fact checkpoints learned their entire suffix and EOS exactly
+(12/12 teacher-forced targets and exact greedy completion). The unchanged
+readout gives:
+
+| Case | Distinct suffix/EOS IDs recovered | Prompt set | Ordered suffix |
+| --- | --- | --- | --- |
+| Repeated tokens, line 32 | 9/9, no extra IDs | 5/5 | Incorrect: repetitions absent |
+| Prompt/suffix overlap, line 2 | 12/12, no extra IDs | 4/5 | Exact |
+
+The repeated-token result is `, the angle of reflection equals incidence.`:
+three occurrences are missing. Selecting nine distinct IDs cannot specify
+twelve occurrences. The overlap case recovers ` of mouse is usually mice
+when referring to the animal.` exactly, but excludes shared ID 61 (` the`)
+from its prompt candidates and replaces it with background ID 3092. The
+four eligible true prompt IDs are ranks 1..4. These are decoder limitations,
+not failures of those two trained networks.
+
+For the jointly trained France/Greece pair, the frozen sign rule identifies
+**all 14 distinct suffix/EOS IDs with no extras** at both 512 and 1,024 updates.
+At 512 neither sentence completes exactly (France 9/10 targets, Greece 6/8);
+at 1,024 both complete exactly (10/10 and 8/8). Thus the vocabulary-set signal
+can be present before correct sequencing and prompt-dependent selection.
+It does not partition the set into two sentences. Each fact received exactly
+512 scheduled updates at the endpoint. The first update used France and is
+byte-identical to the earlier France-only first update across all 100 tensors.
+New and old full-corpus baselines also match bytewise at steps 1, 128 and 512.
+All initial checkpoints and the complete sample/exposure logs were checked.
+
+The small pair also supplies a useful execution-trace contrast to the full
+corpus. Using the final LayerNorm/head as a diagnostic lens, Paris first wins
+after block 3 attention; Athens wins after block 0 MLP. Their final target
+probabilities are 83.79% and 84.32%. Zeroing **any one** of the sixteen
+attention/MLP residual branches still preserves both next-token answers,
+although confidence changes. These are 32 independently restored ablations,
+not removal of all branches together and not full-suffix preservation tests.
+By contrast, all sixteen individual branch removals break France's answer in
+the fully trained 1,024-fact checkpoint. A block's apparent necessity is a
+property of a particular trained computation, not a fixed semantic address.
+The 512-update pair trace was rejected by the trace tool because Greece's
+sixth token was wrong; it is not included as a successful answer-preservation
+trace.
+
+An exploratory CPU-only extension allowed repeated vertices in the
+fixed-position graph: shortest path over `(visited-set, last-token)` with
+nonnegative negative-log-probability costs, permitting EOS only after full
+set coverage. It did **not** help. All six winners used no revisits; the four
+earlier examples remained exact, but repetition was not recovered. For line
+32, the real repeated walk has score -17.4883, below the shorter incorrect
+winner's -13.7990. The issue is the surrogate scores, not just a prohibition
+on repeats. This unsuccessful extension was kept local, not added to the
+production decoder. Fixed-position scoring also gives the wrong order for
+line 2, while the original position-aware scoring succeeds.
+
+Evidence (local, not committed model artifacts):
+
+- `/tmp/one_shot_single_stress_line_{32,2}_0/`: training and checkpoints.
+- `/tmp/single_fact_stress_path_{32,2}_0/`: unchanged decoder results.
+- `/tmp/single_fact_stress_audit_{32,2}_0/`: independent CPU token-set audit.
+- `/tmp/one_shot_pair_stress_80_406_0/`: pair training and sample provenance.
+- `/tmp/one_shot_pair_sign_{512,1024}_0.{tsv,summary}`: frozen union readouts.
+- `/tmp/one_shot_pair_trace_1024_0/`: layer-by-layer trace and HTML report.
+- `/tmp/one_shot_pair_branch_trace_1024_0/`: branch removals and controls.
+- `/tmp/single_fact_covering_walk_1/`: negative repeated-walk control.
+
+To reproduce the pair without changing vocabulary or initialization:
+
+```sh
+bazel build -c opt //src/llm/experiments/one_shot_memorizer:checkpoint_sentence_ablation
+facts=/home/ubuntu/checkpoints/memorize_general_facts/compact_batch_32_no_clip_0
+bazel-bin/src/llm/experiments/one_shot_memorizer/checkpoint_sentence_ablation \
+  --initial_checkpoint="$facts/layers_8/step_0" \
+  --tokenizer="$facts/inputs/tokenizer" \
+  --output_dir=/tmp/two_fact_readout_new \
+  --steps=1024 --batch_size=1 --omitted_lines= --single_fact_line=0 \
+  --isolated_lines=80,406 --norepeat_baseline \
+  --checkpoint_every=128 --evaluate_every=512
+```
+
+`isolated_mixture/isolated_schedule.tsv` identifies the source corpus line at
+every step, including its supervised-target count (10 versus 8). The loss is
+the mean over that sentence's suffix and EOS; this is one update per sentence
+occurrence, not a pooled token-weighted multi-sentence objective.
+`isolated_exposures.tsv` records counts at each saved checkpoint. The original
+full-corpus baseline still runs; it is not mislabeled as a mixture control.
+
+## Coordinate-convention check
+
+The earlier Durian GPU control subtracts the common embedding update `c` from
+every trained embedding row and adds `c` to every trained position row. It
+still gets 10/10 targets and exact greedy completion. Reconstructing that
+same FP32 intervention on CPU, with all 16 recorded shift coordinates matched
+bit-for-bit, changes the frozen sign readout from ten correct IDs to 3,274
+selected IDs with **none** of the ten correct ones. Prompt-set recovery goes
+from 5/5 to 0/5.
+
+This is not a new meaningful alternative vocabulary. Removing the mean makes
+the decoder's reference direction zero in ideal arithmetic; its residual
+norm is only 6.39e-10, versus 0.909 before intervention. The selected signs
+then reflect numerical residue. In exact arithmetic the compensated shift
+preserves input sums and changes all tied-head logits by a common scalar;
+FP32/BF16 rounding prevents assuming equality on arbitrary prompts. Only the
+reported Durian behavior has been verified.
+
+The original initialization remains fixed in this intervention. Transforming
+both initialization and endpoint by the same fixed shift would preserve their
+delta in exact arithmetic. Consequently this experiment demonstrates a
+dependence on the training-coordinate convention and initialization reference,
+not erasure of the fact or impossibility of all weight-based decoders. It
+reinforces the distinction between recovering training-history information
+and finding a functionally invariant semantic representation.
+
+Evidence: `/tmp/single_fact_gauge_readout_631_0/`, with the existing behavioral
+control in `/tmp/one_shot_single_fact_probe_0/conditions.tsv`.

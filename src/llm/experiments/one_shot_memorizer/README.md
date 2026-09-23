@@ -46,6 +46,15 @@ bazel-bin/src/llm/experiments/one_shot_memorizer/checkpoint_sentence_ablation \
 
 Generated checkpoints, coordinate maps, and HTML stay local, outside Git.
 
+The runner also supports `--isolated_lines=80,406 --single_fact_line=0` for
+one jointly trained, batch-one subset. Selection preserves original corpus
+line identity and uses the same frozen vocabulary and initialization. Saved
+step-0 checkpoints, per-update source-line logs and checkpoint exposure counts
+make comparisons auditable. The full-corpus baseline remains a separate
+condition. See [SINGLE_FACT_DECODING.md](SINGLE_FACT_DECODING.md) for the frozen
+repetition/overlap/two-fact stress tests, their successes and failures, and the
+coordinate-convention limit of the weight readout.
+
 ### Operational layer-capacity probe
 
 `checkpoint_capacity_probe` quantizes one attention or MLP branch at a time,

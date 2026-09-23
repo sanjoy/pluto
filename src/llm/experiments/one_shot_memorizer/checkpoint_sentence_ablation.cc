@@ -26,6 +26,7 @@
 #include "src/llm/adamw_optimizer.h"
 #include "src/llm/batch_validation.h"
 #include "src/llm/checkpoint.h"
+#include "src/llm/experiments/one_shot_memorizer/isolated_fact_selection.h"
 #include "src/llm/experiments/one_shot_memorizer/mlp_probe.h"
 #include "src/llm/experiments/one_shot_memorizer/sentence_ablation.h"
 #include "src/llm/experiments/one_shot_memorizer/sentence_ablation_report.h"
@@ -63,6 +64,11 @@ ABSL_FLAG(std::vector<std::string>, omitted_lines,
           "One-based corpus lines to omit, one separate run each");
 ABSL_FLAG(int, single_fact_line, 631,
           "One-based line for batch-one single-fact training; zero disables");
+ABSL_FLAG(
+    std::vector<std::string>, isolated_lines, (std::vector<std::string>{}),
+    "Distinct one-based lines trained JOINTLY as a batch-one mixture, sorted "
+    "into corpus order before seeded epoch shuffling; requires "
+    "single_fact_line=0");
 ABSL_FLAG(int, layers, 8, "Transformer blocks");
 ABSL_FLAG(int, model_width, 16, "Residual width");
 ABSL_FLAG(int, attention_heads, 1, "Attention heads");
@@ -166,6 +172,7 @@ struct Condition {
   std::string name;
   std::optional<size_t> omitted;
   std::optional<size_t> single;
+  std::optional<IsolatedFactSelection> isolated;
   bool repeat_baseline = false;
 };
 
@@ -179,18 +186,26 @@ absl::Status RunCondition(
   const fs::path directory =
       fs::path(absl::GetFlag(FLAGS_output_dir)) / condition.name;
   RETURN_IF_ERROR(MakeDirectory(directory));
+  const bool isolated_training = condition.single || condition.isolated;
   PaddedLineDataSetOptions data_options{
-      .batch_size = condition.single ? 1 : absl::GetFlag(FLAGS_batch_size),
+      .batch_size = isolated_training ? 1 : absl::GetFlag(FLAGS_batch_size),
       .context_length = kGpt2ContextLength,
       .prompt_tokens = 5,
       .eos_token = vocabulary.eos_token_id(),
       .shuffle = true,
       .seed = static_cast<uint64_t>(absl::GetFlag(FLAGS_seed))};
   const absl::string_view training_text =
-      condition.single ? absl::string_view(lines[*condition.single]) : corpus;
+      condition.single     ? absl::string_view(lines[*condition.single])
+      : condition.isolated ? absl::string_view(condition.isolated->text)
+                           : corpus;
   ASSIGN_OR_RETURN(auto training,
                    PaddedLineDataSetIterator::Create(executor, training_text,
                                                      vocabulary, data_options));
+  if (isolated_training &&
+      training->sample_count() !=
+          (condition.single ? 1 : condition.isolated->corpus_indices.size()))
+    return absl::InternalError(
+        "isolated dataset changed selected line identities");
   ASSIGN_OR_RETURN(auto model, CreateGpt2(executor, DataType::BF16,
                                           absl::GetFlag(FLAGS_seed), config));
   RETURN_IF_ERROR(ReadFromDirectory(
@@ -219,6 +234,9 @@ absl::Status RunCondition(
     baseline.push_back(initial);
   else if (!Identical(initial, baseline[0]))
     return absl::FailedPreconditionError("initial checkpoints differ bytewise");
+  // Every run publishes its exact pre-update checkpoint, not only an external
+  // reference to the shared initialization. No optimizer step has occurred.
+  RETURN_IF_ERROR(Save(executor, *model, vocabulary, directory / "step_0"));
   ASSIGN_OR_RETURN(auto loss, CrossEntropyLossLayer::Create(
                                   executor, vocabulary.vocab_size(),
                                   DataType::BF16, kGpt2ContextLength));
@@ -238,6 +256,29 @@ absl::Status RunCondition(
   trace << "step\tselected_fact_scheduled_occurrences\tomitted_"
            "exposures\tfirst_omission_"
            "step\tbitwise_changed_vs_baseline\tdelta_l2\telapsed_seconds\n";
+  // The iterator's indices refer to its selected text, not the full corpus.
+  // Keep this provenance explicitly, including the sentence seen at step 1.
+  std::vector<size_t> isolated_indices;
+  if (condition.single)
+    isolated_indices.push_back(*condition.single);
+  else if (condition.isolated)
+    isolated_indices = condition.isolated->corpus_indices;
+  std::vector<size_t> isolated_exposures(isolated_indices.size(), 0);
+  std::ofstream isolated_schedule, exposure_log;
+  if (isolated_training) {
+    isolated_schedule.open(directory / "isolated_schedule.tsv");
+    exposure_log.open(directory / "isolated_exposures.tsv");
+    if (!isolated_schedule || !exposure_log)
+      return absl::UnknownError("cannot create isolated sample provenance");
+    isolated_schedule << "step\tlocal_sample_index_0based\tcorpus_line_1based\t"
+                         "scheduled_exposures\tsupervised_target_count\n";
+    exposure_log << "checkpoint_step\tlocal_sample_index_0based\t"
+                    "corpus_line_1based\tscheduled_exposures\n";
+    for (size_t local = 0; local < isolated_indices.size(); ++local)
+      exposure_log << 0 << '\t' << local << '\t' << isolated_indices[local] + 1
+                   << '\t' << 0 << '\n';
+    exposure_log.flush();
+  }
   const auto start = std::chrono::steady_clock::now();
   const auto elapsed = [&] {
     return std::chrono::duration<double>(std::chrono::steady_clock::now() -
@@ -251,9 +292,22 @@ absl::Status RunCondition(
   for (int step = 1; step <= absl::GetFlag(FLAGS_steps); ++step) {
     ASSIGN_OR_RETURN(auto batch, training->Next());
     const auto sample_indices = training->last_batch_sample_indices();
-    for (size_t id : sample_indices)
-      fact_exposures += condition.single ? *condition.single == selected_fact
-                                         : id == selected_fact;
+    for (size_t id : sample_indices) {
+      if (isolated_training && id >= isolated_indices.size())
+        return absl::InternalError(
+            "isolated sample index outside selected corpus");
+      size_t source = condition.single ? *condition.single : id;
+      if (condition.isolated) {
+        ASSIGN_OR_RETURN(source, condition.isolated->CorpusIndex(id));
+      }
+      fact_exposures += source == selected_fact;
+      if (isolated_training) {
+        ++isolated_exposures[id];
+        isolated_schedule << step << '\t' << id << '\t' << source + 1 << '\t'
+                          << isolated_exposures[id] << '\t'
+                          << batch.supervised_row_count << '\n';
+      }
+    }
     RETURN_IF_ERROR(ValidateTrainingBatch(executor, *model, *loss, batch));
     ASSIGN_OR_RETURN(auto forward, model->fwd(executor, {batch.inputs}));
     ASSIGN_OR_RETURN(auto loss_forward,
@@ -305,6 +359,17 @@ absl::Status RunCondition(
         step == first_omission_step || step == absl::GetFlag(FLAGS_steps)) {
       RETURN_IF_ERROR(Save(executor, *model, vocabulary,
                            directory / absl::StrCat("step_", step)));
+      if (isolated_training) {
+        for (size_t local = 0; local < isolated_indices.size(); ++local)
+          exposure_log << step << '\t' << local << '\t'
+                       << isolated_indices[local] + 1 << '\t'
+                       << isolated_exposures[local] << '\n';
+        isolated_schedule.flush();
+        exposure_log.flush();
+        if (!isolated_schedule || !exposure_log)
+          return absl::DataLossError(
+              "writing isolated sample provenance failed");
+      }
       std::cout << condition.name << " step=" << step
                 << " elapsed_seconds=" << elapsed()
                 << " changed_vs_baseline=" << delta.total.bitwise_changed_count
@@ -353,6 +418,12 @@ absl::Status RunCondition(
   if (!initial_comparison)
     return absl::InternalError("writing initialization comparison failed");
   trace.close();
+  if (isolated_training) {
+    isolated_schedule.close();
+    exposure_log.close();
+    if (!isolated_schedule || !exposure_log)
+      return absl::DataLossError("closing isolated sample provenance failed");
+  }
   if (!trace || !summary)
     return absl::InternalError("writing ablation metrics failed");
   return absl::OkStatus();
@@ -414,8 +485,20 @@ absl::Status Run() {
   if (single_line > 0)
     conditions.push_back({.name = absl::StrCat("only_line_", single_line),
                           .single = static_cast<size_t>(single_line - 1)});
+  const auto isolated_lines = absl::GetFlag(FLAGS_isolated_lines);
+  std::optional<IsolatedFactSelection> isolated;
+  if (!isolated_lines.empty()) {
+    if (single_line != 0)
+      return absl::InvalidArgumentError(
+          "isolated_lines requires single_fact_line=0");
+    ASSIGN_OR_RETURN(auto selection, SelectIsolatedFacts(lines, isolated_lines));
+    isolated = std::move(selection);
+    conditions.push_back({.name = "isolated_mixture", .isolated = isolated});
+  }
   size_t selected_fact = single_line > 0 ? single_line - 1 : 0;
-  if (single_line == 0)
+  if (isolated)
+    selected_fact = isolated->corpus_indices.front();
+  else if (single_line == 0)
     for (const auto& condition : conditions)
       if (condition.omitted) {
         selected_fact = *condition.omitted;
@@ -472,6 +555,16 @@ absl::Status Run() {
       << "intervention=fixed-schedule loss-gradient deletion with original "
          "normalization\n"
       << "single_fact=batch 1 repeated; not exposure-matched to leave-one-out\n"
+      << "isolated_mixture=batch 1; selected lines sorted in corpus order; "
+         "shuffle without replacement each epoch using mt19937_64 and seed\n"
+      << "loss_normalizer=sum of L-5+1 supervised targets in the current "
+         "batch, including EOS; isolated batch1 averages one sentence's "
+         "suffix\n"
+      << "isolated_weighting=one mean-per-sentence update per occurrence, "
+         "not a pooled token-weighted multi-sentence objective\n"
+      << "isolated_provenance=condition/isolated_schedule.tsv records every "
+         "original corpus line including step1; isolated_exposures.tsv records "
+         "per-line cumulative counts at step0 and every saved checkpoint\n"
       << "determinism="
       << (absl::GetFlag(FLAGS_repeat_baseline)
               ? "every baseline-repeat update byte-compared; "
@@ -483,6 +576,14 @@ absl::Status Run() {
       const size_t index =
           condition.omitted ? *condition.omitted : *condition.single;
       manifest << condition.name << "=" << lines[index] << '\n';
+    }
+  if (isolated)
+    for (size_t local = 0; local < isolated->corpus_indices.size(); ++local) {
+      const size_t index = isolated->corpus_indices[local];
+      manifest << "isolated_local_sample_" << local
+               << "_corpus_line_1based=" << index + 1 << '\n'
+               << "isolated_local_sample_" << local << "_text=" << lines[index]
+               << '\n';
     }
   manifest.close();
   if (!manifest)

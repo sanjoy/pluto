@@ -328,6 +328,29 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "isolated_fact_selection",
+    srcs = ["isolated_fact_selection.cc"],
+    hdrs = ["isolated_fact_selection.h"],
+    deps = [
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "isolated_fact_selection_test",
+    size = "small",
+    srcs = ["isolated_fact_selection_test.cc"],
+    deps = [
+        ":isolated_fact_selection",
+        "@abseil-cpp//absl/status",
+        "@googletest//:gtest_main",
+    ],
+)
+
 cc_test(
     name = "sentence_ablation_test",
     srcs = ["sentence_ablation_test.cc"],
@@ -384,6 +407,7 @@ cc_binary(
     name = "checkpoint_sentence_ablation",
     srcs = ["checkpoint_sentence_ablation.cc"],
     deps = [
+        ":isolated_fact_selection",
         ":mlp_probe",
         ":sentence_ablation",
         ":sentence_ablation_report",
