@@ -213,7 +213,8 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> MakeFeatures(
   return builder.create("frozen_mlp_features");
 }
 
-// Run the very same BF16 production FC/GELU layers used in the replacement.
+// Run the same feature/update layers used in the live replacement, including
+// production BF16 FC/GELU or the fixed quadratic pair-product feature map.
 // Padding is zero and discarded; these pointwise maps never mix token rows.
 // This is used to fit W2 only, NEVER as a replay buffer during evaluation.
 absl::StatusOr<std::vector<float>> ApplyToRecordedInputs(
@@ -410,15 +411,16 @@ absl::Status Run() {
   std::ofstream manifest(output_dir / "manifest.tsv");
   std::ofstream scores(output_dir / "evaluations.tsv");
   std::ofstream cases(output_dir / "sentences.tsv");
+  std::ofstream failures(output_dir / "first_failures.tsv");
   std::ofstream fits(output_dir / "fits.tsv");
   std::ofstream errors(output_dir / "update_errors.tsv");
   std::ofstream coefficients(output_dir / "coefficients.tsv");
   std::ofstream statistics(output_dir / "features.tsv");
   std::ofstream basis_statistics(output_dir / "standardization.tsv");
-  if (!manifest || !scores || !cases || !fits || !errors || !coefficients ||
-      !statistics || !basis_statistics)
+  if (!manifest || !scores || !cases || !failures || !fits || !errors ||
+      !coefficients || !statistics || !basis_statistics)
     return absl::UnknownError("cannot create frozen MLP reports");
-  for (auto* stream : {&manifest, &scores, &cases, &fits, &errors,
+  for (auto* stream : {&manifest, &scores, &cases, &failures, &fits, &errors,
                        &coefficients, &statistics, &basis_statistics})
     *stream << std::setprecision(17);
   manifest
@@ -437,6 +439,10 @@ absl::Status Run() {
          "\nfit_target\tlearned BF16 branch updates; not token labels"
          "\nevaluation\tfresh recipient LayerNorm inputs at all positions; "
          "no recorded activation replay"
+         "\nfirst_failure_position\tabsolute zero-based target token position; "
+         "first suffix=5; EOS=sentence token count; query position=target-1"
+         "\nfirst_failure_prefix\tgold prefix IDs are report-only; all earlier "
+         "generated tokens matched, so this equals the actual generated prefix"
          "\nheld_scope\texcluded from regression only; backbone trained on "
          "them\n";
   if (quadratic)
@@ -490,6 +496,9 @@ absl::Status Run() {
             "teacher_exact\tgreedy_exact\tsentences\tseconds\n";
   cases << "condition\tselection\tline_1based\tgroup\tcorrect_targets\t"
            "targets\tgreedy_exact\n";
+  failures
+      << "condition\tselection\tline_1based\tgroup\ttarget_position\t"
+         "query_position\tpredicted_token\texpected_token\tgold_prefix_ids\n";
   fits
       << "condition\tblock\trows\trank\tfit_real_rmse\tfit_real_relative_rmse\t"
          "qr_diagonal_spread\tseconds\n";
@@ -513,6 +522,7 @@ absl::Status Run() {
     if (teacher.targets_per_sentence.size() != 1024 ||
         teacher.correct_per_sentence.size() != 1024 ||
         greedy.exact_per_sentence.size() != 1024 || teacher.targets != 10002 ||
+        greedy.first_mismatch_per_sentence.size() != 1024 ||
         teacher.sentences != 1024 || greedy.sentences != 1024)
       return absl::InternalError("incomplete corpus evaluation");
     int64_t correct[2]{}, targets[2]{}, exact[2]{}, count[2]{};
@@ -523,6 +533,39 @@ absl::Status Run() {
       if (teacher_exact != greedy.exact_per_sentence[sentence])
         return absl::FailedPreconditionError(
             "teacher-forced and greedy exactness disagree");
+      const auto& mismatch = greedy.first_mismatch_per_sentence[sentence];
+      if (teacher_exact == mismatch.has_value())
+        return absl::InternalError(
+            "first-failure report disagrees with exactness");
+      if (mismatch.has_value()) {
+        const auto tokens = dataset->sample_tokens(sentence);
+        if (mismatch->target_position < kPromptTokens ||
+            static_cast<size_t>(mismatch->target_position) > tokens.size() ||
+            mismatch->predicted_token == mismatch->expected_token)
+          return absl::InternalError("malformed first greedy mismatch");
+        const int expected =
+            static_cast<size_t>(mismatch->target_position) == tokens.size()
+                ? tokenizer->eos_token_id()
+                : tokens[mismatch->target_position];
+        if (mismatch->expected_token != expected)
+          return absl::InternalError(
+              "first mismatch target disagrees with corpus");
+        failures << condition << '\t' << selection << '\t' << sentence + 1
+                 << '\t' << (held ? "held" : "fit") << '\t'
+                 << mismatch->target_position << '\t'
+                 << mismatch->target_position - 1 << '\t'
+                 << mismatch->predicted_token << '\t'
+                 << mismatch->expected_token << '\t';
+        // Reporting only: the generation loop never reads this reconstructed
+        // gold prefix. Before the first mismatch its actual predictions agree.
+        for (int position = 0; position < mismatch->target_position;
+             ++position) {
+          if (position != 0)
+            failures << ',';
+          failures << tokens[position];
+        }
+        failures << '\n';
+      }
       correct[held] += teacher.correct_per_sentence[sentence];
       targets[held] += teacher.targets_per_sentence[sentence];
       exact[held] += teacher_exact;
@@ -551,11 +594,12 @@ absl::Status Run() {
     }
     scores.flush();
     cases.flush();
+    failures.flush();
     std::cout << condition << " selection=" << selection << ": "
               << teacher.correct_targets << "/10002 teacher targets, "
               << greedy.exact_sentences << "/1024 exact greedy; " << seconds
               << " s" << std::endl;
-    if (!scores || !cases)
+    if (!scores || !cases || !failures)
       return absl::UnknownError("cannot write evaluation report");
     if (require_perfect &&
         (teacher.correct_targets != 10002 || greedy.exact_sentences != 1024))
@@ -698,7 +742,7 @@ absl::Status Run() {
               "cloned_mlp_updates_bitwise_control\tPASS\n"
               "source_all_master_bytes_unchanged\tPASS\n"
               "original_post_control\tPASS\ncompleted\ttrue\n";
-  for (auto* stream : {&manifest, &scores, &cases, &fits, &errors,
+  for (auto* stream : {&manifest, &scores, &cases, &failures, &fits, &errors,
                        &coefficients, &statistics, &basis_statistics}) {
     stream->flush();
     if (!*stream)

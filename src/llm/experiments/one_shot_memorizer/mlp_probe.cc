@@ -101,16 +101,37 @@ absl::Status ValidateDataset(cuda::Executor& executor, const Layer& model,
 
 absl::Status ValidateBf16(cuda::Executor& executor,
                           absl::Span<const ActivationType> types,
-                          absl::Span<const Buffer> buffers,
-                          const DataBatch& batch, int width) {
+                          absl::Span<const Buffer> buffers, int batch_size,
+                          int sequence_length, int width) {
   const ActivationType expected(
       DataType::BF16,
-      {ActivationType::kBatchDimension, batch.sequence_length, width});
-  if (width <= 0 || types.size() != 1 || types[0] != expected)
+      {ActivationType::kBatchDimension, sequence_length, width});
+  if (batch_size <= 0 || sequence_length <= 0 || width <= 0 ||
+      types.size() != 1 || types[0] != expected || buffers.size() != 1)
     return absl::InvalidArgumentError(
         "MLP probe activation has an unexpected BF16 shape");
-  return ValidateBatchBuffers(executor, batch, buffers, types,
-                              "MLP activation");
+  // Only dimensions matter to activation validation; prefix-only tracing has
+  // no target buffer and must not fabricate one to reuse this hook.
+  const int64_t rows = int64_t{batch_size} * sequence_length;
+  if (rows > std::numeric_limits<int>::max() ||
+      static_cast<size_t>(width) >
+          std::numeric_limits<size_t>::max() / sizeof(uint16_t) / rows)
+    return absl::InvalidArgumentError("MLP activation dimensions overflow");
+  const size_t bytes = static_cast<size_t>(rows) * width * sizeof(uint16_t);
+  if (buffers[0].size_bytes() != bytes || &buffers[0].executor() != &executor)
+    return absl::InvalidArgumentError("MLP activation size/executor mismatch");
+  return absl::OkStatus();
+}
+
+absl::Status CombineHookErrors(const absl::Status& first,
+                               const absl::Status& second) {
+  if (first.ok())
+    return second;
+  if (second.ok())
+    return first;
+  return absl::Status(
+      first.code(), absl::StrCat(first.message(), "; additional hook failure: ",
+                                 second.ToString()));
 }
 
 struct BlockCapture {
@@ -125,9 +146,12 @@ struct BlockCapture {
 
 class MlpHooks {
  public:
-  MlpHooks(cuda::Executor& executor, const DataBatch& batch,
+  MlpHooks(cuda::Executor& executor, int batch_size, int sequence_length,
            std::vector<BlockCapture> captures)
-      : executor_(executor), batch_(batch), captures_(std::move(captures)) {
+      : executor_(executor),
+        batch_size_(batch_size),
+        sequence_length_(sequence_length),
+        captures_(std::move(captures)) {
     hooks_.enter_combinator = [&](cuda::Executor& actual,
                                   absl::string_view name) {
       RETURN_IF_ERROR(CheckExecutor(actual));
@@ -158,6 +182,53 @@ class MlpHooks {
   LayerHooks& hooks() { return hooks_; }
   const std::vector<BlockCapture>& captures() const { return captures_; }
   const std::set<int>& blocks_seen() const { return blocks_seen_; }
+
+  // Both observers see the original model's event stream. At source sites,
+  // trace patches must precede source retention; at branch outputs, live
+  // substitution must precede trace patches/capture. A fixed callback ordering
+  // for every activation would silently retain an unpatched source buffer.
+  LayerHooks ComposeTrace(LayerHooks trace) {
+    LayerHooks combined;
+    combined.enter_combinator =
+        [this, enter = std::move(trace.enter_combinator)](
+            cuda::Executor& executor, absl::string_view name) {
+          RETURN_IF_ERROR(hooks_.enter_combinator(executor, name));
+          if (!enter)
+            return absl::OkStatus();
+          const auto entered = enter(executor, name);
+          if (entered.ok())
+            return entered;
+          // Failed enter skips its matching exit in Layer. Roll back the
+          // first observer here so ancestors can still unwind correctly.
+          return CombineHookErrors(entered, hooks_.exit_combinator(executor));
+        };
+    combined.exit_combinator = [this, exit = std::move(trace.exit_combinator)](
+                                   cuda::Executor& executor) {
+      const auto traced = exit ? exit(executor) : absl::OkStatus();
+      const auto replaced = hooks_.exit_combinator(executor);
+      return CombineHookErrors(traced, replaced);
+    };
+    combined.activation_hook = [this,
+                                activation = std::move(trace.activation_hook)](
+                                   cuda::Executor& executor,
+                                   absl::string_view name,
+                                   absl::Span<const ActivationType> types,
+                                   absl::Span<Buffer> buffers) {
+      const bool branch = name == "mlp" && scopes_.size() == 3 &&
+                          scopes_[0] == "gpt2" && scopes_[2] == "ResidualLayer";
+      if (branch)
+        RETURN_IF_ERROR(hooks_.activation_hook(executor, name, types, buffers));
+      if (activation)
+        RETURN_IF_ERROR(activation(executor, name, types, buffers));
+      if (!branch)
+        RETURN_IF_ERROR(hooks_.activation_hook(executor, name, types, buffers));
+      return absl::OkStatus();
+    };
+    combined.attention_probabilities_hook =
+        std::move(trace.attention_probabilities_hook);
+    combined.gradient_hook = std::move(trace.gradient_hook);
+    return combined;
+  }
 
   absl::Status Finish() const {
     if (!scopes_.empty())
@@ -202,22 +273,22 @@ class MlpHooks {
     const bool need_gelu = capture.replacement == nullptr ||
                            capture.replacement->source == MlpSource::kGelu;
     if (inner && name == "LayerNormLayer" && need_norm) {
-      RETURN_IF_ERROR(
-          ValidateBf16(executor_, types, outputs, batch_, capture.width));
+      RETURN_IF_ERROR(ValidateBf16(executor_, types, outputs, batch_size_,
+                                   sequence_length_, capture.width));
       if (capture.normalized)
         return absl::InvalidArgumentError("ambiguous MLP normalization hook");
       capture.normalized = outputs[0];
     }
     if (inner && name == "GeluLayer" && need_gelu) {
-      RETURN_IF_ERROR(ValidateBf16(executor_, types, outputs, batch_,
-                                   capture.feature_width));
+      RETURN_IF_ERROR(ValidateBf16(executor_, types, outputs, batch_size_,
+                                   sequence_length_, capture.feature_width));
       if (capture.features)
         return absl::InvalidArgumentError("ambiguous MLP GELU hook");
       capture.features = outputs[0];
     }
     if (branch) {
-      RETURN_IF_ERROR(
-          ValidateBf16(executor_, types, outputs, batch_, capture.width));
+      RETURN_IF_ERROR(ValidateBf16(executor_, types, outputs, batch_size_,
+                                   sequence_length_, capture.width));
       if (capture.output)
         return absl::InvalidArgumentError("ambiguous MLP branch output");
       if (capture.replacement != nullptr) {
@@ -235,7 +306,8 @@ class MlpHooks {
                          projection.fwd(executor_, {&*source, 1}, nullptr));
         projected.state = BackwardState{};
         RETURN_IF_ERROR(ValidateBf16(executor_, projection.output_types(),
-                                     projected.outputs, batch_, capture.width));
+                                     projected.outputs, batch_size_,
+                                     sequence_length_, capture.width));
         outputs[0] = std::move(projected.outputs[0]);
       }
       capture.output = outputs[0];
@@ -244,7 +316,8 @@ class MlpHooks {
   }
 
   cuda::Executor& executor_;
-  const DataBatch& batch_;
+  const int batch_size_;
+  const int sequence_length_;
   std::vector<BlockCapture> captures_;
   std::vector<std::string> scopes_;
   std::set<int> blocks_seen_;
@@ -436,7 +509,8 @@ absl::StatusOr<MlpCorpusCapture> CaptureGpt2Mlps(
     for (int block = 0; block < block_count; ++block)
       captures.push_back(
           {.block = block, .width = width, .feature_width = feature_width});
-    MlpHooks hooks(executor, batch, std::move(captures));
+    MlpHooks hooks(executor, batch.batch_size, batch.sequence_length,
+                   std::move(captures));
     ASSIGN_OR_RETURN(auto forward,
                      model.fwd(executor, {&batch.inputs, 1}, &hooks.hooks()));
     RETURN_IF_ERROR(hooks.Finish());
@@ -492,7 +566,7 @@ absl::StatusOr<MlpCorpusCapture> CaptureGpt2Mlps(
 namespace {
 
 absl::StatusOr<std::vector<BlockCapture>> ReplacementPrototypes(
-    cuda::Executor& executor, const PaddedLineDataSetIterator& dataset,
+    cuda::Executor& executor, int sequence_length,
     absl::Span<const MlpReplacement> replacements) {
   std::set<int> selected;
   std::vector<BlockCapture> prototypes;
@@ -512,7 +586,7 @@ absl::StatusOr<std::vector<BlockCapture>> ReplacementPrototypes(
       const auto dims = type.dimensions();
       if (type.data_type() != DataType::BF16 || dims.size() != 3 ||
           dims[0] != ActivationType::kBatchDimension ||
-          dims[1] != dataset.options().context_length ||
+          dims[1] != sequence_length ||
           dims[2] > std::numeric_limits<int>::max())
         return absl::InvalidArgumentError(
             "MLP replacement requires BF16 [batch, context, width]");
@@ -537,20 +611,58 @@ absl::StatusOr<std::vector<BlockCapture>> ReplacementPrototypes(
 
 }  // namespace
 
+absl::StatusOr<TokenTraceResult> TraceMlpReplacements(
+    cuda::Executor& executor, const Layer& model, absl::Span<const int> prefix,
+    absl::Span<const MlpReplacement> replacements,
+    const TokenTraceOptions& options) {
+  if (replacements.empty())
+    return TraceNextToken(executor, model, prefix, options);
+  if (options.compose_hooks)
+    return absl::InvalidArgumentError(
+        "MLP replacement tracing reserves the trace hook composer");
+  const auto inputs = model.input_types();
+  if (inputs.size() != 1)
+    return absl::InvalidArgumentError("MLP trace model must have one input");
+  RETURN_IF_ERROR(inputs[0].Validate());
+  const auto shape = inputs[0].dimensions();
+  if (inputs[0].data_type() != DataType::INT32 || shape.size() != 2 ||
+      shape[0] != ActivationType::kBatchDimension ||
+      shape[1] > std::numeric_limits<int>::max())
+    return absl::InvalidArgumentError(
+        "MLP trace model requires INT32 [batch,context]");
+  const int context = static_cast<int>(shape[1]);
+  ASSIGN_OR_RETURN(auto prototypes,
+                   ReplacementPrototypes(executor, context, replacements));
+  MlpHooks replacements_hook(executor, 1, context, std::move(prototypes));
+  TokenTraceOptions composed = options;
+  composed.compose_hooks = [&](LayerHooks trace) {
+    return replacements_hook.ComposeTrace(std::move(trace));
+  };
+  // TraceNextToken validates vocabulary, prefix, all model signatures and
+  // executor ownership before the original model's one instrumented forward.
+  ASSIGN_OR_RETURN(auto result,
+                   TraceNextToken(executor, model, prefix, composed));
+  RETURN_IF_ERROR(replacements_hook.Finish());
+  return result;
+}
+
 absl::StatusOr<MlpEvaluation> EvaluateMlpReplacements(
     cuda::Executor& executor, const Layer& model,
     PaddedLineDataSetIterator& dataset,
     absl::Span<const MlpReplacement> replacements, int vocabulary_size) {
   RETURN_IF_ERROR(ValidateDataset(executor, model, dataset, vocabulary_size));
-  ASSIGN_OR_RETURN(const auto prototypes,
-                   ReplacementPrototypes(executor, dataset, replacements));
+  ASSIGN_OR_RETURN(
+      const auto prototypes,
+      ReplacementPrototypes(executor, dataset.options().context_length,
+                            replacements));
   RETURN_IF_ERROR(dataset.Reset());
   MlpEvaluation result;
   for (size_t batch_index = 0; batch_index < dataset.batches_per_epoch();
        ++batch_index) {
     ASSIGN_OR_RETURN(auto batch, dataset.Next());
     RETURN_IF_ERROR(ValidateBatch(executor, model, batch));
-    MlpHooks hooks(executor, batch, prototypes);
+    MlpHooks hooks(executor, batch.batch_size, batch.sequence_length,
+                   prototypes);
     ASSIGN_OR_RETURN(auto forward,
                      model.fwd(executor, {&batch.inputs, 1}, &hooks.hooks()));
     RETURN_IF_ERROR(hooks.Finish());
@@ -570,8 +682,10 @@ absl::StatusOr<MlpGreedyEvaluation> VerifyMlpGreedyCompletions(
     PaddedLineDataSetIterator& dataset,
     absl::Span<const MlpReplacement> replacements, int vocabulary_size) {
   RETURN_IF_ERROR(ValidateDataset(executor, model, dataset, vocabulary_size));
-  ASSIGN_OR_RETURN(const auto prototypes,
-                   ReplacementPrototypes(executor, dataset, replacements));
+  ASSIGN_OR_RETURN(
+      const auto prototypes,
+      ReplacementPrototypes(executor, dataset.options().context_length,
+                            replacements));
   const size_t context = dataset.options().context_length;
   const size_t prompt = dataset.options().prompt_tokens;
   const int eos = dataset.options().eos_token;
@@ -594,6 +708,7 @@ absl::StatusOr<MlpGreedyEvaluation> VerifyMlpGreedyCompletions(
                    Buffer::Allocate(executor, score_mask.size_bytes()));
   MlpGreedyEvaluation result;
   result.exact_per_sentence.assign(dataset.sample_count(), false);
+  result.first_mismatch_per_sentence.resize(dataset.sample_count());
   for (size_t first = 0; first < dataset.sample_count(); first += capacity) {
     const size_t count = std::min(capacity, dataset.sample_count() - first);
     std::fill(inputs.begin(), inputs.end(), eos);
@@ -627,7 +742,8 @@ absl::StatusOr<MlpGreedyEvaluation> VerifyMlpGreedyCompletions(
           device_inputs, device_mask, static_cast<int32_t>(capacity),
           static_cast<int32_t>(context), static_cast<int32_t>(remaining)};
       RETURN_IF_ERROR(ValidateBatch(executor, model, batch));
-      MlpHooks hooks(executor, batch, prototypes);
+      MlpHooks hooks(executor, batch.batch_size, batch.sequence_length,
+                     prototypes);
       ASSIGN_OR_RETURN(auto forward,
                        model.fwd(executor, {&batch.inputs, 1}, &hooks.hooks()));
       RETURN_IF_ERROR(hooks.Finish());
@@ -656,6 +772,10 @@ absl::StatusOr<MlpGreedyEvaluation> VerifyMlpGreedyCompletions(
         const int expected =
             used[sample] == original.size() ? eos : original[used[sample]];
         if (predicted != expected || predicted == eos) {
+          if (predicted != expected)
+            result.first_mismatch_per_sentence[first + sample] =
+                MlpGreedyMismatch{static_cast<int>(used[sample]), predicted,
+                                  expected};
           result.exact_sentences += predicted == expected;
           result.exact_per_sentence[first + sample] = predicted == expected;
           active[sample] = false;
@@ -672,6 +792,10 @@ absl::StatusOr<MlpGreedyEvaluation> VerifyMlpGreedyCompletions(
     }
     result.sentences += count;
   }
+  for (size_t sentence = 0; sentence < dataset.sample_count(); ++sentence)
+    if (result.exact_per_sentence[sentence] ==
+        result.first_mismatch_per_sentence[sentence].has_value())
+      return absl::InternalError("greedy mismatch accounting is inconsistent");
   return result;
 }
 

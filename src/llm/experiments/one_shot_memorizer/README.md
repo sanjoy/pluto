@@ -23,6 +23,11 @@ teacher-assisted scope recorded before evaluation. It preserves 996/1,024
 complete sentences with all eight MLPs replaced, without learning expansion
 directions; the remaining errors and dependence on the trained backbone are
 not resolved by this construction.
+The [failure traces and precision audit](QUADRATIC_FAILURE_TRACES.md) then
+separate local MLP approximation error from inherited input changes. Twenty of
+the 28 failed next-token queries tolerate every individual substitution;
+restoring block 0 alone rescues 24 queries. This is evidence of interacting
+representation errors, not exclusive fact ownership.
 
 ## Time-bounded sentence and capacity experiments
 

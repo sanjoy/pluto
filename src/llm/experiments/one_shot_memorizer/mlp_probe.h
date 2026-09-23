@@ -1,12 +1,14 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "src/cuda/executor.h"
 #include "src/dataset/padded_line_dataset.h"
+#include "src/llm/experiments/one_shot_memorizer/token_trace.h"
 #include "src/llm/layer.h"
 
 namespace pluto::llm::one_shot_memorizer {
@@ -84,6 +86,39 @@ absl::StatusOr<MlpEvaluation> EvaluateMlpReplacements(
     PaddedLineDataSetIterator& dataset,
     absl::Span<const MlpReplacement> replacements, int vocabulary_size);
 
+// One fresh prefix-only forward with the same live branch substitutions as
+// EvaluateMlpReplacements, while retaining TokenTraceResult captures/patches.
+// No label or gold continuation is accepted. Source-site patches are applied
+// BEFORE retaining the fresh LayerNorm/GELU source; at the MLP branch output,
+// substitution runs BEFORE trace patches and capture. Thus a branch-output
+// patch deliberately overrides the replacement, and later blocks consume the
+// actual intervened states. Replacement internals add no trace scope/events.
+//
+// Empty replacements delegate exactly to TraceNextToken. Nonempty replacement
+// lists reserve options.compose_hooks for this adapter and reject a supplied
+// composer. All original/replacement weights and original activation bytes
+// remain unchanged; projection ownership stays with the caller.
+absl::StatusOr<TokenTraceResult> TraceMlpReplacements(
+    cuda::Executor& executor, const Layer& model, absl::Span<const int> prefix,
+    absl::Span<const MlpReplacement> replacements,
+    const TokenTraceOptions& options);
+
+// The first failed prediction, after all earlier generated tokens matched.
+// Recording this scoring metadata does not change prediction selection or
+// feed any gold suffix token into the generated input prefix.
+struct MlpGreedyMismatch {
+  // Absolute zero-based token position: first suffix=prompt_tokens; EOS=text
+  // size.
+  int target_position;
+  // Actual full-vocabulary argmax returned by the model, including premature
+  // EOS.
+  int predicted_token;
+  // Gold token at target_position, or EOS at the original sentence end.
+  int expected_token;
+
+  bool operator==(const MlpGreedyMismatch&) const = default;
+};
+
 struct MlpGreedyEvaluation {
   int64_t sentences = 0;
   int64_t exact_sentences = 0;
@@ -94,6 +129,9 @@ struct MlpGreedyEvaluation {
   // Original corpus order, independent of when each active case finishes.
   // True only for a complete matching continuation and correctly timed EOS.
   std::vector<bool> exact_per_sentence;
+  // Same corpus order as exact_per_sentence. nullopt if and only if the
+  // sentence completed exactly, including EOS; failed cases contain one event.
+  std::vector<std::optional<MlpGreedyMismatch>> first_mismatch_per_sentence;
 };
 
 // Independently verifies exact greedy continuations from each sentence's
@@ -104,6 +142,9 @@ struct MlpGreedyEvaluation {
 // forward creates fresh MLP hooks, and listed substitutions apply at all rows.
 // Reads the unshuffled dataset's original token storage without advancing its
 // iterator. Reuses one fixed-capacity input/score-mask/prediction allocation.
+// Records only the first mismatch; it never feeds a gold suffix token back to
+// continue a failed case. Its absolute target position is one past the query
+// row.
 absl::StatusOr<MlpGreedyEvaluation> VerifyMlpGreedyCompletions(
     cuda::Executor& executor, const Layer& model,
     PaddedLineDataSetIterator& dataset,

@@ -3,6 +3,107 @@ load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("@rules_cuda//cuda:defs.bzl", "cuda_library")
 
+cc_library(
+    name = "quadratic_probe_artifacts",
+    srcs = ["quadratic_probe_artifacts.cc"],
+    hdrs = ["quadratic_probe_artifacts.h"],
+    deps = [
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+    ],
+)
+
+cc_test(
+    name = "quadratic_probe_artifacts_test",
+    size = "small",
+    srcs = ["quadratic_probe_artifacts_test.cc"],
+    deps = [
+        ":quadratic_probe_artifacts",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "checkpoint_quadratic_trace_probe",
+    srcs = ["checkpoint_quadratic_trace_probe.cc"],
+    deps = [
+        ":mlp_probe",
+        ":quadratic_features",
+        ":quadratic_probe_artifacts",
+        ":token_trace",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset",
+        "//src/dataset:compact_vocabulary",
+        "//src/dataset:gpt2_detokenizer",
+        "//src/dataset:gpt2_tokenizer",
+        "//src/dataset:padded_line_dataset",
+        "//src/llm:checkpoint",
+        "//src/llm:combinators",
+        "//src/llm:fully_connected",
+        "//src/llm:gpt2",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/strings",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_library(
+    name = "quadratic_precision_audit",
+    srcs = ["quadratic_precision_audit.cc"],
+    hdrs = ["quadratic_precision_audit.h"],
+    deps = [
+        ":closed_form_map",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "quadratic_precision_audit_test",
+    size = "small",
+    srcs = ["quadratic_precision_audit_test.cc"],
+    deps = [
+        ":quadratic_precision_audit",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "checkpoint_quadratic_precision_probe",
+    srcs = ["checkpoint_quadratic_precision_probe.cc"],
+    deps = [
+        ":closed_form_map",
+        ":mlp_probe",
+        ":quadratic_precision_audit",
+        ":quadratic_probe_artifacts",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset",
+        "//src/dataset:compact_vocabulary",
+        "//src/dataset:gpt2_tokenizer",
+        "//src/dataset:padded_line_dataset",
+        "//src/llm:checkpoint",
+        "//src/llm:gpt2",
+        "//src/llm:layer",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
 cuda_library(
     name = "quadratic_features",
     srcs = ["quadratic_features.cc"],
@@ -808,6 +909,7 @@ cc_library(
     srcs = ["mlp_probe.cc"],
     hdrs = ["mlp_probe.h"],
     deps = [
+        ":token_trace",
         "//src/cuda:buffer",
         "//src/cuda:executor",
         "//src/cuda:page_locked_host_array",
@@ -831,6 +933,7 @@ cc_test(
     tags = ["requires-gpu"],
     deps = [
         ":mlp_probe",
+        ":token_trace",
         "//src/cuda:page_locked_host_array",
         "//src/dataset:plain_text_tokenizer",
         "//src/llm:fully_connected",

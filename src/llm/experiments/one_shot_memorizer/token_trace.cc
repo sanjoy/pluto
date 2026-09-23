@@ -472,8 +472,14 @@ absl::StatusOr<TokenTraceResult> TraceNextToken(
                       cudaMemcpyHostToDevice, executor.stream()),
       "upload explicit prefix with fixed future padding"));
   TraceHooks hooks(executor, model, shape, prefix.size(), options);
-  ASSIGN_OR_RETURN(auto forward,
-                   model.fwd(executor, {&input, 1}, hooks.hooks()));
+  LayerHooks composed;
+  LayerHooks* dispatch = hooks.hooks();
+  if (options.compose_hooks) {
+    composed =
+        options.compose_hooks(dispatch == nullptr ? LayerHooks{} : *dispatch);
+    dispatch = &composed;
+  }
+  ASSIGN_OR_RETURN(auto forward, model.fwd(executor, {&input, 1}, dispatch));
   if (forward.outputs.size() != 1 ||
       forward.outputs[0].size_bytes() != shape.logit_bytes ||
       &forward.outputs[0].executor() != &executor)

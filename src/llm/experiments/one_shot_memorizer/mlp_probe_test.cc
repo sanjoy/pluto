@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -39,6 +40,74 @@ absl::Status Upload(cuda::Executor& executor, const Buffer& destination,
       cudaMemcpyAsync(destination.data(), host.data(), host.size_bytes(),
                       cudaMemcpyHostToDevice, executor.stream()),
       "upload MLP probe fixture");
+}
+
+TokenTraceSite MlpSite(int block, bool normalized = false) {
+  TokenTraceSite site{
+      .scope = {"gpt2", "transformer_block_" + std::to_string(block),
+                "ResidualLayer"},
+      .layer_name = "mlp",
+      .occurrence = 0};
+  if (normalized) {
+    site.scope.push_back("mlp");
+    site.layer_name = "LayerNormLayer";
+  }
+  return site;
+}
+
+const TokenTraceActivation* FindActivation(const TokenTraceResult& trace,
+                                           const TokenTraceSite& site) {
+  for (const auto& activation : trace.activations)
+    if (activation.site.scope == site.scope &&
+        activation.site.layer_name == site.layer_name &&
+        activation.site.occurrence == site.occurrence &&
+        activation.site.output_index == site.output_index)
+      return &activation;
+  return nullptr;
+}
+
+void ExpectSameTrace(const TokenTraceResult& a, const TokenTraceResult& b) {
+  EXPECT_EQ(a.query_row, b.query_row);
+  EXPECT_EQ(a.predicted_token, b.predicted_token);
+  EXPECT_EQ(a.logits, b.logits);
+  ASSERT_EQ(a.activations.size(), b.activations.size());
+  for (size_t i = 0; i < a.activations.size(); ++i) {
+    const auto& x = a.activations[i];
+    const auto& y = b.activations[i];
+    EXPECT_EQ(x.site.scope, y.site.scope);
+    EXPECT_EQ(x.site.layer_name, y.site.layer_name);
+    EXPECT_EQ(x.site.occurrence, y.site.occurrence);
+    EXPECT_EQ(x.site.output_index, y.site.output_index);
+    EXPECT_EQ(x.data_type, y.data_type);
+    EXPECT_EQ(x.first_row, y.first_row);
+    EXPECT_EQ(x.row_count, y.row_count);
+    EXPECT_EQ(x.channels, y.channels);
+    EXPECT_EQ(x.bytes, y.bytes);
+    EXPECT_EQ(x.values, y.values);
+  }
+  ASSERT_EQ(a.attention.size(), b.attention.size());
+  for (size_t i = 0; i < a.attention.size(); ++i) {
+    EXPECT_EQ(a.attention[i].site.scope, b.attention[i].site.scope);
+    EXPECT_EQ(a.attention[i].site.layer_name, b.attention[i].site.layer_name);
+    EXPECT_EQ(a.attention[i].site.occurrence, b.attention[i].site.occurrence);
+    EXPECT_EQ(a.attention[i].probabilities, b.attention[i].probabilities);
+  }
+}
+
+absl::StatusOr<std::vector<std::vector<uint8_t>>> SnapshotWeights(
+    cuda::Executor& executor, const Layer& model) {
+  std::vector<std::vector<uint8_t>> result;
+  for (const auto& weight : model.weights()) {
+    ASSIGN_OR_RETURN(auto host, cuda::PageLockedHostArray<uint8_t>::Allocate(
+                                    executor, weight.size_bytes()));
+    RETURN_IF_ERROR(cuda::CudaStatus(
+        cudaMemcpyAsync(host.data(), weight.data(), host.size_bytes(),
+                        cudaMemcpyDeviceToHost, executor.stream()),
+        "snapshot MLP trace fixture"));
+    RETURN_IF_ERROR(executor.Synchronize());
+    result.emplace_back(host.begin(), host.end());
+  }
+  return result;
 }
 
 class RecordingGreedyLayer final : public Layer {
@@ -407,6 +476,9 @@ TEST_F(MlpProbeTest, GreedyFeedsActualPredictionsAndRequiresEosAtGoldEnd) {
   EXPECT_EQ(result->exact_sentences, 2);
   EXPECT_EQ(result->exact_per_sentence, (std::vector<bool>{true, false, true}));
   EXPECT_EQ(result->generated_targets, 8);
+  EXPECT_EQ(result->first_mismatch_per_sentence,
+            (std::vector<std::optional<MlpGreedyMismatch>>{
+                std::nullopt, MlpGreedyMismatch{3, 'a', kEos}, std::nullopt}));
   EXPECT_EQ(model.inputs_seen, (std::vector<std::vector<int>>{
                                    {'b', 'b', 0, 0, 'b', 'b', 0, 0},
                                    {'b', 'b', 'c', 0, 'b', 'b', 'c', 0},
@@ -422,6 +494,10 @@ TEST_F(MlpProbeTest, GreedyFeedsActualPredictionsAndRequiresEosAtGoldEnd) {
   EXPECT_EQ(early_eos->exact_per_sentence,
             (std::vector<bool>{false, true, false}));
   EXPECT_EQ(early_eos->generated_targets, 6);
+  EXPECT_EQ(early_eos->first_mismatch_per_sentence,
+            (std::vector<std::optional<MlpGreedyMismatch>>{
+                MlpGreedyMismatch{3, kEos, 'a'}, std::nullopt,
+                MlpGreedyMismatch{3, kEos, 'a'}}));
   model.nonfinite_token = 'b';
   EXPECT_EQ(
       VerifyMlpGreedyCompletions(*executor_, model, **dataset, {}, kVocabulary)
@@ -456,6 +532,11 @@ TEST_F(MlpProbeTest, GreedyClonePreservesCountsAndStopsAtFirstMismatch) {
   EXPECT_EQ(baseline->exact_per_sentence,
             (std::vector<bool>{false, false, false}));
   EXPECT_EQ(baseline->generated_targets, 14);
+  EXPECT_EQ(
+      baseline->first_mismatch_per_sentence,
+      (std::vector<std::optional<MlpGreedyMismatch>>{
+          MlpGreedyMismatch{5, 'a', kEos}, MlpGreedyMismatch{6, 'a', kEos},
+          MlpGreedyMismatch{6, 'a', kEos}}));
   const MlpReplacement original{0, MlpSource::kGelu, clone->get()};
   const auto copied = VerifyMlpGreedyCompletions(*executor_, **model, **dataset,
                                                  {&original, 1}, kVocabulary);
@@ -464,6 +545,8 @@ TEST_F(MlpProbeTest, GreedyClonePreservesCountsAndStopsAtFirstMismatch) {
   EXPECT_EQ(copied->exact_sentences, baseline->exact_sentences);
   EXPECT_EQ(copied->exact_per_sentence, baseline->exact_per_sentence);
   EXPECT_EQ(copied->generated_targets, baseline->generated_targets);
+  EXPECT_EQ(copied->first_mismatch_per_sentence,
+            baseline->first_mismatch_per_sentence);
   const MlpReplacement removed{0, MlpSource::kLayerNorm, zero->get()};
   const auto failed = VerifyMlpGreedyCompletions(*executor_, **model, **dataset,
                                                  {&removed, 1}, kVocabulary);
@@ -473,6 +556,243 @@ TEST_F(MlpProbeTest, GreedyClonePreservesCountsAndStopsAtFirstMismatch) {
   EXPECT_EQ(failed->exact_per_sentence,
             (std::vector<bool>{false, false, false}));
   EXPECT_EQ(failed->generated_targets, 3);
+  EXPECT_EQ(failed->first_mismatch_per_sentence,
+            (std::vector<std::optional<MlpGreedyMismatch>>{
+                MlpGreedyMismatch{2, 'b', 'a'}, MlpGreedyMismatch{2, 'b', 'a'},
+                MlpGreedyMismatch{2, 'b', 'a'}}));
+}
+
+TEST_F(MlpProbeTest, GreedyFirstMismatchIsNotFedBackOrReplacedWithGold) {
+  tokenizer::PlainTextTokenizer tokenizer;
+  auto dataset = PaddedLineDataSetIterator::Create(
+      *executor_, "bbda\nbbc\nbbda\n", tokenizer,
+      {.batch_size = 2,
+       .context_length = 4,
+       .prompt_tokens = 2,
+       .eos_token = kEos});
+  ASSERT_TRUE(dataset.ok()) << dataset.status();
+  RecordingGreedyLayer model;
+  model.end_after_c = true;
+  const auto result =
+      VerifyMlpGreedyCompletions(*executor_, model, **dataset, {}, kVocabulary);
+  ASSERT_TRUE(result.ok()) << result.status();
+  EXPECT_EQ(result->sentences, 3);
+  EXPECT_EQ(result->exact_sentences, 1);
+  EXPECT_EQ(result->generated_targets, 4);
+  EXPECT_EQ(result->exact_per_sentence,
+            (std::vector<bool>{false, true, false}));
+  EXPECT_EQ(result->first_mismatch_per_sentence,
+            (std::vector<std::optional<MlpGreedyMismatch>>{
+                MlpGreedyMismatch{2, 'c', 'd'}, std::nullopt,
+                MlpGreedyMismatch{2, 'c', 'd'}}));
+  // Failed rows retain their original two-token prefix: neither the wrong
+  // prediction nor the gold 'd' is fed back. The final partial batch reports
+  // just its one real sentence, not the EOS-padded unused slot.
+  EXPECT_EQ(model.inputs_seen,
+            (std::vector<std::vector<int>>{{'b', 'b', 0, 0, 'b', 'b', 0, 0},
+                                           {'b', 'b', 0, 0, 'b', 'b', 'c', 0},
+                                           {'b', 'b', 0, 0, 0, 0, 0, 0}}));
+}
+
+TEST_F(MlpProbeTest, EmptyTraceReplacementsPreserveAllEventsAndPatches) {
+  auto model = Model();
+  ASSERT_TRUE(model.ok()) << model.status();
+  const std::vector<int> prefix{'b', 'b'};
+  const TokenTracePatch patch{.site = MlpSite(0),
+                              .rows = TokenTraceRows::kAllPrefix};
+  TokenTraceOptions options{.vocabulary_size = kVocabulary,
+                            .padding_token = kEos,
+                            .capture_activations = true,
+                            .capture_attention = true};
+  for (bool patched : {false, true}) {
+    options.patches = patched ? absl::Span<const TokenTracePatch>(&patch, 1)
+                              : absl::Span<const TokenTracePatch>();
+    const auto ordinary = TraceNextToken(*executor_, **model, prefix, options);
+    const auto replacement =
+        TraceMlpReplacements(*executor_, **model, prefix, {}, options);
+    ASSERT_TRUE(ordinary.ok()) << ordinary.status();
+    ASSERT_TRUE(replacement.ok()) << replacement.status();
+    ExpectSameTrace(*ordinary, *replacement);
+    EXPECT_EQ(replacement->predicted_token, patched ? 'b' : 'a');
+  }
+}
+
+TEST_F(MlpProbeTest, TraceCapturesSubstitutionsBeforeOutputPatches) {
+  auto model = Model();
+  auto zero = Projection(kWidth);
+  ASSERT_TRUE(model.ok()) << model.status();
+  ASSERT_TRUE(zero.ok()) << zero.status();
+  const auto before = SnapshotWeights(*executor_, **model);
+  ASSERT_TRUE(before.ok()) << before.status();
+  const std::vector<int> prefix{'b', 'b'};
+  TokenTraceOptions options{.vocabulary_size = kVocabulary,
+                            .padding_token = kEos,
+                            .capture_activations = true,
+                            .capture_attention = true};
+  const auto original = TraceNextToken(*executor_, **model, prefix, options);
+  ASSERT_TRUE(original.ok()) << original.status();
+  const MlpReplacement replacement{0, MlpSource::kLayerNorm, zero->get()};
+  const auto changed = TraceMlpReplacements(*executor_, **model, prefix,
+                                            {&replacement, 1}, options);
+  ASSERT_TRUE(changed.ok()) << changed.status();
+  EXPECT_EQ(original->predicted_token, 'a');
+  EXPECT_EQ(changed->predicted_token, 'b');
+  ASSERT_EQ(original->activations.size(), changed->activations.size());
+  // Replacement internals are uninstrumented: original event identities and
+  // occurrence counters remain unchanged, with no synthetic wrapper event.
+  for (size_t i = 0; i < original->activations.size(); ++i) {
+    EXPECT_EQ(original->activations[i].site.scope,
+              changed->activations[i].site.scope);
+    EXPECT_EQ(original->activations[i].site.layer_name,
+              changed->activations[i].site.layer_name);
+    EXPECT_EQ(original->activations[i].site.occurrence,
+              changed->activations[i].site.occurrence);
+  }
+  const auto* branch = FindActivation(*changed, MlpSite(0));
+  const auto* donor = FindActivation(*original, MlpSite(0));
+  ASSERT_NE(branch, nullptr);
+  ASSERT_NE(donor, nullptr);
+  for (float value : branch->values)
+    EXPECT_EQ(value, 0);
+  TokenTraceSite inner = MlpSite(0, true);
+  inner.layer_name = "FullyConnectedLayer";
+  inner.occurrence = 1;
+  const auto* learned = FindActivation(*changed, inner);
+  ASSERT_NE(learned, nullptr);
+  EXPECT_EQ(learned->values[0], 4.0f);
+  const TokenTracePatch patch{.site = MlpSite(0),
+                              .rows = TokenTraceRows::kAllPrefix,
+                              .replacement = TokenTraceReplacement::kDonor,
+                              .donor = donor};
+  options.patches = {&patch, 1};
+  const auto restored = TraceMlpReplacements(*executor_, **model, prefix,
+                                             {&replacement, 1}, options);
+  ASSERT_TRUE(restored.ok()) << restored.status();
+  ExpectSameTrace(*original, *restored);
+  const auto after = SnapshotWeights(*executor_, **model);
+  ASSERT_TRUE(after.ok()) << after.status();
+  EXPECT_EQ(*before, *after);
+  options.patches = {};
+  const auto post = TraceNextToken(*executor_, **model, prefix, options);
+  ASSERT_TRUE(post.ok()) << post.status();
+  ExpectSameTrace(*original, *post);
+}
+
+TEST_F(MlpProbeTest, TraceReplacementUsesPatchedNormalizedSource) {
+  auto model = Model();
+  auto identity = Projection(kWidth, kWidth, 1);
+  ASSERT_TRUE(model.ok()) << model.status();
+  ASSERT_TRUE(identity.ok()) << identity.status();
+  const std::vector<int> prefix{'b', 'b'};
+  const MlpReplacement replacement{0, MlpSource::kLayerNorm, identity->get()};
+  TokenTraceOptions options{.vocabulary_size = kVocabulary,
+                            .padding_token = kEos,
+                            .capture_activations = true};
+  const auto unpatched = TraceMlpReplacements(*executor_, **model, prefix,
+                                              {&replacement, 1}, options);
+  ASSERT_TRUE(unpatched.ok()) << unpatched.status();
+  const auto* before = FindActivation(*unpatched, MlpSite(0));
+  ASSERT_NE(before, nullptr);
+  EXPECT_LT(before->values[0], 0);
+  const TokenTracePatch patch{.site = MlpSite(0, true),
+                              .rows = TokenTraceRows::kAllPrefix};
+  options.patches = {&patch, 1};
+  const auto changed = TraceMlpReplacements(*executor_, **model, prefix,
+                                            {&replacement, 1}, options);
+  ASSERT_TRUE(changed.ok()) << changed.status();
+  for (bool normalized : {false, true}) {
+    const auto* values = FindActivation(*changed, MlpSite(0, normalized));
+    ASSERT_NE(values, nullptr);
+    for (float value : values->values)
+      EXPECT_EQ(value, 0);
+  }
+}
+
+TEST_F(MlpProbeTest, TraceSimultaneousReplacementsUseFreshSources) {
+  auto model = Model(2);
+  auto zero = Projection(kWidth);
+  auto identity = Projection(kWidth, kWidth, 8);
+  ASSERT_TRUE(model.ok()) << model.status();
+  ASSERT_TRUE(zero.ok()) << zero.status();
+  ASSERT_TRUE(identity.ok()) << identity.status();
+  const std::vector<int> prefix{'b', 'b'};
+  const TokenTraceOptions options{.vocabulary_size = kVocabulary,
+                                  .padding_token = kEos,
+                                  .capture_activations = true};
+  std::vector<MlpReplacement> replacements{
+      {1, MlpSource::kLayerNorm, identity->get()}};
+  const auto single =
+      TraceMlpReplacements(*executor_, **model, prefix, replacements, options);
+  ASSERT_TRUE(single.ok()) << single.status();
+  replacements.push_back({0, MlpSource::kLayerNorm, zero->get()});
+  const auto both =
+      TraceMlpReplacements(*executor_, **model, prefix, replacements, options);
+  ASSERT_TRUE(both.ok()) << both.status();
+  EXPECT_EQ(single->predicted_token, 'a');
+  EXPECT_EQ(both->predicted_token, 'b');
+  const auto* single_source = FindActivation(*single, MlpSite(1, true));
+  const auto* both_source = FindActivation(*both, MlpSite(1, true));
+  ASSERT_NE(single_source, nullptr);
+  ASSERT_NE(both_source, nullptr);
+  EXPECT_GT(single_source->values[0], 0);
+  EXPECT_LT(both_source->values[0], 0);
+}
+
+TEST_F(MlpProbeTest, TraceRejectsInvalidReplacementsAndResetsAfterErrors) {
+  auto model = Model();
+  auto projection = Projection(kWidth);
+  auto wrong_width = Projection(kFeatures);
+  ASSERT_TRUE(model.ok()) << model.status();
+  ASSERT_TRUE(projection.ok()) << projection.status();
+  ASSERT_TRUE(wrong_width.ok()) << wrong_width.status();
+  const std::vector<int> prefix{'b', 'b'};
+  TokenTraceOptions options{.vocabulary_size = kVocabulary,
+                            .padding_token = kEos};
+  for (const auto& replacement : std::vector<MlpReplacement>{
+           {-1, MlpSource::kLayerNorm, projection->get()},
+           {0, MlpSource::kLayerNorm, nullptr},
+           {0, static_cast<MlpSource>(99), projection->get()},
+           {0, MlpSource::kLayerNorm, wrong_width->get()}})
+    EXPECT_EQ(TraceMlpReplacements(*executor_, **model, prefix,
+                                   {&replacement, 1}, options)
+                  .status()
+                  .code(),
+              absl::StatusCode::kInvalidArgument);
+  const MlpReplacement absent{1, MlpSource::kLayerNorm, projection->get()};
+  EXPECT_EQ(
+      TraceMlpReplacements(*executor_, **model, prefix, {&absent, 1}, options)
+          .status()
+          .code(),
+      absl::StatusCode::kNotFound);
+  const MlpReplacement valid{0, MlpSource::kLayerNorm, projection->get()};
+  const std::vector<MlpReplacement> duplicates{valid, valid};
+  EXPECT_EQ(
+      TraceMlpReplacements(*executor_, **model, prefix, duplicates, options)
+          .status()
+          .code(),
+      absl::StatusCode::kInvalidArgument);
+  const TokenTracePatch missing{.site = MlpSite(1)};
+  options.patches = {&missing, 1};
+  EXPECT_EQ(
+      TraceMlpReplacements(*executor_, **model, prefix, {&valid, 1}, options)
+          .status()
+          .code(),
+      absl::StatusCode::kNotFound);
+  options.patches = {};
+  options.compose_hooks = [](LayerHooks hooks) { return hooks; };
+  EXPECT_EQ(
+      TraceMlpReplacements(*executor_, **model, prefix, {&valid, 1}, options)
+          .status()
+          .code(),
+      absl::StatusCode::kInvalidArgument);
+  options.compose_hooks = {};
+  const auto again =
+      TraceMlpReplacements(*executor_, **model, prefix, {&valid, 1}, options);
+  ASSERT_TRUE(again.ok()) << again.status();
+  EXPECT_EQ(again->predicted_token, 'b');
+  const auto original = TraceNextToken(*executor_, **model, prefix, options);
+  ASSERT_TRUE(original.ok()) << original.status();
+  EXPECT_EQ(original->predicted_token, 'a');
 }
 
 }  // namespace

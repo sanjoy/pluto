@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -9,6 +10,7 @@
 #include "absl/types/span.h"
 #include "src/cuda/executor.h"
 #include "src/llm/layer.h"
+#include "src/llm/layer_hooks.h"
 
 namespace pluto::llm::one_shot_memorizer {
 
@@ -70,6 +72,14 @@ struct TokenTraceOptions {
   // Independent callers make separate calls for separate interventions.
   // Multiple entries in this span intentionally compose within ONE forward.
   absl::Span<const TokenTracePatch> patches;
+  // Optional experiment-local instrumentation composition. Called once with
+  // the trace callbacks (possibly all empty); return the callbacks to pass to
+  // the ORIGINAL model's forward. A composer must preserve the trace events,
+  // scope balancing and buffer contracts. The returned callbacks are borrowed
+  // only for this synchronous call, never retained. This lets live MLP
+  // substitutions run before output patches without adding a wrapper Layer
+  // or changing recorded scope/occurrence identities.
+  std::function<LayerHooks(LayerHooks)> compose_hooks;
 };
 
 struct TokenTraceResult {
