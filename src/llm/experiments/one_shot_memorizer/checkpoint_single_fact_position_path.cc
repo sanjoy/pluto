@@ -1,0 +1,341 @@
+// Exploratory suffix decoder, not a universal decoder of trained knowledge.
+// Required side information: initialization, trained weights, architecture,
+// compact vocabulary/tokenizer, and the task's known five-token prompt length.
+// The frozen sign rule selects a token SET. Search assumes each selected
+// non-EOS ID occurs exactly once; multiplicities and missing IDs are unknown.
+// No corpus, prompt text, gold labels, or known token order are read.
+#include <algorithm>
+#include <cmath>
+#include <cstddef>
+#include <filesystem>
+#include <fstream>
+#include <iomanip>
+#include <iostream>
+#include <iterator>
+#include <limits>
+#include <string>
+#include <vector>
+
+#include "absl/flags/flag.h"
+#include "absl/flags/parse.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "src/cuda/executor.h"
+#include "src/dataset/compact_vocabulary.h"
+#include "src/dataset/gpt2_detokenizer.h"
+#include "src/dataset/gpt2_tokenizer.h"
+#include "src/llm/checkpoint.h"
+#include "src/llm/experiments/one_shot_memorizer/embedding_sign_readout.h"
+#include "src/llm/experiments/one_shot_memorizer/position_path.h"
+#include "src/llm/experiments/one_shot_memorizer/token_trace.h"
+#include "src/llm/gpt2.h"
+#include "src/llm/layer.h"
+#include "src/util/status_macros.h"
+
+ABSL_FLAG(
+    std::string, initial_checkpoint, "",
+    "Original step_0; only embedding weights and vocabulary mapping read");
+ABSL_FLAG(std::string, checkpoint, "",
+          "Trained single-fact checkpoint directory");
+ABSL_FLAG(std::string, tokenizer, "", "Base GPT-2 tokenizer directory");
+ABSL_FLAG(std::string, output_dir, "",
+          "Fresh directory for decoded paths and scores");
+ABSL_FLAG(int, layers, 8, "Transformer block count");
+ABSL_FLAG(int, model_width, 16, "Residual width");
+ABSL_FLAG(int, attention_heads, 1, "Attention head count");
+ABSL_FLAG(int, feed_forward_width, 64, "MLP expansion width");
+ABSL_FLAG(
+    std::string, score_mode, "position_aware",
+    "position_aware (primary), fixed_position, or mean_positions; the latter "
+    "two are post-hoc controls, not additional independent replications");
+
+namespace pluto::llm::one_shot_memorizer {
+namespace {
+namespace fs = std::filesystem;
+constexpr int kKnownTaskPromptCount = 5;
+
+// Escape bytes without letting token text introduce TSV delimiters or invalid
+// UTF-8. This is presentation only and never influences scores or ordering.
+std::string DisplayBytes(absl::string_view text) {
+  constexpr char kHex[] = "0123456789abcdef";
+  std::string result;
+  for (unsigned char ch : text)
+    if (ch == '\\')
+      result += "\\\\";
+    else if (ch == '\n')
+      result += "\\n";
+    else if (ch == '\r')
+      result += "\\r";
+    else if (ch == '\t')
+      result += "\\t";
+    else if (ch < 32 || ch >= 127) {
+      result += "\\x";
+      result += kHex[ch >> 4];
+      result += kHex[ch & 15];
+    } else
+      result += static_cast<char>(ch);
+  return result;
+}
+
+absl::StatusOr<std::string> Decode(
+    absl::Span<const int> compact,
+    const tokenizer::CompactVocabularyTokenizer& vocabulary,
+    const tokenizer::Gpt2Detokenizer& detokenizer) {
+  std::vector<int> original;
+  original.reserve(compact.size());
+  for (int token : compact) {
+    ASSIGN_OR_RETURN(int id, vocabulary.OriginalId(token));
+    original.push_back(id);
+  }
+  return detokenizer.Decode(original);
+}
+
+absl::StatusOr<std::string> ReadMappingBytes(const fs::path& checkpoint) {
+  std::ifstream input(checkpoint / "compact_vocabulary.tsv", std::ios::binary);
+  if (!input)
+    return absl::NotFoundError("missing checkpoint vocabulary map");
+  return std::string(std::istreambuf_iterator<char>(input),
+                     std::istreambuf_iterator<char>());
+}
+
+absl::StatusOr<std::vector<float>> ReadEmbedding(const fs::path& checkpoint,
+                                                 size_t elements) {
+  static_assert(sizeof(float) == 4 && std::numeric_limits<float>::is_iec559);
+  std::ifstream input(checkpoint / "weight_0.bin",
+                      std::ios::binary | std::ios::ate);
+  if (!input || input.tellg() != static_cast<std::streamoff>(elements * 4))
+    return absl::InvalidArgumentError("missing or wrong-sized embedding");
+  std::vector<float> values(elements);
+  input.seekg(0);
+  input.read(reinterpret_cast<char*>(values.data()), elements * sizeof(float));
+  if (!input)
+    return absl::DataLossError("short embedding read");
+  return values;
+}
+
+absl::Status PositionPathProbe() {
+  const std::string score_mode = absl::GetFlag(FLAGS_score_mode);
+  PositionPathScoreMode mode;
+  if (score_mode == "position_aware")
+    mode = PositionPathScoreMode::kPositionAware;
+  else if (score_mode == "fixed_position")
+    mode = PositionPathScoreMode::kFixedPosition;
+  else if (score_mode == "mean_positions")
+    mode = PositionPathScoreMode::kMeanPositions;
+  else
+    return absl::InvalidArgumentError(
+        "score_mode must be position_aware, fixed_position, or mean_positions");
+  const fs::path initial = absl::GetFlag(FLAGS_initial_checkpoint);
+  const fs::path checkpoint = absl::GetFlag(FLAGS_checkpoint);
+  const fs::path directory = absl::GetFlag(FLAGS_output_dir);
+  if (initial.empty() || checkpoint.empty() || directory.empty() ||
+      absl::GetFlag(FLAGS_tokenizer).empty())
+    return absl::InvalidArgumentError(
+        "initial_checkpoint, checkpoint, tokenizer, fresh output_dir required");
+  ASSIGN_OR_RETURN(auto initial_map, ReadMappingBytes(initial));
+  ASSIGN_OR_RETURN(auto trained_map, ReadMappingBytes(checkpoint));
+  if (initial_map != trained_map)
+    return absl::InvalidArgumentError("initial/trained vocabulary maps differ");
+  ASSIGN_OR_RETURN(
+      auto base, tokenizer::Gpt2Tokenizer::Load(absl::GetFlag(FLAGS_tokenizer)));
+  ASSIGN_OR_RETURN(auto detokenizer, tokenizer::Gpt2Detokenizer::Load(
+                                         absl::GetFlag(FLAGS_tokenizer)));
+  ASSIGN_OR_RETURN(auto vocabulary,
+                   tokenizer::CompactVocabularyTokenizer::LoadFromFile(
+                       *base, checkpoint / "compact_vocabulary.tsv"));
+  if (base->eos_token_id() != vocabulary->original_eos_token_id() ||
+      detokenizer->vocab_size() != base->vocab_size() ||
+      detokenizer->eos_token_id() != base->eos_token_id())
+    return absl::InvalidArgumentError("checkpoint/tokenizer identity differs");
+  const Gpt2Config config{
+      .transformer_block_count = absl::GetFlag(FLAGS_layers),
+      .model_width = absl::GetFlag(FLAGS_model_width),
+      .attention_heads = absl::GetFlag(FLAGS_attention_heads),
+      .feed_forward_width = absl::GetFlag(FLAGS_feed_forward_width),
+      .vocabulary_size = vocabulary->vocab_size(),
+      .pad_vocabulary = false};
+  RETURN_IF_ERROR(config.Validate());
+  const size_t elements =
+      static_cast<size_t>(config.model_width) * config.vocabulary_size;
+  ASSIGN_OR_RETURN(auto initial_embedding, ReadEmbedding(initial, elements));
+  ASSIGN_OR_RETURN(auto trained_embedding, ReadEmbedding(checkpoint, elements));
+  ASSIGN_OR_RETURN(auto decoded, ComputeEmbeddingSignReadout(
+                                     initial_embedding, trained_embedding,
+                                     config.model_width));
+  const int eos = vocabulary->eos_token_id();
+  const auto& selected = decoded.delta_fp32.selected_ids;
+  if (!std::binary_search(selected.begin(), selected.end(), eos))
+    return absl::FailedPreconditionError(
+        "frozen selected set does not contain EOS");
+  std::vector<int> nodes;
+  for (int token : selected)
+    if (token != eos)
+      nodes.push_back(token);
+  const int n = nodes.size();
+  if (n < 1 || n > kMaxPositionPathNodes ||
+      kKnownTaskPromptCount + n > kGpt2ContextLength)
+    return absl::FailedPreconditionError(
+        "selected non-EOS count must be 1..16");
+  const int query_positions =
+      mode == PositionPathScoreMode::kFixedPosition ? 1 : n;
+  const auto token_text = [&](int token) -> absl::StatusOr<std::string> {
+    ASSIGN_OR_RETURN(auto text, Decode(absl::Span<const int>(&token, 1),
+                                       *vocabulary, *detokenizer));
+    return DisplayBytes(text);
+  };
+  std::error_code error;
+  if (!fs::create_directory(directory, error))
+    return absl::InvalidArgumentError("output_dir must be fresh: " +
+                                      error.message());
+  std::ofstream manifest(directory / "manifest.tsv");
+  std::ofstream choices(directory / "selected_tokens.tsv");
+  std::ofstream scores(directory / "edge_scores.tsv");
+  std::ofstream paths(directory / "paths.tsv");
+  std::ofstream path_edges(directory / "path_edges.tsv");
+  if (!manifest || !choices || !scores || !paths || !path_edges)
+    return absl::UnknownError("cannot create position path report");
+  for (auto* stream : {&manifest, &choices, &scores, &paths, &path_edges})
+    *stream << std::setprecision(17);
+  manifest
+      << "initial_checkpoint\t" << initial.string() << "\ncheckpoint\t"
+      << checkpoint.string() << "\nexploratory\ttrue\n"
+      << "selection_rule\tdelta_fp32_dot_mean_lt_0\n"
+      << "corpus_read\tfalse\ngold_labels_read\tfalse\n"
+      << "known_task_prompt_count\t" << kKnownTaskPromptCount << '\n'
+      << "selected_non_eos_count\t" << n << '\n'
+      << "score_mode\t" << score_mode << '\n'
+      << "posthoc_score_control\t"
+      << (mode != PositionPathScoreMode::kPositionAware) << '\n'
+      << "queried_absolute_positions\t5.." << 4 + query_positions << '\n'
+      << "query_policy\tEOS_prefix_then_selected_token_at_position_5_plus_j\n"
+      << "normalization\tfull_vocabulary_softmax\n"
+      << "score_definition\t"
+      << (mode == PositionPathScoreMode::kMeanPositions
+              ? "mean_log_probabilities_no_renormalization"
+              : "log_probability")
+      << '\n'
+      << "path_policy\teach_selected_non_eos_ID_once_then_EOS\n"
+      << "start_policy\tuniform_score_zero_no_known_first_token\n"
+      << "multiplicity_inference\tunsupported\n"
+      << "corpus_suffix_length_used\tfalse\n"
+      << "side_information\tinitial_weights_trained_weights_architecture_"
+         "vocabulary_known_prompt_count\n"
+      << "tokenizer\t" << DisplayBytes(absl::GetFlag(FLAGS_tokenizer)) << '\n'
+      << "model_width\t" << config.model_width << '\n'
+      << "layers\t" << config.transformer_block_count << '\n'
+      << "attention_heads\t" << config.attention_heads << '\n'
+      << "feed_forward_width\t" << config.feed_forward_width << '\n';
+  choices << "compact_id\toriginal_id\tsign_score\tis_eos\ttoken_bytes\n";
+  for (int token : selected) {
+    ASSIGN_OR_RETURN(auto text, token_text(token));
+    choices << token << '\t' << vocabulary->original_token_ids()[token] << '\t'
+            << decoded.delta_fp32.scores[token] << '\t' << (token == eos)
+            << '\t' << text << '\n';
+  }
+  scores
+      << "suffix_index\tabsolute_query_position\tsource_compact\t"
+         "destination_compact\tis_eos\tlog_probability\tquery_top1_compact\n";
+  paths << "rank\tlog_score\tgap_from_best\tcompact_path\tdecoded_bytes\n";
+  path_edges << "path_rank\tsuffix_index\tsuffix_absolute_position\t"
+                "source_compact\tsource_bytes\tdestination_compact\t"
+                "destination_bytes\tedge_log_score\texp_edge_log_score\n";
+  choices.flush();
+  manifest.flush();
+  ASSIGN_OR_RETURN(auto executor, cuda::Executor::Create());
+  ASSIGN_OR_RETURN(auto model, CreateGpt2(*executor, DataType::BF16, 0, config));
+  RETURN_IF_ERROR(
+      ReadFromDirectory(*executor, *model, checkpoint.string(), false));
+  const TokenTraceOptions options{.vocabulary_size = config.vocabulary_size,
+                                  .padding_token = eos};
+  std::vector<double> raw_edges(static_cast<size_t>(query_positions) * n *
+                                (n + 1));
+  for (int position = 0; position < query_positions; ++position) {
+    for (int source = 0; source < n; ++source) {
+      // Constant EOS history and a candidate from the selected SET only. We
+      // never supply the previously inferred path, original prompt, or labels.
+      std::vector<int> input(kKnownTaskPromptCount + position + 1, eos);
+      input.back() = nodes[source];
+      ASSIGN_OR_RETURN(auto result,
+                       TraceNextToken(*executor, *model, input, options));
+      const double maximum = result.logits[result.predicted_token];
+      double denominator = 0;
+      for (float logit : result.logits)
+        denominator += std::exp(static_cast<double>(logit) - maximum);
+      const double log_denominator = std::log(denominator);
+      for (int destination = 0; destination <= n; ++destination) {
+        const int next = destination == n ? eos : nodes[destination];
+        const double log_probability =
+            (static_cast<double>(result.logits[next]) - maximum) -
+            log_denominator;
+        raw_edges[(position * n + source) * (n + 1) + destination] =
+            log_probability;
+        scores << position << '\t' << kKnownTaskPromptCount + position << '\t'
+               << nodes[source] << '\t' << next << '\t' << (next == eos) << '\t'
+               << log_probability << '\t' << result.predicted_token << '\n';
+      }
+    }
+    scores.flush();
+    std::cout << "scored suffix_index=" << position << " of " << query_positions
+              << std::endl;
+  }
+  // These optional controls were introduced after observing the primary
+  // position-aware results. They change only the edge scores, never the
+  // selected set, terminal, uniform starting score, or all-tokens-once rule.
+  ASSIGN_OR_RETURN(auto edges, PreparePositionPathScores(n, raw_edges, mode));
+  ASSIGN_OR_RETURN(auto solved, SolvePositionPaths(n, edges));
+  for (size_t rank = 0; rank < solved.size(); ++rank) {
+    const auto& result = solved[rank];
+    std::vector<int> tokens;
+    for (int index : result.nodes)
+      tokens.push_back(nodes[index]);
+    tokens.push_back(eos);
+    std::string path;
+    for (int token : tokens) {
+      if (!path.empty())
+        path += ',';
+      path += std::to_string(token);
+    }
+    ASSIGN_OR_RETURN(auto text, Decode(tokens, *vocabulary, *detokenizer));
+    paths << rank + 1 << '\t' << result.score << '\t'
+          << solved.front().score - result.score << '\t' << path << '\t'
+          << DisplayBytes(text) << '\n';
+    std::cout << "rank=" << rank + 1 << " score=" << result.score
+              << " decoded=" << DisplayBytes(text) << std::endl;
+    for (int position = 0; position < n; ++position) {
+      const int source = result.nodes[position];
+      const int destination =
+          position == n - 1 ? n : result.nodes[position + 1];
+      const double score =
+          edges[(position * n + source) * (n + 1) + destination];
+      ASSIGN_OR_RETURN(auto source_text, token_text(tokens[position]));
+      ASSIGN_OR_RETURN(auto next_text, token_text(tokens[position + 1]));
+      path_edges << rank + 1 << '\t' << position << '\t'
+                 << kKnownTaskPromptCount + position << '\t' << tokens[position]
+                 << '\t' << source_text << '\t' << tokens[position + 1] << '\t'
+                 << next_text << '\t' << score << '\t' << std::exp(score)
+                 << '\n';
+    }
+  }
+  manifest << "query_count\t" << n * query_positions << "\ncomplete\ttrue\n";
+  for (auto* stream : {&manifest, &choices, &scores, &paths, &path_edges}) {
+    stream->close();
+    if (!*stream)
+      return absl::DataLossError("failed writing position path report");
+  }
+  return absl::OkStatus();
+}
+}  // namespace
+}  // namespace pluto::llm::one_shot_memorizer
+
+int main(int argc, char** argv) {
+  if (absl::ParseCommandLine(argc, argv).size() != 1)
+    return 2;
+  const auto status = pluto::llm::one_shot_memorizer::PositionPathProbe();
+  if (!status.ok()) {
+    std::cerr << status << '\n';
+    return 1;
+  }
+  return 0;
+}

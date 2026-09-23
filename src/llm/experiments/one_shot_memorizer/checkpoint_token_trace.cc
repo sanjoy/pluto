@@ -67,6 +67,10 @@ ABSL_FLAG(std::vector<std::string>, mlp_neuron_ablation_blocks,
           (std::vector<std::string>{}),
           "Distinct zero-based MLP blocks: individually zero each GELU channel "
           "at query row 4 only; empty disables these interventions");
+ABSL_FLAG(std::vector<std::string>, mlp_neuron_ablation_channels,
+          (std::vector<std::string>{}),
+          "Distinct zero-based GELU channels to zero independently in the "
+          "selected MLP blocks; empty selects every feed-forward channel");
 
 namespace pluto::llm::one_shot_memorizer {
 namespace {
@@ -1089,6 +1093,19 @@ absl::Status Run() {
           "mlp_neuron_ablation_blocks must be distinct integers in [0,layers)");
     neuron_blocks.push_back(block);
   }
+  std::vector<int> neuron_channels;
+  for (const auto& text : absl::GetFlag(FLAGS_mlp_neuron_ablation_channels)) {
+    int channel = -1;
+    if (!absl::SimpleAtoi(text, &channel) || channel < 0 ||
+        channel >= absl::GetFlag(FLAGS_feed_forward_width) ||
+        std::find(neuron_channels.begin(), neuron_channels.end(), channel) !=
+            neuron_channels.end())
+      return absl::InvalidArgumentError(
+          "mlp_neuron_ablation_channels must be distinct integers in "
+          "[0,feed_forward_width)");
+    neuron_channels.push_back(channel);
+  }
+  const bool all_neuron_channels = neuron_channels.empty();
   ASSIGN_OR_RETURN(
       auto base, tokenizer::Gpt2Tokenizer::Load(absl::GetFlag(FLAGS_tokenizer)));
   ASSIGN_OR_RETURN(auto detokenizer, tokenizer::Gpt2Detokenizer::Load(
@@ -1109,6 +1126,10 @@ absl::Status Run() {
       .vocabulary_size = vocabulary->vocab_size(),
       .pad_vocabulary = false};
   RETURN_IF_ERROR(config.Validate());
+  if (all_neuron_channels) {
+    neuron_channels.resize(config.feed_forward_width);
+    std::iota(neuron_channels.begin(), neuron_channels.end(), 0);
+  }
   std::error_code error;
   if (!fs::create_directory(directory, error))
     return absl::InvalidArgumentError(
@@ -1260,6 +1281,12 @@ absl::Status Run() {
            << "\nmlp_neuron_ablation_row_0based\t4\n";
   for (int block : neuron_blocks)
     manifest << "mlp_neuron_ablation_block_0based\t" << block << '\n';
+  manifest << "mlp_neuron_ablation_channel_selection\t"
+           << (all_neuron_channels ? "all" : "explicit")
+           << "\nmlp_neuron_ablation_channel_count\t" << neuron_channels.size()
+           << '\n';
+  for (int channel : neuron_channels)
+    manifest << "mlp_neuron_ablation_channel_0based\t" << channel << '\n';
   manifest.flush();
   if (!manifest)
     return absl::UnknownError("cannot write token-trace manifest");
@@ -1462,7 +1489,7 @@ absl::Status Run() {
           static_cast<size_t>(config.feed_forward_width))
         return absl::InternalError(
             "GELU width differs from neuron-sweep configuration");
-      for (int neuron = 0; neuron < config.feed_forward_width; ++neuron) {
+      for (int neuron : neuron_channels) {
         // This is deliberately query-only. Zeroing this channel at preceding
         // positions would mix its local role with later attention transport.
         const TokenTracePatch patch{

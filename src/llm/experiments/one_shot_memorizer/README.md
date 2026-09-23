@@ -1142,6 +1142,54 @@ adding the same fixed sentence vector. Local evidence is
 `/tmp/paired_embedding_trajectory_12288.tsv` plus the paired per-sentence
 `predictions_12288.tsv` files.
 
+### Causal transplantation of the largest paired deltas
+
+`paired_checkpoint_edit_probe` ranks embedding rows by their FP32-master L2
+differences, before labeling or evaluating them. It replaces the top 1, 4,
+or 16 rows, all embeddings, all transformer parameters, positions, or final
+LayerNorm with the other matched checkpoint's values. Every condition starts
+from the original recipient. Both directions end with byte-identical restored
+weights and identical per-fact evaluation results. These are independent
+inference edits, not resumed training; embedding changes affect both the
+input lookup and the tied output head.
+
+For the post-hoc 12,288-update pair, all 18 evaluations completed:
+
+| Recipient / donor component | Exact facts | Durian targets / 10 | Durian exact? |
+| --- | ---: | ---: | --- |
+| Baseline, unchanged | 1,000 | 10 | yes |
+| Baseline, omitted model's largest embedding row | 999 | 8 | no |
+| Baseline, omitted model's top four rows | 999 | 1 | no |
+| Baseline, omitted model's top 16 rows | 987 | 1 | no |
+| Omitted, unchanged | 1,006 | 1 | no |
+| Omitted, baseline's largest embedding row | 1,006 | 2 | no |
+| Omitted, baseline's top four rows | 1,006 | 1 | no |
+| Omitted, baseline's top 16 rows | 994 | 1 | no |
+
+The largest row is compact ID 2,147 (` smell`), containing only 16 floats.
+The next three are ` strong`, `Dur`, and ` creamy`. Replacing the largest row
+or top four rows in the baseline changes **only Durian's exactness status**
+among all 1,024 facts. This is selective causal disruption on the tested
+corpus, not an exclusive ownership claim: the baseline already has 24 failed
+facts, probabilities can change without changing correctness, and replacing
+these rows in the opposite direction does **not** install the fact.
+
+Larger transplants are highly incompatible: moving all token embeddings leaves
+only one exact fact in either direction; moving all transformer parameters
+leaves zero or one. Position-table transplants leave 114 or 87 exact facts.
+Final LayerNorm transplants retain 997 or 1,007. These mixed models show
+co-adaptation between components, not which component individually owns all
+lost facts. Local raw results: `/tmp/one_shot_paired_edit_12288_0/`.
+
+```sh
+bazel build -c opt //src/llm/experiments/one_shot_memorizer:paired_checkpoint_edit_probe
+bazel-bin/src/llm/experiments/one_shot_memorizer/paired_checkpoint_edit_probe \
+  --baseline_checkpoint=/tmp/one_shot_sentence_durian_16384_0/baseline/step_12288 \
+  --omitted_checkpoint=/tmp/one_shot_sentence_durian_16384_0/omit_line_631/step_12288 \
+  --tokenizer=/home/ubuntu/checkpoints/memorize_general_facts/compact_batch_32_no_clip_0/inputs/tokenizer \
+  --selected_line=631 --batch_size=32 --output_dir=/tmp/paired_edit_new
+```
+
 ### Prospective single-fact token-set validation
 
 An exploratory CPU analysis of the Durian-only trajectory found this simple
@@ -1224,6 +1272,12 @@ bazel-bin/src/llm/experiments/one_shot_memorizer/checkpoint_embedding_sign_reado
 ```
 
 ### Why so many embedding rows move: the first Adam update
+
+A subsequent [weight-only suffix reconstruction](SINGLE_FACT_DECODING.md)
+orders the recovered token sets and exactly reconstructs all four single-fact
+suffixes plus EOS. It reads neither their text nor their prompts, but assumes
+each selected token occurs once and uses the known five-token prompt length.
+The simpler greedy-successor attempt fails on three of the four cases.
 
 `single_fact_first_update_probe` is a CPU-only explanatory replay of a
 **known** training fact, not a decoder. It loads the initial weights, runs
@@ -1454,6 +1508,37 @@ answers. These channels are necessary for these particular decisions under
 zero ablation, not proven exclusive owners of those facts. Evidence:
 `/tmp/one_shot_token_neurons_7_0/`.
 
+The corpus-wide follow-up supplies exactly five tokens for every fact, with
+no future lexical input. All 1,024 baseline sixth-token predictions are right.
+Independently zeroing final-MLP query channel 12 breaks **three** answers:
+Paris, Chile, and ` gas` (lines 80, 448, 795). Channel 34 breaks **35**, spanning
+capitals, biology, mathematics, and other topics. Thus neither channel is a
+dedicated Paris/Athens feature. The gas case has a *negative* GELU activation
+(-0.1113); deleting an inhibitory contribution can also break a decision.
+
+Deleting both channels breaks 35 answers, not the union of the separate
+failures. This is decision-level interaction, including the final
+normalization/head, not evidence that the MLP's output projection ceases to
+be linear. Every prompt ends with an ordinary forward whose 4,475 logits
+match its original baseline bit-for-bit. Local evidence:
+`/tmp/one_shot_prefix_neurons_0/` (5,120 forwards, 17.0 seconds). This is a
+**next-token** study, not 1,024 full-suffix ablations, and these two channels
+were chosen after the six-prompt experiment.
+
+The committed trace tool supports targeted independent channel sweeps via
+`--mlp_neuron_ablation_blocks=7 --mlp_neuron_ablation_channels=12,34`.
+Empty channels retain the default sweep over every channel. Its reports also
+include the full baseline trace; for example:
+
+```sh
+bazel-bin/src/llm/experiments/one_shot_memorizer/checkpoint_token_trace \
+  --checkpoint=/home/ubuntu/checkpoints/memorize_general_facts/compact_batch_32_no_clip_0/layers_8/step_16128 \
+  --tokenizer=/home/ubuntu/checkpoints/memorize_general_facts/compact_batch_32_no_clip_0/inputs/tokenizer \
+  --lines=80,406,448,795 --nobranch_ablations --nocapital_donor_patches \
+  --noreadout_lens --mlp_neuron_ablation_blocks=7 \
+  --mlp_neuron_ablation_channels=12,34 --output_dir=/tmp/targeted_neurons_new
+```
+
 Attribution also depends on the question asked. Against the **final** nearest
 rival ` north`, France's final MLP has a negative fixed-normalizer margin
 term. Against the **pre-MLP winner** ` original`, it has a positive 44.53 term,
@@ -1492,7 +1577,11 @@ clone equivalence, and unchanged original parameters. Decision tests additionall
 check exact real-valued LayerNorm/head algebra, nonzero bias changing winners,
 contradictory labels, unseen rivals, negative common margins, coefficient/gauge
 bounds, deterministic cutting planes, and explicit budget outcomes.
-All **91 repository test targets passed with fresh execution** after adding
-the five-token, sign-readout, and margin-accounting probes. The real-checkpoint
+All **92 repository test targets passed with fresh execution**, including
+the five-token, sign-readout, margin-accounting, and exact path-solver tests.
+The real-checkpoint
 trace, independent neuron sweep, corpus-wide final-MLP bypass, paired training,
-and prospective single-fact replications also completed their controls.
+paired weight transplants, and prospective single-fact replications also
+completed their controls. All four weight-only suffix reconstructions reproduce
+under all three scoring modes; the paired-transplant CLI's CPU self-test checks
+row ranking, tie-breaking, direction invariance, malformed shapes, and NaNs.
