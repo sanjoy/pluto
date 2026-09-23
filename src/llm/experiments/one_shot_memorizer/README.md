@@ -3,6 +3,9 @@
 For the requested five-token-to-next-token execution study, start with
 [EXECUTION_TRACE.md](EXECUTION_TRACE.md): measured layer readouts, controlled
 interventions, common themes, and what they do **not** establish.
+The follow-up [FINAL_MLP_SUBSETS.md](FINAL_MLP_SUBSETS.md) tests small
+combinations of final-MLP features and distinguishes sufficient combinations
+from necessary or exclusively fact-owning neurons.
 
 ## Time-bounded sentence and capacity experiments
 
@@ -1616,7 +1619,7 @@ clone equivalence, and unchanged original parameters. Decision tests additionall
 check exact real-valued LayerNorm/head algebra, nonzero bias changing winners,
 contradictory labels, unseen rivals, negative common margins, coefficient/gauge
 bounds, deterministic cutting planes, and explicit budget outcomes.
-All **95 repository test targets passed with fresh execution**, including
+All **97 repository test targets passed with fresh execution**, including
 the five-token, sign-readout, margin-accounting, exact path-solver, and
 first-update score tests. New tests cover isolated-fact selection/provenance,
 unrestricted greedy history, repetition/coverage and generation caps, and
@@ -1624,6 +1627,11 @@ deterministic one-token prompt-set repair. The six real-checkpoint greedy
 suffix reports reproduce their prototypes exactly; the 6,720-candidate
 overlap repair and original 120-candidate mode also preserve every compared
 numerical score and ranking.
+The final-MLP subset helpers additionally test raw-BF16 masking, bounded
+combinatorial enumeration, and bitwise production-tail equivalence against
+full-model interventions with nonzero biases and varied batch geometries.
+See [FINAL_MLP_SUBSETS.md](FINAL_MLP_SUBSETS.md) for corpus-wide results and
+the separate whole-model controls that validate the optimized experiment.
 The real-checkpoint
 trace, independent neuron sweep, corpus-wide final-MLP bypass, paired training,
 paired weight transplants, and prospective single-fact replications also

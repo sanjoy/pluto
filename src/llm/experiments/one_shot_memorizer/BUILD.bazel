@@ -3,6 +3,76 @@ load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 
 cc_library(
+    name = "feature_subset",
+    srcs = ["feature_subset.cc"],
+    hdrs = ["feature_subset.h"],
+    deps = [
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "feature_subset_test",
+    size = "small",
+    srcs = ["feature_subset_test.cc"],
+    deps = [
+        ":feature_subset",
+        "@abseil-cpp//absl/status",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "mlp_subset_tail",
+    srcs = ["mlp_subset_tail.cc"],
+    hdrs = ["mlp_subset_tail.h"],
+    deps = [
+        ":feature_subset",
+        ":sentence_ablation",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/llm:combinators",
+        "//src/llm:embedding",
+        "//src/llm:fully_connected",
+        "//src/llm:gpt2",
+        "//src/llm:layer",
+        "//src/llm:norm",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/memory",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_test(
+    name = "mlp_subset_tail_test",
+    size = "medium",
+    srcs = ["mlp_subset_tail_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":feature_subset",
+        ":mlp_subset_tail",
+        ":token_trace",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/llm:gpt2",
+        "//src/llm:layer",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "position_path",
     srcs = ["position_path.cc"],
     hdrs = ["position_path.h"],
@@ -995,5 +1065,33 @@ cc_binary(
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings",
+    ],
+)
+
+cc_binary(
+    name = "checkpoint_mlp_subset_probe",
+    srcs = ["checkpoint_mlp_subset_probe.cc"],
+    deps = [
+        ":feature_subset",
+        ":mlp_subset_tail",
+        ":token_trace",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset",
+        "//src/dataset:compact_vocabulary",
+        "//src/dataset:gpt2_detokenizer",
+        "//src/dataset:gpt2_tokenizer",
+        "//src/llm:checkpoint",
+        "//src/llm:gpt2",
+        "//src/llm:layer",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
     ],
 )
