@@ -41,6 +41,41 @@ skips. The full-corpus final-MLP bypass above is query-only. Such zeroing is
 an out-of-distribution intervention, so necessity under this test is not a
 unique storage location.
 
+### A layer-by-layer comparison, not just the final jump
+
+The following table applies that same diagnostic final LayerNorm/head to the
+query residual **after each complete transformer block** (after its MLP).
+Entries are probabilities on a **0-to-1 scale, not percentages**. The actual
+forward still executes all eight blocks; the earlier rows are separate lens
+measurements, not intermediate predictions normally made by the network.
+
+| After block | France: ` Paris` | Greece: ` Athens` | Mammals: ` nour` |
+| --- | ---: | ---: | ---: |
+| 0 | 1.74836e-13 | 4.81606e-14 | 1.68021e-19 |
+| 1 | 3.71674e-11 | 2.90728e-11 | 1.13041e-14 |
+| 2 | 6.04017e-10 | 1.95254e-11 | 2.53641e-13 |
+| 3 | 4.06778e-11 | 5.14454e-12 | 1.89100e-9 |
+| 4 | 3.32201e-10 | 8.56240e-11 | 4.45778e-5 |
+| 5 | 3.28434e-7 | 2.95785e-6 | 0.00491389 |
+| 6 | 7.32960e-6 | 1.96142e-7 | 0.0115823 |
+| 7 | 0.920241 | 0.983199 | 0.984679 |
+
+The jump for mammals happens **inside block 7 attention**: its probability
+goes from about 1.16% after block 6 to 98.19% after block 7 attention, then
+98.47% after its MLP. Paris and Athens instead remain very unlikely under
+this lens after block 7 attention and become favored after its MLP, as the
+six-case table above shows. All three final self-copy lens controls reproduce
+ordinary inference bit-for-bit.
+
+This contrast narrows the computation without labeling early vectors as
+meaningless or empty. For example, the block-0 lens favors ` is` for both
+capital prompts, but their 16-dimensional states already differ. The final
+head is trained to decode the **final** representation; failure of that head
+to read an early state does not imply the country information is absent.
+Likewise, an early lens winner such as ` made` is not a semantic name for
+the entire activation vector. Numeric evidence is in `conditions.tsv`, joined
+to the decoded rank-one entries in `top_tokens.tsv` under the report directory.
+
 ## Attention supplies context-dependent combinations, not readable answers
 
 For France, Greece, and Peru, the first three tokens are identical: `The`,

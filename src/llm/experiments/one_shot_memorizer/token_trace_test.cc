@@ -497,6 +497,74 @@ TEST_F(TokenTraceTest, MultiplePatchesComposeWithoutMutatingTheirProducer) {
   EXPECT_EQ(independent->predicted_token, 4);
 }
 
+TEST_F(TokenTraceTest, CountryAndQueryDonorRowsComposeAndPreserveOtherRows) {
+  for (DataType type : {DataType::BF16, DataType::FP32}) {
+    ToyModel model(type, 8);
+    const std::vector<int> prefix{1, 2, 3, 4, 5};
+    const auto baseline = Run(model, prefix);
+    const auto donor_trace = Run(model, std::vector<int>{6, 7, 8, 9, 10});
+    ASSERT_TRUE(baseline.ok()) << baseline.status();
+    ASSERT_TRUE(donor_trace.ok()) << donor_trace.status();
+    auto donor = donor_trace->activations[0];
+    const size_t element_bytes = type == DataType::BF16 ? 2 : 4;
+    const size_t row_bytes = kChannels * element_bytes;
+    // Raw BF16/FP32 bytes, including signed zero, are authoritative even when
+    // the human-readable donor values are deliberately stale.
+    if (type == DataType::BF16) {
+      const uint16_t zero = 0x8000;
+      std::memcpy(donor.bytes.data() + 3 * row_bytes + 5 * element_bytes, &zero,
+                  2);
+    } else {
+      const uint32_t zero = 0x80000000;
+      std::memcpy(donor.bytes.data() + 3 * row_bytes + 5 * element_bytes, &zero,
+                  4);
+    }
+    donor.values.assign(donor.values.size(), 999.0f);
+    const auto donor_bytes = donor.bytes;
+    const auto original_bytes = baseline->activations[0].bytes;
+    for (int selected = 0; selected < 4; ++selected) {
+      std::vector<TokenTracePatch> patches;
+      auto expected = original_bytes;
+      for (int bit = 0; bit < 2; ++bit)
+        if (selected & (1 << bit)) {
+          const size_t row = 3 + bit;
+          patches.push_back({.site = FirstSite(),
+                             .rows = TokenTraceRows::kOne,
+                             .row = row,
+                             .replacement = TokenTraceReplacement::kDonor,
+                             .donor = &donor});
+          std::memcpy(expected.data() + row * row_bytes,
+                      donor.bytes.data() + row * row_bytes, row_bytes);
+        }
+      const auto replay = Run(model, prefix, patches);
+      ASSERT_TRUE(replay.ok()) << replay.status();
+      EXPECT_EQ(replay->activations[0].bytes, expected);
+      EXPECT_EQ(donor.bytes, donor_bytes);
+      EXPECT_EQ(baseline->activations[0].bytes, original_bytes);
+      // The capture covers only five prefix rows; explicitly verify all three
+      // future padding rows in the underlying eight-row producer as well.
+      const auto& observed = model.observations[0];
+      for (size_t index = 5 * kChannels; index < observed.after.size(); ++index)
+        EXPECT_EQ(std::bit_cast<uint32_t>(observed.after[index]),
+                  std::bit_cast<uint32_t>(observed.before[index]));
+      auto merged = baseline->activations[0];
+      merged.bytes = expected;
+      const TokenTracePatch one_patch{
+          .site = FirstSite(),
+          .rows = TokenTraceRows::kAllPrefix,
+          .replacement = TokenTraceReplacement::kDonor,
+          .donor = &merged};
+      const auto equivalent = Run(model, prefix, {&one_patch, 1});
+      ASSERT_TRUE(equivalent.ok()) << equivalent.status();
+      EXPECT_EQ(equivalent->activations[0].bytes, replay->activations[0].bytes);
+      EXPECT_EQ(equivalent->logits, replay->logits);
+      const auto restored = Run(model, prefix);
+      ASSERT_TRUE(restored.ok()) << restored.status();
+      EXPECT_EQ(restored->logits, baseline->logits);
+    }
+  }
+}
+
 TEST_F(TokenTraceTest, RejectsUnclosedCombinatorScopes) {
   ToyModel model;
   model.skip_outer_scope_exit = true;

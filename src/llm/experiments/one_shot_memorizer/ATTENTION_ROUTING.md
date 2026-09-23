@@ -237,7 +237,7 @@ The common theme is a **context-dependent combination of shared directions**,
 followed by residual and nonlinear processing. These experiments narrow the
 mechanism; they do not yet derive the learned attention matrices from text.
 
-## Prospective follow-up: immediate query versus later country rereading
+## Immediate query versus later country rereading
 
 The first-block gate formula describes the query's update, but a whole Q/K/V
 family swap also changes the country position's attention output. Later
@@ -266,6 +266,89 @@ the immediate query route from the country state available to later layers;
 it does not assign exclusive fact ownership or interpret a gate as a capital
 label. The deadline is one hour, and the earlier 192-condition factorial
 should remain reproducible without changes to its existing numeric reports.
+
+### Completed result: the country route carries these answer failures
+
+The fixed 72-condition experiment completed with all 301 controls passing.
+The table counts interventions retaining the **recipient's original answer**,
+out of six ordered capital pairs per cell:
+
+| Captured source corner | Neither row | Country row only | Query row only | Both rows |
+| --- | ---: | ---: | ---: | ---: |
+| Donor Q/K, recipient V | 6/6 | 3/6 | 6/6 | 3/6 |
+| Recipient Q/K, donor V | 6/6 | 6/6 | 6/6 | 6/6 |
+| Donor Q/K and V | 6/6 | 3/6 | 6/6 | 3/6 |
+
+None of the interventions produces the donor's answer. Every query-only
+intervention preserves the original answer, though its probability can
+change substantially. This does not mean the immediate query update is
+irrelevant or that removing it would be harmless: the answer survived these
+particular donor perturbations in the otherwise unchanged recipient computation.
+
+Country-only and both-row interventions have **the same six failures**, not
+just equal counts. In each of the Q/K-only and joint Q/K/V corners, the
+failing ordered pairs are France receiving Peru, Peru receiving France,
+and Peru receiving Greece. The other 12 family/pair combinations succeed
+under both row selections. Winners and probabilities need not match between
+country-only and both, so this is equality of answer-failure sets, not
+equality of their computations.
+
+For example, at the France prompt with Peru's Q/K corner:
+
+| Attention output rows replaced | Paris probability | Winner |
+| --- | ---: | --- |
+| Neither | 92.0241% | ` Paris` |
+| Query only | 68.1528% | ` Paris` |
+| Country only | 24.1265% | ` north` |
+| Both | 15.7697% | ` first` |
+
+At block 0 the query Q vector and all non-country K/V vectors are fixed.
+Thus the Q/K-only query-row intervention changes the scalar gate in the
+gated-vector formula above, using the actual rounded attention output.
+The country-row intervention instead changes a representation that later
+blocks can reread. For these observed failures, perturbing that country
+trajectory is sufficient to break the answer without changing block 0's
+immediate query update. It is not evidence that the country row exclusively
+stores the capital or that a gate alone represents a label. The source
+corner and recipient residual still form an off-distribution hybrid.
+
+### Row-intervention checks and reproduction
+
+The 301 checks include:
+
+* 9 same-source row-mask identities;
+* 18 unchanged first-three-row source attention outputs;
+* 72 exact selected-row output-byte checks;
+* 72 unchanged recipient Q/K/V prefix checks during row-only replay;
+* 18 neither-row forwards matching recipient logits;
+* 18 both-row forwards matching the original whole-family corner logits;
+* 72 ordinary post-intervention forwards matching the recipient;
+* 18 unchanged captured donor buffers;
+* 3 capture-versus-ordinary baseline checks and one unchanged full-master snapshot.
+
+The targeted trace tests also check both BF16 and FP32 two-row donor
+composition, authoritative signed-zero bytes, unchanged other prefix and
+future-padding rows, equivalence to a merged donor, and source/donor
+preservation. All 13 trace tests passed. A fresh run of the original
+192-condition default protocol reproduced all eight numeric/control/logit
+artifacts and its manifest byte-for-byte.
+
+The local result is `/tmp/gpu_attention_b0_rows_0`. `conditions.tsv` includes
+the explicit `row_condition`; `vectors.tsv` contains the actual source-corner
+attention rows. `query_logits.f32` holds all 72-by-4,475 real-vocabulary logits
+in condition order. Independent readback verified finite values, every winner,
+and both target probabilities and strongest-rival margins. Generated reports
+remain outside Git.
+
+```sh
+bazel build -c opt //src/llm/experiments/one_shot_memorizer:checkpoint_attention_factorial_probe
+facts=/home/ubuntu/checkpoints/memorize_general_facts/compact_batch_32_no_clip_0
+bazel-bin/src/llm/experiments/one_shot_memorizer/checkpoint_attention_factorial_probe \
+  --checkpoint="$facts/layers_8/step_16128" \
+  --tokenizer="$facts/inputs/tokenizer" \
+  --protocol=b0_rows \
+  --output_dir=/tmp/attention_b0_rows_new
+```
 
 ## Prospective follow-up: late query/country compatibility
 
