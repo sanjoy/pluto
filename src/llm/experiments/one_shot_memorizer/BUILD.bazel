@@ -1582,6 +1582,7 @@ cc_binary(
     name = "checkpoint_two_step_interaction_probe",
     srcs = ["checkpoint_two_step_interaction_probe.cc"],
     deps = [
+        ":adam_interaction",
         ":fact_superposition",
         ":sentence_ablation",
         ":sentence_ablation_training",
@@ -1603,6 +1604,26 @@ cc_binary(
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/strings",
         "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_library(
+    name = "adam_interaction",
+    srcs = ["adam_interaction.cc"],
+    hdrs = ["adam_interaction.h"],
+    deps = [
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+    ],
+)
+
+cc_test(
+    name = "adam_interaction_test",
+    size = "small",
+    srcs = ["adam_interaction_test.cc"],
+    deps = [
+        ":adam_interaction",
+        "@googletest//:gtest_main",
     ],
 )
 

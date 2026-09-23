@@ -30,6 +30,7 @@
 #include "src/llm/adamw_optimizer.h"
 #include "src/llm/batch_validation.h"
 #include "src/llm/checkpoint.h"
+#include "src/llm/experiments/one_shot_memorizer/adam_interaction.h"
 #include "src/llm/experiments/one_shot_memorizer/fact_superposition.h"
 #include "src/llm/experiments/one_shot_memorizer/sentence_ablation.h"
 #include "src/llm/experiments/one_shot_memorizer/sentence_ablation_training.h"
@@ -338,6 +339,90 @@ void WriteNorms(std::ostream& stream, absl::string_view name, size_t size,
          << value.max_closure << '\n';
 }
 
+// Compare an independently derived ideal FP64 formula with measured FP32
+// production endpoints. Residuals are measurements, not fitted tolerances or
+// an assertion that ideal arithmetic emulates CUDA's floating-point updates.
+absl::Status WriteAdamExplanation(const fs::path& output,
+                                  absl::Span<const TensorSpec> layout,
+                                  const Snapshot& ga, const Snapshot& gb,
+                                  const Snapshot& frozen, const Snapshot& sum,
+                                  float second_rate) {
+  std::ofstream coordinates(output / "adam_normalization_coordinates.tsv"),
+      summary(output / "adam_normalization_summary.tsv");
+  if (!coordinates || !summary)
+    return absl::UnknownError("cannot create Adam normalization reports");
+  coordinates << std::setprecision(17)
+              << "checkpoint_index\telement_index\tgA\tgB\tdA\tdB\tdAB\t"
+                 "a_term\tb_term\tpredicted\tobserved\tresidual\n";
+  summary << std::setprecision(17)
+          << "group\tcoordinates\tobserved_l2\tpredicted_l2\tresidual_l2\t"
+             "max_absolute_residual\ta_term_l2\tb_term_l2\ta_b_inner_product\n";
+  struct Statistics {
+    size_t count = 0;
+    double observed_squared = 0, predicted_squared = 0, residual_squared = 0;
+    double max_residual = 0, a_squared = 0, b_squared = 0, inner_product = 0;
+    void Add(const TwoStepAdamInteraction& prediction, double observed) {
+      ++count;
+      const double residual = observed - prediction.difference;
+      observed_squared += observed * observed;
+      predicted_squared += prediction.difference * prediction.difference;
+      residual_squared += residual * residual;
+      max_residual = std::max(max_residual, std::abs(residual));
+      a_squared += prediction.a_term * prediction.a_term;
+      b_squared += prediction.b_term * prediction.b_term;
+      inner_product += prediction.a_term * prediction.b_term;
+    }
+    void Write(std::ostream& out, absl::string_view name) const {
+      out << name << '\t' << count << '\t' << std::sqrt(observed_squared)
+          << '\t' << std::sqrt(predicted_squared) << '\t'
+          << std::sqrt(residual_squared) << '\t' << max_residual << '\t'
+          << std::sqrt(a_squared) << '\t' << std::sqrt(b_squared) << '\t'
+          << inner_product << '\n';
+    }
+  };
+  Statistics all;
+  std::array<Statistics, 4> signs;
+  constexpr std::array<absl::string_view, 4> kSignNames{
+      "both_zero", "one_zero", "same_sign", "opposite_sign"};
+  const TwoStepAdamConfig config{.second_rate = second_rate};
+  for (const auto& tensor : layout) {
+    Statistics stats;
+    for (size_t element = 0; element < tensor.element_count; ++element) {
+      const size_t i = tensor.flat_offset + element;
+      ASSIGN_OR_RETURN(auto prediction,
+                       ExplainTwoStepAdamInteraction(ga[i], gb[i], config));
+      const double observed = static_cast<double>(frozen[i]) - sum[i];
+      stats.Add(prediction, observed);
+      all.Add(prediction, observed);
+      const size_t group = ga[i] == 0 && gb[i] == 0                     ? 0
+                           : ga[i] == 0 || gb[i] == 0                   ? 1
+                           : std::signbit(ga[i]) == std::signbit(gb[i]) ? 2
+                                                                        : 3;
+      signs[group].Add(prediction, observed);
+      coordinates << tensor.checkpoint_index << '\t' << element << '\t' << ga[i]
+                  << '\t' << gb[i] << '\t' << prediction.a_denominator << '\t'
+                  << prediction.b_denominator << '\t'
+                  << prediction.joint_denominator << '\t' << prediction.a_term
+                  << '\t' << prediction.b_term << '\t' << prediction.difference
+                  << '\t' << observed << '\t'
+                  << observed - prediction.difference << '\n';
+    }
+    stats.Write(summary, tensor.name);
+  }
+  all.Write(summary, "ALL");
+  for (size_t i = 0; i < signs.size(); ++i)
+    signs[i].Write(summary, kSignNames[i]);
+  coordinates.close();
+  summary.close();
+  if (!coordinates || !summary)
+    return absl::DataLossError("Adam normalization report write failed");
+  std::cout << "ideal Adam history L2=" << std::sqrt(all.predicted_squared)
+            << ", measured L2=" << std::sqrt(all.observed_squared)
+            << ", formula residual L2=" << std::sqrt(all.residual_squared)
+            << '\n';
+  return absl::OkStatus();
+}
+
 absl::Status Run() {
   const fs::path initial_path = absl::GetFlag(FLAGS_initial_checkpoint),
                  first_path = absl::GetFlag(FLAGS_baseline_step1),
@@ -564,6 +649,8 @@ absl::Status Run() {
     WriteNorms(summary, tensor.name, tensor.element_count, norms);
   }
   WriteNorms(summary, "ALL", initial.size(), all);
+  RETURN_IF_ERROR(
+      WriteAdamExplanation(output, layout, ga, gb0, frozen, sum, rate2));
   static_assert(std::endian::native == std::endian::little &&
                 sizeof(float) == 4);
   for (const auto* values : {&ga, &gb0, &gb1})
@@ -590,7 +677,9 @@ absl::Status Run() {
          "little-endianFP32\n"
          "sum_precision\tFP64 construction then one FP32 cast\n"
          "norm_convention\tcomponent norms are not fractions; cancellation is "
-         "retained\n";
+         "retained\n"
+         "adam_normalization\tideal FP64 two-step denominator formula; not a "
+         "bitwise production emulator; FP32 endpoint residual reported\n";
   for (auto* stream : {&manifest, &controls, &coordinates, &summary,
                        &gradients_file, &weights_file}) {
     stream->flush();

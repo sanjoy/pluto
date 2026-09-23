@@ -144,6 +144,17 @@ including BF16 rounding-boundary effects. This demonstrates local non-additivity
 near initialization; it does **not** establish which mechanism explains the
 failed 1,024-step combinations or the full learned encoding.
 
+A [closed-form follow-up](ADAM_NORMALIZATION.md) identifies the local optimizer
+mechanism more precisely. The fact gradients' first-moment numerators add,
+but separate and joint training divide them by different running RMS values.
+The formula predicts the measured frozen-gradient interaction with **0.0757%
+relative L2 error**; an independent iterative FP64 calculation agrees with the
+formula within `1.19e-20` per coordinate. The remaining comparison error includes
+production floating-point rounding. This interaction persists without
+first-moment momentum; linear momentum with a fixed shared scale would add
+for fixed gradients. It is adaptive normalization, not merely the existence
+of momentum, that breaks this particular superposition law.
+
 ## Information capacity is not a count of facts per layer
 
 The [shared embedding-offset diagnostic](EMBEDDING_SHIFT.md) gives an
