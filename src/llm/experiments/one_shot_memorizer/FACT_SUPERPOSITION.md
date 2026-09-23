@@ -148,3 +148,50 @@ and a completed manifest. The two constructed checkpoints are
 generated artifacts are local, not checked into Git. The CPU arithmetic tests
 cover SUM/MEAN symmetry, the one-component step-one control, FP64 cancellation,
 ties-to-even FP32 rounding, invalid inputs, overflow and subnormal underflow.
+
+## Prospective follow-up: where non-additivity starts
+
+The endpoint failure does not distinguish two mechanisms: later gradients
+change as the network changes, and Adam combines gradients through nonlinear
+running moments. A bounded **two-update** experiment will separate these
+mechanisms under an explicitly ordered decomposition, without claiming to
+explain the entire 1,024-update trajectory.
+
+Start from the same original `W0`, full compact vocabulary, model dimensions,
+loss normalization, Adam settings, and first two scheduled learning rates.
+Present France first and Greece second. Capture actual production backward
+gradients `gA(W0)`, `gB(W0)`, and `gB(W1)`, where `W1` is the first Adam
+update using `gA(W0)`. Repeated captures must be bit-identical. Then create
+fresh production optimizers at `W0` and inject these immutable gradients:
+
+| Replay | Step 1 gradient | Step 2 gradient |
+| --- | --- | --- |
+| Joint | `gA(W0)` | `gB(W1)` |
+| Frozen-gradient joint | `gA(W0)` | `gB(W0)` |
+| A-only contribution | `gA(W0)` | zero |
+| B-only contribution | zero | `gB(W0)` |
+
+Adam still steps at both slots, including zero gradients. No CPU optimizer
+approximation or learning-rate retuning is permitted. Deduplicate all tied
+weights and gradients consistently, preserving every unique tensor. Form SUM
+from the two component endpoints with the already tested FP64 arithmetic and
+one final FP32 cast. In FP64 coordinate differences, report the identity
+
+```
+joint - SUM = (joint - frozen) + (frozen - SUM)
+```
+
+The first term measures the effect of recomputing the second gradient at the
+updated weights. The second measures optimizer-history interaction for fixed
+gradient arrays, including the actual FP32 update and composition rounding.
+The order of this decomposition is part of the definition, not a unique
+causal attribution. Norms can cancel and are not fractions of information.
+
+Check injected versus direct forward/backward training for the joint and both
+masked components, common initial bytes, duplicate gradient captures, step-one
+agreement with the existing matched-pair run, gradient/weight shape and alias
+integrity, unchanged sources, and the coordinate-wise decomposition. Save
+per-tensor summaries and coordinate-level deltas locally. The two-step models
+are not expected to memorize either sentence; this is a test of the onset of
+weight-update interaction, not completion accuracy or the final model's
+factual storage. Budget: one hour, with no long training run.
