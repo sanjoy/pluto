@@ -571,6 +571,150 @@ a component of the actual checkpoint; those remain distinct results. It replaces
 The algebraic identity applies regardless of how the original map was trained;
 it is not by itself an account of why AdamW discovers useful features.
 
+## Reconstructing the final projection from token labels
+
+`checkpoint_label_probe` removes a key dependency of the previous experiment:
+its regression targets come from **corpus next-token labels**, not the original
+MLP's output vectors. It still retains the learned backbone through the final
+GELU features, so it is not yet a full dataset-only reconstruction.
+
+For each supervised position, capture its incoming final-MLP residual `r_i`,
+learned 64-dimensional GELU feature `phi_i`, and true next-token ID `y_i`.
+Given an output-only code vector `c_y`, solve in one pivoted-QR fit:
+
+```
+phi_i W + b ~= alpha * c_yi - center(r_i)
+```
+
+The target is a desired **post-residual** code, after removing the per-row mean
+that final LayerNorm discards. Final normalization uses gamma=1 and beta=0;
+the independent output head's rows are the code vectors. The original tied
+embedding is left untouched for the input path. Fitted weights, residual adds,
+normalization and head all run through the real BF16 GPU implementation. The
+original final MLP/norm/head still execute before their outputs are replaced,
+so this experiment is not a performance benchmark or parameter compression.
+
+Three codebooks distinguish geometric alignment from merely having enough
+distinct names for tokens:
+
+1. **Fixed balanced codes:** 16-dimensional vectors with eight +1 and eight -1
+   entries. There are 12,870 distinct codes, all centered and of squared norm
+   16, enough for the 4,475-token compact vocabulary. A fixed seeded shuffle
+   assigns them to token IDs. They are distinguishable, not orthogonal.
+2. **Normalized learned codes:** center each effective learned embedding row
+   across coordinates and divide by its RMS. These codes depend on the
+   checkpoint, even though the regression targets use corpus token labels.
+3. **Permuted learned codes:** shuffle those same rows among token IDs. This
+   preserves their geometry and precision while breaking their learned
+   assignment to token labels. The frozen input embedding is not shuffled.
+
+Before fitting, an oracle passes all ideal code vectors through the replacement
+normalization and head. All **4,475/4,475** decode correctly for every codebook
+in the runs below. This tests code distinguishability under BF16 arithmetic,
+not robustness to imperfectly fitted code vectors. A common-mode residual can
+also lose a small code signal during BF16 addition before normalization removes
+its mean; real GPU prediction tests, not just centering algebra, are necessary.
+
+```sh
+bazel build -c opt //src/llm/experiments/one_shot_memorizer:checkpoint_label_probe
+facts_run=/home/ubuntu/checkpoints/memorize_general_facts/compact_batch_32_no_clip_0
+bazel-bin/src/llm/experiments/one_shot_memorizer/checkpoint_label_probe \
+  --checkpoint="$facts_run/layers_8/step_16128" \
+  --tokenizer="$facts_run/inputs/tokenizer" \
+  --output_dir=/tmp/one_shot_label_probe_new
+```
+
+Default fitting uses 819 sentences/8,009 supervised rows; 205 sentences/1,993
+rows are excluded from fitting. Of those held rows, 377 target tokens have no
+occurrence as a target in the fitting subset. Every decoder nevertheless
+includes all 4,475 compact tokens, assigned before the split. The backbone
+itself was trained on every sentence. `--fit_sentence_stride=0` instead fits
+all 1,024 sentences. This is the relevant option when testing corpus-exact
+construction rather than conditional held-context transfer.
+
+`label_projection.tsv` reports teacher-forced accuracy and separately executed
+greedy exact completions, split into fitting/held-out sentences. It checks
+agreement of exactness for each sentence, not only aggregate counts. It also
+reports code-vector error/cosine before GPU rounding: a small branch-update
+error alone could hide poor code recovery if cancelling the incoming residual
+dominates the regression target. The actual GPU decisions remain authoritative.
+
+### Measured label-only construction (2026-09-23)
+
+With `code_seed=0`, `code_scale=0.25`, and `ridge=0.000001`:
+
+| Condition | Correct targets / 10,002, fit on 819 sentences | Exact greedy completions / 1,024 | Correct targets / 10,002, fit on all sentences | Exact greedy completions / 1,024 |
+| --- | ---: | ---: | ---: | ---: |
+| Original checkpoint | 10,002 | 1,024 | 10,002 | 1,024 |
+| Original final norm/head cloned through replacement hooks | 10,002 | 1,024 | 10,002 | 1,024 |
+| Only set original final LayerNorm beta to zero | 9,978 | 1,003 | 9,978 | 1,003 |
+| Fixed balanced codes, label-fitted projection | 2,189 | 1 | 2,201 | 1 |
+| Normalized learned codes, label-fitted projection | 9,006 | 380 | 9,046 | 397 |
+| Permuted learned codes, label-fitted projection | 1,484 | 1 | 1,495 | 1 |
+
+The held-sentence portion of the learned-code fit is **1,775/1,993** correct
+targets and **65/205** exact completions. Neither fixed nor permuted codes
+produce an exact held-out completion. Fitting every sentence does not restore
+perfect recall, so exclusion of the held sentences is not the sole obstacle.
+
+Two additional controls help interpret the learned-code result. Changing only
+the final normalization/head while retaining the original final MLP gives
+**8,530 targets and 209 exact completions**. Removing that MLP's update, leaving
+only its incoming residual, gives **2,326 targets and 2 completions**. The
+label-fitted map therefore does useful work beyond copying an already-correct
+residual into a new decoder, but does not match the original checkpoint.
+
+The learned-versus-permuted contrast supports **co-adaptation between the fixed
+backbone's features and its token-code assignment**. It does not mean arbitrary
+codes cannot work with a different backbone, a larger feature space, or another
+objective. Euclidean regression asks for a particular output vector; correct
+classification requires only that the target win. Failure of this regression
+is not proof that no output matrix can classify with the same codebook.
+
+Varying the target-code amplitude with all sentences included in fitting also
+fails to recover perfect completion. This is a bounded three-point check, not
+an exhaustive hyperparameter search:
+
+| Code amplitude | Fixed balanced: correct targets / exact completions | Learned: correct targets / exact completions | Permuted learned: correct targets / exact completions |
+| --- | ---: | ---: | ---: |
+| 0.0625 | 476 / 0 | 3,537 / 1 | 570 / 0 |
+| 0.25 | 2,201 / 1 | 9,046 / 397 | 1,495 / 1 |
+| 1.0 | 2,671 / 1 | 8,795 / 332 | 2,105 / 1 |
+
+All three codebooks pass the 4,475-token ideal-code oracle at every amplitude.
+The learned-code fit at amplitude 0.0625 has a smaller branch-update relative
+error (0.288) than at amplitude 1 (0.607), but a much larger code-vector error
+(1.390 versus 0.506). Much of the former target is residual cancellation, which
+is why update error alone is misleading. Inference checks include the actual
+BF16 residual addition and subsequent normalization, not only this real-valued
+regression diagnostic.
+
+### Why decision constraints are the next distinct test
+
+For a centered codebook and final gamma=1, beta=0, normalization divides all
+token scores by the same positive factor. Thus a target wins exactly when
+
+```
+(c_y - c_j) dot (r + phi W + b) > 0   for every competing token j.
+```
+
+These are linear inequalities in `W,b`. A bounded-margin linear program could
+test decisions without forcing every output to equal its code vector. This
+would be non-gradient optimization, not a closed-form formula, and any candidate
+must still be checked against every rival and actual BF16 generation.
+The distinction between prescribing vectors and imposing multiclass margins
+has a standard precedent in
+[Crammer and Singer's multiclass formulation](https://www.jmlr.org/papers/volume2/crammer01a/crammer01a.pdf);
+the proposed fixed-code/residual constraints here are our own specialization.
+
+This simplification must not be silently applied to the original final norm.
+With its learned gamma/beta, write `P=I-11^T/16`, `a_j=P(gamma*e_j)`,
+`d_j=beta dot e_j`, and `s=sqrt(||Pz||^2/16+epsilon)`. The original pairwise
+condition is `(a_y-a_j) dot z + (d_y-d_j)*s > 0`, which is not generally linear
+in the changed residual. The measured 24 errors from zeroing beta show that
+this distinction matters here. No linear-program feasibility result is claimed
+by the code-target experiment above.
+
 ## Tests
 
 ```sh
@@ -592,4 +736,8 @@ rows, padded/partial batches, original-projection cloning, FP32 bias handling,
 fresh upstream features in simultaneous replacements, and greedy input histories
 with no gold-suffix leakage. QR tests cover pivoting, ridge scaling, bias,
 rank deficiency, ill-conditioning, and recovery of known 64-to-16 maps.
-All 79 repository test targets passed with fresh execution after these additions.
+Label-projection tests cover deterministic/unique code assignments, normalization,
+label-only targets, whole-sentence exclusion from every fitted statistic,
+supervised residual capture, independent output heads, fresh hook substitutions,
+clone equivalence, and unchanged original parameters. All 82 repository test
+targets passed with fresh execution after these additions.

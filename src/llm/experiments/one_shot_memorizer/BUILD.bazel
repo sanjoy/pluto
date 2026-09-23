@@ -3,6 +3,119 @@ load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 
 cc_library(
+    name = "token_codes",
+    srcs = ["token_codes.cc"],
+    hdrs = ["token_codes.h"],
+    deps = [
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "token_codes_test",
+    srcs = ["token_codes_test.cc"],
+    deps = [":token_codes", "@googletest//:gtest_main"],
+)
+
+cc_library(
+    name = "label_projection",
+    srcs = ["label_projection.cc"],
+    hdrs = ["label_projection.h"],
+    deps = [
+        ":closed_form_map",
+        ":token_codes",
+        "@abseil-cpp//absl/status",
+    ],
+)
+
+cc_test(
+    name = "label_projection_test",
+    srcs = ["label_projection_test.cc"],
+    deps = [":label_projection", "@googletest//:gtest_main"],
+)
+
+cc_library(
+    name = "final_mlp_probe",
+    srcs = ["final_mlp_probe.cc"],
+    hdrs = ["final_mlp_probe.h"],
+    deps = [
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset",
+        "//src/llm:batch_validation",
+        "//src/llm:extract_top1_ids",
+        "//src/llm:layer",
+        "//src/llm:layer_hooks",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/memory",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_test(
+    name = "final_mlp_probe_test",
+    srcs = ["final_mlp_probe_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":final_mlp_probe",
+        ":mlp_probe",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset:padded_line_dataset",
+        "//src/dataset:plain_text_tokenizer",
+        "//src/llm:embedding",
+        "//src/llm:extract_top1_ids",
+        "//src/llm:fully_connected",
+        "//src/llm:gpt2",
+        "//src/llm:layer_hooks",
+        "//src/llm:norm",
+        "//src/util:status_macros",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "checkpoint_label_probe",
+    srcs = ["checkpoint_label_probe.cc"],
+    deps = [
+        ":closed_form_map",
+        ":feature_capture",
+        ":final_mlp_probe",
+        ":label_projection",
+        ":mlp_probe",
+        ":token_codes",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset",
+        "//src/dataset:compact_vocabulary",
+        "//src/dataset:gpt2_tokenizer",
+        "//src/dataset:padded_line_dataset",
+        "//src/llm:checkpoint",
+        "//src/llm:embedding",
+        "//src/llm:extract_top1_ids",
+        "//src/llm:fully_connected",
+        "//src/llm:gpt2",
+        "//src/llm:norm",
+        "//src/util:status_macros",
+        "//src/util:tee_stream",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_library(
     name = "closed_form_map",
     srcs = ["closed_form_map.cc"],
     hdrs = ["closed_form_map.h"],
