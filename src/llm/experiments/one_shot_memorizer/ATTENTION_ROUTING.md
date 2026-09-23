@@ -236,3 +236,61 @@ bazel-bin/src/llm/experiments/one_shot_memorizer/checkpoint_attention_factorial_
 The common theme is a **context-dependent combination of shared directions**,
 followed by residual and nonlinear processing. These experiments narrow the
 mechanism; they do not yet derive the learned attention matrices from text.
+
+## Prospective follow-up: immediate query versus later country rereading
+
+The first-block gate formula describes the query's update, but a whole Q/K/V
+family swap also changes the country position's attention output. Later
+blocks can reread that altered country trajectory. To separate these two
+routes, retain the same three capitals and six ordered donor/recipient pairs.
+For each nonidentity family corner (Q/K only, V only, both), capture its actual
+BF16 block-0 attention output **before the output projection**. Then run four
+independent recipient forwards, copying from that captured output:
+
+* neither position;
+* country position 3 only;
+* query position 4 only;
+* both positions.
+
+This fixes 6 pairs times 3 family corners times 4 row selections: **72
+conditions**, without an outcome-driven search. Patches keep the recipient's
+residual skip. No answer tokens enter any forward. The first three positions
+must remain bit-identical across the source corners, and copying both changed
+positions must reproduce the original whole-family corner's final logits
+bit-for-bit. Neither-row and identity controls must reproduce the recipient.
+Record all real-vocabulary logits, recipient/donor probabilities and margins,
+and winners; verify original source weights remain unchanged.
+
+This is a selected, off-distribution causal intervention. It distinguishes
+the immediate query route from the country state available to later layers;
+it does not assign exclusive fact ownership or interpret a gate as a capital
+label. The deadline is one hour, and the earlier 192-condition factorial
+should remain reproducible without changes to its existing numeric reports.
+
+## Prospective follow-up: late query/country compatibility
+
+An isolated donor-query residual immediately after block 6 produces a third
+answer in all six ordered capital-pair swaps in the original trace. This
+suggests testing a matched versus mismatched query/country interface rather
+than assuming that the query already carries an independently readable answer.
+
+Keep that post-block-6 donor query patch fixed. At block 7's Q/K/V projection,
+independently copy the donor's country-position K and V slices: neither, K
+only, V only, or both. These are **24 fixed conditions** across six ordered
+pairs. Keep the country Q and its residual trajectory otherwise unchanged;
+they do not affect the final query after this last attention operation.
+
+The first three anchor positions are shared, and the query's own Q/K/V and
+residual skip now come from the donor. Consequently copying both country K
+and V must reproduce the donor's final-query attention output and all 4,475
+final logits bit-for-bit. Check that control explicitly, along with identity
+patches, ordinary inference restoration, and unchanged source weights. Save
+probabilities, actual attention outputs, final-MLP input/output and all logits.
+Compare the query-only conditions with the existing trace before interpreting
+new conditions.
+
+This isolates routing/content compatibility at a selected late interface. A
+successful donor completion need not identify where a fact is stored, and a
+failed hybrid is not evidence that either component lacks donor information.
+Do not tune positions, channels or donor pairs based on the outcomes. Budget:
+one hour; the GPU run may overlap the independent block-0 experiment.
