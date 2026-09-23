@@ -9,6 +9,9 @@ from necessary or exclusively fact-owning neurons.
 The complementary [FINAL_MLP_INTERACTIONS.md](FINAL_MLP_INTERACTIONS.md)
 checks individual deletions, learned biases, and whether selected feature
 amplitudes transfer an answer between contexts.
+The next construction test is specified prospectively in
+[FROZEN_MLP_BASIS.md](FROZEN_MLP_BASIS.md): fixed initialization directions,
+input-only moment standardization, and direct output-map reconstruction.
 
 ## Time-bounded sentence and capacity experiments
 
