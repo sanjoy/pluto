@@ -1095,3 +1095,82 @@ cc_binary(
         "@cuda//:cuda_runtime",
     ],
 )
+
+cc_binary(
+    name = "checkpoint_mlp_feature_audit",
+    srcs = ["checkpoint_mlp_feature_audit.cc"],
+    deps = [
+        ":feature_subset",
+        ":mlp_subset_tail",
+        ":token_trace",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset",
+        "//src/dataset:compact_vocabulary",
+        "//src/dataset:gpt2_tokenizer",
+        "//src/llm:checkpoint",
+        "//src/llm:gpt2",
+        "//src/llm:layer",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_library(
+    name = "feature_donor",
+    srcs = ["feature_donor.cc"],
+    hdrs = ["feature_donor.h"],
+    deps = [
+        ":feature_subset",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "feature_donor_test",
+    size = "small",
+    srcs = ["feature_donor_test.cc"],
+    deps = [
+        ":feature_donor",
+        ":feature_subset",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "checkpoint_mlp_donor_probe",
+    srcs = ["checkpoint_mlp_donor_probe.cc"],
+    deps = [
+        ":feature_donor",
+        ":feature_subset",
+        ":mlp_subset_tail",
+        ":token_trace",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset",
+        "//src/dataset:compact_vocabulary",
+        "//src/dataset:gpt2_detokenizer",
+        "//src/dataset:gpt2_tokenizer",
+        "//src/llm:checkpoint",
+        "//src/llm:gpt2",
+        "//src/llm:layer",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)

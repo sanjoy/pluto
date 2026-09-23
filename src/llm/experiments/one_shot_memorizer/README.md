@@ -6,6 +6,9 @@ interventions, common themes, and what they do **not** establish.
 The follow-up [FINAL_MLP_SUBSETS.md](FINAL_MLP_SUBSETS.md) tests small
 combinations of final-MLP features and distinguishes sufficient combinations
 from necessary or exclusively fact-owning neurons.
+The complementary [FINAL_MLP_INTERACTIONS.md](FINAL_MLP_INTERACTIONS.md)
+checks individual deletions, learned biases, and whether selected feature
+amplitudes transfer an answer between contexts.
 
 ## Time-bounded sentence and capacity experiments
 
@@ -1619,7 +1622,7 @@ clone equivalence, and unchanged original parameters. Decision tests additionall
 check exact real-valued LayerNorm/head algebra, nonzero bias changing winners,
 contradictory labels, unseen rivals, negative common margins, coefficient/gauge
 bounds, deterministic cutting planes, and explicit budget outcomes.
-All **97 repository test targets passed with fresh execution**, including
+All **98 repository test targets passed with fresh execution**, including
 the five-token, sign-readout, margin-accounting, exact path-solver, and
 first-update score tests. New tests cover isolated-fact selection/provenance,
 unrestricted greedy history, repetition/coverage and generation caps, and
@@ -1632,6 +1635,10 @@ combinatorial enumeration, and bitwise production-tail equivalence against
 full-model interventions with nonzero biases and varied batch geometries.
 See [FINAL_MLP_SUBSETS.md](FINAL_MLP_SUBSETS.md) for corpus-wide results and
 the separate whole-model controls that validate the optimized experiment.
+Donor-row tests cover exact raw-BF16 mixing and source preservation. The
+checked-in feature-audit and donor executables reproduce their independent
+prototype reports byte-for-byte (71,680 and 184 conditions respectively),
+including fixed-versus-current rivals and all direct full-model controls.
 The real-checkpoint
 trace, independent neuron sweep, corpus-wide final-MLP bypass, paired training,
 paired weight transplants, and prospective single-fact replications also

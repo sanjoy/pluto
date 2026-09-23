@@ -1,5 +1,8 @@
 # What small final-MLP feature combinations can do
 
+For the complementary deletion, bias and donor-amplitude experiments, see
+[FINAL_MLP_INTERACTIONS.md](FINAL_MLP_INTERACTIONS.md).
+
 This follow-up to [EXECUTION_TRACE.md](EXECUTION_TRACE.md) uses the original
 1,024-fact model, `compact_batch_32_no_clip_0/layers_8/step_16128`. Each query
 is exactly the first five tokens of its fact; the requested answer is its
