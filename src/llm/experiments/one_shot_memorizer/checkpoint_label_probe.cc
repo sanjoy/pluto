@@ -8,9 +8,11 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/flags/flag.h"
@@ -23,9 +25,11 @@
 #include "src/dataset/gpt2_tokenizer.h"
 #include "src/dataset/padded_line_dataset.h"
 #include "src/llm/checkpoint.h"
+#include "src/llm/experiments/one_shot_memorizer/decision_readout.h"
 #include "src/llm/experiments/one_shot_memorizer/feature_capture.h"
 #include "src/llm/experiments/one_shot_memorizer/final_mlp_probe.h"
 #include "src/llm/experiments/one_shot_memorizer/label_projection.h"
+#include "src/llm/experiments/one_shot_memorizer/margin_projection.h"
 #include "src/llm/experiments/one_shot_memorizer/mlp_probe.h"
 #include "src/llm/experiments/one_shot_memorizer/token_codes.h"
 #include "src/llm/extract_top1_ids.h"
@@ -54,6 +58,21 @@ ABSL_FLAG(double, code_scale, 0.25,
           "Desired residual amplitude per code coordinate");
 ABSL_FLAG(uint64_t, code_seed, 0,
           "Fixed token-to-code assignment/permutation seed");
+ABSL_FLAG(
+    std::string, projection_objective, "code_vector",
+    "code_vector: fit target vectors; token_margin: solve target-vs-rival "
+    "linear inequalities with the original head and gamma, beta=0");
+ABSL_FLAG(double, decision_coefficient_bound, 1,
+          "Absolute bound on every fitted decision projection coefficient");
+ABSL_FLAG(int, decision_rounds, 30, "Maximum decision cutting-plane rounds");
+ABSL_FLAG(int, decision_new_cuts, 1024,
+          "Maximum new target-versus-rival constraints per round");
+ABSL_FLAG(int, decision_total_cuts, 30000,
+          "Maximum accumulated target-versus-rival constraints");
+ABSL_FLAG(int, decision_solve_seconds, 60,
+          "Time limit for each simplex solve; exhaustion is inconclusive");
+ABSL_FLAG(bool, decision_dual_simplex, false,
+          "Use dual simplex in both solver phases for incremental cuts");
 
 namespace pluto::llm::one_shot_memorizer {
 namespace {
@@ -240,6 +259,7 @@ absl::Status Run() {
   const int width = absl::GetFlag(FLAGS_model_width);
   const int features = absl::GetFlag(FLAGS_feed_forward_width);
   const int blocks = absl::GetFlag(FLAGS_layers);
+  const std::string objective = absl::GetFlag(FLAGS_projection_objective);
   const LabelProjectionOptions options{
       .held_sentence_stride = absl::GetFlag(FLAGS_fit_sentence_stride),
       .code_scale = absl::GetFlag(FLAGS_code_scale),
@@ -250,6 +270,19 @@ absl::Status Run() {
       !std::isfinite(options.code_scale) || options.code_scale <= 0 ||
       !std::isfinite(options.affine.ridge) || options.affine.ridge < 0)
     return absl::InvalidArgumentError("invalid label-probe arguments");
+  if (objective != "code_vector" && objective != "token_margin")
+    return absl::InvalidArgumentError("unknown projection_objective");
+  if (objective == "token_margin" && options.held_sentence_stride != 0)
+    return absl::InvalidArgumentError(
+        "token_margin currently requires --fit_sentence_stride=0");
+  if (objective == "token_margin" &&
+      (!std::isfinite(absl::GetFlag(FLAGS_decision_coefficient_bound)) ||
+       absl::GetFlag(FLAGS_decision_coefficient_bound) <= 0 ||
+       absl::GetFlag(FLAGS_decision_rounds) <= 0 ||
+       absl::GetFlag(FLAGS_decision_new_cuts) <= 0 ||
+       absl::GetFlag(FLAGS_decision_total_cuts) <= 0 ||
+       absl::GetFlag(FLAGS_decision_solve_seconds) <= 0))
+    return absl::InvalidArgumentError("invalid decision solver limits");
   ASSIGN_OR_RETURN(
       auto base, tokenizer::Gpt2Tokenizer::Load(absl::GetFlag(FLAGS_tokenizer)));
   ASSIGN_OR_RETURN(auto tokenizer,
@@ -297,6 +330,7 @@ absl::Status Run() {
       << "\n# code_scale=" << options.code_scale
       << "\n# ridge=" << options.affine.ridge
       << "\n# code_seed=" << absl::GetFlag(FLAGS_code_seed)
+      << "\n# projection_objective=" << objective
       << "\n# Code heads are independent output tables; tied input "
          "embeddings remain unchanged.\n"
       << "# Fits use corpus labels, not teacher branch outputs. Backbone "
@@ -416,6 +450,98 @@ absl::Status Run() {
                    CreateFinalMlpReplacement(*model, nullptr, *zero_beta,
                                              *original_head.head, blocks - 1));
   RETURN_IF_ERROR(evaluate("original_head_zero_final_beta", *beta_control));
+  if (objective == "token_margin") {
+    ASSIGN_OR_RETURN(auto decoder, MakeDecisionReadout(effective, width,
+                                                       captured.finalnorm_gamma,
+                                                       captured.finalnorm_beta));
+    const MarginProjectionOptions decision_options{
+        .coefficient_bound = absl::GetFlag(FLAGS_decision_coefficient_bound),
+        .center_coefficients = true,
+        .dual_simplex = absl::GetFlag(FLAGS_decision_dual_simplex),
+        .max_rounds = absl::GetFlag(FLAGS_decision_rounds),
+        .max_new_cuts =
+            static_cast<size_t>(absl::GetFlag(FLAGS_decision_new_cuts)),
+        .max_total_cuts =
+            static_cast<size_t>(absl::GetFlag(FLAGS_decision_total_cuts)),
+        .per_solve_timeout_seconds =
+            absl::GetFlag(FLAGS_decision_solve_seconds),
+        .progress = [&](const MarginProjectionProgress& progress) {
+          report << "# decision round=" << progress.round
+                 << " checked_round=" << progress.checked_round
+                 << " cuts=" << progress.cut_count
+                 << " correct=" << progress.correct_count << '/'
+                 << captured.labels.size()
+                 << " minimum_margin=" << progress.minimum_margin
+                 << " restricted_lp_objective=" << progress.lp_objective
+                 << " solver_status=" << progress.solver_status
+                 << " status=" << progress.status
+                 << " elapsed_seconds=" << progress.elapsed_seconds << '\n';
+        }};
+    report << "# Decision fit keeps original effective embedding rows and "
+              "gamma; beta is zero ONLY in the linear constraint model.\n"
+           << "# decision_coefficient_bound="
+           << decision_options.coefficient_bound
+           << "\n# decision_margin_cap=" << decision_options.margin_cap
+           << "\n# decision_acceptance_tolerance="
+           << decision_options.acceptance_tolerance
+           << "\n# decision_center_coefficients="
+           << decision_options.center_coefficients
+           << "\n# decision_dual_simplex=" << decision_options.dual_simplex
+           << "\n# decision_round_limit=" << decision_options.max_rounds
+           << "\n# decision_new_cut_limit=" << decision_options.max_new_cuts
+           << "\n# decision_total_cut_limit=" << decision_options.max_total_cuts
+           << "\n# decision_solve_seconds="
+           << decision_options.per_solve_timeout_seconds << '\n';
+    ASSIGN_OR_RETURN(
+        auto result,
+        FitMarginProjection(captured.features, features, captured.residuals,
+                            captured.labels, decoder.directions, width,
+                            vocabulary, decision_options));
+    report << "# decision_outcome="
+           << MarginProjectionOutcomeName(result.outcome) << '\n';
+    // The simplex result contains only a projection, not a complete model.
+    // Preserve the last independently checked candidate even on a time limit,
+    // with its outcome recorded above; a saved matrix is not a success claim.
+    std::ofstream parameters(directory / "decision_projection.tsv");
+    if (!parameters)
+      return absl::UnknownError("cannot create decision projection file");
+    parameters << std::setprecision(17)
+               << "kind\tinput_coordinate\toutput_coordinate\tvalue\n";
+    for (int input = 0; input < features; ++input)
+      for (int output = 0; output < width; ++output)
+        parameters
+            << "weight\t" << input << '\t' << output << '\t'
+            << result.weights[static_cast<size_t>(input) * width + output]
+            << '\n';
+    for (int output = 0; output < width; ++output)
+      parameters << "bias\t-1\t" << output << '\t' << result.biases[output]
+                 << '\n';
+    parameters.close();
+    if (!parameters)
+      return absl::UnknownError("cannot write decision projection file");
+    ClosedFormMap map;
+    map.input_dim = result.input_dim;
+    map.output_dim = result.output_dim;
+    map.weights = std::move(result.weights);
+    map.biases = std::move(result.biases);
+    ASSIGN_OR_RETURN(auto projection, MakeProjection(*executor, map));
+    ASSIGN_OR_RETURN(
+        auto zero_beta_candidate,
+        CreateFinalMlpReplacement(*model, projection.get(), *zero_beta,
+                                  *original_head.head, blocks - 1));
+    RETURN_IF_ERROR(
+        evaluate("decision_fit_zero_final_beta", *zero_beta_candidate));
+    // This separate check is on the unmodified learned final normalization;
+    // success in the zero-beta real-valued LP does not imply success here.
+    ASSIGN_OR_RETURN(
+        auto original_beta_candidate,
+        CreateFinalMlpReplacement(*model, projection.get(), *original_norm,
+                                  *original_head.head, blocks - 1));
+    RETURN_IF_ERROR(
+        evaluate("decision_fit_original_final_beta", *original_beta_candidate));
+    report << "# Complete\n";
+    return absl::OkStatus();
+  }
   ASSIGN_OR_RETURN(auto unit_norm, MakeNorm(*executor, ones, zeros));
   ASSIGN_OR_RETURN(
       auto balanced,

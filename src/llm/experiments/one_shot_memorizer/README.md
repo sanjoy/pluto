@@ -715,6 +715,104 @@ in the changed residual. The measured 24 errors from zeroing beta show that
 this distinction matters here. No linear-program feasibility result is claimed
 by the code-target experiment above.
 
+## Constructing decision margins instead of target vectors
+
+The same `checkpoint_label_probe` now accepts
+`--projection_objective=token_margin --fit_sentence_stride=0`. It retains the
+original effective BF16 embedding table and learned final LayerNorm gamma.
+With beta temporarily zero, its score directions are
+`a_j = center(gamma * embedding[j])`. A revised-simplex linear program constructs
+the final 64-to-16 projection from the observed incoming residuals, GELU features,
+and corpus labels:
+
+```
+maximize delta, subject to
+  (a_yi - a_j) dot (r_i + phi_i W + b) >= delta   for every i and j != y_i
+  -B <= every coefficient of W and b <= B
+  delta <= 1.
+```
+
+Delta has no restrictive lower bound. The coefficient box is a declared search
+restriction, not a claim about all possible matrices. The probe also constrains
+each output coefficient vector to sum to zero, removing the common-coordinate
+component that real-valued LayerNorm discards. Combined with the box, this is an
+additional explicit restriction. Centering avoids gratuitous common-mode
+signals that could make BF16 residual cancellation less accurate.
+
+The LP starts with zero projection weights; it never reads the original final
+projection or its output vectors. To avoid materializing roughly 44.7 million
+pairwise constraints, it adds the worst currently violated rival per row, up to
+a configurable number of new cuts, and solves again. Every proposed matrix is
+independently evaluated against **all 4,475 classes at all 10,002 targets**.
+The solver's current subset objective is not itself a success condition.
+Acceptance requires a strictly positive measured margin everywhere; actual
+BF16 teacher-forced and greedy generation are then separate checks.
+
+The solver is [lp_solve](https://github.com/lp-solve/lp_solve), compiled from
+pinned C sources without C++ exceptions. Simplex is an iterative numerical
+optimization algorithm, not gradient descent, and not a closed-form formula.
+Timeouts and round/cut limits are inconclusive. A nonpositive numerical optimum
+for a restricted LP bounds the full problem only within the declared coefficient
+box and centering restrictions; it is not a general impossibility result.
+
+```sh
+bazel build -c opt //src/llm/experiments/one_shot_memorizer:checkpoint_label_probe
+facts_run=/home/ubuntu/checkpoints/memorize_general_facts/compact_batch_32_no_clip_0
+bazel-bin/src/llm/experiments/one_shot_memorizer/checkpoint_label_probe \
+  --checkpoint="$facts_run/layers_8/step_16128" \
+  --tokenizer="$facts_run/inputs/tokenizer" \
+  --projection_objective=token_margin --fit_sentence_stride=0 \
+  --decision_coefficient_bound=1 --decision_rounds=30 \
+  --decision_solve_seconds=60 --output_dir=/tmp/one_shot_decisions_new
+```
+
+`label_projection.tsv` records incremental solver progress and both generation
+checks: first with zero beta, then with the **original beta restored**. The
+latter is not implied by the linear constraints. `decision_projection.tsv`
+contains the last independently checked candidate's double-precision matrix
+and bias with explicit coordinates, even when the solver hits a limit; consult
+the recorded outcome before interpreting a saved candidate. The original
+checkpoint and input embeddings remain unchanged. As in the other hook-based
+probes, original branches still execute, so timings are not inference benchmarks.
+
+### Measured decision-constraint outcomes (2026-09-23)
+
+Three bounded trials used all 10,002 supervised positions, all 4,475 decoder
+classes, coefficient bound `B=1`, centered coefficients, margin cap 1, and
+a 60-second limit per restricted-LP solve. All ended with **`solver_limit`**,
+not a positive-margin certificate and not an infeasibility finding:
+
+| Trial | Latest attempted / checked round | Correct CPU targets / 10,002 | Minimum CPU margin | GPU zero-beta: correct targets / exact completions | GPU original-beta: correct targets / exact completions |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Default simplex, 1,024 new cuts/round | 1 / 0 | 3,773 | -12.6381 | 3,774 / 7 | 3,926 / 6 |
+| Default simplex, 128 new cuts/round | 2 / 1 | 55 | -258.219 | 55 / 0 | 41 / 0 |
+| Dual simplex, 128 new cuts/round | 2 / 1 | 55 | -258.219 | 55 / 0 | 41 / 0 |
+
+The first trial timed out before producing an accepted solver result. Its
+saved candidate is therefore the **initial zero projection**, not a learned
+replacement: all 1,040 saved coefficients are zero. In the other two trials,
+the first restricted LP reached its margin cap of 1 on 128 constraints, but
+the independent all-class check found the severe failures shown above. Both
+timed out after adding another 128 constraints. They returned the same
+previously checked round-one matrix, not unvalidated values from the timed-out
+solve. Here "checked" means independently measured, **not** successful. The
+one-token CPU/GPU difference for the zero projection also illustrates why a
+real-valued score check does not replace the BF16 execution check.
+
+These trials establish a practical limitation of this solver setup and budget:
+**it has not constructed a corpus-exact final projection**. Reducing the initial
+cut count allowed one restricted solve to finish; selecting dual simplex did
+not improve the observed outcome. Neither the timeout nor a positive objective
+on a small constraint subset answers whether a suitable full projection exists.
+The 1,024-fact exact original model remains the reference, and the earlier
+label-vector regression's 397 exact completions remains a separate result, not
+a successful decision-constraint construction.
+
+Local evidence is in `label_projection.tsv` and `decision_projection.tsv`
+under `/tmp/one_shot_decision_probe_0`, `/tmp/one_shot_decision_probe_1`, and
+`/tmp/one_shot_decision_probe_dual_0`. These are generated run artifacts, not
+source files committed to Git.
+
 ## Tests
 
 ```sh
@@ -739,5 +837,9 @@ rank deficiency, ill-conditioning, and recovery of known 64-to-16 maps.
 Label-projection tests cover deterministic/unique code assignments, normalization,
 label-only targets, whole-sentence exclusion from every fitted statistic,
 supervised residual capture, independent output heads, fresh hook substitutions,
-clone equivalence, and unchanged original parameters. All 82 repository test
+clone equivalence, and unchanged original parameters. Decision tests additionally
+check exact real-valued LayerNorm/head algebra, nonzero bias changing winners,
+contradictory labels, unseen rivals, negative common margins, coefficient/gauge
+bounds, deterministic cutting planes, and explicit budget outcomes.
+All 84 repository test
 targets passed with fresh execution after these additions.

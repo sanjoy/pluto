@@ -1,0 +1,66 @@
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+# Mirrors the upstream 5.5.2.14 lpsolve55/ccc source list and configuration.
+# LUSOL, COLAMD, and the BLAS helpers are supplied by the same archive.
+cc_library(
+    name = "lp_solve",
+    srcs = [
+        "bfp/bfp_LUSOL/LUSOL/lusol.c",
+        "bfp/bfp_LUSOL/lp_LUSOL.c",
+        "colamd/colamd.c",
+        "fortify.c",
+        "ini.c",
+        "lp_Hash.c",
+        "lp_MDO.c",
+        "lp_MPS.c",
+        "lp_SOS.c",
+        "lp_crash.c",
+        "lp_lib.c",
+        "lp_matrix.c",
+        "lp_mipbb.c",
+        "lp_params.c",
+        "lp_presolve.c",
+        "lp_price.c",
+        "lp_pricePSE.c",
+        "lp_report.c",
+        "lp_rlp.c",
+        "lp_scale.c",
+        "lp_simplex.c",
+        "lp_utils.c",
+        "lp_wlp.c",
+        "shared/commonlib.c",
+        "shared/mmio.c",
+        "shared/myblas.c",
+        "yacc_read.c",
+    ],
+    hdrs = glob(["**/*.h"]),
+    copts = ["-fno-exceptions"],
+    includes = [
+        ".",
+        "bfp",
+        "bfp/bfp_LUSOL",
+        "bfp/bfp_LUSOL/LUSOL",
+        "colamd",
+        "shared",
+    ],
+    linkopts = [
+        "-ldl",
+        "-lm",
+    ],
+    local_defines = [
+        "INVERSE_ACTIVE=INVERSE_LUSOL",
+        "PARSER_LP",
+        "RoleIsExternalInvEngine",
+        "YY_NEVER_INTERACTIVE",
+    ],
+    # These upstream implementation fragments are #included, not compiled as
+    # independent translation units.
+    textual_hdrs = glob(
+        [
+            "bfp/lp_BFP*.c",
+            "bfp/bfp_LUSOL/LUSOL/lusol*.c",
+        ],
+        exclude = ["bfp/bfp_LUSOL/LUSOL/lusol.c"],
+    ),
+    visibility = ["//visibility:public"],
+)

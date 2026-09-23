@@ -10,6 +10,17 @@ bazel_dep(name = "rules_cc", version = "0.2.22")
 bazel_dep(name = "rules_cuda", version = "0.3.0")
 bazel_dep(name = "snappy", version = "1.2.2.bcr.3")
 
+# The research LP solver is ANSI C, so it does not require C++ exceptions.
+# Keep its unchanged upstream sources external to this repository.
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_archive(
+    name = "lp_solve",
+    build_file = "//third_party:lp_solve.BUILD.bazel",
+    sha256 = "3d8c01e9ea9ca8f60e9495cfdf1108548446b0b36b8f0a5f5712e4f0c05d71ea",
+    strip_prefix = "lp_solve-5.5.2.14",
+    urls = ["https://github.com/lp-solve/lp_solve/archive/refs/tags/5.5.2.14.tar.gz"],
+)
+
 cuda = use_extension("@rules_cuda//cuda:extensions.bzl", "toolchain")
 cuda.toolkit(
     name = "cuda",

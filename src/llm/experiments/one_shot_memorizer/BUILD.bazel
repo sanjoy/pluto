@@ -3,6 +3,45 @@ load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 
 cc_library(
+    name = "decision_readout",
+    srcs = ["decision_readout.cc"],
+    hdrs = ["decision_readout.h"],
+    deps = [
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "decision_readout_test",
+    srcs = ["decision_readout_test.cc"],
+    deps = [":decision_readout", "@googletest//:gtest_main"],
+)
+
+cc_library(
+    name = "margin_projection",
+    srcs = ["margin_projection.cc"],
+    hdrs = ["margin_projection.h"],
+    deps = [
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@lp_solve//:lp_solve",
+    ],
+)
+
+cc_test(
+    name = "margin_projection_test",
+    srcs = ["margin_projection_test.cc"],
+    deps = [":margin_projection", "@googletest//:gtest_main"],
+)
+
+cc_library(
     name = "token_codes",
     srcs = ["token_codes.cc"],
     hdrs = ["token_codes.h"],
@@ -86,9 +125,11 @@ cc_binary(
     srcs = ["checkpoint_label_probe.cc"],
     deps = [
         ":closed_form_map",
+        ":decision_readout",
         ":feature_capture",
         ":final_mlp_probe",
         ":label_projection",
+        ":margin_projection",
         ":mlp_probe",
         ":token_codes",
         "//src/cuda:executor",
