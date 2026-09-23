@@ -184,3 +184,40 @@ sentence-to-weight ownership map. Coordinate symmetries, shared features,
 optimizer history and downstream interactions make those stronger claims
 different from reproducing the answers. The findings above narrow the problem;
 they should not be presented as having solved it.
+
+## Handoff to the completion-trace experiment
+
+The implemented work is committed through `0641893`; all 108 repository test
+targets passed after the last code change. On 2026-09-23 the user requested
+archiving this branch and starting a separate, main-based experiment tracing
+five autoregressive completions. The following late ideas remain preliminary,
+not completed experiments:
+
+* A reversed-context trie estimate suggests that merging equal-answer suffix
+  groups could replace 10,001 fixed-window detectors with 8,601 variable-length
+  detectors. Their 17,663 total key coordinates would require 43,927 explicitly
+  stored FP32 biases/output scalars (175,708 bytes), plus roughly 17,202 bytes
+  for uint16 rule lengths and additional header metadata. This estimate came
+  from a local inspection of the earlier full-key ReLU artifact. There is no
+  completed adaptive constructor, saved model, or autoregressive verification;
+  do not present approximately 193 KB as a verified model artifact.
+* A preliminary join of existing context and final-MLP subset reports finds no
+  simple monotone relationship between shortest sufficient corpus suffix and
+  minimum successful final-GELU mask cardinality. That is an observational
+  association with target identity and decision-margin confounds, not a causal
+  result. The join tool and independent end-to-end validation were not finished.
+
+Both delegated follow-ups stopped when the workers reported a usage limit.
+Their preliminary estimates do not change the verified 240,156-byte projected
+ReLU result or any completed learned-model intervention above. Generated
+reports, scratch estimates and checkpoints remain local rather than in Git.
+
+For mathematical background checked while explaining the construction,
+[Zhang et al., Appendix C](https://www.cs.princeton.edu/courses/archive/fall17/cos597A/lecnotes/rethinkinggeneralization.pdf)
+construct finite-sample ReLU interpolation using a separating projection and
+a linear solve. Our implementation instead uses exact integer equality
+indicators. The proposed adaptive suffix grouping is related to variable-memory
+sequence models studied by
+[Ron, Singer and Tishby](https://link.springer.com/article/10.1007/BF00114008),
+but is not an implementation of their probabilistic learning algorithm. Neither
+reference establishes that the trained GPT-2 uses our constructed memory.
