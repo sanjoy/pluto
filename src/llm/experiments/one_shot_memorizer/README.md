@@ -17,9 +17,12 @@ The fixed-feature construction test is specified prospectively in
 input-only moment standardization, and direct output-map reconstruction.
 Its completed results preserve 1,024 exact sentences with learned features,
 but only 13 with raw initial features and 6 after standardization.
-The next, explicitly post-hoc construction is the fixed
+The subsequent, explicitly post-hoc construction is the fixed
 [quadratic feature basis](QUADRATIC_MLP_BASIS.md), with its width change and
-teacher-assisted scope recorded before evaluation.
+teacher-assisted scope recorded before evaluation. It preserves 996/1,024
+complete sentences with all eight MLPs replaced, without learning expansion
+directions; the remaining errors and dependence on the trained backbone are
+not resolved by this construction.
 
 ## Time-bounded sentence and capacity experiments
 

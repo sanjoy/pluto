@@ -1,7 +1,7 @@
-// Tests whether fixed initialization-time nonlinear directions can replace
-// learned MLP features after fitting only their output projections. Inputs and
-// regression targets come from the learned model: this is a conditional
-// construction, not a model constructed from text alone.
+// Tests fixed nonlinear MLP bases after fitting only their output projections:
+// initialization-time GELU directions, or a separately selected quadratic
+// basis. Inputs and regression targets come from the learned model: this is a
+// conditional construction, not a model constructed from text alone.
 #include <cuda_runtime_api.h>
 
 #include <algorithm>
@@ -37,6 +37,7 @@
 #include "src/llm/experiments/one_shot_memorizer/closed_form_map.h"
 #include "src/llm/experiments/one_shot_memorizer/frozen_mlp_basis.h"
 #include "src/llm/experiments/one_shot_memorizer/mlp_probe.h"
+#include "src/llm/experiments/one_shot_memorizer/quadratic_features.h"
 #include "src/llm/gpt2.h"
 #include "src/llm/layers/combinators.h"
 #include "src/llm/layers/fully_connected.h"
@@ -44,7 +45,11 @@
 #include "src/util/status_macros.h"
 
 ABSL_FLAG(std::string, checkpoint, "", "Memorized step_16128 checkpoint");
-ABSL_FLAG(std::string, initial_checkpoint, "", "Matching step_0 checkpoint");
+ABSL_FLAG(std::string, experiment, "initialization",
+          "initialization or quadratic; fixed separately chosen protocols");
+ABSL_FLAG(std::string, initial_checkpoint, "",
+          "Matching step_0 checkpoint; required only for initialization, "
+          "disallowed for quadratic");
 ABSL_FLAG(std::string, tokenizer, "", "Base GPT-2 tokenizer directory");
 ABSL_FLAG(std::string, corpus, "testdata/general_facts_dataset.txt",
           "The original 1,024-fact corpus");
@@ -56,6 +61,7 @@ namespace {
 
 constexpr int kWidth = 16;
 constexpr int kFeatures = 64;
+constexpr int kQuadraticFeatures = 16 + 16 * 17 / 2;
 constexpr int kBlocks = 8;
 constexpr int kVocabulary = 4475;
 constexpr int kPromptTokens = 5;
@@ -329,11 +335,21 @@ absl::Status Run() {
   const fs::path initial_checkpoint = absl::GetFlag(FLAGS_initial_checkpoint);
   const fs::path output_dir = absl::GetFlag(FLAGS_output_dir);
   const int batch_size = absl::GetFlag(FLAGS_batch_size);
-  if (checkpoint.empty() || initial_checkpoint.empty() || output_dir.empty() ||
+  const std::string experiment = absl::GetFlag(FLAGS_experiment);
+  if (experiment != "initialization" && experiment != "quadratic")
+    return absl::InvalidArgumentError(
+        "experiment must be initialization or quadratic");
+  const bool quadratic = experiment == "quadratic";
+  if ((!quadratic && initial_checkpoint.empty()) ||
+      (quadratic && !initial_checkpoint.empty()))
+    return absl::InvalidArgumentError(
+        "initial_checkpoint is required for initialization and disallowed for "
+        "quadratic");
+  if (checkpoint.empty() || output_dir.empty() ||
       absl::GetFlag(FLAGS_tokenizer).empty() || batch_size < 1 ||
       batch_size > 32)
     return absl::InvalidArgumentError(
-        "checkpoint, initial_checkpoint, tokenizer, fresh output_dir required; "
+        "checkpoint, tokenizer, fresh output_dir required; "
         "batch_size must be in [1,32]");
   std::error_code error;
   if (fs::exists(output_dir, error))
@@ -345,16 +361,20 @@ absl::Status Run() {
   ASSIGN_OR_RETURN(auto tokenizer,
                    tokenizer::CompactVocabularyTokenizer::LoadFromFile(
                        *base, checkpoint / "compact_vocabulary.tsv"));
-  ASSIGN_OR_RETURN(auto initial_tokenizer,
-                   tokenizer::CompactVocabularyTokenizer::LoadFromFile(
-                       *base, initial_checkpoint / "compact_vocabulary.tsv"));
   if (tokenizer->vocab_size() != kVocabulary ||
-      tokenizer->original_eos_token_id() != base->eos_token_id() ||
-      tokenizer->original_eos_token_id() !=
-          initial_tokenizer->original_eos_token_id() ||
-      tokenizer->original_token_ids() !=
-          initial_tokenizer->original_token_ids())
-    return absl::InvalidArgumentError("checkpoint compact vocabularies differ");
+      tokenizer->original_eos_token_id() != base->eos_token_id())
+    return absl::InvalidArgumentError("invalid checkpoint compact vocabulary");
+  if (!quadratic) {
+    ASSIGN_OR_RETURN(auto initial_tokenizer,
+                     tokenizer::CompactVocabularyTokenizer::LoadFromFile(
+                         *base, initial_checkpoint / "compact_vocabulary.tsv"));
+    if (tokenizer->original_eos_token_id() !=
+            initial_tokenizer->original_eos_token_id() ||
+        tokenizer->original_token_ids() !=
+            initial_tokenizer->original_token_ids())
+      return absl::InvalidArgumentError(
+          "checkpoint compact vocabularies differ");
+  }
   ASSIGN_OR_RETURN(auto corpus, LoadTextCorpus(absl::GetFlag(FLAGS_corpus)));
   ASSIGN_OR_RETURN(auto executor, cuda::Executor::Create());
   ASSIGN_OR_RETURN(auto dataset, PaddedLineDataSetIterator::Create(
@@ -375,12 +395,15 @@ absl::Status Run() {
   RETURN_IF_ERROR(CheckInventory(*model));
   ASSIGN_OR_RETURN(auto before, CopyMasterBytes(*executor, *model));
   ASSIGN_OR_RETURN(auto learned_expansions, CopyExpansions(*executor, *model));
-  ASSIGN_OR_RETURN(auto initial,
-                   CreateGpt2(*executor, DataType::BF16, 0, config));
-  RETURN_IF_ERROR(ReadFromDirectory(*executor, *initial,
-                                    initial_checkpoint.string(), false));
-  ASSIGN_OR_RETURN(auto initial_expansions, CopyExpansions(*executor, *initial));
-  initial.reset();  // No remaining initial checkpoint weights can enter a fit.
+  std::vector<Expansion> initial_expansions;
+  if (!quadratic) {
+    ASSIGN_OR_RETURN(auto initial,
+                     CreateGpt2(*executor, DataType::BF16, 0, config));
+    RETURN_IF_ERROR(ReadFromDirectory(*executor, *initial,
+                                      initial_checkpoint.string(), false));
+    ASSIGN_OR_RETURN(initial_expansions, CopyExpansions(*executor, *initial));
+    // The local initial model is destroyed here. Only its W1/b1 copies remain.
+  }
   if (!fs::create_directory(output_dir, error) || error)
     return absl::UnknownError(
         absl::StrCat("cannot create output_dir: ", error.message()));
@@ -400,22 +423,38 @@ absl::Status Run() {
     *stream << std::setprecision(17);
   manifest
       << "key\tvalue\ncompleted\tfalse\ncheckpoint\t" << checkpoint.string()
-      << "\ninitial_checkpoint\t" << initial_checkpoint.string() << "\ncorpus\t"
+      << "\nexperiment\t" << experiment << "\ninitial_checkpoint\t"
+      << initial_checkpoint.string() << "\ncorpus\t"
       << absl::GetFlag(FLAGS_corpus) << "\ntokenizer\t"
       << absl::GetFlag(FLAGS_tokenizer)
       << "\nblocks\t8\nwidth\t16\nfeatures\t64\ncontext\t1024"
          "\nprompt_tokens\t5\nridge\t0.000001\nheld_stride\t5"
-      << "\nbatch_size\t" << batch_size
+      << "\nconstruction_feature_width\t"
+      << (quadratic ? kQuadraticFeatures : kFeatures) << "\nbatch_size\t"
+      << batch_size
       << "\nheld_definition\tzero-based sentence index divisible by 5"
-         "\ninitial_inputs\teffective BF16 W1 directions and FP32 b1 only"
-         "\nstandardization\tfitting-only FP64 projected moments; unit "
-         "population variance; initial bias cancels; FP32 master output"
-         "\nfeature_arithmetic\tproduction GPU BF16 FC then GELU"
+         "\npositive_control_features\tproduction GPU BF16 learned FC then GELU"
          "\nfit_target\tlearned BF16 branch updates; not token labels"
          "\nevaluation\tfresh recipient LayerNorm inputs at all positions; "
          "no recorded activation replay"
          "\nheld_scope\texcluded from regression only; backbone trained on "
          "them\n";
+  if (quadratic)
+    manifest
+        << "initial_inputs\tnone; no initial checkpoint opened\n"
+           "feature_order\tx_0 through x_15, then x_i*x_j for i=0..15, "
+           "j=i..15 in lexicographic order\n"
+           "feature_arithmetic\tBF16 linear coordinates copied; products "
+           "computed in FP32 from decoded BF16 then rounded once to BF16\n"
+           "standardization\tnone; no feature scaling or outcome tuning\n"
+           "quadratic_parameters\t152*16+16 per block; no W1/b1\n"
+           "intercept\tunpenalized output bias separate from 152 features\n";
+  else
+    manifest
+        << "initial_inputs\teffective BF16 W1 directions and FP32 b1 only\n"
+           "standardization\tfitting-only FP64 projected moments; unit "
+           "population variance; initial bias cancels; FP32 master output\n"
+           "feature_arithmetic\tproduction GPU BF16 FC then GELU\n";
   manifest.flush();
   std::cout
       << "Capturing original learned inputs, features and branch updates..."
@@ -457,8 +496,8 @@ absl::Status Run() {
   errors << "condition\tblock\tgroup\trows\tgpu_rmse\tgpu_relative_rmse\t"
             "gpu_centered_relative_rmse\n";
   coefficients << "condition\tblock\ttensor\tflat_index\tfp32_master\n";
-  statistics << "condition\tblock\tfeature\tfit_post_gelu_mean\t"
-                "fit_post_gelu_stddev\n";
+  statistics << "condition\tblock\tfeature\tfit_feature_mean\t"
+                "fit_feature_stddev\n";
   basis_statistics << "block\tfeature\tfit_initial_projection_mean\t"
                       "fit_initial_projection_stddev\n";
   auto evaluate = [&](absl::string_view condition, absl::string_view selection,
@@ -525,17 +564,27 @@ absl::Status Run() {
     return absl::OkStatus();
   };
   RETURN_IF_ERROR(evaluate("original", "all", {}, true));
-  for (absl::string_view condition :
-       {"original_mlp_clone", "learned_w1_refit", "initial_w1_raw",
-        "initial_w1_standardized"}) {
+  std::vector<absl::string_view> conditions{"original_mlp_clone",
+                                            "learned_w1_refit"};
+  if (quadratic)
+    conditions.push_back("quadratic_refit");
+  else {
+    conditions.push_back("initial_w1_raw");
+    conditions.push_back("initial_w1_standardized");
+  }
+  for (absl::string_view condition : conditions) {
+    const bool use_quadratic = condition == "quadratic_refit";
+    const int feature_width = use_quadratic ? kQuadraticFeatures : kFeatures;
     std::vector<std::unique_ptr<ComposedLayer>> layers;
     std::vector<MlpReplacement> replacements;
     for (int block = 0; block < kBlocks; ++block) {
       const auto& sample = capture.blocks[block];
-      Expansion expansion =
-          condition == "original_mlp_clone" || condition == "learned_w1_refit"
-              ? learned_expansions[block]
-              : initial_expansions[block];
+      Expansion expansion;
+      if (!use_quadratic)
+        expansion =
+            condition == "original_mlp_clone" || condition == "learned_w1_refit"
+                ? learned_expansions[block]
+                : initial_expansions[block];
       if (condition == "initial_w1_standardized") {
         const auto fitting_inputs =
             FittingRows(sample.normalized_inputs, kWidth, fitting_rows);
@@ -550,25 +599,31 @@ absl::Status Run() {
         expansion.weights = std::move(basis.weights);
         expansion.bias = std::move(basis.bias);
       }
-      ASSIGN_OR_RETURN(auto features, MakeFeatures(*executor, expansion));
+      std::unique_ptr<Layer> features;
+      if (use_quadratic) {
+        ASSIGN_OR_RETURN(features, QuadraticFeaturesLayer::Create(
+                                       *executor, kGpt2ContextLength));
+      } else {
+        ASSIGN_OR_RETURN(features, MakeFeatures(*executor, expansion));
+      }
       ASSIGN_OR_RETURN(
           auto all_features,
           ApplyToRecordedInputs(*executor, *features, sample.normalized_inputs,
-                                kFeatures));
+                                feature_width));
       if ((condition == "original_mlp_clone" ||
            condition == "learned_w1_refit") &&
           !SameFloats(all_features, sample.features))
         return absl::FailedPreconditionError(
             "regenerated learned GELU features differ from original capture");
       const auto fitting_features =
-          FittingRows(all_features, kFeatures, fitting_rows);
-      for (int feature = 0; feature < kFeatures; ++feature) {
+          FittingRows(all_features, feature_width, fitting_rows);
+      for (int feature = 0; feature < feature_width; ++feature) {
         double mean = 0, variance = 0;
         for (size_t row = 0; row < fitted_rows; ++row)
-          mean += fitting_features[row * kFeatures + feature] / fitted_rows;
+          mean += fitting_features[row * feature_width + feature] / fitted_rows;
         for (size_t row = 0; row < fitted_rows; ++row) {
           const double delta =
-              fitting_features[row * kFeatures + feature] - mean;
+              fitting_features[row * feature_width + feature] - mean;
           variance += delta * delta / fitted_rows;
         }
         statistics << condition << '\t' << block << '\t' << feature << '\t'
@@ -582,9 +637,9 @@ absl::Status Run() {
         const auto fitting_outputs =
             FittingRows(sample.outputs, kWidth, fitting_rows);
         const auto started = std::chrono::steady_clock::now();
-        ASSIGN_OR_RETURN(
-            auto fit, FitAffineMap(fitting_features, fitting_outputs, kFeatures,
-                                   kWidth, {.ridge = kRidge}));
+        ASSIGN_OR_RETURN(auto fit,
+                         FitAffineMap(fitting_features, fitting_outputs,
+                                      feature_width, kWidth, {.ridge = kRidge}));
         const auto [smallest, largest] =
             std::minmax_element(fit.qr_diagonal_magnitudes.begin(),
                                 fit.qr_diagonal_magnitudes.end());
@@ -607,8 +662,8 @@ absl::Status Run() {
                        << '\t' << i << '\t' << tensors[tensor][i] << '\n';
       ComposedLayerBuilder builder;
       RETURN_IF_ERROR(builder.add(std::move(features)));
-      RETURN_IF_ERROR(builder.add(MakeProjection(*executor, kFeatures, kWidth,
-                                                 output_weights, output_bias)));
+      RETURN_IF_ERROR(builder.add(MakeProjection(
+          *executor, feature_width, kWidth, output_weights, output_bias)));
       ASSIGN_OR_RETURN(auto replacement,
                        builder.create("frozen_mlp_replacement"));
       ASSIGN_OR_RETURN(auto predicted_updates,

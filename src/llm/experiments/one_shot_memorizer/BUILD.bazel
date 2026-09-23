@@ -1,6 +1,59 @@
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
+load("@rules_cuda//cuda:defs.bzl", "cuda_library")
+
+cuda_library(
+    name = "quadratic_features",
+    srcs = ["quadratic_features.cc"],
+    hdrs = ["quadratic_features.h"],
+    copts = ["--enable-tile", "-std=c++20"],
+    host_copts = ["-std=c++20"],
+    deps = [
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/llm:layer",
+        "//src/llm:layer_util",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/memory",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_test(
+    name = "quadratic_features_shape_test",
+    size = "small",
+    srcs = ["quadratic_features_shape_test.cc"],
+    deps = [
+        ":quadratic_features",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "quadratic_features_test",
+    size = "small",
+    srcs = ["quadratic_features_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":quadratic_features",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/llm:combinators",
+        "//src/llm:fully_connected",
+        "//src/llm:layer",
+        "//src/llm:layer_hooks",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
 
 cc_library(
     name = "attention_factorial",
@@ -1255,6 +1308,7 @@ cc_binary(
         ":closed_form_map",
         ":frozen_mlp_basis",
         ":mlp_probe",
+        ":quadratic_features",
         "//src/cuda:buffer",
         "//src/cuda:executor",
         "//src/cuda:page_locked_host_array",
