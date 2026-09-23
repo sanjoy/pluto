@@ -2,6 +2,31 @@ load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 
+cc_binary(
+    name = "single_fact_first_update_probe",
+    srcs = ["single_fact_first_update_probe.cc"],
+    deps = [
+        "//src/host:buffer",
+        "//src/llm:attention_reference",
+        "//src/llm:combinators_reference",
+        "//src/llm:cross_entropy_loss_reference",
+        "//src/llm:embedding_reference",
+        "//src/llm:fully_connected_reference",
+        "//src/llm:gelu_reference",
+        "//src/llm:layer",
+        "//src/llm:layer_reference_internal",
+        "//src/llm:norm_reference",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
 cc_library(
     name = "embedding_sign_readout",
     srcs = ["embedding_sign_readout.cc"],
