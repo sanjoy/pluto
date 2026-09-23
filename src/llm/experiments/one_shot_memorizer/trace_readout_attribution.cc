@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <cstddef>
+#include <limits>
 #include <utility>
 #include <vector>
 
@@ -173,6 +174,71 @@ absl::StatusOr<TraceReadoutAttribution> ComputeTraceReadoutAttribution(
   result.normalization_residual =
       result.actual_normalized_margin - result.ideal_margin;
   RETURN_IF_ERROR(ValidateResult(result));
+  return result;
+}
+
+absl::StatusOr<DenseProjectionReadoutAttribution>
+ComputeDenseProjectionReadoutAttribution(
+    absl::Span<const float> gelu_values,
+    absl::Span<const float> row_major_weights, absl::Span<const float> bias,
+    absl::Span<const float> actual_output, absl::Span<const double> direction) {
+  const size_t hidden = gelu_values.size();
+  const size_t width = direction.size();
+  if (hidden == 0 || width == 0)
+    return absl::InvalidArgumentError(
+        "dense projection accounting requires nonempty hidden and output "
+        "dimensions");
+  if (hidden > std::vector<double>().max_size() ||
+      width > std::numeric_limits<size_t>::max() / hidden)
+    return absl::OutOfRangeError(
+        "dense projection accounting dimensions overflow supported storage");
+  RETURN_IF_ERROR(ValidateVector(gelu_values, hidden));
+  RETURN_IF_ERROR(ValidateVector(row_major_weights, hidden * width));
+  RETURN_IF_ERROR(ValidateVector(bias, width));
+  RETURN_IF_ERROR(ValidateVector(actual_output, width));
+  for (double value : direction)
+    if (!std::isfinite(value))
+      return absl::InvalidArgumentError(
+          "dense projection accounting direction must be finite");
+
+  DenseProjectionReadoutAttribution result;
+  result.neuron_directions.reserve(hidden);
+  result.neuron_contributions.reserve(hidden);
+  Sum ideal;
+  for (size_t neuron = 0; neuron < hidden; ++neuron) {
+    Sum projected_weight;
+    for (size_t dimension = 0; dimension < width; ++dimension)
+      projected_weight.Add(
+          static_cast<double>(row_major_weights[neuron * width + dimension]) *
+          direction[dimension]);
+    const double contribution =
+        static_cast<double>(gelu_values[neuron]) * projected_weight.value();
+    if (!std::isfinite(projected_weight.value()) ||
+        !std::isfinite(contribution))
+      return absl::OutOfRangeError(
+          "dense projection neuron accounting overflowed");
+    result.neuron_directions.push_back(projected_weight.value());
+    result.neuron_contributions.push_back(contribution);
+    ideal.Add(contribution);
+  }
+  Sum bias_sum;
+  Sum actual;
+  for (size_t dimension = 0; dimension < width; ++dimension) {
+    bias_sum.Add(static_cast<double>(bias[dimension]) * direction[dimension]);
+    actual.Add(static_cast<double>(actual_output[dimension]) *
+               direction[dimension]);
+  }
+  result.bias_contribution = bias_sum.value();
+  ideal.Add(result.bias_contribution);
+  result.ideal_directional_sum = ideal.value();
+  result.actual_directional_sum = actual.value();
+  result.rounding_residual =
+      result.actual_directional_sum - result.ideal_directional_sum;
+  for (double value : {result.bias_contribution, result.ideal_directional_sum,
+                       result.actual_directional_sum, result.rounding_residual})
+    if (!std::isfinite(value))
+      return absl::OutOfRangeError(
+          "dense projection directional accounting overflowed");
   return result;
 }
 

@@ -269,5 +269,216 @@ TEST(TraceReadoutAttributionTest, RejectsEmptyMismatchedAndNonfiniteInputs) {
   }
 }
 
+struct DenseInputs {
+  std::vector<float> gelu{2, -1, 0.5};
+  std::vector<float> weights{1, 2, -3, 4, 5, -2};  // [hidden=3,width=2].
+  std::vector<float> bias{0.25, -0.5};
+  std::vector<float> actual{7.75, -1.5};
+  std::vector<double> direction{2, -1};
+
+  absl::StatusOr<DenseProjectionReadoutAttribution> Compute() const {
+    return ComputeDenseProjectionReadoutAttribution(gelu, weights, bias, actual,
+                                                    direction);
+  }
+};
+
+TEST(DenseProjectionReadoutAttributionTest,
+     ClosesToLiteralRowMajorDenseProjectionIncludingBias) {
+  DenseInputs input;
+  auto result = input.Compute();
+  ASSERT_TRUE(result.ok()) << result.status();
+  EXPECT_EQ(result->neuron_directions, (std::vector<double>{0, -10, 12}));
+  EXPECT_EQ(result->neuron_contributions, (std::vector<double>{0, 10, 6}));
+  EXPECT_DOUBLE_EQ(result->bias_contribution, 1);
+  double literal = 0;
+  for (size_t dimension = 0; dimension < input.direction.size(); ++dimension) {
+    double output = input.bias[dimension];
+    for (size_t neuron = 0; neuron < input.gelu.size(); ++neuron)
+      output += static_cast<double>(input.gelu[neuron]) *
+                input.weights[neuron * input.direction.size() + dimension];
+    EXPECT_DOUBLE_EQ(output, input.actual[dimension]);
+    literal += output * input.direction[dimension];
+  }
+  EXPECT_DOUBLE_EQ(result->ideal_directional_sum, literal);
+  EXPECT_DOUBLE_EQ(result->actual_directional_sum, literal);
+  EXPECT_DOUBLE_EQ(result->rounding_residual, 0);
+}
+
+TEST(DenseProjectionReadoutAttributionTest,
+     ReportsCapturedNumericalResidualWithoutRedistributingIt) {
+  DenseInputs input;
+  input.actual = {7.5, -1.25};
+  auto result = input.Compute();
+  ASSERT_TRUE(result.ok()) << result.status();
+  EXPECT_EQ(result->neuron_contributions, (std::vector<double>{0, 10, 6}));
+  EXPECT_DOUBLE_EQ(result->bias_contribution, 1);
+  EXPECT_DOUBLE_EQ(result->ideal_directional_sum, 17);
+  EXPECT_DOUBLE_EQ(result->actual_directional_sum, 16.25);
+  EXPECT_DOUBLE_EQ(result->rounding_residual, -0.75);
+}
+
+TEST(DenseProjectionReadoutAttributionTest, ZeroNeuronRemovesOnlyItsOwnTerm) {
+  DenseInputs input;
+  auto before = input.Compute();
+  ASSERT_TRUE(before.ok()) << before.status();
+  input.gelu[1] = 0;
+  input.actual = {4.75, 2.5};  // Literal projection with neuron 1 set to zero.
+  auto after = input.Compute();
+  ASSERT_TRUE(after.ok()) << after.status();
+  EXPECT_EQ(after->neuron_directions, before->neuron_directions);
+  EXPECT_EQ(after->neuron_contributions, (std::vector<double>{0, 0, 6}));
+  EXPECT_DOUBLE_EQ(after->bias_contribution, before->bias_contribution);
+  EXPECT_DOUBLE_EQ(before->ideal_directional_sum - after->ideal_directional_sum,
+                   before->neuron_contributions[1]);
+  EXPECT_DOUBLE_EQ(after->actual_directional_sum, 7);
+  EXPECT_DOUBLE_EQ(after->rounding_residual, 0);
+}
+
+TEST(DenseProjectionReadoutAttributionTest, RetainsSignedNeuronContributions) {
+  DenseInputs input;
+  input.gelu[1] = 1;
+  input.actual = {1.75, 6.5};
+  auto result = input.Compute();
+  ASSERT_TRUE(result.ok()) << result.status();
+  EXPECT_EQ(result->neuron_contributions, (std::vector<double>{0, -10, 6}));
+  EXPECT_DOUBLE_EQ(result->ideal_directional_sum, -3);
+  EXPECT_DOUBLE_EQ(result->actual_directional_sum, -3);
+  EXPECT_DOUBLE_EQ(result->rounding_residual, 0);
+  for (double& value : input.direction)
+    value = -value;
+  auto reverse = input.Compute();
+  ASSERT_TRUE(reverse.ok()) << reverse.status();
+  EXPECT_EQ(reverse->neuron_contributions, (std::vector<double>{0, 10, -6}));
+  EXPECT_DOUBLE_EQ(reverse->bias_contribution, -result->bias_contribution);
+  EXPECT_DOUBLE_EQ(reverse->ideal_directional_sum,
+                   -result->ideal_directional_sum);
+  EXPECT_DOUBLE_EQ(reverse->actual_directional_sum,
+                   -result->actual_directional_sum);
+}
+
+TEST(DenseProjectionReadoutAttributionTest, ZeroDirectionAccountsForNothing) {
+  DenseInputs input;
+  input.direction = {0, 0};
+  auto result = input.Compute();
+  ASSERT_TRUE(result.ok()) << result.status();
+  EXPECT_EQ(result->neuron_contributions, (std::vector<double>{0, 0, 0}));
+  EXPECT_DOUBLE_EQ(result->bias_contribution, 0);
+  EXPECT_DOUBLE_EQ(result->ideal_directional_sum, 0);
+  EXPECT_DOUBLE_EQ(result->actual_directional_sum, 0);
+  EXPECT_DOUBLE_EQ(result->rounding_residual, 0);
+}
+
+TEST(DenseProjectionReadoutAttributionTest,
+     PreservesSmallTermBetweenLargeCancellingNeuronTerms) {
+  DenseInputs input{.gelu = {1e20f, 1, -1e20f},
+                    .weights = {1, 1, 1},
+                    .bias = {0},
+                    .actual = {1},
+                    .direction = {1}};
+  auto result = input.Compute();
+  ASSERT_TRUE(result.ok()) << result.status();
+  EXPECT_DOUBLE_EQ(result->ideal_directional_sum, 1);
+  EXPECT_DOUBLE_EQ(result->actual_directional_sum, 1);
+  EXPECT_DOUBLE_EQ(result->rounding_residual, 0);
+}
+
+TEST(DenseProjectionReadoutAttributionTest,
+     RetainsCompensatedDirectionalCoefficientForZeroGeluNeuron) {
+  DenseInputs input{.gelu = {0, 2},
+                    .weights = {1e20f, 1, -1e20f, 1e20f, 1, -1e20f},
+                    .bias = {0, 0, 0},
+                    .actual = {2e20f, 2, -2e20f},
+                    .direction = {1, 1, 1}};
+  auto result = input.Compute();
+  ASSERT_TRUE(result.ok()) << result.status();
+  EXPECT_EQ(result->neuron_directions, (std::vector<double>{1, 1}));
+  EXPECT_EQ(result->neuron_contributions, (std::vector<double>{0, 2}));
+  EXPECT_DOUBLE_EQ(result->ideal_directional_sum, 2);
+  EXPECT_DOUBLE_EQ(result->actual_directional_sum, 2);
+  EXPECT_DOUBLE_EQ(result->rounding_residual, 0);
+}
+
+TEST(DenseProjectionReadoutAttributionTest,
+     DoesNotMultiplyEffectiveInputsInFloat) {
+  const float large = std::numeric_limits<float>::max();
+  DenseInputs input{.gelu = {large},
+                    .weights = {large},
+                    .bias = {0},
+                    .actual = {0},
+                    .direction = {1}};
+  auto result = input.Compute();
+  ASSERT_TRUE(result.ok()) << result.status();
+  const double product = static_cast<double>(large) * large;
+  EXPECT_DOUBLE_EQ(result->neuron_contributions[0], product);
+  EXPECT_DOUBLE_EQ(result->ideal_directional_sum, product);
+  EXPECT_DOUBLE_EQ(result->rounding_residual, -product);
+}
+
+TEST(DenseProjectionReadoutAttributionTest,
+     RejectsEmptyMismatchedAndNonfiniteInputs) {
+  auto field = [](DenseInputs& input, int index) -> std::vector<float>& {
+    std::vector<float>* fields[]{&input.gelu, &input.weights, &input.bias,
+                                 &input.actual};
+    return *fields[index];
+  };
+  for (int index = 0; index < 4; ++index) {
+    DenseInputs bad;
+    field(bad, index).clear();
+    EXPECT_EQ(bad.Compute().status().code(),
+              absl::StatusCode::kInvalidArgument);
+    bad = DenseInputs{};
+    field(bad, index).pop_back();
+    EXPECT_EQ(bad.Compute().status().code(),
+              absl::StatusCode::kInvalidArgument);
+    for (float value : {std::numeric_limits<float>::quiet_NaN(),
+                        std::numeric_limits<float>::infinity(),
+                        -std::numeric_limits<float>::infinity()}) {
+      bad = DenseInputs{};
+      field(bad, index)[0] = value;
+      EXPECT_EQ(bad.Compute().status().code(),
+                absl::StatusCode::kInvalidArgument);
+    }
+  }
+  DenseInputs bad;
+  bad.direction.clear();
+  EXPECT_EQ(bad.Compute().status().code(), absl::StatusCode::kInvalidArgument);
+  bad = DenseInputs{};
+  bad.direction.pop_back();
+  EXPECT_EQ(bad.Compute().status().code(), absl::StatusCode::kInvalidArgument);
+  for (double value : {std::numeric_limits<double>::quiet_NaN(),
+                       std::numeric_limits<double>::infinity(),
+                       -std::numeric_limits<double>::infinity()}) {
+    bad = DenseInputs{};
+    bad.direction[0] = value;
+    EXPECT_EQ(bad.Compute().status().code(),
+              absl::StatusCode::kInvalidArgument);
+  }
+}
+
+TEST(DenseProjectionReadoutAttributionTest, RejectsArithmeticOverflow) {
+  const double large = std::numeric_limits<double>::max();
+  DenseInputs input{.gelu = {1},
+                    .weights = {2},
+                    .bias = {0},
+                    .actual = {0},
+                    .direction = {large}};
+  EXPECT_EQ(input.Compute().status().code(), absl::StatusCode::kOutOfRange);
+  input.weights = {0};
+  input.bias = {2};
+  EXPECT_EQ(input.Compute().status().code(), absl::StatusCode::kOutOfRange);
+  input.bias = {0};
+  input.actual = {2};
+  EXPECT_EQ(input.Compute().status().code(), absl::StatusCode::kOutOfRange);
+  input.weights = {-1};
+  input.actual = {1};
+  // Both sums are finite, but their difference is not.
+  EXPECT_EQ(input.Compute().status().code(), absl::StatusCode::kOutOfRange);
+  input.gelu = {1, 1};
+  input.weights = {1, 1};
+  input.actual = {0};
+  // Individual neuron terms are finite, but the ideal sum is not.
+  EXPECT_EQ(input.Compute().status().code(), absl::StatusCode::kOutOfRange);
+}
+
 }  // namespace
 }  // namespace pluto::llm::one_shot_memorizer
