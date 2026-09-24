@@ -30,11 +30,10 @@ namespace pluto::llm {
 using cuda::CudaStatus;
 using internal::ElementCount;
 using internal::kDenseTile;
+using internal::MaskedTileCount;
 using internal::MatrixRows;
-using internal::TileCount;
 using internal::ValidateBuffer;
 using internal::ValidateFp16;
-using internal::ValidateTiledExtent;
 
 namespace {
 // Invoke a member body, keeping hook scopes balanced even on an error return.
@@ -78,9 +77,11 @@ __tile_global__ void AddKernel(const Element* __restrict__ left,
   auto output_view = ct::partition_view{
       ct::tensor_span{output, ct::extents{elements}}, ct::shape{16_ic}};
   const int block = ct::bid().x;
-  auto sum = ct::element_cast<float>(left_view.load(block)) +
-             ct::element_cast<float>(right_view.load(block));
-  output_view.store(ct::element_cast<Element>(sum), block);
+  // Logical sequence and channel counts need not align with compute tiles.
+  // Mask both operands and the store so the final residual tile is safe.
+  auto sum = ct::element_cast<float>(left_view.load_masked(block)) +
+             ct::element_cast<float>(right_view.load_masked(block));
+  output_view.store_masked(ct::element_cast<Element>(sum), block);
 }
 
 }  // namespace
@@ -138,16 +139,16 @@ absl::StatusOr<FwdResult> ResidualLayer::fwd_body(
                    ElementCount(executor, inputs[0],
                                 internal::ActivationElementBytes(storage_type),
                                 "residual input"));
-  RETURN_IF_ERROR(ValidateTiledExtent(elements, "residual element count"));
   state.intermediates = {inputs[0]};
   state.children = {std::move(branch_fwd.state)};
   if (storage_type == DataType::BF16) {
-    AddKernel<__nv_bfloat16><<<TileCount(elements), 1, 0, executor.stream()>>>(
-        static_cast<const __nv_bfloat16*>(inputs[0].data()),
-        static_cast<const __nv_bfloat16*>(branch.data()), elements,
-        static_cast<__nv_bfloat16*>(output.data()));
+    AddKernel<__nv_bfloat16>
+        <<<MaskedTileCount(elements), 1, 0, executor.stream()>>>(
+            static_cast<const __nv_bfloat16*>(inputs[0].data()),
+            static_cast<const __nv_bfloat16*>(branch.data()), elements,
+            static_cast<__nv_bfloat16*>(output.data()));
   } else {
-    AddKernel<float><<<TileCount(elements), 1, 0, executor.stream()>>>(
+    AddKernel<float><<<MaskedTileCount(elements), 1, 0, executor.stream()>>>(
         static_cast<const float*>(inputs[0].data()),
         static_cast<const float*>(branch.data()), elements,
         static_cast<float*>(output.data()));
@@ -184,7 +185,7 @@ absl::StatusOr<BufferVec> ResidualLayer::bwd_body(
   ASSIGN_OR_RETURN(int elements,
                    ElementCount(executor, output_gradients[0], sizeof(float),
                                 "residual output gradient"));
-  AddKernel<float><<<TileCount(elements), 1, 0, executor.stream()>>>(
+  AddKernel<float><<<MaskedTileCount(elements), 1, 0, executor.stream()>>>(
       static_cast<const float*>(output_gradients[0].data()),
       static_cast<const float*>(branch_gradient.front().data()), elements,
       static_cast<float*>(input_gradient.data()));

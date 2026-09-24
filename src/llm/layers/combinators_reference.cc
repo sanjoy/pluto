@@ -60,7 +60,6 @@ absl::StatusOr<ReferenceFwdResult> ResidualLayerReference::fwd_impl(
       int elements,
       ri::ElementCount(inputs[0], ri::ActivationElementBytes(storage_type),
                        "residual input"));
-  RETURN_IF_ERROR(ri::ValidateTiledExtent(elements, "residual elements"));
   ASSIGN_OR_RETURN(auto output, ri::AllocateActivation(elements, storage_type));
   // The reference operation is deliberately just x[i] + branch[i]. Rounding
   // happens once when the sum is stored in the activation dtype.

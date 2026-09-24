@@ -74,7 +74,6 @@ absl::StatusOr<ReferenceFwdResult> FullyConnectedLayerReference::fwd_impl(
   }
   ASSIGN_OR_RETURN(int rows, ri::ActivationRows(inputs[0], input_dim_,
                                                 output_type_, "dense input"));
-  RETURN_IF_ERROR(ri::ValidateTiledExtent(rows, "dense rows"));
   ASSIGN_OR_RETURN(auto output,
                    ri::AllocateActivation(
                        static_cast<size_t>(rows) * output_dim_, output_type_));

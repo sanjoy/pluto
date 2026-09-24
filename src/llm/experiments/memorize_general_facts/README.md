@@ -3,7 +3,7 @@
 Objective: start with eight GPT-2-style transformer blocks, require exact top-1
 training-set completions, and reduce depth until memorization fails. Each of the
 1,024 dataset lines is a separate sample, right-padded to `--context_length`
-positions (32 by default).
+positions (27 by default).
 Padding must never contribute to loss or accuracy. Checkpoints belong outside
 the repository under `~/checkpoints/`.
 
@@ -40,19 +40,17 @@ nonempty checkpoint selector: `--infer_checkpoint` for prompt completion or
 `--verify_checkpoint` for corpus evaluation. The selectors are mutually exclusive
 even when one is explicitly empty. Training rejects both checkpoint selectors.
 
-`--context_length=32` applies to training, corpus verification, and prompt
-inference. All current facts fit: the longest has 26 GPT-2 tokens. It sets both
+`--context_length=27` applies to training, corpus verification, and prompt
+inference. All current facts fit: the longest has 26 GPT-2 tokens, or 27
+including EOS. It sets both
 the padded sequence length and the number of learned position embeddings;
 sentences longer than the configured context are rejected. Context must be
 positive, and corpus paths require at least five positions for the fixed prompt.
 The configured context is recorded in run configuration, results, and logs.
 The reusable GPT-2 configuration still defaults to 1,024 positions.
 
-Always pass the checkpoint's original context length when loading it. Existing
-1,024-position checkpoints require **`--context_length=1024`**, including compact
-checkpoints; the native runner does not infer it from weight files or resize
-position embeddings. Historical results and counts below retain their original
-context lengths.
+The configured context must match the checkpoint's learned position table.
+The runner does not infer or resize that table when loading weights.
 
 ## Prompt inference
 
@@ -64,19 +62,18 @@ artifacts. Compact inference loads `compact_vocabulary.tsv` directly from the
 checkpoint and translates generated IDs back to the original GPT-2 vocabulary
 for decoding. Use the same base tokenizer as training.
 
-For the historical 114,256-parameter model with 1,024 positions:
+For the verified 64,532-parameter model with 27 positions:
 
 ```sh
 bazel build -c opt //src/llm/experiments/memorize_general_facts:memorize_general_facts
 
-facts_run=/home/ubuntu/checkpoints/memorize_general_facts/compact_batch_32_no_clip_0
+facts_run=/home/ubuntu/checkpoints/memorize_general_facts/context27_L4_W13_FF26_0
 bazel-bin/src/llm/experiments/memorize_general_facts/memorize_general_facts \
   --mode=infer_model \
-  --infer_checkpoint="$facts_run/layers_8/step_16128" \
-  --tokenizer="$facts_run/inputs/tokenizer" \
-  --layers=8 --model_width=16 --attention_heads=1 --feed_forward_width=64 \
-  --context_length=1024 \
-  --compact_vocabulary=true --generation_tokens=64 \
+  --infer_checkpoint="$facts_run/trial_000_L4_W13_FF26/checkpoints/layers_4/step_48896" \
+  --tokenizer="$facts_run/inputs" \
+  --layers=4 --model_width=13 --attention_heads=1 --feed_forward_width=26 \
+  --compact_vocabulary=true --generation_tokens=27 \
   --prompt="The capital of France is"
 ```
 
@@ -122,9 +119,7 @@ Prompt inference accepts tokenizer, shape, seed, compact-vocabulary, prompt, and
 generation-token options. It rejects corpus, output-directory, batch-size, and
 training options, including explicitly supplied defaults such as `--search=false`
 or `--steps=5000`. `--prompt` and `--generation_tokens` are exclusive to prompt
-inference; they are not accepted by corpus verification or training. For older
-full-vocabulary checkpoints, use
-`--compact_vocabulary=false --context_length=1024` and their original shape flags.
+inference; they are not accepted by corpus verification or training.
 
 ## Compact active vocabulary
 
@@ -171,16 +166,20 @@ stored model parameters. It changes the softmax vocabulary and hence the
 training objective; compact-vocabulary runs must not be pooled into the old
 full-vocabulary search as if the protocol were unchanged.
 
-With the current 32-position context, the same compact architecture has
-**98,384 parameters**: its learned position table has 512 parameters, reducing
-the historical count by 15,872. New training and evaluation batches also contain
-32 times fewer padded token rows at the same batch size.
+With the current 27-position context, the same compact architecture has
+**98,304 parameters**: its learned position table has 432 parameters, reducing
+the historical count by 15,952. Training and evaluation process only the
+configured number of padded token rows per sample.
 
-A smaller verified model uses four blocks, width 13, one attention head, and
-an inner MLP width of 26 (`13 -> 26 -> 13`). It has **64,597 parameters** and
-completes all 1,024 facts exactly, including EOS, from their first five tokens.
-See the [FF26 comparison and reproduction command](../../../../scripts/memorize_general_facts/README.md#verified-width-13-mlp-comparison-2026-09-24)
-for the matched FF52 baseline, training settings, and local checkpoint paths.
+A smaller verified context-27 model uses four blocks, width 13, one attention
+head, and an inner MLP width of 26 (`13 -> 26 -> 13`). It has **64,532 parameters**
+and completes all 1,024 facts exactly, including EOS, from their first five tokens.
+This comprises 58,175 token-embedding parameters, 351 position-embedding
+parameters, 5,980 parameters across four transformer blocks, and 26 final
+LayerNorm parameters. Tied token embeddings are counted once. Reducing context
+from 32 to 27 saves 65 parameters without changing any other dimensions.
+See the [context-27 result](../../../../scripts/memorize_general_facts/README.md#verified-27-token-context-2026-09-24)
+for training settings, verification evidence, and the local checkpoint path.
 
 ```sh
 bazel build -c opt //src/llm/experiments/memorize_general_facts:memorize_general_facts
@@ -189,19 +188,16 @@ bazel-bin/src/llm/experiments/memorize_general_facts/memorize_general_facts \
   --tokenizer=/home/ubuntu/datasets/tokenizer/gpt2 \
   --checkpoint_dir=/home/ubuntu/checkpoints/memorize_general_facts/compact_new_trial \
   --output_dir=src/llm/experiments/memorize_general_facts/runs/compact_new_trial \
-  --layers=8 --model_width=16 --attention_heads=1 --feed_forward_width=64 \
-  --context_length=32 \
-  --compact_vocabulary=true --batch_size=16 --steps=40000
+  --layers=4 --model_width=13 --attention_heads=1 --feed_forward_width=26 \
+  --context_length=27 \
+  --compact_vocabulary=true --batch_size=32 --steps=60000 \
+  --seed=1337 --learning_rate=0.0006 --warmup_steps=100 --eval_every=256
 ```
 
-Use fresh output/checkpoint directories. For old full-vocabulary checkpoints,
-pass **`--compact_vocabulary=false --context_length=1024`** explicitly. The
-historical depth/width search reports use the full vocabulary and a
-1,024-position context. The legacy sweep drivers still assume 1,024 positions
-in their parameter accounting and have not been updated for the native
-runner's new context default; do not use them for context-32 runs.
-The general GPT-2 recipe also retains its original default vocabulary; this
-experiment opts into its new configurable exact-row embedding storage.
+Use fresh output/checkpoint directories. Use `run_compact_size_sweep.py` for
+current compact-context trials; the historical depth/width drivers implement
+a different protocol. The general GPT-2 recipe retains its original default
+vocabulary; this experiment opts into configurable exact-row embedding storage.
 
 Training does not support gradient clipping: gradients go directly from
 backward to AdamW. The depth/width sweep drivers also train without clipping;
@@ -374,11 +370,11 @@ recorded target, including EOS and complete coverage of all 1,024 samples:
 ```sh
 python scripts/memorize_general_facts/verify_predictions.py \
   --corpus=RUN/corpus.txt --tokenizer=RUN/tokenizer.json \
-  --context_length=32 \
+  --context_length=27 \
   --predictions=RUN/final_predictions.tsv
 ```
 
-Match `--context_length` to the run; historical runs use 1,024.
+Match `--context_length` to the run; older runs use 32 or 1,024.
 
 This validates the artifact, not inference itself. To also load the saved
 weights into a fresh process and reevaluate the whole corpus, use:
@@ -461,7 +457,7 @@ four-times-expanded MLP uses:
 bazel-bin/src/llm/experiments/memorize_general_facts/memorize_general_facts \
   --mode=train_model \
   --layers=1 --model_width=64 --attention_heads=1 --feed_forward_width=256 \
-  --context_length=32 \
+  --context_length=27 \
   --compact_vocabulary=false \
   --tokenizer=/home/ubuntu/datasets/tokenizer/gpt2 \
   --checkpoint_dir=/home/ubuntu/checkpoints/memorize_general_facts/new_width_trial \

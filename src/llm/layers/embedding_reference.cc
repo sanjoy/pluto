@@ -159,7 +159,6 @@ absl::StatusOr<ReferenceFwdResult> LanguageModelingHeadLayerReference::fwd_impl(
   ASSIGN_OR_RETURN(
       int rows, ri::ActivationRows(inputs[0], embedding_->embedding_dim_,
                                    embedding_->output_type_, "LM-head input"));
-  RETURN_IF_ERROR(ri::ValidateTiledExtent(rows, "LM-head rows"));
   ASSIGN_OR_RETURN(auto logits,
                    ri::AllocateFloats(static_cast<size_t>(rows) *
                                       embedding_->padded_vocab_size_));

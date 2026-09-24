@@ -570,8 +570,6 @@ absl::StatusOr<FwdResult> LanguageModelingHeadLayer::fwd_impl(
       int rows, internal::ActivationRows(
                     executor, inputs[0], embedding_->embedding_dim_,
                     embedding_->output_type_, "language-modeling-head input"));
-  RETURN_IF_ERROR(
-      internal::ValidateTiledExtent(rows, "language-modeling-head rows"));
   ASSIGN_OR_RETURN(
       auto output,
       Buffer::Allocate(executor, static_cast<size_t>(rows) *

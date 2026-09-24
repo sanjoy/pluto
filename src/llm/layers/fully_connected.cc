@@ -31,8 +31,8 @@ template <class Activation>
 using MmaType = std::conditional_t<std::is_same_v<Activation, float>, __half,
                                    __nv_bfloat16>;
 
-// Larger compute tiles amortize loads and MMA dispatch without changing the
-// public 16-element extent contract. Masked views cover every partial tile.
+// Larger compute tiles amortize loads and MMA dispatch. Masked views cover
+// every partial tile, including arbitrary positive row counts.
 constexpr int kMatrixTile = 64;
 constexpr int kBiasRows = 256;
 
@@ -255,7 +255,8 @@ absl::Status FullyConnectedLayer::InitializeNormal(float standard_deviation,
   ASSIGN_OR_RETURN(auto matrix, cuda::PageLockedHostArray<float>::Allocate(
                                     executor_, static_cast<size_t>(input_dim_) *
                                                    output_dim_));
-  for (float& value : matrix) value = distribution(random);
+  for (float& value : matrix)
+    value = distribution(random);
   RETURN_IF_ERROR(cuda::CudaStatus(
       cudaMemcpyAsync(weights_[0].data(), matrix.data(),
                       weights_[0].size_bytes(), cudaMemcpyHostToDevice,
@@ -277,7 +278,6 @@ absl::StatusOr<FwdResult> FullyConnectedLayer::fwd_impl(
   ASSIGN_OR_RETURN(int rows,
                    internal::ActivationRows(executor, inputs[0], input_dim_,
                                             output_type_, "dense input"));
-  RETURN_IF_ERROR(internal::ValidateTiledExtent(rows, "dense rows"));
   ASSIGN_OR_RETURN(
       auto output,
       Buffer::Allocate(executor,

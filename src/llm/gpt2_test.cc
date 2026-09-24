@@ -203,7 +203,7 @@ TEST_F(Gpt2Test, ConfiguredFactoriesPropagateValidationErrors) {
 }
 
 TEST(Gpt2ConfigTest, ContextLengthMustBePositiveAndFitSingleSampleTensors) {
-  for (int context : {1, 7, 31, 32, 33, 64, 1024}) {
+  for (int context : {1, 7, 27, 31, 32, 33, 64, 1024}) {
     Gpt2Config config;
     config.context_length = context;
     EXPECT_TRUE(config.Validate().ok()) << context;
@@ -356,28 +356,33 @@ TEST_F(Gpt2Test, ExplicitDefaultsMatchLegacyInitialization) {
   }
 }
 
-TEST_F(Gpt2Test, ThirtyTwoTokenModelsUseConfiguredShapesAndPositionParameters) {
+TEST_F(Gpt2Test, ShortContextModelsUseConfiguredShapesAndPositionParameters) {
   for (const Gpt2Config& config : {Gpt2Config{0, 16, 1, 64, 4475, false, 32},
                                    Gpt2Config{8, 16, 1, 64, 4475, false, 32},
-                                   Gpt2Config{16, 12, 1, 48, 4475, true, 32}}) {
+                                   Gpt2Config{16, 12, 1, 48, 4475, true, 32},
+                                   Gpt2Config{4, 13, 1, 26, 4475, false, 27}}) {
     SCOPED_TRACE(config.transformer_block_count);
+    SCOPED_TRACE(config.context_length);
     auto model = CreateGpt2(*executor_, DataType::BF16, 123, config);
     auto prefix =
         CreateActivationGenerator(*executor_, config, DataType::BF16, 123);
     ASSERT_TRUE(model.ok()) << model.status();
     ASSERT_TRUE(prefix.ok()) << prefix.status();
     EXPECT_EQ((*model)->input_types()[0],
-              ActivationType(DataType::INT32, {-2, 32}));
-    EXPECT_EQ((*model)->output_types()[0],
-              ActivationType(DataType::FP32, {-2, 32, 4480}));
+              ActivationType(DataType::INT32, {-2, config.context_length}));
+    EXPECT_EQ(
+        (*model)->output_types()[0],
+        ActivationType(DataType::FP32, {-2, config.context_length, 4480}));
     EXPECT_EQ((*prefix)->input_types()[0], (*model)->input_types()[0]);
     EXPECT_EQ((*prefix)->output_types()[0],
-              ActivationType(DataType::BF16, {-2, 32, config.model_width}));
+              ActivationType(DataType::BF16,
+                             {-2, config.context_length, config.model_width}));
     const auto weights = (*model)->weights();
     ASSERT_EQ(weights.size(), 5 + 12 * config.transformer_block_count);
     EXPECT_EQ(weights.front().data(), weights.back().data());
     EXPECT_EQ(weights[1].size_bytes(),
-              32u * config.model_width * sizeof(float));
+              static_cast<size_t>(config.context_length) * config.model_width *
+                  sizeof(float));
     size_t parameters = 0;
     for (size_t index = 0; index + 1 < weights.size(); ++index)
       parameters += weights[index].size_bytes() / sizeof(float);
@@ -386,10 +391,12 @@ TEST_F(Gpt2Test, ThirtyTwoTokenModelsUseConfiguredShapesAndPositionParameters) {
     const int64_t vocabulary = config.pad_vocabulary ? 4480 : 4475;
     const int64_t per_block =
         4 * width * width + 2 * width * ff + 9 * width + ff;
-    EXPECT_EQ(parameters, (vocabulary + 32 + 2) * width +
+    EXPECT_EQ(parameters, (vocabulary + config.context_length + 2) * width +
                               config.transformer_block_count * per_block);
     if (config.transformer_block_count == 8)
       EXPECT_EQ(parameters, 98384u);
+    if (config.context_length == 27)
+      EXPECT_EQ(parameters, 64532u);
     ASSERT_EQ((*prefix)->weights().size(),
               2 + 12 * config.transformer_block_count);
     for (size_t index = 0; index < (*prefix)->weights().size(); ++index)
@@ -397,103 +404,138 @@ TEST_F(Gpt2Test, ThirtyTwoTokenModelsUseConfiguredShapesAndPositionParameters) {
   }
 }
 
-TEST_F(Gpt2Test, ThirtyTwoTokenForwardAndBackwardRepeatWithFixedSeed) {
-  const Gpt2Config config{2, 12, 3, 49, 37, false, 32};
-  constexpr int kBatchSize = 2;
-  constexpr int kRows = kBatchSize * 32;
-  constexpr int kLogitStride = 48;
-  for (DataType type : {DataType::FP16, DataType::BF16}) {
-    SCOPED_TRACE(static_cast<int>(type));
-    auto first = CreateGpt2(*executor_, type, 123, config);
-    auto repeated = CreateGpt2(*executor_, type, 123, config);
-    auto prefix = CreateActivationGenerator(*executor_, config, type, 123);
-    auto loss = CrossEntropyLossLayer::Create(
-        *executor_, config.vocabulary_size, type, config.context_length);
-    ASSERT_TRUE(first.ok()) << first.status();
-    ASSERT_TRUE(repeated.ok()) << repeated.status();
-    ASSERT_TRUE(prefix.ok()) << prefix.status();
-    ASSERT_TRUE(loss.ok()) << loss.status();
-    EXPECT_EQ((*first)->output_types()[0], (*loss)->input_types()[0]);
-    for (size_t index = 0; index < (*first)->weights().size(); ++index)
-      ExpectBuffersEqual((*first)->weights()[index],
-                         (*repeated)->weights()[index]);
+TEST_F(Gpt2Test, ShortContextForwardAndBackwardRepeatWithFixedSeed) {
+  for (const auto& [config, batch_size] :
+       {std::pair{Gpt2Config{2, 12, 3, 49, 37, false, 32}, 2},
+        std::pair{Gpt2Config{4, 13, 1, 26, 4475, false, 27}, 1},
+        std::pair{Gpt2Config{4, 13, 1, 26, 4475, false, 27}, 2}}) {
+    SCOPED_TRACE(config.context_length);
+    SCOPED_TRACE(batch_size);
+    const int kRows = batch_size * config.context_length;
+    const int kLogitStride = (config.vocabulary_size + 15) / 16 * 16;
+    for (DataType type : {DataType::FP16, DataType::BF16}) {
+      SCOPED_TRACE(static_cast<int>(type));
+      auto first = CreateGpt2(*executor_, type, 123, config);
+      auto repeated = CreateGpt2(*executor_, type, 123, config);
+      auto prefix = CreateActivationGenerator(*executor_, config, type, 123);
+      auto loss = CrossEntropyLossLayer::Create(
+          *executor_, config.vocabulary_size, type, config.context_length);
+      ASSERT_TRUE(first.ok()) << first.status();
+      ASSERT_TRUE(repeated.ok()) << repeated.status();
+      ASSERT_TRUE(prefix.ok()) << prefix.status();
+      ASSERT_TRUE(loss.ok()) << loss.status();
+      EXPECT_EQ((*first)->output_types()[0], (*loss)->input_types()[0]);
+      for (size_t index = 0; index < (*first)->weights().size(); ++index)
+        ExpectBuffersEqual((*first)->weights()[index],
+                           (*repeated)->weights()[index]);
 
-    auto host_tokens =
-        cuda::PageLockedHostArray<int32_t>::Allocate(*executor_, kRows);
-    ASSERT_TRUE(host_tokens.ok()) << host_tokens.status();
-    for (int row = 0; row < kRows; ++row)
-      (*host_tokens)[row] = (17 * row + row / 3) % config.vocabulary_size;
-    auto tokens = Buffer::Allocate(*executor_, host_tokens->size_bytes());
-    ASSERT_TRUE(tokens.ok()) << tokens.status();
-    ASSERT_EQ(cudaMemcpyAsync(tokens->data(), host_tokens->data(),
-                              tokens->size_bytes(), cudaMemcpyHostToDevice,
-                              executor_->stream()),
-              cudaSuccess);
-    auto prefix_forward = (*prefix)->fwd(*executor_, {*tokens});
-    auto first_forward = (*first)->fwd(*executor_, {*tokens});
-    auto repeated_forward = (*repeated)->fwd(*executor_, {*tokens});
-    ASSERT_TRUE(prefix_forward.ok()) << prefix_forward.status();
-    ASSERT_TRUE(first_forward.ok()) << first_forward.status();
-    ASSERT_TRUE(repeated_forward.ok()) << repeated_forward.status();
-    EXPECT_EQ(prefix_forward->outputs[0].size_bytes(),
-              kRows * config.model_width *
-                  (type == DataType::BF16 ? sizeof(uint16_t) : sizeof(float)));
-    EXPECT_EQ(first_forward->outputs[0].size_bytes(),
-              kRows * kLogitStride * sizeof(float));
-    ExpectBuffersEqual(first_forward->outputs[0], repeated_forward->outputs[0]);
-    auto first_loss =
-        (*loss)->fwd(*executor_, {first_forward->outputs[0], *tokens});
-    auto repeated_loss =
-        (*loss)->fwd(*executor_, {repeated_forward->outputs[0], *tokens});
-    ASSERT_TRUE(first_loss.ok()) << first_loss.status();
-    ASSERT_TRUE(repeated_loss.ok()) << repeated_loss.status();
-    ExpectBuffersEqual(first_loss->outputs[0], repeated_loss->outputs[0]);
-    auto first_loss_gradient =
-        (*loss)->bwd(*executor_, {}, std::move(first_loss->state));
-    auto repeated_loss_gradient =
-        (*loss)->bwd(*executor_, {}, std::move(repeated_loss->state));
-    ASSERT_TRUE(first_loss_gradient.ok()) << first_loss_gradient.status();
-    ASSERT_TRUE(repeated_loss_gradient.ok()) << repeated_loss_gradient.status();
-    auto first_backward = (*first)->bwd(*executor_, *first_loss_gradient,
-                                        std::move(first_forward->state));
-    auto repeated_backward =
-        (*repeated)->bwd(*executor_, *repeated_loss_gradient,
-                         std::move(repeated_forward->state));
-    ASSERT_TRUE(first_backward.ok()) << first_backward.status();
-    ASSERT_TRUE(repeated_backward.ok()) << repeated_backward.status();
-    EXPECT_TRUE(first_backward->empty());
-    EXPECT_TRUE(repeated_backward->empty());
-
-    auto losses = cuda::PageLockedHostArray<float>::Allocate(*executor_, kRows);
-    ASSERT_TRUE(losses.ok()) << losses.status();
-    ASSERT_EQ(cudaMemcpyAsync(losses->data(), first_loss->outputs[0].data(),
-                              losses->size_bytes(), cudaMemcpyDeviceToHost,
-                              executor_->stream()),
-              cudaSuccess);
-    ASSERT_TRUE(executor_->Synchronize().ok());
-    for (float value : *losses) {
-      EXPECT_TRUE(std::isfinite(value));
-      EXPECT_GT(value, 0.0f);
-    }
-    const auto gradients = (*first)->gradients();
-    for (size_t index = 0; index + 1 < gradients.size(); ++index) {
-      SCOPED_TRACE(index);
-      ExpectBuffersEqual(gradients[index], (*repeated)->gradients()[index]);
-      auto values = cuda::PageLockedHostArray<float>::Allocate(
-          *executor_, gradients[index].size_bytes() / sizeof(float));
-      ASSERT_TRUE(values.ok()) << values.status();
-      ASSERT_EQ(cudaMemcpyAsync(values->data(), gradients[index].data(),
-                                values->size_bytes(), cudaMemcpyDeviceToHost,
+      auto host_tokens =
+          cuda::PageLockedHostArray<int32_t>::Allocate(*executor_, kRows);
+      ASSERT_TRUE(host_tokens.ok()) << host_tokens.status();
+      for (int row = 0; row < kRows; ++row)
+        (*host_tokens)[row] = (17 * row + row / 3) % config.vocabulary_size;
+      auto tokens = Buffer::Allocate(*executor_, host_tokens->size_bytes());
+      ASSERT_TRUE(tokens.ok()) << tokens.status();
+      ASSERT_EQ(cudaMemcpyAsync(tokens->data(), host_tokens->data(),
+                                tokens->size_bytes(), cudaMemcpyHostToDevice,
                                 executor_->stream()),
                 cudaSuccess);
+      auto prefix_forward = (*prefix)->fwd(*executor_, {*tokens});
+      auto first_forward = (*first)->fwd(*executor_, {*tokens});
+      auto repeated_forward = (*repeated)->fwd(*executor_, {*tokens});
+      ASSERT_TRUE(prefix_forward.ok()) << prefix_forward.status();
+      ASSERT_TRUE(first_forward.ok()) << first_forward.status();
+      ASSERT_TRUE(repeated_forward.ok()) << repeated_forward.status();
+      EXPECT_EQ(
+          prefix_forward->outputs[0].size_bytes(),
+          kRows * config.model_width *
+              (type == DataType::BF16 ? sizeof(uint16_t) : sizeof(float)));
+      EXPECT_EQ(first_forward->outputs[0].size_bytes(),
+                kRows * kLogitStride * sizeof(float));
+      ExpectBuffersEqual(first_forward->outputs[0],
+                         repeated_forward->outputs[0]);
+      auto first_loss =
+          (*loss)->fwd(*executor_, {first_forward->outputs[0], *tokens});
+      auto repeated_loss =
+          (*loss)->fwd(*executor_, {repeated_forward->outputs[0], *tokens});
+      ASSERT_TRUE(first_loss.ok()) << first_loss.status();
+      ASSERT_TRUE(repeated_loss.ok()) << repeated_loss.status();
+      ExpectBuffersEqual(first_loss->outputs[0], repeated_loss->outputs[0]);
+      auto first_loss_gradient =
+          (*loss)->bwd(*executor_, {}, std::move(first_loss->state));
+      auto repeated_loss_gradient =
+          (*loss)->bwd(*executor_, {}, std::move(repeated_loss->state));
+      ASSERT_TRUE(first_loss_gradient.ok()) << first_loss_gradient.status();
+      ASSERT_TRUE(repeated_loss_gradient.ok())
+          << repeated_loss_gradient.status();
+      auto first_backward = (*first)->bwd(*executor_, *first_loss_gradient,
+                                          std::move(first_forward->state));
+      auto repeated_backward =
+          (*repeated)->bwd(*executor_, *repeated_loss_gradient,
+                           std::move(repeated_forward->state));
+      ASSERT_TRUE(first_backward.ok()) << first_backward.status();
+      ASSERT_TRUE(repeated_backward.ok()) << repeated_backward.status();
+      EXPECT_TRUE(first_backward->empty());
+      EXPECT_TRUE(repeated_backward->empty());
+
+      auto losses =
+          cuda::PageLockedHostArray<float>::Allocate(*executor_, kRows);
+      auto logits = cuda::PageLockedHostArray<float>::Allocate(
+          *executor_, kRows * kLogitStride);
+      ASSERT_TRUE(losses.ok()) << losses.status();
+      ASSERT_TRUE(logits.ok()) << logits.status();
+      ASSERT_EQ(cudaMemcpyAsync(losses->data(), first_loss->outputs[0].data(),
+                                losses->size_bytes(), cudaMemcpyDeviceToHost,
+                                executor_->stream()),
+                cudaSuccess);
+      ASSERT_EQ(
+          cudaMemcpyAsync(logits->data(), first_forward->outputs[0].data(),
+                          logits->size_bytes(), cudaMemcpyDeviceToHost,
+                          executor_->stream()),
+          cudaSuccess);
       ASSERT_TRUE(executor_->Synchronize().ok());
-      EXPECT_TRUE(std::all_of(values->begin(), values->end(), [](float value) {
-        return std::isfinite(value);
-      }));
-      // The embedding and each block's QKV weights must participate.
-      if (index == 0 || index == 4 || index == 16)
-        EXPECT_TRUE(std::any_of(values->begin(), values->end(),
+      for (float value : *losses) {
+        EXPECT_TRUE(std::isfinite(value));
+        EXPECT_GT(value, 0.0f);
+      }
+      // Check every row, including the last row of each 27-token sequence.
+      // These rows exercise partial attention and projection tiles, as well as
+      // the five masked logits beyond the compact 4,475-token vocabulary.
+      for (int position = 0; position < kRows; ++position) {
+        SCOPED_TRACE(position);
+        const float* row = logits->data() + position * kLogitStride;
+        EXPECT_TRUE(
+            std::all_of(row, row + config.vocabulary_size,
+                        [](float value) { return std::isfinite(value); }));
+        EXPECT_TRUE(std::all_of(
+            row + config.vocabulary_size, row + kLogitStride, [](float value) {
+              return value == -std::numeric_limits<float>::max();
+            }));
+      }
+      const auto gradients = (*first)->gradients();
+      for (size_t index = 0; index + 1 < gradients.size(); ++index) {
+        SCOPED_TRACE(index);
+        ExpectBuffersEqual(gradients[index], (*repeated)->gradients()[index]);
+        auto values = cuda::PageLockedHostArray<float>::Allocate(
+            *executor_, gradients[index].size_bytes() / sizeof(float));
+        ASSERT_TRUE(values.ok()) << values.status();
+        ASSERT_EQ(cudaMemcpyAsync(values->data(), gradients[index].data(),
+                                  values->size_bytes(), cudaMemcpyDeviceToHost,
+                                  executor_->stream()),
+                  cudaSuccess);
+        ASSERT_TRUE(executor_->Synchronize().ok());
+        EXPECT_TRUE(
+            std::all_of(values->begin(), values->end(),
+                        [](float value) { return std::isfinite(value); }));
+        // The embedding and each block's QKV weights must participate.
+        const bool is_qkv_matrix =
+            index >= 4 && index < 2 + 12 * config.transformer_block_count &&
+            (index - 4) % 12 == 0;
+        const bool must_have_gradient = index == 0 || is_qkv_matrix;
+        EXPECT_TRUE(!must_have_gradient ||
+                    std::any_of(values->begin(), values->end(),
                                 [](float value) { return value != 0.0f; }));
+      }
     }
   }
 }

@@ -9,7 +9,7 @@ Neither the native binary nor its libraries depend on these scripts.
 | --- | --- |
 | `run_depth_search.py` | Train and independently verify successive depths. |
 | `run_width_depth_search.py` | Sweep widths/depths and record the measured Pareto frontier. |
-| `run_compact_size_sweep.py` | Sequential compact/context-32 trials with a shared deadline and independent verification. |
+| `run_compact_size_sweep.py` | Sequential compact-vocabulary trials with a shared deadline and independent verification. |
 | `summarize_width_depth.py` | Read and validate saved evidence, then report frontiers without using the GPU. |
 | `audit_prefixes.py` | Check corpus tokenization and unavoidable conflicting next-token targets. |
 | `verify_predictions.py` | Independently retokenize the corpus and audit every recorded suffix/EOS prediction. |
@@ -63,13 +63,14 @@ Historical manifests retain the commands and absolute paths used at the time,
 including old script paths and commands without an explicit mode. The reporter
 continues to read those manifests. Do not rewrite those provenance records.
 
-## Compact 32-token-context trials
+## Compact short-context trials
 
 `run_compact_size_sweep.py` runs an explicit sequential list of fresh compact
 models with at least two layers. Each candidate is
 `layers:width:feed_forward_width:steps:learning_rate`; candidate order is preserved
-without pruning. One attention head, a 32-token context, and the independently
-checked 4,475-token active vocabulary are fixed. Batch size defaults to 32.
+without pruning. One attention head and the independently checked 4,475-token
+active vocabulary are fixed. The driver uses a 27-token context, enough for
+the longest fact and EOS. Batch size defaults to 32.
 
 ```sh
 python -B scripts/memorize_general_facts/run_compact_size_sweep.py \
@@ -78,6 +79,7 @@ python -B scripts/memorize_general_facts/run_compact_size_sweep.py \
   --tokenizer=/home/ubuntu/datasets/tokenizer/gpt2 \
   --run_dir=/tmp/pluto-facts-compact-new-search \
   --deadline_unix="$(date -d '+1 hour' +%s)" \
+  --context_length=27 \
   --candidates=4:12:48:60000:0.0006,8:12:48:60000:0.0006
 ```
 
@@ -93,6 +95,41 @@ Only a fresh native checkpoint reload, an independent audit of all 10,002
 original-GPT-2-ID suffix/EOS predictions, and exact greedy completion of all
 1,024 five-token prompts earn `verified` status. Budget failures, timeouts, and
 execution errors remain distinct and do not prove an architecture insufficient.
+
+### Verified 27-token context (2026-09-24)
+
+The current four-block, width-13, one-head, FF26 model has **64,532 trainable
+parameters** with context 27. That is 65 fewer than context 32: only the learned
+position table changes, from `32 x 13` to `27 x 13`. The longest fact has 26
+GPT-2 tokens, so its EOS also fits.
+
+Training from scratch with seed 1337 and batch size 32 first reached zero errors
+at **step 48,896**, after **147 seconds**, with mean cross-entropy **0.00691575
+nats**. All 10,002 scored suffix/EOS targets and all 1,024 autonomous greedy
+completions from five-token prompts are correct. Evaluation occurs every 256
+steps, so this is the first observed perfect checkpoint. Optimizer and schedule
+are the same as the FF26 comparison below; no gradient clipping is used.
+
+The checkpoint is:
+
+```text
+/home/ubuntu/checkpoints/memorize_general_facts/context27_L4_W13_FF26_0/trial_000_L4_W13_FF26/checkpoints/layers_4/step_48896
+```
+
+The initial run exposed a 16-row alignment restriction in single-sample
+inference, hidden by batch-32 training. Dense and tied-head kernels already
+masked partial tiles; GELU and residual addition now mask them too. After fixing
+those paths, the same checkpoint passed a fresh **batch-1** evaluation and all
+autonomous completions using the default context of 27. This also tests the
+partial tiles directly. In the trial directory, the final evidence is
+`verification_fixed_batch1/`, `prediction_fixed_verification.json`,
+`greedy_fixed.stdout.log`, and `greedy_fixed_verification.json`; the corrected
+binary and hash are preserved under the run's `inputs/`. The original failure
+logs and summary remain unchanged as provenance. All artifacts stay outside Git.
+
+To repeat training and the complete verification pipeline, use the compact
+driver above with `--candidates=4:13:26:60000:0.0006`, `--seed=1337`,
+`--batch_size=32`, `--eval_every=256`, and a fresh run directory.
 
 ### Verified width-13 MLP comparison (2026-09-24)
 
@@ -128,19 +165,6 @@ The local run roots are
 its commands, input hashes, logs, checkpoint, and independent verification
 reports. These generated artifacts remain outside Git.
 
-To repeat the FF26 trial using the built binary and CUDA library setup above:
-
-```sh
-python -B scripts/memorize_general_facts/run_compact_size_sweep.py \
-  --binary=bazel-bin/src/llm/experiments/memorize_general_facts/memorize_general_facts \
-  --corpus=testdata/general_facts_dataset.txt \
-  --tokenizer=/home/ubuntu/datasets/tokenizer/gpt2 \
-  --run_dir=/tmp/pluto-facts-ff26-new-trial \
-  --deadline_unix="$(date -d '+10 minutes' +%s)" \
-  --candidates=4:13:26:60000:0.0006 \
-  --seed=1337 --batch_size=32 --eval_every=256
-```
-
 ## Audit a finished run
 
 ```sh
@@ -150,9 +174,9 @@ python -B scripts/memorize_general_facts/verify_predictions.py \
 ```
 
 This checks the saved prediction artifact, not the current checkpoint bytes.
-Pass `--context_length=32` for a run trained with a 32-token context; the verifier
-defaults to 1,024 for historical artifacts. Compact-vocabulary runs also write
-original GPT-2 IDs in their prediction TSVs, so the same verifier audits them.
+Pass `--context_length=27` for the current experiment. The standalone verifier
+does not inherit the training binary's context setting. Compact-vocabulary runs
+also write original GPT-2 IDs in their prediction TSVs, so the same verifier audits them.
 The search drivers also run native checkpoint inference in a fresh process.
 See the [experiment documentation](../../src/llm/experiments/memorize_general_facts/README.md)
 for direct training, checkpoint verification/conversion, and the scoring protocol.

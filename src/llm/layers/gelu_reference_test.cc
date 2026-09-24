@@ -1,5 +1,6 @@
 #include <cmath>
 #include <cstddef>
+#include <tuple>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -13,12 +14,15 @@ namespace {
 
 TEST_F(LayerReferenceTest, ForwardAndBackwardMatchAcrossDomainShapesAndTypes) {
   for (DataType type : {DataType::FP16, DataType::BF16}) {
-    for (int width : {3, 16, 32, 64}) {
-      // Three channels need no padding: a 16-token sample has 48 elements,
-      // and elementwise tiles may cross token boundaries safely.
-      const int sequence_length = width == 3 ? 16 : 1;
+    for (const auto [width, sequence_length] :
+         {std::tuple{3, 1}, std::tuple{3, 16}, std::tuple{13, 27},
+          std::tuple{26, 27}, std::tuple{16, 1}, std::tuple{32, 1},
+          std::tuple{64, 1}}) {
+      // Cover partial final tiles, including the context-27 model's hidden
+      // and feed-forward widths at both single- and two-sequence batch sizes.
       SCOPED_TRACE(testing::Message()
-                   << "type=" << static_cast<int>(type) << " width=" << width);
+                   << "type=" << static_cast<int>(type) << " width=" << width
+                   << " sequence_length=" << sequence_length);
       auto device_layer =
           GeluLayer::Create(*executor_, width, type, sequence_length);
       auto reference_layer =
@@ -125,25 +129,6 @@ TEST_F(LayerReferenceTest, GeluRejectsUnsupportedSampleShapes) {
         GeluLayer::Create(*executor_, width, DataType::FP16).status().code(),
         absl::StatusCode::kInvalidArgument);
     EXPECT_EQ(GeluLayerReference::Create(width, DataType::FP16).status().code(),
-              absl::StatusCode::kInvalidArgument);
-  }
-}
-
-TEST_F(LayerReferenceTest, GeluStillRejectsNonTiledTotalElementCounts) {
-  for (DataType type : {DataType::FP16, DataType::BF16}) {
-    auto device = GeluLayer::Create(*executor_, 3, type);
-    auto reference = GeluLayerReference::Create(3, type);
-    ASSERT_TRUE(device.ok()) << device.status();
-    ASSERT_TRUE(reference.ok()) << reference.status();
-    auto input =
-        MakeActivationBufferPair(*executor_, std::vector<float>(3, 1.0f), type);
-    ASSERT_TRUE(input.ok()) << input.status();
-    const auto device_output =
-        (*device)->fwd(*executor_, BufferVec{input->device});
-    const auto reference_output = (*reference)->fwd(HostBufferVec{input->host});
-    EXPECT_EQ(device_output.status().code(),
-              absl::StatusCode::kInvalidArgument);
-    EXPECT_EQ(reference_output.status().code(),
               absl::StatusCode::kInvalidArgument);
   }
 }

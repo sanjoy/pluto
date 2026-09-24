@@ -23,7 +23,7 @@ from run_depth_search import _now, _read_result, _require_fields, _sha256, _writ
 from verify_predictions import _corpus_lines, verify_predictions
 
 
-def parameter_count(layers, width, ff, vocabulary=4475, context=32):
+def parameter_count(layers, width, ff, vocabulary=4475, context=27):
     return (vocabulary + context + 2) * width + layers * (
         4 * width * width + 2 * width * ff + 9 * width + ff)
 
@@ -39,7 +39,7 @@ def parse_candidate(value):
             raise ValueError("learning rate must be finite and positive")
         if any(item >= 2**31 for item in (
                 4475 * integers[1], 3 * integers[1]**2,
-                integers[1] * integers[2], 32 * integers[2])):
+                integers[1] * integers[2], 27 * integers[2])):
             raise ValueError("candidate tensor exceeds int32 element limit")
         return dict(zip(("layers", "width", "feed_forward_width", "steps", "learning_rate"),
                         [*integers, rate]))
@@ -56,7 +56,7 @@ def parse_args(argv=None):
                         help="Comma-separated L:W:FF:steps:LR entries, layers >=2")
     parser.add_argument("--seed", type=int, default=1337)
     parser.add_argument("--batch_size", type=int, default=32)
-    parser.add_argument("--context_length", type=int, choices=(32,), default=32)
+    parser.add_argument("--context_length", type=int, choices=(27,), default=27)
     parser.add_argument("--vocabulary", type=int, choices=(4475,), default=4475)
     parser.add_argument("--verification_reserve", type=float, default=30)
     parser.add_argument("--max_training_seconds", type=float, default=0,
@@ -232,7 +232,7 @@ def run_search(args, *, run_process=execute, loader=load_inputs, clock=time.time
 
             shape = [f"--layers={candidate['layers']}", f"--model_width={candidate['width']}",
                      f"--feed_forward_width={candidate['feed_forward_width']}", "--attention_heads=1",
-                     "--context_length=32", "--compact_vocabulary=true", f"--seed={args.seed}"]
+                     f"--context_length={args.context_length}", "--compact_vocabulary=true", f"--seed={args.seed}"]
             output_parent = trial_dir / "training"
             output = output_parent / f"layers_{candidate['layers']}"
             checkpoints = trial_dir / "checkpoints"
@@ -247,7 +247,8 @@ def run_search(args, *, run_process=execute, loader=load_inputs, clock=time.time
                 raise ValueError(f"Native training failed with exit {code}")
             result = _read_result(output / "result.txt")
             expected = {key: active[key] for key in ("layers", "width", "feed_forward_width", "parameters")}
-            expected.update(heads=1, vocabulary=args.vocabulary, targets=10002)
+            expected.update(heads=1, vocabulary=args.vocabulary, targets=10002,
+                            context_length=args.context_length)
             _require_fields(result, {**expected, "success": int(code == 0)}, output / "result.txt")
             step, errors = int(result["step"]), int(result["errors"])
             if not 0 <= step <= candidate["steps"] or not 0 <= errors <= 10002 or (errors == 0) != (code == 0):
@@ -262,7 +263,7 @@ def run_search(args, *, run_process=execute, loader=load_inputs, clock=time.time
             for path in (output, checkpoint):
                 if parse_mapping((path / "compact_vocabulary.tsv").read_bytes()) != data["active"]:
                     raise ValueError("Compact mapping differs from independent tokenization")
-            _require_fields(_read_result(output / "config.txt"), {"context_length": 32, "batch_size": args.batch_size}, output / "config.txt")
+            _require_fields(_read_result(output / "config.txt"), {"context_length": args.context_length, "batch_size": args.batch_size}, output / "config.txt")
             if _sha256(output / "corpus.txt") != summary["hashes"]["corpus.txt"] or _sha256(output / "tokenizer.json") != summary["hashes"]["tokenizer.json"]:
                 raise ValueError("Native input snapshots differ from pinned inputs")
             active.update(training_result=result, step=step, errors=errors, checkpoint=str(checkpoint))
@@ -279,18 +280,18 @@ def run_search(args, *, run_process=execute, loader=load_inputs, clock=time.time
             _require_fields(native, {**expected, "checkpoint": checkpoint, "errors": 0, "sentences": 1024, "exact_sentences": 1024}, verification / "result.txt")
             predictions = verification / "final_predictions.tsv"
             with predictions.open() as source:
-                audit = verify_predictions(data["rows"], source, eos_id=50256, vocabulary_size=50257, context_length=32)
+                audit = verify_predictions(data["rows"], source, eos_id=50256, vocabulary_size=50257, context_length=args.context_length)
             if audit.errors or _sha256(predictions) != _sha256(output / "final_predictions.tsv"):
                 raise ValueError("Independent prediction audit differs or contains errors")
             native_loss = float(native["mean_loss"])
             if (audit.targets != 10002 or not math.isfinite(native_loss) or native_loss < 0
                     or not math.isclose(native_loss, audit.mean_loss, rel_tol=1e-5, abs_tol=1e-12)):
                 raise ValueError("Independent target count or mean loss differs")
-            report = {**audit.summary(), "context_length": 32, "corpus_sha256": _sha256(corpus),
+            report = {**audit.summary(), "context_length": args.context_length, "corpus_sha256": _sha256(corpus),
                       "tokenizer_sha256": _sha256(inputs / "tokenizer.json"), "predictions_sha256": _sha256(predictions)}
             (trial_dir / "prediction_verification.json").write_text(json.dumps(report, indent=2) + "\n")
             greedy = [str(binary), "--mode=infer_model", *shape, f"--infer_checkpoint={checkpoint}",
-                      f"--tokenizer={inputs}", "--generation_tokens=32"]
+                      f"--tokenizer={inputs}", f"--generation_tokens={args.context_length}"]
             if launch(greedy, "greedy", args.deadline_unix, prompts) != 0:
                 raise ValueError("Greedy inference process failed")
             report = greedy_audit(trial_dir / "greedy.stdout.log", data["lines"])

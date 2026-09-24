@@ -61,8 +61,10 @@ class SignatureIdentity final : public Layer {
  public:
   absl::string_view name() const override { return "SignatureIdentity"; }
 
-  SignatureIdentity(DataType storage, DataType policy)
-      : type_{storage, {ActivationType::kBatchDimension, 1, 16}},
+  SignatureIdentity(DataType storage, DataType policy, int width = 16,
+                    int sequence_length = 1)
+      : type_{storage,
+              {ActivationType::kBatchDimension, sequence_length, width}},
         policy_(policy) {}
 
   absl::Span<const ActivationType> input_types() const override {
@@ -218,6 +220,76 @@ TEST_F(LayerReferenceTest, ResidualStorageFollowsSignatureNotComputePolicy) {
     EXPECT_TRUE(VectorsNear(
         ReadHostActivations(expected_reference->outputs[0], storage_policy),
         expected, 0.0f));
+  }
+}
+
+TEST_F(LayerReferenceTest, ResidualMasksPartialTilesInForwardAndBackward) {
+  for (DataType policy : {DataType::FP16, DataType::BF16}) {
+    const DataType storage =
+        policy == DataType::BF16 ? DataType::BF16 : DataType::FP32;
+    // Include fewer than one tile and the real model's one/two sequence
+    // batches. Identity branches isolate residual addition from other layers.
+    for (const auto [rows, width] :
+         {std::tuple{1, 1}, std::tuple{1, 13}, std::tuple{27, 13},
+          std::tuple{54, 13}, std::tuple{27, 26}}) {
+      SCOPED_TRACE(testing::Message()
+                   << "policy=" << static_cast<int>(policy) << " rows=" << rows
+                   << " width=" << width);
+      const ActivationType type(storage,
+                                {ActivationType::kBatchDimension, rows, width});
+      auto device = ResidualLayer::Create(
+          absl::make_unique<SignatureIdentity>(storage, policy, width, rows));
+      auto reference =
+          ResidualLayerReference::Create(absl::make_unique<SignatureReference>(
+              std::vector<ActivationType>{type},
+              std::vector<ActivationType>{type}, policy));
+      ASSERT_TRUE(device.ok()) << device.status();
+      ASSERT_TRUE(reference.ok()) << reference.status();
+
+      std::vector<float> input(rows * width);
+      std::vector<float> upstream(rows * width);
+      std::vector<float> expected_output(rows * width);
+      std::vector<float> expected_gradient(rows * width);
+      for (size_t i = 0; i < input.size(); ++i) {
+        // Exact binary fractions keep the expected sums exact in both dtypes.
+        // Every tail element is nonzero, so silently skipping it cannot pass.
+        input[i] = static_cast<float>(1 + i % 19) / 32.0f;
+        upstream[i] = -static_cast<float>(1 + i % 13) / 16.0f;
+        expected_output[i] = 2.0f * input[i];
+        expected_gradient[i] = 2.0f * upstream[i];
+      }
+      auto inputs = MakeActivationBufferPair(*executor_, input, policy);
+      auto gradients = MakeRawBufferPair<float>(*executor_, upstream);
+      ASSERT_TRUE(inputs.ok()) << inputs.status();
+      ASSERT_TRUE(gradients.ok()) << gradients.status();
+      auto actual = (*device)->fwd(*executor_, BufferVec{inputs->device});
+      auto expected = (*reference)->fwd(HostBufferVec{inputs->host});
+      ASSERT_TRUE(actual.ok()) << actual.status();
+      ASSERT_TRUE(expected.ok()) << expected.status();
+      EXPECT_TRUE(ActivationBuffersNear(actual->outputs[0],
+                                        expected->outputs[0], policy, 0.0f));
+      auto actual_values =
+          ReadDeviceActivations(*executor_, actual->outputs[0], policy);
+      ASSERT_TRUE(actual_values.ok()) << actual_values.status();
+      EXPECT_TRUE(VectorsNear(actual_values->span(), expected_output, 0.0f));
+
+      auto actual_backward = (*device)->bwd(
+          *executor_, BufferVec{gradients->device}, std::move(actual->state));
+      auto expected_backward =
+          (*reference)
+              ->bwd(HostBufferVec{gradients->host}, std::move(expected->state));
+      ASSERT_TRUE(actual_backward.ok()) << actual_backward.status();
+      ASSERT_TRUE(expected_backward.ok()) << expected_backward.status();
+      ASSERT_EQ(actual_backward->size(), 1u);
+      ASSERT_EQ(expected_backward->size(), 1u);
+      EXPECT_TRUE(FloatBuffersNear(actual_backward->front(),
+                                   expected_backward->front(), 0.0f));
+      auto actual_gradients = ReadDeviceActivations(
+          *executor_, actual_backward->front(), DataType::FP16);
+      ASSERT_TRUE(actual_gradients.ok()) << actual_gradients.status();
+      EXPECT_TRUE(
+          VectorsNear(actual_gradients->span(), expected_gradient, 0.0f));
+    }
   }
 }
 

@@ -13,7 +13,8 @@ namespace pluto::llm {
 
 // A bias-bearing rectangular projection. Activations use the selected compute
 // type, MMA reductions accumulate in FP32, and parameters/gradients remain
-// FP32 master buffers for the external optimizer.
+// FP32 master buffers for the external optimizer. Positive row counts and
+// feature widths need not be multiples of the compute-tile dimensions.
 class FullyConnectedLayer final : public Layer {
  public:
   absl::string_view name() const override { return "FullyConnectedLayer"; }

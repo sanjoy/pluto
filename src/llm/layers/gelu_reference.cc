@@ -37,8 +37,7 @@ absl::StatusOr<std::unique_ptr<GeluLayerReference>> GeluLayerReference::Create(
   RETURN_IF_ERROR(ri::ValidateComputeType(data_type));
   if (sequence_length <= 0)
     return absl::InvalidArgumentError("sequence_length must be positive");
-  // Elementwise tiles cross row boundaries. Only the total element count,
-  // checked by fwd(), needs to be a multiple of the tile width.
+  // The device masks its final partial tile, so every positive width is valid.
   if (embedding_dim <= 0)
     return absl::InvalidArgumentError("embedding_dim must be positive");
   return absl::WrapUnique(
@@ -56,7 +55,6 @@ absl::StatusOr<ReferenceFwdResult> GeluLayerReference::fwd_impl(
       int elements,
       ri::ElementCount(inputs[0], ri::ActivationElementBytes(output_type_),
                        "GELU input"));
-  RETURN_IF_ERROR(ri::ValidateTiledExtent(elements, "GELU element count"));
   ASSIGN_OR_RETURN(auto output, ri::AllocateActivation(elements, output_type_));
   // A scalar call per element is intentionally boring: it makes the tanh GELU
   // approximation, including every constant, visible in one place.

@@ -16,14 +16,17 @@ namespace {
 TEST_F(LayerReferenceTest, LookupAndTiedHeadMatchAcrossShapesAndTypes) {
   for (DataType type : {DataType::FP16, DataType::BF16}) {
     for (const auto [vocab, width, rows, pad_vocabulary] :
-         {std::tuple{17, 1, 16, true}, std::tuple{17, 3, 16, true},
-          std::tuple{17, 7, 32, true}, std::tuple{17, 8, 16, true},
-          std::tuple{17, 15, 32, true}, std::tuple{17, 24, 16, true},
-          std::tuple{17, 33, 32, true}, std::tuple{17, 16, 16, true},
-          std::tuple{32, 32, 32, true}, std::tuple{17, 48, 48, true},
-          std::tuple{65, 80, 80, true}, std::tuple{257, 48, 16, true},
-          std::tuple{257, 80, 48, true}, std::tuple{50257, 16, 16, true},
-          std::tuple{17, 3, 16, false}, std::tuple{4475, 16, 16, false}}) {
+         {std::tuple{17, 1, 16, true},    std::tuple{17, 3, 16, true},
+          std::tuple{17, 7, 32, true},    std::tuple{17, 8, 16, true},
+          std::tuple{17, 15, 32, true},   std::tuple{17, 24, 16, true},
+          std::tuple{17, 33, 32, true},   std::tuple{17, 16, 16, true},
+          std::tuple{32, 32, 32, true},   std::tuple{17, 48, 48, true},
+          std::tuple{65, 80, 80, true},   std::tuple{257, 48, 16, true},
+          std::tuple{257, 80, 48, true},  std::tuple{50257, 16, 16, true},
+          std::tuple{17, 3, 16, false},   std::tuple{4475, 16, 16, false},
+          std::tuple{17, 13, 27, false},  std::tuple{17, 13, 54, false},
+          std::tuple{17, 26, 27, true},   std::tuple{17, 26, 54, true},
+          std::tuple{4475, 13, 27, false}}) {
       SCOPED_TRACE(testing::Message()
                    << "type=" << static_cast<int>(type) << " vocab=" << vocab
                    << " width=" << width << " rows=" << rows

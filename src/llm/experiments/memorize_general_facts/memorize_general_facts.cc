@@ -74,9 +74,10 @@ ABSL_FLAG(int, layers, 8, "Initial transformer depth (nonnegative; default 8)");
 ABSL_FLAG(int, model_width, 512, "Residual-stream and embedding width");
 ABSL_FLAG(int, attention_heads, 8, "Number of attention heads per block");
 ABSL_FLAG(int, feed_forward_width, 2048, "Inner GELU MLP width");
-ABSL_FLAG(int, context_length, 32,
+// The longest fact has 26 GPT-2 tokens; one more position accommodates EOS.
+ABSL_FLAG(int, context_length, 27,
           "Padded sequence length and learned position count; must match the "
-          "checkpoint when loading (historical checkpoints use 1024)");
+          "checkpoint when loading");
 ABSL_FLAG(bool, compact_vocabulary, true,
           "Remap corpus tokens plus EOS to a compact vocabulary; disable for "
           "historical full-vocabulary checkpoints and searches");

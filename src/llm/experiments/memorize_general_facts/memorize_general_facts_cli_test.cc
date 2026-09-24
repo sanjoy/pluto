@@ -34,7 +34,7 @@ CommandLineOptions TrainingOptions() {
   options.checkpoint_dir = "/checkpoints";
   options.corpus = "/corpus";
   options.output_dir = "/output";
-  options.context_length = 32;
+  options.context_length = 27;
   options.batch_size = 1;
   options.eval_every = 1;
   options.checkpoint_every = 1;
@@ -47,7 +47,7 @@ CommandLineOptions GenerationOptions() {
   options.mode = "infer_model";
   options.tokenizer = "/tokenizer";
   options.infer_checkpoint = "/model";
-  options.context_length = 32;
+  options.context_length = 27;
   return options;
 }
 
@@ -58,7 +58,7 @@ CommandLineOptions VerificationOptions() {
   options.verify_checkpoint = "/model";
   options.corpus = "/corpus";
   options.output_dir = "/output";
-  options.context_length = 32;
+  options.context_length = 27;
   options.batch_size = 1;
   return options;
 }
@@ -380,11 +380,8 @@ TEST(MemorizeGeneralFactsCliTest, ContextLengthMustBePositiveInEveryPath) {
       ExpectInvalid(ValidateOptions(options, {"context_length"}),
                     "--context_length must be positive");
     }
-    for (int context_length : {32, 1024}) {
-      SCOPED_TRACE(context_length);
-      options.context_length = context_length;
-      EXPECT_TRUE(ValidateOptions(options, {"context_length"}).ok());
-    }
+    options.context_length = 27;
+    EXPECT_TRUE(ValidateOptions(options, {"context_length"}).ok());
   }
 }
 
@@ -403,7 +400,7 @@ TEST(MemorizeGeneralFactsCliTest, CorpusContextMustFitTheFiveTokenPrompt) {
 
 TEST(MemorizeGeneralFactsCliTest, CorpusBatchTokenCountCannotOverflow) {
   for (auto options : {TrainingOptions(), VerificationOptions()}) {
-    for (int context_length : {32, 1024, std::numeric_limits<int>::max()}) {
+    for (int context_length : {27, std::numeric_limits<int>::max()}) {
       SCOPED_TRACE(context_length);
       options.context_length = context_length;
       options.batch_size = std::numeric_limits<int>::max() / context_length;

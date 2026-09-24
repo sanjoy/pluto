@@ -11,6 +11,7 @@ import tempfile
 import unittest
 from unittest import mock
 
+import run_compact_size_sweep as sweep
 from run_compact_size_sweep import parameter_count, parse_args, parse_candidate, run_search
 from verify_predictions import TSV_HEADER
 
@@ -37,14 +38,18 @@ class CompactSizeSweepTest(unittest.TestCase):
 
     def test_parameter_counts_for_compact_candidates(self):
         for dimensions, expected in [
-            ((8, 16, 64), 98384),
-            ((8, 12, 48), 69180),
-            ((8, 10, 40), 55730),
-            ((8, 14, 56), 83398),
-            ((12, 8, 32), 46536),
+            ((8, 16, 64), 98304),
+            ((8, 12, 48), 69120),
+            ((8, 10, 40), 55680),
+            ((8, 14, 56), 83328),
+            ((12, 8, 32), 46496),
         ]:
             with self.subTest(dimensions=dimensions):
                 self.assertEqual(parameter_count(*dimensions), expected)
+
+    def test_context_27_parameter_count(self):
+        self.assertEqual(parameter_count(4, 13, 26), 64532)
+        self.assertEqual(parameter_count(4, 13, 26, context=27), 64532)
 
     def test_parameter_count_includes_each_unique_array_once(self):
         # Spell out the embedding, position embedding, two norms, attention
@@ -75,6 +80,7 @@ class CompactSizeSweepTest(unittest.TestCase):
             "8:12:48:-1:0.001", "8:12:48:1000:0",
             "8:12:48:1000:-0.001", "8:12:48:1000:nan",
             "8:12:48:1000:inf", "8:12:48:1000:-inf",
+            "2:1:79536432:1000:0.001",
         ]:
             with self.subTest(candidate=candidate):
                 with self.assertRaises((ValueError, argparse.ArgumentTypeError)):
@@ -84,7 +90,7 @@ class CompactSizeSweepTest(unittest.TestCase):
         args = parse_args(self.arguments)
         self.assertEqual(args.seed, 1337)
         self.assertEqual(args.batch_size, 32)
-        self.assertEqual(args.context_length, 32)
+        self.assertEqual(args.context_length, 27)
         self.assertEqual(args.vocabulary, 4475)
         self.assertEqual(args.verification_reserve, 30)
         self.assertEqual(args.eval_every, 256)
@@ -96,6 +102,7 @@ class CompactSizeSweepTest(unittest.TestCase):
         for option in [
             "--deadline_unix=nan", "--deadline_unix=inf",
             "--deadline_unix=-1", "--batch_size=0", "--context_length=0",
+            "--context_length=28", "--context_length=32", "--batch_size=2147483648",
             "--vocabulary=0", "--verification_reserve=-1",
             "--verification_reserve=nan", "--eval_every=0",
             "--candidates=", "--candidates=1:12:48:1000:0.001",
@@ -123,11 +130,13 @@ class CompactSizeSweepTest(unittest.TestCase):
                      input_path=None, on_start=None):
         self.calls.append(command)
         flags = dict(item[2:].split("=", 1) for item in command[1:])
+        self.assertEqual(int(flags["context_length"]), self.expected_context)
         if on_start:
             on_start(12345)
         stdout_path.write_text("")
         stderr_path.write_text("")
         if "infer_checkpoint" in flags:
+            self.assertEqual(int(flags["generation_tokens"]), self.expected_context)
             self.assertIsNotNone(input_path)
             self.assertEqual(len(input_path.read_text().splitlines()), 1024)
             stdout_path.write_text(
@@ -139,12 +148,13 @@ class CompactSizeSweepTest(unittest.TestCase):
         layers, width, ff = (int(flags[name]) for name in
                              ("layers", "model_width", "feed_forward_width"))
         result = {"layers": layers, "width": width, "feed_forward_width": ff,
-                  "parameters": parameter_count(layers, width, ff), "heads": 1,
+                  "parameters": parameter_count(layers, width, ff,
+                                                context=int(flags["context_length"])),
+                  "heads": 1, "context_length": int(flags["context_length"]),
                   "vocabulary": 4475, "targets": 10002, "errors": 0}
         output = Path(flags["output_dir"])
         if flags["mode"] == "train_model":
             self.assertEqual(flags["search"], "false")
-            self.assertEqual(flags["context_length"], "32")
             self.assertEqual(flags["compact_vocabulary"], "true")
             output /= f"layers_{layers}"
             checkpoint = Path(flags["checkpoint_dir"]) / f"layers_{layers}" / "step_256"
@@ -155,7 +165,8 @@ class CompactSizeSweepTest(unittest.TestCase):
                        "compact_id\toriginal_id\n0\t1\n1\t50256\n")
             for directory in (checkpoint, output):
                 (directory / "compact_vocabulary.tsv").write_text(mapping)
-            (output / "config.txt").write_text("context_length=32\nbatch_size=32\n")
+            (output / "config.txt").write_text(
+                f"context_length={flags['context_length']}\nbatch_size={flags['batch_size']}\n")
             shutil.copyfile(flags["corpus"], output / "corpus.txt")
             shutil.copyfile(Path(flags["tokenizer"]) / "tokenizer.json",
                             output / "tokenizer.json")
@@ -177,10 +188,12 @@ class CompactSizeSweepTest(unittest.TestCase):
     def run_fake(self, **options):
         self.calls = []
         self.timeout_verification = options.pop("timeout_verification", False)
-        args = parse_args(self.arguments)
+        args = parse_args(self.arguments + options.pop("extra_arguments", []))
+        self.expected_context = args.context_length
         with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
             status = run_search(args, run_process=options.pop("run_process", self.fake_process),
-                                loader=self.fake_inputs, clock=options.pop("clock", lambda: 100),
+                                loader=options.pop("loader", self.fake_inputs),
+                                clock=options.pop("clock", lambda: 100),
                                 **options)
         return status, json.loads((args.run_dir / "summary.json").read_text())
 
@@ -236,14 +249,61 @@ class CompactSizeSweepTest(unittest.TestCase):
         self.assertEqual([trial["status"] for trial in summary["trials"]],
                          ["verified", "verified"])
         self.assertEqual(len(self.calls), 6)
-        self.assertEqual(summary["minimum_parameter_success"]["parameters"], 46536)
+        self.assertEqual(summary["minimum_parameter_success"]["parameters"], 46496)
         for trial in summary["trials"]:
             directory = Path(trial["directory"])
             prediction = json.loads((directory / "prediction_verification.json").read_text())
             greedy = json.loads((directory / "greedy_verification.json").read_text())
             self.assertEqual(prediction["targets"], 10002)
+            self.assertEqual(prediction["context_length"], 27)
             self.assertEqual(prediction["errors"], 0)
             self.assertEqual(greedy["exact_sentences"], 1024)
+
+    def test_selected_context_reaches_every_pipeline_phase(self):
+        loader = mock.Mock(side_effect=self.fake_inputs)
+        with mock.patch.object(sweep, "verify_predictions",
+                               wraps=sweep.verify_predictions) as audit:
+            status, summary = self.run_fake(loader=loader)
+        self.assertEqual(status, 0)
+        self.assertEqual(summary["status"], "completed")
+        self.assertEqual(summary["configuration"]["context_length"], 27)
+        self.assertEqual(loader.call_args.args[2], 27)
+        self.assertEqual(len(self.calls), 6)
+        self.assertEqual(audit.call_count, 2)
+        for call in audit.call_args_list:
+            self.assertEqual(call.kwargs["context_length"], 27)
+        for trial in summary["trials"]:
+            self.assertEqual(trial["parameters"], parameter_count(
+                trial["layers"], trial["width"], trial["feed_forward_width"]))
+            report = json.loads((Path(trial["directory"]) /
+                                 "prediction_verification.json").read_text())
+            self.assertEqual(report["context_length"], 27)
+
+    def test_wrong_native_context_cannot_claim_success(self):
+        for phase, artifact in (("training", "result.txt"),
+                                ("training", "config.txt"),
+                                ("verification", "result.txt")):
+            with self.subTest(phase=phase, artifact=artifact):
+                def wrong_context(command, *args, **kwargs):
+                    code = self.fake_process(command, *args, **kwargs)
+                    flags = dict(item[2:].split("=", 1) for item in command[1:])
+                    training = flags["mode"] == "train_model"
+                    if training == (phase == "training"):
+                        output = Path(flags["output_dir"])
+                        if training:
+                            output /= f"layers_{flags['layers']}"
+                        path = output / artifact
+                        path.write_text(path.read_text().replace(
+                            "context_length=27", "context_length=32"))
+                    return code
+
+                status, summary = self.run_fake(
+                    run_process=wrong_context,
+                    extra_arguments=[f"--run_dir={self.root / (phase + artifact)}"])
+                self.assertEqual(status, 1)
+                self.assertEqual(summary["status"], "error")
+                self.assertIn("context_length", summary["error"])
+                self.assertIsNone(summary["minimum_parameter_success"])
 
 
 if __name__ == "__main__":

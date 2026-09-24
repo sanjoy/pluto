@@ -29,11 +29,11 @@ __tile_global__ void GeluForwardKernel(const Activation* __restrict__ input,
   auto output_view = ct::partition_view{
       ct::tensor_span{output, ct::extents{elements}}, ct::shape{16_ic}};
   const int block = ct::bid().x;
-  auto x = ct::element_cast<float>(input_view.load(block));
+  auto x = ct::element_cast<float>(input_view.load_masked(block));
   constexpr float kSqrtTwoOverPi = 0.7978845608f;
   auto inner = kSqrtTwoOverPi * (x + 0.044715f * x * x * x);
   auto result = 0.5f * x * (1.0f + ct::tanh(inner));
-  output_view.store(ct::element_cast<Activation>(result), block);
+  output_view.store_masked(ct::element_cast<Activation>(result), block);
 }
 
 template <class Activation>
@@ -51,14 +51,15 @@ __tile_global__ void GeluBackwardKernel(
   auto input_gradient_view = ct::partition_view{
       ct::tensor_span{input_gradient, ct::extents{elements}}, ct::shape{16_ic}};
   const int block = ct::bid().x;
-  auto x = ct::element_cast<float>(input_view.load(block));
+  auto x = ct::element_cast<float>(input_view.load_masked(block));
   constexpr float kSqrtTwoOverPi = 0.7978845608f;
   auto inner = kSqrtTwoOverPi * (x + 0.044715f * x * x * x);
   auto tanh_inner = ct::tanh(inner);
   auto derivative = 0.5f * (1.0f + tanh_inner) +
                     0.5f * x * (1.0f - tanh_inner * tanh_inner) *
                         kSqrtTwoOverPi * (1.0f + 3.0f * 0.044715f * x * x);
-  input_gradient_view.store(gradient_view.load(block) * derivative, block);
+  input_gradient_view.store_masked(
+      gradient_view.load_masked(block) * derivative, block);
 }
 
 }  // namespace
@@ -69,8 +70,7 @@ absl::StatusOr<std::unique_ptr<GeluLayer>> GeluLayer::Create(
   RETURN_IF_ERROR(internal::ValidateComputeType(data_type));
   if (sequence_length <= 0)
     return absl::InvalidArgumentError("sequence_length must be positive");
-  // Elementwise tiles cross row boundaries. Only the total element count,
-  // checked by fwd(), needs to be a multiple of the tile width.
+  // Elementwise tiles cross row boundaries and mask the final partial tile.
   if (embedding_dim <= 0)
     return absl::InvalidArgumentError("embedding_dim must be positive");
   return absl::WrapUnique(
@@ -89,20 +89,18 @@ absl::StatusOr<FwdResult> GeluLayer::fwd_impl(cuda::Executor& executor,
       internal::ElementCount(executor, inputs[0],
                              internal::ActivationElementBytes(output_type_),
                              "GELU input"));
-  RETURN_IF_ERROR(
-      internal::ValidateTiledExtent(elements, "GELU element count"));
   ASSIGN_OR_RETURN(auto output,
                    Buffer::Allocate(executor, inputs[0].size_bytes()));
   state.intermediates = {inputs[0]};
   state.children.clear();
   if (output_type_ == DataType::BF16) {
     GeluForwardKernel<__nv_bfloat16>
-        <<<internal::TileCount(elements), 1, 0, executor.stream()>>>(
+        <<<internal::MaskedTileCount(elements), 1, 0, executor.stream()>>>(
             static_cast<const __nv_bfloat16*>(inputs[0].data()), elements,
             static_cast<__nv_bfloat16*>(output.data()));
   } else {
     GeluForwardKernel<float>
-        <<<internal::TileCount(elements), 1, 0, executor.stream()>>>(
+        <<<internal::MaskedTileCount(elements), 1, 0, executor.stream()>>>(
             static_cast<const float*>(inputs[0].data()), elements,
             static_cast<float*>(output.data()));
   }
@@ -132,13 +130,13 @@ absl::StatusOr<BufferVec> GeluLayer::bwd_impl(
       Buffer::Allocate(executor, static_cast<size_t>(elements) * sizeof(float)));
   if (output_type_ == DataType::BF16) {
     GeluBackwardKernel<__nv_bfloat16>
-        <<<internal::TileCount(elements), 1, 0, executor.stream()>>>(
+        <<<internal::MaskedTileCount(elements), 1, 0, executor.stream()>>>(
             static_cast<const __nv_bfloat16*>(state.intermediates[0].data()),
             static_cast<const float*>(output_gradients[0].data()), elements,
             static_cast<float*>(input_gradient.data()));
   } else {
     GeluBackwardKernel<float>
-        <<<internal::TileCount(elements), 1, 0, executor.stream()>>>(
+        <<<internal::MaskedTileCount(elements), 1, 0, executor.stream()>>>(
             static_cast<const float*>(state.intermediates[0].data()),
             static_cast<const float*>(output_gradients[0].data()), elements,
             static_cast<float*>(input_gradient.data()));
