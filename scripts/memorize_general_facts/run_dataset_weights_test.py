@@ -91,6 +91,35 @@ class DatasetWeightsTest(unittest.TestCase):
         self.assertTrue(all(trial["split"] == "train" for trial in plan[16:23]))
         self.assertEqual(len({trial["permutation_seed"] for trial in plan[2:]}), 21)
 
+    def test_identical_embedding_plan_is_baseline_then_exactly_three_permutations(self):
+        plan = list(experiment.identical_embedding_trial_plan())
+        self.assertEqual([trial["id"] for trial in plan],
+                         ["baseline", "rename_000_0002", "rename_000_0512", "rename_000_4474"])
+        self.assertEqual([trial["support"] for trial in plan], [0, 2, 512, 4474])
+        self.assertEqual([trial["split"] for trial in plan], ["train", "train", "test", "test"])
+        self.assertEqual([trial["permutation_seed"] for trial in plan],
+                         [0, 810002, 810512, 814474])
+
+    def test_identical_embedding_check_includes_last_eos_row(self):
+        checkpoint = self.root / "checkpoint"
+        self.checkpoint(checkpoint)
+        row = struct.pack("<10f", *[i * 0.01 for i in range(10)])
+        embedding = checkpoint / "weight_0.bin"
+        embedding.write_bytes(row * 4475)
+        experiment.check_identical_embedding_rows(checkpoint)
+        # Equal norms or approximate equality are insufficient: bitwise row
+        # identity is the initialization symmetry under study.
+        embedding.write_bytes(row * 4474 + row[:-4] + struct.pack("<f", 0.091))
+        with self.assertRaisesRegex(ValueError, "rows are not identical"):
+            experiment.check_identical_embedding_rows(checkpoint)
+
+    def test_identical_embedding_check_rejects_wrong_shape(self):
+        checkpoint = self.root / "checkpoint"
+        checkpoint.mkdir()
+        (checkpoint / "weight_0.bin").write_bytes(b"\x00" * (4474 * 10 * 4))
+        with self.assertRaisesRegex(ValueError, "embedding shape"):
+            experiment.check_identical_embedding_rows(checkpoint)
+
     def test_renaming_preserves_sentence_boundaries_and_repeated_tokens(self):
         rows = [[1, 2, 1], [2, 3], [0]]
         self.assertEqual(experiment.renamed_rows(rows, [0, 3, 1, 2]),
@@ -305,12 +334,15 @@ class DatasetWeightsTest(unittest.TestCase):
                     self.assertIn("WARNING", output.getvalue())
 
     def run_fixture(self, *, changed_initial=False, changed_input=False,
-                    training_timeout=False):
-        """Run three tiny mocked trainers but keep real file audits and hashing."""
+                    training_timeout=False, identical=False, first_memorized_step=256,
+                    baseline_final_wrong=False, missing_first_checkpoint=False,
+                    first_checkpoint_wrong=False, nonidentical_rows=False):
+        """Mock GPU execution but keep all file audits and gates real."""
         run = self.root / "run"
         rows = [[0, 1, 2, 3, 4, 5]] * 1024
         ids = list(range(4474)) + [50256]
         commands = []
+        self.commands = commands
 
         def snapshot(args):
             run.mkdir()
@@ -324,6 +356,10 @@ class DatasetWeightsTest(unittest.TestCase):
             transformed = [[int(token) for token in line.split()]
                            for line in Path(options["token_corpus"]).read_text().splitlines()]
             output = Path(options["output_dir"])
+            trial_id = Path(options["token_corpus"]).parent.name
+            wrong = baseline_final_wrong and trial_id == "baseline"
+            if output.name == "memorization_verification":
+                wrong = first_checkpoint_wrong
             if options["mode"] == "train_model":
                 if training_timeout:
                     raise subprocess.TimeoutExpired(argv, 600)
@@ -332,24 +368,34 @@ class DatasetWeightsTest(unittest.TestCase):
                 initial = checkpoints / "step_0"
                 initial_value = 1 if changed_initial and "baseline_repeat" in str(initial) else 0
                 self.checkpoint(initial, initial_value)
+                if nonidentical_rows:
+                    embedding = initial / "weight_0.bin"
+                    embedding.write_bytes(embedding.read_bytes()[:-4] + struct.pack("<f", 1))
                 final = checkpoints / "step_120000"
                 self.checkpoint(final)
+                if identical and first_memorized_step >= 0 and not missing_first_checkpoint:
+                    first = checkpoints / f"step_{first_memorized_step}"
+                    if not first.exists():
+                        self.checkpoint(first, 1)
                 output.mkdir(parents=True)
                 (output / "result.txt").write_text(
-                    "step=120000\nparameters=48680\nsuccess=1\nerrors=0\n"
-                    f"first_memorized_step=256\ncheckpoint={final}\n")
-            self.predictions(output / "final_predictions.tsv", transformed, ids)
+                    f"step=120000\nparameters=48680\nsuccess={int(not wrong)}\nerrors={int(wrong)}\n"
+                    f"first_memorized_step={first_memorized_step}\ncheckpoint={final}\n")
+            self.predictions(output / "final_predictions.tsv", transformed, ids, wrong=wrong)
             if changed_input and options["mode"] == "infer_model":
                 (run / "inputs/corpus.txt").write_text("modified after capture")
-            return 0
+            return 2 if wrong else 0
 
-        args = argparse.Namespace(run_dir=run, duration_seconds=600, max_trials=3)
+        args = argparse.Namespace(run_dir=run, duration_seconds=600,
+                                  max_trials=0 if identical else 3,
+                                  identical_token_embeddings=identical)
         with mock.patch.object(experiment, "snapshot", side_effect=snapshot):
             with mock.patch.object(experiment, "run_command", side_effect=command):
                 with mock.patch.object(experiment.subprocess, "run") as report:
                     with redirect_stdout(io.StringIO()):
                         result = experiment.run(args)
-                    completed = sum(trial["status"] == "verified" for trial in result["trials"])
+                    completed = sum(trial["status"] in ("verified", "not_memorized")
+                                    for trial in result["trials"])
                     self.assertEqual(report.call_count, completed + 1)
         return result, commands
 
@@ -373,6 +419,85 @@ class DatasetWeightsTest(unittest.TestCase):
         saved = json.loads((self.root / "run/summary.json").read_text())
         self.assertEqual(saved["status"], "complete")
         self.assertEqual(saved["trials"][2]["step"], 120000)
+
+    def test_identical_initialization_gate_then_exactly_three_training_permutations(self):
+        original_schedule = dict(experiment.SCHEDULE)
+        result, commands = self.run_fixture(identical=True)
+        self.assertEqual(result["status"], "complete")
+        self.assertTrue(result["baseline_memorization_verified"])
+        self.assertEqual(len(result["trials"]), 4)
+        training = [argv for argv in commands if "--mode=train_model" in argv]
+        self.assertEqual(len(training), 4)
+        for argv in training:
+            self.assertIn("--identical_token_embeddings=true", argv)
+            self.assertIn("--steps=120000", argv)
+            self.assertIn("--stop_when_memorized=false", argv)
+        for argv in commands:
+            if "--mode=infer_model" in argv:
+                self.assertFalse(any(arg.startswith("--identical_token_embeddings") for arg in argv))
+        self.assertTrue(result["schedule"]["identical_token_embeddings"])
+        self.assertEqual(experiment.SCHEDULE, original_schedule)
+        baseline = result["trials"][0]
+        self.assertEqual(baseline["memorization_audit"]["errors"], 0)
+        self.assertTrue(baseline["memorization_checkpoint"].endswith("/step_256"))
+        first_gate = next(i for i, argv in enumerate(commands)
+                          if any(arg.endswith("/baseline/memorization_verification") for arg in argv))
+        first_permutation = next(i for i, argv in enumerate(commands)
+                                 if any(arg.endswith("/rename_000_0002/tokens.tsv") for arg in argv))
+        self.assertLess(first_gate, first_permutation)
+
+    def test_identical_initialization_stops_if_baseline_never_memorized(self):
+        result, commands = self.run_fixture(identical=True, first_memorized_step=-1,
+                                            baseline_final_wrong=True)
+        self.assertEqual(result["status"], "baseline_not_memorized")
+        self.assertFalse(result["baseline_memorization_verified"])
+        self.assertEqual(len(result["trials"]), 1)
+        self.assertEqual(result["trials"][0]["status"], "not_memorized")
+        self.assertEqual(sum("--mode=train_model" in argv for argv in commands), 1)
+        self.assertFalse(any("rename_" in arg for argv in commands for arg in argv))
+
+    def test_early_memorization_allows_later_regression_but_keeps_fixed_endpoints(self):
+        result, commands = self.run_fixture(identical=True, baseline_final_wrong=True)
+        self.assertEqual(result["status"], "complete")
+        self.assertTrue(result["baseline_memorization_verified"])
+        baseline = result["trials"][0]
+        self.assertEqual(baseline["status"], "not_memorized")
+        self.assertEqual(baseline["audit"]["errors"], 1)
+        self.assertEqual(baseline["memorization_audit"]["errors"], 0)
+        self.assertTrue(baseline["final_checkpoint"].endswith("/step_120000"))
+        # First-perfect weights are all ones in this fixture; final weights
+        # are zeros. Symmetry comparisons must transform the latter only.
+        final_bytes = experiment.checkpoint_bytes(Path(baseline["final_checkpoint"]))
+        self.assertNotEqual(final_bytes, experiment.checkpoint_bytes(
+            Path(baseline["memorization_checkpoint"])))
+        for trial in result["trials"][1:]:
+            self.assertEqual(experiment.checkpoint_bytes(Path(trial["symmetry_checkpoint"])),
+                             final_bytes)
+        self.assertEqual(sum("--mode=train_model" in argv for argv in commands), 4)
+
+    def test_missing_first_perfect_checkpoint_prevents_permutation_training(self):
+        with self.assertRaisesRegex(ValueError, "expected exactly 52 canonical weights"):
+            self.run_fixture(identical=True, missing_first_checkpoint=True)
+        self.assertEqual(sum("--mode=train_model" in argv for argv in self.commands), 1)
+        saved = json.loads((self.root / "run/summary.json").read_text())
+        self.assertFalse(saved["baseline_memorization_verified"])
+        self.assertEqual(saved["status"], "error")
+
+    def test_first_perfect_checkpoint_is_freshly_audited_before_gate_passes(self):
+        with self.assertRaisesRegex(ValueError, "first-perfect checkpoint failed"):
+            self.run_fixture(identical=True, first_checkpoint_wrong=True)
+        self.assertEqual(sum("--mode=train_model" in argv for argv in self.commands), 1)
+        saved = json.loads((self.root / "run/summary.json").read_text())
+        self.assertFalse(saved["baseline_memorization_verified"])
+        self.assertEqual(saved["status"], "error")
+
+    def test_runner_rejects_nonidentical_initial_rows_before_memorization_gate(self):
+        with self.assertRaisesRegex(ValueError, "rows are not identical"):
+            self.run_fixture(identical=True, nonidentical_rows=True)
+        self.assertEqual(sum("--mode=train_model" in argv for argv in self.commands), 1)
+        self.assertEqual(len(self.commands), 1)
+        saved = json.loads((self.root / "run/summary.json").read_text())
+        self.assertFalse(saved["baseline_memorization_verified"])
 
     def test_run_refuses_initialization_changes_between_trials(self):
         with self.assertRaisesRegex(ValueError, "initial weights differ"):
@@ -410,6 +535,9 @@ class DatasetWeightsTest(unittest.TestCase):
         args = experiment.parse_args(base)
         self.assertEqual(args.duration_seconds, 10800)
         self.assertEqual(args.max_trials, 0)
+        self.assertFalse(args.identical_token_embeddings)
+        self.assertTrue(experiment.parse_args(base + ["--identical_token_embeddings"])
+                        .identical_token_embeddings)
         for option in ["--duration_seconds=nan", "--duration_seconds=inf",
                        "--duration_seconds=599", "--max_trials=-1"]:
             with self.subTest(option=option), redirect_stderr(io.StringIO()):

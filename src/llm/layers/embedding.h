@@ -31,7 +31,10 @@ class EmbeddingLookupLayer final : public Layer {
       DataType data_type, int sequence_length = 1, bool pad_vocabulary = true);
 
   absl::Status InitializeIdentity(float scale = 1.0f);
-  absl::Status InitializeNormal(float standard_deviation, uint64_t seed);
+  // identical_rows copies the first normally initialized row to every stored
+  // row, including padding. This changes initialization only, not weight tying.
+  absl::Status InitializeNormal(float standard_deviation, uint64_t seed,
+                                bool identical_rows = false);
 
   absl::Span<Buffer> weights() override { return absl::MakeSpan(&weight_, 1); }
   absl::Span<Buffer> gradients() override {
@@ -209,7 +212,8 @@ class EmbeddingLookupLayerReference final : public LayerReference {
       int sequence_length = 1, bool pad_vocabulary = true);
 
   absl::Status InitializeIdentity(float scale = 1.0f);
-  absl::Status InitializeNormal(float standard_deviation, uint64_t seed);
+  absl::Status InitializeNormal(float standard_deviation, uint64_t seed,
+                                bool identical_rows = false);
 
   absl::Span<HostBuffer> weights() override {
     return absl::MakeSpan(&weight_, 1);

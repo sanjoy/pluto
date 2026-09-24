@@ -39,6 +39,7 @@ constexpr FlagRule kFlagRules[] = {
     {"search", kTrain},
     {"steps", kTrain},
     {"stop_when_memorized", kTrain},
+    {"identical_token_embeddings", kTrain},
     {"eval_every", kTrain},
     {"checkpoint_every", kTrain},
     {"learning_rate", kTrain},

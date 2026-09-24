@@ -17,6 +17,24 @@
 namespace pluto::llm {
 namespace {
 
+TEST_F(LayerReferenceTest, IdenticalEmbeddingInitializationMatchesReference) {
+  for (bool padded : {false, true}) {
+    auto device = EmbeddingLookupLayer::Create(*executor_, 19, 10,
+                                               DataType::BF16, 1, padded);
+    auto reference = EmbeddingLookupLayerReference::Create(
+        19, 10, DataType::BF16, 1, padded);
+    ASSERT_TRUE(device.ok()) << device.status();
+    ASSERT_TRUE(reference.ok()) << reference.status();
+    ASSERT_TRUE((*device)->InitializeNormal(0.02f, 1337, true).ok());
+    ASSERT_TRUE((*reference)->InitializeNormal(0.02f, 1337, true).ok());
+    EXPECT_TRUE(FloatBuffersNear((*device)->weight(), (*reference)->weight(),
+                                 0.0f, 0.0f));
+    // Invalid standard deviations still reject before touching weights.
+    EXPECT_FALSE((*device)->InitializeNormal(0.0f, 1337, true).ok());
+    EXPECT_FALSE((*reference)->InitializeNormal(-1.0f, 1337, true).ok());
+  }
+}
+
 TEST_F(LayerReferenceTest, LookupAndTiedHeadMatchAcrossShapesAndTypes) {
   for (DataType type : {DataType::FP16, DataType::BF16}) {
     for (const auto [vocab, width, rows, pad_vocabulary] :

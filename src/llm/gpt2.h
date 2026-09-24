@@ -35,7 +35,8 @@ static_assert(kGpt2FeedForwardWidth == 4 * kGpt2ModelWidth);
 // dimension never silently changes another. Every attention head has width
 // model_width / attention_heads. All other architectural and initialization
 // choices, including the tied head and eight-block residual initialization
-// scaling, remain the same as the default recipe.
+// scaling, remain the same as the default recipe unless the explicit token
+// embedding initialization experiment below is enabled.
 struct Gpt2Config {
   int transformer_block_count = kGpt2TransformerBlockCount;
   int model_width = kGpt2ModelWidth;
@@ -47,6 +48,10 @@ struct Gpt2Config {
   bool pad_vocabulary = true;
   // Each batch element is one independent sequence of this many tokens.
   int context_length = kGpt2ContextLength;
+  // Initialization-only symmetry experiment: copy the seeded first token row
+  // to every stored token row, including EOS and padding. Rows remain separate
+  // trainable parameters; positions and all other tensors are unchanged.
+  bool identical_token_embeddings = false;
 
   // Checks shape and current CUDA-kernel limits without allocating memory.
   // Depth may be any nonnegative int; construction time and memory grow with

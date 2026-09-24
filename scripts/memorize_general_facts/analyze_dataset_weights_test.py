@@ -136,6 +136,72 @@ class AnalysisTest(unittest.TestCase):
         self.assertIsNone(metric["cosine"])
         self.assertEqual(metric["rmse"], 1)
 
+    def test_weight_differences_use_baseline_norm_and_strict_threshold(self):
+        reference = np.array([2.0, 0.0, 0.0, 0.0])
+        actual = np.array([2.0, .001, .0001, .0011])
+        result = analysis.weight_difference(reference, actual)
+        self.assertEqual(result["changed_parameters"], 3)
+        self.assertEqual(result["abs_gt_1e3_count"], 1)
+        self.assertAlmostEqual(result["relative_l2"], np.linalg.norm(actual - reference) / 2)
+        self.assertIsNone(analysis.weight_difference(np.zeros(2), np.ones(2))["relative_l2"])
+
+    def test_aligned_differences_identify_exact_row_permutation(self):
+        summary = self.fixture()
+        baseline, _ = analysis.read_checkpoint(self.root / "baseline", self.layout)
+        permutation = np.load(self.root / "heldout.npy")
+        renamed = analysis.align_embeddings(baseline, np.argsort(permutation), self.layout)
+        for index, tensor in enumerate(self.layout):
+            np.asarray(renamed[tensor.start:tensor.stop], dtype="<f4").tofile(
+                self.root / "heldout" / f"weight_{index}.bin")
+        report = self.analyze(summary)
+        result = next(trial for trial in report["groups"][0]["baseline_differences"]
+                      if trial["id"] == "heldout")
+        self.assertGreater(result["raw_changed_parameters"], 0)
+        self.assertEqual(result["embedding_aligned_changed_parameters"], 0)
+        self.assertEqual(result["embedding_aligned_abs_gt_1e3_count"], 0)
+        self.assertEqual(result["embedding_aligned_relative_l2"], 0)
+        self.assertTrue(all(tensor["embedding_aligned_changed_parameters"] == 0
+                            for tensor in result["tensors"]))
+
+    def test_ever_memorized_is_separate_from_fixed_endpoint(self):
+        summary = self.fixture()
+        trial = summary["trials"][3]
+        trial.update(success=False, status="not_memorized", errors=3,
+                     first_memorized_step=50, memorization_checkpoint="perfect_at_step_50",
+                     memorization_audit={"errors": 0})
+        summary["baseline_memorization_verified"] = True
+        report = self.analyze(summary)
+        result = next(trial for trial in report["groups"][0]["baseline_differences"]
+                      if trial["id"] == "heldout")
+        self.assertTrue(result["ever_memorized"])
+        self.assertTrue(result["memorization_independently_verified"])
+        self.assertFalse(result["fixed_endpoint_success"])
+        self.assertEqual(report["groups"][0]["cohorts"][1]["heldout_ids"], [])
+        self.assertIn("Fixed endpoint memorized", analysis.render_html(report))
+        self.assertIn("First perfect step", analysis.render_html(report))
+
+    def test_identical_initial_embeddings_checked_including_eos(self):
+        summary = self.fixture()
+        summary["schedule"] = {"identical_token_embeddings": True}
+        with self.assertRaisesRegex(ValueError, "unequal initial rows"):
+            self.analyze(summary)
+        embedding = np.ones(self.layout[0].shape, dtype="<f4")
+        embedding.tofile(self.root / "initial/weight_0.bin")
+        report = self.analyze(summary)
+        self.assertTrue(report["identical_token_embeddings"])
+        self.assertIn("Every initial token-embedding row", analysis.render_html(report))
+        self.assertNotIn("is not permutation-equivariant initialization", analysis.render_html(report))
+        embedding[-1, 0] += .01
+        embedding.tofile(self.root / "initial/weight_0.bin")
+        with self.assertRaisesRegex(ValueError, "unequal initial rows"):
+            self.analyze(summary)
+
+    def test_two_training_runs_do_not_tune_kernel(self):
+        tokens = np.array([[0, 1], [1, 0]])
+        predictions, settings = analysis.fit_predict(tokens, np.ones((2, 3)), np.array([[2, 0]]))
+        self.assertNotIn("hamming_kernel_ridge", predictions)
+        self.assertIn("at least three", settings["kernel_status"])
+
     def test_end_to_end_heldout_and_control(self):
         report = self.analyze(self.fixture())
         group = report["groups"][0]

@@ -71,6 +71,26 @@ def trial_plan():
                        permutation_seed=810000 + round_index * 10000 + support)
 
 
+def identical_embedding_trial_plan():
+    """One memorization-gated baseline followed by exactly three renamings."""
+    yield dict(id="baseline", support=0, split="train", permutation_seed=0)
+    for support, split in ((2, "train"), (512, "test"), (4474, "test")):
+        yield dict(id=f"rename_000_{support:04d}", support=support, split=split,
+                   permutation_seed=810000 + support)
+
+
+def check_identical_embedding_rows(checkpoint):
+    """Check every FP32 row, including EOS, without approximate comparisons."""
+    contents = (checkpoint / "weight_0.bin").read_bytes()
+    stride = MODEL["model_width"] * 4
+    if len(contents) != MODEL["vocabulary_size"] * stride:
+        raise ValueError("unexpected initial token embedding shape")
+    first = contents[:stride]
+    if any(contents[offset:offset + stride] != first
+           for offset in range(0, len(contents), stride)):
+        raise ValueError("initial token embedding rows are not identical")
+
+
 def renamed_rows(rows, mapping):
     return [[mapping[token] for token in row] for row in rows]
 
@@ -243,19 +263,25 @@ def run(args):
     root = args.run_dir
     environment = dict(os.environ, LD_LIBRARY_PATH=str(root / "bin"),
                        OPENBLAS_NUM_THREADS="1", OMP_NUM_THREADS="1")
-    fingerprint = hashlib.sha256(json.dumps(dict(model=MODEL, schedule=SCHEDULE),
+    identical = getattr(args, "identical_token_embeddings", False)
+    schedule = dict(SCHEDULE)
+    if identical:
+        schedule["identical_token_embeddings"] = True
+    fingerprint = hashlib.sha256(json.dumps(dict(model=MODEL, schedule=schedule),
                                             sort_keys=True).encode()).hexdigest()
     start = time.monotonic()
     deadline = start + args.duration_seconds
     summary = dict(status="running", started_utc=datetime.now(timezone.utc).isoformat(),
                    duration_seconds=args.duration_seconds, disk_free_bytes=free,
-                   model=MODEL, schedule=SCHEDULE, training_fingerprint=fingerprint,
+                   model=MODEL, schedule=schedule, training_fingerprint=fingerprint,
+                   baseline_memorization_verified=False,
                    hashes=hashes, base_tokens=str(root / "inputs/base_tokens.tsv"), trials=[])
     _write_summary(root / "summary.json", summary)
     baseline = None
     durations = []
     try:
-        for specification in trial_plan():
+        plan = identical_embedding_trial_plan() if identical else trial_plan()
+        for specification in plan:
             # Do not knowingly start an endpoint that cannot use the same step
             # schedule. Reserve time for audits and the final CPU report.
             estimate = max(durations, default=390) * 1.12 + 30
@@ -287,7 +313,7 @@ def run(args):
             command = common_flags(root) + ["--mode=train_model",
                 f"--token_corpus={token_file}", f"--checkpoint_dir={directory / 'checkpoints'}",
                 f"--output_dir={directory / 'training'}"]
-            command.extend(f"--{key}={str(value).lower()}" for key, value in SCHEDULE.items())
+            command.extend(f"--{key}={str(value).lower()}" for key, value in schedule.items())
             (directory / "command.json").write_text(json.dumps(command, indent=2) + "\n")
             code = run_command(command, directory / "train.log", deadline=deadline - 30,
                                environment=environment)
@@ -299,6 +325,8 @@ def run(args):
             final = Path(result["checkpoint"])
             initial = directory / "checkpoints/layers_4/step_0"
             initial_bytes = checkpoint_bytes(initial)
+            if identical:
+                check_identical_embedding_rows(initial)
             checkpoint_bytes(final)
             trial.update(initial_checkpoint=str(initial), final_checkpoint=str(final),
                          initial_sha256=hashlib.sha256(initial_bytes).hexdigest(),
@@ -315,6 +343,24 @@ def run(args):
             if audit["errors"] != trial["errors"] or audit != native_audit:
                 raise ValueError("fresh verification disagrees with training checkpoint")
             trial["audit"] = audit
+            if identical and trial["first_memorized_step"] >= 0:
+                # Continue comparing fixed120k endpoints even if accuracy later
+                # regresses. The separately saved first-perfect checkpoint is
+                # the evidence for the requested memorization gate.
+                memorized = directory / ("checkpoints/layers_4/step_" +
+                                         str(trial["first_memorized_step"]))
+                checkpoint_bytes(memorized)
+                memorization_audit = verify_trial(
+                    root, trial, transformed, original_ids, environment,
+                    deadline - 15, memorized, "memorization_verification")
+                if memorization_audit["errors"]:
+                    raise ValueError("first-perfect checkpoint failed fresh memorization audit")
+                trial["memorization_checkpoint"] = str(memorized)
+                trial["memorization_audit"] = memorization_audit
+                if trial["id"] == "baseline":
+                    summary["baseline_memorization_verified"] = True
+                    print("MEMORIZATION_GATE_PASSED baseline step=" +
+                          str(trial["first_memorized_step"]), flush=True)
             if baseline is None:
                 baseline = trial
             if trial["id"] == "baseline_repeat":
@@ -335,7 +381,13 @@ def run(args):
             _write_summary(root / "summary.json", summary)
             print(f"DONE {trial['id']} errors={trial['errors']} seconds={trial['seconds']:.1f}", flush=True)
             update_report(root, environment)
-        summary["status"] = "complete"
+            if identical and trial["id"] == "baseline" and not summary[
+                    "baseline_memorization_verified"]:
+                summary["status"] = "baseline_not_memorized"
+                print("STOP: baseline did not memorize; no permutations launched", flush=True)
+                break
+        if summary["status"] == "running":
+            summary["status"] = "complete"
     except subprocess.TimeoutExpired:
         summary["status"] = "deadline_reached"
         if summary["trials"] and summary["trials"][-1]["status"] == "running":
@@ -361,6 +413,9 @@ def parse_args(argv=None):
     parser.add_argument("--duration_seconds", type=float, default=10800)
     parser.add_argument("--max_trials", type=int, default=0,
                         help="Optional test cap; zero runs until the deadline")
+    parser.add_argument("--identical_token_embeddings", action="store_true",
+                        help="Repeat one initial token embedding row; first verify baseline "
+                             "memorization, then run exactly three fixed permutations")
     args = parser.parse_args(argv)
     if not math.isfinite(args.duration_seconds) or args.duration_seconds < 600:
         parser.error("duration_seconds must be finite and at least 600")

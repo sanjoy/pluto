@@ -118,6 +118,7 @@ TEST_F(MemorizeGeneralFactsDefaultsTest, DefaultsMatchSmallestMemorizedModel) {
       {"batch_size", "32"},
       {"steps", "120000"},
       {"stop_when_memorized", "true"},
+      {"identical_token_embeddings", "false"},
       {"token_corpus", "\"\""},
       {"learning_rate", "0.0012"},
       {"eval_every", "256"},

@@ -139,6 +139,7 @@ TEST(Gpt2ConfigTest, DefaultsAndSupportedWidths) {
   EXPECT_EQ(defaults.vocabulary_size, 50257);
   EXPECT_TRUE(defaults.pad_vocabulary);
   EXPECT_EQ(defaults.context_length, 1024);
+  EXPECT_FALSE(defaults.identical_token_embeddings);
   EXPECT_TRUE(defaults.Validate().ok());
 
   for (int width : {16, 32, 48, 64, 96, 128, 256, 512}) {
@@ -537,6 +538,75 @@ TEST_F(Gpt2Test, ShortContextForwardAndBackwardRepeatWithFixedSeed) {
                                 [](float value) { return value != 0.0f; }));
       }
     }
+  }
+}
+
+TEST_F(Gpt2Test, IdenticalTokenRowsOnlyChangeEmbeddingInitialization) {
+  for (bool pad_vocabulary : {false, true}) {
+    SCOPED_TRACE(pad_vocabulary);
+    Gpt2Config config{.transformer_block_count = 2,
+                      .model_width = 10,
+                      .attention_heads = 1,
+                      .feed_forward_width = 20,
+                      .vocabulary_size = 19,
+                      .pad_vocabulary = pad_vocabulary,
+                      .context_length = 7};
+    auto normal = CreateGpt2(*executor_, DataType::BF16, 1337, config);
+    ASSERT_TRUE(normal.ok()) << normal.status();
+    config.identical_token_embeddings = true;
+    auto identical = CreateGpt2(*executor_, DataType::BF16, 1337, config);
+    auto prefix =
+        CreateActivationGenerator(*executor_, config, DataType::BF16, 1337);
+    ASSERT_TRUE(identical.ok()) << identical.status();
+    ASSERT_TRUE(prefix.ok()) << prefix.status();
+    const auto normal_weights = (*normal)->weights();
+    const auto identical_weights = (*identical)->weights();
+    ASSERT_EQ(normal_weights.size(), identical_weights.size());
+    // Position embeddings, both blocks, and the final norm are bit-identical.
+    // The last handle is the tied LM head, an alias of the first table.
+    for (size_t i = 1; i + 1 < normal_weights.size(); ++i)
+      ExpectBuffersEqual(normal_weights[i], identical_weights[i]);
+    ASSERT_EQ(identical_weights.front().data(),
+              identical_weights.back().data());
+    for (size_t i = 0; i < (*prefix)->weights().size(); ++i)
+      ExpectBuffersEqual(identical_weights[i], (*prefix)->weights()[i]);
+
+    const int rows = pad_vocabulary ? 32 : 19;
+    auto normal_values = cuda::PageLockedHostArray<float>::Allocate(
+        *executor_, rows * config.model_width);
+    auto identical_values = cuda::PageLockedHostArray<float>::Allocate(
+        *executor_, rows * config.model_width);
+    ASSERT_TRUE(normal_values.ok()) << normal_values.status();
+    ASSERT_TRUE(identical_values.ok()) << identical_values.status();
+    ASSERT_EQ(identical_weights.front().size_bytes(),
+              identical_values->size_bytes());
+    ASSERT_EQ(cudaMemcpyAsync(normal_values->data(), normal_weights[0].data(),
+                              normal_values->size_bytes(),
+                              cudaMemcpyDeviceToHost, executor_->stream()),
+              cudaSuccess);
+    ASSERT_EQ(
+        cudaMemcpyAsync(identical_values->data(), identical_weights[0].data(),
+                        identical_values->size_bytes(), cudaMemcpyDeviceToHost,
+                        executor_->stream()),
+        cudaSuccess);
+    ASSERT_TRUE(executor_->Synchronize().ok());
+    bool varied_coordinates = false;
+    bool normal_rows_differ = false;
+    for (int row = 0; row < rows; ++row) {
+      for (int col = 0; col < config.model_width; ++col) {
+        // Include the last real token (EOS in the compact experiment) and
+        // every padding row, rather than treating either as a special zero.
+        EXPECT_EQ((*identical_values)[row * config.model_width + col],
+                  (*normal_values)[col]);
+        EXPECT_TRUE(std::isfinite((*normal_values)[col]));
+        varied_coordinates |= (*normal_values)[col] != (*normal_values)[0];
+        normal_rows_differ |=
+            (*normal_values)[row * config.model_width + col] !=
+            (*normal_values)[col];
+      }
+    }
+    EXPECT_TRUE(varied_coordinates);
+    EXPECT_TRUE(normal_rows_differ);
   }
 }
 

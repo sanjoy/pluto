@@ -87,6 +87,31 @@ driver audits that control on every renamed corpus. It does **not** imply that
 training from the same unpermuted random initialization produces those exact
 weights; testing that difference is the point of the experiment.
 
+### Identical-token-embedding control
+
+Add `--identical_token_embeddings` to the driver to replace the long sweep with
+one baseline and exactly three permutations (2, 512, and 4,474 renamed labels).
+Every token embedding row, including EOS, starts as the same seeded random
+vector: the ordinary initialization's first row. Position embeddings and all
+other parameters are unchanged. Rows remain independently trainable, and the
+language-modeling head remains tied to the token table. This is not a constraint
+forcing the embeddings to remain equal throughout training.
+
+All four runs retain the same 120,000-step schedule. Before any renamed run is
+started, the driver requires a freshly reloaded, independently audited baseline
+checkpoint with zero suffix/EOS errors. The native trainer saves its first
+perfect checkpoint even when fixed-schedule training continues; this is checked
+separately from the final120k endpoint. If the baseline never memorizes, the
+driver stops with `baseline_not_memorized` and does not launch permutations.
+The initial checkpoint is also checked to contain byte-identical embedding rows.
+
+In exact arithmetic this initialization is invariant under token renaming, so
+training should be permutation-equivariant: the renamed model's embedding rows
+should permute and its other weights should agree. Floating-point reductions
+need not be bitwise permutation-equivariant. Any observed deviations therefore
+test numerical training-trajectory sensitivity, not a change in the facts or
+a different initial embedding assigned to each token.
+
 ## Sweep and report
 
 Choose fresh artifact and checkpoint directories for each search. The driver

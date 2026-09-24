@@ -95,6 +95,9 @@ ABSL_FLAG(int, batch_size, 32, "Independent padded sentences per batch");
 ABSL_FLAG(int, steps, 120000, "Maximum optimizer steps per depth");
 ABSL_FLAG(bool, stop_when_memorized, true,
           "Stop at exact memorization; disable for fixed-length experiments");
+ABSL_FLAG(bool, identical_token_embeddings, false,
+          "Initialize every token embedding to the same seeded nonzero vector; "
+          "rows remain independently trainable");
 ABSL_FLAG(int, eval_every, 256, "Full-corpus exact evaluation interval");
 ABSL_FLAG(int, checkpoint_every, 512, "Periodic checkpoint interval");
 ABSL_FLAG(int, seed, 1337, "Initialization and shuffle seed");
@@ -141,6 +144,7 @@ absl::StatusOr<Mode> RunModeFromFlags() {
   AddIfExplicitlySet(FLAGS_batch_size, &explicitly_set);
   AddIfExplicitlySet(FLAGS_steps, &explicitly_set);
   AddIfExplicitlySet(FLAGS_stop_when_memorized, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_identical_token_embeddings, &explicitly_set);
   AddIfExplicitlySet(FLAGS_eval_every, &explicitly_set);
   AddIfExplicitlySet(FLAGS_checkpoint_every, &explicitly_set);
   AddIfExplicitlySet(FLAGS_seed, &explicitly_set);
@@ -180,7 +184,9 @@ Gpt2Config ModelConfiguration(int layers, int vocabulary_size) {
           .feed_forward_width = absl::GetFlag(FLAGS_feed_forward_width),
           .vocabulary_size = vocabulary_size,
           .pad_vocabulary = !absl::GetFlag(FLAGS_compact_vocabulary),
-          .context_length = absl::GetFlag(FLAGS_context_length)};
+          .context_length = absl::GetFlag(FLAGS_context_length),
+          .identical_token_embeddings =
+              absl::GetFlag(FLAGS_identical_token_embeddings)};
 }
 
 // The mapping is part of a compact checkpoint's meaning, not merely a training
@@ -429,6 +435,8 @@ absl::StatusOr<bool> TrainUntilMemorized(
            << "\nbatch_size=" << options.batch_size
            << "\nmax_steps=" << absl::GetFlag(FLAGS_steps)
            << "\nstop_when_memorized=" << absl::GetFlag(FLAGS_stop_when_memorized)
+           << "\nidentical_token_embeddings="
+           << model_config.identical_token_embeddings
            << "\npeak_learning_rate=" << absl::GetFlag(FLAGS_learning_rate)
            << "\nwarmup_steps=" << absl::GetFlag(FLAGS_warmup_steps)
            << "\neval_every=" << absl::GetFlag(FLAGS_eval_every)
@@ -512,8 +520,15 @@ absl::StatusOr<bool> TrainUntilMemorized(
                        EvaluateExact(executor, *model, *loss, *evaluation,
                                      tokenizer.vocab_size(), vocabulary));
       report(step, metrics);
-      if (metrics.errors == 0 && first_memorized_step < 0)
+      if (metrics.errors == 0 && first_memorized_step < 0) {
         first_memorized_step = step;
+        // Fixed schedules may regress after first reaching exact accuracy.
+        // Preserve that first successful model for an independent audit even
+        // when it falls between periodic checkpoints; training still continues.
+        if (!absl::GetFlag(FLAGS_stop_when_memorized))
+          RETURN_IF_ERROR(
+              save_checkpoint(checkpoints / absl::StrCat("step_", step)));
+      }
     }
     if (step % absl::GetFlag(FLAGS_checkpoint_every) == 0)
       RETURN_IF_ERROR(

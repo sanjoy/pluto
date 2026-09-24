@@ -76,8 +76,15 @@ absl::Status EmbeddingLookupLayerReference::InitializeIdentity(float scale) {
 }
 
 absl::Status EmbeddingLookupLayerReference::InitializeNormal(
-    float standard_deviation, uint64_t seed) {
-  return InitializeBufferNormal(&weight_, standard_deviation, seed);
+    float standard_deviation, uint64_t seed, bool identical_rows) {
+  RETURN_IF_ERROR(InitializeBufferNormal(&weight_, standard_deviation, seed));
+  if (identical_rows) {
+    auto* values = static_cast<float*>(weight_.data());
+    for (int row = 1; row < stored_vocab_size_; ++row)
+      std::copy_n(values, embedding_dim_,
+                  values + static_cast<size_t>(row) * embedding_dim_);
+  }
+  return absl::OkStatus();
 }
 
 absl::StatusOr<ReferenceFwdResult> EmbeddingLookupLayerReference::fwd_impl(

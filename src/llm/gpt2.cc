@@ -112,8 +112,9 @@ absl::StatusOr<EmbeddingLookupLayer*> AddActivationGeneratorLayers(
       executor, config.vocabulary_size, config.model_width, output_type,
       config.context_length, config.pad_vocabulary)));
   auto* embedding = static_cast<EmbeddingLookupLayer*>(builder.back());
-  RETURN_IF_ERROR(embedding->InitializeNormal(kInitializationStandardDeviation,
-                                              static_cast<uint64_t>(seed)));
+  RETURN_IF_ERROR(embedding->InitializeNormal(
+      kInitializationStandardDeviation, static_cast<uint64_t>(seed),
+      config.identical_token_embeddings));
 
   RETURN_IF_ERROR(builder.add(PositionEmbeddingLayer::Create(
       executor, config.context_length, config.model_width, output_type)));

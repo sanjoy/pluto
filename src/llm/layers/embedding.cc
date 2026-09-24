@@ -401,7 +401,8 @@ __tile_global__ void PositionEmbeddingBackwardKernel(
 
 absl::Status CopyNormalInitialization(cuda::Executor& executor, Buffer& weight,
                                       float standard_deviation, uint64_t seed,
-                                      const char* operation) {
+                                      const char* operation,
+                                      size_t repeated_row_width = 0) {
   if (!(standard_deviation > 0.0f)) {
     return absl::InvalidArgumentError(
         "initialization standard deviation must be positive");
@@ -411,8 +412,14 @@ absl::Status CopyNormalInitialization(cuda::Executor& executor, Buffer& weight,
   ASSIGN_OR_RETURN(auto values,
                    cuda::PageLockedHostArray<float>::Allocate(
                        executor, weight.size_bytes() / sizeof(float)));
-  for (float& value : values)
-    value = distribution(random);
+  // With repeated rows, draw exactly the same first row as ordinary normal
+  // initialization and copy it in pinned CPU storage before the single upload.
+  // No zero vector or permanent sharing is introduced by this experiment.
+  const size_t random_count =
+      repeated_row_width == 0 ? values.size() : repeated_row_width;
+  for (size_t index = 0; index < values.size(); ++index)
+    values[index] = index < random_count ? distribution(random)
+                                        : values[index % repeated_row_width];
   RETURN_IF_ERROR(cuda::CudaStatus(
       cudaMemcpyAsync(weight.data(), values.data(), weight.size_bytes(),
                       cudaMemcpyHostToDevice, executor.stream()),
@@ -488,9 +495,11 @@ absl::Status EmbeddingLookupLayer::InitializeIdentity(float scale) {
 }
 
 absl::Status EmbeddingLookupLayer::InitializeNormal(float standard_deviation,
-                                                    uint64_t seed) {
+                                                    uint64_t seed,
+                                                    bool identical_rows) {
   return CopyNormalInitialization(executor_, weight_, standard_deviation, seed,
-                                  "cudaMemcpyAsync(normal embedding)");
+                                  "cudaMemcpyAsync(normal embedding)",
+                                  identical_rows ? embedding_dim_ : 0);
 }
 
 absl::StatusOr<FwdResult> EmbeddingLookupLayer::fwd_impl(

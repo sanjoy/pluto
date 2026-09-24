@@ -124,6 +124,7 @@ TEST(MemorizeGeneralFactsCliTest, FiltersEveryFlagByExecutionPath) {
       {"search", true, false, false},
       {"steps", true, false, false},
       {"stop_when_memorized", true, false, false},
+      {"identical_token_embeddings", true, false, false},
       {"eval_every", true, false, false},
       {"checkpoint_every", true, false, false},
       {"learning_rate", true, false, false},

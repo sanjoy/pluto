@@ -125,6 +125,36 @@ def metrics(target, prediction):
     }
 
 
+def weight_difference(reference, observed):
+    """Compare FP32 parameter values, not bytes or training-update vectors.
+
+    Exact changes use numeric inequality (positive and negative zero compare
+    equal). The second count applies a strict absolute threshold of 0.001.
+    Relative L2 divides by the reference checkpoint's norm, not the norm of a
+    training delta, so it answers a different question from prediction NRMSE.
+    """
+    difference = np.asarray(observed) - np.asarray(reference)
+    norm = float(np.linalg.norm(reference))
+    distance = float(np.linalg.norm(difference))
+    return {"l2": distance, "relative_l2": distance / norm if norm else None,
+            "reference_l2": norm,
+            "changed_parameters": int(np.count_nonzero(difference)),
+            "abs_gt_1e3_count": int(np.count_nonzero(np.abs(difference) > .001))}
+
+
+def memorization_summary(trial):
+    """A once-perfect model may no longer be perfect at the fixed endpoint."""
+    first = trial.get("first_memorized_step")
+    ever = bool(first > 0) if first is not None else (True if trial["success"] else None)
+    audit = trial.get("memorization_audit")
+    verified = bool(trial.get("memorization_checkpoint") and isinstance(audit, dict)
+                    and audit.get("errors") == 0)
+    return {"ever_memorized": ever, "first_memorized_step": first,
+            "memorization_checkpoint": trial.get("memorization_checkpoint"),
+            "memorization_independently_verified": verified,
+            "fixed_endpoint_success": trial["success"]}
+
+
 def kernel_weights(train_distances, query_distances, bandwidth, ridge):
     """Kernel ridge with an unpenalized constant mean (universal kriging).
 
@@ -242,6 +272,7 @@ def analyze(summary_path):
     summary = json.loads(summary_path.read_text())
     layout = tensor_layout(summary["model"])
     vocabulary = summary["model"]["vocabulary_size"]
+    identical_embeddings = bool(summary.get("schedule", {}).get("identical_token_embeddings", False))
     groups, skipped, seen_ids = {}, [], set()
     cache = {}
 
@@ -277,6 +308,10 @@ def analyze(summary_path):
         if trial["tokens"].max() >= vocabulary:
             raise ValueError("corpus token outside model vocabulary")
         trial["initial"], initial_hash = checkpoint(trial["initial_checkpoint"])
+        if identical_embeddings:
+            embedding = trial["initial"][:layout[0].stop].reshape(layout[0].shape)
+            if not np.all(embedding == embedding[0]):
+                raise ValueError("identical-token-embedding experiment has unequal initial rows")
         trial["weights"], trial["final_sha256"] = checkpoint(trial["final_checkpoint"])
         if trial.get("parameters", layout[-1].stop) != layout[-1].stop:
             raise ValueError("trial parameter count disagrees with model")
@@ -287,16 +322,24 @@ def analyze(summary_path):
 
     report = {"model": summary["model"], "parameters": layout[-1].stop,
               "source_summary": str(summary_path), "skipped": skipped, "groups": [],
+              "identical_token_embeddings": identical_embeddings,
+              "baseline_memorization_verified": summary.get("baseline_memorization_verified"),
               "limitations": [
                   "A few dozen samples cannot identify an unrestricted function from datasets to weights.",
                   "Vocabulary renamings preserve every sentence's structure; this does not test learning arbitrary new facts.",
                   "Token IDs are categorical; Hamming distance ignores the numerical label values.",
                   "All regression metrics concern training deltas, not raw weights dominated by initialization.",
                   "Only predetermined held-out endpoints test generalization; tuning uses training runs only.",
-                  "Same seed with renamed data is not permutation-equivariant initialization.",
+                  ("Every initial token-embedding row, including EOS, is identical and checked; "
+                   "vocabulary renaming therefore preserves initialization. Finite-precision "
+                   "reductions can still break exact training-trajectory equivariance."
+                   if identical_embeddings else
+                   "Same seed with renamed data is not permutation-equivariant initialization."),
                   "Low parameter error does not establish correct generated completions; native evaluation is separate.",
                   "Observed low rank is bounded by the number of training runs, not an intrinsic-dimension proof.",
                   "All, memorized-only, and unmemorized-only cohorts are reported separately; endpoint selection is observational.",
+                  "Memorized cohorts refer to the fixed endpoint. First reaching perfect accuracy "
+                  "and retaining it through the endpoint are separate observations.",
               ]}
     for key, trials in groups.items():
         family, step, initial_hash, fingerprint, _ = key
@@ -327,22 +370,23 @@ def analyze(summary_path):
                     raise ValueError("corpus does not match declared token permutation")
                 differences = {"id": trial["id"], "success": trial["success"],
                                "errors": trial.get("errors"),
+                               **memorization_summary(trial),
                                "symmetry_errors": trial.get("symmetry_errors"),
                                "token_fraction_changed": float(np.mean(
                                    trial["tokens"] != baseline["tokens"])),
-                               "raw_l2": float(np.linalg.norm(
-                                   trial["weights"] - baseline["weights"]))}
+                               **{f"raw_{name}": value for name, value in
+                                  weight_difference(baseline["weights"], trial["weights"]).items()}}
                 if permutation is not None:
                     aligned = align_embeddings(trial["weights"], permutation, layout)
-                    differences["embedding_aligned_l2"] = float(np.linalg.norm(
-                        aligned - baseline["weights"]))
+                    differences.update({f"embedding_aligned_{name}": value for name, value in
+                                        weight_difference(baseline["weights"], aligned).items()})
                     differences["tensors"] = [{"name": tensor.name, "shape": tensor.shape,
-                        "raw_l2": float(np.linalg.norm(
-                            trial["weights"][tensor.start:tensor.stop] -
-                            baseline["weights"][tensor.start:tensor.stop])),
-                        "embedding_aligned_l2": float(np.linalg.norm(
-                            aligned[tensor.start:tensor.stop] -
-                            baseline["weights"][tensor.start:tensor.stop]))}
+                        **{f"raw_{name}": value for name, value in weight_difference(
+                            baseline["weights"][tensor.start:tensor.stop],
+                            trial["weights"][tensor.start:tensor.stop]).items()},
+                        **{f"embedding_aligned_{name}": value for name, value in weight_difference(
+                            baseline["weights"][tensor.start:tensor.stop],
+                            aligned[tensor.start:tensor.stop]).items()}}
                         for tensor in layout]
                 group["baseline_differences"].append(differences)
 
@@ -420,6 +464,9 @@ def render_html(report):
              "renaming; it does not align arbitrary hidden-unit symmetries.</p><ul>"]
     parts.extend(f"<li>{escape(item)}</li>" for item in report["limitations"])
     parts.append("</ul>")
+    if report["baseline_memorization_verified"] is not None:
+        parts.append("<p>Baseline memorization independently verified before permutations: "
+                     f"{escape(report['baseline_memorization_verified'])}.</p>")
     for group in report["groups"]:
         parts.append(f"<h2>{escape(group['family'])}, step {group['step']:,}</h2>")
         for control in group["controls"]:
@@ -431,26 +478,44 @@ def render_html(report):
             parts.append("<h3>Differences from the trained identity-corpus baseline</h3>"
                          "<p>These are measured weight distances, not prediction/generalization scores. "
                          "Symmetry errors evaluate an exactly row-permuted baseline checkpoint, "
-                         "not weights learned from the renamed corpus.</p><table><tr><th>Run</th>"
-                         "<th>Memorized</th><th>Token positions changed</th><th>Raw weight L2</th>"
-                         "<th>Embedding-aligned weight L2</th><th>Symmetry errors</th></tr>")
+                         "not weights learned from the renamed corpus. Relative aligned L2 divides "
+                         "by the norm of the baseline's final weights. Exact changes count unequal "
+                         "numeric values; the threshold count requires an absolute change greater "
+                         "than 0.001.</p><table><tr><th>Run</th><th>Fixed endpoint memorized</th>"
+                         "<th>First perfect step</th><th>Memorization checkpoint audited</th>"
+                         "<th>Token positions changed</th><th>Raw weight L2</th>"
+                         "<th>Aligned weight L2</th><th>Relative aligned L2</th>"
+                         "<th>Aligned exact changes</th><th>Aligned changes &gt; 0.001</th>"
+                         "<th>Symmetry errors</th></tr>")
             for trial in group["baseline_differences"]:
                 parts.append(f"<tr><td>{escape(trial['id'])}</td><td>{trial['success']}</td>"
+                             f"<td>{escape(trial['first_memorized_step'])}</td>"
+                             f"<td>{trial['memorization_independently_verified']}</td>"
                              f"<td>{trial['token_fraction_changed']:.2%}</td>"
                              f"<td>{trial['raw_l2']:.6g}</td>"
                              f"<td>{number(trial.get('embedding_aligned_l2'))}</td>"
+                             f"<td>{number(trial.get('embedding_aligned_relative_l2'))}</td>"
+                             f"<td>{escape(trial.get('embedding_aligned_changed_parameters'))}</td>"
+                             f"<td>{escape(trial.get('embedding_aligned_abs_gt_1e3_count'))}</td>"
                              f"<td>{escape(trial['symmetry_errors'])}</td></tr>")
             parts.append("</table>")
             parts.append("<details><summary>Weight differences by tensor</summary>")
             for trial in group["baseline_differences"]:
                 parts.append(f"<details><summary>{escape(trial['id'])}</summary><table>"
                              "<tr><th>Tensor</th><th>Shape</th><th>Raw L2 difference</th>"
-                             "<th>Embedding-aligned L2 difference</th></tr>")
+                             "<th>Aligned L2 difference</th><th>Relative aligned L2</th>"
+                             "<th>Raw exact changes</th><th>Aligned exact changes</th>"
+                             "<th>Raw changes &gt; 0.001</th><th>Aligned changes &gt; 0.001</th></tr>")
                 for tensor in trial.get("tensors", []):
                     parts.append(f"<tr><td>{escape(tensor['name'])}</td>"
                                  f"<td>{escape(tensor['shape'])}</td>"
                                  f"<td>{tensor['raw_l2']:.6g}</td>"
-                                 f"<td>{tensor['embedding_aligned_l2']:.6g}</td></tr>")
+                                 f"<td>{tensor['embedding_aligned_l2']:.6g}</td>"
+                                 f"<td>{number(tensor['embedding_aligned_relative_l2'])}</td>"
+                                 f"<td>{tensor['raw_changed_parameters']}</td>"
+                                 f"<td>{tensor['embedding_aligned_changed_parameters']}</td>"
+                                 f"<td>{tensor['raw_abs_gt_1e3_count']}</td>"
+                                 f"<td>{tensor['embedding_aligned_abs_gt_1e3_count']}</td></tr>")
                 parts.append("</table></details>")
             parts.append("</details>")
         for cohort in group["cohorts"]:
@@ -476,7 +541,7 @@ def render_html(report):
                 for name, prediction in result["predictions"].items():
                     parts.append(f"<details><summary>{escape(name)}: per-run and tensor detail</summary>")
                     for trial in prediction["trials"]:
-                        parts.append(f"<details><summary>{escape(trial['id'])}, memorized="
+                        parts.append(f"<details><summary>{escape(trial['id'])}, fixed endpoint memorized="
                                      f"{trial['success']}, errors={escape(trial['errors'])}, "
                                      f"normalized RMSE={number(trial['overall']['normalized_rmse'])}"
                                      "</summary><table><tr><th>Tensor</th><th>Shape</th>"
