@@ -23,6 +23,22 @@ cc_library(
         "mlp_2.cc",
         "mlp_3.cc",
         "model.cc",
+        "state_vectors.cc",
+        "state_vectors.h",
+        "state_vectors_0.cc",
+        "state_vectors_1.cc",
+        "state_vectors_10.cc",
+        "state_vectors_11.cc",
+        "state_vectors_12.cc",
+        "state_vectors_13.cc",
+        "state_vectors_2.cc",
+        "state_vectors_3.cc",
+        "state_vectors_4.cc",
+        "state_vectors_5.cc",
+        "state_vectors_6.cc",
+        "state_vectors_7.cc",
+        "state_vectors_8.cc",
+        "state_vectors_9.cc",
         "tables.h",
         "vocabulary.cc",
     ],
@@ -63,6 +79,7 @@ cc_binary(
     name = "discretized_model",
     srcs = ["//src/llm/experiments/memorize_general_facts/discretized_model:main.cc"],
     deps = [":cli_support", ":model", ":prompt_encoder", ":verification", "//src/llm/experiments/memorize_general_facts/discretized_model:runtime"],
+    visibility = ["//src/llm/experiments/memorize_general_facts/discretized_model:__pkg__"],
 )
 cc_test(
     name = "generated_model_test",
@@ -75,4 +92,10 @@ cc_test(
     name = "generated_transition_test",
     srcs = ["generated_transition_test.cc"],
     deps = [":model", ":vocabulary_tokens", "//src/llm/experiments/memorize_general_facts/discretized_model:runtime", "@googletest//:gtest_main"],
+)
+
+cc_test(
+    name = "state_vectors_test",
+    srcs = ["state_vectors_test.cc"],
+    deps = [":model", "//src/llm/experiments/memorize_general_facts/discretized_model:runtime", "@googletest//:gtest_main"],
 )

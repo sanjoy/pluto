@@ -23,7 +23,8 @@ struct ExecutionSample {
 // Validation does not claim that the supplied model completes its corpus.
 absl::Status ValidateModel(const CapturedModel& model);
 // Interns exact BF16 boundary vectors into purely symbolic observations. When
-// requested, vector_hints receives representative vectors on success only.
+// requested, vector_hints receives every original state's exact vector on
+// success only. Singleton original memberships survive subsequent renaming.
 absl::StatusOr<CapturedModel> BuildModel(
     const ModelMetadata& metadata, const std::vector<ExecutionSample>& samples,
     int expected_samples = -1, StateVectorHints* vector_hints = nullptr);

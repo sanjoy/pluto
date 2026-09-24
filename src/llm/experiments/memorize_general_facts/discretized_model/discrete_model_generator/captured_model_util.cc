@@ -307,7 +307,10 @@ absl::StatusOr<CapturedModel> BuildModel(
         auto [iterator, inserted] =
             intern[stage].emplace(bits, vocab + result.states.size());
         if (inserted) {
-          result.states.push_back({iterator->second, stage, std::nullopt});
+          // Keep original identity even if code generation relabels without
+          // first compacting. Archive keys must never become current IDs.
+          result.states.push_back(
+              {iterator->second, stage, std::vector<int>{iterator->second}});
           if (vector_hints != nullptr)
             hints.emplace(iterator->second, bits);
         }
@@ -354,6 +357,8 @@ absl::StatusOr<CapturedModel> BuildModel(
   result.stats.captured_samples = result.samples.size();
   result.stats.scored_targets = targets;
   result.stats.exact_states = result.states.size();
+  result.stats.membership_complete = true;
+  result.stats.membership_original_states = result.states.size();
   result.stats.states = result.states.size();
   result.stats.states_per_stage.resize(2 * layers + 1);
   for (const auto& state : result.states)

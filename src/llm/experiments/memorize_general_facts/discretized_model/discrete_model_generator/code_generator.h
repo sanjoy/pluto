@@ -9,6 +9,7 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "src/llm/experiments/memorize_general_facts/discretized_model/discrete_model_generator/captured_model.h"
+#include "src/llm/experiments/memorize_general_facts/discretized_model/discrete_model_generator/captured_state_vectors.h"
 
 namespace pluto::llm::discretized::generator {
 
@@ -19,9 +20,12 @@ using FileMap = std::map<std::string, std::string>;
 
 // Validate the source model and render CPU-only C++ with separate inference,
 // prompt-encoding, and test-only corpus-verification targets.
-absl::StatusOr<FileMap> RenderModel(const CapturedModel& model,
-                                    bool include_state_index = false,
-                                    bool compact_transitions = false);
+// When supplied, vectors must contain exactly the original states identified
+// by model.states[*].members. They populate print_state, not inference logic.
+absl::StatusOr<FileMap> RenderModel(
+    const CapturedModel& model, bool include_state_index = false,
+    bool compact_transitions = false,
+    const CapturedStateVectors* vectors = nullptr);
 
 // Publish a fresh directory atomically. Existing paths, including dangling
 // symlinks and empty directories, are never replaced.
@@ -30,6 +34,7 @@ absl::Status PublishFiles(const FileMap& files,
 absl::Status EmitModel(const CapturedModel& model,
                        const std::filesystem::path& destination,
                        bool include_state_index = false,
-                       bool compact_transitions = false);
+                       bool compact_transitions = false,
+                       const CapturedStateVectors* vectors = nullptr);
 
 }  // namespace pluto::llm::discretized::generator

@@ -21,6 +21,7 @@
 #include "absl/strings/str_split.h"
 #include "src/llm/experiments/memorize_general_facts/discretized_model/discrete_model_generator/captured_model_util.h"
 #include "src/llm/experiments/memorize_general_facts/discretized_model/discrete_model_generator/layer_codegen.h"
+#include "src/llm/experiments/memorize_general_facts/discretized_model/discrete_model_generator/state_vector_codegen.h"
 #include "src/llm/experiments/memorize_general_facts/discretized_model/discrete_model_generator/utils.h"
 #include "src/util/status_macros.h"
 
@@ -136,7 +137,7 @@ std::string RenderVerification(const CapturedModel& model,
   return "#include <ostream>\n" + Source(body, "\"cli_support.h\"", "", true);
 }
 
-std::string RenderBuild(int layers, bool compact) {
+std::string RenderBuild(int layers, bool compact, const FileMap& vector_files) {
   std::vector<std::string> sources = {"entry.cc", "model.cc",
                                       "language_modeling_head.cc",
                                       "vocabulary.cc", "tables.h"};
@@ -144,6 +145,9 @@ std::string RenderBuild(int layers, bool compact) {
     sources.push_back(absl::StrCat("attention_", block, ".cc"));
     sources.push_back(absl::StrCat("mlp_", block, ".cc"));
   }
+  for (const auto& [name, content] : vector_files)
+    if (!name.ends_with("_test.cc"))
+      sources.push_back(name);
   std::sort(sources.begin(), sources.end());
   std::string text =
       R"build(# Generated ordinary C++ targets; no build-time generation or GPU dependency.
@@ -194,7 +198,8 @@ cc_library(
       kPackage,
       ":main.cc\"],\n    deps = [\":cli_support\", \":model\", "
       "\":prompt_encoder\", \":verification\", \"",
-      kPackage, ":runtime\"],\n)\n",
+      kPackage, ":runtime\"],\n    visibility = [\"", kPackage,
+      ":__pkg__\"],\n)\n",
       "cc_test(\n    name = \"generated_model_test\",\n    srcs = "
       "[\"generated_model_test.cc\"],\n",
       "    deps = [\":cli_support\", \":model\", \":verification\", "
@@ -207,6 +212,13 @@ cc_library(
                     "cc_test(\n    name = \"generated_transition_test\",\n    "
                     "srcs = [\"generated_transition_test.cc\"],\n",
                     "    deps = [\":model\", \":vocabulary_tokens\", \"",
+                    kPackage,
+                    ":runtime\", \"@googletest//:gtest_main\"],\n)\n");
+  if (!vector_files.empty())
+    absl::StrAppend(&text,
+                    "\ncc_test(\n    name = \"state_vectors_test\",\n"
+                    "    srcs = [\"state_vectors_test.cc\"],\n"
+                    "    deps = [\":model\", \"",
                     kPackage,
                     ":runtime\", \"@googletest//:gtest_main\"],\n)\n");
   return text;
@@ -319,8 +331,13 @@ absl::StatusOr<std::string> RenderStateIndex(const CapturedModel& model) {
 
 absl::StatusOr<FileMap> RenderModel(const CapturedModel& model,
                                     bool include_state_index,
-                                    bool compact_transitions) {
+                                    bool compact_transitions,
+                                    const CapturedStateVectors* vectors) {
   RETURN_IF_ERROR(ValidateModel(model));
+  FileMap vector_files;
+  if (vectors != nullptr) {
+    ASSIGN_OR_RETURN(vector_files, RenderStateVectors(model, *vectors));
+  }
   const int layers = model.metadata.layers, eos = model.metadata.eos_token;
   const auto& vocab = model.metadata.vocabulary;
   std::vector<std::string> names;
@@ -411,11 +428,16 @@ absl::StatusOr<FileMap> RenderModel(const CapturedModel& model,
       ", internal::vocab::", names[eos], ", internal::GeneratedVocabulary(), ",
       layers ? absl::StrCat("{kTransformers, ", layers, "}") : "{}",
       ", internal::GeneratedLanguageModelingHead(), "
-      "internal::GeneratedPositionEmbedding()};\n  return model;\n}");
+      "internal::GeneratedPositionEmbedding(), ",
+      vectors != nullptr ? "internal::PrintState" : "{}",
+      "};\n  return model;\n}");
+  std::vector<std::string> model_headers = {"tables.h"};
+  if (vectors != nullptr)
+    model_headers.push_back("state_vectors.h");
   files["model.cc"] =
       Source(body, "\"model.h\"",
              "Original boundary order, with no cross-layer folding.", true,
-             kGen, {"tables.h"});
+             kGen, model_headers);
   ASSIGN_OR_RETURN(files["prompt_encoder.cc"], RenderEncoder(model, names));
   files["verification.cc"] = RenderVerification(model, names);
   std::string test = absl::StrCat(
@@ -444,7 +466,8 @@ absl::StatusOr<FileMap> RenderModel(const CapturedModel& model,
   )cpp";
   files["generated_model_test.cc"] =
       absl::StrCat(test, "}  // namespace ", kGen, "\n");
-  files["BUILD.bazel"] = RenderBuild(layers, compact_transitions);
+  files["BUILD.bazel"] = RenderBuild(layers, compact_transitions, vector_files);
+  files.merge(vector_files);
   if (include_state_index) {
     ASSIGN_OR_RETURN(files["state_index.tsv"], RenderStateIndex(model));
     bool all_members = true;
@@ -557,9 +580,10 @@ absl::Status PublishFiles(const FileMap& files,
 
 absl::Status EmitModel(const CapturedModel& model,
                        const std::filesystem::path& destination,
-                       bool include_state_index, bool compact_transitions) {
-  ASSIGN_OR_RETURN(auto files,
-                   RenderModel(model, include_state_index, compact_transitions));
+                       bool include_state_index, bool compact_transitions,
+                       const CapturedStateVectors* vectors) {
+  ASSIGN_OR_RETURN(auto files, RenderModel(model, include_state_index,
+                                           compact_transitions, vectors));
   return PublishFiles(files, destination);
 }
 

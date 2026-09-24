@@ -2,6 +2,7 @@
 // Original boundary order, with no cross-layer folding.
 #include "model.h"
 
+#include "state_vectors.h"
 #include "tables.h"
 #include "vocabulary_tokens.h"
 
@@ -19,7 +20,8 @@ const DiscreteModel& GeneratedModel() {
                                    internal::GeneratedVocabulary(),
                                    {kTransformers, 4},
                                    internal::GeneratedLanguageModelingHead(),
-                                   internal::GeneratedPositionEmbedding()};
+                                   internal::GeneratedPositionEmbedding(),
+                                   internal::PrintState};
   return model;
 }
 }  // namespace pluto::llm::discretized::gen

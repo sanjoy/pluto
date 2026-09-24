@@ -216,7 +216,7 @@ void Report(const GeneratorOptions& options, VerificationResult verification,
 // destination/tooling and capturing a valid checkpoint on the GPU.
 absl::StatusOr<CapturedModel> GenerateFromModel(
     CapturedModel model, const GeneratorOptions& options,
-    const StateVectorHints* vector_hints) {
+    const CapturedStateVectors& vectors) {
   RETURN_IF_ERROR(ValidateModel(model));
   if (model.samples.size() !=
       static_cast<size_t>(options.recorder.expected_samples))
@@ -232,15 +232,17 @@ absl::StatusOr<CapturedModel> GenerateFromModel(
           options.compaction_options.progress(progress);
         options.progress(progress);
       };
-    ASSIGN_OR_RETURN(model, CompactModel(model, compaction, vector_hints));
+    ASSIGN_OR_RETURN(model,
+                     CompactModel(model, compaction, &vectors.original_states));
   }
   if (options.compact_transitions) {
     ASSIGN_OR_RETURN(model, RelabelMlpOutputs(model));
   }
   ASSIGN_OR_RETURN(verification, EvaluateModel(model));
   ASSIGN_OR_RETURN(auto provenance, Provenance(options, model));
-  ASSIGN_OR_RETURN(auto files, RenderModel(model, options.state_index,
-                                           options.compact_transitions));
+  ASSIGN_OR_RETURN(auto files,
+                   RenderModel(model, options.state_index,
+                               options.compact_transitions, &vectors));
   RETURN_IF_ERROR(FormatSources(files, options.clang_format_config));
   absl::StrAppend(
       &provenance, "generator: generate_discretized_model (C++)\n",
@@ -248,6 +250,9 @@ absl::StatusOr<CapturedModel> GenerateFromModel(
       options.compact_transitions ? "control_flow" : "tables",
       "\nstates: ", model.states.size(), "\nlayers: ", model.metadata.layers,
       "\nvocabulary_size: ", model.metadata.vocab_size,
+      "\narchived_original_vectors: ", vectors.original_states.size(),
+      "\narchived_vector_width: ", model.metadata.width,
+      "\narchived_vector_encoding: exact_bf16_inspection_only",
       "\ninteger_only_inference: true\ngenerated_sources_sha256:\n");
   for (const auto& [name, content] : files)
     absl::StrAppend(&provenance, "  ", name, ": ", Sha256(content), "\n");
@@ -271,13 +276,13 @@ absl::StatusOr<CapturedModel> Generate(const GeneratorOptions& options) {
         options.recorder.progress(progress);
       options.progress(progress);
     };
-  // Exact code generation needs only symbolic transitions. Preserve native
-  // vectors separately only when the compactor will use them for candidate
-  // ordering; they never become part of the captured or generated model.
-  StateVectorHints hints;
-  auto* vector_hints = options.compaction ? &hints : nullptr;
-  ASSIGN_OR_RETURN(auto model, ModelRecorder::Record(recorder, vector_hints));
-  return GenerateFromModel(std::move(model), options, vector_hints);
+  // Preserve original vectors even without compaction. Current state IDs may
+  // be relabeled later, but each state's original membership remains intact.
+  // The archive is immutable; inference never consults its emitted copy.
+  CapturedStateVectors vectors;
+  ASSIGN_OR_RETURN(auto model,
+                   ModelRecorder::Record(recorder, &vectors.original_states));
+  return GenerateFromModel(std::move(model), options, vectors);
 }
 
 }  // namespace pluto::llm::discretized::generator

@@ -33,6 +33,28 @@ cc_library(
 )
 
 cc_library(
+    name = "captured_state_vectors",
+    hdrs = ["captured_state_vectors.h"],
+    deps = [":state_vector_hints"],
+)
+
+cc_library(
+    name = "state_vector_codegen",
+    srcs = ["state_vector_codegen.cc"],
+    hdrs = ["state_vector_codegen.h"],
+    deps = [
+        ":captured_model",
+        ":captured_state_vectors",
+        ":utils",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+    ],
+)
+
+cc_library(
     name = "captured_model_util",
     srcs = ["captured_model_util.cc"],
     hdrs = [
@@ -156,11 +178,13 @@ cc_library(
     ],
     deps = [
         ":captured_model",
+        ":captured_state_vectors",
         ":captured_model_util",
         ":discretize_attention",
         ":discretize_map",
         ":discretize_position_embedding",
         ":serialized_cpp_program",
+        ":state_vector_codegen",
         ":utils",
         "//src/util:status_macros",
         "@abseil-cpp//absl/status",
@@ -235,6 +259,7 @@ cc_library(
     hdrs = ["generate_discretized_model.h"],
     deps = [
         ":captured_model",
+        ":captured_state_vectors",
         ":captured_model_util",
         ":state_compactor",
         ":state_vector_hints",
@@ -338,6 +363,22 @@ cc_test(
 )
 
 cc_test(
+    name = "state_vector_codegen_test",
+    size = "small",
+    srcs = ["state_vector_codegen_test.cc"],
+    deps = [
+        ":captured_model_util",
+        ":captured_state_vectors",
+        ":state_vector_codegen",
+        ":state_compactor",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "generator_report_test",
     size = "small",
     srcs = ["generator_report_test.cc"],
@@ -426,6 +467,7 @@ cc_test(
 test_suite(
     name = "generator_tests",
     tests = [
+        ":state_vector_codegen_test",
         ":generator_io_test",
         ":naming_utils_test",
         ":discretize_certificate_test",

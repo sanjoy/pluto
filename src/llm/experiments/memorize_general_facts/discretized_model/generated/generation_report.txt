@@ -48,7 +48,7 @@ stats:
       attempted: 60010
       accepted: 46770
       compactions: 107015
-      seconds: 4.8040970449999998
+      seconds: 4.902926259
     pass:
       phase: compaction_pointwise_pass_complete
       pass: 1
@@ -57,8 +57,8 @@ stats:
       attempted: 60058
       accepted: 46818
       compactions: 107063
-      seconds: 4.8101846540000004
-    seconds: 4.928558797
+      seconds: 4.9089894620000001
+    seconds: 5.0299181969999998
   pointwise_relabeling:
     eligible_layers: [0, 1, 2, 3]
     skipped_layers: []
@@ -132,9 +132,12 @@ transition_representation: control_flow
 states: 6069
 layers: 4
 vocabulary_size: 4475
+archived_original_vectors: 113132
+archived_vector_width: 10
+archived_vector_encoding: exact_bf16_inspection_only
 integer_only_inference: true
 generated_sources_sha256:
-  BUILD.bazel: 22c0abb7db1fe6668edd0ead082087755da2bc18b00634eaa480fe90f14a9902
+  BUILD.bazel: 49ed1e66d573e1611c06072d3d1b6e1499af0d9abbe27bd2912e0df9e2fd46d3
   attention_0.cc: 2ca51a4b184c56dcbe7e532fb3ffa2d6f108e4201647785a4e334a95ea46f64b
   attention_1.cc: f3918ab6f68cff3850ba8d28dcec665d557ee8fb17ee10760efc274c9e19feed
   attention_2.cc: a53b3525b5558abba217b40a91691e50120434a8954c3327ca4bd240128ce139
@@ -148,18 +151,35 @@ generated_sources_sha256:
   mlp_1.cc: b63b90c762a9359f2cc2a08fe3f7327b0f099fd0c8929ef2c02765fdafa86e55
   mlp_2.cc: 15ff2bbbcffad648fd7bf478634ab7cf5f11f01877a624ffdb04a4929abcb688
   mlp_3.cc: a74e57b6871e9d3611f8d1004f539266fcb203931b535b7d7396ab7686ac19a2
-  model.cc: 9c8b8a41fa8f44cd924e8d9318f337fe31b7c0464fd3c9c3d7a731a58806f1fe
+  model.cc: 19accaddf6d5e228f47e345451e4ac11555f9093d939a979bd45752fa16f9849
   model.h: fd8655b9fc766c97bdb8bf642454faa4ac6ce5bf0a119264c711619801dc02e6
   prompt_encoder.cc: 7558f19b4e9ea31c58a215cac2f57301a706f8ad11a16f038247236f9bfc7f13
   state_index.tsv: 8e650be07b9e9c09574901828b5fe9505a11bdfba5cd8f4742e11d878b2d9f56
   state_members.tsv: 45301f1eacbfffd5a2ff953592d178d22badf4f57bc3da0f5f3bce94a458ece1
   state_relabeling.tsv: dbc3bb4a8c8d7a454c3a59b79c20bbbbf4205aa864c750936eb5bd01236241b9
+  state_vectors.cc: debf4997a9dec21ec1d9110ce0a3309e332d297bdf73852108fd27a6ea8ce2bc
+  state_vectors.h: 7f6278c380ae804f077c12d9c05bdaa99d256af781c86e7bfea019eb6ea3e9aa
+  state_vectors_0.cc: dbfa49a93c784b576d78a4283cf302e4a1f18c97368364136b6c37f37b9ed9c9
+  state_vectors_1.cc: d2c1180f5712de44aaba6501adf6161ad40c56031b555101d4f0412e182c37de
+  state_vectors_10.cc: 9c80eb0fb7c8032af2a04b3371eb21ba8786abc06cd3f9b6502ffec2edb4225c
+  state_vectors_11.cc: 3f88ca770133f20ac2a50c68edfc18533b71220d494894ee9f0f6107ef4fe506
+  state_vectors_12.cc: d575bab92d15c19849af3f43d03e43d79eae43a368e6af617af1630f14839f34
+  state_vectors_13.cc: a68bdc509c5f60c718239b6d2de8a1c1424c4e759d54832432737b342d69f66d
+  state_vectors_2.cc: 3605b3745883742f26f14e3c83fe6ecea268a88cb595f738d0c348dbff0e143e
+  state_vectors_3.cc: 31512a3a4e42e74ead68f2e3122740a141db55725bba24d7d1756d9dc5fb3cd6
+  state_vectors_4.cc: b0955ea1a60bf824b500fec55cc83d58f992489dd6444d30ef1406f313e1440b
+  state_vectors_5.cc: 6958b675049afb3f1a6f5d35dbc7209e8ce0b2521a3ea8ca8373cfcbe30eac59
+  state_vectors_6.cc: c9522d143281928bcdf1805d65331f150bf6252eb74f9aa6af42536096b36a3e
+  state_vectors_7.cc: 420fb0080a0771fb842ee506ef43fc2d4d38aea5707e4becbbc866921a943a0f
+  state_vectors_8.cc: 10bd8e99c8cb1ffc496d72243b7a3872e172576820ef1e3f70e7cd9ee38591b3
+  state_vectors_9.cc: c1b178b9f2555f054da6e4a56da8a65ec18694d3c65a587bed832ccd5f4cc95f
+  state_vectors_test.cc: 804da747ca33b3db3926dd923a359b807205d8cfa209e20b9e9f7a633e6ab457
   tables.h: bdb613984b2ba91550ae9c20eeea1cb354f35919f3a1f6e896c584f5ebaba31f
   verification.cc: a8e00e45da53ed510dea3bcd90c9bedc1bf29f4e8e3d9258a52ba29d42cb4eeb
   vocabulary.cc: 5b2d42d9e233326d8f96540e79dff28c1ae0129d9ba17b8bd251a7bfce0fc143
   vocabulary_tokens.h: db06a3f8738c525418c58d2e7390a50c04665f5853539919109eb523023c564a
 formatted_source_bytes:
-  BUILD.bazel: 3097
+  BUILD.bazel: 3877
   attention_0.cc: 384592
   attention_1.cc: 373325
   attention_2.cc: 367646
@@ -173,12 +193,29 @@ formatted_source_bytes:
   mlp_1.cc: 827
   mlp_2.cc: 827
   mlp_3.cc: 5262
-  model.cc: 1071
+  model.cc: 1155
   model.h: 385
   prompt_encoder.cc: 3759341
   state_index.tsv: 1182065
   state_members.tsv: 917871
   state_relabeling.tsv: 75816
+  state_vectors.cc: 343598
+  state_vectors.h: 1411
+  state_vectors_0.cc: 1289997
+  state_vectors_1.cc: 1290207
+  state_vectors_10.cc: 1290410
+  state_vectors_11.cc: 1290405
+  state_vectors_12.cc: 1290371
+  state_vectors_13.cc: 1045425
+  state_vectors_2.cc: 1290152
+  state_vectors_3.cc: 1290456
+  state_vectors_4.cc: 1290381
+  state_vectors_5.cc: 1289976
+  state_vectors_6.cc: 1290744
+  state_vectors_7.cc: 1290542
+  state_vectors_8.cc: 1290390
+  state_vectors_9.cc: 1290379
+  state_vectors_test.cc: 508448
   tables.h: 635
   verification.cc: 395439
   vocabulary.cc: 123281

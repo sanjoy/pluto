@@ -34,10 +34,12 @@ count, head count, and MLP width must match the checkpoint. Recording supports
 the native GPT-2 dimensions, including odd residual widths such as 13 with a
 32-token context. Legacy defaults remain width 16 and context 1,024.
 
-An optional `StateVectorHints` output retains representative BF16 vectors for
-search ordering. The returned model is identical with or without hints; vectors
-do not belong to `CapturedModel`. Hints are replaced only after successful
-recording.
+An optional `StateVectorHints` output retains every exact original BF16 vector.
+The returned symbolic model is identical with or without these vectors. The
+end-to-end generator always retains them in a `CapturedStateVectors` archive;
+its keys remain original capture IDs, even after state compaction or renaming.
+The same vectors guide compaction candidate ordering for the initial model.
+Recording replaces the supplied map only after successful verification.
 
 ## Compaction
 
@@ -55,6 +57,12 @@ pointwise progress records distinguish these trials from heuristic search.
 `RelabelMlpOutputs` is a separate within-boundary renaming transformation which
 can expose simpler pointwise code without combining states.
 
+Each captured state starts with a singleton `members` list. Compaction unions
+these lists, and relabeling preserves them. This indirection retains all original
+vectors without repeatedly copying their channels or replacing them with a
+representative. Render-time validation rejects missing vectors, wrong widths,
+nonfinite channels, and duplicated or lost original membership.
+
 ## Code generation
 
 `discretize_attention`, `discretize_map`, and `discretize_position_embedding`
@@ -65,6 +73,12 @@ lowerers. Unsupported inputs remain unsupported in either representation.
 
 `code_generator` assembles these programs into independently compiled files,
 the public model factory, vocabulary support, and separate verification tests.
+`state_vector_codegen` emits an inspection-only archive of exact BF16 words in
+parallel-compilable source shards and a `DiscreteModel::print_state` callback.
+Its lookup follows original membership, never the current IDs as archive keys.
+Printing reconstructs decimal floats on the CPU; inference remains integer-only
+and never consults the archive. Generic `RenderModel` callers may omit the
+archive, in which case the generated callback is empty.
 Shared naming, escaping, source-wrapping, and file utilities live in `utils`.
 Lowering itself performs no filesystem writes. Formatting and `PublishFiles`
 publish the complete output atomically, refusing to replace existing paths.

@@ -70,6 +70,41 @@ without a neural fallback. After compaction, an unseen raw-token sequence can
 sometimes map to supported abstract histories, so rejection of every
 out-of-corpus sequence is not guaranteed.
 
+## Print the vectors represented by a state
+
+The generated model preserves every distinct originally captured BF16 residual
+vector. Compaction records their membership in each resulting hidden state;
+subsequent state renaming preserves that membership too. These are original
+vectors, not centroids or nearest neighbors, and repeated corpus occurrences of
+the same exact vector do not produce repeated entries.
+
+Use a current hidden-state ID from `generated/state_index.tsv`:
+
+```sh
+"$discrete" --print_state=4475
+```
+
+The output lists all original vectors belonging to that state, with their
+original state IDs and exact BF16 encodings alongside readable component values.
+Vector length follows the captured model width (10 for the checked-in model),
+not a fixed width of 16. Negative or unknown hidden-state IDs return an error.
+Vocabulary token IDs are not hidden-state IDs and cannot be printed this way.
+`--print_state` is separate from prompt generation and verification.
+
+C++ callers can select their own output stream through the model's callback:
+
+```cpp
+const auto& model = pluto::llm::discretized::gen::GeneratedModel();
+auto status = model.print_state(
+    pluto::llm::discretized::DiscreteHiddenState{4475}, std::cout);
+```
+
+The vector archive is compiled into the generated package in separate source
+files for parallel compilation. It is inspection-only: inference still follows
+integer transitions and never reads these vectors. No checkpoint, GPU, or
+external vector file is needed to print a state. Handwritten `DiscreteModel`
+instances may leave the callback empty when no captured vectors are available.
+
 ## Preserved layer boundaries
 
 The compiled model executes these pure operations in order:

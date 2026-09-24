@@ -31,7 +31,11 @@ TEST_F(GeneratorTest, CompactionIsIndependentOfTransitionRepresentation) {
       EXPECT_TRUE(EvaluateModel(*result).ok());
       EXPECT_EQ(result->stats.compaction_search.has_value(), compaction);
       EXPECT_TRUE(fs::exists(options_.output / "state_index.tsv"));
-      EXPECT_EQ(fs::exists(options_.output / "state_members.tsv"), compaction);
+      EXPECT_TRUE(fs::exists(options_.output / "state_members.tsv"));
+      EXPECT_TRUE(fs::exists(options_.output / "state_vectors.cc"));
+      EXPECT_TRUE(fs::exists(options_.output / "state_vectors_test.cc"));
+      for (const auto& state : result->states)
+        ASSERT_TRUE(state.members.has_value());
       EXPECT_FALSE(fs::exists(options_.output / "transition_patterns.txt"));
       EXPECT_EQ(fs::exists(options_.output / "generated_transition_test.cc"),
                 compact);
@@ -45,6 +49,7 @@ TEST_F(GeneratorTest, CompactionIsIndependentOfTransitionRepresentation) {
       ASSERT_TRUE(bytes.ok());
       EXPECT_NE(bytes->find("const DiscreteModel& GeneratedModel()"),
                 std::string::npos);
+      EXPECT_NE(bytes->find("internal::PrintState"), std::string::npos);
       EXPECT_NE(report->find(Sha256(*bytes)), std::string::npos);
       for (const auto& file : fs::directory_iterator(options_.output)) {
         if (file.path().filename() == "generation_report.txt")

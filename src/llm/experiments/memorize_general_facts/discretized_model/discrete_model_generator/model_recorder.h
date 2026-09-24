@@ -31,9 +31,11 @@ struct ModelRecorderOptions {
 class ModelRecorder {
  public:
   // Records real corpus positions, interns exact BF16 residual states, and
-  // checks every expected suffix and EOS. No files are written. Vector hints
-  // are optional search guidance for compaction, not part of CapturedModel;
-  // when requested, replaces *vector_hints only after successful recording.
+  // checks every expected suffix and EOS. No files are written. If requested,
+  // vector_hints receives EVERY original state's exact vector, both for
+  // compaction candidate ordering and for inspection via CapturedStateVectors.
+  // Original IDs are recorded in CapturedState::members and survive relabeling.
+  // Replaces *vector_hints only after successful recording.
   static absl::StatusOr<CapturedModel> Record(
       const ModelRecorderOptions& options,
       StateVectorHints* vector_hints = nullptr);

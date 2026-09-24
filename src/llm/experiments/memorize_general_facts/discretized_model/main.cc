@@ -40,8 +40,10 @@ int Run(int argc, char** argv) {
   bool verify = false;
   bool have_prompt = false;
   bool have_ids = false;
+  bool have_state = false;
   std::string prompt;
   std::string raw_ids;
+  dm::DiscreteHiddenState state;
   size_t limit = 64;
   bool have_limit = false;
   for (int i = 1; i < argc; ++i) {
@@ -52,6 +54,7 @@ int Run(int argc, char** argv) {
              "       discretized_model --token_ids=COMPACT,IDS "
              "[--generation_tokens=N]\n"
              "       discretized_model --prompt=TEXT [--generation_tokens=N]\n"
+             "       discretized_model --print_state=ID\n"
              "Text encoding accepts captured corpus prefixes at token "
              "boundaries only.\n"
              "Inference executes integer tables and fails for unsupported "
@@ -66,6 +69,16 @@ int Run(int argc, char** argv) {
     } else if (arg.substr(0, 12) == "--token_ids=" && !have_ids) {
       have_ids = true;
       raw_ids = std::string(arg.substr(12));
+    } else if (arg.substr(0, 14) == "--print_state=" && !have_state) {
+      have_state = true;
+      const auto number = arg.substr(14);
+      const auto result = std::from_chars(
+          number.data(), number.data() + number.size(), state.value);
+      if (number.empty() || result.ec != std::errc() ||
+          result.ptr != number.data() + number.size()) {
+        std::cerr << "--print_state requires an integer hidden-state ID\n";
+        return 2;
+      }
     } else if (arg.substr(0, 20) == "--generation_tokens=" && !have_limit) {
       have_limit = true;
       const auto number = arg.substr(20);
@@ -81,9 +94,10 @@ int Run(int argc, char** argv) {
       return 2;
     }
   }
-  if ((verify && (have_prompt || have_ids || have_limit)) ||
-      (!verify && have_prompt == have_ids)) {
-    std::cerr << "choose exactly --verify, --prompt=TEXT, or --token_ids=IDS\n";
+  if (verify + have_prompt + have_ids + have_state != 1 ||
+      (have_limit && !(have_prompt || have_ids))) {
+    std::cerr << "choose exactly --verify, --prompt=TEXT, --token_ids=IDS, or "
+                 "--print_state=ID; --generation_tokens requires a prompt\n";
     return 2;
   }
   const auto& model = dm::gen::GeneratedModel();
@@ -91,6 +105,16 @@ int Run(int argc, char** argv) {
   if (!valid.ok()) {
     std::cerr << valid << "\n";
     return 1;
+  }
+  if (have_state) {
+    const auto status =
+        model.print_state
+            ? model.print_state(state, std::cout)
+            : absl::FailedPreconditionError(
+                  "the model does not contain captured state vectors");
+    if (!status.ok())
+      std::cerr << status << "\n";
+    return status.ok() ? 0 : 1;
   }
   if (verify) {
     auto result = dm::gen::internal::VerifyGeneratedModel(model, std::cout);

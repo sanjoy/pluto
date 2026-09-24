@@ -3,6 +3,8 @@
 #include <compare>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
+#include <iosfwd>
 #include <optional>
 #include <string>
 #include <vector>
@@ -90,9 +92,10 @@ class PositionEmbedding {
 };
 
 // A finite integer network. Pure operations implement each boundary;
-// no sample identity, corpus text, expected suffix, or floating-point weights
-// are available to this object. The model borrows its operations and
-// vocabulary; all referenced objects must outlive its use.
+// inference uses no sample identity, corpus text, expected suffix, or
+// floating-point weights. The optional inspection callback exposes original
+// activation vectors, never consulted by inference. The model borrows its
+// operations and vocabulary; all referenced objects must outlive its use.
 struct DiscreteModel {
   uint32_t context_length;  // Maximum number of tokens in a causal sequence.
   uint32_t prompt_token_count;  // Prefix length for corpus verification.
@@ -105,6 +108,13 @@ struct DiscreteModel {
   Map& language_modeling_head;
   // (Compact token, absolute position) -> token-plus-position residual symbol.
   PositionEmbedding& position_embedding;
+  // Prints every distinct captured vector represented by this hidden state,
+  // including original IDs and exact BF16 bits. NotFound means an unknown
+  // hidden state (vocabulary IDs are not hidden states). Empty if this model
+  // has no vector archive. Inspection does not change inference or formatting
+  // settings on the supplied stream; stream errors return a failed status.
+  std::function<absl::Status(DiscreteHiddenState, std::ostream&)> print_state =
+      {};
 };
 
 // Checks dimensions, including that positions fit in int32_t. Generation and
