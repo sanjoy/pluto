@@ -164,6 +164,34 @@ and commands. It can run during training: missing or incomplete checkpoints are
 reported as unavailable, never as matching. Checkpoints contain master weights,
 so this is not a comparison of saved optimizer state.
 
+The completed `dataset_weights_canonical_order_0` rerun (2026-09-24) used the
+same three permutations as the earlier identical-embedding experiment. After
+120,000 steps, the 48,680 FP32 parameters match **bit-for-bit** across all three
+renamed runs and the baseline when embedding rows are put back in original
+token order. All 3,930 non-embedding parameters match without rearrangement.
+
+| Renamed IDs | Raw parameter differences from baseline | Differences after row alignment |
+| --- | --- | --- |
+| 2 | 20 (2 embedding rows) | 0 |
+| 512 | 5,120 (512 embedding rows) | 0 |
+| 4,474 | 44,740 (4,474 embedding rows) | 0 |
+
+All runs first achieved perfect completion at step 81,664. Fresh final-checkpoint
+evaluations found zero errors over 10,002 suffix/EOS targets, all 1,024 sentences
+exact, and identical mean loss `0.0040834839714327135`. The baseline also matches
+the previous experiment's baseline exactly. This verifies the expected
+token-renaming symmetry for these runs: with symmetric embedding initialization
+and canonical reductions, changing vocabulary labels changes only embedding-row
+placement. It does not establish a general formula for weights learned from
+different facts or different token sequences. Early top-1 counts can still
+depend on physical-ID tie-breaking; they are distinct from weight equality.
+
+Final checkpoints are under
+`dataset_weights_canonical_order_0/{baseline,rename_000_0002,rename_000_0512,rename_000_4474}/checkpoints/layers_4/step_120000`.
+Their concatenated, embedding-aligned weight files (numeric file order) share
+SHA-256 `9e1c133fb4fffc651e776cad86862fbc5b9a2ca0098b3b6b52186ea2fcf42a22`.
+The run took about 24 minutes, including the baseline and checkpoint audits.
+
 ## Sweep and report
 
 Choose fresh artifact and checkpoint directories for each search. The driver
