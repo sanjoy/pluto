@@ -146,6 +146,24 @@ Canonical order is deliberately opt-in; omitting it preserves the earlier
 experiment. Weight comparisons must undo the embedding-row permutation before
 interpreting parameter differences.
 
+Use the exact-comparison report to compare all three renamed runs with each
+other, with the identity baseline, and optionally with the previous baseline:
+
+```sh
+python -B scripts/memorize_general_facts/compare_canonical_weights.py \
+  --run_dir=/home/ubuntu/checkpoints/memorize_general_facts/dataset_weights_canonical_order_0 \
+  --previous_run_dir=/home/ubuntu/checkpoints/memorize_general_facts/dataset_weights_identical_embeddings_0
+```
+
+This writes `exact_comparison.html` and `exact_comparison.json` beside the
+checkpoints. It checks complete snapshots at steps 0, 30,000, 60,000, 90,000 and
+120,000, including raw and embedding-aligned FP32 bit differences, per-tensor
+counts, maximum absolute differences, and L2 distances. It separately checks
+finite values and validates the token permutations against the recorded inputs
+and commands. It can run during training: missing or incomplete checkpoints are
+reported as unavailable, never as matching. Checkpoints contain master weights,
+so this is not a comparison of saved optimizer state.
+
 ## Sweep and report
 
 Choose fresh artifact and checkpoint directories for each search. The driver
