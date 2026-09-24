@@ -6,39 +6,42 @@ recorded corpus; it does not reproduce the neural model on arbitrary text.
 
 ## Current model
 
-The checked-in package was generated from the smallest fully memorized model
-found in the context-32 sweep:
+The checked-in package was generated from the current smallest verified model
+configuration, using the identity baseline of the canonical-token-order rerun:
 
-- Checkpoint: `context32_size_sweep_1h_0/trial_000_L4_W13_FF52/checkpoints/layers_4/step_34816`.
-- Architecture: four transformer blocks, width 13, one attention head, MLP
-  width 52, context length 32, and 67,405 trainable parameters.
+- Checkpoint: `dataset_weights_canonical_order_0/baseline/checkpoints/layers_4/step_120000`.
+- Architecture: four transformer blocks, width 10, one attention head (head
+  dimension 10), MLP `10 -> 20 -> 10`, context length 27, and 48,680 trainable
+  parameters. Blocks use pre-LayerNorm, causal attention, GELU, learned absolute
+  positions, and a token-embedding-tied language modeling head. Capture uses
+  BF16 activations and the checkpoint's FP32 master weights.
 - Vocabulary: 4,475 compact GPT-2 tokens, including EOS.
 - Task: supply exactly the first five tokens of each of the 1,024 facts, then
   generate the complete suffix and explicit EOS.
 - Native GPU and generated CPU verification: **0 errors across 10,002 scored
   predictions; all 1,024 sentences and EOS predictions are correct**.
 
-The exact capture contains **114,145 distinct internal states**, from 126,882
+The exact capture contains **113,132 distinct internal states**, from 126,882
 state occurrences (14,098 real token positions across nine boundaries).
-A bounded compaction pass reduces this to **6,249 states**, a **94.53%**
+A bounded compaction pass reduces this to **6,117 states**, a **94.59%**
 reduction. The 4,475 vocabulary symbols are separate from that count.
 
 | Boundary | After attention + residual | After MLP + residual |
 | --- | ---: | ---: |
-| Token + position embedding | 85 | — |
-| Block 0 | 64 | 58 |
-| Block 1 | 61 | 57 |
-| Block 2 | 72 | 52 |
+| Token + position embedding | 51 | — |
+| Block 0 | 52 | 35 |
+| Block 1 | 53 | 37 |
+| Block 2 | 52 | 37 |
 | Block 3 | 2,900 | 2,900 |
 
 Compaction stopped at its one-pass limit: **neither pairwise irreducibility nor
 global minimality is claimed**. State count measures the symbolic alphabet,
 not the information stored in the history-dependent attention functions.
 
-The previous eight-block, width-16 generated model and its 6,514-state result
-remain in Git history, including the local backup branch
-`codex/discretize-general-facts-before-context32-rebase`. Its measurements and
-exhaustive compaction certificate do not apply to this new model.
+Previous generated models remain in Git history: the width-13/context-32 model
+had 6,249 compacted states, and the eight-block/width-16 model had 6,514. Their
+measurements and any exhaustive compaction certificate do not apply to this
+new model.
 
 ## Build, verify, and run
 
@@ -100,19 +103,19 @@ executions, compacts states in memory, and emits formatted CPU-only C++.
 The output directory must not already exist.
 
 ```sh
-sweep=/home/ubuntu/checkpoints/memorize_general_facts/context32_size_sweep_1h_0
+run=/home/ubuntu/checkpoints/memorize_general_facts/dataset_weights_canonical_order_0
 
 bazel run -c opt //src/llm/experiments/memorize_general_facts/discretized_model/discrete_model_generator:generate_discretized_model -- \
-  --checkpoint="$sweep/trial_000_L4_W13_FF52/checkpoints/layers_4/step_34816" \
-  --tokenizer="$sweep/inputs" \
-  --corpus="$sweep/inputs/corpus.txt" \
-  --layers=4 --model_width=13 --context_length=32 \
-  --attention_heads=1 --feed_forward_width=52 \
+  --checkpoint="$run/baseline/checkpoints/layers_4/step_120000" \
+  --tokenizer="$run/inputs/tokenizer" \
+  --corpus="$run/inputs/corpus.txt" \
+  --layers=4 --model_width=10 --context_length=27 \
+  --attention_heads=1 --feed_forward_width=20 \
   --prompt_tokens=5 --expected_samples=1024 --verify_greedy=true \
   --compaction --compaction_neighbors=4 --compaction_max_passes=1 \
   --compaction_max_attempts=150000 --compaction_exhaustive_pair_limit=0 \
   --compact_transitions --state_index \
-  --output=/tmp/facts-context32-generated
+  --output=/tmp/facts-context27-width10-generated
 ```
 
 This reproduces the checked-in search configuration. Omit `--compaction` to

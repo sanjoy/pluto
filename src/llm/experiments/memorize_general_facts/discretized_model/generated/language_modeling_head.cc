@@ -7,7 +7,7 @@
 namespace pluto::llm::discretized::gen::internal {
 namespace {
 std::optional<DiscreteHiddenState> Lookup(DiscreteHiddenState state) {
-  if (state.value < 9399 || state.value > 13873)
+  if (state.value < 9267 || state.value > 13741)
     return {};
   // State labels encode vocabulary IDs; no neural-head linearity is implied.
   static constexpr uint8_t kSupport[] = {
@@ -68,10 +68,10 @@ std::optional<DiscreteHiddenState> Lookup(DiscreteHiddenState state) {
       0x7du, 0x33u, 0x89u, 0x6du, 0xd4u, 0x54u, 0x52u, 0x82u, 0xb1u, 0xd9u,
       0xcau, 0x9bu, 0x94u, 0x43u, 0x23u, 0x07u, 0x0au, 0xbdu, 0xf7u, 0x05u,
   };
-  const uint32_t offset = state.value - 9399;
+  const uint32_t offset = state.value - 9267;
   if ((kSupport[offset >> 3] & (uint32_t{1} << (offset & 7u))) == 0)
     return {};
-  return {DiscreteHiddenState{vocab::kComma_0.value + (state.value - 9399)}};
+  return {DiscreteHiddenState{vocab::kComma_0.value + (state.value - 9267)}};
 }
 
 class LanguageModelingHeadImpl final : public Map {

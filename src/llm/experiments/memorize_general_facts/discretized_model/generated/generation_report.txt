@@ -1,9 +1,9 @@
 protocol: first 5 tokens; autonomous suffix and explicit EOS
 source: in-memory GPU execution trace
-model_width: 13
-context_length: 32
+model_width: 10
+context_length: 27
 attention_heads: 1
-feed_forward_width: 52
+feed_forward_width: 20
 native_greedy_verified: true
 verification:
   samples: 1024
@@ -13,21 +13,21 @@ verification:
 stats:
   captured_samples: 1024
   scored_targets: 10002
-  exact_states: 114145
-  states: 6249
+  exact_states: 113132
+  states: 6117
   membership_complete: true
-  membership_original_states: 114145
-  states_per_stage: [85, 64, 58, 61, 57, 72, 52, 2900, 2900]
-  attempted_seeds: 62444
-  accepted_seeds: 47067
-  state_compactions: 107896
-  cached_rejections: 446765
-  accepted_compactions_sha256: 4ec9c434bb10f648422c00f9db6a47e1696fbf6b4dae68da592b7ce774fb3245
-  accepted_compaction_records: 47067
+  membership_original_states: 113132
+  states_per_stage: [51, 52, 35, 53, 37, 52, 37, 2900, 2900]
+  attempted_seeds: 60010
+  accepted_seeds: 46770
+  state_compactions: 107015
+  cached_rejections: 440357
+  accepted_compactions_sha256: af2701dd24a8b234b61bb0469d8fe38549ab4ded5b1f2ce12a2e39d0f0a37244
+  accepted_compaction_records: 46770
   compaction_distance_summary:
-    minimum: 0.0001220703125
-    maximum: 3.124356213059309
-    induced_compactions: 60829
+    minimum: 0.00048828125
+    maximum: 5.4554640609194438
+    induced_compactions: 60245
   verification:
     samples: 1024
     targets: 10002
@@ -39,137 +39,137 @@ stats:
     global_minimum_proven: false
     nearest_neighbors: 4
     exhaustive_pair_limit: 0
-    remaining_pairs_before_sweep: 14547
+    remaining_pairs_before_sweep: 7232
     pass:
       phase: compaction_nearest_pass_complete
       pass: 1
-      states: 6249
-      states_per_stage: [85, 64, 58, 61, 57, 72, 52, 2900, 2900]
-      attempted: 62444
-      accepted: 47067
-      compactions: 107896
-      seconds: 5.6897998449999996
-    seconds: 5.8029514899999999
+      states: 6117
+      states_per_stage: [51, 52, 35, 53, 37, 52, 37, 2900, 2900]
+      attempted: 60010
+      accepted: 46770
+      compactions: 107015
+      seconds: 4.7990359959999997
+    seconds: 4.9158070890000003
   pointwise_relabeling:
     eligible_layers: [3]
     skipped_layers: [0, 1, 2]
-    changed_states: 5798
+    changed_states: 5799
     layer_boundaries_preserved: true
     vocabulary_aligned_final_boundaries: true
-    last_attention_base: 4924
-    final_state_base: 9399
+    last_attention_base: 4792
+    final_state_base: 9267
     reserved_range_size: 4475
-checkpoint: /home/ubuntu/checkpoints/memorize_general_facts/context32_size_sweep_1h_0/trial_000_L4_W13_FF52/checkpoints/layers_4/step_34816
+checkpoint: /home/ubuntu/checkpoints/memorize_general_facts/dataset_weights_canonical_order_0/baseline/checkpoints/layers_4/step_120000
 checkpoint_files_sha256:
-  weight_0.bin: ccca7998f6372d8a9f574fac0a06a851bd59e563ade1b5b6d3e0458b0f68c8ec
-  weight_1.bin: d84320c2efb08e7fdddedbdd555e7366d7863ac9b61709612ff611544c83120e
-  weight_10.bin: 6f88e16ee85c901330c4af929815112872833bb70ad5fdf4b49ae8a238780717
-  weight_11.bin: 6ba4a46261fa742dfd95af6d04eef55618b18c07c9ba4ebfb68b226b9185e036
-  weight_12.bin: a77a3543806b627547f6b0b393679aaaf97e2e8a040482f7e7ed2265f908bd2f
-  weight_13.bin: 1626e4de57301a058a11be9bf294094ccc9aa347dcf95ded92ea2b5668f5315e
-  weight_14.bin: 9fabde9dc782b7aa858ff60f1e3fe9f57e453506243f2fc871cef4505d300caf
-  weight_15.bin: c711cfc57e84e7b6aba3eaee0d6890b39238c3fa1c50fcf8823cd95e7bade668
-  weight_16.bin: 00623bb439081c4edc9da1bacea502a0efbe5c69b00816facaf335449316ab50
-  weight_17.bin: f2ac93bf473ae78aabee7bc88773e38c92d5d23782432d66891b78320e1c8764
-  weight_18.bin: 6475a8264e36a6a1d44774e8184a5bc11bfb52d69bcdeba1b2d6b460afb41446
-  weight_19.bin: 86d51e199c13b1350b68cd7c0a380062436cf752a47859d17f40e7cb7030d26c
-  weight_2.bin: db331169d60660011608cf9b502441044eefaee44bcc09270bd0e1b720e8545b
-  weight_20.bin: cce448872617ea63e0589be42f8737567180a96a21c29a6c5190547fb681a801
-  weight_21.bin: 8ff8e82a8d3bc82161ff506eac97306eb79a7c6656c4e99499563acf66ec245e
-  weight_22.bin: f555fbcd0241daeaafd438b93b4432da2124ea24c28c591543c310bfd7556b7c
-  weight_23.bin: dd02f1c464d5aec163ed7319c3f9e9c2210cabcaaa8c144f032fe7063f7a8ff0
-  weight_24.bin: 3fa418b88053481db3b058d1113b48cad19de5002fb099480ca27173174a912c
-  weight_25.bin: a426fd6f02c268a4ecbb9d994afc66ac36e0f31bf0182c5f4a77b0ffa11614d2
-  weight_26.bin: a39af33b3542b5c1bf44e48d206e608558773ba6980bd97c3280dd0d42a12e68
-  weight_27.bin: 48f265b2a067dc27bec0d8cbaf64162ce327f1a62c9a8422642d081edf4b8860
-  weight_28.bin: 2d26b03ca4532c59e103823eaace56607f07379188a53e04509571187bcca3ec
-  weight_29.bin: bcc424f70aa88f277a2dcc0ef97f5b4cf75a14d3914beaceba64283c8af85c8f
-  weight_3.bin: 8ea8879d5f00860475c4b3ce39c86aca9b99968438d0d00b83be660fa8d92de8
-  weight_30.bin: 077bb2cfcae123bf3c3751313321988ceb1f786776a3905b9e7eb9f1fdbf7ef0
-  weight_31.bin: 5a6b2ddf1cd29a6733552c569d6666211fbdd240ab1162ab695fc75ade4678eb
-  weight_32.bin: f3dbf2b6f928142fb674f6328306bfe03863a0bd74c1d6871cbd42173388915b
-  weight_33.bin: 4826ef0f40647086f8c92513a105c42760e738c0cd22dfc193f34e99bbdb8bd4
-  weight_34.bin: c19111e558ddcfa1516c0e0ba44acb9be1d6990471cc31794dbd4360f33841ff
-  weight_35.bin: 2974161fbdef920090c4a66793d14269b60b3a56d5fb0b647466cf11e41d850c
-  weight_36.bin: ab8a4f64b87743686e64392c5f0b83f8916c164728410df64d283ffa38c0d4d0
-  weight_37.bin: 51df2ae1935c91d3e7ee88c7aeccad405e7306be437d691446a86718465e6431
-  weight_38.bin: 874ae5bd20bcca4b35d1c132fba3fecfd3b308a7ebacb8b70151afd44c6cedc1
-  weight_39.bin: 56a1e604e84a89159eaf727226c9adc5e63a89efb448d26b1d82652bc7d22b59
-  weight_4.bin: 2175f07cf7409a308714e2aba782cdfb3ef68d1534dee0efcb098b8c23378e1d
-  weight_40.bin: 87dc9dcb832841dd97b06066259e151d794218eb60ea1834f1512b3f5b49e733
-  weight_41.bin: 1fe8479be34def98368b1978e587ffa55e381c71f1348d23ee6fee441dfd8aeb
-  weight_42.bin: e56161c7de2449c2545479793e5a2d09b55c40b8c75ca67b9cf940fa37055ed6
-  weight_43.bin: 107c8edf7f61f00b98e2aa836264cc315a1c87d88f461dac2e35c973018192a3
-  weight_44.bin: 29e85534ce049bff26fd0699ae9e7cd76198f992bd3965db0188383214087b44
-  weight_45.bin: 7330aef60c9fd3b272c473b812c0c1733f1979024882c1bc25e734aa7e9910c7
-  weight_46.bin: a426f590b402110dcd46c8088e03e8314f7a7302c98eaada5be6fec6537ea127
-  weight_47.bin: f487752d25cabb91f794b003037e847d559aff96273979500483cb78d13dd754
-  weight_48.bin: 1244b62aa0a043bd5c4b0c97be7dc5029a788fc8c32d7b3acd1d9d7cc019cd92
-  weight_49.bin: 8fe81469b01b0533749427d9acde9f0fd718a3f621c1d1c495fe46ffc48a944b
-  weight_5.bin: 1b88d99c7b035d26199372e041e195faad368eef6b4a8afcf8d37832ab6d2718
-  weight_50.bin: 2a935b64f89bcda9906edf597dc13c9015218cf61723992ffa68202ac44ab2c3
-  weight_51.bin: 90fec394f512b30aa0a770f78741de086b8ecd2dc60d0e7f853f4321c8ff9429
-  weight_6.bin: 347f8e994254c22a4971cc1ebc0e12325b337fcbdaba86c22bed086fa6190fc2
-  weight_7.bin: b06df09f0fddd88eb49f029523e310e56b83311709801427d60cb404214085d3
-  weight_8.bin: d795ff37602e98e4c076b8d8d927d6573ee05a4500e4c7f85bd3784a492c6453
-  weight_9.bin: 501ae406bb7db61e7c14ab0d91133a946298be5326d0d3a1d7e1c93e9cc7cbe7
+  weight_0.bin: ea5cc897257a966bf0550d518f66680d66c61139769d926ddfbdf064db8c3f06
+  weight_1.bin: 126d6829377bffa6028d0a79a1ea24758ad13013979c051d745c56ff1d62503b
+  weight_10.bin: a052c501ded87f86a793bc53ae17e993fabc1e32e95d522dd94d84bfec4d2da2
+  weight_11.bin: 60a2137aeaea87e3baf12f9d521643603048c8218d72af4d8a4093e508020b57
+  weight_12.bin: 3d8dd23ce8e1ac62de3f8317fbdf6e8a015619bb892f3b0650912c78cf645516
+  weight_13.bin: 9a89303e19ca33cc480e76a040ca550300570388912eb26bd1c9a8abf2441f87
+  weight_14.bin: 99c3b7065f8393c150fc3a903373e22e0561de1049b00db8156e461b9a0e9f21
+  weight_15.bin: 28e594c9fb8307135270e04aa95985ada77d96b575adce3b8ebd9e5919bccba8
+  weight_16.bin: d39d5e639929d332f0fb8bc835e081341cae04a05fa3d3ed0761d975238d4404
+  weight_17.bin: 34c44c5f37f73077fd8e2898ce0078a4202ead1bba3516f49c32da8aa77b9d73
+  weight_18.bin: f13fc3544470d112cfd35979ae1c5e2f789093eff41b7e3b91fb3d7da46a197a
+  weight_19.bin: 3837bea9fd5c876c058ec8ed9428a9466968c17077371313259b7540dd954567
+  weight_2.bin: bfae4851e0457bb6355bd8d54d496a820d398c8853c055e2e260a1a6e501d97e
+  weight_20.bin: 9623cd0f8f8b344bd045ef8f93629e5af62041141ad53ddf86047f32a9665960
+  weight_21.bin: 1263a8ef2d4b709364250831a8371751abc02a973f9975676e2249bf6a691a1a
+  weight_22.bin: c42f2fcb611b1c130c0f26d5fac3cdddc665cd705e1f21f32eab8e2f27b8d6c8
+  weight_23.bin: 1d17bb0b2a9902671a6320ef133ee07d4b94ebf2b858825f628e057006d064ba
+  weight_24.bin: 27390daa5dd8f2fe4048b410b40e296c0404419a976d9d1de69ff0c1e531336d
+  weight_25.bin: 77af1670cfc7973f1d1187840e5f15039969f64afb1b839323dd26ce751b9023
+  weight_26.bin: e7454dda3a024e39b7bf45bb1757098cbe870f5ee5938280490d1da5f8d606ff
+  weight_27.bin: a740ee968762d08077a51608789bb61e13028090e755bac1ebbfc764a0a05b28
+  weight_28.bin: 82d51a4e969dc2d40a614fc4e40561449f22b7bf976d299cc2d78654610a9de7
+  weight_29.bin: 537c33772e2e62f88840aa5c56f86bfa1d6aa05e2420451337c739e0f9a904df
+  weight_3.bin: 3c422b3fa8c018bfcd9e8870a41cc8cc5f81243c4a0cbfbba5a5546fe9c2036f
+  weight_30.bin: 5070b5c50f34e5e082bf6986221293e6b4a62385c862b9fe8497aa30a7650280
+  weight_31.bin: acd42a26e7ff9b1c84936affb7d2c79e28f33868cfc3c05689f7fcdae4702bd9
+  weight_32.bin: 3e1d5d4e6d0d5ea75af5d87354f3efd718dbb0e1bf99fd2434a954bcc2c22c6a
+  weight_33.bin: 115c28095fd893e519b6d161c68532029f388ea8ef49be80a10e9f69c0b50f8b
+  weight_34.bin: 6c2d5c850e66f32df4e8ef9ec5becc3dfcbadb5c3d93d734322f65f6716f8fd2
+  weight_35.bin: a3a9413ab3b7b795a95c661def13248282856b7e773a3adcdfbd4a22c0e50c97
+  weight_36.bin: ac052c5aba96af68546257494858bdc6e841e34e6081218ef8b0c08c6ac18687
+  weight_37.bin: ea779990a628c303e1b5420c6c3bf86ba00de1882d888aa1cf243cc0ba71387e
+  weight_38.bin: d2f0127ffddbbf33bb6e6684fbfa87ff8dcd6e6e48be0ae41c8769da2a4551d7
+  weight_39.bin: d66f7661b1a654be5e782593b28c9b7d20c2de3d90b8094b16ee95bd8cf0d770
+  weight_4.bin: d51b156d66516c3899bb63879fcdfe122dea732d4033e4e84607b5a9d76ff508
+  weight_40.bin: 45d36578daae66a73271057ddaeaec88302fa35f248766677c96f24874662dbb
+  weight_41.bin: 216f6665359fffd9b4cf26bed758caf3f7101cda2d06c25e925825cfccc84586
+  weight_42.bin: cf03c7292f824d9efd0cb36cef8241165bd2fd7406eec999a9ed24eb2f14533e
+  weight_43.bin: a0b7fb438838f5059e7ec510a9f504f0ad49c03e65e091bb7e4257b3018476c3
+  weight_44.bin: 583c158b9089c843cb7b9ba0f3f4b7d6547833c5a6a84dabf43549ea2606be81
+  weight_45.bin: d7858ee6fd135ed42e3810decf4c659ac3a98f01c9ee0c483c3ad96444100918
+  weight_46.bin: e742fe3a077c428daac4e45b25321aec109a029c1ee87e10271824eec799a58d
+  weight_47.bin: 135db23fc405ff2f9f110ca92dcf8b4abbaa42ace323309254b52fb3421b2912
+  weight_48.bin: 6ec044365c27b1e4f92c0c2247e7cd30515165e3acc5fc8524547eaf534ec96c
+  weight_49.bin: fa2855cb9b5ef575557bc6baeefd0eb4e8bbcddd81a51a415a0a77417c99a3b6
+  weight_5.bin: fed19b76b8b81a0446e1ee988cdf71fa7c8b1a429a56e6f6262bfe76426bf155
+  weight_50.bin: 8af0ec95c234e79a1a602acc05cc8521eba516b93e1b6aeadb4c106a7085af07
+  weight_51.bin: aa00305fffb2ef2cf0ddec72be4e4e48cdaceacc2cc967ceec3f323d424e87c3
+  weight_6.bin: 233e2310cf12c94afa826fad44e113754e452679b9181804113f46bfb438b732
+  weight_7.bin: d4f977954a373e60c2b23d1fabaa245c3fe4f3dda634bbf442c2bedf7d71e274
+  weight_8.bin: 6032e476582fda5d81eab711655eba6a4ffa690ca94d5f4632937fbdb383b588
+  weight_9.bin: 96e363ce70d5530c7a1ba4af08df9f1c41eeba648692e7efd845e7f62fe6bbcf
   compact_vocabulary.tsv: ff91c01867df309f841508fbfbcad0af95e20bfdcc5b63e6ae74e803835a9fb6
-corpus: /home/ubuntu/checkpoints/memorize_general_facts/context32_size_sweep_1h_0/inputs/corpus.txt
+corpus: /home/ubuntu/checkpoints/memorize_general_facts/dataset_weights_canonical_order_0/inputs/corpus.txt
 corpus_sha256: 814c062e7d7592fe4a4e5b158a37bd37da51700f817c19eb981c1e93d33f245c
-tokenizer: /home/ubuntu/checkpoints/memorize_general_facts/context32_size_sweep_1h_0/inputs/tokenizer.json
+tokenizer: /home/ubuntu/checkpoints/memorize_general_facts/dataset_weights_canonical_order_0/inputs/tokenizer/tokenizer.json
 tokenizer_sha256: 1fe93b6152957cf9cfd6d89002467f789ce8b3f3e000b3a2edf27c808ddd0b9e
 generator: generate_discretized_model (C++)
 transition_representation: control_flow
-states: 6249
+states: 6117
 layers: 4
 vocabulary_size: 4475
 integer_only_inference: true
 generated_sources_sha256:
   BUILD.bazel: 22c0abb7db1fe6668edd0ead082087755da2bc18b00634eaa480fe90f14a9902
-  attention_0.cc: 67e3005c85465707be115e193535bc1f0460c6927eccce80404646934a26775a
-  attention_1.cc: fc56d4528184ddac65b13d8655a39cd9f6fd5cf827ef27b4c4edb9559c6b5d1d
-  attention_2.cc: a6cd884f7bb1bc01ac29d3ce0c73724e4b11269de6ebcd2b7dbcf694e5ded511
-  attention_3.cc: 37841e58fa28f29a7150321238f0bb681526b0bf6ddca2f2e4ac1f17f2a92e7d
+  attention_0.cc: df41a352ce5ded35ccc8c704fd6ebee2f1710f9c38800579b9e45d077ac20f4f
+  attention_1.cc: 65c84f2a75fc65251876ae323545a738eb6dbf37abeabf2d4c74dd360059bd97
+  attention_2.cc: 67141e5b3147f123287ba770d34037145ab84d512ad41010eee1922ae7c7c564
+  attention_3.cc: 949933960669d7dfb8b00ae5da54162d91e24d478fcc0b6327d817b35b17c82a
   cli_support.h: 23e5e95ba2d6887da0fc89a8ae930380df75fdcdff0f6178e0a3c29dfdc058a5
-  entry.cc: 784cab444202dfd1340827893eeb2207265f0af5514ab4166438b21ae8ae925a
+  entry.cc: d1551db8fd1b58ea6a884df077af210d77e829f9a995a3e559b7e144066bf588
   generated_model_test.cc: ef6d4405dc4eef4ee5cf6c28b66fdde4d155ffcfcf338ed45b0d012a628395be
-  generated_transition_test.cc: 167dcc336d989036912424af88243b5c1001c463d1fc43db419134ec58a4abbb
-  language_modeling_head.cc: 5cf2dd54a9b8befa47591e10bdea9478f5eb4c79ab3318ddbb07d10c3b8fe7ec
-  mlp_0.cc: 2db40f019c6cbd7cf43ef2e6ebe9ab498786ca2dbf55239e48b43c63637e035a
-  mlp_1.cc: bf4e4afbf1aab845f3965c4126665c5faf0937dbe8e8dfdfac15127a567558ac
-  mlp_2.cc: c0376b0e7af44815c4baef8253715fcce71429774a3b502dea5f9c40c64e0565
-  mlp_3.cc: aa65b270a4de0ad46facdafc1bdf6cd17a189962fbb727cd85fc07fac2dc5d68
-  model.cc: 478aca7b55e1232a9e95abd6932d6261202524ffd67d4c191e089d41ac96c69b
+  generated_transition_test.cc: e0b403c1765b688444c2ed6c307931bc7fd94669e4fc57468437e68d0e007965
+  language_modeling_head.cc: d0c198677f29884c857a7be5a3749e19a0b67d92038a7f52b8193355aedeca6b
+  mlp_0.cc: c36eae73046f155594772e53c2a44834e98352e856f588f141bd627b94b41448
+  mlp_1.cc: 57cabe1d62b748acba341e31ca620d5218ddb26da5d8e6a749d9f49125a5aec2
+  mlp_2.cc: e060ba81cd6ee5667bad4a1e8c098e77f0ed66d134a2abf5d34105078e2bdcfe
+  mlp_3.cc: 6a3eb1fc028e6aef7c9920a2e7b39000935f397822e14ea24287d7cffdd86450
+  model.cc: 9c8b8a41fa8f44cd924e8d9318f337fe31b7c0464fd3c9c3d7a731a58806f1fe
   model.h: fd8655b9fc766c97bdb8bf642454faa4ac6ce5bf0a119264c711619801dc02e6
   prompt_encoder.cc: 7558f19b4e9ea31c58a215cac2f57301a706f8ad11a16f038247236f9bfc7f13
-  state_index.tsv: 6950b6455872f445f4a88df0e884b808ed513ede1923a006fa814cc7209656a1
-  state_members.tsv: cc2cf423b3d90ac91e38b81650cdb1f2cb3c8cc1298268c87c7f662851e795db
-  state_relabeling.tsv: 9c43adffe49da8abeac697352499181ed1dd54aecfd0791e348f5ee012f58c11
+  state_index.tsv: b8f24269dbc918740b20887420bccdcba825b05392576a4c1c56f1cb227bcfd8
+  state_members.tsv: 08b975c6113db64f9fe53a649c4077e3566caaf08dcf6003faf8c21aa2bfca01
+  state_relabeling.tsv: 61b4e3c06415042f2b21c6256bb2fa9888004d70911a87b4b2203127b9bad743
   tables.h: bdb613984b2ba91550ae9c20eeea1cb354f35919f3a1f6e896c584f5ebaba31f
   verification.cc: a8e00e45da53ed510dea3bcd90c9bedc1bf29f4e8e3d9258a52ba29d42cb4eeb
   vocabulary.cc: 5b2d42d9e233326d8f96540e79dff28c1ae0129d9ba17b8bd251a7bfce0fc143
   vocabulary_tokens.h: db06a3f8738c525418c58d2e7390a50c04665f5853539919109eb523023c564a
 formatted_source_bytes:
   BUILD.bazel: 3097
-  attention_0.cc: 376663
-  attention_1.cc: 371083
-  attention_2.cc: 362035
-  attention_3.cc: 361606
+  attention_0.cc: 384592
+  attention_1.cc: 373325
+  attention_2.cc: 367646
+  attention_3.cc: 360709
   cli_support.h: 663
-  entry.cc: 241897
+  entry.cc: 235093
   generated_model_test.cc: 180608
-  generated_transition_test.cc: 1872014
+  generated_transition_test.cc: 1869256
   language_modeling_head.cc: 5372
-  mlp_0.cc: 1307
-  mlp_1.cc: 1289
-  mlp_2.cc: 1355
+  mlp_0.cc: 1229
+  mlp_1.cc: 1235
+  mlp_2.cc: 1229
   mlp_3.cc: 5262
   model.cc: 1071
   model.h: 385
   prompt_encoder.cc: 3759341
-  state_index.tsv: 1226383
-  state_members.tsv: 931839
-  state_relabeling.tsv: 78283
+  state_index.tsv: 1188358
+  state_members.tsv: 919828
+  state_relabeling.tsv: 76477
   tables.h: 635
   verification.cc: 395439
   vocabulary.cc: 123281

@@ -106,6 +106,53 @@ TEST_F(ModelRecorderTest, OddWidthContext32WorksThroughRecordingAndGeneration) {
   EXPECT_NE(report->find("native_greedy_verified: true\n"), std::string::npos);
 }
 
+TEST_F(ModelRecorderTest, Width10Context27WorksThroughRecordingAndGeneration) {
+  options_.recorder.checkpoint = directory_ / "width10_checkpoint";
+  options_.recorder.layers = 4;
+  options_.recorder.model_width = 10;
+  options_.recorder.context_length = 27;
+  options_.recorder.feed_forward_width = 20;
+  options_.recorder.prompt_tokens = 5;
+  // With zero weights, EOS is the top-1 continuation of this five-token
+  // prompt. The compact tokenizer retains individual x tokens, not xx merges.
+  ASSERT_TRUE(WriteFile(options_.recorder.corpus, "xxxxx\n").ok());
+  WriteZeroCheckpoint();
+  ASSERT_FALSE(HasFatalFailure());
+  StateVectorHints hints;
+  auto captured = ModelRecorder::Record(options_.recorder, &hints);
+  ASSERT_TRUE(captured.ok()) << captured.status();
+  EXPECT_EQ(captured->metadata.width, 10);
+  EXPECT_EQ(captured->metadata.context_length, 27);
+  EXPECT_EQ(captured->metadata.prompt_tokens, 5);
+  ASSERT_EQ(captured->transformers.size(), 4u);
+  ASSERT_EQ(captured->states.size(), 9u);
+  ASSERT_EQ(hints.size(), captured->states.size());
+  for (const auto& state : captured->states)
+    EXPECT_EQ(hints.at(state.id), std::vector<uint16_t>(10, 0));
+  auto verification = EvaluateModel(*captured);
+  ASSERT_TRUE(verification.ok()) << verification.status();
+  EXPECT_EQ(*verification, (VerificationResult{1, 1, 0, 1}));
+
+  options_.compaction = true;
+  options_.compact_transitions = true;
+  auto generated = Generate(options_);
+  ASSERT_TRUE(generated.ok()) << generated.status();
+  EXPECT_EQ(generated->metadata, captured->metadata);
+  auto generated_verification = EvaluateModel(*generated);
+  ASSERT_TRUE(generated_verification.ok()) << generated_verification.status();
+  EXPECT_EQ(*generated_verification, *verification);
+  EXPECT_TRUE(std::filesystem::exists(options_.output / "attention_3.cc"));
+  EXPECT_TRUE(std::filesystem::exists(options_.output / "mlp_3.cc"));
+  EXPECT_FALSE(std::filesystem::exists(options_.output / "attention_4.cc"));
+  auto report = ReadFile(options_.output / "generation_report.txt");
+  ASSERT_TRUE(report.ok()) << report.status();
+  EXPECT_NE(report->find("model_width: 10\n"), std::string::npos);
+  EXPECT_NE(report->find("context_length: 27\n"), std::string::npos);
+  EXPECT_NE(report->find("feed_forward_width: 20\n"), std::string::npos);
+  EXPECT_NE(report->find("native_greedy_verified: true\n"), std::string::npos);
+  ExpectNoIntermediateFiles();
+}
+
 TEST_F(ModelRecorderTest, RejectsInvalidModelDimensions) {
   const auto valid = options_.recorder;
   for (int value : {0, -1, std::numeric_limits<int>::max()}) {

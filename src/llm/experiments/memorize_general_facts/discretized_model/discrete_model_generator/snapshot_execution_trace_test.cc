@@ -467,5 +467,54 @@ TEST_F(CaptureTest, TinyNativeGpt2HasExactCausalBoundaryPrefixes) {
   }
 }
 
+TEST_F(CaptureTest, Width10Context27NativeBoundariesPreserveEveryPrefix) {
+  const CaptureOptions options{.layers = 4,
+                               .vocab_size = 4475,
+                               .eos_token = 4474,
+                               .prompt_tokens = 5,
+                               .model_width = 10,
+                               .context_length = 27};
+  const Gpt2Config config{.transformer_block_count = options.layers,
+                          .model_width = options.model_width,
+                          .attention_heads = 1,
+                          .feed_forward_width = 20,
+                          .vocabulary_size = options.vocab_size,
+                          .pad_vocabulary = false,
+                          .context_length = options.context_length};
+  auto model = CreateGpt2(*executor_, DataType::BF16, 1337, config);
+  ASSERT_TRUE(model.ok()) << model.status();
+  // Exercise the final valid position and every shorter generation prefix.
+  // Both logical widths and context length have partially filled compute tiles.
+  std::vector<int> tokens(options.context_length);
+  for (size_t position = 0; position < tokens.size(); ++position)
+    tokens[position] = kTokens[position % kTokens.size()];
+  auto full = CaptureSample(*executor_, **model, tokens, options);
+  ASSERT_TRUE(full.ok()) << full.status();
+  ASSERT_EQ(full->boundaries.size(), 9u);
+  for (const auto& boundary : full->boundaries) {
+    ASSERT_EQ(boundary.size(), 27u);
+    for (const auto& row : boundary)
+      EXPECT_EQ(row.size(), 10u);
+  }
+  for (size_t length = options.prompt_tokens; length < tokens.size();
+       ++length) {
+    SCOPED_TRACE(absl::StrCat("prefix length=", length));
+    auto prefix =
+        CaptureSample(*executor_, **model,
+                      absl::MakeConstSpan(tokens).first(length), options);
+    ASSERT_TRUE(prefix.ok()) << prefix.status();
+    ASSERT_EQ(prefix->boundaries.size(), full->boundaries.size());
+    for (size_t stage = 0; stage < full->boundaries.size(); ++stage) {
+      ASSERT_EQ(prefix->boundaries[stage].size(), length);
+      EXPECT_TRUE(std::equal(prefix->boundaries[stage].begin(),
+                             prefix->boundaries[stage].end(),
+                             full->boundaries[stage].begin()));
+    }
+    EXPECT_TRUE(std::equal(prefix->predictions.begin(),
+                           prefix->predictions.end(),
+                           full->predictions.begin()));
+  }
+}
+
 }  // namespace
 }  // namespace pluto::llm::memorize_general_facts::discretized_model

@@ -13,7 +13,7 @@ const DiscreteModel& GeneratedModel() {
       {internal::GeneratedAttention2(), internal::GeneratedMlp2()},
       {internal::GeneratedAttention3(), internal::GeneratedMlp3()},
   };
-  static const DiscreteModel model{32,
+  static const DiscreteModel model{27,
                                    5,
                                    internal::vocab::kEos_4474,
                                    internal::GeneratedVocabulary(),
