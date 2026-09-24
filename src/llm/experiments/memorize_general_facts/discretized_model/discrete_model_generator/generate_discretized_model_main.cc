@@ -18,7 +18,10 @@ ABSL_FLAG(std::string, corpus, "testdata/general_facts_dataset.txt",
           "Corpus, one fact per line");
 ABSL_FLAG(std::string, output, "",
           "Fresh directory for generated CPU-only C++");
-ABSL_FLAG(int, layers, 8, "Checkpoint transformer block count at width 16");
+ABSL_FLAG(int, layers, 8, "Checkpoint transformer block count");
+ABSL_FLAG(int, model_width, 16, "Checkpoint residual-stream width");
+ABSL_FLAG(int, context_length, 1024,
+          "Checkpoint learned position count and padded sequence length");
 ABSL_FLAG(int, attention_heads, 1, "Checkpoint attention head count");
 ABSL_FLAG(int, feed_forward_width, 64, "Checkpoint inner MLP width");
 ABSL_FLAG(int, prompt_tokens, 5, "Number of input prompt tokens per sentence");
@@ -78,6 +81,8 @@ int main(int argc, char** argv) {
   options.output = absl::GetFlag(FLAGS_output);
   options.clang_format_config = style;
   options.recorder.layers = absl::GetFlag(FLAGS_layers);
+  options.recorder.model_width = absl::GetFlag(FLAGS_model_width);
+  options.recorder.context_length = absl::GetFlag(FLAGS_context_length);
   options.recorder.attention_heads = absl::GetFlag(FLAGS_attention_heads);
   options.recorder.feed_forward_width = absl::GetFlag(FLAGS_feed_forward_width);
   options.recorder.prompt_tokens = absl::GetFlag(FLAGS_prompt_tokens);

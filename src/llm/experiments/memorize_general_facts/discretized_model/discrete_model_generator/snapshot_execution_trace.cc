@@ -4,7 +4,6 @@
 
 #include <algorithm>
 #include <cstddef>
-#include <cstring>
 #include <limits>
 #include <string>
 #include <utility>
@@ -25,7 +24,8 @@ absl::Status ValidateOptions(const CaptureOptions& options) {
       options.layers > (std::numeric_limits<int>::max() - 1) / 2 ||
       options.vocab_size <= 0 || options.eos_token < 0 ||
       options.eos_token >= options.vocab_size || options.prompt_tokens <= 0 ||
-      options.prompt_tokens > kCaptureContext)
+      options.model_width <= 0 || options.context_length <= 0 ||
+      options.prompt_tokens > options.context_length)
     return absl::InvalidArgumentError(
         "invalid capture dimensions or token IDs");
   return absl::OkStatus();
@@ -35,8 +35,13 @@ absl::Status ValidateOptions(const CaptureOptions& options) {
 // their buffers. Host staging remains alive until the final synchronization.
 class BoundaryRecorder {
  public:
-  BoundaryRecorder(cuda::Executor& executor, size_t rows, int layers)
-      : executor_(executor), rows_(rows), stage_count_(2 * layers + 1) {}
+  BoundaryRecorder(cuda::Executor& executor, size_t rows,
+                   const CaptureOptions& options)
+      : executor_(executor),
+        rows_(rows),
+        width_(options.model_width),
+        context_length_(options.context_length),
+        stage_count_(2 * options.layers + 1) {}
 
   LayerHooks Hooks() {
     return {
@@ -72,8 +77,13 @@ class BoundaryRecorder {
   std::vector<std::vector<CapturedRow>> Materialize() const {
     std::vector<std::vector<CapturedRow>> result;
     result.reserve(staged_.size());
-    for (const auto& stage : staged_)
-      result.emplace_back(stage.begin(), stage.end());
+    for (const auto& stage : staged_) {
+      auto& rows = result.emplace_back();
+      rows.reserve(rows_);
+      for (size_t row = 0; row < rows_; ++row)
+        rows.emplace_back(stage.begin() + row * width_,
+                          stage.begin() + (row + 1) * width_);
+    }
     return result;
   }
 
@@ -111,15 +121,17 @@ class BoundaryRecorder {
     }
     const ActivationType expected(
         DataType::BF16,
-        {ActivationType::kBatchDimension, kCaptureContext, kCaptureWidth});
+        {ActivationType::kBatchDimension, context_length_, width_});
     if (&executor != &executor_ || types.size() != 1 || types[0] != expected ||
         buffers.size() != 1 || &buffers[0].executor() != &executor_ ||
-        buffers[0].size_bytes() != kCaptureContext * sizeof(CapturedRow))
+        buffers[0].size_bytes() !=
+            static_cast<size_t>(context_length_) * width_ * sizeof(uint16_t))
       return absl::InvalidArgumentError(
-          "capture boundary must be batch-one native BF16 [-2,1024,16]");
-    ASSIGN_OR_RETURN(
-        auto staging,
-        cuda::PageLockedHostArray<CapturedRow>::Allocate(executor_, rows_));
+          absl::StrCat("capture boundary must be batch-one native BF16 [-2,",
+                       context_length_, ",", width_, "]"));
+    ASSIGN_OR_RETURN(auto staging,
+                     cuda::PageLockedHostArray<uint16_t>::Allocate(
+                         executor_, rows_ * width_));
     RETURN_IF_ERROR(cuda::CudaStatus(
         cudaMemcpyAsync(staging.data(), buffers[0].data(), staging.size_bytes(),
                         cudaMemcpyDeviceToHost, executor_.stream()),
@@ -130,10 +142,12 @@ class BoundaryRecorder {
 
   cuda::Executor& executor_;
   size_t rows_;
+  int width_;
+  int context_length_;
   int stage_count_;
   bool pending_residual_ = false;
   std::vector<std::string> scopes_;
-  std::vector<cuda::PageLockedHostArray<CapturedRow>> staged_;
+  std::vector<cuda::PageLockedHostArray<uint16_t>> staged_;
 };
 
 }  // namespace
@@ -143,21 +157,23 @@ absl::StatusOr<CapturedSample> CaptureSample(cuda::Executor& executor,
                                              absl::Span<const int> tokens,
                                              const CaptureOptions& options) {
   RETURN_IF_ERROR(ValidateOptions(options));
-  if (tokens.empty() || tokens.size() > kCaptureContext)
-    return absl::InvalidArgumentError(
-        "capture needs 1 to 1024 real token rows");
+  if (tokens.empty() ||
+      tokens.size() > static_cast<size_t>(options.context_length))
+    return absl::InvalidArgumentError(absl::StrCat(
+        "capture needs 1 to ", options.context_length, " real token rows"));
   for (int token : tokens)
     if (token < 0 || token >= options.vocab_size || token == options.eos_token)
       return absl::InvalidArgumentError(
           "capture text contains invalid or EOS ID");
   const ActivationType input_type(
-      DataType::INT32, {ActivationType::kBatchDimension, kCaptureContext});
+      DataType::INT32,
+      {ActivationType::kBatchDimension, options.context_length});
   const auto output_types = model.output_types();
   const int64_t padded_vocabulary =
       (static_cast<int64_t>(options.vocab_size) + 15) / 16 * 16;
   const ActivationType output_type(
-      DataType::FP32,
-      {ActivationType::kBatchDimension, kCaptureContext, padded_vocabulary});
+      DataType::FP32, {ActivationType::kBatchDimension, options.context_length,
+                       padded_vocabulary});
   if (model.name() != "gpt2" || model.output_type() != DataType::BF16 ||
       model.input_types().size() != 1 || model.input_types()[0] != input_type ||
       output_types.size() != 1 || output_types[0] != output_type)
@@ -165,11 +181,11 @@ absl::StatusOr<CapturedSample> CaptureSample(cuda::Executor& executor,
         "capture requires the native BF16 fixed-context GPT-2 model");
 
   ASSIGN_OR_RETURN(auto context, cuda::PageLockedHostArray<int>::Allocate(
-                                     executor, kCaptureContext));
+                                     executor, options.context_length));
   std::fill(context.begin(), context.end(), options.eos_token);
   std::copy(tokens.begin(), tokens.end(), context.begin());
   ASSIGN_OR_RETURN(auto mask, cuda::PageLockedHostArray<int>::Allocate(
-                                  executor, kCaptureContext));
+                                  executor, options.context_length));
   std::fill(mask.begin(), mask.end(), -1);
   std::fill_n(mask.begin(), tokens.size(), 0);
   ASSIGN_OR_RETURN(auto device_context,
@@ -185,7 +201,7 @@ absl::StatusOr<CapturedSample> CaptureSample(cuda::Executor& executor,
       cudaMemcpyAsync(device_mask.data(), mask.data(), mask.size_bytes(),
                       cudaMemcpyHostToDevice, executor.stream()),
       "upload capture real-row mask"));
-  BoundaryRecorder recorder(executor, tokens.size(), options.layers);
+  BoundaryRecorder recorder(executor, tokens.size(), options);
   auto hooks = recorder.Hooks();
   ASSIGN_OR_RETURN(auto forward,
                    model.fwd(executor, {&device_context, 1}, &hooks));
@@ -194,7 +210,7 @@ absl::StatusOr<CapturedSample> CaptureSample(cuda::Executor& executor,
   if (forward.outputs.size() != 1 ||
       &forward.outputs[0].executor() != &executor ||
       forward.outputs[0].size_bytes() !=
-          static_cast<size_t>(kCaptureContext * padded_vocabulary) *
+          static_cast<size_t>(options.context_length * padded_vocabulary) *
               sizeof(float))
     return absl::InvalidArgumentError("capture logits have wrong storage");
   ASSIGN_OR_RETURN(auto predicted,
@@ -223,15 +239,20 @@ absl::Status ValidateCapturedPredictions(const CapturedSample& sample,
                                          const CaptureOptions& options) {
   RETURN_IF_ERROR(ValidateOptions(options));
   if (sample.tokens.size() < static_cast<size_t>(options.prompt_tokens) ||
-      sample.tokens.size() > kCaptureContext ||
+      sample.tokens.size() > static_cast<size_t>(options.context_length) ||
       sample.predictions.size() != sample.tokens.size() ||
       sample.boundaries.size() != static_cast<size_t>(2 * options.layers + 1))
     return absl::InvalidArgumentError(
         "captured sample has inconsistent lengths");
-  for (const auto& stage : sample.boundaries)
+  for (const auto& stage : sample.boundaries) {
     if (stage.size() != sample.tokens.size())
       return absl::InvalidArgumentError(
           "captured boundary has padding or missing rows");
+    for (const auto& row : stage)
+      if (row.size() != static_cast<size_t>(options.model_width))
+        return absl::InvalidArgumentError(
+            "captured boundary has incorrect model width");
+  }
   for (size_t row = 0; row < sample.tokens.size(); ++row) {
     if (sample.tokens[row] < 0 || sample.tokens[row] >= options.vocab_size ||
         sample.tokens[row] == options.eos_token ||

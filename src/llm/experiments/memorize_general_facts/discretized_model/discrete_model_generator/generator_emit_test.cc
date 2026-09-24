@@ -94,7 +94,7 @@ TEST_F(EmitTest, PlainSourcesExposeOnlyModelFactoryAndSeparateFixtures) {
   auto result = RenderModel(Fixture(), true, false);
   ASSERT_TRUE(result.ok()) << result.status();
   const auto& files = *result;
-  EXPECT_EQ(files.count("model.h"), 1);
+  EXPECT_EQ(files.count("model.h"), 1u);
   EXPECT_NE(files.at("model.h").find("namespace pluto::llm::discretized::gen"),
             std::string::npos);
   EXPECT_NE(files.at("model.h").find("GeneratedModel()"), std::string::npos);
@@ -136,11 +136,23 @@ TEST_F(EmitTest, TablePermutationDoesNotChangeOutput) {
 TEST_F(EmitTest, CompactModeAddsIndependentBoundaryTests) {
   auto result = RenderModel(Fixture(), true, true);
   ASSERT_TRUE(result.ok()) << result.status();
-  EXPECT_EQ(result->count("generated_transition_test.cc"), 1);
-  EXPECT_EQ(result->count("transition_patterns.txt"), 0);
+  EXPECT_EQ(result->count("generated_transition_test.cc"), 1u);
+  EXPECT_EQ(result->count("transition_patterns.txt"), 0u);
   EXPECT_NE(result->at("generated_transition_test.cc").find("kExpectedStates"),
             std::string::npos);
   EXPECT_EQ(result->at("attention_0.cc").find("kExpectedStates"),
+            std::string::npos);
+}
+
+TEST_F(EmitTest, EmitsConfiguredContextAndBoundaryProbes) {
+  auto model = Fixture();
+  model.metadata.context_length = 32;
+  auto result = RenderModel(model, false, true);
+  ASSERT_TRUE(result.ok()) << result.status();
+  EXPECT_NE(result->at("model.cc").find("DiscreteModel model{32, 1,"),
+            std::string::npos);
+  EXPECT_NE(result->at("generated_transition_test.cc")
+                .find("{vocab::kA_0, 32, {std::nullopt}}"),
             std::string::npos);
 }
 

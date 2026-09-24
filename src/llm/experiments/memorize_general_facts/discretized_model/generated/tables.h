@@ -13,12 +13,4 @@ CausalAttention& GeneratedAttention2();
 Map& GeneratedMlp2();
 CausalAttention& GeneratedAttention3();
 Map& GeneratedMlp3();
-CausalAttention& GeneratedAttention4();
-Map& GeneratedMlp4();
-CausalAttention& GeneratedAttention5();
-Map& GeneratedMlp5();
-CausalAttention& GeneratedAttention6();
-Map& GeneratedMlp6();
-CausalAttention& GeneratedAttention7();
-Map& GeneratedMlp7();
 }  // namespace pluto::llm::discretized::gen::internal

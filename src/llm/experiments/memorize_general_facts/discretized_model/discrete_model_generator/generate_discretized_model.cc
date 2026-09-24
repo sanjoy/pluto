@@ -140,10 +140,16 @@ void AppendSection(std::string& report, absl::string_view name,
 absl::StatusOr<std::string> Provenance(const GeneratorOptions& options,
                                        const CapturedModel& model) {
   ASSIGN_OR_RETURN(auto verification, EvaluateModel(model));
-  std::string result =
-      absl::StrCat("protocol: first ", model.metadata.prompt_tokens,
-                   " tokens; autonomous suffix and explicit EOS\n",
-                   "source: in-memory GPU execution trace\n");
+  std::string result = absl::StrCat(
+      "protocol: first ", model.metadata.prompt_tokens,
+      " tokens; autonomous suffix and explicit EOS\n",
+      "source: in-memory GPU execution trace\n",
+      "model_width: ", options.recorder.model_width,
+      "\ncontext_length: ", options.recorder.context_length,
+      "\nattention_heads: ", options.recorder.attention_heads,
+      "\nfeed_forward_width: ", options.recorder.feed_forward_width,
+      "\nnative_greedy_verified: ",
+      options.recorder.verify_greedy ? "true" : "false", "\n");
   AppendSection(result, "verification", FormatVerification(verification));
   AppendSection(result, "stats", FormatStatistics(model.stats));
   if (model.stats.compaction_search &&

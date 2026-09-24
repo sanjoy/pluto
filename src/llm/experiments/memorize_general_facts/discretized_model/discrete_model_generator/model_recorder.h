@@ -10,15 +10,16 @@
 
 namespace pluto::llm::discretized::generator {
 
-// Everything needed to reproduce a trained width-16 GPT-2 model's observed
+// Everything needed to reproduce a trained GPT-2 model's observed
 // execution. Recording is independent of code generation and output paths.
 struct ModelRecorderOptions {
   std::filesystem::path checkpoint;  // Weights and compact vocabulary mapping.
   std::filesystem::path tokenizer;   // Matching original GPT-2 tokenizer.
   std::filesystem::path corpus;      // One fact per line, with no EOS padding.
   int layers = 8;
-  int model_width = 16;       // Native recording currently requires width 16.
-  int context_length = 1024;  // Native recording currently uses context 1024.
+  int model_width = 16;  // Residual width; must match the checkpoint.
+  int context_length =
+      1024;  // Learned position count and padded sequence size.
   int attention_heads = 1;
   int feed_forward_width = 64;
   int prompt_tokens = 5;  // Prefix supplied for autonomous verification.

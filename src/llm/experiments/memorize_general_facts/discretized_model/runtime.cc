@@ -111,8 +111,11 @@ absl::StatusOr<std::vector<DiscreteToken>> Generate(
     return status;
   std::vector<DiscreteToken> prefix(prompt.begin(), prompt.end());
   std::vector<DiscreteToken> generated;
-  for (size_t i = 0; i < max_new_tokens && prefix.size() < model.context_length;
-       ++i) {
+  // A full input window still predicts its next token, including EOS. If that
+  // token is not EOS, appending it stops the loop before any overlong
+  // evaluation.
+  for (size_t i = 0;
+       i < max_new_tokens && prefix.size() <= model.context_length; ++i) {
     auto token = PredictNext(model, prefix);
     if (!token.ok())
       return token.status();

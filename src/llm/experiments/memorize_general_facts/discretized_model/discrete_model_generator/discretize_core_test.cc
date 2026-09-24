@@ -94,7 +94,9 @@ TEST(DiscretizeCoreTest, AutoregressionChecksEverySuffixTokenAndEos) {
   EXPECT_EQ(evaluated->targets, 3);
   EXPECT_FALSE(PredictNext(model, {0, 0}).ok());
   EXPECT_FALSE(PredictNext(model, {}).ok());
-  EXPECT_FALSE(PredictNext(model, std::vector<int>(1025, 0)).ok());
+  EXPECT_FALSE(
+      PredictNext(model, std::vector<int>(model.metadata.context_length + 1, 0))
+          .ok());
   for (auto& row : model.language_modeling_head.transitions)
     if (row.input == State(model, 2, 1))
       row.output = 0;
@@ -116,6 +118,58 @@ TEST(DiscretizeCoreTest, AttentionUsesEntireOrderedPrefix) {
   ASSERT_EQ(longer.size(), 2u);
   EXPECT_EQ(longer[0].prefix[1], longer[1].prefix[1]);
   EXPECT_NE(longer[0].output, longer[1].output);
+}
+
+TEST(DiscretizeCoreTest, Context32PreservesSuffixAndEosAtLastValidLength) {
+  auto metadata = Header();
+  metadata.context_length = 32;
+  std::vector<std::vector<int>> boundaries(3, std::vector<int>(32));
+  for (int boundary = 0; boundary < 3; ++boundary)
+    for (int position = 0; position < 32; ++position)
+      boundaries[boundary][position] = 100 * (boundary + 1) + position;
+  const auto sample = Sample(std::vector<int>(32, 0), boundaries);
+  auto model = BuildModel(metadata, {sample});
+  ASSERT_TRUE(model.ok()) << model.status();
+  EXPECT_EQ(model->metadata.context_length, 32);
+  EXPECT_EQ(model->stats.verification, (VerificationResult{1, 32, 0, 1}));
+  const auto eos = PredictNext(*model, sample.tokens);
+  ASSERT_TRUE(eos.ok()) << eos.status();
+  EXPECT_EQ(*eos, metadata.eos_token);
+  const auto overflow = PredictNext(*model, std::vector<int>(33, 0));
+  EXPECT_FALSE(overflow.ok());
+  EXPECT_NE(overflow.status().message().find("context length"),
+            std::string::npos);
+
+  metadata.context_length = 31;
+  EXPECT_FALSE(BuildModel(metadata, {sample}).ok());
+  model->metadata.context_length = 31;
+  EXPECT_FALSE(ValidateModel(*model).ok());
+}
+
+TEST(DiscretizeCoreTest, ContextBoundsApplyToMetadataAndEveryTransitionDomain) {
+  for (int context_length : {-1, 0}) {
+    auto metadata = Header();
+    metadata.context_length = context_length;
+    EXPECT_FALSE(
+        BuildModel(metadata, {Sample({0}, {{100}, {200}, {300}})}).ok());
+  }
+  auto model = Branching();
+  model.metadata.context_length = 32;
+  ASSERT_TRUE(ValidateModel(model).ok());
+  for (int defect = 0; defect < 4; ++defect) {
+    auto invalid = model;
+    if (defect == 0)
+      invalid.metadata.prompt_tokens = 33;
+    if (defect == 1)
+      invalid.position_embedding.transitions[0].position = 32;
+    if (defect == 2) {
+      auto& prefix = invalid.transformers[0].attention.transitions[0].prefix;
+      prefix.resize(33, prefix.front());
+    }
+    if (defect == 3)
+      invalid.samples[0].tokens.resize(33, 0);
+    EXPECT_FALSE(ValidateModel(invalid).ok()) << defect;
+  }
 }
 
 TEST(DiscretizeCoreTest,
@@ -372,6 +426,8 @@ TEST(DiscretizeCoreTest, MalformedTypedModelsReturnStatusInsteadOfAborting) {
   // numerical ranges remain runtime invariants and must still be checked.
   const std::vector<std::function<void(CapturedModel&)>> defects = {
       [](auto& m) { m.metadata.width = 0; },
+      [](auto& m) { m.metadata.context_length = 0; },
+      [](auto& m) { m.metadata.context_length = -1; },
       [](auto& m) { m.metadata.layers = -1; },
       [](auto& m) { m.metadata.vocab_size = 0; },
       [](auto& m) { m.metadata.prompt_tokens = 0; },
@@ -396,7 +452,10 @@ TEST(DiscretizeCoreTest, MalformedTypedModelsReturnStatusInsteadOfAborting) {
         m.position_embedding.transitions.push_back(
             m.position_embedding.transitions.front());
       },
-      [](auto& m) { m.position_embedding.transitions[0].position = 1024; },
+      [](auto& m) {
+        m.position_embedding.transitions[0].position =
+            m.metadata.context_length;
+      },
       [](auto& m) { m.transformers.clear(); },
       [](auto& m) {
         m.transformers[0].attention.transitions[0].prefix.clear();

@@ -4481,11 +4481,12 @@ TEST(GeneratedIntegerModel, NamedVocabularyCoversEveryCompactId) {
       internal::vocab::kSpace_relational_4471,
       internal::vocab::kacan_4472,
       internal::vocab::kSpace_kernels_4473,
-      internal::vocab::kEos_4474};
+      internal::vocab::kEos_4474,
+  };
   ASSERT_EQ(absl::MakeConstSpan(kTokens).size(),
             GeneratedModel().vocabulary.size());
   for (size_t token = 0; token < absl::MakeConstSpan(kTokens).size(); ++token)
-    EXPECT_EQ(kTokens[token].value, token);
+    EXPECT_EQ(kTokens[token].value, static_cast<int>(token));
 }
 TEST(GeneratedIntegerModel, IndependentAutoregressiveCorpusVerification) {
   const auto& model = GeneratedModel();

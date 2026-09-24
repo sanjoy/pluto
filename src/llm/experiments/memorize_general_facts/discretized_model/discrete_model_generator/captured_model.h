@@ -25,6 +25,7 @@ struct ModelMetadata {
   int eos_token = -1;
   int prompt_tokens = 0;  // Initial tokens supplied to autonomous verification.
   std::vector<VocabularyToken> vocabulary;
+  int context_length = 1024;  // Maximum number of tokens in a causal sequence.
   auto operator<=>(const ModelMetadata&) const = default;
 };
 
