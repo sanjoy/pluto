@@ -50,6 +50,10 @@ const char* CompactionPhaseName(CompactionPhase phase) {
       return "compaction_nearest";
     case CompactionPhase::kNearestPassComplete:
       return "compaction_nearest_pass_complete";
+    case CompactionPhase::kPointwise:
+      return "compaction_pointwise";
+    case CompactionPhase::kPointwisePassComplete:
+      return "compaction_pointwise_pass_complete";
     case CompactionPhase::kExhaustive:
       return "compaction_exhaustive";
     case CompactionPhase::kExhaustivePassComplete:

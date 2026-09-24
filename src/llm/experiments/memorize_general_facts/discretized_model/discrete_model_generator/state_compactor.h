@@ -47,6 +47,9 @@ class StateCompactor {
 };
 
 // Produces a new captured model; optional vectors only prioritize trial pairs.
+// Each nearest-candidate pass is followed by exact pointwise compaction: inputs
+// of the same MLP/head with equal current outputs are interchangeable. This
+// respects the same attempt budget and never combines different boundaries.
 // SIGINT and cooperative cancellation return Cancelled between atomic trials.
 absl::StatusOr<CapturedModel> CompactModel(
     const CapturedModel& model, const CompactionOptions& options = {},

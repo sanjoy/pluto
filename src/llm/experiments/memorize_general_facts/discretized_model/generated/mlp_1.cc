@@ -7,16 +7,9 @@
 namespace pluto::llm::discretized::gen::internal {
 namespace {
 std::optional<DiscreteHiddenState> Lookup(DiscreteHiddenState state) {
-  if (state.value < 4613 || state.value > 4665)
+  if (state.value < 4596 || state.value > 4632)
     return {};
-  static constexpr uint16_t kOutputs[] = {
-      4687, 4677, 4666, 4667, 4668, 4669, 4670, 4671, 4672, 4666, 4673,
-      4674, 4684, 4688, 4675, 4676, 4677, 4678, 4679, 4680, 4688, 4688,
-      4690, 4681, 4682, 4683, 4683, 4684, 4685, 4687, 4686, 4687, 4688,
-      4678, 4689, 4691, 4690, 4691, 4692, 4693, 4694, 4691, 4695, 4696,
-      4697, 4698, 4699, 4691, 4700, 4701, 4702, 4672, 4677,
-  };
-  return {DiscreteHiddenState{kOutputs[state.value - 4613]}};
+  return {DiscreteHiddenState{state.value + 37}};
 }
 
 class Mlp1Impl final : public Map {

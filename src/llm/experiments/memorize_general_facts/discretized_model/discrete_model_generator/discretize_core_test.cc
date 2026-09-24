@@ -46,6 +46,45 @@ CapturedModel Branching() {
                      Sample({1}, {{101}, {201}, {301}})})
       .value();
 }
+
+// A and C both predict X, but their first-MLP inputs are separated by B in
+// coordinate order. The shortlist can combine other neighbors, but it misses
+// this equal-output fiber because combining with B conflicts downstream.
+CapturedModel MissedPointwiseFiber(StateVectorHints* hints) {
+  const ModelMetadata metadata{.width = 1,
+                               .layers = 2,
+                               .vocab_size = 8,
+                               .eos_token = 7,
+                               .prompt_tokens = 1,
+                               .vocabulary = {{0, "A"},
+                                              {1, "B"},
+                                              {2, "C"},
+                                              {3, "D"},
+                                              {4, "X"},
+                                              {5, "Y"},
+                                              {6, "Z"},
+                                              {7, "EOS"}}};
+  return BuildModel(
+             metadata,
+             {Sample(
+                  {0, 4},
+                  {{100, 104}, {200, 204}, {300, 304}, {400, 404}, {500, 504}},
+                  {4, 7}),
+              Sample(
+                  {1, 5},
+                  {{101, 104}, {201, 204}, {301, 304}, {401, 404}, {501, 504}},
+                  {5, 7}),
+              Sample(
+                  {2, 4},
+                  {{102, 104}, {202, 204}, {300, 304}, {400, 404}, {500, 504}},
+                  {4, 7}),
+              Sample(
+                  {3, 6},
+                  {{103, 104}, {203, 204}, {303, 304}, {403, 404}, {503, 504}},
+                  {6, 7})},
+             -1, hints)
+      .value();
+}
 // States appear in first-observation order within each boundary.
 int State(const CapturedModel& model, int stage, int ordinal) {
   for (const auto& row : model.states)
@@ -382,6 +421,144 @@ TEST(DiscretizeCoreTest, SearchLimitsAreNotMisreportedAsMinimality) {
       shortlist->stats.compaction_search->pairwise_compaction_complete);
   options.neighbors = 0;
   EXPECT_FALSE(CompactModel(Branching(), options).ok());
+}
+
+TEST(DiscretizeCoreTest, PointwiseFibersBypassTheNeighborShortlist) {
+  StateVectorHints hints;
+  const auto original = MissedPointwiseFiber(&hints);
+  CompactionOptions options;
+  options.neighbors = 1;
+  options.max_passes = 1;
+  options.exhaustive_pair_limit = 0;
+  auto compacted = CompactModel(original, options, &hints);
+  ASSERT_TRUE(compacted.ok()) << compacted.status();
+  const auto& search = *compacted->stats.compaction_search;
+  const auto nearest = std::find_if(
+      search.history.begin(), search.history.end(), [](const auto& progress) {
+        return progress.phase == CompactionPhase::kNearestPassComplete;
+      });
+  const auto pointwise = std::find_if(
+      search.history.begin(), search.history.end(), [](const auto& progress) {
+        return progress.phase == CompactionPhase::kPointwisePassComplete;
+      });
+  ASSERT_NE(nearest, search.history.end());
+  ASSERT_NE(pointwise, search.history.end());
+  EXPECT_EQ(nearest->states_per_stage[1], pointwise->states_per_stage[1] + 1);
+  EXPECT_EQ(pointwise->attempted, nearest->attempted + 1);
+  EXPECT_EQ(pointwise->accepted, nearest->accepted + 1);
+  EXPECT_FALSE(search.pairwise_compaction_complete);
+  EXPECT_FALSE(search.global_minimum_proven);
+  EXPECT_EQ(compacted->stats.verification, original.stats.verification);
+
+  // The input symbols combine, not the input and output boundaries themselves.
+  // Membership records still identify both original, distinct activation IDs.
+  const int first = State(original, 1, 0);
+  const int second = State(original, 1, 3);
+  int containing_both = 0;
+  size_t members = 0;
+  for (const auto& state : compacted->states) {
+    ASSERT_TRUE(state.members.has_value());
+    members += state.members->size();
+    if (std::find(state.members->begin(), state.members->end(), first) !=
+            state.members->end() &&
+        std::find(state.members->begin(), state.members->end(), second) !=
+            state.members->end()) {
+      ++containing_both;
+      EXPECT_EQ(state.boundary, 1);
+    }
+  }
+  EXPECT_EQ(containing_both, 1);
+  EXPECT_EQ(members, original.states.size());
+  std::set<int> outputs;
+  for (const auto& row : compacted->transformers[0].mlp.transitions)
+    outputs.insert(row.output);
+  EXPECT_EQ(outputs.size(), compacted->transformers[0].mlp.transitions.size());
+
+  const auto again = CompactModel(original, options, &hints);
+  ASSERT_TRUE(again.ok()) << again.status();
+  EXPECT_EQ(again->states, compacted->states);
+  EXPECT_EQ(again->transformers, compacted->transformers);
+  EXPECT_EQ(again->stats.accepted_compactions,
+            compacted->stats.accepted_compactions);
+}
+
+TEST(DiscretizeCoreTest, PointwiseFibersRespectTheSharedAttemptBudget) {
+  StateVectorHints hints;
+  const auto original = MissedPointwiseFiber(&hints);
+  CompactionOptions options;
+  options.neighbors = 1;
+  options.max_passes = 1;
+  options.exhaustive_pair_limit = 0;
+  const auto unlimited = CompactModel(original, options, &hints);
+  ASSERT_TRUE(unlimited.ok()) << unlimited.status();
+  const auto& history = unlimited->stats.compaction_search->history;
+  const auto nearest =
+      std::find_if(history.begin(), history.end(), [](const auto& progress) {
+        return progress.phase == CompactionPhase::kNearestPassComplete;
+      });
+  ASSERT_NE(nearest, history.end());
+  options.max_attempts = nearest->attempted;
+  const auto limited = CompactModel(original, options, &hints);
+  ASSERT_TRUE(limited.ok()) << limited.status();
+  EXPECT_EQ(limited->stats.attempted_seeds, *options.max_attempts);
+  EXPECT_EQ(limited->stats.states_per_stage[1], nearest->states_per_stage[1]);
+  EXPECT_EQ(limited->stats.compaction_search->stopping_reason,
+            CompactionStoppingReason::kAttemptLimit);
+  EXPECT_FALSE(limited->stats.compaction_search->pairwise_compaction_complete);
+  EXPECT_TRUE(EvaluateModel(*limited).ok());
+
+  ++*options.max_attempts;
+  const auto one_more = CompactModel(original, options, &hints);
+  ASSERT_TRUE(one_more.ok()) << one_more.status();
+  EXPECT_EQ(one_more->stats.attempted_seeds, *options.max_attempts);
+  EXPECT_EQ(one_more->stats.states_per_stage[1],
+            nearest->states_per_stage[1] - 1);
+  EXPECT_TRUE(EvaluateModel(*one_more).ok());
+}
+
+TEST(DiscretizeCoreTest, PointwiseFibersHonorCancellationAtTheirOwnPhase) {
+  StateVectorHints hints;
+  const auto original = MissedPointwiseFiber(&hints);
+  CompactionOptions options;
+  options.neighbors = 1;
+  options.max_passes = 1;
+  options.exhaustive_pair_limit = 0;
+  bool cancel = false;
+  options.progress = [&](const CompactionProgress& progress) {
+    if (progress.phase == CompactionPhase::kPointwise)
+      cancel = true;
+  };
+  options.interrupted = [&] { return cancel; };
+  const auto compacted = CompactModel(original, options, &hints);
+  EXPECT_TRUE(cancel);
+  EXPECT_EQ(compacted.status().code(), absl::StatusCode::kCancelled);
+}
+
+TEST(DiscretizeCoreTest, EqualAttentionOutputsDoNotEquateHistorySymbols) {
+  const ModelMetadata metadata{
+      1, 1, 4, 3, 1, {{0, "A"}, {1, "B"}, {2, "C"}, {3, "EOS"}}};
+  const auto original = BuildModel(
+      metadata,
+      {Sample({0, 2, 0}, {{100, 102, 103}, {200, 201, 203}, {300, 301, 303}},
+              {2, 0, 3}),
+       Sample({1, 2, 1}, {{101, 102, 104}, {200, 202, 204}, {300, 302, 304}},
+              {2, 1, 3})});
+  ASSERT_TRUE(original.ok()) << original.status();
+  const auto compacted = CompactModel(*original);
+  ASSERT_TRUE(compacted.ok()) << compacted.status();
+  // A and B have the same first attention output, but substituting A for B
+  // later in a causal history changes the required answer. They must remain
+  // distinct even though a pointwise MLP's equal-output inputs may combine.
+  auto entry = [&](int token) {
+    for (const auto& row : compacted->position_embedding.transitions)
+      if (row.token == token && row.position == 0)
+        return row.output;
+    return -1;
+  };
+  EXPECT_NE(entry(0), entry(1));
+  EXPECT_EQ(PredictNext(*compacted, {0, 2}).value(), 0);
+  EXPECT_EQ(PredictNext(*compacted, {1, 2}).value(), 1);
+  EXPECT_TRUE(EvaluateModel(*compacted).ok());
 }
 
 TEST(DiscretizeCoreTest, MembershipIsPreservedAndCanBeRecovered) {

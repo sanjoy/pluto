@@ -23,20 +23,27 @@ configuration, using the identity baseline of the canonical-token-order rerun:
 
 The exact capture contains **113,132 distinct internal states**, from 126,882
 state occurrences (14,098 real token positions across nine boundaries).
-A bounded compaction pass reduces this to **6,117 states**, a **94.59%**
+A bounded compaction pass reduces this to **6,069 states**, a **94.64%**
 reduction. The 4,475 vocabulary symbols are separate from that count.
 
 | Boundary | After attention + residual | After MLP + residual |
 | --- | ---: | ---: |
 | Token + position embedding | 51 | — |
-| Block 0 | 52 | 35 |
-| Block 1 | 53 | 37 |
-| Block 2 | 52 | 37 |
+| Block 0 | 35 | 35 |
+| Block 1 | 37 | 37 |
+| Block 2 | 37 | 37 |
 | Block 3 | 2,900 | 2,900 |
 
 Compaction stopped at its one-pass limit: **neither pairwise irreducibility nor
 global minimality is claimed**. State count measures the symbolic alphabet,
 not the information stored in the history-dependent attention functions.
+
+The nearest-candidate pass alone left 6,117 states. An exact pointwise pass
+then identified MLP inputs with equal current outputs, removing 17, 16, and 15
+states from the first three attention-output boundaries: **48 additional
+compactions**, with no changed MLP outputs. Both sides of every MLP remain
+separate boundaries. The resulting MLP maps are one-to-one on their supported
+inputs and can all be emitted as guarded state-ID offsets.
 
 Previous generated models remain in Git history: the width-13/context-32 model
 had 6,249 compacted states, and the eight-block/width-16 model had 6,514. Their
@@ -88,11 +95,20 @@ Optional vector hints only order compaction candidates. Acceptance is symbolic:
 colliding transition keys force compatible downstream outputs, and a proposal
 that would equate distinct required vocabulary outputs is rejected.
 
+After each nearest-candidate pass, exact pointwise compaction groups each
+MLP's input states by their current output class. Inputs in one group have
+the same sole consumer and are interchangeable without any distance heuristic.
+The language modeling head is handled first, followed by MLPs in reverse order,
+so equal head labels can expose additional final-MLP compactions. This shares
+the overall attempt budget and cancellation rules. It does not identify input
+and output boundaries, and it does not infer that individual attention-history
+symbols are interchangeable from an equal output in just one context.
+
 `--compact_transitions` separately condenses the finite transition functions.
 It shares attention-prefix/suffix programs and uses range checks, masks, or
 arithmetic where equivalent. This does not perform additional state compaction.
-For this model, the final MLP and language modeling head can use vocabulary-
-aligned state IDs; the earlier MLPs retain explicit maps. Such arithmetic
+For this model, the final MLP and language modeling head use vocabulary-aligned
+state IDs, and the earlier MLPs use contiguous guarded offsets. Such arithmetic
 patterns follow from the chosen symbolic names, not proof that the original
 neural layers are affine.
 

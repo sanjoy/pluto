@@ -68,6 +68,18 @@ TEST(GeneratorReportTest,
   EXPECT_NE(FormatStatistics(stats), report);
 }
 
+TEST(GeneratorReportTest, PointwiseProgressIsDistinctFromPairwiseSearch) {
+  EXPECT_NE(
+      FormatProgress(CompactionProgress{.phase = CompactionPhase::kPointwise})
+          .find("phase: compaction_pointwise\n"),
+      std::string::npos);
+  EXPECT_NE(
+      FormatProgress(
+          CompactionProgress{.phase = CompactionPhase::kPointwisePassComplete})
+          .find("phase: compaction_pointwise_pass_complete\n"),
+      std::string::npos);
+}
+
 TEST(GeneratorReportTest, InconclusiveCertificateDoesNotClaimMinimality) {
   CertificateResult certificate;
   certificate.reason = "no sufficient collision proof";

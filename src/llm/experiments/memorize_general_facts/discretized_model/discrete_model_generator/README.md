@@ -45,6 +45,13 @@ recording.
 hints preserve proximity-based candidate ordering; without hints the search
 uses deterministic ID ordering. Acceptance always uses symbolic transition
 consistency and distinct terminal vocabulary labels, never a distance threshold.
+Each nearest-candidate pass also runs exact pointwise compaction: MLP inputs
+with the same current output class are combined within their input boundary.
+Equal language-head labels are handled first, then MLPs in reverse order. This
+exhausts equal-output groups without a numerical shortlist, while respecting
+the same attempt budget and cancellation checks. It never applies this rule
+to attention-history symbols, which may differ in other contexts. Separate
+pointwise progress records distinguish these trials from heuristic search.
 `RelabelMlpOutputs` is a separate within-boundary renaming transformation which
 can expose simpler pointwise code without combining states.
 

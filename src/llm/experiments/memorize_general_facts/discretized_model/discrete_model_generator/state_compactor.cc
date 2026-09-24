@@ -514,6 +514,54 @@ absl::StatusOr<CapturedModel> CompactModel(
   auto report_due = [&] {
     return r.attempted >= last_attempt + 1000 || elapsed(last_report) >= 10;
   };
+  auto run_pointwise_pass = [&](int pass) -> absl::StatusOr<bool> {
+    RETURN_IF_ERROR(report(CompactionPhase::kPointwise, pass).status());
+    auto compact_map_inputs =
+        [&](const CapturedMap& map,
+            bool vocabulary_outputs) -> absl::StatusOr<bool> {
+      // An MLP's input boundary has only that pointwise MLP as its consumer.
+      // Thus f(a) == f(b) lets us identify a and b without changing any later
+      // computation. The preceding attention now emits their shared symbol;
+      // the MLP and both of its boundaries remain present. This is not valid
+      // for attention inputs, whose meaning depends on their whole history.
+      std::map<int, int> representative;
+      for (const auto& row : map.transitions) {
+        RETURN_IF_ERROR(check_interrupt());
+        const int output = vocabulary_outputs
+                               ? row.output
+                               : compactor->RootForState(row.output);
+        const auto [previous, inserted] =
+            representative.emplace(output, row.input);
+        if (inserted || compactor->RootForState(previous->second) ==
+                            compactor->RootForState(row.input))
+          continue;
+        if (options.max_attempts && r.attempted >= *options.max_attempts)
+          return true;
+        ASSIGN_OR_RETURN(bool compacted,
+                         compactor->TryCompact(previous->second, row.input));
+        if (!compacted)
+          return absl::InternalError(
+              "equal-output pointwise inputs could not be compacted");
+        RETURN_IF_ERROR(check_interrupt());
+        if (report_due())
+          RETURN_IF_ERROR(report(CompactionPhase::kPointwise, pass).status());
+      }
+      return false;
+    };
+    // The head has fixed vocabulary outputs. Compact it first: this can make
+    // formerly distinct final-MLP outputs equal. All other MLP output roots
+    // stay unchanged in this pass, so a single reverse traversal suffices.
+    ASSIGN_OR_RETURN(bool budget,
+                     compact_map_inputs(model.language_modeling_head, true));
+    for (int layer = model.metadata.layers - 1; layer >= 0 && !budget; --layer) {
+      ASSIGN_OR_RETURN(
+          budget, compact_map_inputs(model.transformers[layer].mlp, false));
+    }
+    ASSIGN_OR_RETURN(auto info,
+                     report(CompactionPhase::kPointwisePassComplete, pass));
+    history.push_back(std::move(info));
+    return budget;
+  };
   auto run_pass = [&](bool exhaustive, int pass) -> absl::StatusOr<bool> {
     const CompactionPhase phase =
         exhaustive ? CompactionPhase::kExhaustive : CompactionPhase::kNearest;
@@ -549,6 +597,9 @@ absl::StatusOr<CapturedModel> CompactModel(
     const int64_t previous = r.compactions;
     RETURN_IF_ERROR(report(CompactionPhase::kNearest, pass).status());
     ASSIGN_OR_RETURN(bool budget, run_pass(false, pass));
+    if (!budget) {
+      ASSIGN_OR_RETURN(budget, run_pointwise_pass(pass));
+    }
     if (budget) {
       stop = CompactionStoppingReason::kAttemptLimit;
       break;

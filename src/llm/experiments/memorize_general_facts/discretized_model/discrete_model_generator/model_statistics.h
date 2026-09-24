@@ -31,6 +31,8 @@ struct CompactionRecord {
 enum class CompactionPhase {
   kNearest,
   kNearestPassComplete,
+  kPointwise,
+  kPointwisePassComplete,
   kExhaustive,
   kExhaustivePassComplete,
 };
