@@ -8,7 +8,7 @@
 namespace pluto::llm::discretized::gen::internal {
 namespace {
 std::optional<DiscreteHiddenState> Lookup(DiscreteHiddenState state) {
-  if (state.value < 4744 || state.value > 9218)
+  if (state.value < 4728 || state.value > 9202)
     return {};
   static constexpr uint8_t kSupport[] = {
       0x27u, 0x02u, 0x00u, 0xc0u, 0x65u, 0xceu, 0x9du, 0xf9u, 0xfeu, 0xffu,
@@ -68,7 +68,7 @@ std::optional<DiscreteHiddenState> Lookup(DiscreteHiddenState state) {
       0x7du, 0x33u, 0x89u, 0x6du, 0xd4u, 0x54u, 0x52u, 0x82u, 0xb1u, 0xd9u,
       0xcau, 0x9bu, 0x94u, 0x43u, 0x23u, 0x07u, 0x0au, 0xbdu, 0xf7u, 0x05u,
   };
-  const uint32_t offset = state.value - 4744;
+  const uint32_t offset = state.value - 4728;
   if ((kSupport[offset >> 3] & (uint32_t{1} << (offset & 7u))) == 0)
     return {};
   return {DiscreteHiddenState{state.value}};

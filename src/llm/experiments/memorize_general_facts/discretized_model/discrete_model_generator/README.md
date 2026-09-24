@@ -58,6 +58,15 @@ exhausts equal-output groups without a numerical shortlist, while respecting
 the same attempt budget and cancellation checks. It never applies this rule
 to attention-history symbols, which may differ in other contexts. Separate
 pointwise progress records distinguish these trials from heuristic search.
+After the bounded nearest-candidate passes, an eligible-pair threshold enables
+an exhaustive continuation. This continuation has its own unbounded sweep
+loop: it stops only on a no-change sweep, cancellation, or the optional trial
+budget. Set `compaction_max_attempts=-1` and
+`compaction_exhaustive_pair_limit=9223372036854775807` to exhaust all remaining
+compatible pairs. Pairs with different fixed vocabulary labels are impossible
+and skipped; other rejections are cached because later compaction cannot undo
+their contradiction. Exhaustion proves pairwise irreducibility of the resulting
+partition, not global minimality over different earlier choices.
 `RelabelMlpOutputs` is a separate within-boundary renaming transformation which
 can expose simpler pointwise code without combining states.
 

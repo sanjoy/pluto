@@ -482,6 +482,71 @@ TEST(DiscretizeCoreTest, PointwiseFibersBypassTheNeighborShortlist) {
             compacted->stats.accepted_compactions);
 }
 
+TEST(DiscretizeCoreTest, ExhaustiveSearchStopsOnlyAfterAnEmptySweep) {
+  StateVectorHints hints;
+  const auto original = MissedPointwiseFiber(&hints);
+  CompactionOptions options;
+  options.neighbors = 1;
+  options.max_passes = 1;
+  options.exhaustive_pair_limit = std::numeric_limits<int64_t>::max();
+  const auto compacted = CompactModel(original, options, &hints);
+  ASSERT_TRUE(compacted.ok()) << compacted.status();
+  const auto& search = *compacted->stats.compaction_search;
+  const CompactionProgress* pointwise = nullptr;
+  std::vector<const CompactionProgress*> exhaustive;
+  for (const auto& progress : search.history) {
+    if (progress.phase == CompactionPhase::kPointwisePassComplete)
+      pointwise = &progress;
+    if (progress.phase == CompactionPhase::kExhaustivePassComplete)
+      exhaustive.push_back(&progress);
+  }
+  ASSERT_NE(pointwise, nullptr);
+  // The pointwise pass combines A/C's MLP inputs, but the non-neighboring
+  // embedding pair remains for exhaustive search. A productive sweep must
+  // therefore be followed by another sweep that accepts no more pairs.
+  ASSERT_GE(exhaustive.size(), 2u);
+  EXPECT_LT(exhaustive.front()->states, pointwise->states);
+  EXPECT_GT(exhaustive.front()->accepted, pointwise->accepted);
+  const auto& previous = *exhaustive[exhaustive.size() - 2];
+  const auto& last = *exhaustive.back();
+  EXPECT_EQ(last.states, previous.states);
+  EXPECT_EQ(last.accepted, previous.accepted);
+  EXPECT_EQ(last.compactions, previous.compactions);
+  EXPECT_EQ(search.stopping_reason,
+            CompactionStoppingReason::kNoCompatiblePair);
+  EXPECT_TRUE(search.pairwise_compaction_complete);
+  EXPECT_FALSE(search.global_minimum_proven);
+
+  // Independently retry every remaining pair with a fresh, empty rejection
+  // cache. This detects an incorrectly cached rejection causing a premature
+  // fixed-point claim, including after earlier accepted compactions.
+  auto fresh = StateCompactor::Create(*compacted);
+  ASSERT_TRUE(fresh.ok()) << fresh.status();
+  auto before = (*fresh)->Export();
+  int64_t pairs = 0;
+  for (size_t first = 0; first < compacted->states.size(); ++first)
+    for (size_t second = first + 1; second < compacted->states.size();
+         ++second) {
+      const auto& a = compacted->states[first];
+      const auto& b = compacted->states[second];
+      if (a.boundary != b.boundary)
+        continue;
+      const auto accepted = (*fresh)->TryCompact(a.id, b.id);
+      ASSERT_TRUE(accepted.ok()) << accepted.status();
+      ASSERT_FALSE(*accepted)
+          << "remaining compatible pair: " << a.id << ", " << b.id;
+      ++pairs;
+    }
+  EXPECT_GT(pairs, 0);
+  auto after = (*fresh)->Export();
+  EXPECT_EQ(after.stats.attempted_seeds - before.stats.attempted_seeds, pairs);
+  EXPECT_EQ(after.stats.cached_rejections, before.stats.cached_rejections);
+  before.stats = {};
+  after.stats = {};
+  EXPECT_EQ(after, before);
+  EXPECT_TRUE(EvaluateModel(after).ok());
+}
+
 TEST(DiscretizeCoreTest, PointwiseFibersRespectTheSharedAttemptBudget) {
   StateVectorHints hints;
   const auto original = MissedPointwiseFiber(&hints);

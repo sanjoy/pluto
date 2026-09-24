@@ -8,7 +8,7 @@
 namespace pluto::llm::discretized::gen::internal {
 namespace {
 std::optional<DiscreteHiddenState> Lookup(DiscreteHiddenState state) {
-  if (state.value < 4596 || state.value > 4632)
+  if (state.value < 4580 || state.value > 4616)
     return {};
   return {DiscreteHiddenState{state.value}};
 }

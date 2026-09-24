@@ -14,17 +14,17 @@ stats:
   captured_samples: 1024
   scored_targets: 10002
   exact_states: 113132
-  states: 3060
+  states: 3044
   membership_complete: true
   membership_original_states: 113132
-  states_per_stage: [51, 35, 35, 37, 37, 37, 37, 2900, 2900]
-  attempted_seeds: 60058
-  accepted_seeds: 46818
-  state_compactions: 107063
+  states_per_stage: [35, 35, 35, 37, 37, 37, 37, 2900, 2900]
+  attempted_seeds: 62118
+  accepted_seeds: 46834
+  state_compactions: 107079
   mlp_pair_compactions: 3009
-  cached_rejections: 440357
-  accepted_compactions_sha256: 35f8a47aef5cbc8e437c69ed7a6bb199b673ea99972c3f3e9b416dfd14ccb03b
-  accepted_compaction_records: 46818
+  cached_rejections: 447865
+  accepted_compactions_sha256: 5e35c00f49e320f1142ece78e39f20f3437c4714fd0c7b06aea13528bc4dac46
+  accepted_compaction_records: 46834
   compaction_distance_summary:
     minimum: 0.00048828125
     maximum: 5.4554640609194438
@@ -35,11 +35,11 @@ stats:
     errors: 0
     explicit_eos: 1024
   compaction_search:
-    stopping_reason: pass_limit
-    pairwise_compaction_complete: false
+    stopping_reason: no_compatible_pair
+    pairwise_compaction_complete: true
     global_minimum_proven: false
     nearest_neighbors: 4
-    exhaustive_pair_limit: 0
+    exhaustive_pair_limit: 9223372036854775807
     remaining_pairs_before_sweep: 5129
     pass:
       phase: compaction_nearest_pass_complete
@@ -49,7 +49,7 @@ stats:
       attempted: 60010
       accepted: 46770
       compactions: 107015
-      seconds: 4.7792017180000004
+      seconds: 4.893781358
     pass:
       phase: compaction_pointwise_pass_complete
       pass: 1
@@ -58,8 +58,26 @@ stats:
       attempted: 60058
       accepted: 46818
       compactions: 107063
-      seconds: 4.78511343
-    seconds: 4.9037408119999997
+      seconds: 4.9000110860000001
+    pass:
+      phase: compaction_exhaustive_pass_complete
+      pass: 1
+      states: 6053
+      states_per_stage: [35, 35, 35, 37, 37, 37, 37, 2900, 2900]
+      attempted: 62118
+      accepted: 46834
+      compactions: 107079
+      seconds: 19.610015939
+    pass:
+      phase: compaction_exhaustive_pass_complete
+      pass: 2
+      states: 6053
+      states_per_stage: [35, 35, 35, 37, 37, 37, 37, 2900, 2900]
+      attempted: 62118
+      accepted: 46834
+      compactions: 107079
+      seconds: 19.617046982000002
+    seconds: 19.742992230999999
 checkpoint: /home/ubuntu/checkpoints/memorize_general_facts/dataset_weights_canonical_order_0/baseline/checkpoints/layers_4/step_120000
 checkpoint_files_sha256:
   weight_0.bin: ea5cc897257a966bf0550d518f66680d66c61139769d926ddfbdf064db8c3f06
@@ -122,7 +140,7 @@ tokenizer_sha256: 1fe93b6152957cf9cfd6d89002467f789ce8b3f3e000b3a2edf27c808ddd0b
 generator: generate_discretized_model (C++)
 transition_representation: control_flow
 mlp_pair_compaction: true
-states: 3060
+states: 3044
 layers: 4
 vocabulary_size: 4475
 archived_original_vectors: 113132
@@ -131,27 +149,27 @@ archived_vector_encoding: exact_bf16_inspection_only
 integer_only_inference: true
 generated_sources_sha256:
   BUILD.bazel: 49ed1e66d573e1611c06072d3d1b6e1499af0d9abbe27bd2912e0df9e2fd46d3
-  attention_0.cc: 2ca51a4b184c56dcbe7e532fb3ffa2d6f108e4201647785a4e334a95ea46f64b
-  attention_1.cc: 54d9a7abc27dce2354e792749edd3f17053e6d07d43e3b93aab8699aa2c68b3d
-  attention_2.cc: 5ccf247a54c84d5b2cb9366d55a102f9c202c87775e3fe0af178ceb9485326fd
-  attention_3.cc: e2eb98b79fde3fb729aea5b609db85559ba2575cc44bf3bc80c93358a22ad89a
+  attention_0.cc: 0c12f2eaa961d2dd21f7fc5fa9f377d1b671346131ea42c5fe2ee77782c2de11
+  attention_1.cc: 35bcc15103f6dc925a903e55318aa664fa144bed5fdc0074701c5765e038e532
+  attention_2.cc: 6e8bb0209b9861228ef35656436f689222dbbc5d71ac8724836f522fabbc04d2
+  attention_3.cc: 73a78ddca6f283cf36d22f57e74f1ec456a83fef0b6b2fd8c9e540b8bff184b0
   cli_support.h: 23e5e95ba2d6887da0fc89a8ae930380df75fdcdff0f6178e0a3c29dfdc058a5
-  entry.cc: d1551db8fd1b58ea6a884df077af210d77e829f9a995a3e559b7e144066bf588
+  entry.cc: 92c363403ac3f1725d2af4a1ddbd69c9089fc6e7c6703210af004e40b8d4f051
   generated_model_test.cc: ef6d4405dc4eef4ee5cf6c28b66fdde4d155ffcfcf338ed45b0d012a628395be
-  generated_transition_test.cc: ce0f22ecf2134fb6bcfe63ebf668b27f2eb6d243ea55d43ad74ebce7096327f8
-  language_modeling_head.cc: b319f0d35100204483963be9a2749242b6c9e1e06c85ed2680878eea5f6c0b0e
-  mlp_0.cc: beb51f4f9011a93ff1d02240f3f2d049390a0495c18ddf57928d03e41593741a
-  mlp_1.cc: 662d21288675801dd094048aca43d782299aa131fccfb508a4c1d3f5116bf4c4
-  mlp_2.cc: 3cb009072a9a4a0ae22e6af73f4ae169da0bf60f18919e956cc192eb5a6fc4f0
-  mlp_3.cc: 37671c17d71b20b61a9389bf3550da20f7ca452a49c95bfd4959cd70d95896e8
+  generated_transition_test.cc: fbd8b4a065da38c6ca69515ed23d0d07911dbad26dbbb07fe3781d2678b3bf91
+  language_modeling_head.cc: 931c6b04899fd300c86b093a4e2e894ef6400382b039e5ed0314eaada90a2310
+  mlp_0.cc: d91a005152d76cccaf500a334cd1c5397ef1ca080a0113f2ca4af0989fac1d98
+  mlp_1.cc: 57fc7e7f70a8d9694245afe5baec3c127d9d61f3890054b3d4981a929a7fa205
+  mlp_2.cc: 78d918f6883bd88ddedc29f33b1577d4c5d29c5769d7bd1a7e12117bbcdc3b64
+  mlp_3.cc: 7062741bbe869fed8b8bd1671aa6b0de0c593ba9a9fa7e830437fe3b04f1034b
   model.cc: 1cea73510ed9a904cac047773756004b0e33a5c0e5fb82ecb32c26fb3a9e0b28
   model.h: fd8655b9fc766c97bdb8bf642454faa4ac6ce5bf0a119264c711619801dc02e6
   prompt_encoder.cc: 7558f19b4e9ea31c58a215cac2f57301a706f8ad11a16f038247236f9bfc7f13
-  state_index.tsv: bd060af88d9217280221646a21ac842910118f34d2a16159e2b0c8457b8dac00
-  state_members.tsv: 7ced9acd5fbdd5e4a1cd40448cba02ddaf43dec545e389a063a4c09a017a005c
-  state_vectors.cc: 4fba1fe99ef0a0e106e191aa103cd750b7efdd6d01178d5b2a60f829d92c5492
+  state_index.tsv: 3fcf8bca43844059c2317b1db0e3a2b330bde727d702734b8085646f665c0ced
+  state_members.tsv: 390be3d6de91e5770774e2e59571c8766ae28eace9000b3e55e5423d801df764
+  state_vectors.cc: 8df69b4d587084e48aad9d384bdf05466b2b9ade0513df49115d4551f50f6a29
   state_vectors.h: afb6edeef6aa697932a041c394cc2b1d2d31baeeffa2d51ed091e093e3c8a81d
-  state_vectors_0.cc: 9b500190861c4838b7f70ad4819e0c54c1057ea8b8660190d962ffab07383e13
+  state_vectors_0.cc: 99d20554cc78ccecc3c7178ddd77b5cd207587b8823e9b55ec5dc4b2861393a6
   state_vectors_1.cc: 176fe363d1313f3dda739f4d8dfdf07b89addea6706895578992dd7cb8ce9673
   state_vectors_10.cc: c884c37e61bbe1a85c78c4a1d0c1b8b6f9eb1782395519070944c9f8b7567610
   state_vectors_11.cc: 813ad171d8bfd9fb2088a511a34c19495223a497cb8f177142e7b4128cc7a673
@@ -165,19 +183,19 @@ generated_sources_sha256:
   state_vectors_7.cc: bfbced9505df4c6e51e0da173ab453ea3e92ab5f115c19ca0121e905612b5228
   state_vectors_8.cc: 42db04fb70412be47654d92fafc3cae57c562dac8722ad430284e70594a5c734
   state_vectors_9.cc: f7350c8f22c5d6d809a70087a7af9a67f0c2787a3dfa7398cb0322c6c8bda5f6
-  state_vectors_test.cc: ed607cd9896a6254cac813509aa9f317cd1d8959c10c261b7682a745268f53e6
+  state_vectors_test.cc: 1e16aa492712958921706ed1dbcfed071a54fed20703e88961a87e5d0f56ca76
   tables.h: bdb613984b2ba91550ae9c20eeea1cb354f35919f3a1f6e896c584f5ebaba31f
   verification.cc: a8e00e45da53ed510dea3bcd90c9bedc1bf29f4e8e3d9258a52ba29d42cb4eeb
   vocabulary.cc: 5b2d42d9e233326d8f96540e79dff28c1ae0129d9ba17b8bd251a7bfce0fc143
   vocabulary_tokens.h: db06a3f8738c525418c58d2e7390a50c04665f5853539919109eb523023c564a
 formatted_source_bytes:
   BUILD.bazel: 3877
-  attention_0.cc: 384592
+  attention_0.cc: 383735
   attention_1.cc: 373325
   attention_2.cc: 367646
   attention_3.cc: 360709
   cli_support.h: 663
-  entry.cc: 235093
+  entry.cc: 235087
   generated_model_test.cc: 180608
   generated_transition_test.cc: 1745568
   language_modeling_head.cc: 5371
@@ -188,9 +206,9 @@ formatted_source_bytes:
   model.cc: 1163
   model.h: 385
   prompt_encoder.cc: 3759341
-  state_index.tsv: 692304
-  state_members.tsv: 900484
-  state_vectors.cc: 286825
+  state_index.tsv: 690159
+  state_members.tsv: 899892
+  state_vectors.cc: 285961
   state_vectors.h: 1506
   state_vectors_0.cc: 1315947
   state_vectors_1.cc: 1315677
@@ -206,7 +224,7 @@ formatted_source_bytes:
   state_vectors_7.cc: 1316906
   state_vectors_8.cc: 1316182
   state_vectors_9.cc: 1316115
-  state_vectors_test.cc: 363994
+  state_vectors_test.cc: 362739
   tables.h: 635
   verification.cc: 395439
   vocabulary.cc: 123281

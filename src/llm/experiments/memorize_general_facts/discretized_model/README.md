@@ -23,33 +23,76 @@ configuration, using the identity baseline of the canonical-token-order rerun:
 
 The exact capture contains **113,132 distinct internal states**, from 126,882
 state occurrences (14,098 real token positions across nine boundaries).
-A bounded within-boundary compaction pass reduces this to **6,069 states**.
-Pairing each bijective MLP's input and output reduces that further to **3,060
+A bounded within-boundary compaction pass reduces this to **6,069 states**;
+an exhaustive pairwise continuation reduces that to **6,053 states**.
+Pairing each bijective MLP's input and output reduces that further to **3,044
 distinct state IDs**. The 4,475 vocabulary symbols are separate from that count.
 
 | Boundary | After attention + residual | After MLP + residual |
 | --- | ---: | ---: |
-| Token + position embedding | 51 | — |
+| Token + position embedding | 35 | — |
 | Block 0 | 35 | 35 |
 | Block 1 | 37 | 37 |
 | Block 2 | 37 | 37 |
 | Block 3 | 2,900 | 2,900 |
 
 Each block's two columns now refer to the **same IDs**, not two disjoint sets.
-Thus the unique count is `51 + 35 + 37 + 37 + 2900 = 3060`; the per-boundary
-counts still sum to 6,069 because a paired symbol appears on both sides.
+Thus the unique count is `35 + 35 + 37 + 37 + 2900 = 3044`; the per-boundary
+counts still sum to 6,053 because a paired symbol appears on both sides.
 
-Compaction stopped at its one-pass limit: **neither pairwise irreducibility nor
-global minimality is claimed**. State count measures the symbolic alphabet,
-not the information stored in the history-dependent attention functions.
+Compaction stopped only after a complete exhaustive sweep accepted no pair:
+**no further same-boundary pair can be combined under this partition while
+preserving the required outputs**. This is not proof of a globally smallest
+partition; earlier compaction choices could lead to a different result. State
+count measures the symbolic alphabet, not the information stored in the
+history-dependent attention functions.
 
 The nearest-candidate pass alone left 6,117 states. An exact pointwise pass
 then identified MLP inputs with equal current outputs, removing 17, 16, and 15
 states from the first three attention-output boundaries: **48 additional
 compactions**, with no changed MLP outputs. The resulting MLP maps are one-to-one
-on their supported inputs. A final pass identifies each pair `x, MLP(x)`,
+on their supported inputs. The exhaustive continuation then removes **16
+embedding states** and leaves every transformer boundary's count unchanged.
+A final pass identifies each pair `x, MLP(x)`,
 removing **3,009 additional IDs**. Every MLP remains an explicit guarded identity:
 unknown inputs still fail rather than passing through unchecked.
+
+### Exhaustive search cost
+
+The exhaustive continuation starts from the same 6,069-state partition as the
+previous checked-in model, before its MLP input/output pairing. It tries every
+same-boundary pair not already contradicted by fixed vocabulary outputs. A
+trial propagates any forced downstream combinations; conflicting vocabulary
+labels reject it and roll back the entire trial. Successful trials are kept,
+and full sweeps repeat until one accepts nothing. There is no attempt limit.
+
+That starting partition has 8,412,229 same-boundary pairs. The final two
+boundaries each contain 2,900 states with distinct fixed readout labels, so
+8,407,100 pairs are immediately impossible. Only **5,129 pairs** need search.
+Rejected pairs remain impossible after further compaction and are cached;
+successful pairs disappear. Therefore 5,129 bounds the number of new uncached
+trials across the entire continuation, not merely one sweep. A loose bound on
+repeated traversal is 263 sweeps / 1,348,927 candidate visits: each productive
+sweep removes at least one of the at most 262 removable early-boundary states.
+Most repeated visits would just check the rejection cache.
+
+On the current machine the continuation took **14.717 seconds**, with 2,060
+new uncached trials, 16 accepted pairs, and two exhaustive sweeps (the second
+accepted nothing). The complete capture/compaction/formatting/generation command
+took **31.21 seconds**, excluding subsequent compilation and tests. All 10,002
+predictions and 1,024 complete suffixes/EOS remain correct; all 113,132 original
+vectors remain archived. These are measured times, not a wall-clock guarantee:
+individual trial costs depend on how many transitions their implications touch.
+At the measured average trial cost, 5,129 uncached trials would take roughly
+37 seconds; a few minutes is a conservative planning budget, not a mathematical
+worst-case time bound.
+
+An independent backward audit of the generated boundary fixtures also found
+contradictory-history witnesses for all 2,522 pairs at the attention-input
+boundaries. Together with the complete injective MLP maps and distinct final
+readout labels, this distinguishes all 8,411,549 remaining boundary-specific
+pairs without consulting the search's rejection cache. Shared MLP IDs are
+treated separately at their two observation boundaries for this argument.
 
 Previous generated models remain in Git history: the width-13/context-32 model
 had 6,249 compacted states, and the eight-block/width-16 model had 6,514. Their
@@ -180,7 +223,8 @@ bazel run -c opt //src/llm/experiments/memorize_general_facts/discretized_model/
   --attention_heads=1 --feed_forward_width=20 \
   --prompt_tokens=5 --expected_samples=1024 --verify_greedy=true \
   --compaction --compaction_neighbors=4 --compaction_max_passes=1 \
-  --compaction_max_attempts=150000 --compaction_exhaustive_pair_limit=0 \
+  --compaction_max_attempts=-1 \
+  --compaction_exhaustive_pair_limit=9223372036854775807 \
   --compact_transitions --mlp_pair_compaction --state_index \
   --output=/tmp/facts-context27-width10-generated
 ```
