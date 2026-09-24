@@ -10,6 +10,7 @@ Neither the native binary nor its libraries depend on these scripts.
 | `run_depth_search.py` | Train and independently verify successive depths. |
 | `run_width_depth_search.py` | Sweep widths/depths and record the measured Pareto frontier. |
 | `run_compact_size_sweep.py` | Sequential compact-vocabulary trials with a shared deadline and independent verification. |
+| `run_two_track_sweep.py` | Time-bounded adaptive compact-model search, reporting the smallest overall and smallest four-or-more-block successes. |
 | `summarize_width_depth.py` | Read and validate saved evidence, then report frontiers without using the GPU. |
 | `audit_prefixes.py` | Check corpus tokenization and unavoidable conflicting next-token targets. |
 | `verify_predictions.py` | Independently retokenize the corpus and audit every recorded suffix/EOS prediction. |
@@ -66,7 +67,7 @@ continues to read those manifests. Do not rewrite those provenance records.
 ## Compact short-context trials
 
 `run_compact_size_sweep.py` runs an explicit sequential list of fresh compact
-models with at least two layers. Each candidate is
+models with at least one layer. Each candidate is
 `layers:width:feed_forward_width:steps:learning_rate`; candidate order is preserved
 without pruning. One attention head and the independently checked 4,475-token
 active vocabulary are fixed. The driver uses a 27-token context, enough for
@@ -95,6 +96,39 @@ Only a fresh native checkpoint reload, an independent audit of all 10,002
 original-GPT-2-ID suffix/EOS predictions, and exact greedy completion of all
 1,024 five-token prompts earn `verified` status. Budget failures, timeouts, and
 execution errors remain distinct and do not prove an architecture insufficient.
+
+### Two-track parameter search
+
+`run_two_track_sweep.py` interleaves shallow and deeper candidates, reporting
+the smallest fully verified model overall and the smallest with at least four
+transformer blocks. A deeper success is eligible for both records. The search
+starts with the verified four-block, width-13, FF26 configuration, then explores
+hidden widths, block counts, and MLP widths. Promising incomplete trials receive
+longer training schedules and learning-rate retries, each from scratch.
+
+Context 27, compact vocabulary 4,475, one attention head, batch size 32, and no
+gradient clipping are held fixed. Single-block models are allowed. Zero-block
+models cannot solve this corpus: identical last-token/position pairs such as
+the ` is` in different capital prompts require different predictions, but a
+model without transformer blocks has no path to read the preceding country.
+
+```sh
+python -B scripts/memorize_general_facts/run_two_track_sweep.py \
+  --binary=bazel-bin/src/llm/experiments/memorize_general_facts/memorize_general_facts \
+  --corpus=testdata/general_facts_dataset.txt \
+  --tokenizer=/home/ubuntu/datasets/tokenizer/gpt2 \
+  --run_dir=/home/ubuntu/checkpoints/memorize_general_facts/two_track_new_run \
+  --duration_seconds=10800 --seed=1337
+```
+
+Use a fresh external run directory and the same runtime-library environment
+as for the compact driver. The controller snapshots its executable, inputs,
+and scripts, maintains live summaries for both records, and shares one hard
+deadline across training and verification. Each success still requires a fresh
+checkpoint reload, an independent suffix/EOS audit, and all 1,024 exact greedy
+completions. A failed bounded trial is not proof of insufficient capacity;
+the records identify the smallest verified models **found**, not a proven
+global minimum.
 
 ### Verified 27-token context (2026-09-24)
 

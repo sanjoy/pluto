@@ -1,15 +1,47 @@
 # General-facts memorization experiment
 
-Objective: start with eight GPT-2-style transformer blocks, require exact top-1
-training-set completions, and reduce depth until memorization fails. Each of the
+Objective: find small GPT-2-style models with exact top-1 training-set
+completions. The defaults select the smallest configuration verified so far:
+**four blocks, width 10, MLP width 20, and 48,680 parameters**. Each of the
 1,024 dataset lines is a separate sample, right-padded to `--context_length`
 positions (27 by default).
 Padding must never contribute to loss or accuracy. Checkpoints belong outside
 the repository under `~/checkpoints/`.
 
-The completed search found that one block suffices for the approved task;
-all depths from eight through one passed. See [RESULTS.md](ai_slop/RESULTS.md) for the
-per-depth evidence, smallest checkpoint, and exact verification command.
+An earlier search with wider models found that one block sufficed for the
+approved task. See [RESULTS.md](ai_slop/RESULTS.md) for that historical study;
+its checkpoints and parameter counts are not the current defaults.
+
+## Default training configuration
+
+Run from the repository root with fresh checkpoint and output directories:
+
+```sh
+bazel build -c opt //src/llm/experiments/memorize_general_facts:memorize_general_facts
+bazel-bin/src/llm/experiments/memorize_general_facts/memorize_general_facts \
+  --mode=train_model \
+  --tokenizer=/home/ubuntu/datasets/tokenizer/gpt2 \
+  --checkpoint_dir=/home/ubuntu/checkpoints/memorize_general_facts/new_run \
+  --output_dir=/tmp/general_facts_new_run
+```
+
+No model or training overrides are needed. Defaults are four transformer blocks,
+hidden width 10, one attention head, an MLP `10 -> 20 -> 10`, context 27, and the
+4,475-token compact vocabulary. Training uses batch size 32, seed 1337, peak
+learning rate 0.0012, 100 warmup steps, and cosine decay over a **120,000-step**
+budget; exact corpus accuracy is checked every 256 steps. It stops early once
+all suffix/EOS predictions are correct. There is no gradient clipping.
+
+The matched experiment reached zero errors at step **89,600** and passed all
+1,024 autonomous five-token-prompt completions. This is an observed result for
+this dataset and seed, not a guarantee for different data or settings. Model
+and training flags remain explicitly overridable. The periodic-checkpoint and
+wall-clock safety controls retain their existing defaults (512 steps and
+10,800 seconds); they do not define the optimizer's learning-rate schedule.
+
+Shape defaults are shared by training and inference. To load a differently
+shaped checkpoint, supply its dimensions explicitly; the shared `Gpt2Config`
+library defaults are unchanged.
 
 ## Code and experiment utilities
 
@@ -62,18 +94,17 @@ artifacts. Compact inference loads `compact_vocabulary.tsv` directly from the
 checkpoint and translates generated IDs back to the original GPT-2 vocabulary
 for decoding. Use the same base tokenizer as training.
 
-For the verified 64,532-parameter model with 27 positions:
+For the verified 48,680-parameter model matching the current defaults:
 
 ```sh
 bazel build -c opt //src/llm/experiments/memorize_general_facts:memorize_general_facts
 
-facts_run=/home/ubuntu/checkpoints/memorize_general_facts/context27_L4_W13_FF26_0
+facts_run=/home/ubuntu/checkpoints/memorize_general_facts/context27_L4_W10_FF20_matched_0
 bazel-bin/src/llm/experiments/memorize_general_facts/memorize_general_facts \
   --mode=infer_model \
-  --infer_checkpoint="$facts_run/trial_000_L4_W13_FF26/checkpoints/layers_4/step_48896" \
+  --infer_checkpoint="$facts_run/trial_000_L4_W10_FF20/checkpoints/layers_4/step_89600" \
   --tokenizer="$facts_run/inputs" \
-  --layers=4 --model_width=13 --attention_heads=1 --feed_forward_width=26 \
-  --compact_vocabulary=true --generation_tokens=27 \
+  --generation_tokens=27 \
   --prompt="The capital of France is"
 ```
 
@@ -118,7 +149,7 @@ task, supply the first five GPT-2 tokens of a fact.
 Prompt inference accepts tokenizer, shape, seed, compact-vocabulary, prompt, and
 generation-token options. It rejects corpus, output-directory, batch-size, and
 training options, including explicitly supplied defaults such as `--search=false`
-or `--steps=5000`. `--prompt` and `--generation_tokens` are exclusive to prompt
+or `--steps=120000`. `--prompt` and `--generation_tokens` are exclusive to prompt
 inference; they are not accepted by corpus verification or training.
 
 ## Compact active vocabulary
@@ -171,28 +202,12 @@ With the current 27-position context, the same compact architecture has
 the historical count by 15,952. Training and evaluation process only the
 configured number of padded token rows per sample.
 
-A smaller verified context-27 model uses four blocks, width 13, one attention
-head, and an inner MLP width of 26 (`13 -> 26 -> 13`). It has **64,532 parameters**
-and completes all 1,024 facts exactly, including EOS, from their first five tokens.
-This comprises 58,175 token-embedding parameters, 351 position-embedding
-parameters, 5,980 parameters across four transformer blocks, and 26 final
-LayerNorm parameters. Tied token embeddings are counted once. Reducing context
-from 32 to 27 saves 65 parameters without changing any other dimensions.
-See the [context-27 result](../../../../scripts/memorize_general_facts/README.md#verified-27-token-context-2026-09-24)
-for training settings, verification evidence, and the local checkpoint path.
-
-```sh
-bazel build -c opt //src/llm/experiments/memorize_general_facts:memorize_general_facts
-bazel-bin/src/llm/experiments/memorize_general_facts/memorize_general_facts \
-  --mode=train_model \
-  --tokenizer=/home/ubuntu/datasets/tokenizer/gpt2 \
-  --checkpoint_dir=/home/ubuntu/checkpoints/memorize_general_facts/compact_new_trial \
-  --output_dir=src/llm/experiments/memorize_general_facts/runs/compact_new_trial \
-  --layers=4 --model_width=13 --attention_heads=1 --feed_forward_width=26 \
-  --context_length=27 \
-  --compact_vocabulary=true --batch_size=32 --steps=60000 \
-  --seed=1337 --learning_rate=0.0006 --warmup_steps=100 --eval_every=256
-```
+The current default model instead uses four blocks, width 10, one attention
+head, and an inner MLP width of 20 (`10 -> 20 -> 10`). Its **48,680 parameters**
+comprise 44,750 token-embedding parameters, 270 position-embedding parameters,
+3,640 parameters across four transformer blocks, and 20 final LayerNorm
+parameters. Tied token embeddings are counted once. The training and inference
+commands above use this configuration.
 
 Use fresh output/checkpoint directories. Use `run_compact_size_sweep.py` for
 current compact-context trials; the historical depth/width drivers implement
@@ -382,15 +397,14 @@ weights into a fresh process and reevaluate the whole corpus, use:
 ```sh
 bazel-bin/src/llm/experiments/memorize_general_facts/memorize_general_facts \
   --mode=infer_model \
-  --verify_checkpoint=/path/to/layers_8/step_N \
-  --layers=8 --corpus=RUN/corpus.txt --tokenizer=RUN --compact_vocabulary=false \
-  --context_length=1024 \
+  --verify_checkpoint=/path/to/layers_4/step_89600 \
+  --corpus=RUN/corpus.txt --tokenizer=RUN \
   --output_dir=src/llm/experiments/memorize_general_facts/runs/verification
 ```
 
-This example uses a historical full-vocabulary checkpoint. Use the checkpoint's
-actual depth, vocabulary mode, and context length (32 for new default runs),
-and a fresh output directory. Corpus verification accepts `--corpus`,
+This example uses a checkpoint matching the current defaults. For other models,
+pass their actual shape, vocabulary mode, and context length explicitly, and
+use a fresh output directory. Corpus verification accepts `--corpus`,
 `--output_dir`, `--batch_size`, `--seed`,
 `--tokenizer`, shape flags, and `--compact_vocabulary`. It rejects all training
 options: `--checkpoint_dir`, `--search`, `--steps`, `--learning_rate`,
@@ -448,7 +462,7 @@ for callers such as activation generators.
 
 The native runner also takes explicit `--model_width`, `--attention_heads`,
 and `--feed_forward_width` flags, alongside `--context_length`. Width/head/FF
-defaults remain 512, 8, and 2,048; changing
+defaults are 10, 1, and 20; changing
 one does not implicitly change the others. Supply all three when training or
 verifying a narrower checkpoint. For example, one 64-wide block with a
 four-times-expanded MLP uses:

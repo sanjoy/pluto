@@ -33,8 +33,8 @@ def parse_candidate(value):
         layers, width, ff, steps, learning_rate = value.split(":")
         integers = list(map(int, (layers, width, ff, steps)))
         rate = float(learning_rate)
-        if integers[0] < 2 or any(not 0 < item < 2**31 - 1 for item in integers):
-            raise ValueError("layers must be >=2; dimensions and steps must fit positive int32")
+        if any(not 0 < item < 2**31 - 1 for item in integers):
+            raise ValueError("layers, dimensions, and steps must fit positive int32")
         if not math.isfinite(rate) or rate <= 0:
             raise ValueError("learning rate must be finite and positive")
         if any(item >= 2**31 for item in (
@@ -53,7 +53,7 @@ def parse_args(argv=None):
         parser.add_argument(f"--{name}", type=Path, required=True)
     parser.add_argument("--deadline_unix", type=float, required=True)
     parser.add_argument("--candidates", required=True,
-                        help="Comma-separated L:W:FF:steps:LR entries, layers >=2")
+                        help="Comma-separated L:W:FF:steps:LR entries, layers >=1")
     parser.add_argument("--seed", type=int, default=1337)
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--context_length", type=int, choices=(27,), default=27)

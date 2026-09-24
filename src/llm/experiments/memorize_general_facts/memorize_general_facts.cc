@@ -1,4 +1,4 @@
-// Controlled width/depth search for exact in-sample next-token memorization.
+// Exact in-sample next-token memorization with a compact GPT-2 model.
 // Each run uses a fresh initialization; smaller models never inherit a larger
 // model's weights. Success is an integer zero-error test, not a loss threshold.
 #include <cuda_runtime.h>
@@ -70,10 +70,12 @@ ABSL_FLAG(bool, print_attention_probs, false,
 ABSL_FLAG(std::string, output_dir,
           "src/llm/experiments/memorize_general_facts/runs/baseline",
           "Experiment artifacts");
-ABSL_FLAG(int, layers, 8, "Initial transformer depth (nonnegative; default 8)");
-ABSL_FLAG(int, model_width, 512, "Residual-stream and embedding width");
-ABSL_FLAG(int, attention_heads, 8, "Number of attention heads per block");
-ABSL_FLAG(int, feed_forward_width, 2048, "Inner GELU MLP width");
+// Smallest configuration verified to complete all 1,024 facts from five-token
+// prompts, including EOS: 48,680 unique parameters with the compact vocabulary.
+ABSL_FLAG(int, layers, 4, "Initial transformer depth (nonnegative)");
+ABSL_FLAG(int, model_width, 10, "Residual-stream and embedding width");
+ABSL_FLAG(int, attention_heads, 1, "Number of attention heads per block");
+ABSL_FLAG(int, feed_forward_width, 20, "Inner GELU MLP width");
 // The longest fact has 26 GPT-2 tokens; one more position accommodates EOS.
 ABSL_FLAG(int, context_length, 27,
           "Padded sequence length and learned position count; must match the "
@@ -83,12 +85,14 @@ ABSL_FLAG(bool, compact_vocabulary, true,
           "historical full-vocabulary checkpoints and searches");
 ABSL_FLAG(bool, search, false,
           "After success, train successively shallower models from scratch");
-ABSL_FLAG(int, batch_size, 16, "Independent padded sentences per batch");
-ABSL_FLAG(int, steps, 5000, "Maximum optimizer steps per depth");
-ABSL_FLAG(int, eval_every, 128, "Full-corpus exact evaluation interval");
+// Match the successful model's training schedule, not just its dimensions.
+// Changing --steps also changes the cosine learning-rate decay horizon.
+ABSL_FLAG(int, batch_size, 32, "Independent padded sentences per batch");
+ABSL_FLAG(int, steps, 120000, "Maximum optimizer steps per depth");
+ABSL_FLAG(int, eval_every, 256, "Full-corpus exact evaluation interval");
 ABSL_FLAG(int, checkpoint_every, 512, "Periodic checkpoint interval");
 ABSL_FLAG(int, seed, 1337, "Initialization and shuffle seed");
-ABSL_FLAG(double, learning_rate, 6e-4, "Peak AdamW learning rate");
+ABSL_FLAG(double, learning_rate, 0.0012, "Peak AdamW learning rate");
 ABSL_FLAG(int, warmup_steps, 100,
           "Linear learning-rate warmup, then cosine decay");
 ABSL_FLAG(double, training_seconds, 10800,

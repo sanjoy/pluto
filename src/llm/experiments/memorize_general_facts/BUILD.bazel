@@ -106,3 +106,11 @@ cc_binary(
         "@cuda//:cuda_runtime",
     ],
 )
+
+cc_test(
+    name = "memorize_general_facts_defaults_test",
+    size = "small",
+    srcs = ["memorize_general_facts_defaults_test.cc"],
+    data = [":memorize_general_facts"],
+    deps = ["@googletest//:gtest_main"],
+)

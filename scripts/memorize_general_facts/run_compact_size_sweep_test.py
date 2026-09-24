@@ -70,11 +70,16 @@ class CompactSizeSweepTest(unittest.TestCase):
             "steps": 16384, "learning_rate": 0.003,
         })
 
+    def test_single_transformer_block_is_allowed_for_unrestricted_search(self):
+        self.assertEqual(parse_candidate("1:12:48:60000:0.0006")["layers"], 1)
+        args = parse_args(self.arguments + ["--candidates=1:12:48:60000:0.0006"])
+        self.assertEqual(args.candidates[0]["layers"], 1)
+
     def test_candidate_rejects_malformed_or_unsafe_values(self):
         for candidate in [
             "", "8:12:48:1000", "8:12:48:1000:0.001:extra",
             "bad:12:48:1000:0.001", "8:12.5:48:1000:0.001",
-            "1:12:48:1000:0.001", "0:12:48:1000:0.001",
+            "0:12:48:1000:0.001", "-1:12:48:1000:0.001",
             "8:0:48:1000:0.001", "8:-1:48:1000:0.001",
             "8:12:0:1000:0.001", "8:12:48:0:0.001",
             "8:12:48:-1:0.001", "8:12:48:1000:0",
@@ -105,7 +110,7 @@ class CompactSizeSweepTest(unittest.TestCase):
             "--context_length=28", "--context_length=32", "--batch_size=2147483648",
             "--vocabulary=0", "--verification_reserve=-1",
             "--verification_reserve=nan", "--eval_every=0",
-            "--candidates=", "--candidates=1:12:48:1000:0.001",
+            "--candidates=", "--candidates=0:12:48:1000:0.001",
         ]:
             with self.subTest(option=option), redirect_stderr(io.StringIO()):
                 with self.assertRaises(SystemExit):
