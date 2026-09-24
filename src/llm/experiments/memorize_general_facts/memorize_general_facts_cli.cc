@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -31,6 +32,7 @@ constexpr FlagRule kFlagRules[] = {
     {"model_width", kAll},
     {"attention_heads", kAll},
     {"feed_forward_width", kAll},
+    {"context_length", kAll},
     {"compact_vocabulary", kAll},
     {"seed", kAll},
     {"checkpoint_dir", kTrain},
@@ -68,6 +70,9 @@ absl::StatusOr<Mode> ParseAndValidateRunMode(
       mode, explicitly_set_flags, options.tokenizer, options.checkpoint_dir,
       options.infer_checkpoint, options.verify_checkpoint));
 
+  if (options.context_length <= 0)
+    return absl::InvalidArgumentError("--context_length must be positive");
+
   if (mode == Mode::kInferModel && !options.infer_checkpoint.empty()) {
     if (options.generation_tokens < 0)
       return absl::InvalidArgumentError(
@@ -88,6 +93,13 @@ absl::StatusOr<Mode> ParseAndValidateRunMode(
     return absl::InvalidArgumentError("--output_dir must be nonempty");
   if (options.batch_size <= 0)
     return absl::InvalidArgumentError("--batch_size must be positive");
+  if (options.context_length < 5)
+    return absl::InvalidArgumentError(
+        "--context_length must be at least 5 for the corpus prompt");
+  if (int64_t{options.batch_size} * options.context_length >
+      std::numeric_limits<int>::max())
+    return absl::InvalidArgumentError(
+        "--batch_size * --context_length exceeds the 32-bit token-count limit");
   if (mode == Mode::kTrainModel) {
     if (options.steps < 0)
       return absl::InvalidArgumentError("--steps must be nonnegative");

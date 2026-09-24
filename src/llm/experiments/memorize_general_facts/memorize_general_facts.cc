@@ -74,6 +74,9 @@ ABSL_FLAG(int, layers, 8, "Initial transformer depth (nonnegative; default 8)");
 ABSL_FLAG(int, model_width, 512, "Residual-stream and embedding width");
 ABSL_FLAG(int, attention_heads, 8, "Number of attention heads per block");
 ABSL_FLAG(int, feed_forward_width, 2048, "Inner GELU MLP width");
+ABSL_FLAG(int, context_length, 32,
+          "Padded sequence length and learned position count; must match the "
+          "checkpoint when loading (historical checkpoints use 1024)");
 ABSL_FLAG(bool, compact_vocabulary, true,
           "Remap corpus tokens plus EOS to a compact vocabulary; disable for "
           "historical full-vocabulary checkpoints and searches");
@@ -120,6 +123,7 @@ absl::StatusOr<Mode> RunModeFromFlags() {
   AddIfExplicitlySet(FLAGS_model_width, &explicitly_set);
   AddIfExplicitlySet(FLAGS_attention_heads, &explicitly_set);
   AddIfExplicitlySet(FLAGS_feed_forward_width, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_context_length, &explicitly_set);
   AddIfExplicitlySet(FLAGS_compact_vocabulary, &explicitly_set);
   AddIfExplicitlySet(FLAGS_search, &explicitly_set);
   AddIfExplicitlySet(FLAGS_batch_size, &explicitly_set);
@@ -140,6 +144,7 @@ absl::StatusOr<Mode> RunModeFromFlags() {
        .corpus = absl::GetFlag(FLAGS_corpus),
        .output_dir = absl::GetFlag(FLAGS_output_dir),
        .generation_tokens = absl::GetFlag(FLAGS_generation_tokens),
+       .context_length = absl::GetFlag(FLAGS_context_length),
        .batch_size = absl::GetFlag(FLAGS_batch_size),
        .steps = absl::GetFlag(FLAGS_steps),
        .eval_every = absl::GetFlag(FLAGS_eval_every),
@@ -159,7 +164,8 @@ Gpt2Config ModelConfiguration(int layers, int vocabulary_size) {
           .attention_heads = absl::GetFlag(FLAGS_attention_heads),
           .feed_forward_width = absl::GetFlag(FLAGS_feed_forward_width),
           .vocabulary_size = vocabulary_size,
-          .pad_vocabulary = !absl::GetFlag(FLAGS_compact_vocabulary)};
+          .pad_vocabulary = !absl::GetFlag(FLAGS_compact_vocabulary),
+          .context_length = absl::GetFlag(FLAGS_context_length)};
 }
 
 // The mapping is part of a compact checkpoint's meaning, not merely a training
@@ -189,7 +195,7 @@ struct Metrics {
 // logits stay on-device; all transfers use executor-owned pinned memory.
 template <class T>
 absl::StatusOr<cuda::PageLockedHostArray<T>> CopyD2H(cuda::Executor& executor,
-                                                   const Buffer& source) {
+                                                     const Buffer& source) {
   ASSIGN_OR_RETURN(auto host, cuda::PageLockedHostArray<T>::Allocate(
                                   executor, source.size_bytes() / sizeof(T)));
   RETURN_IF_ERROR(cuda::CudaStatus(
@@ -212,8 +218,8 @@ absl::StatusOr<Metrics> EvaluateExact(
     RETURN_IF_ERROR(ValidateTrainingBatch(executor, model, loss, batch));
     ASSIGN_OR_RETURN(auto forward, model.fwd(executor, {batch.inputs}));
     ASSIGN_OR_RETURN(auto predictions,
-                     ExtractTop1Ids(executor, forward.outputs[0],
-                                         batch.targets, vocabulary_size));
+                     ExtractTop1Ids(executor, forward.outputs[0], batch.targets,
+                                    vocabulary_size));
     ASSIGN_OR_RETURN(auto loss_forward,
                      loss.fwd(executor, {forward.outputs[0], batch.targets}));
     ASSIGN_OR_RETURN(auto ids, CopyD2H<int>(executor, predictions));
@@ -295,7 +301,8 @@ std::string Timestamp() {
 float LearningRate(int step) {
   const double peak = absl::GetFlag(FLAGS_learning_rate);
   const int warmup = absl::GetFlag(FLAGS_warmup_steps);
-  if (step <= warmup) return peak * step / warmup;
+  if (step <= warmup)
+    return peak * step / warmup;
   const double progress =
       std::clamp(static_cast<double>(step - warmup) /
                      std::max(1, absl::GetFlag(FLAGS_steps) - warmup),
@@ -318,14 +325,17 @@ absl::StatusOr<bool> TrainUntilMemorized(
       absl::StrCat("layers_", layers);
   std::error_code error;
   const bool output_exists = std::filesystem::exists(output, error);
-  if (error) return absl::InternalError(error.message());
+  if (error)
+    return absl::InternalError(error.message());
   if (output_exists)
     return absl::AlreadyExistsError(
         "refusing to overwrite an existing experiment run");
   std::filesystem::create_directories(output, error);
-  if (error) return absl::InternalError(error.message());
+  if (error)
+    return absl::InternalError(error.message());
   const bool checkpoints_exist = std::filesystem::exists(checkpoints, error);
-  if (error) return absl::InternalError(error.message());
+  if (error)
+    return absl::InternalError(error.message());
   if (checkpoints_exist)
     return absl::AlreadyExistsError(
         "use a fresh checkpoint directory for each trial");
@@ -339,7 +349,8 @@ absl::StatusOr<bool> TrainUntilMemorized(
   std::filesystem::copy_file(
       std::filesystem::path(absl::GetFlag(FLAGS_tokenizer)) / "tokenizer.json",
       output / "tokenizer.json", error);
-  if (error) return absl::InternalError(error.message());
+  if (error)
+    return absl::InternalError(error.message());
   if (vocabulary != nullptr)
     RETURN_IF_ERROR(vocabulary->SaveToFile(output / "compact_vocabulary.tsv"));
   std::ofstream log_file(output / "train.log");
@@ -353,7 +364,7 @@ absl::StatusOr<bool> TrainUntilMemorized(
 
   PaddedLineDataSetOptions options{
       .batch_size = absl::GetFlag(FLAGS_batch_size),
-      .context_length = kGpt2ContextLength,
+      .context_length = absl::GetFlag(FLAGS_context_length),
       .prompt_tokens = 5,
       .eos_token = eos_token,
       .shuffle = true,
@@ -371,7 +382,7 @@ absl::StatusOr<bool> TrainUntilMemorized(
                               absl::GetFlag(FLAGS_seed), model_config));
   ASSIGN_OR_RETURN(auto loss, CrossEntropyLossLayer::Create(
                                   executor, tokenizer.vocab_size(),
-                                  DataType::BF16, kGpt2ContextLength));
+                                  DataType::BF16, model_config.context_length));
   const AdamWConfig config{.learning_rate = LearningRate(1),
                            .beta1 = 0.9f,
                            .beta2 = 0.99f,
@@ -386,7 +397,7 @@ absl::StatusOr<bool> TrainUntilMemorized(
            << "\nheads=" << model_config.attention_heads << "\nhead_dimension="
            << model_config.model_width / model_config.attention_heads
            << "\nfeed_forward_width=" << model_config.feed_forward_width
-           << "\ncontext_length=1024"
+           << "\ncontext_length=" << model_config.context_length
            << "\nprompt_tokens=5\nvocabulary=" << tokenizer.vocab_size()
            << "\ncompact_vocabulary=" << absl::GetFlag(FLAGS_compact_vocabulary)
            << "\ncompute=BF16\nmaster_"
@@ -409,6 +420,7 @@ absl::StatusOr<bool> TrainUntilMemorized(
       << " heads=" << model_config.attention_heads
       << " vocabulary=" << tokenizer.vocab_size()
       << " feed_forward_width=" << model_config.feed_forward_width
+      << " context_length=" << model_config.context_length
       << " parameters=" << parameters << " samples=" << training->sample_count()
       << " scored_targets=" << training->supervised_row_count() << std::endl;
   // Full-vocabulary checkpoints use original token IDs and need no mapping.
@@ -500,6 +512,7 @@ absl::StatusOr<bool> TrainUntilMemorized(
          << "\nwidth=" << model_config.model_width
          << "\nheads=" << model_config.attention_heads
          << "\nfeed_forward_width=" << model_config.feed_forward_width
+         << "\ncontext_length=" << model_config.context_length
          << "\nvocabulary=" << tokenizer.vocab_size()
          << "\nparameters=" << parameters << "\nstep=" << completed
          << "\nerrors=" << metrics.errors << "\ntargets=" << metrics.targets
@@ -532,15 +545,17 @@ absl::StatusOr<bool> VerifyCheckpoint(
   const std::filesystem::path output(absl::GetFlag(FLAGS_output_dir));
   std::error_code error;
   const bool exists = std::filesystem::exists(output, error);
-  if (error) return absl::InternalError(error.message());
+  if (error)
+    return absl::InternalError(error.message());
   if (exists)
     return absl::AlreadyExistsError(
         "verification output directory must be fresh");
   std::filesystem::create_directories(output, error);
-  if (error) return absl::InternalError(error.message());
+  if (error)
+    return absl::InternalError(error.message());
   const PaddedLineDataSetOptions options{
       .batch_size = absl::GetFlag(FLAGS_batch_size),
-      .context_length = kGpt2ContextLength,
+      .context_length = absl::GetFlag(FLAGS_context_length),
       .prompt_tokens = 5,
       .eos_token = eos_token,
       .shuffle = false};
@@ -553,7 +568,7 @@ absl::StatusOr<bool> VerifyCheckpoint(
                               absl::GetFlag(FLAGS_seed), model_config));
   ASSIGN_OR_RETURN(auto loss, CrossEntropyLossLayer::Create(
                                   executor, tokenizer.vocab_size(),
-                                  DataType::BF16, kGpt2ContextLength));
+                                  DataType::BF16, model_config.context_length));
   // Full-model verification must not use the generic reader's prefix-loading
   // allowance: a smaller depth can otherwise mistake the next block's input
   // norm for its final norm. The reader counts unique allocations itself,
@@ -580,6 +595,7 @@ absl::StatusOr<bool> VerifyCheckpoint(
          << "\nwidth=" << model_config.model_width
          << "\nheads=" << model_config.attention_heads
          << "\nfeed_forward_width=" << model_config.feed_forward_width
+         << "\ncontext_length=" << model_config.context_length
          << "\nvocabulary=" << tokenizer.vocab_size()
          << "\nparameters=" << ParameterCount(*model)
          << "\nerrors=" << metrics.errors << "\ntargets=" << metrics.targets
@@ -587,8 +603,10 @@ absl::StatusOr<bool> VerifyCheckpoint(
          << "\nexact_sentences=" << metrics.exact_sentences
          << "\nsentences=" << metrics.sentences << '\n';
   result.close();
-  if (!result) return absl::InternalError("writing verification result failed");
+  if (!result)
+    return absl::InternalError("writing verification result failed");
   std::cout << "checkpoint_errors=" << metrics.errors << '/' << metrics.targets
+            << " context_length=" << model_config.context_length
             << " exact_sentences=" << metrics.exact_sentences << '/'
             << metrics.sentences
             << " mean_loss=" << metrics.loss_sum / metrics.targets << std::endl;
@@ -622,6 +640,12 @@ absl::Status RunInference(cuda::Executor& executor,
                                           absl::GetFlag(FLAGS_seed), config));
   RETURN_IF_ERROR(ReadFromDirectory(executor, *model, checkpoint,
                                     /*allow_prefix=*/false));
+  std::cerr << "checkpoint=" << checkpoint.string()
+            << " layers=" << config.transformer_block_count
+            << " width=" << config.model_width
+            << " heads=" << config.attention_heads
+            << " feed_forward_width=" << config.feed_forward_width
+            << " context_length=" << config.context_length << std::endl;
 
   const auto complete = [&](const std::string& prompt) -> absl::Status {
     ASSIGN_OR_RETURN(auto encoded, model_tokenizer->Encode(executor, prompt));

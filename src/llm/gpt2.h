@@ -10,9 +10,9 @@
 
 namespace pluto::llm {
 
-// Default dimensions of the GPT-2 recipe. Context remains fixed while
-// Gpt2Config can select vocabulary, width, and depth. Existing dataset,
-// loss, and inference callers can continue to use these default dimensions.
+// Default dimensions of the GPT-2 recipe. Gpt2Config can select context,
+// vocabulary, width, and depth. Existing dataset, loss, and inference callers
+// can continue to use these default dimensions.
 inline constexpr int kGpt2VocabularySize = 50'257;
 inline constexpr int kGpt2PaddedVocabularySize = 50'272;
 inline constexpr int kGpt2ContextLength = 1'024;
@@ -28,8 +28,8 @@ static_assert(kGpt2ModelWidth ==
               kGpt2AttentionHeads * kGpt2AttentionHeadDimension);
 static_assert(kGpt2FeedForwardWidth == 4 * kGpt2ModelWidth);
 
-// Shape choices for controlled depth/width experiments. The MLP width is
-// explicit rather than implicitly four times model_width, so changing one
+// Shape choices for controlled context/depth/width experiments. The MLP width
+// is explicit rather than implicitly four times model_width, so changing one
 // dimension never silently changes another. Every attention head has width
 // model_width / attention_heads. All other architectural and initialization
 // choices, including the tied head and eight-block residual initialization
@@ -43,11 +43,14 @@ struct Gpt2Config {
   // Keep historical padded embedding checkpoints by default. False stores
   // exactly vocabulary_size trainable rows; logits remain padded to 16 lanes.
   bool pad_vocabulary = true;
+  // Each batch element is one independent sequence of this many tokens.
+  int context_length = kGpt2ContextLength;
 
   // Checks shape and current CUDA-kernel limits without allocating memory.
   // Depth may be any nonnegative int; construction time and memory grow with
-  // depth. Model/MLP/head widths must be positive. Compute-tile padding never
-  // adds stored parameters or contributes to model statistics.
+  // depth. Context length and model/MLP/head widths must be positive.
+  // Compute-tile padding never adds stored parameters or contributes to model
+  // statistics.
   // Parameter tensors and single-sample intermediate tensors must fit the
   // backend's 32-bit element counts. Larger batches still need to respect
   // the per-layer runtime buffer/grid limits.
@@ -70,9 +73,10 @@ absl::StatusOr<std::unique_ptr<Layer>> CreateActivationGenerator(
     cuda::Executor& executor, int transformer_block_count, DataType output_type,
     int seed);
 
-// Configurable counterpart. The output width is config.model_width and the
-// prefix includes config.transformer_block_count blocks. Its weights match
-// the corresponding prefix of CreateGpt2() with the same widths and seed,
+// Configurable counterpart. The output shape is
+// [-2, config.context_length, config.model_width], and the prefix includes
+// config.transformer_block_count blocks. Its weights match the corresponding
+// prefix of CreateGpt2() with the same context, widths, vocabulary, and seed,
 // even if that full model has more blocks.
 absl::StatusOr<std::unique_ptr<Layer>> CreateActivationGenerator(
     cuda::Executor& executor, const Gpt2Config& config, DataType output_type,
@@ -93,8 +97,9 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateGpt2(
     int transformer_block_count = kGpt2TransformerBlockCount);
 
 // Configurable counterpart; the legacy overload above delegates here with
-// the default widths and vocabulary. The logits' vocabulary dimension is
-// config.vocabulary_size rounded up to 16, independently of table padding.
+// the default widths, vocabulary, and context length. The logits' shape is
+// [-2, config.context_length, config.vocabulary_size rounded up to 16],
+// independently of table padding.
 absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateGpt2(
     cuda::Executor& executor, DataType output_type, int seed,
     const Gpt2Config& config);

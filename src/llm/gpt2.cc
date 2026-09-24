@@ -50,20 +50,20 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateTransformerBlock(
   ComposedLayerBuilder attention_builder;
   RETURN_IF_ERROR(attention_builder.add(
       LayerNormLayer::Create(executor, config.model_width, kLayerNormEpsilon,
-                             output_type, kGpt2ContextLength)));
+                             output_type, config.context_length)));
   RETURN_IF_ERROR(attention_builder.add(FullyConnectedLayer::Create(
       executor, config.model_width, 3 * config.model_width, output_type,
-      kGpt2ContextLength)));
+      config.context_length)));
   auto* qkv_projection =
       static_cast<FullyConnectedLayer*>(attention_builder.back());
   RETURN_IF_ERROR(qkv_projection->InitializeNormal(
       kInitializationStandardDeviation, seed_base + 1));
   RETURN_IF_ERROR(attention_builder.add(AttentionLayer::Create(
-      executor, kGpt2ContextLength, config.attention_heads, config.model_width,
-      output_type)));
+      executor, config.context_length, config.attention_heads,
+      config.model_width, output_type)));
   RETURN_IF_ERROR(attention_builder.add(FullyConnectedLayer::Create(
       executor, config.model_width, config.model_width, output_type,
-      kGpt2ContextLength)));
+      config.context_length)));
   auto* attention_projection =
       static_cast<FullyConnectedLayer*>(attention_builder.back());
   RETURN_IF_ERROR(attention_projection->InitializeNormal(
@@ -72,18 +72,19 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateTransformerBlock(
   ComposedLayerBuilder mlp_builder;
   RETURN_IF_ERROR(mlp_builder.add(
       LayerNormLayer::Create(executor, config.model_width, kLayerNormEpsilon,
-                             output_type, kGpt2ContextLength)));
+                             output_type, config.context_length)));
   RETURN_IF_ERROR(mlp_builder.add(FullyConnectedLayer::Create(
       executor, config.model_width, config.feed_forward_width, output_type,
-      kGpt2ContextLength)));
+      config.context_length)));
   auto* mlp_input = static_cast<FullyConnectedLayer*>(mlp_builder.back());
   RETURN_IF_ERROR(mlp_input->InitializeNormal(kInitializationStandardDeviation,
                                               seed_base + 3));
-  RETURN_IF_ERROR(mlp_builder.add(GeluLayer::Create(
-      executor, config.feed_forward_width, output_type, kGpt2ContextLength)));
+  RETURN_IF_ERROR(
+      mlp_builder.add(GeluLayer::Create(executor, config.feed_forward_width,
+                                        output_type, config.context_length)));
   RETURN_IF_ERROR(mlp_builder.add(FullyConnectedLayer::Create(
       executor, config.feed_forward_width, config.model_width, output_type,
-      kGpt2ContextLength)));
+      config.context_length)));
   auto* mlp_output = static_cast<FullyConnectedLayer*>(mlp_builder.back());
   RETURN_IF_ERROR(
       mlp_output->InitializeNormal(residual_standard_deviation, seed_base + 4));
@@ -108,13 +109,13 @@ absl::StatusOr<EmbeddingLookupLayer*> AddActivationGeneratorLayers(
 
   RETURN_IF_ERROR(builder.add(EmbeddingLookupLayer::Create(
       executor, config.vocabulary_size, config.model_width, output_type,
-      kGpt2ContextLength, config.pad_vocabulary)));
+      config.context_length, config.pad_vocabulary)));
   auto* embedding = static_cast<EmbeddingLookupLayer*>(builder.back());
   RETURN_IF_ERROR(embedding->InitializeNormal(kInitializationStandardDeviation,
                                               static_cast<uint64_t>(seed)));
 
   RETURN_IF_ERROR(builder.add(PositionEmbeddingLayer::Create(
-      executor, kGpt2ContextLength, config.model_width, output_type)));
+      executor, config.context_length, config.model_width, output_type)));
   auto* positions = static_cast<PositionEmbeddingLayer*>(builder.back());
   RETURN_IF_ERROR(positions->InitializeNormal(kInitializationStandardDeviation,
                                               static_cast<uint64_t>(seed) + 1));
@@ -144,6 +145,8 @@ absl::Status Gpt2Config::Validate() const {
 
   if (vocabulary_size <= 0)
     return absl::InvalidArgumentError("vocabulary_size must be positive");
+  if (context_length <= 0)
+    return absl::InvalidArgumentError("context_length must be positive");
 
   // Widen before padding or multiplying. A tiny configured vocabulary no
   // longer bounds the width, so test the QKV product by division instead of
@@ -151,6 +154,7 @@ absl::Status Gpt2Config::Validate() const {
   constexpr int64_t kMaxElements = std::numeric_limits<int>::max();
   const int64_t width = model_width;
   const int64_t ff_width = feed_forward_width;
+  const int64_t context = context_length;
   const int64_t logit_stride = (int64_t{vocabulary_size} + 15) / 16 * 16;
   const int64_t stored_vocabulary =
       pad_vocabulary ? logit_stride : vocabulary_size;
@@ -158,9 +162,8 @@ absl::Status Gpt2Config::Validate() const {
     return absl::InvalidArgumentError(
         "token embedding exceeds the backend's 32-bit element-count limit");
   if (width > kMaxElements / 3 / width || width * ff_width > kMaxElements ||
-      kGpt2ContextLength * logit_stride > kMaxElements ||
-      kGpt2ContextLength * 3 * width > kMaxElements ||
-      kGpt2ContextLength * ff_width > kMaxElements)
+      context > kMaxElements / logit_stride ||
+      context > kMaxElements / 3 / width || context > kMaxElements / ff_width)
     return absl::InvalidArgumentError(
         "GPT-2 parameter or activation tensor exceeds the backend's 32-bit "
         "element-count limit");
@@ -208,7 +211,7 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateGpt2(
 
   RETURN_IF_ERROR(builder.add(
       LayerNormLayer::Create(executor, config.model_width, kLayerNormEpsilon,
-                             output_type, kGpt2ContextLength)));
+                             output_type, config.context_length)));
   RETURN_IF_ERROR(builder.add(LanguageModelingHeadLayer::Create(embedding)));
   return builder.create("gpt2");
 }

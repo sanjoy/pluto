@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 """Independent, synthetic checks of exact final-prediction artifact coverage."""
 
+from contextlib import redirect_stderr, redirect_stdout
 import io
+import json
 import math
+from pathlib import Path
+from types import SimpleNamespace
 import unittest
+from unittest.mock import Mock, patch
 
-from verify_predictions import TSV_HEADER, _corpus_lines, verify_predictions
+from verify_predictions import TSV_HEADER, _corpus_lines, main, verify_predictions
 
 
 class VerifyPredictionsTest(unittest.TestCase):
@@ -161,6 +166,24 @@ class VerifyPredictionsTest(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     self.verify(**options)
 
+    def test_context_32_scores_a_26_token_sentence_in_original_gpt2_ids(self):
+        sentence = list(range(5000, 5026))
+        records = [[1, position, sentence[position], sentence[position], 0.1]
+                   for position in range(5, 26)]
+        records.append([1, 26, 50256, 50256, 0.1])
+        result = self.verify(records, rows=[sentence], eos_id=50256,
+                             vocabulary_size=50257, prompt_tokens=5,
+                             context_length=32, expected_samples=1)
+        self.assertEqual(result.targets, 22)
+        self.assertEqual(result.errors, 0)
+        self.assertEqual(result.predictions[-1].target_id, 50256)
+
+    def test_context_32_rejects_a_33_token_sentence(self):
+        with self.assertRaisesRegex(ValueError, "invalid token count"):
+            self.verify([], rows=[list(range(33))], eos_id=50256,
+                        vocabulary_size=50257, prompt_tokens=5,
+                        context_length=32, expected_samples=1)
+
     def test_line_splitting_matches_native_lf_and_crlf_semantics(self):
         self.assertEqual(_corpus_lines(b"one\r\ntwo\r\n"), ["one", "two"])
         self.assertEqual(_corpus_lines("one\u2028two\n".encode()), ["one\u2028two"])
@@ -168,6 +191,42 @@ class VerifyPredictionsTest(unittest.TestCase):
             with self.subTest(corpus=corpus):
                 with self.assertRaisesRegex(ValueError, "nonempty"):
                     _corpus_lines(corpus)
+
+
+class VerifyPredictionsCliTest(unittest.TestCase):
+    arguments = ["--corpus=corpus.txt", "--tokenizer=tokenizer.json",
+                 "--predictions=final_predictions.tsv"]
+
+    def test_context_must_cover_the_five_token_prompt(self):
+        for context in ("-1", "0", "4"):
+            with self.subTest(context=context), redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as error:
+                    main(self.arguments + [f"--context_length={context}"])
+                self.assertEqual(error.exception.code, 2)
+
+    def test_selected_and_historical_context_are_recorded(self):
+        # Both compact and full-vocabulary native audits retain original IDs.
+        tokenizer = Mock()
+        tokenizer.encode.return_value.ids = [5000, 5001, 5002, 5003, 5004]
+        tokenizer.token_to_id.return_value = 50256
+        tokenizer.get_vocab_size.return_value = 50257
+        factory = Mock()
+        factory.from_str.return_value = tokenizer
+        predictions = "\t".join(TSV_HEADER) + "\n"
+        predictions += "".join(f"{line}\t5\t50256\t50256\t0.1\n"
+                               for line in range(1, 1025))
+        for options, expected in (([], 1024), (["--context_length=32"], 32)):
+            with self.subTest(context=expected):
+                output = io.StringIO()
+                with patch.dict("sys.modules", {"tokenizers": SimpleNamespace(Tokenizer=factory)}), \
+                     patch.object(Path, "read_bytes", side_effect=[
+                         b"fact\n" * 1024, b"{}", predictions.encode(),
+                     ]), redirect_stdout(output):
+                    self.assertEqual(main(self.arguments + options), 0)
+                result = json.loads(output.getvalue())
+                self.assertEqual(result["context_length"], expected)
+                self.assertEqual(result["targets"], 1024)
+                self.assertEqual(result["errors"], 0)
 
 
 if __name__ == "__main__":

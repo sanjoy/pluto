@@ -25,6 +25,7 @@ struct CommandLineOptions {
   std::string corpus;
   std::string output_dir;
   int generation_tokens = 0;
+  int context_length = 0;
   int batch_size = 0;
   int steps = 0;
   int eval_every = 0;

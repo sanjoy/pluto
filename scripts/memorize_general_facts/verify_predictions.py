@@ -192,7 +192,7 @@ def _corpus_lines(contents: bytes) -> list[str]:
     return lines
 
 
-def main() -> int:
+def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--corpus", type=Path, required=True, help="Run's corpus.txt snapshot"
@@ -206,9 +206,15 @@ def main() -> int:
     parser.add_argument(
         "--examples", type=int, default=5, help="Maximum decoded error examples"
     )
-    args = parser.parse_args()
+    parser.add_argument(
+        "--context_length", type=int, default=1024,
+        help="Run's context length; defaults to 1024 for historical artifacts",
+    )
+    args = parser.parse_args(argv)
     if args.examples < 0:
         parser.error("--examples must not be negative")
+    if args.context_length < 5:
+        parser.error("--context_length must be at least the five-token prompt length")
 
     try:
         from tokenizers import Tokenizer
@@ -239,6 +245,7 @@ def main() -> int:
             io.StringIO(prediction_contents.decode("utf-8")),
             eos_id=eos,
             vocabulary_size=vocabulary_size,
+            context_length=args.context_length,
         )
     except (ImportError, OSError, UnicodeError, ValueError, csv.Error) as error:
         parser.error(str(error))
@@ -280,7 +287,7 @@ def main() -> int:
                 "prompt_tokens": 5,
                 "eos_scored": True,
                 "padding_scored": False,
-                "context_length": 1024,
+                "context_length": args.context_length,
                 "evidence_scope": "validated teacher-forced prediction artifact, not independent checkpoint inference",
                 "error_examples": examples,
             },

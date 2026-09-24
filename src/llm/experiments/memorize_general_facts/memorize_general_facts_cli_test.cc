@@ -34,6 +34,7 @@ CommandLineOptions TrainingOptions() {
   options.checkpoint_dir = "/checkpoints";
   options.corpus = "/corpus";
   options.output_dir = "/output";
+  options.context_length = 32;
   options.batch_size = 1;
   options.eval_every = 1;
   options.checkpoint_every = 1;
@@ -46,6 +47,7 @@ CommandLineOptions GenerationOptions() {
   options.mode = "infer_model";
   options.tokenizer = "/tokenizer";
   options.infer_checkpoint = "/model";
+  options.context_length = 32;
   return options;
 }
 
@@ -56,6 +58,7 @@ CommandLineOptions VerificationOptions() {
   options.verify_checkpoint = "/model";
   options.corpus = "/corpus";
   options.output_dir = "/output";
+  options.context_length = 32;
   options.batch_size = 1;
   return options;
 }
@@ -114,6 +117,7 @@ TEST(MemorizeGeneralFactsCliTest, FiltersEveryFlagByExecutionPath) {
       {"model_width", true, true, true},
       {"attention_heads", true, true, true},
       {"feed_forward_width", true, true, true},
+      {"context_length", true, true, true},
       {"compact_vocabulary", true, true, true},
       {"seed", true, true, true},
       {"checkpoint_dir", true, false, false},
@@ -153,28 +157,42 @@ TEST(MemorizeGeneralFactsCliTest, FiltersEveryFlagByExecutionPath) {
 }
 
 TEST(MemorizeGeneralFactsCliTest, AcceptsCompleteFlagSetsForEachPath) {
-  EXPECT_TRUE(
-      Validate(Mode::kTrainModel,
-               {"mode", "tokenizer", "layers", "model_width", "attention_heads",
-                "feed_forward_width", "compact_vocabulary", "seed",
-                "checkpoint_dir", "search", "steps", "eval_every",
-                "checkpoint_every", "learning_rate", "warmup_steps",
-                "training_seconds", "corpus", "output_dir", "batch_size"})
-          .ok());
+  EXPECT_TRUE(Validate(Mode::kTrainModel, {"mode",
+                                           "tokenizer",
+                                           "layers",
+                                           "model_width",
+                                           "attention_heads",
+                                           "feed_forward_width",
+                                           "context_length",
+                                           "compact_vocabulary",
+                                           "seed",
+                                           "checkpoint_dir",
+                                           "search",
+                                           "steps",
+                                           "eval_every",
+                                           "checkpoint_every",
+                                           "learning_rate",
+                                           "warmup_steps",
+                                           "training_seconds",
+                                           "corpus",
+                                           "output_dir",
+                                           "batch_size"})
+                  .ok());
   EXPECT_TRUE(
       Validate(Mode::kInferModel,
                {"mode", "tokenizer", "layers", "model_width", "attention_heads",
-                "feed_forward_width", "compact_vocabulary", "seed",
-                "infer_checkpoint", "prompt", "generation_tokens",
+                "feed_forward_width", "context_length", "compact_vocabulary",
+                "seed", "infer_checkpoint", "prompt", "generation_tokens",
                 "print_attention_probs"},
                "/model", "", "/tokenizer", "")
           .ok());
   EXPECT_TRUE(
-      Validate(Mode::kInferModel,
-               {"mode", "tokenizer", "layers", "model_width", "attention_heads",
-                "feed_forward_width", "compact_vocabulary", "seed",
-                "verify_checkpoint", "corpus", "output_dir", "batch_size"},
-               "", "/model", "/tokenizer", "")
+      Validate(
+          Mode::kInferModel,
+          {"mode", "tokenizer", "layers", "model_width", "attention_heads",
+           "feed_forward_width", "context_length", "compact_vocabulary", "seed",
+           "verify_checkpoint", "corpus", "output_dir", "batch_size"},
+          "", "/model", "/tokenizer", "")
           .ok());
 }
 
@@ -337,8 +355,9 @@ TEST(MemorizeGeneralFactsCliTest,
 TEST(MemorizeGeneralFactsCliTest, CorpusPathsRequirePositiveBatchSize) {
   for (auto options : {TrainingOptions(), VerificationOptions()}) {
     SCOPED_TRACE(options.mode);
-    for (int value : {std::numeric_limits<int>::min(), -1, 0, 1,
-                      std::numeric_limits<int>::max()}) {
+    for (int value :
+         {std::numeric_limits<int>::min(), -1, 0, 1,
+          std::numeric_limits<int>::max() / options.context_length}) {
       SCOPED_TRACE(value);
       options.batch_size = value;
       const auto status = ValidateOptions(options);
@@ -348,6 +367,55 @@ TEST(MemorizeGeneralFactsCliTest, CorpusPathsRequirePositiveBatchSize) {
         EXPECT_TRUE(status.ok()) << status;
     }
   }
+}
+
+TEST(MemorizeGeneralFactsCliTest, ContextLengthMustBePositiveInEveryPath) {
+  for (auto options :
+       {TrainingOptions(), GenerationOptions(), VerificationOptions()}) {
+    SCOPED_TRACE(options.mode);
+    SCOPED_TRACE(options.verify_checkpoint);
+    for (int context_length : {std::numeric_limits<int>::min(), -1, 0}) {
+      SCOPED_TRACE(context_length);
+      options.context_length = context_length;
+      ExpectInvalid(ValidateOptions(options, {"context_length"}),
+                    "--context_length must be positive");
+    }
+    for (int context_length : {32, 1024}) {
+      SCOPED_TRACE(context_length);
+      options.context_length = context_length;
+      EXPECT_TRUE(ValidateOptions(options, {"context_length"}).ok());
+    }
+  }
+}
+
+TEST(MemorizeGeneralFactsCliTest, CorpusContextMustFitTheFiveTokenPrompt) {
+  for (auto options : {TrainingOptions(), VerificationOptions()}) {
+    options.context_length = 4;
+    ExpectInvalid(ValidateOptions(options),
+                  "--context_length must be at least 5");
+    options.context_length = 5;
+    EXPECT_TRUE(ValidateOptions(options).ok());
+  }
+  auto options = GenerationOptions();
+  options.context_length = 1;
+  EXPECT_TRUE(ValidateOptions(options).ok());
+}
+
+TEST(MemorizeGeneralFactsCliTest, CorpusBatchTokenCountCannotOverflow) {
+  for (auto options : {TrainingOptions(), VerificationOptions()}) {
+    for (int context_length : {32, 1024, std::numeric_limits<int>::max()}) {
+      SCOPED_TRACE(context_length);
+      options.context_length = context_length;
+      options.batch_size = std::numeric_limits<int>::max() / context_length;
+      EXPECT_TRUE(ValidateOptions(options).ok());
+      ++options.batch_size;
+      ExpectInvalid(ValidateOptions(options),
+                    "--batch_size * --context_length exceeds");
+    }
+  }
+  auto options = GenerationOptions();
+  options.batch_size = std::numeric_limits<int>::max();
+  EXPECT_TRUE(ValidateOptions(options).ok());
 }
 
 TEST(MemorizeGeneralFactsCliTest, ValidatesTrainingScheduleBoundaries) {
