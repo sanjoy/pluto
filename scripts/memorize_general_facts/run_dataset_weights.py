@@ -231,6 +231,8 @@ def verify_trial(root, trial, rows, original_ids, environment, deadline, checkpo
     output = directory / tag
     command = common_flags(root) + ["--mode=infer_model", f"--verify_checkpoint={checkpoint}",
         f"--token_corpus={trial['token_corpus']}", f"--output_dir={output}", "--batch_size=32"]
+    if trial.get("canonical_token_order", False):
+        command.append(f"--token_order_file={trial['permutation']}")
     code = run_command(command, directory / f"{tag}.log", deadline=deadline,
                        environment=environment)
     if code not in (0, 2):
@@ -256,6 +258,10 @@ def update_report(root, environment):
 
 
 def run(args):
+    identical = getattr(args, "identical_token_embeddings", False)
+    canonical = getattr(args, "canonical_token_order", False)
+    if canonical and not identical:
+        raise ValueError("canonical_token_order requires identical_token_embeddings")
     free = shutil.disk_usage(args.run_dir.parent).free
     if free < 10 * 1024**3:
         raise ValueError("require at least 10 GiB free before this experiment")
@@ -263,17 +269,23 @@ def run(args):
     root = args.run_dir
     environment = dict(os.environ, LD_LIBRARY_PATH=str(root / "bin"),
                        OPENBLAS_NUM_THREADS="1", OMP_NUM_THREADS="1")
-    identical = getattr(args, "identical_token_embeddings", False)
     schedule = dict(SCHEDULE)
     if identical:
         schedule["identical_token_embeddings"] = True
-    fingerprint = hashlib.sha256(json.dumps(dict(model=MODEL, schedule=schedule),
+    training_configuration = dict(model=MODEL, schedule=schedule)
+    # The reduction order changes training semantics, so never pool canonical
+    # runs with older physical-column-order runs. Preserve old fingerprints
+    # when the optional experiment is disabled.
+    if canonical:
+        training_configuration["canonical_token_order"] = True
+    fingerprint = hashlib.sha256(json.dumps(training_configuration,
                                             sort_keys=True).encode()).hexdigest()
     start = time.monotonic()
     deadline = start + args.duration_seconds
     summary = dict(status="running", started_utc=datetime.now(timezone.utc).isoformat(),
                    duration_seconds=args.duration_seconds, disk_free_bytes=free,
                    model=MODEL, schedule=schedule, training_fingerprint=fingerprint,
+                   canonical_token_order=canonical,
                    baseline_memorization_verified=False,
                    hashes=hashes, base_tokens=str(root / "inputs/base_tokens.tsv"), trials=[])
     _write_summary(root / "summary.json", summary)
@@ -294,7 +306,8 @@ def run(args):
                     raise ValueError(f"pinned experiment input changed: {relative}")
             trial_start = time.monotonic()
             trial = dict(specification, family="token_rename", status="running",
-                         training_fingerprint=fingerprint, parameters=48680)
+                         training_fingerprint=fingerprint, parameters=48680,
+                         canonical_token_order=canonical)
             directory = root / trial["id"]
             directory.mkdir()
             mapping = permutation(4475, 4474, trial["support"], trial["permutation_seed"])
@@ -314,6 +327,10 @@ def run(args):
                 f"--token_corpus={token_file}", f"--checkpoint_dir={directory / 'checkpoints'}",
                 f"--output_dir={directory / 'training'}"]
             command.extend(f"--{key}={str(value).lower()}" for key, value in schedule.items())
+            if canonical:
+                # Entry v is the current ID of original token v. Both vocabulary
+                # reductions must follow this original logical token order.
+                command.append(f"--token_order_file={permutation_file}")
             (directory / "command.json").write_text(json.dumps(command, indent=2) + "\n")
             code = run_command(command, directory / "train.log", deadline=deadline - 30,
                                environment=environment)
@@ -416,11 +433,16 @@ def parse_args(argv=None):
     parser.add_argument("--identical_token_embeddings", action="store_true",
                         help="Repeat one initial token embedding row; first verify baseline "
                              "memorization, then run exactly three fixed permutations")
+    parser.add_argument("--canonical_token_order", action="store_true",
+                        help="Use original logical token order for vocabulary reductions "
+                             "during training and verification; requires identical embeddings")
     args = parser.parse_args(argv)
     if not math.isfinite(args.duration_seconds) or args.duration_seconds < 600:
         parser.error("duration_seconds must be finite and at least 600")
     if args.max_trials < 0:
         parser.error("max_trials must be nonnegative")
+    if args.canonical_token_order and not args.identical_token_embeddings:
+        parser.error("canonical_token_order requires identical_token_embeddings")
     for name in ("binary", "corpus", "tokenizer", "run_dir"):
         setattr(args, name, getattr(args, name).expanduser().resolve())
     repository = Path(__file__).resolve().parents[2]

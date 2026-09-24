@@ -8,6 +8,7 @@
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
+#include "src/llm/token_order.h"
 #include "src/util/status_macros.h"
 
 namespace pluto::llm::memorize_general_facts {
@@ -28,6 +29,23 @@ std::vector<absl::string_view> Lines(absl::string_view text) {
 }
 
 }  // namespace
+
+absl::StatusOr<std::vector<int32_t>> ParseTokenOrder(absl::string_view text,
+                                                     int vocabulary_size) {
+  std::vector<int32_t> order;
+  for (absl::string_view word : absl::StrSplit(
+           text, absl::ByAnyChar(" \t\r\n\v\f"), absl::SkipEmpty())) {
+    int32_t id;
+    if (!absl::SimpleAtoi(word, &id))
+      return absl::InvalidArgumentError(
+          absl::StrCat("token order contains an invalid int32 ID: ", word));
+    order.push_back(id);
+  }
+  if (order.empty())
+    return absl::InvalidArgumentError("token order file must not be empty");
+  RETURN_IF_ERROR(ValidateTokenOrder(vocabulary_size, order));
+  return order;
+}
 
 absl::StatusOr<std::vector<std::vector<int>>> ParseTokenCorpus(
     absl::string_view token_text, absl::Span<const size_t> expected_lengths,

@@ -120,6 +120,7 @@ TEST_F(MemorizeGeneralFactsDefaultsTest, DefaultsMatchSmallestMemorizedModel) {
       {"stop_when_memorized", "true"},
       {"identical_token_embeddings", "false"},
       {"token_corpus", "\"\""},
+      {"token_order_file", "\"\""},
       {"learning_rate", "0.0012"},
       {"eval_every", "256"},
       {"seed", "1337"},
@@ -163,12 +164,25 @@ TEST_F(MemorizeGeneralFactsDefaultsTest, TokenCorpusValidationPrecedesFiles) {
   EXPECT_NE(output_.find("--token_corpus requires --compact_vocabulary=true"),
             std::string::npos)
       << output_;
-  ASSERT_NO_FATAL_FAILURE(Run({"--mode=infer_model", "--tokenizer=unused",
-                              "--infer_checkpoint=unused",
-                              "--token_corpus=unused"}));
+  ASSERT_NO_FATAL_FAILURE(
+      Run({"--mode=infer_model", "--tokenizer=unused",
+           "--infer_checkpoint=unused", "--token_corpus=unused"}));
   EXPECT_EQ(exit_code_, 1) << output_;
   EXPECT_NE(output_.find("--token_corpus is not valid"), std::string::npos)
       << output_;
+}
+
+TEST_F(MemorizeGeneralFactsDefaultsTest, TokenOrderCannotBeUsedForPrompts) {
+  // Explicitly empty flags also follow mode policy, before any file access.
+  for (const std::string value : {"", "unused"}) {
+    ASSERT_NO_FATAL_FAILURE(
+        Run({"--mode=infer_model", "--tokenizer=unused",
+             "--infer_checkpoint=unused", "--token_order_file=" + value}));
+    EXPECT_EQ(exit_code_, 1) << output_;
+    EXPECT_NE(output_.find("--token_order_file is not valid"),
+              std::string::npos)
+        << output_;
+  }
 }
 
 }  // namespace

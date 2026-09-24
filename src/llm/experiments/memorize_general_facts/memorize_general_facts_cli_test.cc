@@ -132,6 +132,7 @@ TEST(MemorizeGeneralFactsCliTest, FiltersEveryFlagByExecutionPath) {
       {"training_seconds", true, false, false},
       {"corpus", true, false, true},
       {"token_corpus", true, false, true},
+      {"token_order_file", true, false, true},
       {"output_dir", true, false, true},
       {"batch_size", true, false, true},
       {"infer_checkpoint", false, true, false},

@@ -116,6 +116,36 @@ a different initial embedding assigned to each token.
 For a short native replay that identifies the first differing operation, see the
 [first-difference diagnostic](../../src/llm/experiments/memorize_general_facts/permutation_trace/README.md).
 
+### Canonical-token-order rerun
+
+Add `--canonical_token_order` together with `--identical_token_embeddings` to
+repeat the same baseline and three permutations while preserving the original
+logical vocabulary order in cross-entropy and language-model-head reductions:
+
+```sh
+python -B scripts/memorize_general_facts/run_dataset_weights.py \
+  --binary=bazel-bin/src/llm/experiments/memorize_general_facts/memorize_general_facts \
+  --corpus=testdata/general_facts_dataset.txt \
+  --tokenizer=/home/ubuntu/datasets/tokenizer/gpt2 \
+  --run_dir=/home/ubuntu/checkpoints/memorize_general_facts/dataset_weights_canonical_order_0 \
+  --duration_seconds=10800 \
+  --identical_token_embeddings --canonical_token_order
+```
+
+The old-to-new permutation is also the reduction-order array: entry `v` gives
+the current ID of original token `v`. Each native training and checkpoint
+verification process receives that trial's `permutation.tsv` through
+`--token_order_file`; this includes the identity baseline, first-perfect
+checkpoint audits, and row-permuted symmetry controls. The unchanged schedule
+still runs 120,000 updates with batch size 32 and seed 1337. Permutation seeds
+and the baseline memorization gate are unchanged.
+
+The summary records `canonical_token_order`, and the training fingerprint
+distinguishes these runs from the older physical-column-order experiment.
+Canonical order is deliberately opt-in; omitting it preserves the earlier
+experiment. Weight comparisons must undo the embedding-row permutation before
+interpreting parameter differences.
+
 ## Sweep and report
 
 Choose fresh artifact and checkpoint directories for each search. The driver

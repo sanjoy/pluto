@@ -8,6 +8,33 @@
 namespace pluto::llm::memorize_general_facts {
 namespace {
 
+TEST(TokenOrderTextTest, PreservesCanonicalToPhysicalDirectionAndWhitespace) {
+  const auto order = ParseTokenOrder(" 2\t0\r\n1\v3\f", 4);
+  ASSERT_TRUE(order.ok()) << order.status();
+  EXPECT_EQ(*order, (std::vector<int32_t>{2, 0, 1, 3}));
+  EXPECT_EQ(*ParseTokenOrder("0", 1), (std::vector<int32_t>{0}));
+}
+
+TEST(TokenOrderTextTest, RejectsMissingOrIncompletePermutation) {
+  for (const auto* text : {"", " \n\t", "0 1", "0 1 2 3"}) {
+    SCOPED_TRACE(text);
+    EXPECT_EQ(ParseTokenOrder(text, 3).status().code(),
+              absl::StatusCode::kInvalidArgument);
+  }
+}
+
+TEST(TokenOrderTextTest, RejectsMalformedOutOfRangeDuplicateAndOverflowIds) {
+  for (const auto* text :
+       {"0 0 2", "-1 1 2", "0 1 3", "0 1 word", "0 1 2.0", "0 1 0x2", "0,1,2",
+        "0 1 2147483648", "0 1 999999999999999999999"}) {
+    SCOPED_TRACE(text);
+    EXPECT_EQ(ParseTokenOrder(text, 3).status().code(),
+              absl::StatusCode::kInvalidArgument);
+  }
+  EXPECT_FALSE(ParseTokenOrder("0", 0).ok());
+  EXPECT_FALSE(ParseTokenOrder("0", -1).ok());
+}
+
 TEST(TokenCorpusTest, PreservesExactIdsAndAcceptsWhitespaceAndCrLf) {
   const auto rows = ParseTokenCorpus(" 3\t0 1\r\n2 4\r\n", {3, 2}, 6, 5);
   ASSERT_TRUE(rows.ok()) << rows.status();

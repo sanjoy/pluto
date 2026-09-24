@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -12,6 +13,12 @@
 #include "src/dataset/tokenizer.h"
 
 namespace pluto::llm::memorize_general_facts {
+
+// Parses canonical vocabulary rank -> physical token ID. A supplied file must
+// contain one complete permutation (including EOS); only an omitted flag means
+// ordinary ID order. Whitespace, including line breaks, separates integer IDs.
+absl::StatusOr<std::vector<int32_t>> ParseTokenOrder(absl::string_view text,
+                                                     int vocabulary_size);
 
 // Parses one whitespace-separated compact-ID row per original corpus sentence.
 // Row lengths must be unchanged; EOS is supplied by the dataset, never by a

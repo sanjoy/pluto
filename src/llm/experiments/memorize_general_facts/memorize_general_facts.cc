@@ -53,6 +53,10 @@ ABSL_FLAG(std::string, corpus, "testdata/general_facts_dataset.txt",
 ABSL_FLAG(std::string, token_corpus, "",
           "Experimental compact-ID rows overriding original corpus encodings; "
           "one equal-length row per sentence, without EOS");
+ABSL_FLAG(std::string, token_order_file, "",
+          "Optional whitespace-separated permutation: canonical vocabulary "
+          "rank -> physical token ID; used by loss and tied-head reductions "
+          "in training or corpus verification");
 ABSL_FLAG(std::string, tokenizer, "",
           "Local GPT-2 tokenizer directory (required)");
 ABSL_FLAG(std::string, checkpoint_dir, "",
@@ -126,6 +130,7 @@ absl::StatusOr<Mode> RunModeFromFlags() {
   AddIfExplicitlySet(FLAGS_mode, &explicitly_set);
   AddIfExplicitlySet(FLAGS_corpus, &explicitly_set);
   AddIfExplicitlySet(FLAGS_token_corpus, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_token_order_file, &explicitly_set);
   AddIfExplicitlySet(FLAGS_tokenizer, &explicitly_set);
   AddIfExplicitlySet(FLAGS_checkpoint_dir, &explicitly_set);
   AddIfExplicitlySet(FLAGS_verify_checkpoint, &explicitly_set);
@@ -338,7 +343,8 @@ float LearningRate(int step) {
 absl::StatusOr<bool> TrainUntilMemorized(
     cuda::Executor& executor, const tokenizer::Tokenizer& tokenizer,
     int eos_token, const TextCorpus& corpus, int layers,
-    const CompactVocabularyTokenizer* vocabulary) {
+    const CompactVocabularyTokenizer* vocabulary,
+    absl::Span<const int32_t> token_order) {
   const auto output = std::filesystem::path(absl::GetFlag(FLAGS_output_dir)) /
                       absl::StrCat("layers_", layers);
   const auto checkpoints =
@@ -373,6 +379,15 @@ absl::StatusOr<bool> TrainUntilMemorized(
     if (error)
       return absl::InternalError(error.message());
   }
+  if (!token_order.empty()) {
+    // Preserve the validated values, not a second read of a mutable source.
+    std::ofstream snapshot(output / "token_order.tsv");
+    for (int32_t id : token_order)
+      snapshot << id << '\n';
+    snapshot.close();
+    if (!snapshot)
+      return absl::InternalError("cannot preserve the vocabulary token order");
+  }
   std::filesystem::copy_file(
       std::filesystem::path(absl::GetFlag(FLAGS_tokenizer)) / "tokenizer.json",
       output / "tokenizer.json", error);
@@ -404,12 +419,13 @@ absl::StatusOr<bool> TrainUntilMemorized(
                    PaddedLineDataSetIterator::Create(executor, corpus.text(),
                                                      tokenizer, options));
   const auto model_config = ModelConfiguration(layers, tokenizer.vocab_size());
-  ASSIGN_OR_RETURN(auto model,
-                   CreateGpt2(executor, DataType::BF16,
-                              absl::GetFlag(FLAGS_seed), model_config));
-  ASSIGN_OR_RETURN(auto loss, CrossEntropyLossLayer::Create(
-                                  executor, tokenizer.vocab_size(),
-                                  DataType::BF16, model_config.context_length));
+  ASSIGN_OR_RETURN(auto model, CreateGpt2(executor, DataType::BF16,
+                                          absl::GetFlag(FLAGS_seed),
+                                          model_config, token_order));
+  ASSIGN_OR_RETURN(auto loss,
+                   CrossEntropyLossLayer::Create(
+                       executor, tokenizer.vocab_size(), DataType::BF16,
+                       model_config.context_length, token_order));
   const AdamWConfig config{.learning_rate = LearningRate(1),
                            .beta1 = 0.9f,
                            .beta2 = 0.99f,
@@ -420,6 +436,7 @@ absl::StatusOr<bool> TrainUntilMemorized(
   const int64_t parameters = ParameterCount(*model);
   manifest << "corpus=" << absl::GetFlag(FLAGS_corpus)
            << "\ntoken_corpus=" << absl::GetFlag(FLAGS_token_corpus)
+           << "\ntoken_order_file=" << absl::GetFlag(FLAGS_token_order_file)
            << "\ntokenizer=" << absl::GetFlag(FLAGS_tokenizer)
            << "\nlayers=" << layers << "\nwidth=" << model_config.model_width
            << "\nheads=" << model_config.attention_heads << "\nhead_dimension="
@@ -434,7 +451,8 @@ absl::StatusOr<bool> TrainUntilMemorized(
            << "\nseed=" << absl::GetFlag(FLAGS_seed)
            << "\nbatch_size=" << options.batch_size
            << "\nmax_steps=" << absl::GetFlag(FLAGS_steps)
-           << "\nstop_when_memorized=" << absl::GetFlag(FLAGS_stop_when_memorized)
+           << "\nstop_when_memorized="
+           << absl::GetFlag(FLAGS_stop_when_memorized)
            << "\nidentical_token_embeddings="
            << model_config.identical_token_embeddings
            << "\npeak_learning_rate=" << absl::GetFlag(FLAGS_learning_rate)
@@ -585,7 +603,8 @@ absl::StatusOr<bool> TrainUntilMemorized(
 absl::StatusOr<bool> VerifyCheckpoint(
     cuda::Executor& executor, const tokenizer::Tokenizer& tokenizer,
     int eos_token, const TextCorpus& corpus,
-    const CompactVocabularyTokenizer* vocabulary) {
+    const CompactVocabularyTokenizer* vocabulary,
+    absl::Span<const int32_t> token_order) {
   if (vocabulary != nullptr)
     RETURN_IF_ERROR(vocabulary->ValidateFile(
         std::filesystem::path(absl::GetFlag(FLAGS_verify_checkpoint)) /
@@ -611,12 +630,13 @@ absl::StatusOr<bool> VerifyCheckpoint(
                                   executor, corpus.text(), tokenizer, options));
   const auto model_config =
       ModelConfiguration(absl::GetFlag(FLAGS_layers), tokenizer.vocab_size());
-  ASSIGN_OR_RETURN(auto model,
-                   CreateGpt2(executor, DataType::BF16,
-                              absl::GetFlag(FLAGS_seed), model_config));
-  ASSIGN_OR_RETURN(auto loss, CrossEntropyLossLayer::Create(
-                                  executor, tokenizer.vocab_size(),
-                                  DataType::BF16, model_config.context_length));
+  ASSIGN_OR_RETURN(auto model, CreateGpt2(executor, DataType::BF16,
+                                          absl::GetFlag(FLAGS_seed),
+                                          model_config, token_order));
+  ASSIGN_OR_RETURN(auto loss,
+                   CrossEntropyLossLayer::Create(
+                       executor, tokenizer.vocab_size(), DataType::BF16,
+                       model_config.context_length, token_order));
   // Full-model verification must not use the generic reader's prefix-loading
   // allowance: a smaller depth can otherwise mistake the next block's input
   // norm for its final norm. The reader counts unique allocations itself,
@@ -639,6 +659,7 @@ absl::StatusOr<bool> VerifyCheckpoint(
   result << "checkpoint=" << absl::GetFlag(FLAGS_verify_checkpoint)
          << "\ncorpus=" << absl::GetFlag(FLAGS_corpus)
          << "\ntoken_corpus=" << absl::GetFlag(FLAGS_token_corpus)
+         << "\ntoken_order_file=" << absl::GetFlag(FLAGS_token_order_file)
          << "\ntokenizer=" << absl::GetFlag(FLAGS_tokenizer)
          << "\nlayers=" << absl::GetFlag(FLAGS_layers)
          << "\nwidth=" << model_config.model_width
@@ -798,23 +819,36 @@ absl::StatusOr<bool> Run() {
   if (!absl::GetFlag(FLAGS_token_corpus).empty()) {
     ASSIGN_OR_RETURN(auto token_corpus,
                      LoadTextCorpus(absl::GetFlag(FLAGS_token_corpus)));
-    ASSIGN_OR_RETURN(token_corpus_tokenizer,
-                     TokenCorpusTokenizer::Create(*executor, *model_tokenizer,
-                                                  corpus.text(),
-                                                  token_corpus.text(),
-                                                  eos_token));
+    ASSIGN_OR_RETURN(
+        token_corpus_tokenizer,
+        TokenCorpusTokenizer::Create(*executor, *model_tokenizer, corpus.text(),
+                                     token_corpus.text(), eos_token));
     model_tokenizer = token_corpus_tokenizer.get();
   }
   RETURN_IF_ERROR(ModelConfiguration(absl::GetFlag(FLAGS_layers),
                                      model_tokenizer->vocab_size())
                       .Validate());
+  // Validate before creating output or checkpoint directories. Both model and
+  // loss copy the same order during construction; this pinned owner also keeps
+  // the parsed input available for reproducibility snapshots.
+  cuda::PageLockedHostArray<int32_t> token_order;
+  if (!absl::GetFlag(FLAGS_token_order_file).empty()) {
+    ASSIGN_OR_RETURN(auto order_text,
+                     LoadTextCorpus(absl::GetFlag(FLAGS_token_order_file)));
+    ASSIGN_OR_RETURN(
+        auto parsed,
+        ParseTokenOrder(order_text.text(), model_tokenizer->vocab_size()));
+    ASSIGN_OR_RETURN(token_order, cuda::PageLockedHostArray<int32_t>::CopyFrom(
+                                      *executor, parsed));
+  }
   if (mode == Mode::kInferModel)
     return VerifyCheckpoint(*executor, *model_tokenizer, eos_token, corpus,
-                            vocabulary.get());
+                            vocabulary.get(), token_order.span());
   for (int layers = absl::GetFlag(FLAGS_layers); layers >= 0; --layers) {
-    ASSIGN_OR_RETURN(bool success,
-                     TrainUntilMemorized(*executor, *model_tokenizer, eos_token,
-                                         corpus, layers, vocabulary.get()));
+    ASSIGN_OR_RETURN(
+        bool success,
+        TrainUntilMemorized(*executor, *model_tokenizer, eos_token, corpus,
+                            layers, vocabulary.get(), token_order.span()));
     if (!success || !absl::GetFlag(FLAGS_search))
       return success;
   }

@@ -3,6 +3,7 @@
 
 import argparse
 from contextlib import redirect_stderr, redirect_stdout
+import hashlib
 import io
 import itertools
 import json
@@ -336,7 +337,8 @@ class DatasetWeightsTest(unittest.TestCase):
     def run_fixture(self, *, changed_initial=False, changed_input=False,
                     training_timeout=False, identical=False, first_memorized_step=256,
                     baseline_final_wrong=False, missing_first_checkpoint=False,
-                    first_checkpoint_wrong=False, nonidentical_rows=False):
+                    first_checkpoint_wrong=False, nonidentical_rows=False,
+                    canonical=False):
         """Mock GPU execution but keep all file audits and gates real."""
         run = self.root / "run"
         rows = [[0, 1, 2, 3, 4, 5]] * 1024
@@ -388,7 +390,8 @@ class DatasetWeightsTest(unittest.TestCase):
 
         args = argparse.Namespace(run_dir=run, duration_seconds=600,
                                   max_trials=0 if identical else 3,
-                                  identical_token_embeddings=identical)
+                                  identical_token_embeddings=identical,
+                                  canonical_token_order=canonical)
         with mock.patch.object(experiment, "snapshot", side_effect=snapshot):
             with mock.patch.object(experiment, "run_command", side_effect=command):
                 with mock.patch.object(experiment.subprocess, "run") as report:
@@ -416,6 +419,9 @@ class DatasetWeightsTest(unittest.TestCase):
             self.assertIn("--steps=120000", argv)
             self.assertIn("--training_seconds=0", argv)
             self.assertIn("--batch_size=32", argv)
+        self.assertFalse(result["canonical_token_order"])
+        self.assertFalse(any(arg.startswith("--token_order_file=")
+                             for argv in commands for arg in argv))
         saved = json.loads((self.root / "run/summary.json").read_text())
         self.assertEqual(saved["status"], "complete")
         self.assertEqual(saved["trials"][2]["step"], 120000)
@@ -455,6 +461,58 @@ class DatasetWeightsTest(unittest.TestCase):
         self.assertEqual(result["trials"][0]["status"], "not_memorized")
         self.assertEqual(sum("--mode=train_model" in argv for argv in commands), 1)
         self.assertFalse(any("rename_" in arg for argv in commands for arg in argv))
+
+    def test_canonical_order_is_forwarded_to_training_and_every_verification(self):
+        original_schedule = dict(experiment.SCHEDULE)
+        result, commands = self.run_fixture(identical=True, canonical=True)
+        self.assertEqual(result["status"], "complete")
+        self.assertTrue(result["canonical_token_order"])
+        self.assertEqual(len(commands), 15)  # Four train/final/first-perfect plus three symmetry.
+        tags = set()
+        for argv in commands:
+            options = dict(argument[2:].split("=", 1) for argument in argv[1:])
+            trial_dir = Path(options["token_corpus"]).parent
+            self.assertEqual(options["token_order_file"], str(trial_dir / "permutation.tsv"))
+            self.assertNotIn("canonical_token_order", options)  # Driver flag, not a native flag.
+            tags.add(Path(options["output_dir"]).name)
+            mapping = [int(token) for token in Path(options["token_order_file"]).read_text().split()]
+            support = 0 if trial_dir.name == "baseline" else int(trial_dir.name.rsplit("_", 1)[1])
+            self.assertEqual(mapping, experiment.permutation(
+                4475, 4474, support, 0 if support == 0 else 810000 + support))
+            if options["mode"] == "train_model":
+                for expected in ("--steps=120000", "--batch_size=32", "--seed=1337",
+                                 "--identical_token_embeddings=true"):
+                    self.assertIn(expected, argv)
+        self.assertEqual(tags, {"training", "verification", "memorization_verification",
+                                "symmetry_verification"})
+        self.assertEqual(experiment.SCHEDULE, original_schedule)
+        self.assertTrue(all(trial["canonical_token_order"] for trial in result["trials"]))
+        self.assertEqual({trial["training_fingerprint"] for trial in result["trials"]},
+                         {result["training_fingerprint"]})
+        configuration = dict(model=experiment.MODEL, schedule=result["schedule"])
+        old_fingerprint = hashlib.sha256(json.dumps(configuration, sort_keys=True).encode()).hexdigest()
+        configuration["canonical_token_order"] = True
+        expected = hashlib.sha256(json.dumps(configuration, sort_keys=True).encode()).hexdigest()
+        self.assertEqual(result["training_fingerprint"], expected)
+        self.assertNotEqual(result["training_fingerprint"], old_fingerprint)
+        saved = json.loads((self.root / "run/summary.json").read_text())
+        self.assertTrue(saved["canonical_token_order"])
+        self.assertTrue(all(trial["canonical_token_order"] for trial in saved["trials"]))
+
+    def test_old_mode_preserves_its_training_fingerprint(self):
+        result, _ = self.run_fixture(identical=True)
+        expected = hashlib.sha256(json.dumps(dict(model=experiment.MODEL,
+            schedule=result["schedule"]), sort_keys=True).encode()).hexdigest()
+        self.assertEqual(result["training_fingerprint"], expected)
+
+    def test_canonical_order_requires_identical_embeddings_before_creating_artifacts(self):
+        args = argparse.Namespace(run_dir=self.root / "run", canonical_token_order=True,
+                                  identical_token_embeddings=False)
+        with mock.patch.object(experiment, "snapshot") as snapshot:
+            with self.assertRaisesRegex(ValueError, "requires identical_token_embeddings"):
+                experiment.run(args)
+        snapshot.assert_not_called()
+        self.assertFalse(args.run_dir.exists())
 
     def test_early_memorization_allows_later_regression_but_keeps_fixed_endpoints(self):
         result, commands = self.run_fixture(identical=True, baseline_final_wrong=True)
@@ -536,10 +594,14 @@ class DatasetWeightsTest(unittest.TestCase):
         self.assertEqual(args.duration_seconds, 10800)
         self.assertEqual(args.max_trials, 0)
         self.assertFalse(args.identical_token_embeddings)
+        self.assertFalse(args.canonical_token_order)
         self.assertTrue(experiment.parse_args(base + ["--identical_token_embeddings"])
                         .identical_token_embeddings)
+        self.assertTrue(experiment.parse_args(base + ["--identical_token_embeddings",
+                                                     "--canonical_token_order"])
+                        .canonical_token_order)
         for option in ["--duration_seconds=nan", "--duration_seconds=inf",
-                       "--duration_seconds=599", "--max_trials=-1"]:
+                       "--duration_seconds=599", "--max_trials=-1", "--canonical_token_order"]:
             with self.subTest(option=option), redirect_stderr(io.StringIO()):
                 with self.assertRaises(SystemExit):
                     experiment.parse_args(base + [option])

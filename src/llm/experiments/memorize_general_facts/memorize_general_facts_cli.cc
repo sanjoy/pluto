@@ -47,6 +47,7 @@ constexpr FlagRule kFlagRules[] = {
     {"training_seconds", kTrain},
     {"corpus", kTrain | kVerify},
     {"token_corpus", kTrain | kVerify},
+    {"token_order_file", kTrain | kVerify},
     {"output_dir", kTrain | kVerify},
     {"batch_size", kTrain | kVerify},
     {"infer_checkpoint", kGenerate},
