@@ -22,12 +22,13 @@ absl::Status Error(const std::string& message) {
 }
 
 absl::Status ValidateMetadata(const ModelMetadata& m, bool full) {
-  if (m.layers < 0 || m.layers > 1024 || m.width < 1 || m.vocab_size < 1)
+  if (m.layers < 0 || m.layers > 1024 || m.width < 1 || m.vocab_size < 1 ||
+      m.context_length < 1)
     return Error("invalid model dimensions");
   if (!full)
     return absl::OkStatus();
-  if (m.prompt_tokens < 1 || m.prompt_tokens > 1024 || m.eos_token < 0 ||
-      m.eos_token >= m.vocab_size ||
+  if (m.prompt_tokens < 1 || m.prompt_tokens > m.context_length ||
+      m.eos_token < 0 || m.eos_token >= m.vocab_size ||
       m.vocabulary.size() != static_cast<size_t>(m.vocab_size))
     return Error("invalid model vocabulary or prompt metadata");
   absl::flat_hash_set<int> originals;
@@ -50,12 +51,14 @@ absl::Status Put(Map& table, const Key& key, int value, const char* name) {
 
 // Ordered lookup indexes keep evaluation independent of compaction internals.
 struct IntegerModel {
+  int context_length;
   std::map<std::pair<int, int>, int> entry;
   std::vector<std::map<std::vector<int>, int>> attention;
   std::vector<std::map<int, int>> mlp;
   std::map<int, int> language_modeling_head;
 
-  explicit IntegerModel(const CapturedModel& model) {
+  explicit IntegerModel(const CapturedModel& model)
+      : context_length(model.metadata.context_length) {
     attention.resize(model.metadata.layers);
     mlp.resize(model.metadata.layers);
     for (const auto& row : model.position_embedding.transitions)
@@ -73,8 +76,8 @@ struct IntegerModel {
   absl::StatusOr<int> Predict(const std::vector<int>& tokens) const {
     if (tokens.empty())
       return Error("cannot predict from an empty prefix");
-    if (tokens.size() > 1024)
-      return Error("prediction prefix exceeds the 1024-token context");
+    if (tokens.size() > static_cast<size_t>(context_length))
+      return Error("prediction prefix exceeds the model context length");
     auto undefined = [] {
       return Error("undefined discrete transition for prefix");
     };
@@ -156,7 +159,7 @@ absl::Status ValidateTables(const CapturedModel& model, bool full) {
   std::set<std::pair<int, int>> entry_keys;
   for (const auto& row : model.position_embedding.transitions) {
     if (row.token < 0 || row.token >= vocab || row.position < 0 ||
-        row.position >= 1024)
+        row.position >= model.metadata.context_length)
       return Error("invalid entry token or position");
     RETURN_IF_ERROR(state_at(row.output, 0));
     if (!entry_keys.emplace(row.token, row.position).second)
@@ -170,7 +173,9 @@ absl::Status ValidateTables(const CapturedModel& model, bool full) {
     std::set<std::vector<int>> attention_keys;
     absl::flat_hash_set<int> mlp_keys;
     for (const auto& row : model.transformers[layer].attention.transitions) {
-      if (row.prefix.empty() || row.prefix.size() > 1024)
+      if (row.prefix.empty() ||
+          row.prefix.size() >
+              static_cast<size_t>(model.metadata.context_length))
         return Error("invalid attention history length");
       for (int state : row.prefix)
         RETURN_IF_ERROR(state_at(state, 2 * layer));
@@ -199,8 +204,10 @@ absl::Status ValidateTables(const CapturedModel& model, bool full) {
     for (const auto& sample : model.samples) {
       if (sample.tokens.size() <
               static_cast<size_t>(model.metadata.prompt_tokens) ||
-          sample.tokens.size() >= 1024)
-        return Error("verification sample cannot fit prompt and EOS");
+          sample.tokens.size() >
+              static_cast<size_t>(model.metadata.context_length))
+        return Error(
+            "verification sample must fit the prompt and model context");
       for (size_t position = 0; position < sample.tokens.size(); ++position) {
         int token = sample.tokens[position];
         if (token < 0 || token >= vocab)
@@ -260,7 +267,9 @@ absl::StatusOr<CapturedModel> BuildModel(
   for (const auto& sample : captured_samples) {
     ++sample_number;
     const auto& tokens = sample.tokens;
-    if (tokens.size() < static_cast<size_t>(prompt) || tokens.size() >= 1024)
+    // EOS is predicted from the final input row, not captured as another input.
+    if (tokens.size() < static_cast<size_t>(prompt) ||
+        tokens.size() > static_cast<size_t>(metadata.context_length))
       return Error("invalid token sequence length");
     for (int token : tokens)
       if (token < 0 || token >= vocab)

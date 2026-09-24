@@ -402,10 +402,34 @@ TEST(IntegerRuntime, GenerationHonorsBudgetContextAndUnknownHistories) {
   fixture.model.context_length = 1;
   auto full = Generate(fixture.model, Tokens({0}), 9);
   ASSERT_TRUE(full.ok());
-  EXPECT_TRUE(full->empty());
+  EXPECT_EQ(*full, (Tokens({1})));
   fixture.model.context_length = 1024;
   EXPECT_EQ(Generate(fixture.model, Tokens({0, 2}), 2).status().code(),
             absl::StatusCode::kNotFound);
+}
+
+TEST(IntegerRuntime, FullContextPredictsEosOrOneFinalTokenWithoutOverflow) {
+  Fixture fixture;
+  fixture.model.context_length = 2;
+  int head_calls = 0;
+  fixture.language_modeling_head.function = [&](DiscreteHiddenState state) {
+    ++head_calls;
+    return LanguageModelingHead(state);
+  };
+  const auto eos = Generate(fixture.model, Tokens({0, 1}), 9);
+  ASSERT_TRUE(eos.ok()) << eos.status();
+  EXPECT_EQ(*eos, (Tokens({3})));
+  EXPECT_EQ(head_calls, 1);
+
+  head_calls = 0;
+  const auto non_eos = Generate(fixture.model, Tokens({0, 2}), 9);
+  ASSERT_TRUE(non_eos.ok()) << non_eos.status();
+  EXPECT_EQ(*non_eos, (Tokens({0})));
+  EXPECT_EQ(head_calls, 1);
+
+  const auto completion = Generate(fixture.model, Tokens({0}), 9);
+  ASSERT_TRUE(completion.ok()) << completion.status();
+  EXPECT_EQ(*completion, (Tokens({1, 3})));
 }
 
 TEST(IntegerRuntime, IndependentCallsAreBitExactAndCannotLeakHistory) {

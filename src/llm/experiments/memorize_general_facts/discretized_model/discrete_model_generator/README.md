@@ -29,8 +29,10 @@ fixtures, not inputs to generated transition functions.
 `ModelRecorder::Record` takes `ModelRecorderOptions` and returns a
 `CapturedModel`. It owns checkpoint/tokenizer/corpus loading, native execution,
 exact BF16 interning, and suffix/EOS verification. It does not need an output
-directory, formatter, or code-generation options. Recording currently supports
-the width-16, context-1024 architecture and rejects other dimensions explicitly.
+directory, formatter, or code-generation options. Width, context length, layer
+count, head count, and MLP width must match the checkpoint. Recording supports
+the native GPT-2 dimensions, including odd residual widths such as 13 with a
+32-token context. Legacy defaults remain width 16 and context 1,024.
 
 An optional `StateVectorHints` output retains representative BF16 vectors for
 search ordering. The returned model is identical with or without hints; vectors

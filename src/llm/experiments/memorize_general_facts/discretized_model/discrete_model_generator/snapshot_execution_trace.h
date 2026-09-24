@@ -6,7 +6,6 @@
 // ModelRecorder loads the checkpoint and corpus, calls this library, and
 // interns these temporary observations into a CapturedModel.
 
-#include <array>
 #include <cstdint>
 #include <vector>
 
@@ -20,13 +19,15 @@ namespace pluto::llm::memorize_general_facts::discretized_model {
 
 inline constexpr int kCaptureWidth = 16;
 inline constexpr int kCaptureContext = 1024;
-using CapturedRow = std::array<uint16_t, kCaptureWidth>;
+using CapturedRow = std::vector<uint16_t>;
 
 struct CaptureOptions {
   int layers = 8;
   int vocab_size = 0;
   int eos_token = -1;
   int prompt_tokens = 5;
+  int model_width = kCaptureWidth;
+  int context_length = kCaptureContext;
 };
 
 struct CapturedSample {
@@ -40,7 +41,7 @@ struct CapturedSample {
   std::vector<std::vector<CapturedRow>> boundaries;
 };
 
-// Runs a single batch-one forward pass with a fixed 1024-position context.
+// Runs a single batch-one forward pass with the configured context length.
 // Observes named/nested GPT-2 boundaries, validates their native BF16 storage,
 // and transfers only real rows using executor-owned pinned staging. Prefixes
 // shorter than prompt_tokens are permitted here for independent diagnostics.

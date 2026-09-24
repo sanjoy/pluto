@@ -255,7 +255,7 @@ std::vector<EntryProbe> EntryProbes(const CapturedModel& model) {
   for (const auto& [token, position] : EvenlySpaced(keys)) {
     for (int64_t candidate :
          {int64_t(position), int64_t(position) - 1, int64_t(position) + 1,
-          int64_t(1024), int64_t(kMin), int64_t(kMax)})
+          int64_t(model.metadata.context_length), int64_t(kMin), int64_t(kMax)})
       add(token, candidate);
     add(int64_t(token) - 1, position);
     add(int64_t(token) + 1, position);

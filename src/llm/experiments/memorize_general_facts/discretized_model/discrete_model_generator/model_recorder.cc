@@ -29,12 +29,10 @@ absl::StatusOr<CapturedModel> ModelRecorder::Record(
         "checkpoint, tokenizer, and corpus are required");
   if (options.layers <= 0 || options.layers > 1024 ||
       options.expected_samples <= 0 || options.prompt_tokens <= 0 ||
-      options.prompt_tokens > capture::kCaptureContext)
-    return absl::InvalidArgumentError("invalid layer/sample/prompt count");
-  if (options.model_width != capture::kCaptureWidth ||
-      options.context_length != capture::kCaptureContext)
+      options.model_width <= 0 || options.context_length <= 0 ||
+      options.prompt_tokens > options.context_length)
     return absl::InvalidArgumentError(
-        "recording requires model_width=16 and context_length=1024");
+        "invalid layer/sample/prompt count, model width, or context length");
   ASSIGN_OR_RETURN(auto original,
                    tokenizer::Gpt2Tokenizer::Load(options.tokenizer.string()));
   ASSIGN_OR_RETURN(auto detokenizer,
@@ -51,13 +49,16 @@ absl::StatusOr<CapturedModel> ModelRecorder::Record(
       .layers = options.layers,
       .vocab_size = vocabulary->vocab_size(),
       .eos_token = vocabulary->eos_token_id(),
-      .prompt_tokens = options.prompt_tokens};
+      .prompt_tokens = options.prompt_tokens,
+      .model_width = options.model_width,
+      .context_length = options.context_length};
   const Gpt2Config config{.transformer_block_count = options.layers,
                           .model_width = options.model_width,
                           .attention_heads = options.attention_heads,
                           .feed_forward_width = options.feed_forward_width,
                           .vocabulary_size = vocabulary->vocab_size(),
-                          .pad_vocabulary = false};
+                          .pad_vocabulary = false,
+                          .context_length = options.context_length};
   RETURN_IF_ERROR(config.Validate());
   ASSIGN_OR_RETURN(auto corpus, ReadFile(options.corpus));
   ASSIGN_OR_RETURN(auto executor, cuda::Executor::Create());
@@ -80,7 +81,8 @@ absl::StatusOr<CapturedModel> ModelRecorder::Record(
                          .layers = options.layers,
                          .vocab_size = vocabulary->vocab_size(),
                          .eos_token = vocabulary->eos_token_id(),
-                         .prompt_tokens = options.prompt_tokens};
+                         .prompt_tokens = options.prompt_tokens,
+                         .context_length = options.context_length};
   for (int id : vocabulary->original_token_ids()) {
     ASSIGN_OR_RETURN(auto bytes, detokenizer->Decode({&id, 1}));
     metadata.vocabulary.push_back({id, std::move(bytes)});

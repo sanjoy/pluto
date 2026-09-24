@@ -1,182 +1,46 @@
 # Discrete general-facts model
 
-This experiment compiles a finite set of executions of the trained width-16
-GPT-2 model into an integer-only network. It is a specialization to the recorded
-corpus, not an exact replacement for the neural model on arbitrary text.
+This experiment compiles recorded executions of a trained GPT-2 model into a
+CPU-only network of symbolic transitions. It specializes the model to the
+recorded corpus; it does not reproduce the neural model on arbitrary text.
 
-## Agreed task
+## Current model
 
-- Source: `compact_batch_32_no_clip_0/layers_8/step_16128`, eight transformer
-  blocks, width 16, one attention head, MLP width 64, BF16 computation.
-- Corpus: `testdata/general_facts_dataset.txt`, 1,024 independent sentences.
-- Supply the first five tokens, generate every remaining token, and explicitly
-  predict EOS. All 10,002 scored predictions must be correct.
-- Unknown lookup histories fail explicitly. There is no neural fallback.
-- Work is isolated on `codex/discretize-general-facts`, based on `main` at
-  `a2623e0`; verified milestones are committed and pushed there.
+The checked-in package was generated from the smallest fully memorized model
+found in the context-32 sweep:
 
-## Representation
+- Checkpoint: `context32_size_sweep_1h_0/trial_000_L4_W13_FF52/checkpoints/layers_4/step_34816`.
+- Architecture: four transformer blocks, width 13, one attention head, MLP
+  width 52, context length 32, and 67,405 trainable parameters.
+- Vocabulary: 4,475 compact GPT-2 tokens, including EOS.
+- Task: supply exactly the first five tokens of each of the 1,024 facts, then
+  generate the complete suffix and explicit EOS.
+- Native GPU and generated CPU verification: **0 errors across 10,002 scored
+  predictions; all 1,024 sentences and EOS predictions are correct**.
 
-Vocabulary symbols have their original token bytes and GPT-2 IDs as labels.
-`generated/vocabulary_tokens.h` gives every compact token an `inline constexpr
-DiscreteToken` name in the private `gen::internal::vocab` namespace. Generated
-implementations use names such as `vocab::kThe_216`,
-`vocab::kSpace_France_1516`, and `vocab::kEos_4474`. Names preserve case and spell
-out spaces/punctuation; other bytes use `ByteXX`. The compact-ID suffix makes
-names unique even when a long name is shortened. Comments retain the exact token
-bytes and original GPT-2 IDs. Entry/readout tables, EOS configuration, and token
-arrays use these constants; vocabulary IDs are unchanged. The optional control-
-flow pass renames internal symbols, with a complete mapping recorded below.
-Initially, internal symbols are numeric IDs for exact native BF16 residual
-vectors. In the compacted model they identify equivalence classes of those states.
-There are 17 internal boundaries: summed token/position embeddings, then the
-attention and MLP residual outputs of each of eight blocks. Each boundary has
-its own state alphabet; IDs are globally distinct.
+The exact capture contains **114,145 distinct internal states**, from 126,882
+state occurrences (14,098 real token positions across nine boundaries).
+A bounded compaction pass reduces this to **6,249 states**, a **94.53%**
+reduction. The 4,475 vocabulary symbols are separate from that count.
 
-The compiled operations are:
-
-1. `(vocabulary ID, absolute position) -> input state`.
-2. For each block, `ordered causal prefix of input states -> attention state`.
-   This includes pre-LayerNorm, Q/K/V, attention, output projection, and residual
-   addition. The prefix length supplies the position; no corpus-line ID is used.
-3. `attention state -> MLP state`, including pre-LayerNorm, MLP, and residual.
-4. `final state -> vocabulary ID`, capturing final LayerNorm and the tied head's
-   actual deterministic argmax, not an approximate nearest-embedding rule.
-
-Capture uses existing layer hooks and transfers only real input rows. Padding
-is not part of the state space. The corpus has 14,098 real token positions, so
-there are 239,666 internal-state occurrences before exact deduplication.
-
-## Generation and verification plan
-
-The GPU capture records exact activation bits and native top-1 predictions.
-A separate generator checks every duplicate key, emits ordinary C++ arrays or
-condensed transition functions in multiple source files, and formats them. There
-are no Bazel generation rules. Generated source is checked into `generated/`.
-Inference uses integer transitions only; it does not load weights or use CUDA.
-Expected sentence suffixes
-are verification fixtures, never prediction tables consulted by the runtime.
-
-Tests cover table consistency, unknown keys, causal history ordering, EOS,
-code emission, and compaction rollback. End-to-end validation checks both the native
-checkpoint and the compiled model with autonomous first-five-token generation.
-
-## State compaction
-
-After the exact baseline passes, states at the same boundary are proposed for
-compaction. Proximity orders the initial search but is not a restriction: any pair
-may be compacted if it preserves the required outputs. When rewritten attention or MLP
-keys collide, their output states
-must also be compacted. This congruence closure propagates downstream. A proposal is
-rejected if it equates two different required vocabulary outputs; otherwise the
-quotient remains a deterministic lookup network. Original vectors provide
-distance/provenance, not floating-point inference after compaction.
-
-Only scored suffix/EOS readouts constrain the compaction: predictions inside the
-supplied five-token prompt are not part of the task. All prompt hidden states
-remain necessary as attention context. Every accepted compaction decreases the state
-count. Search reports must distinguish exhaustive pairwise compaction completeness from
-merely exhausting a nearest-neighbor candidate set; neither alone proves a
-globally smallest representation.
-
-No compaction crosses a boundary, removes a layer, or bypasses an attention/MLP
-transition. This is a study of a layered symbolic representation, not a replacement
-of the whole model with a sentence-completion dictionary.
-
-## Exact baseline milestone
-
-The exact baseline is preserved in commit `3e983ab`. Exact deduplication yields
-**221,558 internal states**, plus 4,475 vocabulary
-symbols. The native checkpoint and the compiled C++ network both pass all
-**10,002 predictions, 1,024 complete sentences, and 1,024 explicit EOS checks**.
-For every generated prefix, all 17 native BF16 boundaries exactly match the
-full-sentence capture. Repeating capture in a new process reproduced identical
-predictions and BF16 boundary states.
-
-The generated package is approximately 16 MiB of source, split into independent
-attention/MLP translation units. Both its Bazel dependency graph and its dynamic
-library list contain **no CUDA dependency**. It needs no checkpoint, tokenizer
-installation, or GPU at inference time. All 72 repository Bazel test targets and
-186 general-facts Python tests passed at this milestone.
-
-## Compacted result: 6,514 internal states
-
-The checked-in generated package now has **6,514 internal states** (**97.06%
-fewer** than the exact baseline), with the same 4,475 vocabulary symbols. Its
-compiled CPU verifier still reports 0/10,002 errors, 1,024/1,024 exact sentences,
-and 1,024 explicit EOS predictions. The compaction accepted 89,345 seed compactions,
-including their forced downstream compactions, eliminating 215,044 original states.
-
-The final exhaustive sweep found **no compatible within-boundary pair**. This
-includes distant pairs: nearest-neighbor search only ordered the initial work.
-Pairs whose terminal vocabulary labels already differ are provably incompatible
-and can be skipped. The historical certificate in `generated/generation_report.txt` records
-`no_compatible_pair`, `pairwise_compaction_complete: true`, and
-`global_minimum_proven: false`. A different earlier compaction order could produce a
-different, potentially smaller quotient; this is not a global minimum claim.
-
-A separate checker, which imports no compactor code and trusts no cached search
-results, independently proves that **all 8,423,754 same-boundary pairs** are
-incompatible. It works backward from distinct vocabulary labels through
-injective MLP tables and 8,990 explicit attention-input pair collision checks.
-The complete argument summary is also recorded in the generation report.
-The C++ generator runs this independent checker directly on the in-memory
-quotient when compaction reports pairwise compaction completeness. The checker
-reports `inconclusive` if its sufficient backward argument cannot be completed;
-it never interprets a missing proof as success or proves corpus accuracy by
-itself. The separate autoregressive verifier establishes that accuracy.
-
-The input/position boundary has 52 states. Subsequent boundaries are:
-
-| Block | After attention + residual | After MLP + residual |
+| Boundary | After attention + residual | After MLP + residual |
 | --- | ---: | ---: |
-| 0 | 48 | 48 |
-| 1 | 48 | 48 |
-| 2 | 48 | 48 |
-| 3 | 48 | 48 |
-| 4 | 47 | 47 |
-| 5 | 47 | 47 |
-| 6 | 45 | 45 |
-| 7 | 2,900 | 2,900 |
+| Token + position embedding | 85 | — |
+| Block 0 | 64 | 58 |
+| Block 1 | 61 | 57 |
+| Block 2 | 72 | 52 |
+| Block 3 | 2,900 | 2,900 |
 
-There are 2,900 distinct required next-token labels. Both final boundaries have
-reached that lower bound: the final MLP and language modeling head are pointwise
-functions, so different required labels cannot share an input state. Earlier
-attention tables can expand a small alphabet into many outputs by inspecting
-ordered histories.
-These counts measure state alphabets, not the information or bytes in the
-history-keyed tables; state compaction is not the same as compressing the model.
+Compaction stopped at its one-pass limit: **neither pairwise irreducibility nor
+global minimality is claimed**. State count measures the symbolic alphabet,
+not the information stored in the history-dependent attention functions.
 
-All original 221,558 states are accounted for by the quotient membership map.
-The generator preserves all eight attention transitions, all eight MLP transitions,
-the position-entry function, and the language modeling head. The generated code
-has boundary/row-layout comments and readable, byte-exact vocabulary literals.
+The previous eight-block, width-16 generated model and its 6,514-state result
+remain in Git history, including the local backup branch
+`codex/discretize-general-facts-before-context32-rebase`. Its measurements and
+exhaustive compaction certificate do not apply to this new model.
 
-Two files support inspection without affecting inference:
-
-- `generated/state_index.tsv`: boundary name, representative BF16 vector,
-  corpus occurrence count, up to three observed prefix examples, and original
-  member count for each numeric symbol. Examples are observations, not asserted
-  semantic labels; a representative is just one member of a compacted class.
-- `generated/state_members.tsv`: the complete original-state ID membership of
-  every class. Original IDs refer to the exact baseline, not to a different
-  layer or a vocabulary token. No compaction crosses a boundary.
-
-Generate these with `--state_index`. Compaction preserves the complete quotient
-mapping from the originally captured states in memory; it needs no saved
-baseline or intermediate model file. An uncompacted model needs no membership
-table because each symbol still represents exactly one original state.
-Newly generated state indexes omit the representative-vector column: the
-symbolic `CapturedModel` does not retain vectors. The older checked-in index
-keeps those historical observations; optional in-memory vector hints are used
-only by the compaction search.
-The inspection files are not compiled, linked, or read by the inference model.
-Compacted states preserve the agreed corpus completions, not numerical vectors or
-all possible neural-model behavior. A class can group unrelated meanings; its
-example contexts are evidence for further interpretation, not semantic proof.
-The final result passes all 73 repository Bazel test targets and all 247
-general-facts Python tests. Its executable and build dependency graph remain
-CUDA-free, and generated C++ is formatted with the repository's Google style.
+## Build, verify, and run
 
 ```sh
 bazel build -c opt //src/llm/experiments/memorize_general_facts/discretized_model/generated:discretized_model
@@ -186,245 +50,122 @@ discrete=bazel-bin/src/llm/experiments/memorize_general_facts/discretized_model/
 "$discrete" --prompt='The capital of France is'
 ```
 
-`--prompt` uses a finite-domain encoder for recorded corpus prefixes at token
-boundaries. It is intentionally not a general BPE tokenizer. Alternatively,
-`--token_ids=ID,ID,...` supplies compact IDs directly. The model's predictions do
-not consult this text encoder or the separately compiled verification fixtures.
-Unknown entries, attention histories, MLP inputs, and readouts are errors.
-After compaction, a previously unseen raw-token prefix may map to known abstract
-lookup keys; the lookup mechanism does not promise to reject every out-of-corpus
-token sequence. The text encoder deliberately accepts only recorded prefixes.
+Generated inference uses integer transitions only. It requires no CUDA,
+checkpoint, tokenizer installation, or GPU.
 
-## Transition patterns and condensed control flow
+The CLI's `--prompt` encoder accepts recorded corpus prefixes at token
+boundaries; it is not a general BPE tokenizer. `--token_ids=ID,ID,...` accepts
+compact token IDs directly. Unsupported transition keys return an error,
+without a neural fallback. After compaction, an unseen raw-token sequence can
+sometimes map to supported abstract histories, so rejection of every
+out-of-corpus sequence is not guaranteed.
 
-`--compact_transitions` compiles the same finite functions into smaller programs.
-It preserves their support and outputs under the recorded symbol renaming. It
-does **not** perform additional state compaction, remove layers, or use cross-layer prediction
-shortcuts. All 6,514 residual classes remain, with
-their BF16 representatives and original memberships. The generator records the
-within-boundary renaming in `generated/state_relabeling.tsv`; numeric IDs can now
-have gaps. Private recognizer program counters are code locations, not additional
-activation classes.
+## Preserved layer boundaries
 
-Patterns found:
+The compiled model executes these pure operations in order:
 
-- **MLPs are bijections between boundary alphabets.** For blocks 0–6, choosing
-  output names in input order makes each MLP a range check plus a constant
-  addition. For example, block 0 accepts 4527–4574 and returns `state + 48`.
-  The separate MLP function is still called at every position.
-- **The final MLP and language modeling head are bijective onto their required token labels.**
-  Name the last attention states `5189 + token_id` and final states
-  `9664 + token_id`. The final MLP adds 4475; the language modeling head subtracts
-  9664. Each has its own 560-byte support mask to reject the 1,575 unused labels.
-  These masks are essential: a range check alone would accept states that never
-  existed.
-- **Entry is nearly token-only on this quotient.** Of 4,474 input tokens, 4,466
-  have the same entry symbol at all observed positions. Only eight need one
-  positional exception each. Deduplicated `(position-support mask, default
-  symbol)` patterns plus those explicit exceptions replace 8,175 triples.
-- **Attention shares prefixes and suffix programs.** Its 84,191 histories form
-  prefix-closed tries; bottom-up minimization yields 59,300 recognizer nodes.
-  Most nodes have one outgoing edge. Generated code groups branching cases,
-  shares identical tails, and checks longer straight-line runs with small typed
-  `(expected symbol, current output)` sequences. A shared matcher avoids
-  expanding every comparison into separate machine instructions. Helpers have
-  at most 256 recognizer nodes, keeping compilation practical and parallel across
-  the eight source files. The complete ordered history is still checked.
+1. `(vocabulary token, absolute position) -> input hidden state`.
+2. For each block, `ordered causal prefix -> attention hidden state`, including
+   pre-LayerNorm, Q/K/V projections, attention, output projection, and residual
+   addition.
+3. `attention hidden state -> MLP hidden state`, including pre-LayerNorm, MLP,
+   and residual addition.
+4. `final hidden state -> vocabulary token`, including final LayerNorm and
+   the tied language modeling head's deterministic top-1 selection.
 
-These are **patterns in the finite symbolic quotient, not evidence that the
-original neural MLPs or head are affine**. Arithmetic offsets arise from our
-choice of names. The attention compression is structural sharing, not a newly
-discovered semantic rule. Simple current-state rules were insufficient: their
-majority outputs made 3,850–8,611 errors per attention block; adding sequence
-length or a short suffix did not fix this. No approximate rule was adopted.
+Every block remains present. No compaction crosses a boundary or replaces the
+network with a sentence-completion dictionary. Attention receives the entire
+ordered prefix, never a sentence ID. Expected suffixes are verification
+fixtures, not prediction tables consulted by the model.
 
-### Measured size
+Initially, hidden-state symbols identify exact BF16 residual vectors. After
+compaction they identify classes that preserve the required corpus outputs,
+not numerical vectors or every possible behavior of the original model.
+Optional vector hints only order compaction candidates. Acceptance is symbolic:
+colliding transition keys force compatible downstream outputs, and a proposal
+that would equate distinct required vocabulary outputs is rejected.
 
-Same machine and `bazel build -c opt`, comparing the named table version
-(`b076f03`) against the compact functions at `336a535`. The following counts are
-`size`'s text + data + BSS totals for each non-PIC model object: allocated code,
-read-only constants and runtime data, **not** object-file metadata, debug symbols,
-or the test fixtures. All amounts are bytes.
+`--compact_transitions` separately condenses the finite transition functions.
+It shares attention-prefix/suffix programs and uses range checks, masks, or
+arithmetic where equivalent. This does not perform additional state compaction.
+For this model, the final MLP and language modeling head can use vocabulary-
+aligned state IDs; the earlier MLPs retain explicit maps. Such arithmetic
+patterns follow from the chosen symbolic names, not proof that the original
+neural layers are affine.
 
-| Boundary | Tables | Compact logic | Size savings |
-| --- | ---: | ---: | ---: |
-| Entry | 98,156 | 14,772 | 85.0% |
-| Attention 0 | 535,580 | 156,446 | 70.8% |
-| Attention 1 | 530,184 | 154,568 | 70.8% |
-| Attention 2 | 527,432 | 158,918 | 69.9% |
-| Attention 3 | 524,676 | 157,348 | 70.0% |
-| Attention 4 | 523,028 | 154,722 | 70.4% |
-| Attention 5 | 519,740 | 158,290 | 69.5% |
-| Attention 6 | 518,104 | 162,080 | 68.7% |
-| Attention 7 | 516,664 | 135,434 | 73.8% |
-| MLP 0–3, each | 440 | 132 | 70.0% |
-| MLP 4–5, each | 432 | 132 | 69.4% |
-| MLP 6 | 416 | 132 | 68.3% |
-| MLP 7 | 23,256 | 744 | 96.8% |
-| Language modeling head | 23,256 | 728 | 96.9% |
-| **All transition objects** | **4,343,116** | **1,254,974** | **71.1%** |
+## Generate from the checkpoint
 
-The corresponding formatted production transition source shrinks from
-7,482,106 to 3,012,829 bytes (**59.7%**). Vocabulary strings, the text-prefix
-encoder, runtime scaffolding, and independent test fixtures are excluded from
-these transition-only totals. Some small data arrays deliberately remain:
-replacing irregular masks/sequence literals with more branches made the
-executable larger. A pure-control-flow prototype was
-also correct but larger than the selected shared-sequence version.
-The complete CLI's allocated sections, including its unchanged vocabulary,
-prompt encoder, and corpus-verification support, shrink from 6,520,292 to
-3,480,820 bytes (46.6%).
-
-### Equivalence checks
-
-In addition to all 1,024 autonomous completions, a separate C++ test reconstructs
-histories from 239,666 independently computed expected boundary states. Every
-operation receives the **source table's** inputs, not the preceding operation's
-actual outputs, so compensating mistakes cannot pass. Distinct-key coverage was
-checked against all 98,497 source entry, attention, MLP, and language modeling
-head records.
-Additional tests exercise unsupported histories, sparse-domain holes, truncated
-and extended sequences, zero outputs, and 32-bit limits. These fixtures are in a
-dedicated test target, not linked by the production model or CLI.
-
-To generate a compact representation directly from the native checkpoint:
+The C++ generator loads the checkpoint and tokenizer, records exact GPU
+executions, compacts states in memory, and emits formatted CPU-only C++.
+The output directory must not already exist.
 
 ```sh
-bazel run -c opt //src/llm/experiments/memorize_general_facts/discretized_model/discrete_model_generator:generate_discretized_model -- \
-  --checkpoint=/path/to/run/layers_8/step_16128 \
-  --tokenizer=/path/to/run/inputs/tokenizer \
-  --corpus=testdata/general_facts_dataset.txt \
-  --compaction --compact_transitions --state_index \
-  --output=/tmp/facts-compact-generated
-```
-
-The output path must be fresh. Omit `--compact_transitions` to emit private
-per-boundary tables behind binary-search lookup functions. Both modes implement
-the same runtime interfaces:
-
-- `PositionEmbedding` maps a compact token and signed absolute position to a
-  token-plus-position residual symbol.
-- `CausalAttention` maps a complete ordered causal prefix to the current
-  position's attention residual symbol.
-- `Map` maps one hidden state to another; MLPs and the language modeling head
-  implement it. The head's output encodes the compact next-token ID.
-- Each `Transformer` pairs attention and MLP references. `DiscreteModel::transformers`
-  holds these blocks in execution order, with separate references to the
-  position embedding and language modeling head.
-
-All operations are pure and return `std::optional<DiscreteHiddenState>`:
-`nullopt` rejects unsupported inputs, whereas an engaged zero is a valid token
-ID. The model borrows its operations; generated implementations have static
-lifetime. Reference members cannot be null. Generation validates transition
-domains, and tests compare virtual calls against the source records.
-
-### Public generated API
-
-`generated/model.h` is the generated library's only public header. It declares
-only `pluto::llm::discretized::gen::GeneratedModel()`, which returns a reference
-to the static `DiscreteModel`. The generic `runtime.h` contains no generated
-factory declaration and does not depend on any particular generated model.
-
-Depend on the `generated:model` target and include its stable public header:
-
-```cpp
-#include "pluto/discretized/gen/model.h"
-
-const auto& model = pluto::llm::discretized::gen::GeneratedModel();
-```
-
-Boundary factories, named vocabulary constants, prompt encoding, and corpus
-verification live in `gen::internal`. Their headers and build targets are
-private to the generated package; only the model factory is exported by its
-shared library. The CLI links prompt encoding and verification separately, so
-production model inference cannot access those fixtures.
-
-All generation logic and its C++ tests live in
-[`discrete_model_generator/`](discrete_model_generator/README.md): recording,
-state compaction, per-layer C++ lowering, verification, and publication.
-The CPU runtime stays here; generated C++ stays in `generated/`.
-Benchmarking and training-sweep utilities remain in
-`scripts/memorize_general_facts/`.
-
-## Single-step GPU conversion
-
-Use a fresh output path. The C++ `generate_discretized_model` binary loads the
-checkpoint and tokenizer, captures exact BF16 activations on CUDA, constructs
-and optionally compacts the symbolic network in memory, then emits formatted
-CPU-only C++ in a single process. The existing tokenizer's `tokenizer.json` is
-an input asset loaded by the tokenizer library.
-
-`Generate(options)` connects three independently usable stages:
-
-1. `ModelRecorder::Record(ModelRecorderOptions, ...)` loads the inputs and returns
-   a `CapturedModel`. Its transformers contain `CapturedCausalAttention` and
-   `CapturedMap` records, mirroring the CPU `DiscreteModel` structure.
-2. `CompactModel` returns a new captured model with compatible states combined.
-   Optional `StateVectorHints` preserve proximity-based candidate ordering;
-   vectors are separate from the model and never determine acceptance.
-3. `RenderModel` lowers each captured layer into a `SerializedCppProgram` and
-   assembles the generated files. Formatting and atomic disk publication happen
-   afterward, independently of the per-layer lowerers.
-
-`GeneratorOptions::recorder` contains only recording configuration, not output
-paths or formatting settings. The full pipeline requests vector hints only when
-state compaction is enabled. Progress callbacks receive a `ProgressEvent` variant.
-Reports format typed results directly; the algorithms never parse report strings.
-
-`clang-format` must be installed and on `PATH`. Its repository configuration is
-included in the executable's runfiles, so generation does not depend on running
-inside the checkout. Relative input/output paths passed to `bazel run` resolve
-from the directory where you invoked Bazel.
-
-```sh
-facts_run=/home/ubuntu/checkpoints/memorize_general_facts/compact_batch_32_no_clip_0
+sweep=/home/ubuntu/checkpoints/memorize_general_facts/context32_size_sweep_1h_0
 
 bazel run -c opt //src/llm/experiments/memorize_general_facts/discretized_model/discrete_model_generator:generate_discretized_model -- \
-  --checkpoint="$facts_run/layers_8/step_16128" \
-  --tokenizer="$facts_run/inputs/tokenizer" \
-  --corpus=testdata/general_facts_dataset.txt \
+  --checkpoint="$sweep/trial_000_L4_W13_FF52/checkpoints/layers_4/step_34816" \
+  --tokenizer="$sweep/inputs" \
+  --corpus="$sweep/inputs/corpus.txt" \
+  --layers=4 --model_width=13 --context_length=32 \
+  --attention_heads=1 --feed_forward_width=52 \
+  --prompt_tokens=5 --expected_samples=1024 --verify_greedy=true \
+  --compaction --compaction_neighbors=4 --compaction_max_passes=1 \
+  --compaction_max_attempts=150000 --compaction_exhaustive_pair_limit=0 \
   --compact_transitions --state_index \
-  --output=/tmp/facts-generated
+  --output=/tmp/facts-context32-generated
 ```
 
-This command keeps all exact states. Add `--compaction` to search for compatible
-within-boundary compactions. `--compaction_neighbors`,
-`--compaction_max_passes`, `--compaction_max_attempts`, and
-`--compaction_exhaustive_pair_limit` bound that search. State compaction and
-`--compact_transitions` are independent: the latter only changes how transition
-functions are encoded, without changing the state partition.
-No intermediate checkpoint is saved: an interrupted conversion must restart.
-The 6,514-state checked-in model and its
-historical measurements above are preserved; a new search can choose a different
-quotient depending on candidate order and search limits.
+This reproduces the checked-in search configuration. Omit `--compaction` to
+keep the exact captured states. Omit `--compact_transitions` to use private
+lookup tables behind the same pure function interfaces. The model dimensions
+must match the checkpoint; legacy defaults remain eight blocks, width 16,
+context 1,024, one head, and MLP width 64.
 
-Defaults describe the selected checkpoint: width 16, eight blocks, one head,
-MLP width 64, 1,024 samples, and five prompt tokens. `--layers`,
-`--attention_heads`, `--feed_forward_width`, `--expected_samples`, and
-`--prompt_tokens` allow matching another checkpoint/corpus. Native autonomous
-completion and bitwise causal-prefix verification are enabled by default
-(`--verify_greedy=true`), as is symbolic suffix/EOS verification. Do not disable
-native greedy verification when establishing a new checkpoint's correctness.
+Native autonomous completion and bitwise causal-prefix checks are enabled by
+default. For each generated prefix, every captured residual vector must match
+its full-sentence counterpart exactly. Symbolic verification runs before and
+after compaction. Generated transition tests independently exercise every
+captured operation with its expected input, preventing compensating errors
+between layers from passing unnoticed.
 
-The generator refuses existing output paths, including symlinks, formats sources,
-and only then atomically publishes the completed directory. Readable statistics,
-verification results, and input/output hashes are in `generation_report.txt`.
-Inspection TSVs are optional.
+Generation requires CUDA and `clang-format`. Formatting uses the repository's
+Google-style configuration, supplied through Bazel runfiles. Source files are
+split by attention/MLP boundary for parallel compilation. Output publication is
+atomic and refuses existing paths, including symlinks. Copy the resulting
+package into `generated/` explicitly; there are no Bazel genrules or automatic
+rewrites of checked-in sources.
 
-Copy a freshly generated package into the workspace to build it with Bazel.
-This is an explicit `cc_binary` invocation, not a genrule or an automatic rewrite
-of checked-in generated code. The generator package has separate
-`:captured_model`, `:state_compactor`, `:code_generator`, and `:model_recorder`
-libraries; `:generator` connects them. Only recording needs CUDA. None of these
-dependencies enter the generated inference library.
+## Inspect and extend
 
-The compaction API consists of `CompactModel`, `CompactionOptions`, and
-`StateCompactor::TryCompact`. Progress and statistics use `CompactionProgress`
-and `CompactionRecord`; `CertifyCompaction` independently checks whether
-pairwise compaction is complete without claiming a globally minimal partition.
+`generated/generation_report.txt` records checkpoint/corpus/tokenizer hashes,
+verification results, compaction limits and results, and generated-file hashes.
+Optional inspection-only files provide:
 
-Test the C++ libraries and real-GPU conversion with:
+- `state_index.tsv`: boundary, occurrence count, observed prefix examples,
+  and original member count for each state.
+- `state_members.tsv`: the complete mapping from original exact states to
+  compacted classes.
+- `state_relabeling.tsv`: the subsequent within-boundary renaming used by
+  condensed transition code.
+
+These files are not loaded by inference. Examples are observed contexts, not
+asserted semantic meanings. `vocabulary_tokens.h` gives tokens readable private
+names such as `vocab::kSpace_France_1516`, preserving their original bytes and IDs.
+
+The generated library exposes only `gen::GeneratedModel()` through
+`pluto/discretized/gen/model.h`. It returns a static `DiscreteModel` with a
+position embedding, a span of transformers, and a language modeling head.
+Operations return `std::optional<DiscreteHiddenState>`; an absent value means
+unsupported input, whereas an engaged zero is valid. The runtime does not
+depend on a particular generated model. CLI prompt encoding and verification
+support are separate from the production model library.
+
+Generation code lives in
+[`discrete_model_generator/`](discrete_model_generator/README.md), organized
+around `CapturedModel`: `ModelRecorder` captures it, `CompactModel` produces
+a compacted model, and `RenderModel` lowers it to independently compiled C++.
+Only recording needs CUDA; the generated model does not depend on the generator.
 
 ```sh
-bazel test //src/llm/experiments/memorize_general_facts/discretized_model/discrete_model_generator:generator_tests
+bazel test -c opt //src/llm/experiments/memorize_general_facts/discretized_model/...
 ```

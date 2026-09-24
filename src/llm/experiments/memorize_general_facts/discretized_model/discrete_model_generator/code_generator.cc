@@ -406,9 +406,9 @@ absl::StatusOr<FileMap> RenderModel(const CapturedModel& model,
     body += "  static " + CppArray("Transformer", "kTransformers", rows);
   }
   absl::StrAppend(
-      &body, "  static const DiscreteModel model{1024, ",
-      model.metadata.prompt_tokens, ", internal::vocab::", names[eos],
-      ", internal::GeneratedVocabulary(), ",
+      &body, "  static const DiscreteModel model{",
+      model.metadata.context_length, ", ", model.metadata.prompt_tokens,
+      ", internal::vocab::", names[eos], ", internal::GeneratedVocabulary(), ",
       layers ? absl::StrCat("{kTransformers, ", layers, "}") : "{}",
       ", internal::GeneratedLanguageModelingHead(), "
       "internal::GeneratedPositionEmbedding()};\n  return model;\n}");
@@ -432,7 +432,7 @@ absl::StatusOr<FileMap> RenderModel(const CapturedModel& model,
                 ASSERT_EQ(absl::MakeConstSpan(kTokens).size(),
                           GeneratedModel().vocabulary.size());
                 for (size_t token = 0; token < absl::MakeConstSpan(kTokens).size(); ++token)
-                  EXPECT_EQ(kTokens[token].value, token);
+                  EXPECT_EQ(kTokens[token].value, static_cast<int>(token));
                 }
                 TEST(GeneratedIntegerModel, IndependentAutoregressiveCorpusVerification) {
                   const auto& model = GeneratedModel();

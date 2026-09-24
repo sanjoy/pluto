@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
+#include <limits>
 #include <string>
 #include <variant>
 #include <vector>
@@ -72,14 +73,69 @@ TEST_F(ModelRecorderTest, OptionalVectorHintsDoNotChangeCapturedModel) {
   ExpectNoIntermediateFiles();
 }
 
-TEST_F(ModelRecorderTest, RejectsUnsupportedModelDimensions) {
-  options_.recorder.model_width = 32;
+TEST_F(ModelRecorderTest, OddWidthContext32WorksThroughRecordingAndGeneration) {
+  options_.recorder.checkpoint = directory_ / "small_checkpoint";
+  options_.recorder.layers = 4;
+  options_.recorder.model_width = 13;
+  options_.recorder.context_length = 32;
+  options_.recorder.feed_forward_width = 52;
+  WriteZeroCheckpoint();
+  ASSERT_FALSE(HasFatalFailure());
+  StateVectorHints hints;
+  auto captured = ModelRecorder::Record(options_.recorder, &hints);
+  ASSERT_TRUE(captured.ok()) << captured.status();
+  EXPECT_EQ(captured->metadata.width, 13);
+  EXPECT_EQ(captured->metadata.context_length, 32);
+  EXPECT_EQ(captured->transformers.size(), 4u);
+  EXPECT_EQ(captured->states.size(), 9u);
+  ASSERT_EQ(hints.size(), captured->states.size());
+  for (const auto& state : captured->states)
+    EXPECT_EQ(hints.at(state.id), std::vector<uint16_t>(13, 0));
+  EXPECT_TRUE(EvaluateModel(*captured).ok());
+  options_.compact_transitions = true;
+  auto generated = Generate(options_);
+  ASSERT_TRUE(generated.ok()) << generated.status();
+  EXPECT_EQ(generated->metadata.context_length, 32);
+  EXPECT_TRUE(std::filesystem::exists(options_.output / "attention_3.cc"));
+  EXPECT_FALSE(std::filesystem::exists(options_.output / "attention_4.cc"));
+  auto report = ReadFile(options_.output / "generation_report.txt");
+  ASSERT_TRUE(report.ok()) << report.status();
+  EXPECT_NE(report->find("model_width: 13\n"), std::string::npos);
+  EXPECT_NE(report->find("context_length: 32\n"), std::string::npos);
+  EXPECT_NE(report->find("feed_forward_width: 52\n"), std::string::npos);
+  EXPECT_NE(report->find("native_greedy_verified: true\n"), std::string::npos);
+}
+
+TEST_F(ModelRecorderTest, RejectsInvalidModelDimensions) {
+  const auto valid = options_.recorder;
+  for (int value : {0, -1, std::numeric_limits<int>::max()}) {
+    options_.recorder = valid;
+    options_.recorder.model_width = value;
+    EXPECT_EQ(ModelRecorder::Record(options_.recorder).status().code(),
+              absl::StatusCode::kInvalidArgument);
+    options_.recorder = valid;
+    options_.recorder.context_length = value;
+    EXPECT_EQ(ModelRecorder::Record(options_.recorder).status().code(),
+              absl::StatusCode::kInvalidArgument);
+  }
+  options_.recorder = valid;
+  options_.recorder.context_length = 32;
+  options_.recorder.prompt_tokens = 33;
   EXPECT_EQ(ModelRecorder::Record(options_.recorder).status().code(),
             absl::StatusCode::kInvalidArgument);
-  options_.recorder.model_width = 16;
-  options_.recorder.context_length = 512;
-  EXPECT_EQ(ModelRecorder::Record(options_.recorder).status().code(),
-            absl::StatusCode::kInvalidArgument);
+}
+
+TEST_F(ModelRecorderTest, RejectsCheckpointShapeMismatch) {
+  // Positive dimensions are supported, but cannot reinterpret tensors saved
+  // for the historical 16-wide, 1024-position checkpoint.
+  for (bool change_width : {false, true}) {
+    auto recorder = options_.recorder;
+    if (change_width)
+      recorder.model_width = 13;
+    else
+      recorder.context_length = 32;
+    EXPECT_FALSE(ModelRecorder::Record(recorder).ok());
+  }
 }
 
 TEST_F(ModelRecorderTest, IncorrectGpuPredictionsPreserveExistingHints) {
@@ -134,6 +190,12 @@ TEST_F(ModelRecorderTest, OneStepGenerationWritesOnlyCppAndReadableReports) {
 
 TEST_F(ModelRecorderTest,
        CopiedCliFindsRunfilesAndResolvesCallerRelativePaths) {
+  options_.recorder.checkpoint = directory_ / "small_step";
+  options_.recorder.model_width = 13;
+  options_.recorder.context_length = 32;
+  options_.recorder.feed_forward_width = 52;
+  WriteZeroCheckpoint();
+  ASSERT_FALSE(HasFatalFailure());
   const char* runfiles = std::getenv("TEST_SRCDIR");
   const char* workspace = std::getenv("TEST_WORKSPACE");
   ASSERT_NE(runfiles, nullptr);
@@ -188,13 +250,15 @@ TEST_F(ModelRecorderTest,
       "PATH=" + tools.string(),
       "BUILD_WORKING_DIRECTORY=" + directory_.string(),
       copied_binary.string(),
-      "--checkpoint=step_0",
+      "--checkpoint=small_step",
       "--tokenizer=tokenizer",
       "--corpus=corpus.txt",
       "--output=portable_generated",
       "--layers=1",
+      "--model_width=13",
+      "--context_length=32",
       "--attention_heads=1",
-      "--feed_forward_width=64",
+      "--feed_forward_width=52",
       "--prompt_tokens=1",
       "--expected_samples=1",
       "--verify_greedy",
@@ -220,6 +284,8 @@ TEST_F(ModelRecorderTest,
   auto report = ReadFile(output / "generation_report.txt");
   ASSERT_TRUE(report.ok()) << report.status();
   EXPECT_NE(report->find("compaction_search:"), std::string::npos);
+  EXPECT_NE(report->find("model_width: 13\n"), std::string::npos);
+  EXPECT_NE(report->find("context_length: 32\n"), std::string::npos);
   EXPECT_NE(report->find("nearest_neighbors: 2"), std::string::npos);
   EXPECT_NE(report->find("exhaustive_pair_limit: 1000"), std::string::npos);
   EXPECT_NE(report->find("pairwise_compaction_complete: true"),

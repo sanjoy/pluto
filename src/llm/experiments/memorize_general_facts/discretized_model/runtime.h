@@ -119,7 +119,8 @@ absl::StatusOr<DiscreteToken> PredictNext(
     const DiscreteModel& model, absl::Span<const DiscreteToken> tokens);
 
 // Returns newly generated tokens, INCLUDING EOS when reached. Zero budget
-// returns an empty vector after prompt validation. Stops at context_length.
+// returns an empty vector after prompt validation. A full context permits one
+// final prediction; no prefix longer than context_length is evaluated.
 absl::StatusOr<std::vector<DiscreteToken>> Generate(
     const DiscreteModel& model, absl::Span<const DiscreteToken> prompt,
     size_t max_new_tokens);

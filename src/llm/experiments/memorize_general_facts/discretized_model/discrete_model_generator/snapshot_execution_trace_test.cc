@@ -24,6 +24,12 @@ namespace {
 constexpr int64_t kBatch = ActivationType::kBatchDimension;
 const CaptureOptions kOptions{
     .layers = 1, .vocab_size = 8, .eos_token = 7, .prompt_tokens = 5};
+const CaptureOptions kSmallOptions{.layers = 4,
+                                   .vocab_size = 8,
+                                   .eos_token = 7,
+                                   .prompt_tokens = 5,
+                                   .model_width = 13,
+                                   .context_length = 32};
 const std::vector<int> kTokens{0, 1, 2, 3, 4, 5, 6};
 
 template <class T>
@@ -55,6 +61,13 @@ uint16_t Bits(int stage, int row, int channel) {
 // GPU storage. The top-1 kernel still performs actual vocabulary selection.
 class ScriptedGpt2 final : public Layer {
  public:
+  explicit ScriptedGpt2(CaptureOptions options = kOptions)
+      : options_(options),
+        input_{{DataType::INT32, {kBatch, options.context_length}}},
+        output_{{DataType::FP32,
+                 {kBatch, options.context_length,
+                  (options.vocab_size + 15) / 16 * 16}}} {}
+
   absl::string_view name() const override { return "gpt2"; }
   absl::Span<const ActivationType> input_types() const override {
     return input_;
@@ -67,6 +80,7 @@ class ScriptedGpt2 final : public Layer {
 
   DataType boundary_dtype = DataType::BF16;
   bool wrong_shape = false;
+  bool wrong_boundary_context = false;
   bool short_storage = false;
   bool wrong_block = false;
   bool wrong_scope = false;
@@ -80,17 +94,19 @@ class ScriptedGpt2 final : public Layer {
  private:
   absl::Status Emit(cuda::Executor& executor, LayerHooks& hooks,
                     absl::string_view name, int stage, int real_rows) const {
-    std::vector<uint16_t> values(kCaptureContext * kCaptureWidth);
-    for (int row = 0; row < kCaptureContext; ++row)
-      for (int channel = 0; channel < kCaptureWidth; ++channel)
-        values[row * kCaptureWidth + channel] =
+    std::vector<uint16_t> values(options_.context_length *
+                                 options_.model_width);
+    for (int row = 0; row < options_.context_length; ++row)
+      for (int channel = 0; channel < options_.model_width; ++channel)
+        values[row * options_.model_width + channel] =
             Bits(stage, row, channel) ^ (future_leak ? real_rows : 0);
     if (short_storage)
       values.pop_back();
     ASSIGN_OR_RETURN(auto buffer, Upload(executor, values));
     const ActivationType type(
         boundary_dtype,
-        {kBatch, kCaptureContext, wrong_shape ? 8 : kCaptureWidth});
+        {kBatch, options_.context_length + (wrong_boundary_context ? 1 : 0),
+         wrong_shape ? 8 : options_.model_width});
     return hooks.activation_hook(executor, name, {&type, 1}, {&buffer, 1});
   }
 
@@ -100,51 +116,55 @@ class ScriptedGpt2 final : public Layer {
     if (hooks == nullptr)
       return absl::InvalidArgumentError("script requires capture hooks");
     ASSIGN_OR_RETURN(auto context, cuda::PageLockedHostArray<int>::Allocate(
-                                       executor, kCaptureContext));
+                                       executor, options_.context_length));
     RETURN_IF_ERROR(cuda::CudaStatus(
         cudaMemcpyAsync(context.data(), inputs[0].data(), context.size_bytes(),
                         cudaMemcpyDeviceToHost, executor.stream()),
         "download scripted capture context"));
     RETURN_IF_ERROR(executor.Synchronize());
     const int real_rows = static_cast<int>(
-        std::find(context.begin(), context.end(), kOptions.eos_token) -
+        std::find(context.begin(), context.end(), options_.eos_token) -
         context.begin());
     prefixes.emplace_back(context.begin(), context.begin() + real_rows);
     RETURN_IF_ERROR(hooks->enter_combinator(executor, "gpt2"));
     RETURN_IF_ERROR(
         Emit(executor, *hooks, "PositionEmbeddingLayer", 0, real_rows));
-    RETURN_IF_ERROR(hooks->enter_combinator(
-        executor, wrong_block ? "transformer_block_1" : "transformer_block_0"));
-    for (int branch = 0; branch < 2; ++branch) {
-      if (branch == 1 && omit_last_boundary)
-        break;
-      RETURN_IF_ERROR(hooks->enter_combinator(executor, "ResidualLayer"));
-      const char* branch_name =
-          (branch == 0) != reverse_branches ? "attention" : "mlp";
-      RETURN_IF_ERROR(hooks->enter_combinator(executor, branch_name));
+    for (int block = 0; block < options_.layers; ++block) {
+      RETURN_IF_ERROR(hooks->enter_combinator(
+          executor, absl::StrCat("transformer_block_", block + wrong_block)));
+      for (int branch = 0; branch < 2; ++branch) {
+        if (block + 1 == options_.layers && branch == 1 && omit_last_boundary)
+          break;
+        RETURN_IF_ERROR(hooks->enter_combinator(executor, "ResidualLayer"));
+        const char* branch_name =
+            (branch == 0) != reverse_branches ? "attention" : "mlp";
+        RETURN_IF_ERROR(hooks->enter_combinator(executor, branch_name));
+        RETURN_IF_ERROR(hooks->exit_combinator(executor));
+        // A branch output is observed while still inside its residual wrapper.
+        RETURN_IF_ERROR(
+            Emit(executor, *hooks, branch_name, 90 + branch, real_rows));
+        if (!wrong_scope)
+          RETURN_IF_ERROR(hooks->exit_combinator(executor));
+        RETURN_IF_ERROR(Emit(executor, *hooks, "ResidualLayer",
+                             2 * block + branch + 1, real_rows));
+        if (wrong_scope)
+          RETURN_IF_ERROR(hooks->exit_combinator(executor));
+      }
       RETURN_IF_ERROR(hooks->exit_combinator(executor));
-      // A branch output is observed while still inside its residual wrapper.
-      RETURN_IF_ERROR(
-          Emit(executor, *hooks, branch_name, 90 + branch, real_rows));
-      if (!wrong_scope)
-        RETURN_IF_ERROR(hooks->exit_combinator(executor));
-      RETURN_IF_ERROR(
-          Emit(executor, *hooks, "ResidualLayer", branch + 1, real_rows));
-      if (wrong_scope)
-        RETURN_IF_ERROR(hooks->exit_combinator(executor));
     }
     RETURN_IF_ERROR(hooks->exit_combinator(executor));
-    RETURN_IF_ERROR(hooks->exit_combinator(executor));
 
-    std::vector<float> logits(kCaptureContext * 16,
+    const int padded_vocabulary = (options_.vocab_size + 15) / 16 * 16;
+    std::vector<float> logits(options_.context_length * padded_vocabulary,
                               std::numeric_limits<float>::quiet_NaN());
     for (int row = 0; row < real_rows; ++row) {
       // Padded vocabulary columns remain NaN even in real rows.
-      std::fill_n(logits.begin() + row * 16, kOptions.vocab_size, -10.0f);
+      std::fill_n(logits.begin() + row * padded_vocabulary, options_.vocab_size,
+                  -10.0f);
       int prediction = context[row] + 1;
-      if (missing_eos && prediction == kOptions.eos_token)
+      if (missing_eos && prediction == options_.eos_token)
         prediction = 0;
-      logits[row * 16 + prediction] = 10.0f;
+      logits[row * padded_vocabulary + prediction] = 10.0f;
     }
     if (nonfinite_prompt)
       logits[0] = std::numeric_limits<float>::infinity();
@@ -159,11 +179,73 @@ class ScriptedGpt2 final : public Layer {
     return absl::InternalError("capture must not call backward");
   }
 
-  std::vector<ActivationType> input_{
-      {DataType::INT32, {kBatch, kCaptureContext}}};
-  std::vector<ActivationType> output_{
-      {DataType::FP32, {kBatch, kCaptureContext, 16}}};
+  CaptureOptions options_;
+  std::vector<ActivationType> input_;
+  std::vector<ActivationType> output_;
 };
+
+CapturedSample ValidSmallSample() {
+  return {.tokens = kTokens,
+          .predictions = {1, 2, 3, 4, 5, 6, 7},
+          .boundaries = std::vector<std::vector<CapturedRow>>(
+              2 * kSmallOptions.layers + 1,
+              std::vector<CapturedRow>(
+                  kTokens.size(), CapturedRow(kSmallOptions.model_width)))};
+}
+
+TEST(CaptureValidationTest, KeepsDefaultDimensions) {
+  const CaptureOptions options;
+  EXPECT_EQ(options.model_width, 16);
+  EXPECT_EQ(options.context_length, 1024);
+}
+
+TEST(CaptureValidationTest, RejectsInvalidDimensionsAndPromptLength) {
+  const auto sample = ValidSmallSample();
+  ASSERT_TRUE(ValidateCapturedPredictions(sample, kSmallOptions).ok());
+  for (int invalid : {0, -1}) {
+    auto options = kSmallOptions;
+    options.model_width = invalid;
+    EXPECT_EQ(ValidateCapturedPredictions(sample, options).code(),
+              absl::StatusCode::kInvalidArgument);
+    options = kSmallOptions;
+    options.context_length = invalid;
+    EXPECT_EQ(ValidateCapturedPredictions(sample, options).code(),
+              absl::StatusCode::kInvalidArgument);
+  }
+  auto options = kSmallOptions;
+  options.prompt_tokens = options.context_length + 1;
+  EXPECT_EQ(ValidateCapturedPredictions(sample, options).code(),
+            absl::StatusCode::kInvalidArgument);
+  options = kSmallOptions;
+  options.context_length = kTokens.size() - 1;
+  EXPECT_EQ(ValidateCapturedPredictions(sample, options).code(),
+            absl::StatusCode::kInvalidArgument);
+  for (int invalid : {-1, std::numeric_limits<int>::max()}) {
+    options = kSmallOptions;
+    options.layers = invalid;
+    EXPECT_EQ(ValidateCapturedPredictions(sample, options).code(),
+              absl::StatusCode::kInvalidArgument);
+  }
+}
+
+TEST(CaptureValidationTest, RejectsMissingOrPaddedBoundaryRowsAndChannels) {
+  auto sample = ValidSmallSample();
+  sample.boundaries[0].pop_back();
+  EXPECT_EQ(ValidateCapturedPredictions(sample, kSmallOptions).code(),
+            absl::StatusCode::kInvalidArgument);
+  sample = ValidSmallSample();
+  sample.boundaries[0].push_back(CapturedRow(kSmallOptions.model_width));
+  EXPECT_EQ(ValidateCapturedPredictions(sample, kSmallOptions).code(),
+            absl::StatusCode::kInvalidArgument);
+  sample = ValidSmallSample();
+  sample.boundaries.back().back().pop_back();
+  EXPECT_EQ(ValidateCapturedPredictions(sample, kSmallOptions).code(),
+            absl::StatusCode::kInvalidArgument);
+  sample = ValidSmallSample();
+  sample.boundaries.back().back().push_back(0);
+  EXPECT_EQ(ValidateCapturedPredictions(sample, kSmallOptions).code(),
+            absl::StatusCode::kInvalidArgument);
+}
 
 class CaptureTest : public testing::Test {
  protected:
@@ -173,8 +255,9 @@ class CaptureTest : public testing::Test {
     executor_ = std::move(*executor);
   }
   void TearDown() override {
-    if (executor_ != nullptr)
-      EXPECT_TRUE(executor_->Synchronize().ok());
+    if (executor_ == nullptr)
+      return;
+    EXPECT_TRUE(executor_->Synchronize().ok());
   }
   std::unique_ptr<cuda::Executor> executor_;
 };
@@ -188,24 +271,99 @@ TEST_F(CaptureTest, CapturesExactBitsAllRealRowsAndPostResidualBoundaries) {
   ASSERT_EQ(captured->boundaries.size(), 3u);
   for (size_t stage = 0; stage < captured->boundaries.size(); ++stage) {
     ASSERT_EQ(captured->boundaries[stage].size(), kTokens.size());
-    for (size_t row = 0; row < kTokens.size(); ++row)
+    for (size_t row = 0; row < kTokens.size(); ++row) {
+      ASSERT_EQ(captured->boundaries[stage][row].size(),
+                static_cast<size_t>(kOptions.model_width));
       for (int channel = 0; channel < kCaptureWidth; ++channel)
         EXPECT_EQ(captured->boundaries[stage][row][channel],
                   Bits(stage, row, channel));
+    }
   }
   EXPECT_TRUE(ValidateCapturedPredictions(*captured, kOptions).ok());
 }
 
 TEST_F(CaptureTest, RejectsWrongDtypeShapeAndStorage) {
-  ScriptedGpt2 model;
+  ScriptedGpt2 model(kSmallOptions);
   model.boundary_dtype = DataType::FP32;
-  EXPECT_FALSE(CaptureSample(*executor_, model, kTokens, kOptions).ok());
+  EXPECT_FALSE(CaptureSample(*executor_, model, kTokens, kSmallOptions).ok());
   model.boundary_dtype = DataType::BF16;
   model.wrong_shape = true;
-  EXPECT_FALSE(CaptureSample(*executor_, model, kTokens, kOptions).ok());
+  EXPECT_FALSE(CaptureSample(*executor_, model, kTokens, kSmallOptions).ok());
   model.wrong_shape = false;
+  model.wrong_boundary_context = true;
+  EXPECT_FALSE(CaptureSample(*executor_, model, kTokens, kSmallOptions).ok());
+  model.wrong_boundary_context = false;
   model.short_storage = true;
-  EXPECT_FALSE(CaptureSample(*executor_, model, kTokens, kOptions).ok());
+  EXPECT_FALSE(CaptureSample(*executor_, model, kTokens, kSmallOptions).ok());
+}
+
+TEST_F(CaptureTest, CapturesOddWidthSmallContextAndEveryGreedyPrefix) {
+  ScriptedGpt2 model(kSmallOptions);
+  auto captured = CaptureSample(*executor_, model, kTokens, kSmallOptions);
+  ASSERT_TRUE(captured.ok()) << captured.status();
+  EXPECT_EQ(captured->tokens, kTokens);
+  EXPECT_EQ(captured->predictions, (std::vector<int>{1, 2, 3, 4, 5, 6, 7}));
+  ASSERT_EQ(captured->boundaries.size(), 9u);
+  for (size_t stage = 0; stage < captured->boundaries.size(); ++stage) {
+    ASSERT_EQ(captured->boundaries[stage].size(), kTokens.size());
+    for (size_t row = 0; row < kTokens.size(); ++row) {
+      ASSERT_EQ(captured->boundaries[stage][row].size(), 13u);
+      for (int channel = 0; channel < kSmallOptions.model_width; ++channel)
+        EXPECT_EQ(captured->boundaries[stage][row][channel],
+                  Bits(stage, row, channel));
+    }
+  }
+  ASSERT_TRUE(ValidateCapturedPredictions(*captured, kSmallOptions).ok());
+  model.prefixes.clear();
+  const auto verified =
+      VerifyGreedyCapture(*executor_, model, *captured, kSmallOptions);
+  EXPECT_TRUE(verified.ok()) << verified;
+  EXPECT_EQ(model.prefixes,
+            (std::vector<std::vector<int>>{
+                {0, 1, 2, 3, 4}, {0, 1, 2, 3, 4, 5}, {0, 1, 2, 3, 4, 5, 6}}));
+  model.future_leak = true;
+  EXPECT_EQ(
+      VerifyGreedyCapture(*executor_, model, *captured, kSmallOptions).code(),
+      absl::StatusCode::kDataLoss);
+}
+
+TEST_F(CaptureTest, RejectsInvalidCaptureRequestsBeforeForward) {
+  ScriptedGpt2 model(kSmallOptions);
+  for (int invalid : {0, -1}) {
+    auto options = kSmallOptions;
+    options.model_width = invalid;
+    EXPECT_EQ(
+        CaptureSample(*executor_, model, kTokens, options).status().code(),
+        absl::StatusCode::kInvalidArgument);
+    options = kSmallOptions;
+    options.context_length = invalid;
+    EXPECT_EQ(
+        CaptureSample(*executor_, model, kTokens, options).status().code(),
+        absl::StatusCode::kInvalidArgument);
+  }
+  auto options = kSmallOptions;
+  options.prompt_tokens = options.context_length + 1;
+  EXPECT_EQ(CaptureSample(*executor_, model, kTokens, options).status().code(),
+            absl::StatusCode::kInvalidArgument);
+  EXPECT_EQ(CaptureSample(*executor_, model, {}, kSmallOptions).status().code(),
+            absl::StatusCode::kInvalidArgument);
+  const std::vector<int> too_long(kSmallOptions.context_length + 1, 0);
+  EXPECT_EQ(
+      CaptureSample(*executor_, model, too_long, kSmallOptions).status().code(),
+      absl::StatusCode::kInvalidArgument);
+  EXPECT_TRUE(model.prefixes.empty());
+}
+
+TEST_F(CaptureTest, RejectsConfiguredDimensionsThatDifferFromModel) {
+  ScriptedGpt2 model(kSmallOptions);
+  auto options = kSmallOptions;
+  --options.context_length;
+  EXPECT_EQ(CaptureSample(*executor_, model, kTokens, options).status().code(),
+            absl::StatusCode::kInvalidArgument);
+  options = kSmallOptions;
+  ++options.model_width;
+  EXPECT_EQ(CaptureSample(*executor_, model, kTokens, options).status().code(),
+            absl::StatusCode::kInvalidArgument);
 }
 
 TEST_F(CaptureTest, RejectsWrongScopesBranchOrderAndMissingStages) {
@@ -274,28 +432,39 @@ TEST_F(CaptureTest, RejectsFutureTokenInfluenceOnEarlierBoundaryBits) {
 }
 
 TEST_F(CaptureTest, TinyNativeGpt2HasExactCausalBoundaryPrefixes) {
-  const Gpt2Config config{.transformer_block_count = 1,
-                          .model_width = 16,
-                          .attention_heads = 1,
-                          .feed_forward_width = 64,
-                          .vocabulary_size = 16,
-                          .pad_vocabulary = false};
-  auto model = CreateGpt2(*executor_, DataType::BF16, 1337, config);
-  ASSERT_TRUE(model.ok()) << model.status();
-  const CaptureOptions options{
-      .layers = 1, .vocab_size = 16, .eos_token = 15, .prompt_tokens = 5};
-  auto full = CaptureSample(*executor_, **model, kTokens, options);
-  ASSERT_TRUE(full.ok()) << full.status();
-  auto prefix = CaptureSample(*executor_, **model,
-                              absl::MakeConstSpan(kTokens).first(5), options);
-  ASSERT_TRUE(prefix.ok()) << prefix.status();
-  ASSERT_EQ(full->boundaries.size(), 3u);
-  for (size_t stage = 0; stage < full->boundaries.size(); ++stage)
-    EXPECT_TRUE(std::equal(prefix->boundaries[stage].begin(),
-                           prefix->boundaries[stage].end(),
-                           full->boundaries[stage].begin()));
-  EXPECT_TRUE(std::equal(prefix->predictions.begin(), prefix->predictions.end(),
-                         full->predictions.begin()));
+  for (auto options : {kOptions, kSmallOptions}) {
+    SCOPED_TRACE(absl::StrCat("width=", options.model_width,
+                              ", context=", options.context_length));
+    options.vocab_size = 16;
+    options.eos_token = 15;
+    const Gpt2Config config{.transformer_block_count = options.layers,
+                            .model_width = options.model_width,
+                            .attention_heads = 1,
+                            .feed_forward_width = 4 * options.model_width,
+                            .vocabulary_size = options.vocab_size,
+                            .pad_vocabulary = false,
+                            .context_length = options.context_length};
+    auto model = CreateGpt2(*executor_, DataType::BF16, 1337, config);
+    ASSERT_TRUE(model.ok()) << model.status();
+    auto full = CaptureSample(*executor_, **model, kTokens, options);
+    ASSERT_TRUE(full.ok()) << full.status();
+    auto prefix = CaptureSample(*executor_, **model,
+                                absl::MakeConstSpan(kTokens).first(5), options);
+    ASSERT_TRUE(prefix.ok()) << prefix.status();
+    ASSERT_EQ(full->boundaries.size(),
+              static_cast<size_t>(2 * options.layers + 1));
+    for (size_t stage = 0; stage < full->boundaries.size(); ++stage) {
+      ASSERT_EQ(full->boundaries[stage].size(), kTokens.size());
+      for (const auto& row : full->boundaries[stage])
+        EXPECT_EQ(row.size(), static_cast<size_t>(options.model_width));
+      EXPECT_TRUE(std::equal(prefix->boundaries[stage].begin(),
+                             prefix->boundaries[stage].end(),
+                             full->boundaries[stage].begin()));
+    }
+    EXPECT_TRUE(std::equal(prefix->predictions.begin(),
+                           prefix->predictions.end(),
+                           full->predictions.begin()));
+  }
 }
 
 }  // namespace

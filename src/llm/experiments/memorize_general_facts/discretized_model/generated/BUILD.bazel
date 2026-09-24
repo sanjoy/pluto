@@ -16,20 +16,12 @@ cc_library(
         "attention_1.cc",
         "attention_2.cc",
         "attention_3.cc",
-        "attention_4.cc",
-        "attention_5.cc",
-        "attention_6.cc",
-        "attention_7.cc",
         "entry.cc",
         "language_modeling_head.cc",
         "mlp_0.cc",
         "mlp_1.cc",
         "mlp_2.cc",
         "mlp_3.cc",
-        "mlp_4.cc",
-        "mlp_5.cc",
-        "mlp_6.cc",
-        "mlp_7.cc",
         "model.cc",
         "tables.h",
         "vocabulary.cc",
@@ -53,7 +45,7 @@ cc_library(
     name = "prompt_encoder",
     srcs = ["prompt_encoder.cc"],
     copts = ["-fvisibility=hidden", "-fvisibility-inlines-hidden"],
-    # Private entry points must link into the caller, not a separate shared object.
+    # Private entry points link into the caller, not a separate shared object.
     linkstatic = True,
     visibility = ["//visibility:private"],
     deps = [":cli_support", ":vocabulary_tokens", "//src/llm/experiments/memorize_general_facts/discretized_model:runtime"],
@@ -62,7 +54,7 @@ cc_library(
     name = "verification",
     srcs = ["verification.cc"],
     copts = ["-fvisibility=hidden", "-fvisibility-inlines-hidden"],
-    # Private entry points must link into the caller, not a separate shared object.
+    # Private entry points link into the caller, not a separate shared object.
     linkstatic = True,
     visibility = ["//visibility:private"],
     deps = [":cli_support", ":vocabulary_tokens", "//src/llm/experiments/memorize_general_facts/discretized_model:runtime"],

@@ -53,6 +53,12 @@ class GeneratorTestBase : public ::testing::Test {
             R"asset({"model":{"type":"BPE","vocab":{"<|endoftext|>":0,"x":1,"xx":2},"merges":["x x"]}})asset")
             .ok());
     ASSERT_TRUE(WriteFile(options_.recorder.corpus, "x\n").ok());
+    WriteZeroCheckpoint();
+  }
+
+  // Tests can select a fresh checkpoint path and shape to exercise recording
+  // of non-default widths/contexts without external training artifacts.
+  void WriteZeroCheckpoint() {
     auto original =
         tokenizer::Gpt2Tokenizer::Load(options_.recorder.tokenizer.string());
     ASSERT_TRUE(original.ok()) << original.status();
@@ -63,12 +69,14 @@ class GeneratorTestBase : public ::testing::Test {
     ASSERT_TRUE(compact.ok()) << compact.status();
     auto executor = cuda::Executor::Create();
     ASSERT_TRUE(executor.ok()) << executor.status();
-    const Gpt2Config config{.transformer_block_count = 1,
-                            .model_width = 16,
-                            .attention_heads = 1,
-                            .feed_forward_width = 64,
-                            .vocabulary_size = 2,
-                            .pad_vocabulary = false};
+    const Gpt2Config config{
+        .transformer_block_count = options_.recorder.layers,
+        .model_width = options_.recorder.model_width,
+        .attention_heads = options_.recorder.attention_heads,
+        .feed_forward_width = options_.recorder.feed_forward_width,
+        .vocabulary_size = 2,
+        .pad_vocabulary = false,
+        .context_length = options_.recorder.context_length};
     auto model = CreateGpt2(**executor, DataType::BF16, 0, config);
     ASSERT_TRUE(model.ok()) << model.status();
     for (const auto& weight : (*model)->weights())
