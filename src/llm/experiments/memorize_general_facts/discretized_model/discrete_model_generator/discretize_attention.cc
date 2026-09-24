@@ -3,8 +3,11 @@
 #include <algorithm>
 #include <cstdint>
 #include <map>
+#include <numeric>
+#include <optional>
 #include <set>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
@@ -168,6 +171,176 @@ std::optional<int> EvaluateAttention(const AttentionProgram& program,
 
 namespace {
 
+using TransitionRows = std::vector<const AttentionTransition*>;
+
+// One output's exact membership predicate. Other outputs provide examples to
+// prioritize cheap rejection, never assumptions about an earlier matcher.
+// All positive branches test every coordinate before returning true, so even
+// an input not seen during capture is classified exactly rather than guessed.
+class StateMatcherEmitter {
+ public:
+  explicit StateMatcherEmitter(Lines& lines) : lines_(lines) {}
+
+  void Emit(const TransitionRows& positives, const TransitionRows& negatives,
+            const std::vector<size_t>& remaining, int indent) {
+    if (remaining.empty()) {
+      Line(indent, "return true;");
+      return;
+    }
+    if (positives.size() == 1) {
+      // Once only one history remains, show its remaining requirements as a
+      // short-circuit conjunction, not another forest of single-child nodes.
+      auto positions = remaining;
+      auto competitors = negatives;
+      Lines conditions;
+      while (!positions.empty()) {
+        const size_t position =
+            SelectPosition(positives, competitors, positions);
+        const int symbol = positives.front()->prefix[position];
+        conditions.push_back(
+            StrCat("history[", position, "].value == ", symbol));
+        std::erase(positions, position);
+        std::erase_if(competitors, [&](const auto* row) {
+          return row->prefix[position] != symbol;
+        });
+      }
+      Line(indent, StrCat("return ", absl::StrJoin(conditions, " && "), ";"));
+      return;
+    }
+    const size_t position = SelectPosition(positives, negatives, remaining);
+    std::vector<size_t> next_positions;
+    for (size_t other : remaining)
+      if (other != position)
+        next_positions.push_back(other);
+    std::map<int, TransitionRows> positive_groups, negative_groups;
+    for (const auto* row : positives)
+      positive_groups[row->prefix[position]].push_back(row);
+    for (const auto* row : negatives) {
+      const int value = row->prefix[position];
+      if (positive_groups.contains(value))
+        negative_groups[value].push_back(row);
+    }
+    if (positive_groups.size() == 1) {
+      const auto& [symbol, group] = *positive_groups.begin();
+      Line(indent, StrCat("if (history[", position, "].value != ", symbol,
+                          ") return false;"));
+      Emit(group, negative_groups[symbol], next_positions, indent);
+      return;
+    }
+    Line(indent, StrCat("switch (history[", position, "].value) {"));
+    for (const auto& [symbol, group] : positive_groups) {
+      Line(indent + 2, StrCat("case ", symbol, ":"));
+      Emit(group, negative_groups[symbol], next_positions, indent + 4);
+    }
+    Line(indent + 2, "default: return false;");
+    Line(indent, "}");
+  }
+
+ private:
+  // Prefer the coordinate that rules out the most competing histories in one
+  // read. Break ties by balanced positive branches, then position index. This
+  // is a deterministic heuristic, not a claim of an optimal decision tree.
+  // Restricting negatives after each test uses this predicate's own checks;
+  // no failed MatchState call or externally validated input is assumed.
+  static size_t SelectPosition(const TransitionRows& positives,
+                               const TransitionRows& negatives,
+                               const std::vector<size_t>& remaining) {
+    size_t best = remaining.front();
+    std::optional<std::tuple<size_t, uint64_t, size_t>> best_score;
+    for (size_t position : remaining) {
+      std::map<int, uint64_t> counts;
+      for (const auto* row : positives)
+        ++counts[row->prefix[position]];
+      size_t survivors = 0;
+      for (const auto* row : negatives)
+        survivors += counts.contains(row->prefix[position]);
+      uint64_t squared_buckets = 0;
+      for (const auto& [symbol, count] : counts)
+        squared_buckets += count * count;
+      const auto score = std::tuple(survivors, squared_buckets, position);
+      if (!best_score || score < *best_score) {
+        best_score = score;
+        best = position;
+      }
+    }
+    return best;
+  }
+
+  void Line(int indent, absl::string_view text) {
+    lines_.push_back(StrCat(std::string(indent, ' '), text));
+  }
+
+  Lines& lines_;
+};
+
+absl::StatusOr<std::string> RenderStateMatchers(
+    absl::string_view name, absl::Span<const AttentionTransition> rows) {
+  RETURN_IF_ERROR(ValidateTransitionFunctionName(name));
+  // Reuse the input validator, including conflicting duplicate histories.
+  // The recognizer it builds is not used by the independently emitted code.
+  RETURN_IF_ERROR(internal::BuildAttention(rows).status());
+  std::vector<AttentionTransition> unique(rows.begin(), rows.end());
+  std::sort(unique.begin(), unique.end());
+  unique.erase(std::unique(unique.begin(), unique.end()), unique.end());
+  std::map<int, std::map<size_t, TransitionRows>> outputs;
+  std::map<size_t, TransitionRows> by_length;
+  for (const auto& row : unique) {
+    outputs[row.output][row.prefix.size()].push_back(&row);
+    by_length[row.prefix.size()].push_back(&row);
+  }
+  Lines lines = {
+      "// Independent exact predicate for each possible output state.",
+      "// Length is checked before indexing. Selective positions are checked",
+      "// first to reject competing histories early; accepting paths still",
+      "// validate every element, including values absent from capture.",
+      "// No predicate depends on another predicate's success or failure.",
+      "namespace {",
+  };
+  StateMatcherEmitter emitter(lines);
+  for (const auto& [output, lengths] : outputs) {
+    if (name == StrCat("MatchState", output))
+      return absl::InvalidArgumentError(
+          "attention function name collides with an output-state predicate");
+    size_t count = 0;
+    for (const auto& [length, group] : lengths)
+      count += group.size();
+    lines.push_back(StrCat("// Matches exactly ", count,
+                           " captured histories producing state ", output,
+                           "."));
+    // Keep independent recognizers out of the large dispatcher's optimizer
+    // graph. This controls compile cost without introducing mutable state.
+    lines.emplace_back("[[gnu::noinline]]");
+    lines.push_back(
+        StrCat("bool MatchState", output,
+               "(absl::Span<const DiscreteHiddenState> history) {"));
+    lines.emplace_back("  switch (history.size()) {");
+    for (const auto& [length, positives] : lengths) {
+      TransitionRows negatives;
+      for (const auto* row : by_length[length])
+        if (row->output != output)
+          negatives.push_back(row);
+      std::vector<size_t> positions(length);
+      std::iota(positions.begin(), positions.end(), 0);
+      lines.push_back(StrCat("    case ", length, ":"));
+      emitter.Emit(positives, negatives, positions, 6);
+    }
+    lines.emplace_back("    default: return false;");
+    lines.emplace_back("  }");
+    lines.emplace_back("}");
+  }
+  lines.emplace_back("}  // namespace");
+  lines.push_back(StrCat("std::optional<DiscreteHiddenState> ", name,
+                         "([[maybe_unused]] "
+                         "absl::Span<const DiscreteHiddenState> history) {"));
+  for (const auto& [output, lengths] : outputs)
+    lines.push_back(StrCat("  if (MatchState", output,
+                           "(history)) return DiscreteHiddenState{", output,
+                           "};"));
+  lines.emplace_back("  return std::nullopt;");
+  lines.emplace_back("}");
+  return StrCat(absl::StrJoin(lines, "\n"), "\n");
+}
+
 absl::StatusOr<std::string> RenderCompactAttention(
     absl::string_view name, absl::Span<const AttentionTransition> rows,
     int chunk_size, absl::string_view strategy) {
@@ -176,7 +349,7 @@ absl::StatusOr<std::string> RenderCompactAttention(
     return absl::InvalidArgumentError("chunk_size must be a positive integer");
   if (strategy != "hybrid" && strategy != "control_flow")
     return absl::InvalidArgumentError(
-        "strategy must be hybrid or control_flow");
+        "strategy must be state_matchers, hybrid, or control_flow");
   ASSIGN_OR_RETURN(auto program, internal::BuildAttention(rows));
   std::vector<std::vector<int>> parents(program.nodes.size());
   for (size_t source = 0; source < program.nodes.size(); ++source)
@@ -421,6 +594,14 @@ absl::StatusOr<SerializedCppProgram> RenderAttention(
     RETURN_IF_ERROR(ValidateTransitionFunctionName(name));
     RETURN_IF_ERROR(internal::BuildAttention(attention.transitions).status());
     return SerializedCppProgram{PlainAttention(attention, name)};
+  }
+  if (strategy == "state_matchers") {
+    if (chunk_size < 1)
+      return absl::InvalidArgumentError(
+          "chunk_size must be a positive integer");
+    ASSIGN_OR_RETURN(auto source,
+                     RenderStateMatchers(name, attention.transitions));
+    return SerializedCppProgram{std::move(source)};
   }
   ASSIGN_OR_RETURN(
       auto source,

@@ -51,8 +51,8 @@ absl::Status RenderLayerSources(const CapturedModel& model,
             "CausalAttention", absl::StrCat("GeneratedAttention", block),
             absl::StrCat(
                 "Block ", block, ": exact causal-history decision program.\n",
-                compact ? "Shared suffixes and sequence checks compress "
-                          "this boundary only.\n"
+                compact ? "Independent MatchState predicates check selective "
+                          "positions, then exact history membership.\n"
                         : "Exact sorted lookup rejects unknown "
                           "causal histories.\n",
                 "No neighboring layer, sentence identity or "

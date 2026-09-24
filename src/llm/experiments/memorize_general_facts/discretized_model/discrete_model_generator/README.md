@@ -93,6 +93,30 @@ an in-memory C++ function definition, not a file or an execution engine. Both
 sorted lookup tables and compact control-flow implementations live in these
 lowerers. Unsupported inputs remain unsupported in either representation.
 
+The default compact attention strategy, `state_matchers`, emits an independent
+`bool MatchStateNNNN(history)` predicate for every output, followed by an
+ascending-state-ID `if` dispatcher. No match returns `std::nullopt`. A predicate
+first switches on history length, then tests selected positions with guards,
+switches, and short-circuit conjunctions. It relies only on its own checks,
+never on another predicate having succeeded or failed.
+
+At each decision the generator greedily chooses the unread position that
+rejects the most same-length captured histories from competing outputs. Ties
+minimize the sum of squared positive-branch sizes, then use the position index.
+Competing examples guide ordering only: all elements must be checked before
+returning true, including when one recorded candidate remains. This preserves
+exact membership for unseen histories and avoids accepting unrecorded
+combinations of otherwise familiar symbols. The heuristic is deterministic,
+not a proof of minimum reads or globally optimal control flow.
+
+Independent predicates expose each output's matching conditions, at the cost
+of potentially repeated checks, larger sources, and more dispatcher calls.
+Predicates are emitted out-of-line to keep their bodies out of the dispatcher's
+optimizer graph. The lowerer also retains `hybrid` and `control_flow` strategies
+for the earlier shared suffix recognizers, plus the noncompact sorted lookup,
+for equivalence tests and alternative representations. These are lowerer
+strategies, not additional state-compaction passes.
+
 `code_generator` assembles these programs into independently compiled files,
 the public model factory, vocabulary support, and separate verification tests.
 `state_vector_codegen` emits an inspection-only archive of exact BF16 words in

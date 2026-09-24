@@ -8,11 +8,14 @@
 namespace pluto::llm::discretized::generator {
 
 // Lower one causal-history -> hidden-state mapping. Unknown histories remain
-// unsupported. Compact output shares suffix control flow only within this
-// layer; the alternative emits sorted rows with exact binary search.
+// unsupported. The default compact form emits independent MatchState<ID>
+// predicates, checking selective positions first. Acceptance still checks
+// every element: uniqueness among recorded examples cannot validate unseen
+// histories. Legacy hybrid/control_flow recognizers and plain sorted lookup
+// remain available for equivalence tests and alternative representations.
 absl::StatusOr<SerializedCppProgram> RenderAttention(
     const CapturedCausalAttention& attention, absl::string_view name,
     bool compact = true, int chunk_size = 256,
-    absl::string_view strategy = "hybrid");
+    absl::string_view strategy = "state_matchers");
 
 }  // namespace pluto::llm::discretized::generator

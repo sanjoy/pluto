@@ -195,9 +195,10 @@ and output boundaries, and it does not infer that individual attention-history
 symbols are interchangeable from an equal output in just one context.
 
 `--compact_transitions` separately condenses the finite transition functions.
-It shares attention-prefix/suffix programs and uses range checks, masks, or
-arithmetic where equivalent. This does not perform additional state compaction.
-Before pairing, this exposes guarded offsets for the MLPs. The final
+Attention uses independent per-output predicates, described below; pointwise
+maps and position embeddings use range checks, masks, or arithmetic where
+equivalent. This does not perform additional state compaction. Before pairing,
+this exposes guarded offsets for the MLPs. The final
 `--mlp_pair_compaction` pass then shares each MLP input/output pair and updates
 every downstream consumer consistently. It requires complete bijections and
 fails rather than approximating non-bijective or incomplete maps. The MLPs
@@ -205,6 +206,35 @@ become identities on their existing support; the final shared states remain
 vocabulary-aligned for the language modeling head. These arithmetic patterns
 follow from symbolic names, not proof that the neural layers are affine or
 identities. No further within-boundary compaction/relabeling runs after pairing.
+
+### Generated attention predicates
+
+Each attention layer defines one `bool MatchStateNNNN(history)` function for
+each supported output state. Its dispatcher calls these predicates in ascending
+state-ID order and returns the first matching state, or `std::nullopt` if none
+matches. Each predicate independently recognizes exactly the captured symbolic
+histories for its output; it assumes nothing about earlier predicates having
+failed and can be called on its own.
+
+A predicate checks the history length before indexing it. For each supported
+length, the generator greedily chooses the next position that rejects the most
+captured histories belonging to other outputs. Ties favor balanced branches
+among matching histories, then the lower position index. The emitted code uses
+guards, switches, and short-circuit conjunctions; this deterministic heuristic
+does not claim globally minimal reads or an optimal decision tree.
+
+Selective checks can reject a history early, but **every accepting path still
+checks every element**. A few positions uniquely identifying one recorded
+example do not validate arbitrary values in its remaining positions. Unknown
+symbolic histories therefore remain unsupported, rather than being assigned
+the closest recorded output.
+
+The separate predicates make one output's requirements directly inspectable.
+The tradeoff is that predicates may repeat checks and code that the previous
+shared-prefix/suffix representation reused, and the dispatcher may test many
+predicates before finding a match. Readability does not imply smaller source,
+faster compilation, or faster inference. This representation changes no state
+IDs or transition semantics.
 
 ## Generate from the checkpoint
 

@@ -333,6 +333,132 @@ TEST(AttentionLogicTest, EmittedCppMatchesAllSupportedAndUnsupportedHistories) {
   EXPECT_TRUE(CompileAndRun(source).ok());
 }
 
+TEST(AttentionLogicTest,
+     IndependentStateMatchersAreTheDefaultAndDeterministic) {
+  std::vector<AttentionTransition> rows = {
+      {{7, 0}, 2147483647}, {{0}, 0}, {{7}, 9}, {{0, 7}, 0}};
+  const auto default_program = RenderAttention({rows}, "Lookup");
+  const auto explicit_program =
+      RenderAttention({rows}, "Lookup", true, 256, "state_matchers");
+  ASSERT_TRUE(default_program.ok()) << default_program.status();
+  ASSERT_TRUE(explicit_program.ok()) << explicit_program.status();
+  EXPECT_EQ(default_program->source, explicit_program->source);
+  for (int state : {0, 9, 2147483647})
+    EXPECT_NE(
+        default_program->source.find(StrCat("bool MatchState", state, "(")),
+        std::string::npos);
+  EXPECT_EQ(default_program->source.find("PLUTO_ATTN_"), std::string::npos);
+  EXPECT_EQ(default_program->source.find("goto "), std::string::npos);
+
+  std::reverse(rows.begin(), rows.end());
+  rows.push_back(rows.front());
+  const auto reordered =
+      RenderAttention({rows}, "Lookup", true, 256, "state_matchers");
+  ASSERT_TRUE(reordered.ok()) << reordered.status();
+  EXPECT_EQ(reordered->source, explicit_program->source);
+  EXPECT_FALSE(RenderAttention({{{{0}, 0}, {{0}, 9}}}, "Lookup", true, 256,
+                               "state_matchers")
+                   .ok());
+  for (int state : {0, 9, 2147483647}) {
+    const auto collision = RenderAttention({rows}, StrCat("MatchState", state));
+    EXPECT_EQ(collision.status().code(), absl::StatusCode::kInvalidArgument);
+  }
+  EXPECT_TRUE(RenderAttention({rows}, "MatchState42").ok());
+}
+
+TEST(AttentionLogicTest, IndependentMatcherChecksTheSelectivePositionFirst) {
+  const CapturedCausalAttention attention{
+      {{{1, 2, 3}, 10}, {{1, 9, 3}, 11}, {{1, 8, 3}, 11}}};
+  const auto program = RenderAttention(attention, "Lookup");
+  ASSERT_TRUE(program.ok()) << program.status();
+  const auto begin = program->source.find("bool MatchState10(");
+  const auto end = program->source.find("bool MatchState11(");
+  ASSERT_NE(begin, std::string::npos);
+  ASSERT_NE(end, std::string::npos);
+  ASSERT_LT(begin, end);
+  const auto matcher = program->source.substr(begin, end - begin);
+  const auto length = matcher.find("history.size()");
+  const auto first = matcher.find("history[0]");
+  const auto selective = matcher.find("history[1]");
+  const auto last = matcher.find("history[2]");
+  ASSERT_NE(length, std::string::npos);
+  ASSERT_NE(first, std::string::npos);
+  ASSERT_NE(selective, std::string::npos);
+  ASSERT_NE(last, std::string::npos);
+  // Position 1 rejects both competitors with one read. The two other reads
+  // remain necessary before acceptance to reject unseen histories too.
+  EXPECT_LT(length, selective);
+  EXPECT_LT(selective, first);
+  EXPECT_LT(selective, last);
+}
+
+TEST(AttentionLogicTest,
+     EveryStateMatcherRecognizesItsExactDomainIndependently) {
+  // Several outputs share a last token or a prefix. A later matcher's false
+  // positives cannot be hidden by an earlier successful dispatch branch.
+  const std::vector<AttentionTransition> rows = {
+      {{0}, 0},
+      {{7}, 9},
+      {{0, 7}, 0},
+      {{0, 0}, 9},
+      {{0, 7, 2147483647}, 2147483647},
+      {{7, 7, 2147483647}, 0},
+      {{7, 0, 2147483647}, 9},
+      {{2147483647, 0, 0}, 2147483647},
+      {{2147483647, 7, 0}, 9}};
+  const auto matchers = AttentionSource("Lookup", rows, 3, "state_matchers");
+  const auto plain = AttentionSource("Lookup", rows, 3, "hybrid", false);
+  const auto empty = AttentionSource("Lookup", {}, 3, "state_matchers");
+  ASSERT_TRUE(matchers.ok()) << matchers.status();
+  ASSERT_TRUE(plain.ok()) << plain.status();
+  ASSERT_TRUE(empty.ok()) << empty.status();
+  EXPECT_EQ(empty->find("bool MatchState"), std::string::npos);
+
+  std::string source =
+      StrCat(kDeclarations, "namespace Independent {\n", *matchers,
+             "}\nnamespace Plain {\n", *plain, "}\nnamespace Empty {\n", *empty,
+             "}\nint main() {\n");
+  auto candidates = Histories(5, 4);
+  const int alphabet[] = {0, 7, 2147483647, 42, -1};
+  for (auto& history : candidates)
+    for (int& token : history)
+      token = alphabet[token];
+  candidates.push_back({std::numeric_limits<int>::min()});
+  candidates.push_back(std::vector<int>(64, 0));
+  for (const auto& key : candidates) {
+    std::optional<int> expected;
+    for (const auto& row : rows)
+      if (row.prefix == key)
+        expected = row.output;
+    absl::StrAppend(&source, "{ std::vector<DiscreteHiddenState> key = {");
+    for (int state : key)
+      absl::StrAppend(&source, "{", state, "},");
+    absl::StrAppend(&source, "};\n");
+    // Invoke matchers in reverse output order BEFORE the dispatcher, then in
+    // a different order afterward. Every call must work without assumptions
+    // about prior matcher failures, remembered history, or dispatcher state.
+    for (int state : {2147483647, 9, 0})
+      absl::StrAppend(&source, "if (Independent::MatchState", state,
+                      "(key) != ", expected == state ? "true" : "false",
+                      ") return 1;\n");
+    const std::string answer =
+        expected
+            ? StrCat("std::optional<DiscreteHiddenState>{{", *expected, "}}")
+            : "std::nullopt";
+    absl::StrAppend(&source, "if (Independent::Lookup(key) != ", answer,
+                    " || Plain::Lookup(key) != ", answer,
+                    " || Empty::Lookup(key).has_value()) return 2;\n");
+    for (int state : {0, 2147483647, 9})
+      absl::StrAppend(&source, "if (Independent::MatchState", state,
+                      "(key) != ", expected == state ? "true" : "false",
+                      ") return 3;\n");
+    absl::StrAppend(&source, "}\n");
+  }
+  absl::StrAppend(&source, "return 0; }\n");
+  const auto status = CompileAndRun(source);
+  EXPECT_TRUE(status.ok()) << status;
+}
+
 TEST(PointwiseTest, RelabelingPreservesBoundaryOwnershipAndMembers) {
   auto original = Fixture();
   auto before = original;
