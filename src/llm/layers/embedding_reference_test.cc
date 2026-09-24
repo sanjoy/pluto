@@ -1,5 +1,9 @@
+#include <algorithm>
+#include <bit>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
+#include <cstring>
 #include <limits>
 #include <tuple>
 #include <vector>
@@ -112,10 +116,13 @@ TEST_F(LayerReferenceTest, LookupAndTiedHeadMatchAcrossShapesAndTypes) {
       // The head must add to both the initial accumulator and the lookup's
       // contribution. Logit padding has nonzero upstream values below: it
       // must not affect the compact table or its hidden-state derivative.
-      auto device_head =
-          LanguageModelingHeadLayer::Create(device_embedding->get());
+      std::vector<int32_t> token_order(vocab);
+      for (int rank = 0; rank < vocab; ++rank)
+        token_order[rank] = (rank + 7) % vocab;
+      auto device_head = LanguageModelingHeadLayer::Create(
+          device_embedding->get(), token_order);
       auto reference_head = LanguageModelingHeadLayerReference::Create(
-          reference_embedding->get());
+          reference_embedding->get(), token_order);
       ASSERT_TRUE(device_head.ok()) << device_head.status();
       ASSERT_TRUE(reference_head.ok()) << reference_head.status();
       EXPECT_EQ((*device_head)->weights()[0].data(),
@@ -175,6 +182,116 @@ TEST_F(LayerReferenceTest, LookupAndTiedHeadMatchAcrossShapesAndTypes) {
                                      3e-3f));
       }
     }
+  }
+}
+
+TEST_F(LayerReferenceTest, ReferenceHeadCanonicalOrderIsExactlyEquivariant) {
+  constexpr int kVocabulary = 137;
+  constexpr int kWidth = 10;
+  constexpr int kRows = 3;
+  for (DataType type : {DataType::FP16, DataType::BF16}) {
+    for (bool padded : {false, true}) {
+      auto original = EmbeddingLookupLayerReference::Create(kVocabulary, kWidth,
+                                                            type, 1, padded);
+      auto renamed = EmbeddingLookupLayerReference::Create(kVocabulary, kWidth,
+                                                           type, 1, padded);
+      ASSERT_TRUE(original.ok()) << original.status();
+      ASSERT_TRUE(renamed.ok()) << renamed.status();
+      std::vector<int32_t> order(kVocabulary);
+      for (int rank = 0; rank < kVocabulary; ++rank)
+        order[rank] = (rank * 37 + 19) % kVocabulary;
+      const auto saved_order = order;
+      auto original_head =
+          LanguageModelingHeadLayerReference::Create(original->get());
+      auto renamed_head =
+          LanguageModelingHeadLayerReference::Create(renamed->get(), order);
+      ASSERT_TRUE(original_head.ok()) << original_head.status();
+      ASSERT_TRUE(renamed_head.ok()) << renamed_head.status();
+      // The reference also owns its order instead of retaining a host span.
+      std::fill(order.begin(), order.end(), -1);
+      order.clear();
+      order.shrink_to_fit();
+      auto* original_table =
+          static_cast<float*>((*original)->weights()[0].data());
+      auto* renamed_table =
+          static_cast<float*>((*renamed)->weights()[0].data());
+      const int stored = (*original)->stored_vocab_size();
+      const int stride = (*original)->padded_vocab_size();
+      for (int rank = 0; rank < stored; ++rank)
+        for (int column = 0; column < kWidth; ++column) {
+          const int physical = rank < kVocabulary ? saved_order[rank] : rank;
+          const int index = rank * kWidth + column;
+          original_table[index] = 0.12f * std::sin(index * 0.091f);
+          renamed_table[physical * kWidth + column] = original_table[index];
+        }
+      std::vector<float> hidden(kRows * kWidth);
+      for (size_t index = 0; index < hidden.size(); ++index)
+        hidden[index] = 0.4f * std::sin(index * 0.13f);
+      auto hidden_pair = MakeActivationBufferPair(*executor_, hidden, type);
+      ASSERT_TRUE(hidden_pair.ok()) << hidden_pair.status();
+      auto original_fwd = (*original_head)->fwd({hidden_pair->host});
+      auto renamed_fwd = (*renamed_head)->fwd({hidden_pair->host});
+      ASSERT_TRUE(original_fwd.ok()) << original_fwd.status();
+      ASSERT_TRUE(renamed_fwd.ok()) << renamed_fwd.status();
+      const auto* original_logits =
+          static_cast<const float*>(original_fwd->outputs[0].data());
+      const auto* renamed_logits =
+          static_cast<const float*>(renamed_fwd->outputs[0].data());
+      std::vector<float> gradient(kRows * stride),
+          renamed_gradient(kRows * stride);
+      for (int row = 0; row < kRows; ++row)
+        for (int rank = 0; rank < stride; ++rank) {
+          const int physical = rank < kVocabulary ? saved_order[rank] : rank;
+          const int index = row * stride + rank;
+          gradient[index] = 0.08f * std::cos(index * 0.07f);
+          renamed_gradient[row * stride + physical] = gradient[index];
+          EXPECT_EQ(
+              std::bit_cast<uint32_t>(original_logits[index]),
+              std::bit_cast<uint32_t>(renamed_logits[row * stride + physical]));
+        }
+      auto gradient_pair = MakeRawBufferPair<float>(*executor_, gradient);
+      auto renamed_gradient_pair =
+          MakeRawBufferPair<float>(*executor_, renamed_gradient);
+      ASSERT_TRUE(gradient_pair.ok()) << gradient_pair.status();
+      ASSERT_TRUE(renamed_gradient_pair.ok()) << renamed_gradient_pair.status();
+      auto original_bwd =
+          (*original_head)->bwd({gradient_pair->host}, original_fwd->state);
+      auto renamed_bwd =
+          (*renamed_head)
+              ->bwd({renamed_gradient_pair->host}, renamed_fwd->state);
+      ASSERT_TRUE(original_bwd.ok()) << original_bwd.status();
+      ASSERT_TRUE(renamed_bwd.ok()) << renamed_bwd.status();
+      EXPECT_EQ(
+          std::memcmp(original_bwd->front().data(), renamed_bwd->front().data(),
+                      kRows * kWidth * sizeof(float)),
+          0);
+      const auto* original_gradient =
+          static_cast<const float*>((*original)->gradients()[0].data());
+      const auto* physical_gradient =
+          static_cast<const float*>((*renamed)->gradients()[0].data());
+      for (int rank = 0; rank < stored; ++rank)
+        for (int column = 0; column < kWidth; ++column) {
+          const int physical = rank < kVocabulary ? saved_order[rank] : rank;
+          EXPECT_EQ(std::bit_cast<uint32_t>(
+                        original_gradient[rank * kWidth + column]),
+                    std::bit_cast<uint32_t>(
+                        physical_gradient[physical * kWidth + column]));
+        }
+    }
+  }
+}
+
+TEST_F(LayerReferenceTest, ReferenceHeadRejectsMalformedTokenOrder) {
+  auto embedding = EmbeddingLookupLayerReference::Create(3, 10, DataType::BF16);
+  ASSERT_TRUE(embedding.ok()) << embedding.status();
+  for (const auto& order : {std::vector<int32_t>{0, 1},
+                            {0, 1, 1},
+                            {0, 1, 3},
+                            {0, 1, -1},
+                            {0, 1, 2, 3}}) {
+    auto head =
+        LanguageModelingHeadLayerReference::Create(embedding->get(), order);
+    EXPECT_EQ(head.status().code(), absl::StatusCode::kInvalidArgument);
   }
 }
 

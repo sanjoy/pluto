@@ -1,7 +1,9 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -30,9 +32,13 @@ class CrossEntropyLossLayer final : public Layer {
 
   absl::string_view name() const override { return "CrossEntropyLossLayer"; }
 
+  // token_order[rank] is the physical vocabulary column visited at that
+  // canonical reduction rank. A nonempty order must permute [0, vocab_size).
+  // Creation copies it; the caller need not retain the host array. Targets
+  // and logit gradients still use physical token IDs. Empty means ID order.
   static absl::StatusOr<std::unique_ptr<CrossEntropyLossLayer>> Create(
       cuda::Executor& executor, int vocabulary_size, DataType data_type,
-      int sequence_length = 1);
+      int sequence_length = 1, absl::Span<const int32_t> token_order = {});
 
   absl::Span<Buffer> weights() override { return {}; }
   DataType output_type() const override { return output_type_; }
@@ -56,18 +62,21 @@ class CrossEntropyLossLayer final : public Layer {
 
   CrossEntropyLossLayer(cuda::Executor& executor, int vocab_size,
                         int padded_vocab_size, DataType data_type,
-                        int sequence_length)
+                        int sequence_length, std::optional<Buffer> token_order)
       : vocab_size_(vocab_size),
         padded_vocab_size_(padded_vocab_size),
         sequence_length_(sequence_length),
         output_type_(data_type),
-        executor_(executor) {}
+        executor_(executor),
+        token_order_(std::move(token_order)) {}
 
   int vocab_size_;
   int padded_vocab_size_;
   int sequence_length_;
   DataType output_type_;
   cuda::Executor& executor_;
+  // Only logical vocabulary IDs are remapped; padding keeps its old order.
+  std::optional<Buffer> token_order_;
   const ActivationType input_types_[2] = {
       {DataType::FP32,
        {ActivationType::kBatchDimension, sequence_length_, padded_vocab_size_}},
@@ -85,7 +94,8 @@ class CrossEntropyLossLayerReference final : public LayerReference {
   }
 
   static absl::StatusOr<std::unique_ptr<CrossEntropyLossLayerReference>> Create(
-      int vocabulary_size, DataType data_type, int sequence_length = 1);
+      int vocabulary_size, DataType data_type, int sequence_length = 1,
+      absl::Span<const int32_t> token_order = {});
 
   absl::Span<HostBuffer> weights() override { return {}; }
   DataType output_type() const override { return output_type_; }
@@ -107,16 +117,24 @@ class CrossEntropyLossLayerReference final : public LayerReference {
       ReferenceBackwardState state) override;
 
   CrossEntropyLossLayerReference(int vocab_size, int padded_vocab_size,
-                                 DataType data_type, int sequence_length)
+                                 DataType data_type, int sequence_length,
+                                 std::vector<int32_t> token_order)
       : vocab_size_(vocab_size),
         padded_vocab_size_(padded_vocab_size),
         sequence_length_(sequence_length),
-        output_type_(data_type) {}
+        output_type_(data_type),
+        token_order_(std::move(token_order)) {}
+
+  int PhysicalToken(int rank) const {
+    return token_order_.empty() || rank >= vocab_size_ ? rank
+                                                       : token_order_[rank];
+  }
 
   int vocab_size_;
   int padded_vocab_size_;
   int sequence_length_;
   DataType output_type_;
+  std::vector<int32_t> token_order_;
   const ActivationType input_types_[2] = {
       {DataType::FP32,
        {ActivationType::kBatchDimension, sequence_length_, padded_vocab_size_}},

@@ -1,9 +1,11 @@
 #pragma once
 
+#include <cstdint>
 #include <memory>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "src/cuda/executor.h"
 #include "src/llm/layer.h"
 #include "src/llm/layers/combinators.h"
@@ -94,14 +96,20 @@ absl::StatusOr<std::unique_ptr<Layer>> CreateActivationGenerator(
 // stay fixed for controlled memorization experiments.
 absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateGpt2(
     cuda::Executor& executor, DataType output_type, int seed,
-    int transformer_block_count = kGpt2TransformerBlockCount);
+    int transformer_block_count = kGpt2TransformerBlockCount,
+    absl::Span<const int32_t> token_order = {});
 
 // Configurable counterpart; the legacy overload above delegates here with
 // the default widths, vocabulary, and context length. The logits' shape is
 // [-2, config.context_length, config.vocabulary_size rounded up to 16],
 // independently of table padding.
+// token_order optionally specifies canonical-position -> current vocabulary ID
+// for the tied head's vocabulary reduction. It is copied during construction;
+// see token_order.h. Supply the same order to the separate cross-entropy loss.
+// Initialization is not relabeled: equivalent renamed runs must also permute
+// their initial embedding rows (or initialize all rows identically).
 absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateGpt2(
     cuda::Executor& executor, DataType output_type, int seed,
-    const Gpt2Config& config);
+    const Gpt2Config& config, absl::Span<const int32_t> token_order = {});
 
 }  // namespace pluto::llm

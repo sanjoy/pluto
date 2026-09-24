@@ -3,6 +3,8 @@
 #include <cstddef>
 #include <cstring>
 #include <limits>
+#include <numeric>
+#include <random>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -15,6 +17,195 @@
 
 namespace pluto::llm {
 namespace {
+
+TEST_F(LayerReferenceTest, CrossEntropyRejectsMalformedTokenOrders) {
+  for (const std::vector<int32_t>& order :
+       {std::vector<int32_t>{0, 1}, std::vector<int32_t>{0, 1, 1},
+        std::vector<int32_t>{0, 1, 3}, std::vector<int32_t>{0, -1, 2}}) {
+    EXPECT_EQ(
+        CrossEntropyLossLayer::Create(*executor_, 3, DataType::BF16, 1, order)
+            .status()
+            .code(),
+        absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ(
+        CrossEntropyLossLayerReference::Create(3, DataType::BF16, 1, order)
+            .status()
+            .code(),
+        absl::StatusCode::kInvalidArgument);
+  }
+}
+
+TEST_F(LayerReferenceTest,
+       CanonicalCrossEntropyIsBitwiseEquivariantAndOwnsItsOrder) {
+  constexpr int kRows = 6;
+  // Non-multiple-of-16 vocabularies check unchanged padding slots. Larger
+  // cases also move tokens across both forward and backward tile boundaries.
+  for (DataType type : {DataType::FP16, DataType::BF16}) {
+    for (int vocab : {1, 17, 32, 257, 4475}) {
+      SCOPED_TRACE(testing::Message()
+                   << "type=" << static_cast<int>(type) << " vocab=" << vocab);
+      std::vector<int32_t> order(vocab);
+      std::iota(order.begin(), order.end(), 0);
+      std::mt19937 random(1234);
+      std::shuffle(order.begin(), order.end(), random);
+      const auto saved_order = order;
+      auto baseline = CrossEntropyLossLayer::Create(*executor_, vocab, type, 3);
+      auto renamed =
+          CrossEntropyLossLayer::Create(*executor_, vocab, type, 3, order);
+      auto cpu_baseline =
+          CrossEntropyLossLayerReference::Create(vocab, type, 3);
+      auto cpu_renamed =
+          CrossEntropyLossLayerReference::Create(vocab, type, 3, order);
+      ASSERT_TRUE(baseline.ok()) << baseline.status();
+      ASSERT_TRUE(renamed.ok()) << renamed.status();
+      ASSERT_TRUE(cpu_baseline.ok()) << cpu_baseline.status();
+      ASSERT_TRUE(cpu_renamed.ok()) << cpu_renamed.status();
+      // Both implementations must own the permutation instead of retaining
+      // a view into caller-owned memory, even if the first forward is delayed.
+      std::fill(order.begin(), order.end(), -1);
+      order.clear();
+      order.shrink_to_fit();
+      const int padded = (*baseline)->padded_vocab_size();
+      std::vector<float> logits(kRows * padded,
+                                -std::numeric_limits<float>::max());
+      std::vector<float> permuted_logits = logits;
+      std::vector<int> targets(kRows);
+      std::vector<int> permuted_targets(kRows);
+      for (int row = 0; row < kRows; ++row) {
+        const bool ignored = row % 3 == 0;
+        targets[row] = ignored ? CrossEntropyLossLayer::kIgnoredTarget
+                               : (row * 107 + 13) % vocab;
+        permuted_targets[row] = ignored ? CrossEntropyLossLayer::kIgnoredTarget
+                                        : saved_order[targets[row]];
+        for (int token = 0; token < vocab; ++token) {
+          const float logit =
+              ignored ? std::numeric_limits<float>::quiet_NaN()
+                      : 80.0f * (row - 2) +
+                            3.5f * std::sin(row * 0.37f + token * 0.23f);
+          logits[row * padded + token] = logit;
+          permuted_logits[row * padded + saved_order[token]] = logit;
+        }
+      }
+      auto input = MakeRawBufferPair<float>(*executor_, logits);
+      auto input_permuted =
+          MakeRawBufferPair<float>(*executor_, permuted_logits);
+      auto target = MakeRawBufferPair<int>(*executor_, targets);
+      auto target_permuted =
+          MakeRawBufferPair<int>(*executor_, permuted_targets);
+      ASSERT_TRUE(input.ok()) << input.status();
+      ASSERT_TRUE(input_permuted.ok()) << input_permuted.status();
+      ASSERT_TRUE(target.ok()) << target.status();
+      ASSERT_TRUE(target_permuted.ok()) << target_permuted.status();
+      auto forward =
+          (*baseline)->fwd(*executor_, {input->device, target->device});
+      auto permuted_forward = (*renamed)->fwd(
+          *executor_, {input_permuted->device, target_permuted->device});
+      auto reference = (*cpu_baseline)->fwd({input->host, target->host});
+      auto permuted_reference =
+          (*cpu_renamed)->fwd({input_permuted->host, target_permuted->host});
+      ASSERT_TRUE(forward.ok()) << forward.status();
+      ASSERT_TRUE(permuted_forward.ok()) << permuted_forward.status();
+      ASSERT_TRUE(reference.ok()) << reference.status();
+      ASSERT_TRUE(permuted_reference.ok()) << permuted_reference.status();
+      auto losses = ReadDeviceFloats(*executor_, forward->outputs[0]);
+      auto permuted_losses =
+          ReadDeviceFloats(*executor_, permuted_forward->outputs[0]);
+      ASSERT_TRUE(losses.ok()) << losses.status();
+      ASSERT_TRUE(permuted_losses.ok()) << permuted_losses.status();
+      EXPECT_EQ(std::memcmp(losses->data(), permuted_losses->data(),
+                            kRows * sizeof(float)),
+                0);
+      EXPECT_EQ(std::memcmp(reference->outputs[0].data(),
+                            permuted_reference->outputs[0].data(),
+                            kRows * sizeof(float)),
+                0);
+      EXPECT_TRUE(FloatBuffersNear(permuted_forward->outputs[0],
+                                   permuted_reference->outputs[0], 5e-5f,
+                                   5e-5f));
+      auto gradient =
+          (*baseline)->bwd(*executor_, {}, std::move(forward->state));
+      auto permuted_gradient =
+          (*renamed)->bwd(*executor_, {}, std::move(permuted_forward->state));
+      auto cpu_gradient = (*cpu_baseline)->bwd({}, std::move(reference->state));
+      auto cpu_permuted_gradient =
+          (*cpu_renamed)->bwd({}, std::move(permuted_reference->state));
+      ASSERT_TRUE(gradient.ok()) << gradient.status();
+      ASSERT_TRUE(permuted_gradient.ok()) << permuted_gradient.status();
+      ASSERT_TRUE(cpu_gradient.ok()) << cpu_gradient.status();
+      ASSERT_TRUE(cpu_permuted_gradient.ok()) << cpu_permuted_gradient.status();
+      auto derivatives = ReadDeviceFloats(*executor_, gradient->front());
+      auto permuted_derivatives =
+          ReadDeviceFloats(*executor_, permuted_gradient->front());
+      ASSERT_TRUE(derivatives.ok()) << derivatives.status();
+      ASSERT_TRUE(permuted_derivatives.ok()) << permuted_derivatives.status();
+      const auto cpu_derivatives = ReadHostFloats(cpu_gradient->front());
+      const auto cpu_permuted_derivatives =
+          ReadHostFloats(cpu_permuted_gradient->front());
+      for (int row = 0; row < kRows; ++row)
+        for (int token = 0; token < padded; ++token) {
+          const int physical_token = token < vocab ? saved_order[token] : token;
+          const int index = row * padded + token;
+          const int physical_index = row * padded + physical_token;
+          EXPECT_EQ(std::memcmp(derivatives->data() + index,
+                                permuted_derivatives->data() + physical_index,
+                                sizeof(float)),
+                    0);
+          EXPECT_EQ(
+              std::memcmp(cpu_derivatives.data() + index,
+                          cpu_permuted_derivatives.data() + physical_index,
+                          sizeof(float)),
+              0);
+        }
+    }
+  }
+}
+
+TEST_F(LayerReferenceTest,
+       ExplicitIdentityTokenOrderPreservesCrossEntropyBits) {
+  constexpr int kVocabularySize = 257;
+  std::vector<int32_t> identity(kVocabularySize);
+  std::iota(identity.begin(), identity.end(), 0);
+  for (DataType type : {DataType::FP16, DataType::BF16}) {
+    auto ordinary =
+        CrossEntropyLossLayer::Create(*executor_, kVocabularySize, type);
+    auto explicit_identity = CrossEntropyLossLayer::Create(
+        *executor_, kVocabularySize, type, 1, identity);
+    ASSERT_TRUE(ordinary.ok()) << ordinary.status();
+    ASSERT_TRUE(explicit_identity.ok()) << explicit_identity.status();
+    const int padded = (*ordinary)->padded_vocab_size();
+    std::vector<float> logits(2 * padded, -std::numeric_limits<float>::max());
+    for (int row = 0; row < 2; ++row)
+      for (int token = 0; token < kVocabularySize; ++token)
+        logits[row * padded + token] = std::sin(token * 0.31f + row);
+    auto inputs = MakeRawBufferPair<float>(*executor_, logits);
+    auto targets = MakeRawBufferPair<int>(*executor_, std::vector<int>{0, 256});
+    ASSERT_TRUE(inputs.ok()) << inputs.status();
+    ASSERT_TRUE(targets.ok()) << targets.status();
+    auto baseline =
+        (*ordinary)->fwd(*executor_, {inputs->device, targets->device});
+    auto copied = (*explicit_identity)
+                      ->fwd(*executor_, {inputs->device, targets->device});
+    ASSERT_TRUE(baseline.ok()) << baseline.status();
+    ASSERT_TRUE(copied.ok()) << copied.status();
+    auto baseline_gradient =
+        (*ordinary)->bwd(*executor_, {}, std::move(baseline->state));
+    auto copied_gradient =
+        (*explicit_identity)->bwd(*executor_, {}, std::move(copied->state));
+    ASSERT_TRUE(baseline_gradient.ok()) << baseline_gradient.status();
+    ASSERT_TRUE(copied_gradient.ok()) << copied_gradient.status();
+    for (const auto& buffers :
+         {std::pair{baseline->outputs[0], copied->outputs[0]},
+          std::pair{baseline_gradient->front(), copied_gradient->front()}}) {
+      auto first = ReadDeviceFloats(*executor_, buffers.first);
+      auto second = ReadDeviceFloats(*executor_, buffers.second);
+      ASSERT_TRUE(first.ok()) << first.status();
+      ASSERT_TRUE(second.ok()) << second.status();
+      EXPECT_EQ(std::memcmp(first->data(), second->data(),
+                            buffers.first.size_bytes()),
+                0);
+    }
+  }
+}
 
 TEST_F(LayerReferenceTest, CrossEntropyActivationTypesDescribePhysicalStorage) {
   constexpr int64_t kBatch = ActivationType::kBatchDimension;
@@ -82,7 +273,8 @@ TEST_F(LayerReferenceTest, StableForwardAndBackwardMatchForPaddedVocabularies) {
       }
       // Exercise stable log-sum-exp with a large common offset.
       if (rows > 3)
-        for (int token = 0; token < vocab; ++token) logits[token] += 80.0f;
+        for (int token = 0; token < vocab; ++token)
+          logits[token] += 80.0f;
       auto logits_pair = MakeRawBufferPair<float>(*executor_, logits);
       auto targets_pair = MakeRawBufferPair<int>(*executor_, targets);
       ASSERT_TRUE(logits_pair.ok()) << logits_pair.status();
@@ -263,7 +455,8 @@ TEST_F(LayerReferenceTest, IgnoredPromptAndPaddingDoNotDiluteMeanGradient) {
         const int position = row % 1024;
         // Positions 0..3 are prompt predictions, 4..11 are supervised
         // continuation predictions, and the remaining positions are padding.
-        if (position < 4 || position >= 12) continue;
+        if (position < 4 || position >= 12)
+          continue;
         targets[row] = (row * 7 + 1) % kVocabularySize;
         compact_targets.push_back(targets[row]);
         for (int token = 0; token < padded; ++token) {
@@ -379,8 +572,10 @@ TEST_F(LayerReferenceTest, AllIgnoredRowsHaveZeroLossAndGradientEvenWithNaNs) {
     auto host_gradient = ReadDeviceFloats(*executor_, gradient->front());
     ASSERT_TRUE(host_losses.ok()) << host_losses.status();
     ASSERT_TRUE(host_gradient.ok()) << host_gradient.status();
-    for (float loss : host_losses->span()) EXPECT_EQ(loss, 0.0f);
-    for (float derivative : host_gradient->span()) EXPECT_EQ(derivative, 0.0f);
+    for (float loss : host_losses->span())
+      EXPECT_EQ(loss, 0.0f);
+    for (float derivative : host_gradient->span())
+      EXPECT_EQ(derivative, 0.0f);
     EXPECT_TRUE(
         FloatBuffersNear(forward->outputs[0], reference->outputs[0], 0));
     EXPECT_TRUE(
@@ -410,14 +605,16 @@ TEST_F(LayerReferenceTest, MaskedMeanGradientMatchesFiniteDifferences) {
   auto objective = [&](int coordinate, double delta) {
     double loss = 0;
     for (int row = 0; row < kRows; ++row) {
-      if (targets[row] == CrossEntropyLossLayer::kIgnoredTarget) continue;
+      if (targets[row] == CrossEntropyLossLayer::kIgnoredTarget)
+        continue;
       double denominator = 0;
       double target_logit = 0;
       for (int token = 0; token < kVocabularySize; ++token) {
         const int index = row * kPaddedVocabulary + token;
         const double value = logits[index] + (index == coordinate ? delta : 0);
         denominator += std::exp(value);
-        if (token == targets[row]) target_logit = value;
+        if (token == targets[row])
+          target_logit = value;
       }
       loss += std::log(denominator) - target_logit;
     }

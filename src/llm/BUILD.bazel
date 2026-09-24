@@ -23,11 +23,13 @@ cc_library(
         ":gelu",
         ":layer",
         ":norm",
+        ":token_order",
         "//src/cuda:executor",
         "//src/util:status_macros",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
     ],
 )
 
@@ -46,6 +48,58 @@ cc_test(
         "//src/cuda:page_locked_host_array",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "token_order",
+    srcs = ["token_order.cc"],
+    hdrs = ["token_order.h"],
+    copts = ["-std=c++20"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_test(
+    name = "token_order_test",
+    srcs = ["token_order_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":token_order",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "token_order_training_test",
+    srcs = ["token_order_training_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":cross_entropy_loss",
+        ":gpt2",
+        ":layer",
+        ":optimizer",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/types:span",
         "@cuda//:cuda_runtime",
         "@googletest//:gtest_main",
@@ -483,8 +537,8 @@ layer_library("combinators", [
     ":layer_hooks",
     ":layer_type_check",
 ])
-layer_library("cross_entropy_loss")
-layer_library("embedding")
+layer_library("cross_entropy_loss", [":token_order"])
+layer_library("embedding", [":token_order"])
 layer_library("fully_connected")
 layer_library("gelu")
 layer_library("norm")
@@ -492,8 +546,8 @@ layer_library("sparse_autoencoder")
 
 layer_reference_library("attention")
 layer_reference_library("combinators", [":layer_type_check"])
-layer_reference_library("cross_entropy_loss")
-layer_reference_library("embedding")
+layer_reference_library("cross_entropy_loss", [":token_order"])
+layer_reference_library("embedding", [":token_order"])
 layer_reference_library("fully_connected")
 layer_reference_library("gelu")
 layer_reference_library("norm")

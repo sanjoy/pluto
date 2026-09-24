@@ -17,6 +17,7 @@
 #include "src/llm/layers/fully_connected.h"
 #include "src/llm/layers/gelu.h"
 #include "src/llm/layers/norm.h"
+#include "src/llm/token_order.h"
 #include "src/util/status_macros.h"
 
 namespace pluto::llm {
@@ -195,15 +196,16 @@ absl::StatusOr<std::unique_ptr<Layer>> CreateActivationGenerator(
 
 absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateGpt2(
     cuda::Executor& executor, DataType output_type, int seed,
-    int transformer_block_count) {
+    int transformer_block_count, absl::Span<const int32_t> token_order) {
   Gpt2Config config;
   config.transformer_block_count = transformer_block_count;
-  return CreateGpt2(executor, output_type, seed, config);
+  return CreateGpt2(executor, output_type, seed, config, token_order);
 }
 
 absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateGpt2(
     cuda::Executor& executor, DataType output_type, int seed,
-    const Gpt2Config& config) {
+    const Gpt2Config& config, absl::Span<const int32_t> token_order) {
+  RETURN_IF_ERROR(ValidateTokenOrder(config.vocabulary_size, token_order));
   ComposedLayerBuilder builder;
   ASSIGN_OR_RETURN(auto* embedding,
                    AddActivationGeneratorLayers(executor, builder, config,
@@ -212,7 +214,8 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateGpt2(
   RETURN_IF_ERROR(builder.add(
       LayerNormLayer::Create(executor, config.model_width, kLayerNormEpsilon,
                              output_type, config.context_length)));
-  RETURN_IF_ERROR(builder.add(LanguageModelingHeadLayer::Create(embedding)));
+  RETURN_IF_ERROR(
+      builder.add(LanguageModelingHeadLayer::Create(embedding, token_order)));
   return builder.create("gpt2");
 }
 

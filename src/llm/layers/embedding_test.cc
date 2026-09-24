@@ -2,12 +2,14 @@
 
 #include <cuda_runtime.h>
 
+#include <algorithm>
 #include <array>
 #include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <numeric>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -30,12 +32,14 @@ absl::Status WriteTestBuffer(cuda::Executor& executor,
   if (destination.size_bytes() != bytes)
     return absl::InvalidArgumentError("test buffer has the wrong size");
   auto pinned = cuda::PageLockedHostArray<Element>::CopyFrom(executor, values);
-  if (!pinned.ok()) return pinned.status();
+  if (!pinned.ok())
+    return pinned.status();
   auto status = cuda::CudaStatus(
       cudaMemcpyAsync(destination.data(), pinned->data(), bytes,
                       cudaMemcpyHostToDevice, executor.stream()),
       "copy determinism test input");
-  if (!status.ok()) return status;
+  if (!status.ok())
+    return status;
   return executor.Synchronize();
 }
 
@@ -43,9 +47,11 @@ template <class Element>
 absl::StatusOr<Buffer> MakeTestBuffer(cuda::Executor& executor,
                                       const std::vector<Element>& values) {
   auto buffer = Buffer::Allocate(executor, values.size() * sizeof(Element));
-  if (!buffer.ok()) return buffer.status();
+  if (!buffer.ok())
+    return buffer.status();
   auto status = WriteTestBuffer(executor, *buffer, values);
-  if (!status.ok()) return status;
+  if (!status.ok())
+    return status;
   return std::move(*buffer);
 }
 
@@ -55,21 +61,25 @@ absl::StatusOr<std::vector<uint32_t>> ReadTestFloatBits(
     return absl::InvalidArgumentError("test output is not an FP32 buffer");
   auto pinned = cuda::PageLockedHostArray<uint32_t>::Allocate(
       executor, buffer.size_bytes() / sizeof(uint32_t));
-  if (!pinned.ok()) return pinned.status();
+  if (!pinned.ok())
+    return pinned.status();
   auto status = cuda::CudaStatus(
       cudaMemcpyAsync(pinned->data(), buffer.data(), buffer.size_bytes(),
                       cudaMemcpyDeviceToHost, executor.stream()),
       "read determinism test output");
-  if (!status.ok()) return status;
+  if (!status.ok())
+    return status;
   status = executor.Synchronize();
-  if (!status.ok()) return status;
+  if (!status.ok())
+    return status;
   return std::vector<uint32_t>(pinned->begin(), pinned->end());
 }
 
 std::vector<uint32_t> TestFloatBits(const std::vector<float>& values) {
   std::vector<uint32_t> result;
   result.reserve(values.size());
-  for (float value : values) result.push_back(std::bit_cast<uint32_t>(value));
+  for (float value : values)
+    result.push_back(std::bit_cast<uint32_t>(value));
   return result;
 }
 
@@ -389,7 +399,8 @@ TEST_F(LayersTest, LookupBackwardIsBitwiseRepeatableInOriginalRowOrder) {
           // Compare the entire physical table: unobserved logical rows and
           // padding must preserve their original bytes as well.
           EXPECT_EQ(*actual, TestFloatBits(expected));
-          if (repeat == 0) first_results[pass] = *actual;
+          if (repeat == 0)
+            first_results[pass] = *actual;
           EXPECT_EQ(*actual, first_results[pass]);
         }
       }
@@ -502,6 +513,155 @@ TEST_F(LayersTest, LanguageModelingHeadIsBitwiseRepeatableWithRetainedStates) {
   }
 }
 
+TEST_F(LayersTest, LanguageModelingHeadCanonicalOrderPreservesExactRenaming) {
+  // Prime vocabularies make the affine permutation a bijection, not its own
+  // inverse. It crosses 64-wide MMA tiles and moves tokens into the tail tile.
+  for (DataType type : {DataType::FP16, DataType::BF16}) {
+    for (bool pad_vocabulary : {false, true}) {
+      for (const auto& [vocab, width, rows] :
+           {std::tuple{137, 10, 27}, std::tuple{137, 73, 67}}) {
+        SCOPED_TRACE(testing::Message()
+                     << "type=" << static_cast<int>(type)
+                     << " padded=" << pad_vocabulary << " width=" << width);
+        auto original_embedding = EmbeddingLookupLayer::Create(
+            *executor_, vocab, width, type, 1, pad_vocabulary);
+        auto renamed_embedding = EmbeddingLookupLayer::Create(
+            *executor_, vocab, width, type, 1, pad_vocabulary);
+        ASSERT_TRUE(original_embedding.ok()) << original_embedding.status();
+        ASSERT_TRUE(renamed_embedding.ok()) << renamed_embedding.status();
+        const int stored = (*original_embedding)->stored_vocab_size();
+        const int padded = (*original_embedding)->padded_vocab_size();
+        std::vector<int32_t> permutation(vocab), identity(vocab);
+        std::iota(identity.begin(), identity.end(), 0);
+        for (int rank = 0; rank < vocab; ++rank)
+          permutation[rank] = (rank * 37 + 19) % vocab;
+        const auto saved_permutation = permutation;
+        auto original_head =
+            LanguageModelingHeadLayer::Create(original_embedding->get());
+        auto identity_head = LanguageModelingHeadLayer::Create(
+            original_embedding->get(), identity);
+        auto renamed_head = LanguageModelingHeadLayer::Create(
+            renamed_embedding->get(), permutation);
+        ASSERT_TRUE(original_head.ok()) << original_head.status();
+        ASSERT_TRUE(identity_head.ok()) << identity_head.status();
+        ASSERT_TRUE(renamed_head.ok()) << renamed_head.status();
+        // The host array is only an input to creation, not borrowed storage.
+        std::fill(permutation.begin(), permutation.end(), -1);
+        permutation.clear();
+        permutation.shrink_to_fit();
+        identity.clear();
+        identity.shrink_to_fit();
+
+        std::vector<float> table(static_cast<size_t>(stored) * width);
+        std::vector<float> renamed_table(table.size());
+        const auto initial_gradient = InitialTestGradient(table.size());
+        std::vector<float> renamed_initial_gradient(table.size());
+        for (int rank = 0; rank < stored; ++rank) {
+          const int physical = rank < vocab ? saved_permutation[rank] : rank;
+          for (int column = 0; column < width; ++column) {
+            const size_t index = static_cast<size_t>(rank) * width + column;
+            const size_t renamed_index =
+                static_cast<size_t>(physical) * width + column;
+            table[index] = 0.12f * std::sin(static_cast<float>(index) * 0.091f);
+            renamed_table[renamed_index] = table[index];
+            renamed_initial_gradient[renamed_index] = initial_gradient[index];
+          }
+        }
+        ASSERT_TRUE(
+            WriteTestBuffer(*executor_, (*original_embedding)->weight(), table)
+                .ok());
+        ASSERT_TRUE(WriteTestBuffer(*executor_, (*renamed_embedding)->weight(),
+                                    renamed_table)
+                        .ok());
+        std::vector<int> tokens(rows);
+        for (int row = 0; row < rows; ++row)
+          tokens[row] = row * 7 % vocab;
+        auto token_buffer = MakeTestBuffer(*executor_, tokens);
+        ASSERT_TRUE(token_buffer.ok()) << token_buffer.status();
+        auto hidden = (*original_embedding)->fwd(*executor_, {*token_buffer});
+        ASSERT_TRUE(hidden.ok()) << hidden.status();
+        std::vector<float> output_gradient(static_cast<size_t>(rows) * padded);
+        std::vector<float> renamed_output_gradient(output_gradient.size());
+        for (int row = 0; row < rows; ++row)
+          for (int rank = 0; rank < padded; ++rank) {
+            const int physical = rank < vocab ? saved_permutation[rank] : rank;
+            const size_t index = static_cast<size_t>(row) * padded + rank;
+            output_gradient[index] =
+                0.08f * std::cos(static_cast<float>(index) * 0.07f);
+            renamed_output_gradient[static_cast<size_t>(row) * padded +
+                                    physical] = output_gradient[index];
+          }
+        auto gradient = MakeTestBuffer(*executor_, output_gradient);
+        auto renamed_gradient =
+            MakeTestBuffer(*executor_, renamed_output_gradient);
+        ASSERT_TRUE(gradient.ok()) << gradient.status();
+        ASSERT_TRUE(renamed_gradient.ok()) << renamed_gradient.status();
+
+        std::array<std::vector<uint32_t>, 3> logits, d_hidden, d_table;
+        const std::array<LanguageModelingHeadLayer*, 3> heads = {
+            original_head->get(), identity_head->get(), renamed_head->get()};
+        for (int pass = 0; pass < 3; ++pass) {
+          ASSERT_TRUE(WriteTestBuffer(*executor_, heads[pass]->gradients()[0],
+                                      pass == 2 ? renamed_initial_gradient
+                                                : initial_gradient)
+                          .ok());
+          auto forward = heads[pass]->fwd(*executor_, hidden->outputs);
+          ASSERT_TRUE(forward.ok()) << forward.status();
+          auto backward = heads[pass]->bwd(
+              *executor_, {pass == 2 ? *renamed_gradient : *gradient},
+              std::move(forward->state));
+          ASSERT_TRUE(backward.ok()) << backward.status();
+          auto output_bits = ReadTestFloatBits(*executor_, forward->outputs[0]);
+          auto hidden_bits = ReadTestFloatBits(*executor_, backward->front());
+          auto table_bits =
+              ReadTestFloatBits(*executor_, heads[pass]->gradients()[0]);
+          ASSERT_TRUE(output_bits.ok()) << output_bits.status();
+          ASSERT_TRUE(hidden_bits.ok()) << hidden_bits.status();
+          ASSERT_TRUE(table_bits.ok()) << table_bits.status();
+          logits[pass] = std::move(*output_bits);
+          d_hidden[pass] = std::move(*hidden_bits);
+          d_table[pass] = std::move(*table_bits);
+        }
+        // Align only physical vocabulary axes. Hidden gradients already share
+        // coordinates and must match directly, not merely within a tolerance.
+        auto aligned_logits = logits[2];
+        auto aligned_table = d_table[2];
+        for (int rank = 0; rank < vocab; ++rank) {
+          for (int row = 0; row < rows; ++row)
+            aligned_logits[static_cast<size_t>(row) * padded + rank] =
+                logits[2][static_cast<size_t>(row) * padded +
+                          saved_permutation[rank]];
+          for (int column = 0; column < width; ++column)
+            aligned_table[static_cast<size_t>(rank) * width + column] =
+                d_table[2]
+                       [static_cast<size_t>(saved_permutation[rank]) * width +
+                        column];
+        }
+        EXPECT_EQ(logits[0], logits[1]);
+        EXPECT_EQ(logits[0], aligned_logits);
+        EXPECT_EQ(d_hidden[0], d_hidden[1]);
+        EXPECT_EQ(d_hidden[0], d_hidden[2]);
+        EXPECT_EQ(d_table[0], d_table[1]);
+        EXPECT_EQ(d_table[0], aligned_table);
+      }
+    }
+  }
+}
+
+TEST_F(LayersTest, LanguageModelingHeadRejectsMalformedTokenOrder) {
+  auto embedding =
+      EmbeddingLookupLayer::Create(*executor_, 3, 10, DataType::BF16);
+  ASSERT_TRUE(embedding.ok()) << embedding.status();
+  for (const auto& order : {std::vector<int32_t>{0, 1},
+                            {0, 1, 1},
+                            {0, 1, 3},
+                            {0, 1, -1},
+                            {0, 1, 2, 3}}) {
+    auto head = LanguageModelingHeadLayer::Create(embedding->get(), order);
+    EXPECT_EQ(head.status().code(), absl::StatusCode::kInvalidArgument);
+  }
+}
+
 TEST_F(LayersTest, PositionBackwardIsBitwiseRepeatableWithPartialContexts) {
   for (DataType type : {DataType::FP16, DataType::BF16}) {
     for (const auto& [context, width, rows] :
@@ -517,7 +677,8 @@ TEST_F(LayersTest, PositionBackwardIsBitwiseRepeatableWithPartialContexts) {
           InitialTestGradient(static_cast<size_t>(context) * width);
       std::vector<int> destinations(rows);
       std::array<std::vector<float>, 2> output_gradients;
-      for (int row = 0; row < rows; ++row) destinations[row] = row % context;
+      for (int row = 0; row < rows; ++row)
+        destinations[row] = row % context;
       for (int pass = 0; pass < 2; ++pass) {
         output_gradients[pass].resize(static_cast<size_t>(rows) * width);
         for (int row = 0; row < rows; ++row) {
@@ -567,7 +728,8 @@ TEST_F(LayersTest, PositionBackwardIsBitwiseRepeatableWithPartialContexts) {
               ReadTestFloatBits(*executor_, (*positions)->gradients()[0]);
           ASSERT_TRUE(actual.ok()) << actual.status();
           EXPECT_EQ(*actual, TestFloatBits(expected));
-          if (repeat == 0) first_results[pass] = *actual;
+          if (repeat == 0)
+            first_results[pass] = *actual;
           EXPECT_EQ(*actual, first_results[pass]);
         }
       }
@@ -593,7 +755,8 @@ TEST_F(LayersTest, LookupBackwardPreservesRealTiedHeadGradientAcrossPasses) {
     ASSERT_TRUE(
         WriteTestBuffer(*executor_, (*embedding)->weight(), table).ok());
     std::vector<int> tokens(kRows);
-    for (int row = 0; row < kRows; ++row) tokens[row] = row % 2 == 0 ? 3 : 7;
+    for (int row = 0; row < kRows; ++row)
+      tokens[row] = row % 2 == 0 ? 3 : 7;
     auto token_buffer = MakeTestBuffer(*executor_, tokens);
     ASSERT_TRUE(token_buffer.ok()) << token_buffer.status();
     std::vector<float> logits_gradient(static_cast<size_t>(kRows) * padded,
@@ -646,7 +809,8 @@ TEST_F(LayersTest, LookupBackwardPreservesRealTiedHeadGradientAcrossPasses) {
             ReadTestFloatBits(*executor_, (*embedding)->gradients()[0]);
         ASSERT_TRUE(actual.ok()) << actual.status();
         EXPECT_EQ(*actual, TestFloatBits(expected));
-        if (repeat == 0) first_results[pass] = *actual;
+        if (repeat == 0)
+          first_results[pass] = *actual;
         EXPECT_EQ(*actual, first_results[pass]);
       }
     }

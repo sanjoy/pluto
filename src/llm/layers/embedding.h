@@ -2,7 +2,9 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -94,8 +96,14 @@ class LanguageModelingHeadLayer final : public Layer {
     return "LanguageModelingHeadLayer";
   }
 
+  // token_order[canonical_rank] gives the physical vocabulary ID to sum at
+  // that rank when propagating gradients into the hidden state. This keeps
+  // the floating-point reduction order stable after vocabulary renaming.
+  // An empty order means identity; a supplied order is copied at creation.
+  // Logits and shared embedding weights remain in physical vocabulary order.
   static absl::StatusOr<std::unique_ptr<LanguageModelingHeadLayer>> Create(
-      EmbeddingLookupLayer* embedding);
+      EmbeddingLookupLayer* embedding,
+      absl::Span<const int32_t> token_order = {});
 
   absl::Span<Buffer> weights() override { return embedding_->weights(); }
   absl::Span<Buffer> gradients() override { return embedding_->gradients(); }
@@ -115,10 +123,13 @@ class LanguageModelingHeadLayer final : public Layer {
                                      absl::Span<const Buffer> output_gradients,
                                      BackwardState state, LayerHooks*) override;
 
-  explicit LanguageModelingHeadLayer(EmbeddingLookupLayer* embedding)
-      : embedding_(embedding) {}
+  LanguageModelingHeadLayer(EmbeddingLookupLayer* embedding,
+                            std::optional<Buffer> token_order)
+      : embedding_(embedding), token_order_(std::move(token_order)) {}
 
   EmbeddingLookupLayer* embedding_;
+  // Absent for the original contiguous-load identity fast path.
+  std::optional<Buffer> token_order_;
   const ActivationType output_type_signature_{
       DataType::FP32,
       {ActivationType::kBatchDimension, embedding_->sequence_length(),
@@ -267,7 +278,8 @@ class LanguageModelingHeadLayerReference final : public LayerReference {
   }
 
   static absl::StatusOr<std::unique_ptr<LanguageModelingHeadLayerReference>>
-  Create(EmbeddingLookupLayerReference* embedding);
+  Create(EmbeddingLookupLayerReference* embedding,
+         absl::Span<const int32_t> token_order = {});
 
   absl::Span<HostBuffer> weights() override { return embedding_->weights(); }
   absl::Span<HostBuffer> gradients() override {
@@ -288,10 +300,12 @@ class LanguageModelingHeadLayerReference final : public LayerReference {
       absl::Span<const HostBuffer> output_gradients,
       ReferenceBackwardState state) override;
 
-  explicit LanguageModelingHeadLayerReference(
-      EmbeddingLookupLayerReference* embedding)
-      : embedding_(embedding) {}
+  LanguageModelingHeadLayerReference(EmbeddingLookupLayerReference* embedding,
+                                     std::vector<int32_t> token_order)
+      : embedding_(embedding), token_order_(std::move(token_order)) {}
   EmbeddingLookupLayerReference* embedding_;
+  // Same canonical-rank-to-physical-ID semantics as the GPU head.
+  std::vector<int32_t> token_order_;
   const ActivationType output_type_signature_{
       DataType::FP32,
       {ActivationType::kBatchDimension, embedding_->sequence_length(),

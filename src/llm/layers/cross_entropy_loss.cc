@@ -13,6 +13,7 @@
 #include "absl/types/span.h"
 #include "src/cuda/buffer.h"
 #include "src/llm/layers/util.h"
+#include "src/llm/token_order.h"
 #include "src/util/status_macros.h"
 
 namespace pluto::llm {
@@ -25,16 +26,48 @@ using internal::ValidateBuffer;
 namespace {
 constexpr int kBackwardVocabularyTile = 256;
 
+template <bool UseTokenOrder>
+__tile__ auto VocabularyIds(int tile, int vocabulary_size,
+                            const int32_t* token_order) {
+  namespace ct = ::cuda::tiles;
+  auto ids = ct::iota<ct::tile<int, ct::shape<1, 16>>>() + tile * kDenseTile;
+  if constexpr (UseTokenOrder) {
+    // Padding is not in the permutation and must retain its original slot.
+    auto physical = ct::load_masked(token_order + ids, ids < vocabulary_size);
+    return ct::select(ids < vocabulary_size, physical, ids);
+  } else {
+    return ids;
+  }
+}
+
+template <bool UseTokenOrder>
+__tile__ auto LoadLogits(const float* logits, int row, int rows, int tile,
+                         int padded_vocab_size, int vocabulary_size,
+                         const int32_t* token_order) {
+  namespace ct = ::cuda::tiles;
+  using namespace ct::literals;
+  if constexpr (UseTokenOrder) {
+    auto ids = VocabularyIds<true>(tile, vocabulary_size, token_order);
+    return ct::load_masked(
+        logits + static_cast<int64_t>(row) * padded_vocab_size + ids,
+        ids < padded_vocab_size);
+  } else {
+    auto view = ct::partition_view{
+        ct::tensor_span{logits, ct::extents{rows, padded_vocab_size}},
+        ct::shape{1_ic, 16_ic}};
+    return view.load(row, tile);
+  }
+}
+
+template <bool UseTokenOrder>
 __tile_global__ void CrossEntropyForwardKernel(
     const float* __restrict__ logits, const int* __restrict__ targets, int rows,
-    int padded_vocab_size, float* __restrict__ losses,
+    int padded_vocab_size, int vocabulary_size,
+    const int32_t* __restrict__ token_order, float* __restrict__ losses,
     float* __restrict__ maxima, float* __restrict__ denominators) {
   namespace ct = ::cuda::tiles;
   using namespace ct::literals;
 
-  auto logits_view = ct::partition_view{
-      ct::tensor_span{logits, ct::extents{rows, padded_vocab_size}},
-      ct::shape{1_ic, 16_ic}};
   auto target_view = ct::partition_view{
       ct::tensor_span{targets, ct::extents{rows}}, ct::shape{1_ic}};
   auto loss_view = ct::partition_view{
@@ -58,15 +91,20 @@ __tile_global__ void CrossEntropyForwardKernel(
   const int vocabulary_tiles = padded_vocab_size / kDenseTile;
   auto maximum = ct::full<ct::tile<float, ct::shape<1, 1>>>(-3.402823466e+38f);
   for (int tile = 0; tile < vocabulary_tiles; ++tile)
-    maximum =
-        ct::max(maximum, ct::reduce_max(logits_view.load(row, tile), 1_ic));
+    maximum = ct::max(
+        maximum, ct::reduce_max(LoadLogits<UseTokenOrder>(
+                                    logits, row, rows, tile, padded_vocab_size,
+                                    vocabulary_size, token_order),
+                                1_ic));
   auto denominator = ct::zeros<ct::tile<float, ct::shape<1, 1>>>();
   auto target_logit = ct::zeros<ct::tile<float, ct::shape<1, 1>>>();
   for (int tile = 0; tile < vocabulary_tiles; ++tile) {
-    auto row_logits = logits_view.load(row, tile);
+    auto row_logits =
+        LoadLogits<UseTokenOrder>(logits, row, rows, tile, padded_vocab_size,
+                                  vocabulary_size, token_order);
     denominator = denominator + ct::sum(ct::exp(row_logits - maximum), 1_ic);
     auto token_ids =
-        ct::iota<ct::tile<int, ct::shape<1, 16>>>() + tile * kDenseTile;
+        VocabularyIds<UseTokenOrder>(tile, vocabulary_size, token_order);
     auto one_hot = ct::element_cast<float>(token_ids == target);
     target_logit = target_logit + ct::sum(row_logits * one_hot, 1_ic);
   }
@@ -158,15 +196,19 @@ __tile_global__ void CrossEntropyBackwardKernel(
 
 absl::StatusOr<std::unique_ptr<CrossEntropyLossLayer>>
 CrossEntropyLossLayer::Create(cuda::Executor& executor, int vocabulary_size,
-                              DataType data_type, int sequence_length) {
+                              DataType data_type, int sequence_length,
+                              absl::Span<const int32_t> token_order) {
   RETURN_IF_ERROR(internal::ValidateComputeType(data_type));
   if (sequence_length <= 0)
     return absl::InvalidArgumentError("sequence_length must be positive");
   if (vocabulary_size <= 0)
     return absl::InvalidArgumentError("vocabulary_size must be positive");
+  ASSIGN_OR_RETURN(
+      auto device_token_order,
+      CopyTokenOrderToDevice(executor, vocabulary_size, token_order));
   return absl::WrapUnique(new CrossEntropyLossLayer(
       executor, vocabulary_size, internal::RoundUpToTile(vocabulary_size),
-      data_type, sequence_length));
+      data_type, sequence_length, std::move(device_token_order)));
 }
 
 absl::StatusOr<FwdResult> CrossEntropyLossLayer::fwd_impl(
@@ -198,11 +240,23 @@ absl::StatusOr<FwdResult> CrossEntropyLossLayer::fwd_impl(
   // reduction order. The valid-row mean-loss scaling is computed in backward.
   state.intermediates = {inputs[0], inputs[1], maxima, denominators};
   state.children.clear();
-  CrossEntropyForwardKernel<<<rows, 1, 0, executor.stream()>>>(
-      static_cast<const float*>(inputs[0].data()),
-      static_cast<const int*>(inputs[1].data()), rows, padded_vocab_size_,
-      static_cast<float*>(losses.data()), static_cast<float*>(maxima.data()),
-      static_cast<float*>(denominators.data()));
+  // Both specializations retain the same 16-lane reduction tree. Only the
+  // loads change: a renamed vocabulary is read in canonical token order.
+  if (token_order_) {
+    CrossEntropyForwardKernel<true><<<rows, 1, 0, executor.stream()>>>(
+        static_cast<const float*>(inputs[0].data()),
+        static_cast<const int*>(inputs[1].data()), rows, padded_vocab_size_,
+        vocab_size_, static_cast<const int32_t*>(token_order_->data()),
+        static_cast<float*>(losses.data()), static_cast<float*>(maxima.data()),
+        static_cast<float*>(denominators.data()));
+  } else {
+    CrossEntropyForwardKernel<false><<<rows, 1, 0, executor.stream()>>>(
+        static_cast<const float*>(inputs[0].data()),
+        static_cast<const int*>(inputs[1].data()), rows, padded_vocab_size_,
+        vocab_size_, nullptr, static_cast<float*>(losses.data()),
+        static_cast<float*>(maxima.data()),
+        static_cast<float*>(denominators.data()));
+  }
   RETURN_IF_ERROR(
       CudaStatus(cudaGetLastError(), "CrossEntropyForwardKernel launch"));
   return FwdResult{{std::move(losses)}, std::move(state)};

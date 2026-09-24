@@ -21,6 +21,7 @@
 #include "absl/types/span.h"
 #include "src/cuda/page_locked_host_array.h"
 #include "src/llm/layers/util.h"
+#include "src/llm/token_order.h"
 #include "src/util/status_macros.h"
 
 namespace pluto::llm {
@@ -243,11 +244,12 @@ __tile_global__ void MaskPaddedLogitsKernel(float* __restrict__ logits,
       last_tile);
 }
 
-template <class Activation>
+template <class Activation, bool CanonicalOrder = false>
 __tile_global__ void LanguageModelingHeadInputGradientKernel(
     const float* __restrict__ output_gradient, const float* __restrict__ table,
     int rows, int padded_vocab_size, int stored_vocab_size, int embedding_dim,
-    float* __restrict__ input_gradient) {
+    float* __restrict__ input_gradient, const int32_t* __restrict__ token_order,
+    int vocab_size) {
   namespace ct = ::cuda::tiles;
   using namespace ct::literals;
   auto gradient_view = ct::partition_view{
@@ -267,11 +269,41 @@ __tile_global__ void LanguageModelingHeadInputGradientKernel(
   auto accumulator = ct::zeros<ct::tile<float, ct::shape<64, 64>>>();
   for (int vocabulary_tile = 0; vocabulary_tile < vocabulary_tiles;
        ++vocabulary_tile) {
-    auto gradient = ct::element_cast<MmaType<Activation>>(
-        gradient_view.load_masked(row_tile, vocabulary_tile));
-    auto embeddings = ct::element_cast<MmaType<Activation>>(
-        table_view.load_masked(vocabulary_tile, dimension_tile));
-    accumulator = ct::mma(gradient, embeddings, accumulator);
+    if constexpr (CanonicalOrder) {
+      // Gather both operands into exactly the same 64-wide K layout as the
+      // identity path. Reordering only tiles, or only one operand, is not
+      // sufficient: floating-point MMA must see the same products in the
+      // same lanes and accumulation order after a vocabulary renaming.
+      auto rank = ct::iota<ct::tile<int, ct::shape<64>>>() +
+                  vocabulary_tile * kLmHeadTile;
+      auto token = ct::select(
+          rank < vocab_size,
+          ct::load_masked(token_order + rank, rank < vocab_size), rank);
+      auto input_row = ct::reshape(
+          ct::iota<ct::tile<int, ct::shape<64>>>() + row_tile * kLmHeadTile,
+          ct::shape{64_ic, 1_ic});
+      auto token_column = ct::reshape(token, ct::shape{1_ic, 64_ic});
+      auto gradient = ct::element_cast<MmaType<Activation>>(ct::load_masked(
+          output_gradient +
+              ct::element_cast<int64_t>(input_row) * padded_vocab_size +
+              token_column,
+          (input_row < rows) & (token_column < padded_vocab_size)));
+      auto token_row = ct::reshape(token, ct::shape{64_ic, 1_ic});
+      auto dimension = ct::reshape(ct::iota<ct::tile<int, ct::shape<64>>>() +
+                                       dimension_tile * kLmHeadTile,
+                                   ct::shape{1_ic, 64_ic});
+      auto embeddings = ct::element_cast<MmaType<Activation>>(ct::load_masked(
+          table + ct::element_cast<int64_t>(token_row) * embedding_dim +
+              dimension,
+          (token_row < stored_vocab_size) & (dimension < embedding_dim)));
+      accumulator = ct::mma(gradient, embeddings, accumulator);
+    } else {
+      auto gradient = ct::element_cast<MmaType<Activation>>(
+          gradient_view.load_masked(row_tile, vocabulary_tile));
+      auto embeddings = ct::element_cast<MmaType<Activation>>(
+          table_view.load_masked(vocabulary_tile, dimension_tile));
+      accumulator = ct::mma(gradient, embeddings, accumulator);
+    }
   }
   input_gradient_view.store_masked(accumulator, row_tile, dimension_tile);
 }
@@ -548,12 +580,17 @@ absl::StatusOr<BufferVec> EmbeddingLookupLayer::bwd_impl(
 }
 
 absl::StatusOr<std::unique_ptr<LanguageModelingHeadLayer>>
-LanguageModelingHeadLayer::Create(EmbeddingLookupLayer* embedding) {
+LanguageModelingHeadLayer::Create(EmbeddingLookupLayer* embedding,
+                                  absl::Span<const int32_t> token_order) {
   if (embedding == nullptr) {
     return absl::InvalidArgumentError(
         "LanguageModelingHeadLayer requires a non-null embedding");
   }
-  return absl::WrapUnique(new LanguageModelingHeadLayer(embedding));
+  ASSIGN_OR_RETURN(auto device_order,
+                   CopyTokenOrderToDevice(embedding->executor_,
+                                          embedding->vocab_size_, token_order));
+  return absl::WrapUnique(
+      new LanguageModelingHeadLayer(embedding, std::move(device_order)));
 }
 
 absl::StatusOr<FwdResult> LanguageModelingHeadLayer::fwd_impl(
@@ -630,13 +667,26 @@ absl::StatusOr<BufferVec> LanguageModelingHeadLayer::bwd_impl(
   const int weight_blocks =
       ((embedding_->stored_vocab_size_ - 1) / kLmHeadTile + 1) * width_tiles;
   if (embedding_->output_type_ == DataType::BF16) {
-    LanguageModelingHeadInputGradientKernel<__nv_bfloat16>
-        <<<input_blocks, 1, 0, executor.stream()>>>(
-            static_cast<const float*>(output_gradients[0].data()),
-            static_cast<const float*>(embedding_->weight_.data()), rows,
-            embedding_->padded_vocab_size_, embedding_->stored_vocab_size_,
-            embedding_->embedding_dim_,
-            static_cast<float*>(input_gradient.data()));
+    if (token_order_) {
+      LanguageModelingHeadInputGradientKernel<__nv_bfloat16, true>
+          <<<input_blocks, 1, 0, executor.stream()>>>(
+              static_cast<const float*>(output_gradients[0].data()),
+              static_cast<const float*>(embedding_->weight_.data()), rows,
+              embedding_->padded_vocab_size_, embedding_->stored_vocab_size_,
+              embedding_->embedding_dim_,
+              static_cast<float*>(input_gradient.data()),
+              static_cast<const int32_t*>(token_order_->data()),
+              embedding_->vocab_size_);
+    } else {
+      LanguageModelingHeadInputGradientKernel<__nv_bfloat16>
+          <<<input_blocks, 1, 0, executor.stream()>>>(
+              static_cast<const float*>(output_gradients[0].data()),
+              static_cast<const float*>(embedding_->weight_.data()), rows,
+              embedding_->padded_vocab_size_, embedding_->stored_vocab_size_,
+              embedding_->embedding_dim_,
+              static_cast<float*>(input_gradient.data()), nullptr,
+              embedding_->vocab_size_);
+    }
     LanguageModelingHeadWeightGradientKernel<__nv_bfloat16>
         <<<weight_blocks, 1, 0, executor.stream()>>>(
             static_cast<const __nv_bfloat16*>(state.intermediates[0].data()),
@@ -645,13 +695,26 @@ absl::StatusOr<BufferVec> LanguageModelingHeadLayer::bwd_impl(
             embedding_->embedding_dim_,
             static_cast<float*>(embedding_->gradient_.data()));
   } else {
-    LanguageModelingHeadInputGradientKernel<float>
-        <<<input_blocks, 1, 0, executor.stream()>>>(
-            static_cast<const float*>(output_gradients[0].data()),
-            static_cast<const float*>(embedding_->weight_.data()), rows,
-            embedding_->padded_vocab_size_, embedding_->stored_vocab_size_,
-            embedding_->embedding_dim_,
-            static_cast<float*>(input_gradient.data()));
+    if (token_order_) {
+      LanguageModelingHeadInputGradientKernel<float, true>
+          <<<input_blocks, 1, 0, executor.stream()>>>(
+              static_cast<const float*>(output_gradients[0].data()),
+              static_cast<const float*>(embedding_->weight_.data()), rows,
+              embedding_->padded_vocab_size_, embedding_->stored_vocab_size_,
+              embedding_->embedding_dim_,
+              static_cast<float*>(input_gradient.data()),
+              static_cast<const int32_t*>(token_order_->data()),
+              embedding_->vocab_size_);
+    } else {
+      LanguageModelingHeadInputGradientKernel<float>
+          <<<input_blocks, 1, 0, executor.stream()>>>(
+              static_cast<const float*>(output_gradients[0].data()),
+              static_cast<const float*>(embedding_->weight_.data()), rows,
+              embedding_->padded_vocab_size_, embedding_->stored_vocab_size_,
+              embedding_->embedding_dim_,
+              static_cast<float*>(input_gradient.data()), nullptr,
+              embedding_->vocab_size_);
+    }
     LanguageModelingHeadWeightGradientKernel<float>
         <<<weight_blocks, 1, 0, executor.stream()>>>(
             static_cast<const float*>(state.intermediates[0].data()),

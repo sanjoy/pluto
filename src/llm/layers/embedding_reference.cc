@@ -13,6 +13,7 @@
 #include "absl/types/span.h"
 #include "src/llm/layers/embedding.h"
 #include "src/llm/layers/reference_internal.h"
+#include "src/llm/token_order.h"
 #include "src/util/status_macros.h"
 
 namespace pluto::llm {
@@ -140,12 +141,15 @@ absl::StatusOr<HostBufferVec> EmbeddingLookupLayerReference::bwd_impl(
 
 absl::StatusOr<std::unique_ptr<LanguageModelingHeadLayerReference>>
 LanguageModelingHeadLayerReference::Create(
-    EmbeddingLookupLayerReference* embedding) {
+    EmbeddingLookupLayerReference* embedding,
+    absl::Span<const int32_t> token_order) {
   if (embedding == nullptr) {
     return absl::InvalidArgumentError(
         "LanguageModelingHeadLayerReference requires an embedding");
   }
-  return absl::WrapUnique(new LanguageModelingHeadLayerReference(embedding));
+  RETURN_IF_ERROR(ValidateTokenOrder(embedding->vocab_size(), token_order));
+  return absl::WrapUnique(new LanguageModelingHeadLayerReference(
+      embedding, std::vector<int32_t>(token_order.begin(), token_order.end())));
 }
 
 absl::StatusOr<ReferenceFwdResult> LanguageModelingHeadLayerReference::fwd_impl(
@@ -228,7 +232,13 @@ absl::StatusOr<HostBufferVec> LanguageModelingHeadLayerReference::bwd_impl(
   for (int row = 0; row < rows; ++row) {
     for (int column = 0; column < embedding_->embedding_dim_; ++column) {
       float sum = 0.0f;
-      for (int token = 0; token < embedding_->stored_vocab_size_; ++token) {
+      // Renaming vocabulary IDs must not rename the addition order. Padding
+      // is never permuted, so it retains the same physical trailing slots.
+      for (int rank = 0; rank < embedding_->stored_vocab_size_; ++rank) {
+        const int token =
+            !token_order_.empty() && rank < embedding_->vocab_size_
+                ? token_order_[rank]
+                : rank;
         sum +=
             ri::QuantizeMmaOperand(d_output[static_cast<size_t>(row) *
                                                 embedding_->padded_vocab_size_ +

@@ -11,6 +11,7 @@
 #include "absl/types/span.h"
 #include "src/llm/layers/cross_entropy_loss.h"
 #include "src/llm/layers/reference_internal.h"
+#include "src/llm/token_order.h"
 #include "src/util/status_macros.h"
 
 namespace pluto::llm {
@@ -18,15 +19,18 @@ namespace ri = reference_internal;
 
 absl::StatusOr<std::unique_ptr<CrossEntropyLossLayerReference>>
 CrossEntropyLossLayerReference::Create(int vocabulary_size, DataType data_type,
-                                       int sequence_length) {
+                                       int sequence_length,
+                                       absl::Span<const int32_t> token_order) {
   RETURN_IF_ERROR(ri::ValidateComputeType(data_type));
   if (sequence_length <= 0)
     return absl::InvalidArgumentError("sequence_length must be positive");
   if (vocabulary_size <= 0)
     return absl::InvalidArgumentError("vocabulary_size must be positive");
+  RETURN_IF_ERROR(ValidateTokenOrder(vocabulary_size, token_order));
   return absl::WrapUnique(new CrossEntropyLossLayerReference(
       vocabulary_size, ri::RoundUpToTile(vocabulary_size), data_type,
-      sequence_length));
+      sequence_length,
+      std::vector<int32_t>(token_order.begin(), token_order.end())));
 }
 
 absl::StatusOr<ReferenceFwdResult> CrossEntropyLossLayerReference::fwd_impl(
@@ -50,6 +54,8 @@ absl::StatusOr<ReferenceFwdResult> CrossEntropyLossLayerReference::fwd_impl(
   // The two-pass maximum and exponential sum is the elementary stable
   // log-sum-exp formula. Padded lanes are included, just as in the CUDA
   // kernel; the LM head guarantees that they contain negative infinity.
+  // Iterate by canonical rank and translate only the load addresses. This
+  // keeps the arithmetic order fixed when physical vocabulary IDs change.
   for (int row = 0; row < rows; ++row) {
     // Prompt/padding rows are absent from the objective, not merely multiplied
     // by zero after a softmax. In particular their logits may safely be NaN.
@@ -62,11 +68,11 @@ absl::StatusOr<ReferenceFwdResult> CrossEntropyLossLayerReference::fwd_impl(
     const float* row_logits =
         logits + static_cast<size_t>(row) * padded_vocab_size_;
     float maximum = -std::numeric_limits<float>::infinity();
-    for (int token = 0; token < padded_vocab_size_; ++token)
-      maximum = std::max(maximum, row_logits[token]);
+    for (int rank = 0; rank < padded_vocab_size_; ++rank)
+      maximum = std::max(maximum, row_logits[PhysicalToken(rank)]);
     float denominator = 0.0f;
-    for (int token = 0; token < padded_vocab_size_; ++token)
-      denominator += std::exp(row_logits[token] - maximum);
+    for (int rank = 0; rank < padded_vocab_size_; ++rank)
+      denominator += std::exp(row_logits[PhysicalToken(rank)] - maximum);
     loss[row] = std::log(denominator) + maximum - row_logits[targets[row]];
   }
   state.intermediates = {inputs[0], inputs[1]};
@@ -96,7 +102,8 @@ absl::StatusOr<HostBufferVec> CrossEntropyLossLayerReference::bwd_impl(
   // number of padding rows must leave every real token's gradient unchanged.
   int valid_rows = 0;
   for (int row = 0; row < rows; ++row)
-    if (targets[row] != CrossEntropyLossLayer::kIgnoredTarget) ++valid_rows;
+    if (targets[row] != CrossEntropyLossLayer::kIgnoredTarget)
+      ++valid_rows;
   for (int row = 0; row < rows; ++row) {
     if (targets[row] == CrossEntropyLossLayer::kIgnoredTarget) {
       std::fill_n(d_logits + static_cast<size_t>(row) * padded_vocab_size_,
@@ -106,11 +113,11 @@ absl::StatusOr<HostBufferVec> CrossEntropyLossLayerReference::bwd_impl(
     const float* row_logits =
         logits + static_cast<size_t>(row) * padded_vocab_size_;
     float maximum = -std::numeric_limits<float>::infinity();
-    for (int token = 0; token < padded_vocab_size_; ++token)
-      maximum = std::max(maximum, row_logits[token]);
+    for (int rank = 0; rank < padded_vocab_size_; ++rank)
+      maximum = std::max(maximum, row_logits[PhysicalToken(rank)]);
     float denominator = 0.0f;
-    for (int token = 0; token < padded_vocab_size_; ++token)
-      denominator += std::exp(row_logits[token] - maximum);
+    for (int rank = 0; rank < padded_vocab_size_; ++rank)
+      denominator += std::exp(row_logits[PhysicalToken(rank)] - maximum);
     for (int token = 0; token < padded_vocab_size_; ++token) {
       const float one_hot = token == targets[row] ? 1.0f : 0.0f;
       d_logits[static_cast<size_t>(row) * padded_vocab_size_ + token] =
