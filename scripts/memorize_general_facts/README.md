@@ -94,6 +94,53 @@ original-GPT-2-ID suffix/EOS predictions, and exact greedy completion of all
 1,024 five-token prompts earn `verified` status. Budget failures, timeouts, and
 execution errors remain distinct and do not prove an architecture insufficient.
 
+### Verified width-13 MLP comparison (2026-09-24)
+
+Both four-block, width-13 models below memorize all 1,024 facts with context
+length 32 and one attention head. Reducing the inner MLP width changes each
+block from `13 -> 52 -> 13` to `13 -> 26 -> 13`:
+
+| Inner MLP width | Trainable parameters | First zero-error evaluation step | Training time | Mean cross-entropy (nats) |
+| --- | ---: | ---: | ---: | ---: |
+| 52 | 67,405 | 34,816 | 122 seconds | 0.00999714 |
+| 26 | 64,597 | 47,104 | 160 seconds | 0.00819570 |
+
+Each checkpoint passes a fresh-process evaluation and independent audit with
+zero errors over all 10,002 suffix/EOS targets, followed by exact autonomous
+completion of all 1,024 first-five-token prompts. Evaluations occur every 256
+steps, so the table reports the first observed perfect checkpoint, not the
+earliest individual update at which it might have become perfect.
+
+Both runs use seed 1337, batch size 32, the 4,475-token compact vocabulary,
+BF16 computation with FP32 master weights, and no gradient clipping. AdamW uses
+beta1=0.9, beta2=0.99, epsilon=1e-8, and zero weight decay. Peak learning rate is
+0.0006, with 100 warmup steps and cosine decay to a 10% floor over the same
+60,000-step budget. Each run stops early on perfect corpus predictions.
+Wall-clock safety caps differ but neither was reached. These are single-seed
+results: FF26 is 2,808 parameters (4.17%) smaller, but took longer to memorize
+in this comparison; they do not establish typical time across seeds.
+
+The local run roots are
+`/home/ubuntu/checkpoints/memorize_general_facts/context32_size_sweep_1h_0`
+(FF52: `trial_000_L4_W13_FF52/checkpoints/layers_4/step_34816`) and
+`/home/ubuntu/checkpoints/memorize_general_facts/context32_L4_W13_FF26_0`
+(FF26: `trial_000_L4_W13_FF26/checkpoints/layers_4/step_47104`). Each retains
+its commands, input hashes, logs, checkpoint, and independent verification
+reports. These generated artifacts remain outside Git.
+
+To repeat the FF26 trial using the built binary and CUDA library setup above:
+
+```sh
+python -B scripts/memorize_general_facts/run_compact_size_sweep.py \
+  --binary=bazel-bin/src/llm/experiments/memorize_general_facts/memorize_general_facts \
+  --corpus=testdata/general_facts_dataset.txt \
+  --tokenizer=/home/ubuntu/datasets/tokenizer/gpt2 \
+  --run_dir=/tmp/pluto-facts-ff26-new-trial \
+  --deadline_unix="$(date -d '+10 minutes' +%s)" \
+  --candidates=4:13:26:60000:0.0006 \
+  --seed=1337 --batch_size=32 --eval_every=256
+```
+
 ## Audit a finished run
 
 ```sh

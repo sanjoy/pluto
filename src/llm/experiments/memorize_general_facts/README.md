@@ -176,6 +176,12 @@ With the current 32-position context, the same compact architecture has
 the historical count by 15,872. New training and evaluation batches also contain
 32 times fewer padded token rows at the same batch size.
 
+A smaller verified model uses four blocks, width 13, one attention head, and
+an inner MLP width of 26 (`13 -> 26 -> 13`). It has **64,597 parameters** and
+completes all 1,024 facts exactly, including EOS, from their first five tokens.
+See the [FF26 comparison and reproduction command](../../../../scripts/memorize_general_facts/README.md#verified-width-13-mlp-comparison-2026-09-24)
+for the matched FF52 baseline, training settings, and local checkpoint paths.
+
 ```sh
 bazel build -c opt //src/llm/experiments/memorize_general_facts:memorize_general_facts
 bazel-bin/src/llm/experiments/memorize_general_facts/memorize_general_facts \
