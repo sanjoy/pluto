@@ -51,12 +51,14 @@ class StateCompactor {
 // of the same MLP/head with equal current outputs are interchangeable. This
 // respects the same attempt budget and never combines different boundaries.
 // SIGINT and cooperative cancellation return Cancelled between atomic trials.
+// Ordinary search must run before MLP input/output symbols are paired.
 absl::StatusOr<CapturedModel> CompactModel(
     const CapturedModel& model, const CompactionOptions& options = {},
     const StateVectorHints* vector_hints = nullptr);
 
 // Renames within-boundary state IDs to expose identity/affine pointwise maps.
 // Does not combine states or modify supported transitions.
+// Rejects a model whose MLP input/output symbols have already been paired.
 absl::StatusOr<CapturedModel> RelabelMlpOutputs(const CapturedModel& model);
 
 }  // namespace pluto::llm::discretized::generator

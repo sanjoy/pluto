@@ -177,6 +177,8 @@ std::string FormatStatistics(const ModelStatistics& stats) {
   report.Field("attempted_seeds", stats.attempted_seeds);
   report.Field("accepted_seeds", stats.accepted_seeds);
   report.Field("state_compactions", stats.state_compactions);
+  if (stats.mlp_pair_compactions)
+    report.Field("mlp_pair_compactions", stats.mlp_pair_compactions);
   report.Field("cached_rejections", stats.cached_rejections);
   // Hash a canonical typed record encoding, not the human-readable summary.
   // The encoding is fixed-order decimal fields, with round-trippable doubles.

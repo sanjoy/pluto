@@ -21,7 +21,9 @@ Attention records the entire ordered causal prefix and its output symbol.
 An MLP records one input/output symbol pair. The language modeling head uses
 the same map shape with vocabulary IDs as its outputs. Token-plus-position
 embedding has its own input pair. State IDs are boundary-specific; compaction
-never combines states across boundaries. Corpus suffixes are verification
+normally keeps states at one boundary. The optional final MLP-pair pass permits
+one symbol at the adjacent post-attention/post-MLP boundaries of the same block;
+`CapturedState::shared_boundary` records that exception. Corpus suffixes are verification
 fixtures, not inputs to generated transition functions.
 
 ## Recording
@@ -38,6 +40,8 @@ An optional `StateVectorHints` output retains every exact original BF16 vector.
 The returned symbolic model is identical with or without these vectors. The
 end-to-end generator always retains them in a `CapturedStateVectors` archive;
 its keys remain original capture IDs, even after state compaction or renaming.
+Its `original_boundaries` map preserves each vector's original observation
+point even when a paired symbol spans both sides of an MLP.
 The same vectors guide compaction candidate ordering for the initial model.
 Recording replaces the supplied map only after successful verification.
 
@@ -56,6 +60,15 @@ to attention-history symbols, which may differ in other contexts. Separate
 pointwise progress records distinguish these trials from heuristic search.
 `RelabelMlpOutputs` is a separate within-boundary renaming transformation which
 can expose simpler pointwise code without combining states.
+
+`CompactMlpPairs` is a separate final pass. Every MLP must be a complete
+bijection between its two state sets. The pass retains each input ID, rewrites
+its output ID everywhere to that input, unions original membership, and keeps
+an explicit identity MLP with the same support. Only these adjacent boundaries
+share symbols; attention boundaries and different blocks remain separate.
+Unique state counts shrink while per-stage counts still include the paired ID
+at both stages. Ordinary compaction, relabeling, and certificates reject this
+final representation instead of silently treating it as single-boundary.
 
 Each captured state starts with a singleton `members` list. Compaction unions
 these lists, and relabeling preserves them. This indirection retains all original

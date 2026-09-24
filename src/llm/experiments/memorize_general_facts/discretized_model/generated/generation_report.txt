@@ -14,13 +14,14 @@ stats:
   captured_samples: 1024
   scored_targets: 10002
   exact_states: 113132
-  states: 6069
+  states: 3060
   membership_complete: true
   membership_original_states: 113132
   states_per_stage: [51, 35, 35, 37, 37, 37, 37, 2900, 2900]
   attempted_seeds: 60058
   accepted_seeds: 46818
   state_compactions: 107063
+  mlp_pair_compactions: 3009
   cached_rejections: 440357
   accepted_compactions_sha256: 35f8a47aef5cbc8e437c69ed7a6bb199b673ea99972c3f3e9b416dfd14ccb03b
   accepted_compaction_records: 46818
@@ -48,7 +49,7 @@ stats:
       attempted: 60010
       accepted: 46770
       compactions: 107015
-      seconds: 4.902926259
+      seconds: 4.7792017180000004
     pass:
       phase: compaction_pointwise_pass_complete
       pass: 1
@@ -57,17 +58,8 @@ stats:
       attempted: 60058
       accepted: 46818
       compactions: 107063
-      seconds: 4.9089894620000001
-    seconds: 5.0299181969999998
-  pointwise_relabeling:
-    eligible_layers: [0, 1, 2, 3]
-    skipped_layers: []
-    changed_states: 5799
-    layer_boundaries_preserved: true
-    vocabulary_aligned_final_boundaries: true
-    last_attention_base: 4744
-    final_state_base: 9219
-    reserved_range_size: 4475
+      seconds: 4.78511343
+    seconds: 4.9037408119999997
 checkpoint: /home/ubuntu/checkpoints/memorize_general_facts/dataset_weights_canonical_order_0/baseline/checkpoints/layers_4/step_120000
 checkpoint_files_sha256:
   weight_0.bin: ea5cc897257a966bf0550d518f66680d66c61139769d926ddfbdf064db8c3f06
@@ -129,7 +121,8 @@ tokenizer: /home/ubuntu/checkpoints/memorize_general_facts/dataset_weights_canon
 tokenizer_sha256: 1fe93b6152957cf9cfd6d89002467f789ce8b3f3e000b3a2edf27c808ddd0b9e
 generator: generate_discretized_model (C++)
 transition_representation: control_flow
-states: 6069
+mlp_pair_compaction: true
+states: 3060
 layers: 4
 vocabulary_size: 4475
 archived_original_vectors: 113132
@@ -139,41 +132,40 @@ integer_only_inference: true
 generated_sources_sha256:
   BUILD.bazel: 49ed1e66d573e1611c06072d3d1b6e1499af0d9abbe27bd2912e0df9e2fd46d3
   attention_0.cc: 2ca51a4b184c56dcbe7e532fb3ffa2d6f108e4201647785a4e334a95ea46f64b
-  attention_1.cc: f3918ab6f68cff3850ba8d28dcec665d557ee8fb17ee10760efc274c9e19feed
-  attention_2.cc: a53b3525b5558abba217b40a91691e50120434a8954c3327ca4bd240128ce139
-  attention_3.cc: 3fd09d5a86d4d612232bd7bba130f518e94e50f4a1b34d6e3de35e10b8d65818
+  attention_1.cc: 54d9a7abc27dce2354e792749edd3f17053e6d07d43e3b93aab8699aa2c68b3d
+  attention_2.cc: 5ccf247a54c84d5b2cb9366d55a102f9c202c87775e3fe0af178ceb9485326fd
+  attention_3.cc: e2eb98b79fde3fb729aea5b609db85559ba2575cc44bf3bc80c93358a22ad89a
   cli_support.h: 23e5e95ba2d6887da0fc89a8ae930380df75fdcdff0f6178e0a3c29dfdc058a5
   entry.cc: d1551db8fd1b58ea6a884df077af210d77e829f9a995a3e559b7e144066bf588
   generated_model_test.cc: ef6d4405dc4eef4ee5cf6c28b66fdde4d155ffcfcf338ed45b0d012a628395be
-  generated_transition_test.cc: f65da924aee844baca3a714852fd140b47b7ebf17e11d546b587c8cca7e8253d
-  language_modeling_head.cc: 58c08757409b78255c647894c553605c78f2f3f8cb03f83a221c9cdbee5a6cb4
-  mlp_0.cc: 57c1e02dc294e601f1805ec974b402e90e05efc41340133f27c1ded8419a0b43
-  mlp_1.cc: b63b90c762a9359f2cc2a08fe3f7327b0f099fd0c8929ef2c02765fdafa86e55
-  mlp_2.cc: 15ff2bbbcffad648fd7bf478634ab7cf5f11f01877a624ffdb04a4929abcb688
-  mlp_3.cc: a74e57b6871e9d3611f8d1004f539266fcb203931b535b7d7396ab7686ac19a2
-  model.cc: 19accaddf6d5e228f47e345451e4ac11555f9093d939a979bd45752fa16f9849
+  generated_transition_test.cc: ce0f22ecf2134fb6bcfe63ebf668b27f2eb6d243ea55d43ad74ebce7096327f8
+  language_modeling_head.cc: b319f0d35100204483963be9a2749242b6c9e1e06c85ed2680878eea5f6c0b0e
+  mlp_0.cc: beb51f4f9011a93ff1d02240f3f2d049390a0495c18ddf57928d03e41593741a
+  mlp_1.cc: 662d21288675801dd094048aca43d782299aa131fccfb508a4c1d3f5116bf4c4
+  mlp_2.cc: 3cb009072a9a4a0ae22e6af73f4ae169da0bf60f18919e956cc192eb5a6fc4f0
+  mlp_3.cc: 37671c17d71b20b61a9389bf3550da20f7ca452a49c95bfd4959cd70d95896e8
+  model.cc: 1cea73510ed9a904cac047773756004b0e33a5c0e5fb82ecb32c26fb3a9e0b28
   model.h: fd8655b9fc766c97bdb8bf642454faa4ac6ce5bf0a119264c711619801dc02e6
   prompt_encoder.cc: 7558f19b4e9ea31c58a215cac2f57301a706f8ad11a16f038247236f9bfc7f13
-  state_index.tsv: 8e650be07b9e9c09574901828b5fe9505a11bdfba5cd8f4742e11d878b2d9f56
-  state_members.tsv: 45301f1eacbfffd5a2ff953592d178d22badf4f57bc3da0f5f3bce94a458ece1
-  state_relabeling.tsv: dbc3bb4a8c8d7a454c3a59b79c20bbbbf4205aa864c750936eb5bd01236241b9
-  state_vectors.cc: debf4997a9dec21ec1d9110ce0a3309e332d297bdf73852108fd27a6ea8ce2bc
-  state_vectors.h: 7f6278c380ae804f077c12d9c05bdaa99d256af781c86e7bfea019eb6ea3e9aa
-  state_vectors_0.cc: dbfa49a93c784b576d78a4283cf302e4a1f18c97368364136b6c37f37b9ed9c9
-  state_vectors_1.cc: d2c1180f5712de44aaba6501adf6161ad40c56031b555101d4f0412e182c37de
-  state_vectors_10.cc: 9c80eb0fb7c8032af2a04b3371eb21ba8786abc06cd3f9b6502ffec2edb4225c
-  state_vectors_11.cc: 3f88ca770133f20ac2a50c68edfc18533b71220d494894ee9f0f6107ef4fe506
-  state_vectors_12.cc: d575bab92d15c19849af3f43d03e43d79eae43a368e6af617af1630f14839f34
-  state_vectors_13.cc: a68bdc509c5f60c718239b6d2de8a1c1424c4e759d54832432737b342d69f66d
-  state_vectors_2.cc: 3605b3745883742f26f14e3c83fe6ecea268a88cb595f738d0c348dbff0e143e
-  state_vectors_3.cc: 31512a3a4e42e74ead68f2e3122740a141db55725bba24d7d1756d9dc5fb3cd6
-  state_vectors_4.cc: b0955ea1a60bf824b500fec55cc83d58f992489dd6444d30ef1406f313e1440b
-  state_vectors_5.cc: 6958b675049afb3f1a6f5d35dbc7209e8ce0b2521a3ea8ca8373cfcbe30eac59
-  state_vectors_6.cc: c9522d143281928bcdf1805d65331f150bf6252eb74f9aa6af42536096b36a3e
-  state_vectors_7.cc: 420fb0080a0771fb842ee506ef43fc2d4d38aea5707e4becbbc866921a943a0f
-  state_vectors_8.cc: 10bd8e99c8cb1ffc496d72243b7a3872e172576820ef1e3f70e7cd9ee38591b3
-  state_vectors_9.cc: c1b178b9f2555f054da6e4a56da8a65ec18694d3c65a587bed832ccd5f4cc95f
-  state_vectors_test.cc: 804da747ca33b3db3926dd923a359b807205d8cfa209e20b9e9f7a633e6ab457
+  state_index.tsv: bd060af88d9217280221646a21ac842910118f34d2a16159e2b0c8457b8dac00
+  state_members.tsv: 7ced9acd5fbdd5e4a1cd40448cba02ddaf43dec545e389a063a4c09a017a005c
+  state_vectors.cc: 4fba1fe99ef0a0e106e191aa103cd750b7efdd6d01178d5b2a60f829d92c5492
+  state_vectors.h: afb6edeef6aa697932a041c394cc2b1d2d31baeeffa2d51ed091e093e3c8a81d
+  state_vectors_0.cc: 9b500190861c4838b7f70ad4819e0c54c1057ea8b8660190d962ffab07383e13
+  state_vectors_1.cc: 176fe363d1313f3dda739f4d8dfdf07b89addea6706895578992dd7cb8ce9673
+  state_vectors_10.cc: c884c37e61bbe1a85c78c4a1d0c1b8b6f9eb1782395519070944c9f8b7567610
+  state_vectors_11.cc: 813ad171d8bfd9fb2088a511a34c19495223a497cb8f177142e7b4128cc7a673
+  state_vectors_12.cc: 83104152d1105ad262b375160f1facd5c6724c9c320aa51205e65a00821be385
+  state_vectors_13.cc: 10f56d29a19bc56d8bdd5fdf7d575904ee3d74ef27b9ac9311a9fe012d54fe4f
+  state_vectors_2.cc: e10c0c1a8c65c440094d0d1b8f427eacf4a5b6de377ea83d1ce613a0b1132ab2
+  state_vectors_3.cc: 0e81700629fce5b7e0b6e412e61b1a7cac414c9ba9f77e05af4f7098e538b5e9
+  state_vectors_4.cc: 73b9bb2a24554655d8c23e1205ddd86a1bc604ee9d97dcaba89bd101c221ca16
+  state_vectors_5.cc: 4f8e902b0afe64920b8fedca03871d6ae7274d12ecddcee1f95ce9fa6be5493c
+  state_vectors_6.cc: 942ed6c3bfea44119baa74859ba26b51c733b21ec816490b40f215584a33d070
+  state_vectors_7.cc: bfbced9505df4c6e51e0da173ab453ea3e92ab5f115c19ca0121e905612b5228
+  state_vectors_8.cc: 42db04fb70412be47654d92fafc3cae57c562dac8722ad430284e70594a5c734
+  state_vectors_9.cc: f7350c8f22c5d6d809a70087a7af9a67f0c2787a3dfa7398cb0322c6c8bda5f6
+  state_vectors_test.cc: ed607cd9896a6254cac813509aa9f317cd1d8959c10c261b7682a745268f53e6
   tables.h: bdb613984b2ba91550ae9c20eeea1cb354f35919f3a1f6e896c584f5ebaba31f
   verification.cc: a8e00e45da53ed510dea3bcd90c9bedc1bf29f4e8e3d9258a52ba29d42cb4eeb
   vocabulary.cc: 5b2d42d9e233326d8f96540e79dff28c1ae0129d9ba17b8bd251a7bfce0fc143
@@ -187,35 +179,34 @@ formatted_source_bytes:
   cli_support.h: 663
   entry.cc: 235093
   generated_model_test.cc: 180608
-  generated_transition_test.cc: 1866998
-  language_modeling_head.cc: 5372
-  mlp_0.cc: 827
-  mlp_1.cc: 827
-  mlp_2.cc: 827
-  mlp_3.cc: 5262
-  model.cc: 1155
+  generated_transition_test.cc: 1745568
+  language_modeling_head.cc: 5371
+  mlp_0.cc: 866
+  mlp_1.cc: 866
+  mlp_2.cc: 866
+  mlp_3.cc: 5299
+  model.cc: 1163
   model.h: 385
   prompt_encoder.cc: 3759341
-  state_index.tsv: 1182065
-  state_members.tsv: 917871
-  state_relabeling.tsv: 75816
-  state_vectors.cc: 343598
-  state_vectors.h: 1411
-  state_vectors_0.cc: 1289997
-  state_vectors_1.cc: 1290207
-  state_vectors_10.cc: 1290410
-  state_vectors_11.cc: 1290405
-  state_vectors_12.cc: 1290371
-  state_vectors_13.cc: 1045425
-  state_vectors_2.cc: 1290152
-  state_vectors_3.cc: 1290456
-  state_vectors_4.cc: 1290381
-  state_vectors_5.cc: 1289976
-  state_vectors_6.cc: 1290744
-  state_vectors_7.cc: 1290542
-  state_vectors_8.cc: 1290390
-  state_vectors_9.cc: 1290379
-  state_vectors_test.cc: 508448
+  state_index.tsv: 692304
+  state_members.tsv: 900484
+  state_vectors.cc: 286825
+  state_vectors.h: 1506
+  state_vectors_0.cc: 1315947
+  state_vectors_1.cc: 1315677
+  state_vectors_10.cc: 1316590
+  state_vectors_11.cc: 1316619
+  state_vectors_12.cc: 1316339
+  state_vectors_13.cc: 1066410
+  state_vectors_2.cc: 1316656
+  state_vectors_3.cc: 1316215
+  state_vectors_4.cc: 1316529
+  state_vectors_5.cc: 1316229
+  state_vectors_6.cc: 1315871
+  state_vectors_7.cc: 1316906
+  state_vectors_8.cc: 1316182
+  state_vectors_9.cc: 1316115
+  state_vectors_test.cc: 363994
   tables.h: 635
   verification.cc: 395439
   vocabulary.cc: 123281

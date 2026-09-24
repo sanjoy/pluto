@@ -22,6 +22,9 @@ struct GeneratorOptions {
   bool compaction = false;  // Identify compatible states within each boundary.
   // Only changes transition-code representation, not the state partition.
   bool compact_transitions = false;
+  // Final pass: share the input/output ID of each bijective MLP. Keeps the
+  // explicit MLP operation as a guarded identity and preserves both vectors.
+  bool mlp_pair_compaction = false;
   CompactionOptions compaction_options;
   std::function<void(const ProgressEvent&)> progress;
 };

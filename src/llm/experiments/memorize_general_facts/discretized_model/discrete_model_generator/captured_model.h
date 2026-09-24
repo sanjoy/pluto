@@ -39,6 +39,13 @@ struct CapturedState {
   int boundary = 0;  // Entry=0; block l attention=2*l+1, MLP=2*l+2.
   // Original IDs in this equivalence class; absent when no map is available.
   std::optional<std::vector<int>> members;
+  // A bijective MLP may share its input symbol with its output. In that case
+  // boundary is the odd attention boundary and this is boundary + 1. The MLP
+  // itself remains an explicit identity map between those two boundaries.
+  std::optional<int> shared_boundary;
+  bool HasBoundary(int candidate) const {
+    return boundary == candidate || shared_boundary == candidate;
+  }
   auto operator<=>(const CapturedState&) const = default;
 };
 

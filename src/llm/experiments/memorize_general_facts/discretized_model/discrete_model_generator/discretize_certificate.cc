@@ -44,6 +44,10 @@ bool Covers(const StateTable& table, const std::vector<int>& states) {
 absl::StatusOr<CertificateResult> CertifyCompaction(
     const CapturedModel& model) {
   RETURN_IF_ERROR(internal::ValidateTables(model, false));
+  for (const auto& state : model.states)
+    if (state.shared_boundary)
+      return absl::FailedPreconditionError(
+          "compaction certificates must precede MLP pair compaction");
   const int layers = model.metadata.layers;
   std::vector<std::vector<int>> by_stage(2 * layers + 1);
   for (const auto& row : model.states)

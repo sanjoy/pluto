@@ -8,7 +8,9 @@ namespace pluto::llm::discretized::gen::internal {
 // Immutable original-vector rows, backed by static generated arrays.
 struct StateVectorShard {
   absl::Span<const int> original_ids;  // One capture-state ID per row.
-  absl::Span<const uint16_t> words;    // Row-major exact BF16 words.
+  absl::Span<const int>
+      original_boundaries;           // Original residual stage per row.
+  absl::Span<const uint16_t> words;  // Row-major exact BF16 words.
 };
 // Prints every original activation in one compacted hidden state.
 // Unknown IDs fail without output; formatting on output is preserved.

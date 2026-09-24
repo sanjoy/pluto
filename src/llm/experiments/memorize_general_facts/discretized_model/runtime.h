@@ -109,7 +109,9 @@ struct DiscreteModel {
   // (Compact token, absolute position) -> token-plus-position residual symbol.
   PositionEmbedding& position_embedding;
   // Prints every distinct captured vector represented by this hidden state,
-  // including original IDs and exact BF16 bits. NotFound means an unknown
+  // including original IDs, original boundaries, and exact BF16 bits. A
+  // paired MLP symbol retains both its pre- and post-MLP vectors; sharing an
+  // ID does not assert equality of those vectors. NotFound means an unknown
   // hidden state (vocabulary IDs are not hidden states). Empty if this model
   // has no vector archive. Inspection does not change inference or formatting
   // settings on the supplied stream; stream errors return a failed status.

@@ -15,6 +15,7 @@
 #include "gtest/gtest.h"
 #include "src/llm/experiments/memorize_general_facts/discretized_model/discrete_model_generator/captured_model_util.h"
 #include "src/llm/experiments/memorize_general_facts/discretized_model/discrete_model_generator/captured_state_vectors.h"
+#include "src/llm/experiments/memorize_general_facts/discretized_model/discrete_model_generator/mlp_pair_compaction.h"
 #include "src/llm/experiments/memorize_general_facts/discretized_model/discrete_model_generator/state_compactor.h"
 #include "src/util/status_macros.h"
 
@@ -65,13 +66,15 @@ absl::StatusOr<CaptureFixture> Capture(int width, int sample_count = 3,
   CaptureFixture fixture;
   ASSIGN_OR_RETURN(fixture.model, BuildModel(metadata, samples, -1,
                                              &fixture.vectors.original_states));
+  for (const auto& state : fixture.model.states)
+    fixture.vectors.original_boundaries.emplace(state.id, state.boundary);
   return fixture;
 }
 
 std::vector<int> BoundaryStates(const CapturedModel& model, int boundary) {
   std::vector<int> states;
   for (const auto& state : model.states)
-    if (state.boundary == boundary)
+    if (state.HasBoundary(boundary))
       states.push_back(state.id);
   return states;
 }
@@ -101,7 +104,7 @@ void ExpectOriginalMembership(const CapturedModel& model,
     ASSERT_FALSE(state.members->empty()) << state.id;
     for (int member : *state.members) {
       ASSERT_TRUE(original_boundaries.contains(member)) << member;
-      EXPECT_EQ(original_boundaries.at(member), state.boundary);
+      EXPECT_TRUE(state.HasBoundary(original_boundaries.at(member)));
       EXPECT_TRUE(original.vectors.original_states.contains(member));
       EXPECT_TRUE(seen.insert(member).second) << member;
     }
@@ -149,6 +152,13 @@ std::string WithoutWhitespace(std::string text) {
   return text;
 }
 
+std::string BoundaryNameForTest(int boundary) {
+  if (boundary == 0)
+    return "token_plus_position_embedding";
+  return "block_" + std::to_string((boundary - 1) / 2) +
+         (boundary % 2 ? ".after_attention_residual" : ".after_mlp_residual");
+}
+
 void ExpectAllVectorsEmitted(const CapturedModel& model,
                              const CapturedStateVectors& vectors) {
   const auto rendered = RenderStateVectors(model, vectors);
@@ -185,14 +195,12 @@ void ExpectAllVectorsEmitted(const CapturedModel& model,
     states.emplace(state.id, &state);
   const auto printer = WithoutWhitespace(rendered->at("state_vectors.cc"));
   std::string original_ids = "constintkOriginalIds[]={";
+  std::string original_boundaries = "constintkOriginalBoundaries[]={";
   size_t offset = 0;
   for (const auto& [id, state] : states) {
-    const auto boundary =
-        state->boundary == 0
-            ? std::string("token_plus_position_embedding")
-            : "block_" + std::to_string((state->boundary - 1) / 2) +
-                  (state->boundary % 2 ? ".after_attention_residual"
-                                       : ".after_mlp_residual");
+    auto boundary = BoundaryNameForTest(state->boundary);
+    if (state->shared_boundary)
+      boundary += "+" + BoundaryNameForTest(*state->shared_boundary);
     ASSERT_TRUE(state->members.has_value());
     auto members = *state->members;
     std::sort(members.begin(), members.end());
@@ -200,12 +208,20 @@ void ExpectAllVectorsEmitted(const CapturedModel& model,
                            std::to_string(offset) + "," +
                            std::to_string(members.size()) + "}";
     EXPECT_NE(printer.find(index_row), std::string::npos) << id;
-    for (int member : members)
+    for (int member : members) {
       original_ids += std::to_string(member) + ',';
+      const int original_boundary =
+          vectors.original_boundaries.empty()
+              ? state->boundary
+              : vectors.original_boundaries.at(member);
+      original_boundaries += std::to_string(original_boundary) + ',';
+    }
     offset += members.size();
   }
   original_ids += "};";
+  original_boundaries += "};";
   EXPECT_NE(shard.find(original_ids), std::string::npos);
+  EXPECT_NE(shard.find(original_boundaries), std::string::npos);
 }
 
 TEST(StateVectorCodegenTest, CapturePreservesEveryDistinctVectorAtActualWidth) {
@@ -271,6 +287,110 @@ TEST(StateVectorCodegenTest, RelabelWithoutCompactionKeepsOriginalVectorIds) {
   ExpectAllVectorsEmitted(*relabeled, captured->vectors);
 }
 
+TEST(StateVectorCodegenTest, SharedMlpSymbolsKeepBothBoundariesAndEveryVector) {
+  const auto captured = Capture(10);
+  ASSERT_TRUE(captured.ok()) << captured.status();
+  const auto compacted = CompactModel(captured->model);
+  ASSERT_TRUE(compacted.ok()) << compacted.status();
+  const auto relabeled = RelabelMlpOutputs(*compacted);
+  ASSERT_TRUE(relabeled.ok()) << relabeled.status();
+  const auto paired = CompactMlpPairs(*relabeled);
+  ASSERT_TRUE(paired.ok()) << paired.status();
+  ASSERT_EQ(paired->states.size(), 3u);
+  size_t original_count = 0;
+  int shared_count = 0;
+  for (const auto& state : paired->states) {
+    ASSERT_TRUE(state.members.has_value());
+    original_count += state.members->size();
+    if (!state.shared_boundary)
+      continue;
+    ++shared_count;
+    // Three original pre-MLP activations and three post-MLP activations.
+    EXPECT_EQ(state.members->size(), 6u);
+    std::map<int, int> counts;
+    for (int member : *state.members)
+      ++counts[captured->vectors.original_boundaries.at(member)];
+    EXPECT_EQ(counts[state.boundary], 3);
+    EXPECT_EQ(counts[*state.shared_boundary], 3);
+  }
+  EXPECT_EQ(shared_count, 2);
+  EXPECT_EQ(original_count, captured->vectors.original_states.size());
+  ExpectOriginalMembership(*paired, *captured);
+  ExpectAllVectorsEmitted(*paired, captured->vectors);
+  const auto emitted = RenderStateVectors(*paired, captured->vectors);
+  ASSERT_TRUE(emitted.ok()) << emitted.status();
+  const auto source = WithoutWhitespace(emitted->at("state_vectors.cc"));
+  EXPECT_NE(source.find(
+                "block_0.after_attention_residual+block_0.after_mlp_residual"),
+            std::string::npos);
+  EXPECT_NE(source.find(
+                "block_1.after_attention_residual+block_1.after_mlp_residual"),
+            std::string::npos);
+}
+
+TEST(StateVectorCodegenTest, SharedStatesRequireCompleteCorrectBoundaries) {
+  const auto captured = Capture(13);
+  ASSERT_TRUE(captured.ok()) << captured.status();
+  const auto paired = CompactMlpPairs(captured->model);
+  ASSERT_TRUE(paired.ok()) << paired.status();
+  const auto shared = std::find_if(paired->states.begin(), paired->states.end(),
+                                   [](const CapturedState& state) {
+                                     return state.shared_boundary.has_value();
+                                   });
+  ASSERT_NE(shared, paired->states.end());
+  ASSERT_TRUE(shared->members.has_value());
+  const int original = shared->members->front();
+  for (int defect = 0; defect < 6; ++defect) {
+    SCOPED_TRACE(defect);
+    auto invalid = captured->vectors;
+    if (defect == 0)
+      invalid.original_boundaries.clear();
+    if (defect == 1)
+      invalid.original_boundaries.erase(original);
+    if (defect == 2)
+      invalid.original_boundaries.emplace(1000000, 1);
+    if (defect == 3)
+      invalid.original_boundaries.at(original) = 0;
+    if (defect == 4) {
+      invalid.original_boundaries.erase(original);
+      invalid.original_boundaries.emplace(1000000, 1);
+    }
+    if (defect == 5)
+      for (int member : *shared->members)
+        invalid.original_boundaries.at(member) = shared->boundary;
+    EXPECT_FALSE(RenderStateVectors(*paired, invalid).ok());
+  }
+}
+
+TEST(StateVectorCodegenTest, BoundaryMetadataMayBeInferredOnlyWithoutSharing) {
+  const auto captured = Capture(10);
+  ASSERT_TRUE(captured.ok()) << captured.status();
+  auto legacy = captured->vectors;
+  legacy.original_boundaries.clear();
+  const auto expected = RenderStateVectors(captured->model, captured->vectors);
+  const auto inferred = RenderStateVectors(captured->model, legacy);
+  ASSERT_TRUE(expected.ok()) << expected.status();
+  ASSERT_TRUE(inferred.ok()) << inferred.status();
+  EXPECT_EQ(*inferred, *expected);
+
+  const int original = captured->model.states.front().id;
+  auto invalid = captured->vectors;
+  invalid.original_boundaries.at(original) = 1;
+  EXPECT_FALSE(RenderStateVectors(captured->model, invalid).ok());
+}
+
+TEST(StateVectorCodegenTest, RejectsInvalidSharedBoundaryMetadata) {
+  const auto captured = Capture(10);
+  ASSERT_TRUE(captured.ok()) << captured.status();
+  for (const auto& [primary, secondary] :
+       {std::pair{0, 1}, std::pair{1, 3}, std::pair{2, 3}, std::pair{3, 5}}) {
+    auto invalid = captured->model;
+    invalid.states.front().boundary = primary;
+    invalid.states.front().shared_boundary = secondary;
+    EXPECT_FALSE(RenderStateVectors(invalid, captured->vectors).ok());
+  }
+}
+
 TEST(StateVectorCodegenTest, EmissionDoesNotDependOnContainerIterationOrder) {
   const auto captured = Capture(10);
   ASSERT_TRUE(captured.ok()) << captured.status();
@@ -284,9 +404,12 @@ TEST(StateVectorCodegenTest, EmissionDoesNotDependOnContainerIterationOrder) {
   for (auto& state : compacted->states) {
     ASSERT_TRUE(state.members.has_value());
     std::reverse(state.members->begin(), state.members->end());
-    for (int member : *state.members)
+    for (int member : *state.members) {
       reordered.original_states.emplace(
           member, captured->vectors.original_states.at(member));
+      reordered.original_boundaries.emplace(
+          member, captured->vectors.original_boundaries.at(member));
+    }
   }
   const auto actual = RenderStateVectors(*compacted, reordered);
   ASSERT_TRUE(actual.ok()) << actual.status();
@@ -303,6 +426,7 @@ TEST(StateVectorCodegenTest, OneCompactedStateCanSpanMultipleSourceShards) {
     state.members->push_back(original);
     captured->vectors.original_states.emplace(
         original, std::vector<uint16_t>{static_cast<uint16_t>(index + 1)});
+    captured->vectors.original_boundaries.emplace(original, state.boundary);
   }
   captured->model.stats.membership_original_states =
       captured->vectors.original_states.size();

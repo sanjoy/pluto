@@ -117,15 +117,21 @@ absl::Status ValidateTables(const CapturedModel& model, bool full) {
   const int layers = model.metadata.layers, vocab = model.metadata.vocab_size;
   if (model.states.size() > static_cast<size_t>(INT32_MAX - vocab))
     return Error("too many discrete states");
-  absl::flat_hash_map<int, int> states;
+  absl::flat_hash_map<int, const CapturedState*> states;
   absl::flat_hash_set<int> members;
   std::vector<int> stage_sizes(2 * layers + 1);
   for (const auto& row : model.states) {
     if (row.id < vocab || row.boundary < 0 || row.boundary > 2 * layers)
       return Error("invalid state ID or boundary");
-    if (!states.emplace(row.id, row.boundary).second)
+    if (row.shared_boundary &&
+        (row.boundary % 2 != 1 || row.boundary >= 2 * layers ||
+         *row.shared_boundary != row.boundary + 1))
+      return Error("shared state must span one adjacent attention/MLP pair");
+    if (!states.emplace(row.id, &row).second)
       return Error("duplicate state ID");
     ++stage_sizes[row.boundary];
+    if (row.shared_boundary)
+      ++stage_sizes[*row.shared_boundary];
     if (row.members) {
       if (row.members->empty())
         return Error("original-state membership must not be empty");
@@ -138,7 +144,7 @@ absl::Status ValidateTables(const CapturedModel& model, bool full) {
     return Error("every boundary must contain at least one state");
   auto state_at = [&](int value, int stage) -> absl::Status {
     auto found = states.find(value);
-    if (found == states.end() || found->second != stage)
+    if (found == states.end() || !found->second->HasBoundary(stage))
       return Error(absl::StrCat("state ", value,
                                 " does not belong to boundary ", stage));
     return absl::OkStatus();
@@ -190,6 +196,17 @@ absl::Status ValidateTables(const CapturedModel& model, bool full) {
         return Error("duplicate MLP key");
     }
   }
+  for (const auto& state : model.states)
+    if (state.shared_boundary) {
+      const auto& rows =
+          model.transformers[(state.boundary - 1) / 2].mlp.transitions;
+      const auto identity = std::find_if(
+          rows.begin(), rows.end(), [&](const StateTransition& row) {
+            return row.input == state.id && row.output == state.id;
+          });
+      if (identity == rows.end())
+        return Error("shared state must have an explicit identity MLP row");
+    }
   absl::flat_hash_set<int> head_keys;
   for (const auto& row : model.language_modeling_head.transitions) {
     RETURN_IF_ERROR(state_at(row.input, 2 * layers));
@@ -221,8 +238,9 @@ absl::Status ValidateTables(const CapturedModel& model, bool full) {
     }
   }
   const auto& stats = model.stats;
-  if (stats.state_compactions < 0 || stats.attempted_seeds < 0 ||
-      stats.accepted_seeds < 0 || stats.cached_rejections < 0)
+  if (stats.state_compactions < 0 || stats.mlp_pair_compactions < 0 ||
+      stats.attempted_seeds < 0 || stats.accepted_seeds < 0 ||
+      stats.cached_rejections < 0)
     return Error("compaction counters must not be negative");
   int64_t induced_total = 0;
   for (const auto& compaction : stats.accepted_compactions) {
@@ -410,6 +428,10 @@ absl::StatusOr<CapturedModel> RestoreMembership(
     const CapturedModel& model, const CapturedModel& original_model) {
   RETURN_IF_ERROR(ValidateModel(model));
   RETURN_IF_ERROR(ValidateModel(original_model));
+  for (const auto& state : original_model.states)
+    if (state.shared_boundary)
+      return absl::FailedPreconditionError(
+          "membership source must precede MLP pair compaction");
   if (model.metadata != original_model.metadata)
     return Error("membership source disagrees on model metadata");
   IntegerModel quotient(model);
@@ -462,15 +484,15 @@ absl::StatusOr<CapturedModel> RestoreMembership(
       return Error("membership source disagrees on a required token label");
   }
   std::map<int, std::vector<int>> members;
-  absl::flat_hash_map<int, int> stages;
+  absl::flat_hash_map<int, const CapturedState*> states;
   for (const auto& row : model.states) {
     members[row.id] = {};
-    stages[row.id] = row.boundary;
+    states[row.id] = &row;
   }
   for (const auto& row : original_model.states) {
     auto found = mapping.find(row.id);
-    if (found == mapping.end() || !stages.contains(found->second) ||
-        stages[found->second] != row.boundary)
+    if (found == mapping.end() || !states.contains(found->second) ||
+        !states.at(found->second)->HasBoundary(row.boundary))
       return Error("membership state is missing or crosses a boundary");
     auto& group = members[found->second];
     if (row.members)

@@ -28,6 +28,8 @@ absl::Status ValidateModel(const CapturedModel& model);
 absl::StatusOr<CapturedModel> BuildModel(
     const ModelMetadata& metadata, const std::vector<ExecutionSample>& samples,
     int expected_samples = -1, StateVectorHints* vector_hints = nullptr);
+// Recovers original memberships, including unions across a paired identity
+// MLP's two boundaries. The original model must not have shared states itself.
 absl::StatusOr<CapturedModel> RestoreMembership(
     const CapturedModel& model, const CapturedModel& original_model);
 absl::StatusOr<VerificationResult> EvaluateModel(const CapturedModel& model);

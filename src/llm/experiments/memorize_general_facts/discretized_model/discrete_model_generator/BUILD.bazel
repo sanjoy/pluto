@@ -35,7 +35,10 @@ cc_library(
 cc_library(
     name = "captured_state_vectors",
     hdrs = ["captured_state_vectors.h"],
-    deps = [":state_vector_hints"],
+    deps = [
+        ":state_vector_hints",
+        "@abseil-cpp//absl/container:flat_hash_map",
+    ],
 )
 
 cc_library(
@@ -102,6 +105,22 @@ cc_library(
     srcs = [],
     hdrs = ["serialized_cpp_program.h"],
     deps = [],
+)
+
+cc_library(
+    name = "mlp_pair_compaction",
+    srcs = ["mlp_pair_compaction.cc"],
+    hdrs = ["mlp_pair_compaction.h"],
+    deps = [
+        ":captured_model",
+        ":captured_model_util",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+    ],
 )
 
 cc_library(
@@ -266,6 +285,7 @@ cc_library(
         ":code_generator",
         ":generator_report",
         ":model_recorder",
+        ":mlp_pair_compaction",
         ":utils",
         "//src/util:status_macros",
         "@abseil-cpp//absl/status",
@@ -371,9 +391,23 @@ cc_test(
         ":captured_state_vectors",
         ":state_vector_codegen",
         ":state_compactor",
+        ":mlp_pair_compaction",
         "//src/util:status_macros",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "mlp_pair_compaction_test",
+    size = "small",
+    srcs = ["mlp_pair_compaction_test.cc"],
+    deps = [
+        ":captured_model_util",
+        ":mlp_pair_compaction",
+        ":state_compactor",
+        "@abseil-cpp//absl/status",
         "@googletest//:gtest_main",
     ],
 )
@@ -467,6 +501,7 @@ cc_test(
 test_suite(
     name = "generator_tests",
     tests = [
+        ":mlp_pair_compaction_test",
         ":state_vector_codegen_test",
         ":generator_io_test",
         ":naming_utils_test",

@@ -34,6 +34,9 @@ ABSL_FLAG(bool, compaction, false,
           "Compact compatible states within each residual boundary");
 ABSL_FLAG(bool, compact_transitions, false,
           "Emit compact transition programs instead of private tables");
+ABSL_FLAG(
+    bool, mlp_pair_compaction, false,
+    "Share each bijective MLP input/output state ID; retain identity MLPs");
 ABSL_FLAG(int, compaction_neighbors, 8,
           "Near-neighbor candidates per state in non-exhaustive search");
 ABSL_FLAG(int, compaction_max_passes, 100, "Maximum state compaction passes");
@@ -91,6 +94,7 @@ int main(int argc, char** argv) {
   options.state_index = absl::GetFlag(FLAGS_state_index);
   options.compaction = absl::GetFlag(FLAGS_compaction);
   options.compact_transitions = absl::GetFlag(FLAGS_compact_transitions);
+  options.mlp_pair_compaction = absl::GetFlag(FLAGS_mlp_pair_compaction);
   options.compaction_options.neighbors =
       absl::GetFlag(FLAGS_compaction_neighbors);
   options.compaction_options.max_passes =

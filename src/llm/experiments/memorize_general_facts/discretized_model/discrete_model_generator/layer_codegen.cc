@@ -1,5 +1,6 @@
 #include "src/llm/experiments/memorize_general_facts/discretized_model/discrete_model_generator/layer_codegen.h"
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -58,16 +59,28 @@ absl::Status RenderLayerSources(const CapturedModel& model,
                 "future token is consulted."));
     ASSIGN_OR_RETURN(auto mlp, RenderMap(model.transformers[block].mlp,
                                          "Lookup", nullptr, compact));
-    install(absl::StrCat("mlp_", block, ".cc"), mlp.source, "Map",
-            absl::StrCat("GeneratedMlp", block),
-            absl::StrCat(
-                "Block ", block, ": pointwise MLP residual transition.\n",
-                compact ? "Symbol renaming may expose a guarded offset. This "
-                          "function and\n"
-                        : "Exact sorted lookup implements this function. This "
-                          "function and\n",
-                "both boundary alphabets remain separate; it is not a layer "
-                "bypass."));
+    const bool shared = std::any_of(
+        model.states.begin(), model.states.end(),
+        [&](const CapturedState& state) {
+          return state.boundary == 2 * static_cast<int>(block) + 1 &&
+                 state.shared_boundary.has_value();
+        });
+    const std::string description =
+        shared
+            ? "Paired input/output IDs make this a guarded identity.\n"
+              "Original pre/post-MLP vectors remain distinct archived "
+              "observations.\n"
+              "The MLP call and support check remain explicit."
+            : absl::StrCat(
+                  compact ? "Symbol renaming may expose a guarded offset.\n"
+                          : "Exact sorted lookup implements this function.\n",
+                  "Both boundary alphabets remain separate; it is not a layer "
+                  "bypass.");
+    install(
+        absl::StrCat("mlp_", block, ".cc"), mlp.source, "Map",
+        absl::StrCat("GeneratedMlp", block),
+        absl::StrCat("Block ", block, ": pointwise MLP residual transition.\n",
+                     description));
   }
   ASSIGN_OR_RETURN(auto head, RenderMap(model.language_modeling_head, "Lookup",
                                         &names, compact));

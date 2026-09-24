@@ -23,8 +23,9 @@ configuration, using the identity baseline of the canonical-token-order rerun:
 
 The exact capture contains **113,132 distinct internal states**, from 126,882
 state occurrences (14,098 real token positions across nine boundaries).
-A bounded compaction pass reduces this to **6,069 states**, a **94.64%**
-reduction. The 4,475 vocabulary symbols are separate from that count.
+A bounded within-boundary compaction pass reduces this to **6,069 states**.
+Pairing each bijective MLP's input and output reduces that further to **3,060
+distinct state IDs**. The 4,475 vocabulary symbols are separate from that count.
 
 | Boundary | After attention + residual | After MLP + residual |
 | --- | ---: | ---: |
@@ -34,6 +35,10 @@ reduction. The 4,475 vocabulary symbols are separate from that count.
 | Block 2 | 37 | 37 |
 | Block 3 | 2,900 | 2,900 |
 
+Each block's two columns now refer to the **same IDs**, not two disjoint sets.
+Thus the unique count is `51 + 35 + 37 + 37 + 2900 = 3060`; the per-boundary
+counts still sum to 6,069 because a paired symbol appears on both sides.
+
 Compaction stopped at its one-pass limit: **neither pairwise irreducibility nor
 global minimality is claimed**. State count measures the symbolic alphabet,
 not the information stored in the history-dependent attention functions.
@@ -41,9 +46,10 @@ not the information stored in the history-dependent attention functions.
 The nearest-candidate pass alone left 6,117 states. An exact pointwise pass
 then identified MLP inputs with equal current outputs, removing 17, 16, and 15
 states from the first three attention-output boundaries: **48 additional
-compactions**, with no changed MLP outputs. Both sides of every MLP remain
-separate boundaries. The resulting MLP maps are one-to-one on their supported
-inputs and can all be emitted as guarded state-ID offsets.
+compactions**, with no changed MLP outputs. The resulting MLP maps are one-to-one
+on their supported inputs. A final pass identifies each pair `x, MLP(x)`,
+removing **3,009 additional IDs**. Every MLP remains an explicit guarded identity:
+unknown inputs still fail rather than passing through unchecked.
 
 Previous generated models remain in Git history: the width-13/context-32 model
 had 6,249 compacted states, and the eight-block/width-16 model had 6,514. Their
@@ -74,7 +80,10 @@ out-of-corpus sequence is not guaranteed.
 
 The generated model preserves every distinct originally captured BF16 residual
 vector. Compaction records their membership in each resulting hidden state;
-subsequent state renaming preserves that membership too. These are original
+subsequent state renaming preserves that membership too. A paired MLP state
+contains both pre-MLP and post-MLP vectors, each labeled with its original
+boundary. Sharing a symbol does **not** assert numerical equality of those
+activations. These are original
 vectors, not centroids or nearest neighbors, and repeated corpus occurrences of
 the same exact vector do not produce repeated entries.
 
@@ -118,8 +127,11 @@ The compiled model executes these pure operations in order:
 4. `final hidden state -> vocabulary token`, including final LayerNorm and
    the tied language modeling head's deterministic top-1 selection.
 
-Every block remains present. No compaction crosses a boundary or replaces the
-network with a sentence-completion dictionary. Attention receives the entire
+Every block and MLP call remains present. Within-boundary compaction keeps
+boundary alphabets separate; the explicit final MLP-pair pass shares symbols
+only across a bijective MLP's input/output boundary. It never combines different
+blocks or attention inputs with their outputs, and never replaces the network
+with a sentence-completion dictionary. Attention receives the entire
 ordered prefix, never a sentence ID. Expected suffixes are verification
 fixtures, not prediction tables consulted by the model.
 
@@ -142,10 +154,14 @@ symbols are interchangeable from an equal output in just one context.
 `--compact_transitions` separately condenses the finite transition functions.
 It shares attention-prefix/suffix programs and uses range checks, masks, or
 arithmetic where equivalent. This does not perform additional state compaction.
-For this model, the final MLP and language modeling head use vocabulary-aligned
-state IDs, and the earlier MLPs use contiguous guarded offsets. Such arithmetic
-patterns follow from the chosen symbolic names, not proof that the original
-neural layers are affine.
+Before pairing, this exposes guarded offsets for the MLPs. The final
+`--mlp_pair_compaction` pass then shares each MLP input/output pair and updates
+every downstream consumer consistently. It requires complete bijections and
+fails rather than approximating non-bijective or incomplete maps. The MLPs
+become identities on their existing support; the final shared states remain
+vocabulary-aligned for the language modeling head. These arithmetic patterns
+follow from symbolic names, not proof that the neural layers are affine or
+identities. No further within-boundary compaction/relabeling runs after pairing.
 
 ## Generate from the checkpoint
 
@@ -165,12 +181,14 @@ bazel run -c opt //src/llm/experiments/memorize_general_facts/discretized_model/
   --prompt_tokens=5 --expected_samples=1024 --verify_greedy=true \
   --compaction --compaction_neighbors=4 --compaction_max_passes=1 \
   --compaction_max_attempts=150000 --compaction_exhaustive_pair_limit=0 \
-  --compact_transitions --state_index \
+  --compact_transitions --mlp_pair_compaction --state_index \
   --output=/tmp/facts-context27-width10-generated
 ```
 
-This reproduces the checked-in search configuration. Omit `--compaction` to
-keep the exact captured states. Omit `--compact_transitions` to use private
+This reproduces the checked-in search configuration. Omit both `--compaction`
+and `--mlp_pair_compaction` to keep the exact captured states. Omit only
+`--mlp_pair_compaction` to retain separate input/output alphabets for the MLPs.
+Omit `--compact_transitions` to use private
 lookup tables behind the same pure function interfaces. The model dimensions
 must match the checkpoint; legacy defaults remain eight blocks, width 16,
 context 1,024, one head, and MLP width 64.
@@ -195,12 +213,14 @@ rewrites of checked-in sources.
 verification results, compaction limits and results, and generated-file hashes.
 Optional inspection-only files provide:
 
-- `state_index.tsv`: boundary, occurrence count, observed prefix examples,
-  and original member count for each state.
+- `state_index.tsv`: boundary (or paired boundaries), occurrence count, observed
+  prefix examples, and original member count for each state. Shared-state
+  occurrence counts sum observations at both boundaries.
 - `state_members.tsv`: the complete mapping from original exact states to
   compacted classes.
-- `state_relabeling.tsv`: the subsequent within-boundary renaming used by
-  condensed transition code.
+- `state_relabeling.tsv`: within-boundary renaming when MLP pairing is disabled.
+  Pairing invalidates that intermediate map, so the paired package omits it;
+  `state_members.tsv` always describes the final state IDs.
 
 These files are not loaded by inference. Examples are observed contexts, not
 asserted semantic meanings. `vocabulary_tokens.h` gives tokens readable private

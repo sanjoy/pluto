@@ -24,6 +24,7 @@ constexpr char kRuntime[] =
 // averaged vector can accidentally replace the original BF16 words.
 struct OriginalVector {
   int id;
+  int boundary;
   const std::vector<uint16_t>* bits;
 };
 
@@ -50,6 +51,9 @@ std::string RenderShard(size_t shard, size_t width,
   std::string body = "namespace {\nconst int kOriginalIds[] = {\n";
   for (size_t row = begin; row < end; ++row)
     absl::StrAppend(&body, vectors[row].id, ",\n");
+  body += "};\nconst int kOriginalBoundaries[] = {\n";
+  for (size_t row = begin; row < end; ++row)
+    absl::StrAppend(&body, vectors[row].boundary, ",\n");
   body += "};\nconst uint16_t kWords[] = {\n";
   for (size_t row = begin; row < end; ++row) {
     absl::StrAppend(&body, "// Original state ", vectors[row].id, ".\n");
@@ -61,7 +65,8 @@ std::string RenderShard(size_t shard, size_t width,
                   "};\n}  // namespace\n\nStateVectorShard "
                   "GeneratedStateVectorShard",
                   shard, "() {\nreturn {{kOriginalIds, ", end - begin,
-                  "}, {kWords, ", (end - begin) * width, "}};\n}\n");
+                  "}, {kOriginalBoundaries, ", end - begin, "}, {kWords, ",
+                  (end - begin) * width, "}};\n}\n");
   return Source(body, "\"state_vectors.h\"",
                 "Exact original BF16 activations, for inspection only.\n"
                 "Each row preserves its original capture-state ID.");
@@ -70,14 +75,22 @@ std::string RenderShard(size_t shard, size_t width,
 std::string RenderPrinter(const std::vector<std::string>& state_rows,
                           size_t shard_count, int width) {
   std::string body = R"cpp(namespace {
+                           std::string BoundaryName(int boundary) {
+                             if (boundary == 0)
+                               return "token_plus_position_embedding";
+                             return "block_" +
+                                    std::to_string((boundary - 1) / 2) +
+                                    (boundary % 2 ? ".after_attention_residual"
+                                                  : ".after_mlp_residual");
+                           }
                            // A contiguous slice of the original vectors that
                            // form one compacted state.
                            struct StateVectorGroup {
                              int id;  // Final, possibly relabeled hidden-state
                                       // ID.
-                             const char* boundary;  // Residual boundary;
-                                                    // vectors never cross
-                                                    // layers.
+                             // One residual boundary, or both sides of a
+                             // bijective MLP that now share this symbol.
+                             const char* boundary;
                              size_t first;  // Global row offset into the
                                             // sharded archive.
                              size_t count;  // Number of distinct original
@@ -124,7 +137,9 @@ std::string RenderPrinter(const std::vector<std::string>& state_rows,
                       const auto shard = Shard(index / kVectorsPerShard);
                       const size_t row = index % kVectorsPerShard;
                       const auto bits = shard.words.subspan(row * kWidth, kWidth);
-                      text << "  original " << shard.original_ids[row] << ": [";
+                      text << "  original " << shard.original_ids[row] << " ("
+                           << BoundaryName(shard.original_boundaries[row])
+                           << "): [";
                       for (size_t channel = 0; channel < kWidth; ++channel) {
                         if (channel != 0)
                           text << ", ";
@@ -177,8 +192,9 @@ std::string RenderTest(const std::vector<std::string>& state_rows, int width) {
                   "constexpr size_t kExpectedCount = ", state_rows.size(),
                   ";\nconstexpr size_t kExpectedWidth = ", width, ";\n");
   body += R"cpp(
-    // Fingerprints commit to all IDs and exact words, independently of the data
-    // arrays: four little-endian ID bytes, followed by two per BF16 word.
+    // Fingerprints commit to IDs, original boundary labels, and exact words:
+    // four little-endian ID bytes, label bytes plus NUL, then two per BF16
+    // word.
     void HashBytes(uint64_t& hash, uint32_t value, int count) {
       for (int byte = 0; byte < count; ++byte) {
         hash ^= (value >> (8 * byte)) & 255;
@@ -204,15 +220,22 @@ std::string RenderTest(const std::vector<std::string>& state_rows, int width) {
     void CheckOriginalVector(std::string_view line, uint64_t& fingerprint) {
       ASSERT_TRUE(line.starts_with("  original "));
       line.remove_prefix(11);
-      const size_t colon = line.find(": [");
-      ASSERT_NE(colon, std::string_view::npos);
+      const size_t open = line.find(" (");
+      ASSERT_NE(open, std::string_view::npos);
       uint32_t original = 0;
       const auto id_result =
-          std::from_chars(line.data(), line.data() + colon, original);
+          std::from_chars(line.data(), line.data() + open, original);
       ASSERT_EQ(id_result.ec, std::errc{});
-      ASSERT_EQ(id_result.ptr, line.data() + colon);
+      ASSERT_EQ(id_result.ptr, line.data() + open);
       HashBytes(fingerprint, original, 4);
-      line.remove_prefix(colon + 3);
+      line.remove_prefix(open + 2);
+      const size_t close = line.find("): [");
+      ASSERT_NE(close, std::string_view::npos);
+      ASSERT_GT(close, 0u);
+      for (unsigned char byte : line.substr(0, close))
+        HashBytes(fingerprint, byte, 1);
+      HashBytes(fingerprint, 0, 1);
+      line.remove_prefix(close + 4);
       const size_t marker = line.find("] bf16=[");
       ASSERT_NE(marker, std::string_view::npos);
       const auto decimals = Components(line.substr(0, marker));
@@ -352,11 +375,25 @@ absl::StatusOr<std::map<std::string, std::string>> RenderStateVectors(
   if (model.metadata.width <= 0 || model.metadata.vocab_size < 0 ||
       model.metadata.layers < 0)
     return absl::InvalidArgumentError("invalid state-vector model dimensions");
+  const bool has_boundaries = !archive.original_boundaries.empty();
+  if (has_boundaries &&
+      archive.original_boundaries.size() != archive.original_states.size())
+    return absl::InvalidArgumentError(
+        "original boundary metadata must cover the vector archive exactly");
   std::map<int, const CapturedState*> states;
   for (const auto& state : model.states) {
     if (state.id < model.metadata.vocab_size || state.boundary < 0 ||
         state.boundary > 2 * static_cast<int64_t>(model.metadata.layers))
       return absl::InvalidArgumentError("invalid state-vector ID or boundary");
+    if (state.shared_boundary &&
+        (state.boundary % 2 != 1 ||
+         *state.shared_boundary != static_cast<int64_t>(state.boundary) + 1 ||
+         *state.shared_boundary >
+             2 * static_cast<int64_t>(model.metadata.layers)))
+      return absl::InvalidArgumentError("invalid shared MLP state boundary");
+    if (state.shared_boundary && !has_boundaries)
+      return absl::InvalidArgumentError(
+          "shared MLP states require original vector boundaries");
     if (!states.emplace(state.id, &state).second)
       return absl::InvalidArgumentError("duplicate state-vector ID");
   }
@@ -370,10 +407,16 @@ absl::StatusOr<std::map<std::string, std::string>> RenderStateVectors(
           "state-vector printing requires complete original membership");
     auto members = *state->members;
     std::sort(members.begin(), members.end());
-    state_rows.push_back(
-        absl::StrCat("{", id, ", ", Literal(BoundaryName(state->boundary)),
-                     ", ", originals.size(), ", ", members.size(), "}"));
+    std::string boundary_names = BoundaryName(state->boundary);
+    if (state->shared_boundary)
+      absl::StrAppend(&boundary_names, " + ",
+                      BoundaryName(*state->shared_boundary));
+    state_rows.push_back(absl::StrCat("{", id, ", ", Literal(boundary_names),
+                                      ", ", originals.size(), ", ",
+                                      members.size(), "}"));
     uint64_t fingerprint = 14695981039346656037ULL;
+    bool saw_primary = false;
+    bool saw_shared = false;
     for (int original : members) {
       if (original < model.metadata.vocab_size || !seen.insert(original).second)
         return absl::InvalidArgumentError(
@@ -382,6 +425,17 @@ absl::StatusOr<std::map<std::string, std::string>> RenderStateVectors(
       if (found == archive.original_states.end())
         return absl::InvalidArgumentError(
             absl::StrCat("missing original state vector ", original));
+      int original_boundary = state->boundary;
+      if (has_boundaries) {
+        const auto boundary = archive.original_boundaries.find(original);
+        if (boundary == archive.original_boundaries.end() ||
+            !state->HasBoundary(boundary->second))
+          return absl::InvalidArgumentError(
+              "original vector boundary disagrees with its compacted state");
+        original_boundary = boundary->second;
+      }
+      saw_primary |= original_boundary == state->boundary;
+      saw_shared |= state->shared_boundary == original_boundary;
       if (found->second.size() != static_cast<size_t>(model.metadata.width))
         return absl::InvalidArgumentError(
             "original state-vector width disagrees with model");
@@ -389,11 +443,17 @@ absl::StatusOr<std::map<std::string, std::string>> RenderStateVectors(
         if ((word & 0x7f80) == 0x7f80)
           return absl::InvalidArgumentError(
               "original state vector contains nonfinite BF16 data");
-      originals.push_back({original, &found->second});
+      originals.push_back({original, original_boundary, &found->second});
       HashBytes(fingerprint, static_cast<uint32_t>(original), 4);
+      for (unsigned char byte : BoundaryName(original_boundary))
+        HashBytes(fingerprint, byte, 1);
+      HashBytes(fingerprint, 0, 1);
       for (uint16_t word : found->second)
         HashBytes(fingerprint, word, 2);
     }
+    if (state->shared_boundary && (!saw_primary || !saw_shared))
+      return absl::InvalidArgumentError(
+          "shared state provenance must include both original boundaries");
     expected_rows.push_back(
         absl::StrCat(state_rows.back().substr(0, state_rows.back().size() - 1),
                      ", ", fingerprint, "ULL}"));
@@ -413,6 +473,8 @@ absl::StatusOr<std::map<std::string, std::string>> RenderStateVectors(
       "struct StateVectorShard {\n"
       "  absl::Span<const int> original_ids;  // One capture-state ID per "
       "row.\n"
+      "  absl::Span<const int> original_boundaries;  // Original residual "
+      "stage per row.\n"
       "  absl::Span<const uint16_t> words;  // Row-major exact BF16 words.\n"
       "};\n"
       "// Prints every original activation in one compacted hidden state.\n"

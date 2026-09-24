@@ -17,6 +17,30 @@ namespace fs = std::filesystem;
 
 class GeneratorTest : public GeneratorTestBase {};
 
+TEST_F(GeneratorTest, PairedMlpStatesKeepBothVectorBoundaries) {
+  options_.compaction = true;
+  options_.compact_transitions = true;
+  options_.mlp_pair_compaction = true;
+  options_.state_index = true;
+  auto result = Generate(options_);
+  ASSERT_TRUE(result.ok()) << result.status();
+  EXPECT_TRUE(EvaluateModel(*result).ok());
+  EXPECT_GT(result->stats.mlp_pair_compactions, 0);
+  for (const auto& transformer : result->transformers)
+    for (const auto& row : transformer.mlp.transitions)
+      EXPECT_EQ(row.input, row.output);
+  auto index = ReadFile(options_.output / "state_index.tsv");
+  ASSERT_TRUE(index.ok()) << index.status();
+  EXPECT_NE(
+      index->find("after_attention_residual + block_0.after_mlp_residual"),
+      std::string::npos);
+  auto printer = ReadFile(options_.output / "state_vectors.cc");
+  ASSERT_TRUE(printer.ok()) << printer.status();
+  EXPECT_NE(printer->find("after_attention_residual"), std::string::npos);
+  EXPECT_NE(printer->find("after_mlp_residual"), std::string::npos);
+  EXPECT_FALSE(fs::exists(options_.output / "state_relabeling.tsv"));
+}
+
 TEST_F(GeneratorTest, CompactionIsIndependentOfTransitionRepresentation) {
   for (bool compaction : {false, true}) {
     for (bool compact : {false, true}) {

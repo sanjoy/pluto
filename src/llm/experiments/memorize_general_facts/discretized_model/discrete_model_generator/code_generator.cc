@@ -44,6 +44,13 @@ std::string BoundaryName(int stage) {
       stage % 2 ? ".after_attention_residual" : ".after_mlp_residual");
 }
 
+std::string StateBoundaries(const CapturedState& state) {
+  std::string result = BoundaryName(state.boundary);
+  if (state.shared_boundary)
+    absl::StrAppend(&result, " + ", BoundaryName(*state.shared_boundary));
+  return result;
+}
+
 absl::StatusOr<std::string> RenderEncoder(
     const CapturedModel& model, const std::vector<std::string>& names) {
   std::map<std::string, std::vector<int>> prefixes;
@@ -304,7 +311,8 @@ absl::StatusOr<std::string> RenderStateIndex(const CapturedModel& model) {
       "# Examples are empirical captured token-prefix contexts, not semantic "
       "labels.\n"
       "# Occurrences count each real sample position once at its named "
-      "boundary, including prompt positions; no padding or repeated "
+      "boundary (summed across BOTH boundaries for a shared MLP state), "
+      "including prompt positions; no padding or repeated "
       "autoregressive passes.\n"
       "# Each example has complete compact token IDs and text preview of at "
       "most 160 original bytes; at most three distinct examples per state.\n"
@@ -320,8 +328,8 @@ absl::StatusOr<std::string> RenderStateIndex(const CapturedModel& model) {
     const auto& row = *state_ptr;
     const int state = row.id;
     absl::StrAppend(
-        &output, state, "\t", BoundaryName(row.boundary), "\t", counts[state],
-        "\t", absl::StrJoin(examples[state], " | "), "\t",
+        &output, state, "\t", StateBoundaries(row), "\t", counts[state], "\t",
+        absl::StrJoin(examples[state], " | "), "\t",
         row.members ? absl::StrCat(row.members->size()) : "unknown", "\n");
   }
   return output;
@@ -436,8 +444,8 @@ absl::StatusOr<FileMap> RenderModel(const CapturedModel& model,
     model_headers.push_back("state_vectors.h");
   files["model.cc"] =
       Source(body, "\"model.h\"",
-             "Original boundary order, with no cross-layer folding.", true,
-             kGen, model_headers);
+             "Original operation order, including explicit MLP transitions.",
+             true, kGen, model_headers);
   ASSIGN_OR_RETURN(files["prompt_encoder.cc"], RenderEncoder(model, names));
   files["verification.cc"] = RenderVerification(model, names);
   std::string test = absl::StrCat(
@@ -483,7 +491,7 @@ absl::StatusOr<FileMap> RenderModel(const CapturedModel& model,
       for (const auto& [id, row] : states) {
         std::vector<int> original = *row.members;
         std::sort(original.begin(), original.end());
-        absl::StrAppend(&members, id, "\t", BoundaryName(row.boundary), "\t[",
+        absl::StrAppend(&members, id, "\t", StateBoundaries(row), "\t[",
                         absl::StrJoin(original, ","), "]\n");
       }
       files["state_members.tsv"] = std::move(members);

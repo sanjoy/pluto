@@ -20,6 +20,7 @@
 #include "src/llm/experiments/memorize_general_facts/discretized_model/discrete_model_generator/code_generator.h"
 #include "src/llm/experiments/memorize_general_facts/discretized_model/discrete_model_generator/discretize_certificate.h"
 #include "src/llm/experiments/memorize_general_facts/discretized_model/discrete_model_generator/generator_report.h"
+#include "src/llm/experiments/memorize_general_facts/discretized_model/discrete_model_generator/mlp_pair_compaction.h"
 #include "src/llm/experiments/memorize_general_facts/discretized_model/discrete_model_generator/model_recorder.h"
 #include "src/llm/experiments/memorize_general_facts/discretized_model/discrete_model_generator/state_compactor.h"
 #include "src/llm/experiments/memorize_general_facts/discretized_model/discrete_model_generator/utils.h"
@@ -152,7 +153,9 @@ absl::StatusOr<std::string> Provenance(const GeneratorOptions& options,
       options.recorder.verify_greedy ? "true" : "false", "\n");
   AppendSection(result, "verification", FormatVerification(verification));
   AppendSection(result, "stats", FormatStatistics(model.stats));
-  if (model.stats.compaction_search &&
+  // The existing certificate only reasons about disjoint boundary alphabets.
+  // A pre-pairing search result is not a certificate for the shared alphabet.
+  if (model.stats.mlp_pair_compactions == 0 && model.stats.compaction_search &&
       model.stats.compaction_search->pairwise_compaction_complete) {
     ASSIGN_OR_RETURN(auto certificate, CertifyCompaction(model));
     AppendSection(result, "compaction_certificate",
@@ -238,6 +241,9 @@ absl::StatusOr<CapturedModel> GenerateFromModel(
   if (options.compact_transitions) {
     ASSIGN_OR_RETURN(model, RelabelMlpOutputs(model));
   }
+  if (options.mlp_pair_compaction) {
+    ASSIGN_OR_RETURN(model, CompactMlpPairs(model));
+  }
   ASSIGN_OR_RETURN(verification, EvaluateModel(model));
   ASSIGN_OR_RETURN(auto provenance, Provenance(options, model));
   ASSIGN_OR_RETURN(auto files,
@@ -248,6 +254,7 @@ absl::StatusOr<CapturedModel> GenerateFromModel(
       &provenance, "generator: generate_discretized_model (C++)\n",
       "transition_representation: ",
       options.compact_transitions ? "control_flow" : "tables",
+      "\nmlp_pair_compaction: ", options.mlp_pair_compaction ? "true" : "false",
       "\nstates: ", model.states.size(), "\nlayers: ", model.metadata.layers,
       "\nvocabulary_size: ", model.metadata.vocab_size,
       "\narchived_original_vectors: ", vectors.original_states.size(),
@@ -282,6 +289,10 @@ absl::StatusOr<CapturedModel> Generate(const GeneratorOptions& options) {
   CapturedStateVectors vectors;
   ASSIGN_OR_RETURN(auto model,
                    ModelRecorder::Record(recorder, &vectors.original_states));
+  // Retain the capture boundary independently of the final shared state: an
+  // MLP pair represents different vectors before and after that operation.
+  for (const auto& state : model.states)
+    vectors.original_boundaries.emplace(state.id, state.boundary);
   return GenerateFromModel(std::move(model), options, vectors);
 }
 

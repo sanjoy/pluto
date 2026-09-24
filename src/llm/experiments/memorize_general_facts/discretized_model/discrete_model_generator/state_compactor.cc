@@ -265,6 +265,10 @@ StateCompactor::~StateCompactor() = default;
 absl::StatusOr<std::unique_ptr<StateCompactor>> StateCompactor::Create(
     const CapturedModel& model, const StateVectorHints* vector_hints) {
   RETURN_IF_ERROR(internal::ValidateTables(model, false));
+  for (const auto& state : model.states)
+    if (state.shared_boundary)
+      return absl::FailedPreconditionError(
+          "ordinary state compaction must precede MLP pair compaction");
   if (vector_hints != nullptr) {
     for (const auto& state : model.states) {
       auto found = vector_hints->find(state.id);
@@ -537,8 +541,8 @@ absl::StatusOr<CapturedModel> CompactModel(
           continue;
         if (options.max_attempts && r.attempted >= *options.max_attempts)
           return true;
-        ASSIGN_OR_RETURN(bool compacted,
-                         compactor->TryCompact(previous->second, row.input));
+      ASSIGN_OR_RETURN(bool compacted,
+                       compactor->TryCompact(previous->second, row.input));
         if (!compacted)
           return absl::InternalError(
               "equal-output pointwise inputs could not be compacted");
@@ -553,9 +557,10 @@ absl::StatusOr<CapturedModel> CompactModel(
     // stay unchanged in this pass, so a single reverse traversal suffices.
     ASSIGN_OR_RETURN(bool budget,
                      compact_map_inputs(model.language_modeling_head, true));
-    for (int layer = model.metadata.layers - 1; layer >= 0 && !budget; --layer) {
-      ASSIGN_OR_RETURN(
-          budget, compact_map_inputs(model.transformers[layer].mlp, false));
+    for (int layer = model.metadata.layers - 1; layer >= 0 && !budget;
+         --layer) {
+    ASSIGN_OR_RETURN(budget,
+                     compact_map_inputs(model.transformers[layer].mlp, false));
     }
     ASSIGN_OR_RETURN(auto info,
                      report(CompactionPhase::kPointwisePassComplete, pass));
@@ -642,6 +647,10 @@ absl::StatusOr<CapturedModel> CompactModel(
 }
 absl::StatusOr<CapturedModel> RelabelMlpOutputs(const CapturedModel& model) {
   RETURN_IF_ERROR(internal::ValidateTables(model, false));
+  for (const auto& state : model.states)
+    if (state.shared_boundary)
+      return absl::FailedPreconditionError(
+          "MLP relabeling must precede MLP pair compaction");
   const int layers = model.metadata.layers,
             vocab_size = model.metadata.vocab_size;
   using Mapping = std::map<int, int>;

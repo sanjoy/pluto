@@ -11,7 +11,9 @@ namespace pluto::llm::discretized::generator {
 
 // Emits an inspection-only CPU printer and sharded, exact BF16 vector data.
 // Every state must name its original members, and the archive must cover those
-// members exactly. The generated printer never participates in inference.
+// members exactly. Shared MLP symbols require each original vector's boundary;
+// an empty boundary archive is accepted only for legacy, unshared models.
+// The generated printer never participates in inference.
 absl::StatusOr<std::map<std::string, std::string>> RenderStateVectors(
     const CapturedModel& model, const CapturedStateVectors& vectors);
 

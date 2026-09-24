@@ -91,7 +91,9 @@ struct ModelStatistics {
   std::vector<int> states_per_stage;
   int64_t attempted_seeds = 0;
   int64_t accepted_seeds = 0;
-  int64_t state_compactions = 0;
+  int64_t state_compactions = 0;  // Reductions within individual boundaries.
+  // Reductions from sharing each bijective MLP's input/output state IDs.
+  int64_t mlp_pair_compactions = 0;
   int64_t cached_rejections = 0;
   std::vector<CompactionRecord> accepted_compactions;
   std::optional<VerificationResult> verification;
