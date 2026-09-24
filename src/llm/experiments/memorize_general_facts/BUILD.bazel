@@ -77,6 +77,7 @@ cc_binary(
     deps = [
         ":attention_inspection",
         ":memorize_general_facts_cli",
+        ":token_corpus",
         "//src/cuda:buffer",
         "//src/cuda:executor",
         "//src/cuda:page_locked_host_array",
@@ -104,6 +105,46 @@ cc_binary(
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings",
         "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_library(
+    name = "token_corpus",
+    srcs = ["token_corpus.cc"],
+    hdrs = ["token_corpus.h"],
+    deps = [
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset:tokenizer",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/memory",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "token_corpus_test",
+    srcs = ["token_corpus_test.cc"],
+    deps = [
+        ":token_corpus",
+        "@abseil-cpp//absl/status",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "token_corpus_gpu_test",
+    srcs = ["token_corpus_gpu_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":token_corpus",
+        "//src/cuda:executor",
+        "//src/dataset:plain_text_tokenizer",
+        "@googletest//:gtest_main",
     ],
 )
 

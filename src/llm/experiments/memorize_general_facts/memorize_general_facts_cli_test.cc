@@ -123,12 +123,14 @@ TEST(MemorizeGeneralFactsCliTest, FiltersEveryFlagByExecutionPath) {
       {"checkpoint_dir", true, false, false},
       {"search", true, false, false},
       {"steps", true, false, false},
+      {"stop_when_memorized", true, false, false},
       {"eval_every", true, false, false},
       {"checkpoint_every", true, false, false},
       {"learning_rate", true, false, false},
       {"warmup_steps", true, false, false},
       {"training_seconds", true, false, false},
       {"corpus", true, false, true},
+      {"token_corpus", true, false, true},
       {"output_dir", true, false, true},
       {"batch_size", true, false, true},
       {"infer_checkpoint", false, true, false},
@@ -194,6 +196,20 @@ TEST(MemorizeGeneralFactsCliTest, AcceptsCompleteFlagSetsForEachPath) {
            "verify_checkpoint", "corpus", "output_dir", "batch_size"},
           "", "/model", "/tokenizer", "")
           .ok());
+}
+
+TEST(MemorizeGeneralFactsCliTest, TokenCorpusRequiresCompactVocabulary) {
+  for (auto options : {TrainingOptions(), VerificationOptions()}) {
+    options.token_corpus = "/tokens.txt";
+    ExpectInvalid(ValidateOptions(options, {"token_corpus"}),
+                  "--compact_vocabulary=true");
+    options.compact_vocabulary = true;
+    EXPECT_TRUE(ValidateOptions(options, {"token_corpus"}).ok());
+  }
+  auto options = GenerationOptions();
+  options.token_corpus = "/tokens.txt";
+  options.compact_vocabulary = true;
+  ExpectInvalid(ValidateOptions(options, {"token_corpus"}), "--token_corpus");
 }
 
 TEST(MemorizeGeneralFactsCliTest, RequiresTokenizerInEveryPath) {

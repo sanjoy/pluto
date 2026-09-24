@@ -23,7 +23,9 @@ struct CommandLineOptions {
   std::string verify_checkpoint;
   std::string prompt;
   std::string corpus;
+  std::string token_corpus;
   std::string output_dir;
+  bool compact_vocabulary = false;
   int generation_tokens = 0;
   int context_length = 0;
   int batch_size = 0;

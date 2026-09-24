@@ -38,6 +38,7 @@
 #include "src/llm/checkpoint.h"
 #include "src/llm/experiments/memorize_general_facts/attention_inspection.h"
 #include "src/llm/experiments/memorize_general_facts/memorize_general_facts_cli.h"
+#include "src/llm/experiments/memorize_general_facts/token_corpus.h"
 #include "src/llm/extract_top1_ids.h"
 #include "src/llm/generate_greedy_continuation.h"
 #include "src/llm/gpt2.h"
@@ -49,6 +50,9 @@ ABSL_FLAG(std::string, mode, "",
           "Required run mode: train_model or infer_model");
 ABSL_FLAG(std::string, corpus, "testdata/general_facts_dataset.txt",
           "One fact per line");
+ABSL_FLAG(std::string, token_corpus, "",
+          "Experimental compact-ID rows overriding original corpus encodings; "
+          "one equal-length row per sentence, without EOS");
 ABSL_FLAG(std::string, tokenizer, "",
           "Local GPT-2 tokenizer directory (required)");
 ABSL_FLAG(std::string, checkpoint_dir, "",
@@ -89,6 +93,8 @@ ABSL_FLAG(bool, search, false,
 // Changing --steps also changes the cosine learning-rate decay horizon.
 ABSL_FLAG(int, batch_size, 32, "Independent padded sentences per batch");
 ABSL_FLAG(int, steps, 120000, "Maximum optimizer steps per depth");
+ABSL_FLAG(bool, stop_when_memorized, true,
+          "Stop at exact memorization; disable for fixed-length experiments");
 ABSL_FLAG(int, eval_every, 256, "Full-corpus exact evaluation interval");
 ABSL_FLAG(int, checkpoint_every, 512, "Periodic checkpoint interval");
 ABSL_FLAG(int, seed, 1337, "Initialization and shuffle seed");
@@ -116,6 +122,7 @@ absl::StatusOr<Mode> RunModeFromFlags() {
   std::vector<absl::string_view> explicitly_set;
   AddIfExplicitlySet(FLAGS_mode, &explicitly_set);
   AddIfExplicitlySet(FLAGS_corpus, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_token_corpus, &explicitly_set);
   AddIfExplicitlySet(FLAGS_tokenizer, &explicitly_set);
   AddIfExplicitlySet(FLAGS_checkpoint_dir, &explicitly_set);
   AddIfExplicitlySet(FLAGS_verify_checkpoint, &explicitly_set);
@@ -133,6 +140,7 @@ absl::StatusOr<Mode> RunModeFromFlags() {
   AddIfExplicitlySet(FLAGS_search, &explicitly_set);
   AddIfExplicitlySet(FLAGS_batch_size, &explicitly_set);
   AddIfExplicitlySet(FLAGS_steps, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_stop_when_memorized, &explicitly_set);
   AddIfExplicitlySet(FLAGS_eval_every, &explicitly_set);
   AddIfExplicitlySet(FLAGS_checkpoint_every, &explicitly_set);
   AddIfExplicitlySet(FLAGS_seed, &explicitly_set);
@@ -147,7 +155,9 @@ absl::StatusOr<Mode> RunModeFromFlags() {
        .verify_checkpoint = absl::GetFlag(FLAGS_verify_checkpoint),
        .prompt = absl::GetFlag(FLAGS_prompt),
        .corpus = absl::GetFlag(FLAGS_corpus),
+       .token_corpus = absl::GetFlag(FLAGS_token_corpus),
        .output_dir = absl::GetFlag(FLAGS_output_dir),
+       .compact_vocabulary = absl::GetFlag(FLAGS_compact_vocabulary),
        .generation_tokens = absl::GetFlag(FLAGS_generation_tokens),
        .context_length = absl::GetFlag(FLAGS_context_length),
        .batch_size = absl::GetFlag(FLAGS_batch_size),
@@ -317,8 +327,8 @@ float LearningRate(int step) {
 }
 
 // Unlike Train's scalar loss threshold, this experiment stops on exact
-// top-1 accuracy over the entire finite corpus. The update itself uses the
-// same native forward/loss/backward/AdamW wiring as Train.
+// top-1 accuracy over the entire finite corpus unless fixed-length training
+// is requested. The update itself uses the same native wiring as Train.
 absl::StatusOr<bool> TrainUntilMemorized(
     cuda::Executor& executor, const tokenizer::Tokenizer& tokenizer,
     int eos_token, const TextCorpus& corpus, int layers,
@@ -351,6 +361,12 @@ absl::StatusOr<bool> TrainUntilMemorized(
   corpus_snapshot.close();
   if (!corpus_snapshot)
     return absl::InternalError("cannot preserve the input corpus");
+  if (!absl::GetFlag(FLAGS_token_corpus).empty()) {
+    std::filesystem::copy_file(absl::GetFlag(FLAGS_token_corpus),
+                               output / "token_corpus.txt", error);
+    if (error)
+      return absl::InternalError(error.message());
+  }
   std::filesystem::copy_file(
       std::filesystem::path(absl::GetFlag(FLAGS_tokenizer)) / "tokenizer.json",
       output / "tokenizer.json", error);
@@ -397,6 +413,7 @@ absl::StatusOr<bool> TrainUntilMemorized(
                    AdamWOptimizer::Create(executor, *model, config));
   const int64_t parameters = ParameterCount(*model);
   manifest << "corpus=" << absl::GetFlag(FLAGS_corpus)
+           << "\ntoken_corpus=" << absl::GetFlag(FLAGS_token_corpus)
            << "\ntokenizer=" << absl::GetFlag(FLAGS_tokenizer)
            << "\nlayers=" << layers << "\nwidth=" << model_config.model_width
            << "\nheads=" << model_config.attention_heads << "\nhead_dimension="
@@ -411,6 +428,7 @@ absl::StatusOr<bool> TrainUntilMemorized(
            << "\nseed=" << absl::GetFlag(FLAGS_seed)
            << "\nbatch_size=" << options.batch_size
            << "\nmax_steps=" << absl::GetFlag(FLAGS_steps)
+           << "\nstop_when_memorized=" << absl::GetFlag(FLAGS_stop_when_memorized)
            << "\npeak_learning_rate=" << absl::GetFlag(FLAGS_learning_rate)
            << "\nwarmup_steps=" << absl::GetFlag(FLAGS_warmup_steps)
            << "\neval_every=" << absl::GetFlag(FLAGS_eval_every)
@@ -455,9 +473,14 @@ absl::StatusOr<bool> TrainUntilMemorized(
                                  tokenizer.vocab_size(), vocabulary));
   report(0, metrics);
   int completed = 0;
+  // A fixed schedule can improve or regress after first memorization; record
+  // the first observed success separately from the final checkpoint's result.
+  int first_memorized_step = metrics.errors == 0 ? 0 : -1;
   int64_t samples_seen = 0;
   bool reached_time_limit = false;
-  for (int step = 1; step <= absl::GetFlag(FLAGS_steps) && metrics.errors != 0;
+  for (int step = 1;
+       step <= absl::GetFlag(FLAGS_steps) &&
+       (!absl::GetFlag(FLAGS_stop_when_memorized) || metrics.errors != 0);
        ++step) {
     ASSIGN_OR_RETURN(auto batch, training->Next());
     RETURN_IF_ERROR(ValidateTrainingBatch(executor, *model, *loss, batch));
@@ -489,6 +512,8 @@ absl::StatusOr<bool> TrainUntilMemorized(
                        EvaluateExact(executor, *model, *loss, *evaluation,
                                      tokenizer.vocab_size(), vocabulary));
       report(step, metrics);
+      if (metrics.errors == 0 && first_memorized_step < 0)
+        first_memorized_step = step;
     }
     if (step % absl::GetFlag(FLAGS_checkpoint_every) == 0)
       RETURN_IF_ERROR(
@@ -512,6 +537,8 @@ absl::StatusOr<bool> TrainUntilMemorized(
                    EvaluateExact(executor, *model, *loss, *evaluation,
                                  tokenizer.vocab_size(), vocabulary, &details));
   report(completed, metrics);
+  if (metrics.errors == 0 && first_memorized_step < 0)
+    first_memorized_step = completed;
   std::ofstream result(output / "result.txt");
   result << "success=" << (metrics.errors == 0) << "\nlayers=" << layers
          << "\nwidth=" << model_config.model_width
@@ -520,6 +547,7 @@ absl::StatusOr<bool> TrainUntilMemorized(
          << "\ncontext_length=" << model_config.context_length
          << "\nvocabulary=" << tokenizer.vocab_size()
          << "\nparameters=" << parameters << "\nstep=" << completed
+         << "\nfirst_memorized_step=" << first_memorized_step
          << "\nerrors=" << metrics.errors << "\ntargets=" << metrics.targets
          << "\nsamples_seen=" << samples_seen << "\nepochs="
          << static_cast<double>(samples_seen) / training->sample_count()
@@ -595,6 +623,7 @@ absl::StatusOr<bool> VerifyCheckpoint(
   std::ofstream result(output / "result.txt");
   result << "checkpoint=" << absl::GetFlag(FLAGS_verify_checkpoint)
          << "\ncorpus=" << absl::GetFlag(FLAGS_corpus)
+         << "\ntoken_corpus=" << absl::GetFlag(FLAGS_token_corpus)
          << "\ntokenizer=" << absl::GetFlag(FLAGS_tokenizer)
          << "\nlayers=" << absl::GetFlag(FLAGS_layers)
          << "\nwidth=" << model_config.model_width
@@ -749,6 +778,17 @@ absl::StatusOr<bool> Run() {
                                      *tokenizer, std::move(mapping)));
     model_tokenizer = vocabulary.get();
     eos_token = vocabulary->eos_token_id();
+  }
+  std::unique_ptr<TokenCorpusTokenizer> token_corpus_tokenizer;
+  if (!absl::GetFlag(FLAGS_token_corpus).empty()) {
+    ASSIGN_OR_RETURN(auto token_corpus,
+                     LoadTextCorpus(absl::GetFlag(FLAGS_token_corpus)));
+    ASSIGN_OR_RETURN(token_corpus_tokenizer,
+                     TokenCorpusTokenizer::Create(*executor, *model_tokenizer,
+                                                  corpus.text(),
+                                                  token_corpus.text(),
+                                                  eos_token));
+    model_tokenizer = token_corpus_tokenizer.get();
   }
   RETURN_IF_ERROR(ModelConfiguration(absl::GetFlag(FLAGS_layers),
                                      model_tokenizer->vocab_size())

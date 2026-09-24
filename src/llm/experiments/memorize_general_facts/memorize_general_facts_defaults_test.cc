@@ -117,6 +117,8 @@ TEST_F(MemorizeGeneralFactsDefaultsTest, DefaultsMatchSmallestMemorizedModel) {
       {"compact_vocabulary", "true"},
       {"batch_size", "32"},
       {"steps", "120000"},
+      {"stop_when_memorized", "true"},
+      {"token_corpus", "\"\""},
       {"learning_rate", "0.0012"},
       {"eval_every", "256"},
       {"seed", "1337"},
@@ -149,6 +151,22 @@ TEST_F(MemorizeGeneralFactsDefaultsTest,
   EXPECT_EQ(exit_code_, 1) << output_;
   EXPECT_NE(output_.find("--steps is not valid in --mode=infer_model"),
             std::string::npos)
+      << output_;
+}
+
+TEST_F(MemorizeGeneralFactsDefaultsTest, TokenCorpusValidationPrecedesFiles) {
+  ASSERT_NO_FATAL_FAILURE(Run(
+      {"--mode=train_model", "--tokenizer=unused", "--checkpoint_dir=unused",
+       "--token_corpus=unused", "--compact_vocabulary=false"}));
+  EXPECT_EQ(exit_code_, 1) << output_;
+  EXPECT_NE(output_.find("--token_corpus requires --compact_vocabulary=true"),
+            std::string::npos)
+      << output_;
+  ASSERT_NO_FATAL_FAILURE(Run({"--mode=infer_model", "--tokenizer=unused",
+                              "--infer_checkpoint=unused",
+                              "--token_corpus=unused"}));
+  EXPECT_EQ(exit_code_, 1) << output_;
+  EXPECT_NE(output_.find("--token_corpus is not valid"), std::string::npos)
       << output_;
 }
 

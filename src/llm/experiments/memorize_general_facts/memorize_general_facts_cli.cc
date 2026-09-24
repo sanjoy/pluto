@@ -38,12 +38,14 @@ constexpr FlagRule kFlagRules[] = {
     {"checkpoint_dir", kTrain},
     {"search", kTrain},
     {"steps", kTrain},
+    {"stop_when_memorized", kTrain},
     {"eval_every", kTrain},
     {"checkpoint_every", kTrain},
     {"learning_rate", kTrain},
     {"warmup_steps", kTrain},
     {"training_seconds", kTrain},
     {"corpus", kTrain | kVerify},
+    {"token_corpus", kTrain | kVerify},
     {"output_dir", kTrain | kVerify},
     {"batch_size", kTrain | kVerify},
     {"infer_checkpoint", kGenerate},
@@ -91,6 +93,9 @@ absl::StatusOr<Mode> ParseAndValidateRunMode(
     return absl::InvalidArgumentError("--corpus must be nonempty");
   if (options.output_dir.empty())
     return absl::InvalidArgumentError("--output_dir must be nonempty");
+  if (!options.token_corpus.empty() && !options.compact_vocabulary)
+    return absl::InvalidArgumentError(
+        "--token_corpus requires --compact_vocabulary=true");
   if (options.batch_size <= 0)
     return absl::InvalidArgumentError("--batch_size must be positive");
   if (options.context_length < 5)

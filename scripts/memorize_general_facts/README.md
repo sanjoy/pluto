@@ -11,6 +11,8 @@ Neither the native binary nor its libraries depend on these scripts.
 | `run_width_depth_search.py` | Sweep widths/depths and record the measured Pareto frontier. |
 | `run_compact_size_sweep.py` | Sequential compact-vocabulary trials with a shared deadline and independent verification. |
 | `run_two_track_sweep.py` | Time-bounded adaptive compact-model search, reporting the smallest overall and smallest four-or-more-block successes. |
+| `run_dataset_weights.py` | Fixed-initialization, fixed-step training under consistent token-ID renaming. |
+| `analyze_dataset_weights.py` | Held-out dataset-to-weight prediction tests and an HTML report (requires NumPy). |
 | `summarize_width_depth.py` | Read and validate saved evidence, then report frontiers without using the GPU. |
 | `audit_prefixes.py` | Check corpus tokenization and unavoidable conflicting next-token targets. |
 | `verify_predictions.py` | Independently retokenize the corpus and audit every recorded suffix/EOS prediction. |
@@ -19,11 +21,71 @@ Neither the native binary nor its libraries depend on these scripts.
 Run the examples below from the repository root. The audit and search commands
 need a Python environment with `tokenizers` installed and a local GPT-2 tokenizer;
 they do not download either. The reporter, checkpoint converter, and unit tests
-use Python's standard library. Search drivers require the optimized native binary:
+use Python's standard library, except the dataset-to-weights analysis and its
+tests, which need NumPy. Search drivers require the optimized native binary:
 
 ```sh
 bazel build -c opt //src/llm/experiments/memorize_general_facts:memorize_general_facts
 ```
+
+## Dataset-to-weight experiment
+
+This experiment holds the 4-layer, width-10, MLP-width-20 model, its 48,680
+FP32 master parameters, initialization seed, minibatch order, vocabulary,
+sentence boundaries, optimizer, and 120,000-step learning-rate schedule fixed.
+Only the names (compact integer IDs) of tokens change. Each bijection is applied
+consistently to every occurrence in the 14,098-token input; EOS remains fixed.
+Tokens are passed directly to the native model using `--token_corpus`, never
+decoded and re-tokenized. The original text defines the fixed compact vocabulary.
+
+```sh
+python -B scripts/memorize_general_facts/run_dataset_weights.py \
+  --binary=bazel-bin/src/llm/experiments/memorize_general_facts/memorize_general_facts \
+  --corpus=testdata/general_facts_dataset.txt \
+  --tokenizer=/home/ubuntu/datasets/tokenizer/gpt2 \
+  --run_dir=/home/ubuntu/checkpoints/memorize_general_facts/dataset_weights_new \
+  --duration_seconds=10800
+```
+
+The Python environment needs `tokenizers` and NumPy. Choose a fresh directory
+outside the repository. The driver first checks for at least 10 GiB free,
+snapshots the binary, CUDA runtime, inputs and analysis scripts, and runs a
+duplicate unmodified baseline to test bitwise reproducibility. Trials rename
+2, 8, 32, 128, 512, 2,048, or all 4,474 non-EOS labels; train/test membership
+and permutation seeds are specified before training. Each trial runs the full
+schedule, even if it memorizes early (`--stop_when_memorized=false`). It saves
+weights at matching update counts and separately records whether the final
+checkpoint actually memorized the corpus. A failed memorization is data, not a
+claim that a memorized model was obtained.
+
+Each trial saves the unpadded little-endian int32 vector (`tokens.i32`), exact
+sentence-delimited IDs, old-to-new vocabulary permutation, FP32 checkpoints,
+training metrics, fresh-process checkpoint evaluation, and independent target
+audits. The input directory contains the frozen sentence lengths. Initialization
+hashes must match across trials. A shared deadline bounds all child processes;
+incomplete endpoints are excluded from prediction analysis. `summary.json` and
+`analysis.html` are updated as completed pairs become available. The report can
+be regenerated without a GPU:
+
+```sh
+python -B scripts/memorize_general_facts/analyze_dataset_weights.py \
+  --summary=/path/to/run/summary.json --output=/path/to/run/analysis.html
+```
+
+The analysis treats IDs as categorical labels, not meaningful real numbers.
+It compares held-out weight predictions against simple baselines and tunes a
+Hamming-distance kernel model using training runs only. It also compares weights
+after undoing each vocabulary permutation. About 30 paired examples cannot
+identify a general 48,680-output training function, and token renaming alone
+does not vary the facts' structure. Negative prediction results are informative
+only about these tested simple hypotheses.
+
+There is a separate exact architectural symmetry: if `pi` renames tokens, set
+`E_new[pi(v)] = E_old[v]` in the tied embedding/head and leave every other weight
+unchanged. This supplies a functionally equivalent model without training. The
+driver audits that control on every renamed corpus. It does **not** imply that
+training from the same unpermuted random initialization produces those exact
+weights; testing that difference is the point of the experiment.
 
 ## Sweep and report
 
