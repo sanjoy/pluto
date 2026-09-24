@@ -113,7 +113,44 @@ head input gradients bit-for-bit.
 This explains an initial mechanism for the later training-trajectory divergence;
 it does not prove that these first 31 changed coordinates alone explain every
 final-checkpoint difference, nor does it certify every kernel against all bugs.
-No precision policy or training behavior is changed by this diagnostic.
+Those original measurements used the unmodified production kernels.
+
+## Verify the canonical-order fix
+
+The layer factories now accept an optional host array mapping canonical ranks
+to current token IDs. Cross-entropy traverses logits in that order, and head
+backward gathers both gradient columns and embedding rows into the original
+MMA reduction order. Tensor storage stays in current token-ID order. The same
+permutation must be passed to both the model's head and its separate loss.
+
+Enable that behavior for the renamed model during replay:
+
+```sh
+"$tools/permutation_trace" --run_dir="$run" \
+  --output_dir=/tmp/pluto-permutation-canonical-2 \
+  --max_steps=64 --support=2 --canonical_token_order=true
+```
+
+Repeat with `--support=512` and `--support=4474`, using fresh output directories.
+With this flag the diagnostic returns an error on any aligned bit difference,
+including signed zero. The ordinary diagnostic mode still stops successfully
+after capturing a first difference. No long memorization training is launched.
+
+On the GH200, all three saved permutations matched the baseline bit-for-bit
+for all 64 replayed steps: each compared 17,536 tensor snapshots, with zero
+renamed or repeated-baseline mismatches. This includes the actual shuffled
+batches, all hooked activations and backward gradients, all unique parameter
+gradients, and every post-AdamW weight. The no-order control reproduced the
+original step-22 divergence with an identical `summary.tsv`, confirming that
+the existing default path was preserved. These are bounded replay results,
+not a claim that new full-length training runs were performed.
+
+Local evidence is under
+`/home/ubuntu/checkpoints/memorize_general_facts/canonical_token_order_replay_0/`:
+`support_2`, `support_512`, `support_4474`, and `unmapped_control`.
+The older native `cross_entropy_replay` counterfactual above deliberately uses
+ordinary ID-order kernels; run it on the original no-order capture, not a
+canonical-order capture.
 
 ## Tests
 

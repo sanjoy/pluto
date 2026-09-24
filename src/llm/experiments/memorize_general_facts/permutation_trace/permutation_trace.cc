@@ -45,6 +45,9 @@ ABSL_FLAG(int, max_steps, 32,
           "Maximum actual shuffled optimizer steps to replay");
 ABSL_FLAG(int, support, 2,
           "Select rename_000_NNNN trial by permutation support");
+ABSL_FLAG(bool, canonical_token_order, false,
+          "Use the saved permutation as the renamed model/loss reduction "
+          "order, and require exact aligned equality throughout the replay");
 
 namespace pluto::llm::permutation_trace {
 namespace {
@@ -223,7 +226,8 @@ struct ModelRun {
 
 absl::StatusOr<ModelRun> CreateRun(cuda::Executor& executor,
                                    const tokenizer::Tokenizer& tokenizer,
-                                   absl::string_view corpus) {
+                                   absl::string_view corpus,
+                                   absl::Span<const int32_t> token_order = {}) {
   const Gpt2Config config{.transformer_block_count = 4,
                           .model_width = kWidth,
                           .attention_heads = 1,
@@ -243,11 +247,11 @@ absl::StatusOr<ModelRun> CreateRun(cuda::Executor& executor,
   if (data->sample_count() != 1024 || data->supervised_row_count() != 10002)
     return absl::FailedPreconditionError(
         "unexpected experiment corpus dimensions");
-  ASSIGN_OR_RETURN(auto model,
-                   CreateGpt2(executor, DataType::BF16, kSeed, config));
-  ASSIGN_OR_RETURN(auto loss,
-                   CrossEntropyLossLayer::Create(executor, kVocabulary,
-                                                 DataType::BF16, kContext));
+  ASSIGN_OR_RETURN(auto model, CreateGpt2(executor, DataType::BF16, kSeed,
+                                          config, token_order));
+  ASSIGN_OR_RETURN(auto loss, CrossEntropyLossLayer::Create(
+                                  executor, kVocabulary, DataType::BF16,
+                                  kContext, token_order));
   ASSIGN_OR_RETURN(auto optimizer,
                    AdamWOptimizer::Create(executor, *model,
                                           {.learning_rate = LearningRate(1),
@@ -357,6 +361,7 @@ absl::Status Run() {
   const std::filesystem::path output(absl::GetFlag(FLAGS_output_dir));
   const int max_steps = absl::GetFlag(FLAGS_max_steps);
   const int support = absl::GetFlag(FLAGS_support);
+  const bool canonical_token_order = absl::GetFlag(FLAGS_canonical_token_order);
   if (root.empty() || output.empty() || max_steps <= 0 || max_steps > 256 ||
       support < 2)
     return absl::InvalidArgumentError(
@@ -401,8 +406,11 @@ absl::Status Run() {
                    CreateRun(*executor, *baseline_tokenizer, corpus.text()));
   ASSIGN_OR_RETURN(auto repeat,
                    CreateRun(*executor, *baseline_tokenizer, corpus.text()));
-  ASSIGN_OR_RETURN(auto renamed,
-                   CreateRun(*executor, *renamed_tokenizer, corpus.text()));
+  ASSIGN_OR_RETURN(
+      auto renamed,
+      CreateRun(*executor, *renamed_tokenizer, corpus.text(),
+                canonical_token_order ? absl::Span<const int32_t>(permutation)
+                                      : absl::Span<const int32_t>()));
   const auto initial_checkpoint = root / "baseline/checkpoints/layers_4/step_0";
   RETURN_IF_ERROR(CheckInitialization(*executor, baseline, initial_checkpoint));
   RETURN_IF_ERROR(CheckInitialization(*executor, repeat, initial_checkpoint));
@@ -471,6 +479,7 @@ absl::Status Run() {
               << " first_bit_difference=" << first_bit_difference
               << " repeat_difference=" << repeat_difference << std::endl;
     if (!first_difference.empty() || !repeat_difference.empty() ||
+        (canonical_token_order && !first_bit_difference.empty()) ||
         step == max_steps) {
       RETURN_IF_ERROR(WriteTrace(a, output / "baseline"));
       RETURN_IF_ERROR(WriteTrace(b, output / "repeat"));
@@ -483,6 +492,7 @@ absl::Status Run() {
                << "\nrows=" << kBatch * kContext << "\ncompute_type=BF16"
                << "\nbatch_size=" << kBatch << "\ncontext_length=" << kContext
                << "\nsupport=" << support << "\nmax_steps=" << max_steps
+               << "\ncanonical_token_order=" << canonical_token_order
                << "\ndumped_step=" << step
                << "\ndivergent_step=" << (first_difference.empty() ? -1 : step)
                << "\nfirst_difference=" << first_difference
@@ -499,6 +509,9 @@ absl::Status Run() {
         return absl::DataLossError(
             "baseline replicas diverged; investigate determinism before "
             "interpreting renaming");
+      if (canonical_token_order && !first_bit_difference.empty())
+        return absl::DataLossError(
+            "canonical token order did not preserve bitwise equality");
       return absl::OkStatus();
     }
   }
