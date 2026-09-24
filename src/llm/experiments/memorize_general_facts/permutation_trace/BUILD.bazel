@@ -1,0 +1,115 @@
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+
+cc_library(
+    name = "trace_util",
+    srcs = ["trace_util.cc"],
+    hdrs = ["trace_util.h"],
+    deps = [
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "trace_util_test",
+    srcs = ["trace_util_test.cc"],
+    deps = [
+        ":trace_util",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "permutation_trace",
+    srcs = ["permutation_trace.cc"],
+    deps = [
+        ":trace_util",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset",
+        "//src/dataset:compact_vocabulary",
+        "//src/dataset:gpt2_tokenizer",
+        "//src/dataset:padded_line_dataset",
+        "//src/dataset:tokenizer",
+        "//src/llm:optimizer",
+        "//src/llm:batch_validation",
+        "//src/llm:cross_entropy_loss",
+        "//src/llm:gpt2",
+        "//src/llm:layer",
+        "//src/llm:layer_hooks",
+        "//src/llm/experiments/memorize_general_facts:token_corpus",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/strings:str_format",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_binary(
+    name = "lm_head_probe",
+    srcs = ["lm_head_probe.cc"],
+    deps = [
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/llm:layer",
+        "//src/llm:embedding",
+        "//src/llm:cross_entropy_loss",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_test(
+    name = "lm_head_probe_test",
+    srcs = ["lm_head_probe.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/llm:layer",
+        "//src/llm:embedding",
+        "//src/llm:cross_entropy_loss",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_binary(
+    name = "cross_entropy_replay",
+    srcs = ["cross_entropy_replay.cc"],
+    deps = [
+        ":trace_util",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/llm:layer",
+        "//src/llm:cross_entropy_loss",
+        "//src/llm:embedding",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)

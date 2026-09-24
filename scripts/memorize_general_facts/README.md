@@ -13,6 +13,7 @@ Neither the native binary nor its libraries depend on these scripts.
 | `run_two_track_sweep.py` | Time-bounded adaptive compact-model search, reporting the smallest overall and smallest four-or-more-block successes. |
 | `run_dataset_weights.py` | Fixed-initialization, fixed-step training under consistent token-ID renaming. |
 | `analyze_dataset_weights.py` | Held-out dataset-to-weight prediction tests and an HTML report (requires NumPy). |
+| `analyze_permutation_trace.py` | Locate the first gradient/update divergence in native token-renaming traces, with FP64 numerical references (requires NumPy). |
 | `summarize_width_depth.py` | Read and validate saved evidence, then report frontiers without using the GPU. |
 | `audit_prefixes.py` | Check corpus tokenization and unavoidable conflicting next-token targets. |
 | `verify_predictions.py` | Independently retokenize the corpus and audit every recorded suffix/EOS prediction. |
@@ -111,6 +112,9 @@ should permute and its other weights should agree. Floating-point reductions
 need not be bitwise permutation-equivariant. Any observed deviations therefore
 test numerical training-trajectory sensitivity, not a change in the facts or
 a different initial embedding assigned to each token.
+
+For a short native replay that identifies the first differing operation, see the
+[first-difference diagnostic](../../src/llm/experiments/memorize_general_facts/permutation_trace/README.md).
 
 ## Sweep and report
 

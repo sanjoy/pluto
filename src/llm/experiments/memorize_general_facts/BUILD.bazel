@@ -110,6 +110,7 @@ cc_binary(
 
 cc_library(
     name = "token_corpus",
+    visibility = ["//src/llm/experiments/memorize_general_facts/permutation_trace:__pkg__"],
     srcs = ["token_corpus.cc"],
     hdrs = ["token_corpus.h"],
     deps = [
