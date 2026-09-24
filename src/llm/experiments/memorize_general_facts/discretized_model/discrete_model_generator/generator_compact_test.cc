@@ -378,9 +378,15 @@ TEST(AttentionLogicTest,
   EXPECT_TRUE(RenderAttention({rows}, "MatchState42").ok());
 }
 
-TEST(AttentionLogicTest, IndependentMatcherChecksTheSelectivePositionFirst) {
+TEST(AttentionLogicTest, IndependentMatchersUseFlatOrsOfCompleteHistories) {
   const CapturedCausalAttention attention{
-      {{{1, 2, 3}, 10}, {{1, 9, 3}, 11}, {{1, 8, 3}, 11}}};
+      {{{4489, 4489, 4489, 4475, 4481}, 10},
+       {{4492, 4489, 4475, 4489, 4489}, 10},
+       {{4489, 4489, 4479, 4489, 4499}, 10},
+       {{4489, 4481, 4499, 4489, 4499}, 10},
+       {{4489, 4489, 4489, 4489, 4504}, 10},
+       {{4489, 4489, 4489}, 10},
+       {{4489, 4489, 4489, 4489, 4505}, 11}}};
   const auto program = RenderAttention(attention, "Lookup");
   ASSERT_TRUE(program.ok()) << program.status();
   const auto begin = program->source.find("bool MatchState10(");
@@ -389,16 +395,59 @@ TEST(AttentionLogicTest, IndependentMatcherChecksTheSelectivePositionFirst) {
   ASSERT_NE(end, std::string::npos);
   ASSERT_LT(begin, end);
   const auto matcher = program->source.substr(begin, end - begin);
-  const auto length = matcher.find("history.size()");
-  const auto selective = matcher.find("history[1]");
-  const auto exact_match = matcher.find("Match(history,");
-  ASSERT_NE(length, std::string::npos);
-  ASSERT_NE(selective, std::string::npos);
-  ASSERT_NE(exact_match, std::string::npos);
-  // Position 1 rejects both competitors with one read. Match still checks the
-  // complete literal in its original order before accepting an unseen input.
-  EXPECT_LT(length, selective);
-  EXPECT_LT(selective, exact_match);
+  EXPECT_NE(matcher.find("switch (history.size())"), std::string::npos);
+  EXPECT_EQ(matcher.find("history["), std::string::npos);
+  EXPECT_EQ(matcher.find("if ("), std::string::npos);
+  EXPECT_EQ(std::count(matcher.begin(), matcher.end(), '|'), 8);
+  for (const auto& row : attention.transitions)
+    if (row.output == 10) {
+      std::string literal = "Match(history, {";
+      for (size_t index = 0; index < row.prefix.size(); ++index)
+        absl::StrAppend(&literal, index == 0 ? "" : ", ", row.prefix[index]);
+      absl::StrAppend(&literal, "})");
+      EXPECT_NE(matcher.find(literal), std::string::npos);
+    }
+
+  // Exercise each alternative, every single-coordinate unknown mutation, and
+  // every shorter/longer length. The supported shorter prefix belongs to the
+  // same state but has its own length group; another output shares four of the
+  // five coordinates and must never be accepted by this state's predicate.
+  std::vector<std::vector<int>> candidates{{}};
+  for (const auto& row : attention.transitions) {
+    candidates.push_back(row.prefix);
+    for (size_t index = 0; index < row.prefix.size(); ++index) {
+      auto mutated = row.prefix;
+      mutated[index] = -1;
+      candidates.push_back(std::move(mutated));
+      candidates.emplace_back(row.prefix.begin(), row.prefix.begin() + index);
+    }
+    auto extension = row.prefix;
+    extension.push_back(4489);
+    candidates.push_back(std::move(extension));
+  }
+  std::string source = StrCat(kDeclarations, program->source, "int main() {\n");
+  for (const auto& key : candidates) {
+    std::optional<int> expected;
+    for (const auto& row : attention.transitions)
+      if (row.prefix == key)
+        expected = row.output;
+    absl::StrAppend(&source, "{ std::vector<DiscreteHiddenState> key = {");
+    for (int state : key)
+      absl::StrAppend(&source, "{", state, "},");
+    absl::StrAppend(&source, "};\n");
+    for (int state : {11, 10})
+      absl::StrAppend(&source, "if (MatchState", state,
+                      "(key) != ", expected == state ? "true" : "false",
+                      ") return 1;\n");
+    const std::string answer =
+        expected
+            ? StrCat("std::optional<DiscreteHiddenState>{{", *expected, "}}")
+            : "std::nullopt";
+    absl::StrAppend(&source, "if (Lookup(key) != ", answer, ") return 2; }\n");
+  }
+  absl::StrAppend(&source, "return 0; }\n");
+  const auto status = CompileAndRun(source);
+  EXPECT_TRUE(status.ok()) << status;
 }
 
 TEST(AttentionLogicTest, SharedMatchHelperChecksExactSequenceEquality) {
@@ -427,9 +476,8 @@ TEST(AttentionLogicTest, SharedMatchHelperChecksExactSequenceEquality) {
           Match(values, {0, -1, 2147483647, -2147483647 - 1}) ||
           Match(values, {0, -1, -2147483647 - 1, -2147483647 - 1}))
         return 3;
-      // Both mutations pass the selective position-1 guard but must fail the
-      // complete history comparison; acceptance cannot rely on earlier
-      // matchers.
+      // Both mutations retain the middle element but must fail the complete
+      // history comparison; acceptance cannot rely on earlier matchers.
       std::vector<DiscreteHiddenState> valid = {{1}, {2}, {3}};
       std::vector<DiscreteHiddenState> wrong_first = {{7}, {2}, {3}};
       std::vector<DiscreteHiddenState> wrong_last = {{1}, {2}, {7}};

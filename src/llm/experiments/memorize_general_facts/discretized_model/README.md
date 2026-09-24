@@ -216,25 +216,18 @@ matches. Each predicate independently recognizes exactly the captured symbolic
 histories for its output; it assumes nothing about earlier predicates having
 failed and can be called on its own.
 
-A predicate checks the history length before indexing it. For each supported
-length, the generator greedily chooses the next position that rejects the most
-captured histories belonging to other outputs. Ties favor balanced branches
-among matching histories, then the lower position index. The emitted code uses
-guards, switches, and exact literal-sequence comparisons; this heuristic
-does not claim globally minimal reads or an optimal decision tree.
+A predicate switches on history length. Each supported length contains a flat
+`return Match(history, {...}) || Match(history, {...}) || ...;` expression, with
+complete captured histories in lexicographic order. There are no nested
+per-position switches or guards. Length grouping skips incompatible literals;
+the flat expression favors readable alternatives over a decision-tree heuristic.
 
-When one candidate remains, its complete sequence is written as
-`Match(history, {state0, state1, ...})`. The generated helper takes read-only
-spans, checks lengths, and compares the values in order. A selective guard may
-precede the call to reject competitors cheaply. The helper intentionally
-rechecks positions already tested by this predicate so each literal lists the
-whole expected history, not an implicit partial key.
-
-Selective checks can reject a history early, but **every accepting path still
-checks every element**. A few positions uniquely identifying one recorded
-example do not validate arbitrary values in its remaining positions. Unknown
-symbolic histories therefore remain unsupported, rather than being assigned
-the closest recorded output.
+The generated `Match` helper takes read-only spans, checks lengths, and compares
+the values in their original positional order. **Every accepting path checks
+every element**. A few positions uniquely identifying one recorded example do
+not validate arbitrary values in its remaining positions. Unknown symbolic
+histories therefore remain unsupported, rather than being assigned the closest
+recorded output.
 
 The separate predicates make one output's requirements directly inspectable.
 The tradeoff is that predicates may repeat checks and code that the previous

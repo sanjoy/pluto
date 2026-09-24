@@ -96,22 +96,17 @@ lowerers. Unsupported inputs remain unsupported in either representation.
 The default compact attention strategy, `state_matchers`, emits an independent
 `bool MatchStateNNNN(history)` predicate for every output, followed by an
 ascending-state-ID `if` dispatcher. No match returns `std::nullopt`. A predicate
-first switches on history length, then tests selected positions with guards,
-switches, and `Match(history, {values...})` calls. The generated `Match` helper
-compares lengths and integer values through read-only spans. Literals list a
-complete history in original positional order, including positions already
-checked by a guard; this deliberately trades repeated reads for simpler source.
-It relies only on its own checks,
-never on another predicate having succeeded or failed.
+first switches on history length, then returns a flat OR of
+`Match(history, {values...})` calls. Each literal lists a complete history in
+original positional order, and alternatives are sorted lexicographically.
+There are no nested per-position switches or guards: readability is preferred
+over selective-position decision trees. A predicate relies only on its own
+checks, never on another predicate having succeeded or failed.
 
-At each decision the generator greedily chooses the unread position that
-rejects the most same-length captured histories from competing outputs. Ties
-minimize the sum of squared positive-branch sizes, then use the position index.
-Competing examples guide ordering only: all elements must be checked before
-returning true, including when one recorded candidate remains. This preserves
-exact membership for unseen histories and avoids accepting unrecorded
-combinations of otherwise familiar symbols. The heuristic is deterministic,
-not a proof of minimum reads or globally optimal control flow.
+The generated `Match` helper compares lengths and integer values through
+read-only spans. It checks every element before accepting a history. This
+preserves exact membership for unseen histories and avoids accepting
+unrecorded combinations of otherwise familiar symbols.
 
 Independent predicates expose each output's matching conditions, at the cost
 of potentially repeated checks, larger sources, and more dispatcher calls.
