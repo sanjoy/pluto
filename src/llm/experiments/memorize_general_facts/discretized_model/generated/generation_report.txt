@@ -49,7 +49,7 @@ stats:
       attempted: 60010
       accepted: 46770
       compactions: 107015
-      seconds: 4.7910639130000003
+      seconds: 4.7226920999999997
     pass:
       phase: compaction_pointwise_pass_complete
       pass: 1
@@ -58,7 +58,7 @@ stats:
       attempted: 60058
       accepted: 46818
       compactions: 107063
-      seconds: 4.7969605819999996
+      seconds: 4.7285418889999997
     pass:
       phase: compaction_exhaustive_pass_complete
       pass: 1
@@ -67,7 +67,7 @@ stats:
       attempted: 62118
       accepted: 46834
       compactions: 107079
-      seconds: 18.770200260999999
+      seconds: 18.347281860999999
     pass:
       phase: compaction_exhaustive_pass_complete
       pass: 2
@@ -76,8 +76,8 @@ stats:
       attempted: 62118
       accepted: 46834
       compactions: 107079
-      seconds: 18.777079143000002
-    seconds: 18.903180447
+      seconds: 18.354277766999999
+    seconds: 18.480682481999999
 checkpoint: /home/ubuntu/checkpoints/memorize_general_facts/dataset_weights_canonical_order_0/baseline/checkpoints/layers_4/step_120000
 checkpoint_files_sha256:
   weight_0.bin: ea5cc897257a966bf0550d518f66680d66c61139769d926ddfbdf064db8c3f06
@@ -149,10 +149,10 @@ archived_vector_encoding: exact_bf16_inspection_only
 integer_only_inference: true
 generated_sources_sha256:
   BUILD.bazel: 49ed1e66d573e1611c06072d3d1b6e1499af0d9abbe27bd2912e0df9e2fd46d3
-  attention_0.cc: 6ee4919d8c17cd2985614b4c158a34ab268d9ade3d325a2233111824e1fb6fca
-  attention_1.cc: 726749c109364fdfcc86a2249dfcc4a9e5e21d92b6859cb2cb389c8ea51efa43
-  attention_2.cc: cbd94f9fa08ff57c52651bb13ce5e8cf3a4f15a95da641cb0ce687ca404532d7
-  attention_3.cc: 69d52fcc12ce1f8e2bddca342829fa9be4cbce09a568021e19a83ad78f13a84d
+  attention_0.cc: 7987e4de9dbe85eb37d1a5b40ff19a0b12f069c66021bc474bae641108157f06
+  attention_1.cc: 42a100326b99ef1bcfed7e956a00065ab6f91d1d05553c0f26a3ced25f0cc6c4
+  attention_2.cc: 873bdd8636459efe0085c58a2eeff42d2d443cdb509cfa279241608d5fdf1770
+  attention_3.cc: 8ec3f59489ffc60dfe9714e9d1b0ecf815ae46f8bbcabf44ec11e1d5ae29acd3
   cli_support.h: 23e5e95ba2d6887da0fc89a8ae930380df75fdcdff0f6178e0a3c29dfdc058a5
   entry.cc: 92c363403ac3f1725d2af4a1ddbd69c9089fc6e7c6703210af004e40b8d4f051
   generated_model_test.cc: ef6d4405dc4eef4ee5cf6c28b66fdde4d155ffcfcf338ed45b0d012a628395be
@@ -190,10 +190,10 @@ generated_sources_sha256:
   vocabulary_tokens.h: db06a3f8738c525418c58d2e7390a50c04665f5853539919109eb523023c564a
 formatted_source_bytes:
   BUILD.bazel: 3877
-  attention_0.cc: 3950734
-  attention_1.cc: 3912670
-  attention_2.cc: 3864058
-  attention_3.cc: 4514622
+  attention_0.cc: 2702278
+  attention_1.cc: 2590076
+  attention_2.cc: 2542251
+  attention_3.cc: 3015528
   cli_support.h: 663
   entry.cc: 235087
   generated_model_test.cc: 180608

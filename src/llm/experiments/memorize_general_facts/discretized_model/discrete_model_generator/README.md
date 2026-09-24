@@ -97,7 +97,11 @@ The default compact attention strategy, `state_matchers`, emits an independent
 `bool MatchStateNNNN(history)` predicate for every output, followed by an
 ascending-state-ID `if` dispatcher. No match returns `std::nullopt`. A predicate
 first switches on history length, then tests selected positions with guards,
-switches, and short-circuit conjunctions. It relies only on its own checks,
+switches, and `Match(history, {values...})` calls. The generated `Match` helper
+compares lengths and integer values through read-only spans. Literals list a
+complete history in original positional order, including positions already
+checked by a guard; this deliberately trades repeated reads for simpler source.
+It relies only on its own checks,
 never on another predicate having succeeded or failed.
 
 At each decision the generator greedily chooses the unread position that

@@ -120,13 +120,25 @@ const char* kDeclarations = R"cpp(
 #include <compare>
 #include <cstddef>
 #include <cstdint>
+#include <initializer_list>
 #include <optional>
 #include <span>
+#include <type_traits>
 #include <vector>
   namespace absl {
+  // Match Abseil's const initializer-list constructor: the temporary array
+  // remains alive through the call expression. The generated code must never
+  // retain this span. Inherit standard vector/array support for other inputs.
   template <class T>
-  using Span = std::span<T>;
-  }
+  class Span : public std::span<T> {
+   public:
+    using std::span<T>::span;
+    constexpr Span() = default;
+    constexpr Span(std::initializer_list<std::remove_const_t<T>> values)
+      requires(std::is_const_v<T>)
+        : std::span<T>(values.begin(), values.size()) {}
+  };
+  }  // namespace absl
   struct DiscreteToken;
   struct DiscreteHiddenState {
     int value = 0;
@@ -378,18 +390,57 @@ TEST(AttentionLogicTest, IndependentMatcherChecksTheSelectivePositionFirst) {
   ASSERT_LT(begin, end);
   const auto matcher = program->source.substr(begin, end - begin);
   const auto length = matcher.find("history.size()");
-  const auto first = matcher.find("history[0]");
   const auto selective = matcher.find("history[1]");
-  const auto last = matcher.find("history[2]");
+  const auto exact_match = matcher.find("Match(history,");
   ASSERT_NE(length, std::string::npos);
-  ASSERT_NE(first, std::string::npos);
   ASSERT_NE(selective, std::string::npos);
-  ASSERT_NE(last, std::string::npos);
-  // Position 1 rejects both competitors with one read. The two other reads
-  // remain necessary before acceptance to reject unseen histories too.
+  ASSERT_NE(exact_match, std::string::npos);
+  // Position 1 rejects both competitors with one read. Match still checks the
+  // complete literal in its original order before accepting an unseen input.
   EXPECT_LT(length, selective);
-  EXPECT_LT(selective, first);
-  EXPECT_LT(selective, last);
+  EXPECT_LT(selective, exact_match);
+}
+
+TEST(AttentionLogicTest, SharedMatchHelperChecksExactSequenceEquality) {
+  const CapturedCausalAttention attention{
+      {{{1, 2, 3}, 10}, {{1, 9, 3}, 11}, {{1, 8, 3}, 11}}};
+  const auto program = RenderAttention(attention, "Lookup");
+  ASSERT_TRUE(program.ok()) << program.status();
+  const auto helper = program->source.find("bool Match(");
+  ASSERT_NE(helper, std::string::npos);
+  EXPECT_EQ(program->source.find("bool Match(", helper + 1), std::string::npos);
+  const std::string source = StrCat(kDeclarations, program->source, R"cpp(
+    int main() {
+      std::vector<DiscreteHiddenState> empty;
+      if (!Match(empty, {}) || Match(empty, {0}))
+        return 1;
+      std::vector<DiscreteHiddenState> values = {
+          {0}, {-1}, {-2147483647 - 1}, {2147483647}};
+      if (!Match(values, {0, -1, -2147483647 - 1, 2147483647}) ||
+          Match(values, {}) || Match(values, {0, -1, -2147483647 - 1}) ||
+          Match(values, {0, -1, -2147483647 - 1, 2147483647, 0}))
+        return 2;
+      // Equality compares values, not just lengths, first/last entries, or an
+      // unordered set. Signed extremes are ordinary values for this helper.
+      if (Match(values, {1, -1, -2147483647 - 1, 2147483647}) ||
+          Match(values, {0, 1, -2147483647 - 1, 2147483647}) ||
+          Match(values, {0, -1, 2147483647, -2147483647 - 1}) ||
+          Match(values, {0, -1, -2147483647 - 1, -2147483647 - 1}))
+        return 3;
+      // Both mutations pass the selective position-1 guard but must fail the
+      // complete history comparison; acceptance cannot rely on earlier
+      // matchers.
+      std::vector<DiscreteHiddenState> valid = {{1}, {2}, {3}};
+      std::vector<DiscreteHiddenState> wrong_first = {{7}, {2}, {3}};
+      std::vector<DiscreteHiddenState> wrong_last = {{1}, {2}, {7}};
+      if (!MatchState10(valid) || MatchState10(wrong_first) ||
+          MatchState10(wrong_last) || MatchState11(valid))
+        return 4;
+      return 0;
+    }
+  )cpp");
+  const auto status = CompileAndRun(source);
+  EXPECT_TRUE(status.ok()) << status;
 }
 
 TEST(AttentionLogicTest,

@@ -188,23 +188,20 @@ class StateMatcherEmitter {
       return;
     }
     if (positives.size() == 1) {
-      // Once only one history remains, show its remaining requirements as a
-      // short-circuit conjunction, not another forest of single-child nodes.
-      auto positions = remaining;
-      auto competitors = negatives;
-      Lines conditions;
-      while (!positions.empty()) {
-        const size_t position =
-            SelectPosition(positives, competitors, positions);
-        const int symbol = positives.front()->prefix[position];
-        conditions.push_back(
-            StrCat("history[", position, "].value == ", symbol));
-        std::erase(positions, position);
-        std::erase_if(competitors, [&](const auto* row) {
-          return row->prefix[position] != symbol;
-        });
+      // Show the complete expected history in its original positional order.
+      // One selective guard preserves cheap rejection before the shared exact
+      // comparison. Match deliberately rechecks any earlier guarded positions:
+      // the literal remains self-contained rather than encoding partial keys.
+      const auto& prefix = positives.front()->prefix;
+      const size_t position = SelectPosition(positives, negatives, remaining);
+      if (std::any_of(negatives.begin(), negatives.end(), [&](const auto* row) {
+            return row->prefix[position] != prefix[position];
+          })) {
+        Line(indent, StrCat("if (history[", position, "].value != ",
+                            prefix[position], ") return false;"));
       }
-      Line(indent, StrCat("return ", absl::StrJoin(conditions, " && "), ";"));
+      Line(indent, StrCat("return Match(history, {",
+                          absl::StrJoin(prefix, ", "), "});"));
       return;
     }
     const size_t position = SelectPosition(positives, negatives, remaining);
@@ -295,6 +292,16 @@ absl::StatusOr<std::string> RenderStateMatchers(
       "// validate every element, including values absent from capture.",
       "// No predicate depends on another predicate's success or failure.",
       "namespace {",
+      "// Exact sequence equality, including length. The literal values are",
+      "// borrowed only for this call; neither span is retained or modified.",
+      "[[maybe_unused, gnu::noinline]]",
+      "bool Match(absl::Span<const DiscreteHiddenState> history,",
+      "           absl::Span<const int> values) {",
+      "  if (history.size() != values.size()) return false;",
+      "  for (std::size_t position = 0; position < history.size(); ++position)",
+      "    if (history[position].value != values[position]) return false;",
+      "  return true;",
+      "}",
   };
   StateMatcherEmitter emitter(lines);
   for (const auto& [output, lengths] : outputs) {

@@ -220,8 +220,15 @@ A predicate checks the history length before indexing it. For each supported
 length, the generator greedily chooses the next position that rejects the most
 captured histories belonging to other outputs. Ties favor balanced branches
 among matching histories, then the lower position index. The emitted code uses
-guards, switches, and short-circuit conjunctions; this deterministic heuristic
+guards, switches, and exact literal-sequence comparisons; this heuristic
 does not claim globally minimal reads or an optimal decision tree.
+
+When one candidate remains, its complete sequence is written as
+`Match(history, {state0, state1, ...})`. The generated helper takes read-only
+spans, checks lengths, and compares the values in order. A selective guard may
+precede the call to reject competitors cheaply. The helper intentionally
+rechecks positions already tested by this predicate so each literal lists the
+whole expected history, not an implicit partial key.
 
 Selective checks can reject a history early, but **every accepting path still
 checks every element**. A few positions uniquely identifying one recorded
