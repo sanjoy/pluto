@@ -1,0 +1,111 @@
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+load("@rules_cuda//cuda:defs.bzl", "cuda_library")
+
+cuda_library(
+    name = "margin_loss",
+    srcs = ["margin_loss.cc"],
+    hdrs = ["margin_loss.h"],
+    copts = ["--enable-tile", "-std=c++20"],
+    host_copts = ["-std=c++20"],
+    deps = [
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_library(
+    name = "readout",
+    srcs = ["readout.cc"],
+    hdrs = ["readout.h"],
+    deps = [
+        "//src/llm:gpt2",
+        "//src/llm:layer",
+        "//src/llm:combinators",
+        "//src/llm:embedding",
+        "//src/llm:fully_connected",
+        "//src/llm:gelu",
+        "//src/llm:norm",
+        "//src/cuda:executor",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status:statusor",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_binary(
+    name = "fit_attention_readout",
+    srcs = ["fit_attention_readout.cc"],
+    deps = [
+        ":margin_loss",
+        ":readout",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset:compact_vocabulary",
+        "//src/dataset:dataset",
+        "//src/dataset:gpt2_tokenizer",
+        "//src/dataset:padded_line_dataset",
+        "//src/llm:checkpoint",
+        "//src/llm:cross_entropy_loss",
+        "//src/llm:extract_top1_ids",
+        "//src/llm:gpt2",
+        "//src/llm:layer",
+        "//src/llm:layer_hooks",
+        "//src/llm:optimizer",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/strings:str_format",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_test(
+    name = "margin_loss_test",
+    srcs = ["margin_loss_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":margin_loss",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "readout_test",
+    srcs = ["readout_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":readout",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/llm:gpt2",
+        "//src/llm:layer_hooks",
+        "//src/llm:norm",
+        "//src/llm:optimizer",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
