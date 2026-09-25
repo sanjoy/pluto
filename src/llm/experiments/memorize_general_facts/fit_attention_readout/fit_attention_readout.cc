@@ -46,7 +46,9 @@ ABSL_FLAG(int, model_width, 10, "Source hidden width.");
 ABSL_FLAG(int, feed_forward_width, 20, "Source/replacement MLP width.");
 ABSL_FLAG(int, context_length, 27, "Source context length.");
 ABSL_FLAG(int, batch_size, 32, "Facts per update; must divide corpus size.");
-ABSL_FLAG(int, steps, 20000, "Maximum optimizer updates.");
+ABSL_FLAG(
+    int, steps, 20000,
+    "Maximum optimizer updates; zero only evaluates the initial weights.");
 ABSL_FLAG(int, eval_every, 200, "Updates between complete corpus evaluations.");
 ABSL_FLAG(double, seconds, 600,
           "Wall-clock cap on fitting, excluding capture.");
@@ -363,7 +365,7 @@ absl::Status Run() {
        absl::GetFlag(FLAGS_fresh_branch)))
     return absl::InvalidArgumentError(
         "readout_checkpoint cannot be combined with random initialization");
-  if (output.empty() || checkpoint.empty() || batch_size <= 0 || steps <= 0 ||
+  if (output.empty() || checkpoint.empty() || batch_size <= 0 || steps < 0 ||
       eval_every <= 0 || !(seconds > 0) || !std::isfinite(seconds) ||
       !(margin > 0) || !std::isfinite(margin) || !(ratio > 0 && ratio <= 1) ||
       !(lr > 0) || !std::isfinite(lr))
