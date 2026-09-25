@@ -2,7 +2,8 @@
 
 **Result: the fresh fourth-attention readout reached 100% accuracy on all
 10,002 scored predictions and all 1,024 autonomous completions.** The
-second-attention fits did not solve the task. See the fitting results below.
+second- and third-attention fits did not solve the task. See the fitting
+results below.
 
 This experiment asks whether a 10 -> 20 -> 10 residual MLP can directly
 predict all the required completions from a selected attention boundary.
@@ -24,7 +25,8 @@ and W2/b2 (210), for **450 parameters total**. The original prefix, final
 LayerNorm and tied embedding are frozen. There is no gradient clipping or
 weight decay. No extra transformer blocks or wider hidden layers are added.
 
-`--block=1` taps the second attention; `--block=3` taps the fourth. These are
+`--block=1` taps the second attention, `--block=2` the third, and `--block=3`
+the fourth. These are
 zero-based indices. The attention boundary includes its output projection and
 residual addition, but precedes that block's MLP LayerNorm. After this tap,
 the replacement bypasses all remaining original operations except final LN
@@ -117,9 +119,11 @@ known feasible 450-parameter solution for the fourth-attention experiment.
 
 All rows below use the fixed checkpoint and task described above. Accuracy is
 measured at the selected best checkpoint, not necessarily the final update.
-The fresh second/fourth cross-entropy pair uses exactly the same initialization
+The fresh second/third/fourth cross-entropy runs use the same initialization
 seed (3), shuffle seed (3), batch size (32), and 120,000-update rate schedule
-(0.001 to 0.0001); only the captured attention boundary differs.
+(0.001 to 0.0001). The training input differs only in the captured attention
+boundary. Best-checkpoint selection cadence differs: the second run evaluated
+every 5,000 updates; the third and fourth evaluated every 2,000.
 
 | Boundary | Initialization / objective | Updates run | Best step | Wrong / 10,002 | Complete facts / 1,024 |
 |---|---|---:|---:|---:|---:|
@@ -129,23 +133,26 @@ seed (3), shuffle seed (3), batch size (32), and 120,000-update rate schedule
 | Second | Original branch; CE, LR 0.003 | 120,000 | 25,000 | 8,049 | 0 |
 | Second | Matrix restart 2; CE, LR 0.001 | 120,000 | 85,000 | 8,112 | 0 |
 | Second | Entirely fresh 3; CE, LR 0.001 | 120,000 | 70,000 | 8,086 | 1 |
+| Third | Entirely fresh 3; CE, LR 0.001 | 120,000 | 66,000 | 7,567 | 0 |
+| Third | Original branch; CE, LR 0.001 | 120,000 | 46,000 | 7,502 | 0 |
 | Fourth | Entirely fresh 3; margin, LR 0.003 | 120,000 | 108,000 | 384 | 723 |
 | Fourth | Entirely fresh 3; CE, LR 0.001 | 120,000 | 92,000 | 41 | 983 |
 | Fourth | Original branch, no fitting (control) | 0 | 0 | 0 | 1,024 |
 
 Here “CE” means cross-entropy. Margin runs use delta=0.1. All runs decay to
 0.1 times their initial rate, use beta2=0.999, and perform no clipping/decay.
-Warm runs shuffle with seed 0; matrix restarts use their initialization seed
-also as the shuffle seed. Evaluations are every 500 updates for the 20,000-step
+Second-attention warm runs shuffle with seed 0; the third-attention warm run
+uses seed 3. Matrix restarts use their initialization seed also as the shuffle
+seed. Evaluations are every 500 updates for the 20,000-step
 run, every 5,000 for other second-attention runs, and every 2,000 for fresh
-fourth-attention runs. The best is selected only at these evaluation points.
+third/fourth-attention runs. The best is selected only at these evaluation points.
 
 The fresh fourth-attention result is **99.5901% next-token accuracy**, versus
 **19.1562%** for the matched second-attention run. So the fourth-attention
 representation is substantially easier for this specific 450-parameter
 readout and optimizer to decode. This is empirical optimization evidence,
 not a proof about the representational capacity of the second-attention MLP.
-Neither fresh run above achieved exact memorization.
+None of these initial fresh runs achieved exact memorization.
 
 Dataset SHA-256:
 `814c062e7d7592fe4a4e5b158a37bd37da51700f817c19eb981c1e93d33f245c`.
@@ -211,3 +218,78 @@ readout from the **fourth** attention's fixed representation. It does not
 establish feasibility after the **second** attention: the original last MLP
 already supplied a known feasible solution for the fourth, but there is no
 corresponding witness for bypassing the intervening transformer blocks.
+
+## Third-attention follow-up and comparison
+
+The third attention (`--block=2`) was tested with precisely the same fresh
+initialization, training schedules, and refinement sequence as the successful
+fourth-attention lineage. All six branch tensors were trainable; the prefix,
+final LayerNorm, and vocabulary head remained frozen. The input is the third
+attention's residual output, before its MLP. Neither the original third MLP
+nor any fourth-block result is consumed by the replacement readout.
+
+| Third-attention stage | Updates run | Best step in this stage | Wrong / 10,002 | Exact facts / 1,024 |
+|---|---:|---:|---:|---:|
+| Fresh CE, seed 3, batch 32, LR 0.001 -> 0.0001 | 120,000 | 66,000 | 7,567 | 0 |
+| Margin refinement, seed 4, batch 32, LR 0.0001 -> 0.00001 | 150,000 | 0 | 7,567 | 0 |
+| Full-batch margin, seed 5, LR 0.00001 -> 0.000001 | 5,000 | 0 | 7,567 | 0 |
+| Separate original-MLP warm start, CE, seed 3, LR 0.001 -> 0.0001 | 120,000 | 46,000 | 7,502 | 0 |
+
+The margin stages lowered their surrogate loss but worsened token accuracy.
+Their best checkpoint was therefore their initial checkpoint (step 0), so
+both correctly restored the earlier CE solution. The fresh lineage tried
+275,000 updates in total; including the separate warm start, this follow-up
+tried 395,000. Every run completed its configured step count. A fresh-process
+zero-update replay of the best warm-start weights confirmed exactly 7,502
+errors and zero complete facts. Frozen head/LN bytes were unchanged.
+
+### Matched fresh-initialization comparison
+
+| Attention boundary | Accuracy after 120,000 CE updates, selecting best | Exact facts at that checkpoint | Best accuracy after margin/full-batch refinement | Exact facts after refinement |
+|---|---:|---:|---:|---:|
+| Second | 19.1562% | 1/1,024 | Not run for this lineage | — |
+| Third | 24.3451% | 0/1,024 | 24.3451% | 0/1,024 |
+| Fourth | 99.5901% | 983/1,024 | **100%** | **1,024/1,024** |
+
+The initial training schedule and initialization match across these three
+rows, with the evaluation-cadence caveat noted above. Third and fourth also
+share the refinement schedules; fourth stopped its final stage early upon
+success. Higher per-token accuracy does not imply more completely correct
+facts: every suffix token and EOS must be correct to count a fact.
+
+### Best token-accuracy checkpoint across all attempts
+
+| Attention boundary | Correct scored tokens | Token accuracy | Exact facts | Initialization / selected stage |
+|---|---:|---:|---:|---|
+| Second | 1,953/10,002 | 19.5261% | 0/1,024 | Original MLP; CE at step 25,000 |
+| Third | 2,500/10,002 | 24.9950% | 0/1,024 | Original MLP; CE at step 46,000 |
+| Fourth | 10,002/10,002 | **100%** | **1,024/1,024** | Entirely fresh, then margin/full-batch refinement |
+
+This second table summarizes the best observed token accuracy, not an
+equal-search-budget experiment. Each row's token and fact metrics come from
+the same checkpoint. In particular, the second-attention fresh checkpoint
+that completed one fact had lower token accuracy and is not mixed into the
+best-accuracy row.
+
+The third-attention readout did **not** recover exact memorization. Only the
+fourth-attention fit did so in these trials. This does not show that the
+earlier activations lack information, nor prove that no suitable 450-parameter
+MLP exists: it is a negative result for this architecture, frozen output head,
+initializations, and finite optimization procedure.
+
+Local logs/checkpoints are under the ignored directory:
+
+```
+src/llm/experiments/memorize_general_facts/runs/attention_readout_20260925/third_attention/
+  third_fresh_ce/best_mlp/
+  third_refine_margin/best_mlp/
+  third_full_batch/best_mlp/
+  third_warm_ce/best_mlp/   # Best observed third-attention token accuracy
+  third_verify.log         # Independent replay of that checkpoint
+```
+
+Reproduce the fresh sequence using the fourth-attention commands above with
+`--block=2`, new output directories, and the preceding third-attention
+`best_mlp` as each continuation's input. The separate warm start uses
+`--block=2 --seed=3 --objective=cross_entropy --learning_rate=0.001
+--batch_size=32 --steps=120000 --eval_every=2000`, without random/fresh flags.
