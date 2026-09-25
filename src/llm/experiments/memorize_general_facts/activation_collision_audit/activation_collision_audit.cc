@@ -41,6 +41,7 @@ ABSL_FLAG(std::string, checkpoint, "",
 ABSL_FLAG(std::string, tokenizer, "", "Original GPT-2 tokenizer directory.");
 ABSL_FLAG(std::string, corpus, "", "One fact per line.");
 ABSL_FLAG(int, layers, 4, "Checkpoint transformer block count.");
+ABSL_FLAG(int, block, 0, "Zero-based transformer block to audit.");
 ABSL_FLAG(int, model_width, 10, "Checkpoint hidden width.");
 ABSL_FLAG(int, context_length, 27, "Checkpoint context length.");
 ABSL_FLAG(int, attention_heads, 1, "Checkpoint head count.");
@@ -55,9 +56,13 @@ ABSL_FLAG(int, max_examples, 10,
 namespace pluto::llm::activation_collision_audit {
 namespace {
 
-constexpr std::array<const char*, 4> kNames = {
-    "Token + position embedding", "Block 0 attention + residual",
-    "Block 0 pre-MLP LayerNorm", "Block 0 MLP + residual"};
+// Tap order matches Capture's scope selection for the chosen block.
+std::array<std::string, 4> TapNames(int block) {
+  return {"Token + position embedding",
+          absl::StrCat("Block ", block, " attention + residual"),
+          absl::StrCat("Block ", block, " pre-MLP LayerNorm"),
+          absl::StrCat("Block ", block, " MLP + residual")};
+}
 
 // These buffers are allocated once and remain alive until the last copy has
 // completed. Every transfer uses the model's executor and pinned host memory.
@@ -99,7 +104,7 @@ absl::StatusOr<CaptureStorage> AllocateCapture(cuda::Executor& executor,
 }
 
 absl::Status Capture(cuda::Executor& executor, const Layer& model,
-                     const Gpt2Config& config, int eos,
+                     const Gpt2Config& config, int block, int eos,
                      absl::Span<const int> tokens, CaptureStorage& storage) {
   if (tokens.empty() || tokens.size() > storage.context.size())
     return absl::InvalidArgumentError("invalid capture prefix length");
@@ -111,6 +116,7 @@ absl::Status Capture(cuda::Executor& executor, const Layer& model,
                       executor.stream()),
       "upload capture prefix"));
   std::vector<std::string> scopes;
+  const std::string block_name = absl::StrCat("transformer_block_", block);
   std::array<bool, 4> seen{};
   int residual_count = 0;
   LayerHooks hooks;
@@ -130,11 +136,10 @@ absl::Status Capture(cuda::Executor& executor, const Layer& model,
     if (name == "PositionEmbeddingLayer" && scopes.size() == 1 &&
         scopes[0] == "gpt2")
       tap = 0;
-    if (scopes.size() >= 2 && scopes[0] == "gpt2" &&
-        scopes[1] == "transformer_block_0") {
+    if (scopes.size() >= 2 && scopes[0] == "gpt2" && scopes[1] == block_name) {
       if (name == "ResidualLayer" && scopes.size() == 2) {
         if (residual_count >= 2)
-          return absl::DataLossError("unexpected extra block-zero residual");
+          return absl::DataLossError("unexpected extra audited-block residual");
         tap = residual_count++ == 0 ? 1 : 3;
       }
       if (name == "LayerNormLayer" && scopes.size() == 4 &&
@@ -193,6 +198,10 @@ absl::Status Run() {
   const auto corpus_path = absl::GetFlag(FLAGS_corpus);
   const int prompt = absl::GetFlag(FLAGS_prompt_tokens);
   const int max_examples = absl::GetFlag(FLAGS_max_examples);
+  const int block = absl::GetFlag(FLAGS_block);
+  if (block < 0 || block >= absl::GetFlag(FLAGS_layers))
+    return absl::InvalidArgumentError("block must be in [0, layers)");
+  const auto names = TapNames(block);
   if (checkpoint.empty() || tokenizer_path.empty() || corpus_path.empty() ||
       prompt <= 0 || absl::GetFlag(FLAGS_expected_samples) <= 0 ||
       absl::GetFlag(FLAGS_layers) <= 0 || max_examples < 0)
@@ -241,16 +250,17 @@ absl::Status Run() {
       auto storage,
       AllocateCapture(*executor, config.context_length, config.model_width));
   std::vector<Audit> audits;
-  for (size_t tap = 0; tap < kNames.size(); ++tap)
+  for (size_t tap = 0; tap < names.size(); ++tap)
     audits.emplace_back(config.model_width);
   std::array<absl::flat_hash_set<std::vector<uint16_t>>, 4> all_vectors;
   int64_t checked_prefixes = 0;
   int64_t total_rows = 0;
   for (size_t sample = 0; sample < data->sample_count(); ++sample) {
     const auto tokens = data->sample_tokens(sample);
-    RETURN_IF_ERROR(Capture(*executor, *model, config, eos, tokens, storage));
+    RETURN_IF_ERROR(
+        Capture(*executor, *model, config, block, eos, tokens, storage));
     std::array<std::vector<uint16_t>, 4> full_sample;
-    for (size_t tap = 0; tap < kNames.size(); ++tap) {
+    for (size_t tap = 0; tap < names.size(); ++tap) {
       full_sample[tap].assign(storage.taps[tap].begin(),
                               storage.taps[tap].end());
       for (size_t row = 0; row < tokens.size(); ++row) {
@@ -271,19 +281,19 @@ absl::Status Run() {
     total_rows += tokens.size();
     if (absl::GetFlag(FLAGS_verify_prefixes)) {
       for (size_t row = prompt - 1; row < tokens.size(); ++row) {
-        RETURN_IF_ERROR(Capture(*executor, *model, config, eos,
+        RETURN_IF_ERROR(Capture(*executor, *model, config, block, eos,
                                 tokens.first(row + 1), storage));
         const int target = row + 1 < tokens.size() ? tokens[row + 1] : eos;
         if (storage.predictions[row] != target)
           return absl::DataLossError("prefix prediction differs from target");
-        for (size_t tap = 0; tap < kNames.size(); ++tap)
+        for (size_t tap = 0; tap < names.size(); ++tap)
           if (!std::equal(
                   storage.taps[tap].begin(),
                   storage.taps[tap].begin() + (row + 1) * config.model_width,
                   full_sample[tap].begin()))
             return absl::DataLossError(absl::StrCat(
                 "prefix activations differ at sample ", sample + 1,
-                ", prefix length ", row + 1, ", tap ", kNames[tap]));
+                ", prefix length ", row + 1, ", tap ", names[tap]));
         ++checked_prefixes;
       }
     }
@@ -296,7 +306,8 @@ absl::Status Run() {
             << "`\n\nConfiguration: " << config.transformer_block_count
             << " blocks, width " << config.model_width << ", MLP width "
             << config.feed_forward_width << ", context "
-            << config.context_length << ".\n\nSamples: " << data->sample_count()
+            << config.context_length << "; audited block " << block
+            << " (zero-based).\n\nSamples: " << data->sample_count()
             << "; real input rows: " << total_rows
             << "; scored suffix/EOS rows: " << data->supervised_row_count()
             << "; native prediction errors: 0; verified prefixes: "
@@ -309,15 +320,15 @@ absl::Status Run() {
                "Minimum unavoidable errors |\n"
             << "| --- | ---: | ---: | ---: | ---: | ---: | ---: |\n";
   std::vector<Summary> summaries;
-  for (size_t tap = 0; tap < kNames.size(); ++tap) {
+  for (size_t tap = 0; tap < names.size(); ++tap) {
     summaries.push_back(audits[tap].Summarize());
     const auto& s = summaries.back();
     if (s.total_rows != data->supervised_row_count())
       return absl::DataLossError("audit target count mismatch");
-    std::cout << "| " << kNames[tap] << " | " << all_vectors[tap].size()
-              << " | " << s.unique_vectors << " | " << s.repeated_groups
-              << " | " << s.conflicting_groups << " | " << s.conflicting_rows
-              << " | " << s.minimum_errors << " |\n";
+    std::cout << "| " << names[tap] << " | " << all_vectors[tap].size() << " | "
+              << s.unique_vectors << " | " << s.repeated_groups << " | "
+              << s.conflicting_groups << " | " << s.conflicting_rows << " | "
+              << s.minimum_errors << " |\n";
   }
   std::cout << "\nMinimum errors assumes an arbitrary deterministic function "
                "of this vector alone: each equality group must choose one "
@@ -326,8 +337,8 @@ absl::Status Run() {
                "also receives the unnormalized residual. Zero conflicts is "
                "not proof that the existing small MLP can learn the mapping."
                "\n";
-  for (size_t tap = 0; tap < kNames.size(); ++tap) {
-    std::cout << "\n## " << kNames[tap] << "\n\n";
+  for (size_t tap = 0; tap < names.size(); ++tap) {
+    std::cout << "\n## " << names[tap] << "\n\n";
     if (summaries[tap].conflicts.empty()) {
       std::cout << "No exact vector is associated with different targets.\n";
       continue;

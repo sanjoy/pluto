@@ -1,12 +1,12 @@
-# First-block activation collision audit
+# Per-block activation collision audit
 
-This read-only tool asks whether the **existing, frozen first attention block**
+This read-only tool asks whether an **existing, frozen attention block**
 provides enough information at each position for an arbitrary pointwise
 replacement MLP/readout to reproduce the required next tokens. It does not
 train a replacement, change any weights, or use compacted discrete states.
 
-The hooks capture exact BF16 vectors at token/position embedding, block-zero
-attention plus residual, pre-MLP LayerNorm, and MLP plus residual. Equality uses
+The hooks capture exact BF16 vectors at token/position embedding and the selected
+block's attention plus residual, pre-MLP LayerNorm, and MLP plus residual. Equality uses
 all channels' bits, with no tolerance or additional quantization. Positive and
 negative zero remain distinct; consequently the reported error bound is an
 upper bound on achievable accuracy, not a promise that a numeric MLP attains it.
@@ -34,7 +34,7 @@ bazel-bin/src/llm/experiments/memorize_general_facts/activation_collision_audit/
   --checkpoint="$run/baseline/checkpoints/layers_4/step_120000" \
   --tokenizer="$run/inputs/tokenizer" \
   --corpus="$run/inputs/corpus.txt" \
-  --layers=4 --model_width=10 --attention_heads=1 \
+  --layers=4 --block=0 --model_width=10 --attention_heads=1 \
   --feed_forward_width=20 --context_length=27 --prompt_tokens=5 \
   --verify_prefixes=true --max_examples=10000 > /tmp/collision_audit.md
 ```
@@ -42,6 +42,11 @@ bazel-bin/src/llm/experiments/memorize_general_facts/activation_collision_audit/
 `--max_examples` caps the number of conflicting vectors printed per tap, not
 the audit coverage. Each printed vector includes its exact bits and one
 decoded prefix witness per distinct target, with the full target frequency.
+
+`--block` selects a zero-based block index: 0 for the first attention, 1 for the
+second, and so on. It must be in `[0, layers)`. The entire checkpoint still runs;
+only the observed taps change. Full-sentence and prefix replays observe the
+same selected block. The token/position embedding control is always included.
 
 ## Result for the checkpoint above
 
@@ -87,3 +92,31 @@ This is not a proof that no one-block model can memorize the corpus.
 The LayerNorm-only error bound does not directly constrain the complete
 residual block: that block also receives the unnormalized residual vector.
 The stronger relevant obstruction is already present before LayerNorm.
+
+### Second and third blocks
+
+Repeating the audit with `--block=1`, `--block=2`, and `--block=3` gave:
+
+| Attention + residual boundary | All unique vectors | Scored unique vectors | Conflicting vector groups | Rows in conflicts | Minimum errors |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| First attention (block 0) | 12,483 | 9,655 | 151 | 470 | 289 |
+| Second attention (block 1) | 13,311 | 10,002 | 0 | 0 | 0 |
+| Third attention (block 2) | 13,344 | 10,002 | 0 | 0 | 0 |
+| Fourth attention (block 3), positive control | 13,344 | 10,002 | 0 | 0 | 0 |
+
+For blocks 1, 2, and 3, both pre-MLP LayerNorm and MLP-plus-residual also have
+10,002 distinct vectors at the 10,002 scored positions: no same-target repeats
+or conflicting repeats. Each block independently passed all 10,002 causal
+prefix comparisons and zero-error prediction checks. The block-0 rerun exactly
+reproduced the earlier counts, and the embedding control was identical in all
+four runs. Unscored prompt rows account for duplicates in the all-position
+counts; there is no requirement to predict their next tokens.
+
+Thus the first two blocks' existing computation, stopped immediately after
+the second attention residual, no longer has the exact-equality obstruction
+to a pointwise replacement. Each scored activation can be assigned its own
+answer, including after the pre-MLP normalization. This does **not** establish
+linear separability, numerical robustness, sufficient capacity of the current
+10-to-20-to-10 MLP, or successful training of a replacement. No replacement was
+trained in this audit. These are original BF16 vectors, not the 37 compacted
+states whose equivalence assumed that subsequent attention remains present.
