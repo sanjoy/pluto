@@ -7,6 +7,8 @@ kernel, and native analysis-tool implementations live in `src/`.
   evidence-checked Pareto reports, corpus/prediction audits, checkpoint conversion,
   and the corresponding Python tests. These tools drive or inspect the native
   experiment; they are not dependencies of its C++ implementation.
+  Start with its [from-scratch puzzle guide](memorize_general_facts/REPRODUCE_PUZZLE.md)
+  to train a verified source checkpoint and fit the third-attention readout.
 - `training_runs/`: recorded training invocations.
 - `download-datasets.sh`, `download-gpt2-tokenizer.py`, and
   `test-gpt2-tokenizer.py`: data/tokenizer setup and interactive inspection.

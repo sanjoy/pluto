@@ -5,8 +5,15 @@ training/evaluation code, dataset, GPU kernels, and Bazel tests remain in
 [`src/llm/experiments/memorize_general_facts`](../../src/llm/experiments/memorize_general_facts).
 Neither the native binary nor its libraries depend on these scripts.
 
+For a complete fresh-machine setup, source-model training, checkpoint
+verification, and A3 readout experiment, follow
+[Reproduce the third-attention puzzle from scratch](REPRODUCE_PUZZLE.md).
+`reproduce_puzzle.sh` downloads the tokenizer, builds the binary, and runs that
+workflow without requiring any existing checkpoint.
+
 | Utility | Purpose |
 | --- | --- |
+| `reproduce_puzzle.sh` | Build, train a fresh source model, verify all completions, and run the A3 puzzle. |
 | `run_depth_search.py` | Train and independently verify successive depths. |
 | `run_width_depth_search.py` | Sweep widths/depths and record the measured Pareto frontier. |
 | `run_compact_size_sweep.py` | Sequential compact-vocabulary trials with a shared deadline and independent verification. |

@@ -87,6 +87,12 @@ The runner does not infer or resize that table when loading weights.
 
 ## Reproduce the third-attention puzzle
 
+Starting without a tokenizer or checkpoint? Follow the
+[complete setup and reproduction guide](../../../../scripts/memorize_general_facts/REPRODUCE_PUZZLE.md).
+Its [`reproduce_puzzle.sh`](../../../../scripts/memorize_general_facts/reproduce_puzzle.sh)
+trains a fresh source model and requires independently verified memorization
+before running the puzzle. The commands below are for an existing checkpoint.
+
 `--mode=puzzle` is a small, standalone reproduction of the readout experiment.
 It does not depend on the research branch, Python, or sweep utilities. Supply
 a complete memorized checkpoint and the same corpus/base tokenizer used to train it.
