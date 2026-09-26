@@ -15,10 +15,13 @@ absl::Status Validate(Mode mode, std::initializer_list<absl::string_view> flags,
                       absl::string_view infer_checkpoint = "",
                       absl::string_view verify_checkpoint = "",
                       absl::string_view tokenizer = "/tokenizer",
-                      absl::string_view checkpoint_dir = "/checkpoints") {
-  return ValidateModeFlags(
-      mode, absl::MakeConstSpan(flags.begin(), flags.size()), tokenizer,
-      checkpoint_dir, infer_checkpoint, verify_checkpoint);
+                      absl::string_view checkpoint_dir = "/checkpoints",
+                      absl::string_view puzzle_checkpoint = "/puzzle",
+                      bool train_mlp = false) {
+  return ValidateModeFlags(mode,
+                           absl::MakeConstSpan(flags.begin(), flags.size()),
+                           tokenizer, checkpoint_dir, infer_checkpoint,
+                           verify_checkpoint, puzzle_checkpoint, train_mlp);
 }
 
 void ExpectInvalid(const absl::Status& status, absl::string_view diagnostic) {
@@ -63,6 +66,18 @@ CommandLineOptions VerificationOptions() {
   return options;
 }
 
+CommandLineOptions PuzzleCommandLineOptions(bool train_mlp = false) {
+  auto options = TrainingOptions();
+  options.mode = "puzzle";
+  options.checkpoint_dir.clear();
+  options.puzzle_checkpoint = "/puzzle";
+  options.layers = 4;
+  options.model_width = 10;
+  options.mlp_width = 150;
+  options.train_mlp = train_mlp;
+  return ResolveModeDefaults(options, {});
+}
+
 absl::Status ValidateOptions(
     const CommandLineOptions& options,
     std::initializer_list<absl::string_view> flags = {}) {
@@ -77,7 +92,8 @@ TEST(MemorizeGeneralFactsCliTest, ParsesOnlyExactNamedModes) {
     Mode mode;
   };
   for (const auto& test : {Case{"train_model", Mode::kTrainModel},
-                           Case{"infer_model", Mode::kInferModel}}) {
+                           Case{"infer_model", Mode::kInferModel},
+                           Case{"puzzle", Mode::kPuzzle}}) {
     SCOPED_TRACE(test.name);
     const auto parsed = ParseMode(test.name);
     ASSERT_TRUE(parsed.ok()) << parsed.status();
@@ -94,7 +110,7 @@ TEST(MemorizeGeneralFactsCliTest, ParsesOnlyExactNamedModes) {
 }
 
 TEST(MemorizeGeneralFactsCliTest, RejectsInvalidEnumValues) {
-  for (int invalid : {-1, 2, 127}) {
+  for (int invalid : {-1, 3, 127}) {
     SCOPED_TRACE(invalid);
     const Mode mode = static_cast<Mode>(invalid);
     EXPECT_EQ(ModeName(mode), "unknown");
@@ -109,33 +125,38 @@ TEST(MemorizeGeneralFactsCliTest, FiltersEveryFlagByExecutionPath) {
     bool train;
     bool generate;
     bool verify;
+    bool capture;
+    bool train_mlp;
   };
   const Case cases[] = {
-      {"mode", true, true, true},
-      {"tokenizer", true, true, true},
-      {"layers", true, true, true},
-      {"model_width", true, true, true},
-      {"attention_heads", true, true, true},
-      {"feed_forward_width", true, true, true},
-      {"context_length", true, true, true},
-      {"compact_vocabulary", true, true, true},
-      {"seed", true, true, true},
-      {"checkpoint_dir", true, false, false},
-      {"search", true, false, false},
-      {"steps", true, false, false},
-      {"eval_every", true, false, false},
-      {"checkpoint_every", true, false, false},
-      {"learning_rate", true, false, false},
-      {"warmup_steps", true, false, false},
-      {"training_seconds", true, false, false},
-      {"corpus", true, false, true},
-      {"output_dir", true, false, true},
-      {"batch_size", true, false, true},
-      {"infer_checkpoint", false, true, false},
-      {"prompt", false, true, false},
-      {"generation_tokens", false, true, false},
-      {"print_attention_probs", false, true, false},
-      {"verify_checkpoint", false, false, true},
+      {"mode", true, true, true, true, true},
+      {"tokenizer", true, true, true, true, true},
+      {"layers", true, true, true, true, true},
+      {"model_width", true, true, true, true, true},
+      {"attention_heads", true, true, true, true, true},
+      {"feed_forward_width", true, true, true, true, true},
+      {"context_length", true, true, true, true, true},
+      {"compact_vocabulary", true, true, true, true, true},
+      {"seed", true, true, true, false, true},
+      {"checkpoint_dir", true, false, false, false, false},
+      {"search", true, false, false, false, false},
+      {"steps", true, false, false, false, true},
+      {"eval_every", true, false, false, false, true},
+      {"checkpoint_every", true, false, false, false, false},
+      {"learning_rate", true, false, false, false, true},
+      {"warmup_steps", true, false, false, false, false},
+      {"training_seconds", true, false, false, false, false},
+      {"corpus", true, false, true, true, true},
+      {"output_dir", true, false, true, true, true},
+      {"batch_size", true, false, true, true, true},
+      {"infer_checkpoint", false, true, false, false, false},
+      {"prompt", false, true, false, false, false},
+      {"generation_tokens", false, true, false, false, false},
+      {"print_attention_probs", false, true, false, false, false},
+      {"verify_checkpoint", false, false, true, false, false},
+      {"puzzle_checkpoint", false, false, false, true, true},
+      {"train_mlp", false, false, false, true, true},
+      {"mlp_width", false, false, false, false, true},
   };
   for (const auto& test : cases) {
     SCOPED_TRACE(test.flag);
@@ -143,10 +164,15 @@ TEST(MemorizeGeneralFactsCliTest, FiltersEveryFlagByExecutionPath) {
         Validate(Mode::kTrainModel, {test.flag}),
         Validate(Mode::kInferModel, {test.flag}, "/model"),
         Validate(Mode::kInferModel, {test.flag}, "", "/model"),
+        Validate(Mode::kPuzzle, {test.flag}),
+        Validate(Mode::kPuzzle, {test.flag}, "", "", "/tokenizer", "",
+                 "/puzzle", true),
     };
-    const bool allowed[] = {test.train, test.generate, test.verify};
-    const absl::string_view paths[] = {"train", "generate", "verify"};
-    for (int i = 0; i < 3; ++i) {
+    const bool allowed[] = {test.train, test.generate, test.verify,
+                            test.capture, test.train_mlp};
+    const absl::string_view paths[] = {"train", "generate", "verify", "capture",
+                                       "train_mlp"};
+    for (int i = 0; i < 5; ++i) {
       SCOPED_TRACE(paths[i]);
       if (allowed[i])
         EXPECT_TRUE(statuses[i].ok()) << statuses[i];
@@ -197,6 +223,9 @@ TEST(MemorizeGeneralFactsCliTest, AcceptsCompleteFlagSetsForEachPath) {
 }
 
 TEST(MemorizeGeneralFactsCliTest, RequiresTokenizerInEveryPath) {
+  ExpectInvalid(Validate(Mode::kPuzzle, {}, "", "", ""), "--tokenizer");
+  ExpectInvalid(Validate(Mode::kPuzzle, {"tokenizer"}, "", "", ""),
+                "--tokenizer");
   ExpectInvalid(Validate(Mode::kTrainModel, {}, "", "", ""), "--tokenizer");
   ExpectInvalid(Validate(Mode::kInferModel, {}, "/model", "", ""),
                 "--tokenizer");
@@ -299,12 +328,14 @@ TEST(MemorizeGeneralFactsCliTest, RejectsFlagsMissingFromThePolicy) {
 
 TEST(MemorizeGeneralFactsCliTest, ValidatesAndReturnsEachExecutionMode) {
   for (const auto& options :
-       {TrainingOptions(), GenerationOptions(), VerificationOptions()}) {
+       {TrainingOptions(), GenerationOptions(), VerificationOptions(),
+        PuzzleCommandLineOptions(), PuzzleCommandLineOptions(true)}) {
     SCOPED_TRACE(options.mode);
     SCOPED_TRACE(options.verify_checkpoint);
     const auto mode = ParseAndValidateRunMode(options, {});
     ASSERT_TRUE(mode.ok()) << mode.status();
     EXPECT_EQ(*mode, options.mode == "train_model" ? Mode::kTrainModel
+                     : options.mode == "puzzle"    ? Mode::kPuzzle
                                                    : Mode::kInferModel);
   }
 }
@@ -342,7 +373,8 @@ TEST(MemorizeGeneralFactsCliTest,
       {&CommandLineOptions::corpus, "--corpus must be nonempty"},
       {&CommandLineOptions::output_dir, "--output_dir must be nonempty"},
   };
-  for (const auto& valid : {TrainingOptions(), VerificationOptions()}) {
+  for (const auto& valid :
+       {TrainingOptions(), VerificationOptions(), PuzzleCommandLineOptions()}) {
     SCOPED_TRACE(valid.mode);
     for (const auto& test : cases) {
       auto options = valid;
@@ -353,7 +385,8 @@ TEST(MemorizeGeneralFactsCliTest,
 }
 
 TEST(MemorizeGeneralFactsCliTest, CorpusPathsRequirePositiveBatchSize) {
-  for (auto options : {TrainingOptions(), VerificationOptions()}) {
+  for (auto options :
+       {TrainingOptions(), VerificationOptions(), PuzzleCommandLineOptions()}) {
     SCOPED_TRACE(options.mode);
     for (int value :
          {std::numeric_limits<int>::min(), -1, 0, 1,
@@ -370,8 +403,8 @@ TEST(MemorizeGeneralFactsCliTest, CorpusPathsRequirePositiveBatchSize) {
 }
 
 TEST(MemorizeGeneralFactsCliTest, ContextLengthMustBePositiveInEveryPath) {
-  for (auto options :
-       {TrainingOptions(), GenerationOptions(), VerificationOptions()}) {
+  for (auto options : {TrainingOptions(), GenerationOptions(),
+                       VerificationOptions(), PuzzleCommandLineOptions()}) {
     SCOPED_TRACE(options.mode);
     SCOPED_TRACE(options.verify_checkpoint);
     for (int context_length : {std::numeric_limits<int>::min(), -1, 0}) {
@@ -386,7 +419,8 @@ TEST(MemorizeGeneralFactsCliTest, ContextLengthMustBePositiveInEveryPath) {
 }
 
 TEST(MemorizeGeneralFactsCliTest, CorpusContextMustFitTheFiveTokenPrompt) {
-  for (auto options : {TrainingOptions(), VerificationOptions()}) {
+  for (auto options :
+       {TrainingOptions(), VerificationOptions(), PuzzleCommandLineOptions()}) {
     options.context_length = 4;
     ExpectInvalid(ValidateOptions(options),
                   "--context_length must be at least 5");
@@ -399,7 +433,8 @@ TEST(MemorizeGeneralFactsCliTest, CorpusContextMustFitTheFiveTokenPrompt) {
 }
 
 TEST(MemorizeGeneralFactsCliTest, CorpusBatchTokenCountCannotOverflow) {
-  for (auto options : {TrainingOptions(), VerificationOptions()}) {
+  for (auto options :
+       {TrainingOptions(), VerificationOptions(), PuzzleCommandLineOptions()}) {
     for (int context_length : {27, std::numeric_limits<int>::max()}) {
       SCOPED_TRACE(context_length);
       options.context_length = context_length;
@@ -537,6 +572,174 @@ TEST(MemorizeGeneralFactsCliTest, ParsesModeBeforePolicyOrValues) {
     SCOPED_TRACE(mode);
     options.mode = mode;
     ExpectInvalid(ValidateOptions(options, {"unknown_flag"}), "--mode");
+  }
+}
+
+TEST(MemorizeGeneralFactsCliTest, PuzzleRequiresItsCheckpoint) {
+  auto options = PuzzleCommandLineOptions();
+  options.puzzle_checkpoint.clear();
+  ExpectInvalid(ValidateOptions(options), "--puzzle_checkpoint is required");
+  ExpectInvalid(ValidateOptions(options, {"puzzle_checkpoint"}),
+                "--puzzle_checkpoint is required");
+  options.puzzle_checkpoint = "/source";
+  EXPECT_TRUE(ValidateOptions(options, {"puzzle_checkpoint"}).ok());
+}
+
+TEST(MemorizeGeneralFactsCliTest, PuzzleDefaultsOnlyReplaceOmittedFlags) {
+  auto options = PuzzleCommandLineOptions(true);
+  options.steps = 120000;
+  options.eval_every = 256;
+  options.learning_rate = 0.0012;
+  options.seed = 1337;
+  const auto defaults = ResolveModeDefaults(options, {});
+  EXPECT_EQ(defaults.steps, 300000);
+  EXPECT_EQ(defaults.eval_every, 1000);
+  EXPECT_DOUBLE_EQ(defaults.learning_rate, 0.01);
+  EXPECT_EQ(defaults.seed, 3);
+  EXPECT_EQ(defaults.mlp_width, 150);
+  EXPECT_EQ(defaults.batch_size, options.batch_size);
+
+  // Explicit values equal to the old training defaults must still win.
+  const absl::string_view flags[] = {"steps", "eval_every", "learning_rate",
+                                     "seed"};
+  const auto explicit_values = ResolveModeDefaults(options, flags);
+  EXPECT_EQ(explicit_values.steps, options.steps);
+  EXPECT_EQ(explicit_values.eval_every, options.eval_every);
+  EXPECT_DOUBLE_EQ(explicit_values.learning_rate, options.learning_rate);
+  EXPECT_EQ(explicit_values.seed, options.seed);
+  for (absl::string_view flag : flags) {
+    SCOPED_TRACE(flag);
+    const absl::string_view explicit_flag[] = {flag};
+    const auto resolved = ResolveModeDefaults(options, explicit_flag);
+    EXPECT_EQ(resolved.steps, flag == "steps" ? options.steps : 300000);
+    EXPECT_EQ(resolved.eval_every,
+              flag == "eval_every" ? options.eval_every : 1000);
+    EXPECT_DOUBLE_EQ(resolved.learning_rate,
+                     flag == "learning_rate" ? options.learning_rate : 0.01);
+    EXPECT_EQ(resolved.seed, flag == "seed" ? options.seed : 3);
+  }
+}
+
+TEST(MemorizeGeneralFactsCliTest, ResolvingPuzzleDefaultsPreservesOtherModes) {
+  for (auto options :
+       {TrainingOptions(), GenerationOptions(), VerificationOptions()}) {
+    options.steps = 120000;
+    options.eval_every = 256;
+    options.learning_rate = 0.0012;
+    options.seed = 1337;
+    const auto resolved = ResolveModeDefaults(options, {});
+    EXPECT_EQ(resolved.steps, options.steps);
+    EXPECT_EQ(resolved.eval_every, options.eval_every);
+    EXPECT_DOUBLE_EQ(resolved.learning_rate, options.learning_rate);
+    EXPECT_EQ(resolved.seed, options.seed);
+    EXPECT_EQ(resolved.mode, options.mode);
+  }
+}
+
+TEST(MemorizeGeneralFactsCliTest,
+     PuzzleDefaultsDoNotHideInvalidExplicitValues) {
+  auto options = PuzzleCommandLineOptions(true);
+  options.steps = -1;
+  const absl::string_view flags[] = {"steps"};
+  ExpectInvalid(ValidateOptions(ResolveModeDefaults(options, flags), {"steps"}),
+                "--steps must be nonnegative");
+}
+
+TEST(MemorizeGeneralFactsCliTest, PuzzleRequiresThreeBlocksAndPositiveWidths) {
+  for (bool train_mlp : {false, true}) {
+    auto options = PuzzleCommandLineOptions(train_mlp);
+    for (int layers : {-1, 0, 1, 2}) {
+      options.layers = layers;
+      ExpectInvalid(ValidateOptions(options), "--layers must be at least 3");
+    }
+    options.layers = 3;
+    EXPECT_TRUE(ValidateOptions(options).ok());
+    for (int width : {-1, 0}) {
+      options.model_width = width;
+      ExpectInvalid(ValidateOptions(options), "--model_width must be positive");
+    }
+    options.model_width = 1;
+    for (int width : {-1, 0, 1}) {
+      options.mlp_width = width;
+      if (train_mlp && width <= 0)
+        ExpectInvalid(ValidateOptions(options), "--mlp_width must be positive");
+      else
+        EXPECT_TRUE(ValidateOptions(options).ok());
+    }
+  }
+}
+
+TEST(MemorizeGeneralFactsCliTest,
+     PuzzleCaptureRejectsExplicitTrainingSettings) {
+  auto options = PuzzleCommandLineOptions();
+  options.steps = -1;
+  options.eval_every = 0;
+  options.mlp_width = 0;
+  options.learning_rate = std::numeric_limits<double>::quiet_NaN();
+  EXPECT_TRUE(ValidateOptions(options).ok());
+  // Presence, rather than truthiness or equality to defaults, controls policy.
+  for (absl::string_view flag :
+       {"steps", "eval_every", "learning_rate", "seed", "mlp_width"}) {
+    SCOPED_TRACE(flag);
+    ExpectInvalid(ValidateOptions(options, {flag}), flag);
+  }
+  EXPECT_TRUE(ValidateOptions(options, {"train_mlp", "batch_size"}).ok());
+}
+
+TEST(MemorizeGeneralFactsCliTest, PuzzleTrainingValidatesItsSchedule) {
+  auto options = PuzzleCommandLineOptions(true);
+  options.steps = -1;
+  ExpectInvalid(ValidateOptions(options), "--steps must be nonnegative");
+  options.steps = 0;
+  EXPECT_TRUE(ValidateOptions(options).ok());
+  for (int value : {-1, 0}) {
+    options.eval_every = value;
+    ExpectInvalid(ValidateOptions(options), "--eval_every must be positive");
+  }
+  options.eval_every = 1;
+  // These unrelated training settings are ignored unless supplied explicitly.
+  options.checkpoint_every = -1;
+  options.warmup_steps = -1;
+  options.training_seconds = std::numeric_limits<double>::quiet_NaN();
+  EXPECT_TRUE(ValidateOptions(options).ok());
+  for (absl::string_view flag :
+       {"checkpoint_every", "warmup_steps", "training_seconds"})
+    ExpectInvalid(ValidateOptions(options, {flag}), flag);
+}
+
+TEST(MemorizeGeneralFactsCliTest, OnlyPuzzleTrainingRequiresNonnegativeSeed) {
+  auto puzzle = PuzzleCommandLineOptions(true);
+  for (int seed : {std::numeric_limits<int>::min(), -1, 0, 3,
+                   std::numeric_limits<int>::max()}) {
+    SCOPED_TRACE(seed);
+    puzzle.seed = seed;
+    if (seed < 0)
+      ExpectInvalid(ValidateOptions(puzzle, {"seed"}),
+                    "--seed must be nonnegative");
+    else
+      EXPECT_TRUE(ValidateOptions(puzzle, {"seed"}).ok());
+  }
+  for (auto options :
+       {TrainingOptions(), GenerationOptions(), VerificationOptions()}) {
+    options.seed = -1;
+    EXPECT_TRUE(ValidateOptions(options, {"seed"}).ok());
+  }
+}
+
+TEST(MemorizeGeneralFactsCliTest, PuzzleLearningRateMustBeUsableAsFloat) {
+  auto options = PuzzleCommandLineOptions(true);
+  for (double value : {-1.0, 0.0, std::numeric_limits<double>::quiet_NaN(),
+                       std::numeric_limits<double>::infinity(),
+                       std::numeric_limits<double>::max(),
+                       std::numeric_limits<double>::denorm_min()}) {
+    SCOPED_TRACE(value);
+    options.learning_rate = value;
+    ExpectInvalid(ValidateOptions(options), "--learning_rate must");
+  }
+  for (double value :
+       {static_cast<double>(std::numeric_limits<float>::min()), 0.01, 1.0}) {
+    options.learning_rate = value;
+    EXPECT_TRUE(ValidateOptions(options).ok());
   }
 }
 

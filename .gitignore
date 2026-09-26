@@ -2,6 +2,7 @@
 
 # General-facts experiment Python caches and generated training/sweep artifacts.
 /src/llm/experiments/memorize_general_facts/**/__pycache__/
+/scripts/**/__pycache__/
 /src/llm/experiments/memorize_general_facts/runs/
 
 # Generated research evidence is retained locally.

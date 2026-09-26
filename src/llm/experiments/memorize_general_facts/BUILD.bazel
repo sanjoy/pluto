@@ -77,6 +77,7 @@ cc_binary(
     deps = [
         ":attention_inspection",
         ":memorize_general_facts_cli",
+        ":puzzle",
         "//src/cuda:buffer",
         "//src/cuda:executor",
         "//src/cuda:page_locked_host_array",
@@ -113,4 +114,104 @@ cc_test(
     srcs = ["memorize_general_facts_defaults_test.cc"],
     data = [":memorize_general_facts"],
     deps = ["@googletest//:gtest_main"],
+)
+
+cc_library(
+    name = "puzzle_report",
+    srcs = ["puzzle_report.cc"],
+    hdrs = ["puzzle_report.h"],
+    deps = [
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+    ],
+)
+
+cc_test(
+    name = "puzzle_report_test",
+    srcs = ["puzzle_report_test.cc"],
+    deps = [
+        ":puzzle_report",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/strings",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "puzzle_readout",
+    srcs = ["puzzle_readout.cc"],
+    hdrs = ["puzzle_readout.h"],
+    deps = [
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/llm:combinators",
+        "//src/llm:embedding",
+        "//src/llm:fully_connected",
+        "//src/llm:gelu",
+        "//src/llm:gpt2",
+        "//src/llm:layer",
+        "//src/llm:layer_hooks",
+        "//src/llm:norm",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_test(
+    name = "puzzle_readout_test",
+    srcs = ["puzzle_readout_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":puzzle_readout",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/llm:checkpoint",
+        "//src/llm:cross_entropy_loss",
+        "//src/llm:gpt2",
+        "//src/llm:layer_hooks",
+        "//src/llm:optimizer",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "puzzle",
+    srcs = ["puzzle.cc"],
+    hdrs = ["puzzle.h"],
+    deps = [
+        ":puzzle_readout",
+        ":puzzle_report",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset:compact_vocabulary",
+        "//src/dataset:dataset",
+        "//src/dataset:gpt2_tokenizer",
+        "//src/dataset:padded_line_dataset",
+        "//src/dataset:tokenizer",
+        "//src/llm:checkpoint",
+        "//src/llm:cross_entropy_loss",
+        "//src/llm:extract_top1_ids",
+        "//src/llm:gpt2",
+        "//src/llm:layer",
+        "//src/llm:optimizer",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/strings:str_format",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
 )

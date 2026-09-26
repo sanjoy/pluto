@@ -66,7 +66,8 @@ local-only and ignored by Git. They are not required to build or test the code.
 Recorded commands in historical manifests may name old script locations; those
 are provenance, not current entry points. Use the commands below for new runs.
 
-Every native invocation requires `--mode=train_model` or `--mode=infer_model`.
+Every native invocation requires `--mode=train_model`, `--mode=infer_model`,
+or `--mode=puzzle` (described below).
 Training uses `train_model`; inference uses `infer_model` with exactly one
 nonempty checkpoint selector: `--infer_checkpoint` for prompt completion or
 `--verify_checkpoint` for corpus evaluation. The selectors are mutually exclusive
@@ -83,6 +84,101 @@ The reusable GPT-2 configuration still defaults to 1,024 positions.
 
 The configured context must match the checkpoint's learned position table.
 The runner does not infer or resize that table when loading weights.
+
+## Reproduce the third-attention puzzle
+
+`--mode=puzzle` is a small, standalone reproduction of the readout experiment.
+It does not depend on the research branch, Python, or sweep utilities. Supply
+a complete memorized checkpoint and the same corpus/base tokenizer used to train it.
+All source-shape flags must match the checkpoint; the defaults match the
+four-block, width-10, source-MLP-width-20, context-27 model.
+
+```sh
+bazel build -c opt //src/llm/experiments/memorize_general_facts:memorize_general_facts
+facts_checkpoint=/home/ubuntu/checkpoints/memorize_general_facts/dataset_weights_canonical_order_0/baseline/checkpoints/layers_4/step_120000
+facts_tokenizer=/home/ubuntu/checkpoints/memorize_general_facts/dataset_weights_canonical_order_0/inputs/tokenizer
+
+# Capture, verify exact separation, and create the standalone plots.
+bazel-bin/src/llm/experiments/memorize_general_facts/memorize_general_facts \
+  --mode=puzzle \
+  --puzzle_checkpoint="$facts_checkpoint" \
+  --tokenizer="$facts_tokenizer" \
+  --output_dir=/tmp/facts_puzzle_capture
+
+# Repeat capture and then fit the replacement readout for 300,000 updates.
+bazel-bin/src/llm/experiments/memorize_general_facts/memorize_general_facts \
+  --mode=puzzle --train_mlp \
+  --puzzle_checkpoint="$facts_checkpoint" \
+  --tokenizer="$facts_tokenizer" \
+  --output_dir=/tmp/facts_puzzle_training
+```
+
+Use a **new output directory** for each invocation. Open `puzzle.html` in a
+browser; it has no external dependencies. There are 1,024 points per position,
+plotted as coordinates (1,2), (3,4), etc. Hover to inspect a fact and its token
+IDs. Short-sentence padding is labeled gray and can be hidden; supplied-prompt
+rows are marked separately. Plots use raw coordinates, not PCA.
+
+Capture takes the **post-attention residual of the third block**, before that
+block's MLP: the first `ResidualLayer` output inside `transformer_block_2`.
+The complete original model runs to verify that it still predicts all 10,002
+scored suffix/EOS targets correctly. Later blocks' activations are never passed
+to the replacement readout. Compact token IDs are loaded from the checkpoint's
+`compact_vocabulary.tsv`, never rebuilt from the current corpus.
+
+The collision audit compares full vectors globally across all scored positions.
+Identical vectors with the same target are allowed; identical vectors with
+different targets fail the run. Signed zeros compare equally and nonfinite
+values are rejected. The success message is an exact finite-corpus result,
+not a claim of linear separability or easy MLP fitting. Prompt-only targets
+and padding are excluded: shared five-token prompt prefixes need not predict
+the same next token before the completion starts.
+
+With `--train_mlp`, the replacement is:
+
+```text
+x = frozen A3 residual
+h = x + FC2(GELU(FC1(trainable_input_LN(x))))
+logits = frozen_tied_embedding * trainable_final_LN(h)
+prediction = argmax(logits)
+```
+
+FC1 expands to `--mlp_width=150` independently of the source model's
+`--feed_forward_width=20`. Input LN starts at identity, affine biases at zero,
+FC1/FC2 use seeded normal initialization with standard deviations 0.2/0.1,
+and final LN starts from the checkpoint. These eight tensors contain **3,200
+trainable parameters** at width 10/150/10. The head is tied to an independent
+frozen copy of the original token embedding. Neither the source transformer
+nor that head enters the optimizer; both are checked byte-for-byte afterward.
+
+Puzzle-training defaults are **300,000 steps**, statistics every **1,000 steps**,
+seed **3**, batch **32 facts**, and learning rate **0.01**, cosine-decayed to
+one tenth of its initial value. Override these with `--steps`, `--eval_every`,
+`--seed`, `--batch_size`, and `--learning_rate`. `--steps=0` evaluates the
+fresh readout. Ordinary train/infer defaults are unchanged. Optimizer flags
+and `--mlp_width` are rejected in snapshot-only puzzle mode, and unrelated
+training/inference selectors are rejected in either puzzle path.
+
+Fitting uses standard masked cross entropy, BF16 activations, FP32 master
+weights/Adam state, beta1=0.9, beta2=0.999, epsilon=1e-8, and no gradient
+clipping or weight decay. Exact captured activations are cached on the GPU;
+training never runs backward into A3 or recomputes the frozen prefix.
+
+Each report prints mean CE, correct/scored token counts, and whole-fact
+teacher-forced accuracy. Initial, periodic, and final-update statistics are
+also saved to `training.tsv`. The best checkpoint, selected by fewest token
+errors then lowest CE, is saved under `best_mlp/`. The final `BEST` line
+additionally verifies true greedy suffix-plus-EOS completion from five-token
+prompts using the saved readout. This differs from teacher-forced token
+accuracy; intermediate checkpoints are not separately greedily verified.
+`run.txt` records source paths, model shape, and training settings.
+
+The first end-to-end reproduction with the checkpoint above found **10,002
+distinct scored residual vectors** and 2,900 distinct target IDs. After all
+300,000 updates, the best observed readout (step 290,000) had **3,341/10,002
+correct tokens (33.4033%)**, mean CE 3.55856930, and **0/1,024 exact greedy
+completions**. This demonstrates the fitting failure for this particular
+initialization and recipe, not an impossibility result for the MLP architecture.
 
 ## Prompt inference
 

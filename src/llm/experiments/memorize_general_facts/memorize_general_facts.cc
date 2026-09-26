@@ -38,6 +38,7 @@
 #include "src/llm/checkpoint.h"
 #include "src/llm/experiments/memorize_general_facts/attention_inspection.h"
 #include "src/llm/experiments/memorize_general_facts/memorize_general_facts_cli.h"
+#include "src/llm/experiments/memorize_general_facts/puzzle.h"
 #include "src/llm/extract_top1_ids.h"
 #include "src/llm/generate_greedy_continuation.h"
 #include "src/llm/gpt2.h"
@@ -46,7 +47,7 @@
 #include "src/util/tee_stream.h"
 
 ABSL_FLAG(std::string, mode, "",
-          "Required run mode: train_model or infer_model");
+          "Required run mode: train_model, infer_model, or puzzle");
 ABSL_FLAG(std::string, corpus, "testdata/general_facts_dataset.txt",
           "One fact per line");
 ABSL_FLAG(std::string, tokenizer, "",
@@ -58,6 +59,12 @@ ABSL_FLAG(std::string, verify_checkpoint, "",
 ABSL_FLAG(std::string, infer_checkpoint, "",
           "In infer_model, load a checkpoint for greedy prompt completion "
           "without reading a corpus");
+ABSL_FLAG(std::string, puzzle_checkpoint, "",
+          "In puzzle, load the frozen source-model checkpoint (required)");
+ABSL_FLAG(bool, train_mlp, false,
+          "In puzzle, train an MLP on captured residual activations");
+ABSL_FLAG(int, mlp_width, 150,
+          "Hidden width of the puzzle MLP; requires --train_mlp");
 ABSL_FLAG(std::string, prompt, "",
           "One nonempty prompt for infer_checkpoint; omit for an interactive "
           "prompt loop");
@@ -88,11 +95,15 @@ ABSL_FLAG(bool, search, false,
 // Match the successful model's training schedule, not just its dimensions.
 // Changing --steps also changes the cosine learning-rate decay horizon.
 ABSL_FLAG(int, batch_size, 32, "Independent padded sentences per batch");
-ABSL_FLAG(int, steps, 120000, "Maximum optimizer steps per depth");
-ABSL_FLAG(int, eval_every, 256, "Full-corpus exact evaluation interval");
+ABSL_FLAG(int, steps, 120000,
+          "Maximum optimizer steps per depth (defaults to 300000 in puzzle)");
+ABSL_FLAG(int, eval_every, 256,
+          "Full-corpus exact evaluation interval (defaults to 1000 in puzzle)");
 ABSL_FLAG(int, checkpoint_every, 512, "Periodic checkpoint interval");
-ABSL_FLAG(int, seed, 1337, "Initialization and shuffle seed");
-ABSL_FLAG(double, learning_rate, 0.0012, "Peak AdamW learning rate");
+ABSL_FLAG(int, seed, 1337,
+          "Initialization and shuffle seed (defaults to 3 in puzzle)");
+ABSL_FLAG(double, learning_rate, 0.0012,
+          "Peak AdamW learning rate (defaults to 0.01 in puzzle)");
 ABSL_FLAG(int, warmup_steps, 100,
           "Linear learning-rate warmup, then cosine decay");
 ABSL_FLAG(double, training_seconds, 10800,
@@ -112,7 +123,7 @@ void AddIfExplicitlySet(const absl::Flag<T>& flag,
 
 // Only collect flag values and explicit presence here. All validation lives in
 // the CPU-only CLI helper and runs before any executor or file is opened.
-absl::StatusOr<Mode> RunModeFromFlags() {
+absl::StatusOr<Mode> RunModeFromFlags(CommandLineOptions& options) {
   std::vector<absl::string_view> explicitly_set;
   AddIfExplicitlySet(FLAGS_mode, &explicitly_set);
   AddIfExplicitlySet(FLAGS_corpus, &explicitly_set);
@@ -120,6 +131,9 @@ absl::StatusOr<Mode> RunModeFromFlags() {
   AddIfExplicitlySet(FLAGS_checkpoint_dir, &explicitly_set);
   AddIfExplicitlySet(FLAGS_verify_checkpoint, &explicitly_set);
   AddIfExplicitlySet(FLAGS_infer_checkpoint, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_puzzle_checkpoint, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_train_mlp, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_mlp_width, &explicitly_set);
   AddIfExplicitlySet(FLAGS_prompt, &explicitly_set);
   AddIfExplicitlySet(FLAGS_generation_tokens, &explicitly_set);
   AddIfExplicitlySet(FLAGS_print_attention_probs, &explicitly_set);
@@ -139,25 +153,32 @@ absl::StatusOr<Mode> RunModeFromFlags() {
   AddIfExplicitlySet(FLAGS_learning_rate, &explicitly_set);
   AddIfExplicitlySet(FLAGS_warmup_steps, &explicitly_set);
   AddIfExplicitlySet(FLAGS_training_seconds, &explicitly_set);
-  return ParseAndValidateRunMode(
+  options = ResolveModeDefaults(
       {.mode = absl::GetFlag(FLAGS_mode),
        .tokenizer = absl::GetFlag(FLAGS_tokenizer),
        .checkpoint_dir = absl::GetFlag(FLAGS_checkpoint_dir),
        .infer_checkpoint = absl::GetFlag(FLAGS_infer_checkpoint),
        .verify_checkpoint = absl::GetFlag(FLAGS_verify_checkpoint),
+       .puzzle_checkpoint = absl::GetFlag(FLAGS_puzzle_checkpoint),
        .prompt = absl::GetFlag(FLAGS_prompt),
        .corpus = absl::GetFlag(FLAGS_corpus),
        .output_dir = absl::GetFlag(FLAGS_output_dir),
        .generation_tokens = absl::GetFlag(FLAGS_generation_tokens),
+       .layers = absl::GetFlag(FLAGS_layers),
+       .model_width = absl::GetFlag(FLAGS_model_width),
        .context_length = absl::GetFlag(FLAGS_context_length),
        .batch_size = absl::GetFlag(FLAGS_batch_size),
        .steps = absl::GetFlag(FLAGS_steps),
        .eval_every = absl::GetFlag(FLAGS_eval_every),
        .checkpoint_every = absl::GetFlag(FLAGS_checkpoint_every),
        .warmup_steps = absl::GetFlag(FLAGS_warmup_steps),
+       .seed = absl::GetFlag(FLAGS_seed),
+       .mlp_width = absl::GetFlag(FLAGS_mlp_width),
+       .train_mlp = absl::GetFlag(FLAGS_train_mlp),
        .learning_rate = absl::GetFlag(FLAGS_learning_rate),
        .training_seconds = absl::GetFlag(FLAGS_training_seconds)},
       explicitly_set);
+  return ParseAndValidateRunMode(options, explicitly_set);
 }
 
 // Record and reconstruct the full shape explicitly. A checkpoint's raw tensor
@@ -725,13 +746,32 @@ absl::Status RunInference(cuda::Executor& executor,
 }
 
 absl::StatusOr<bool> Run() {
-  ASSIGN_OR_RETURN(const auto mode, RunModeFromFlags());
+  CommandLineOptions options;
+  ASSIGN_OR_RETURN(const auto mode, RunModeFromFlags(options));
   ASSIGN_OR_RETURN(auto executor, cuda::Executor::Create());
   ASSIGN_OR_RETURN(auto tokenizer, tokenizer::Gpt2Tokenizer::Load(
                                        absl::GetFlag(FLAGS_tokenizer)));
   if (tokenizer->vocab_size() != kGpt2VocabularySize)
     return absl::InvalidArgumentError(
         "the experiment requires the full GPT-2 vocabulary");
+  if (mode == Mode::kPuzzle) {
+    const PuzzleOptions puzzle{
+        .checkpoint = options.puzzle_checkpoint,
+        .corpus = options.corpus,
+        .output_directory = options.output_dir,
+        .model_config =
+            ModelConfiguration(options.layers, tokenizer->vocab_size()),
+        .compact_vocabulary = absl::GetFlag(FLAGS_compact_vocabulary),
+        .train_mlp = options.train_mlp,
+        .mlp_width = options.mlp_width,
+        .steps = options.steps,
+        .eval_every = options.eval_every,
+        .batch_size = options.batch_size,
+        .seed = options.seed,
+        .learning_rate = static_cast<float>(options.learning_rate)};
+    RETURN_IF_ERROR(RunPuzzle(*executor, *tokenizer, puzzle, std::cout));
+    return true;
+  }
   if (mode == Mode::kInferModel &&
       !absl::GetFlag(FLAGS_infer_checkpoint).empty()) {
     RETURN_IF_ERROR(RunInference(*executor, *tokenizer));
