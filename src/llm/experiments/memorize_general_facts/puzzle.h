@@ -19,7 +19,7 @@ struct PuzzleOptions {
   Gpt2Config model_config;  // Vocabulary size is resolved from the tokenizer.
   bool compact_vocabulary = true;  // Load the checkpoint's saved ID mapping.
   bool train_mlp = false;          // Otherwise only capture, audit, and plot.
-  int mlp_width = 150;    // Replacement GELU expansion, not source width.
+  int mlp_width = 150;    // Minimum expansion; raised to cover the source tail.
   int steps = 300000;     // Exact update budget; zero evaluates initialization.
   int eval_every = 1000;  // Full-corpus statistics cadence.
   int batch_size = 32;    // Facts per batch, not flattened token rows.

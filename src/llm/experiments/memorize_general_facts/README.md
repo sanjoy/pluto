@@ -143,8 +143,24 @@ logits = frozen_tied_embedding * trainable_final_LN(h)
 prediction = argmax(logits)
 ```
 
-FC1 expands to `--mlp_width=150` independently of the source model's
-`--feed_forward_width=20`. Input LN starts at identity, affine biases at zero,
+`--mlp_width=150` requests a **minimum** FC1 expansion, independently of the
+source model's `--feed_forward_width=20`. The actual width is automatically
+raised when necessary so the replacement's two affine layers alone have at
+least as many parameters as the **entire original path after A3**: MLP3,
+every later transformer block (including attention4), and final LayerNorm.
+Weights, biases, and source LayerNorm parameters count; the frozen embedding
+and tied head are shared by both paths and excluded from the comparison.
+
+For the default source, that path has **1,380 parameters**: MLP3 with its LN
+(450), attention4 with its LN (460), MLP4 with its LN (450), and final LN (20).
+An affine `10 -> h -> 10` MLP has `21*h + 10` parameters, so the smallest
+eligible expansion is **66** (1,396 affine parameters). The default stays at
+**150**: **3,160 affine parameters**, already larger than the normal path.
+For deeper/wider source models the minimum is recomputed, not hardcoded.
+Even an explicitly smaller `--mlp_width` is raised to this minimum; startup
+logs and `run.txt` record the requested width, actual width, and both counts.
+
+Input LN starts at identity, affine biases at zero,
 FC1/FC2 use seeded normal initialization with standard deviations 0.2/0.1,
 and final LN starts from the checkpoint. These eight tensors contain **3,200
 trainable parameters** at width 10/150/10. The head is tied to an independent

@@ -378,8 +378,16 @@ absl::Status FitReadout(cuda::Executor& executor, const Layer& source,
   size_t parameters = 0;
   for (const auto& weight : readout.trainable->weights())
     parameters += weight.size_bytes() / sizeof(float);
-  output << "Trainable: residual " << config.model_width << " -> "
-         << options.mlp_width << " -> " << config.model_width
+  const auto& budget = readout.parameter_budget;
+  output << "Parameter budget: original post-A3 suffix="
+         << budget.source_tail_parameters
+         << "; replacement affine MLP=" << budget.mlp_parameters
+         << "; requested_mlp_width=" << options.mlp_width
+         << "; minimum_mlp_width=" << budget.minimum_mlp_width
+         << "; resolved_mlp_width=" << budget.mlp_width
+         << " (shared frozen embedding/head excluded)\n"
+         << "Trainable: residual " << config.model_width << " -> "
+         << budget.mlp_width << " -> " << config.model_width
          << " MLP, input LN, final LN; parameters=" << parameters
          << "; frozen: original transformer and tied embedding head\n"
          << "Adam: learning_rate=" << options.learning_rate
@@ -525,6 +533,13 @@ absl::Status RunPuzzle(cuda::Executor& executor,
   config.vocabulary_size = tokenizer->vocab_size();
   config.pad_vocabulary = !options.compact_vocabulary;
   RETURN_IF_ERROR(config.Validate());
+  // Resolve capacity before allocating/capturing the corpus. Snapshot-only
+  // mode ignores readout settings, just as its CLI policy requires.
+  std::optional<PuzzleReadoutParameterBudget> budget;
+  if (options.train_mlp) {
+    ASSIGN_OR_RETURN(
+        budget, ResolvePuzzleReadoutParameterBudget(config, options.mlp_width));
+  }
   ASSIGN_OR_RETURN(auto data, PaddedLineDataSetIterator::Create(
                                   executor, corpus.text(), *tokenizer,
                                   {.batch_size = options.batch_size,
@@ -571,12 +586,19 @@ absl::Status RunPuzzle(cuda::Executor& executor,
              << "\ncontext_length=" << config.context_length
              << "\nvocabulary_size=" << config.vocabulary_size
              << "\ntrain_mlp=" << options.train_mlp
-             << "\nmlp_width=" << options.mlp_width
+             << "\nrequested_mlp_width=" << options.mlp_width << "\nmlp_width="
+             << (budget ? budget->mlp_width : options.mlp_width)
              << "\nsteps=" << options.steps
              << "\neval_every=" << options.eval_every
              << "\nbatch_size=" << options.batch_size
              << "\nseed=" << options.seed
              << "\nlearning_rate=" << options.learning_rate << "\n";
+  if (budget)
+    provenance << "minimum_mlp_width=" << budget->minimum_mlp_width
+               << "\nsource_tail_parameters=" << budget->source_tail_parameters
+               << "\nmlp_parameters=" << budget->mlp_parameters
+               << "\ntrainable_parameters=" << budget->trainable_parameters
+               << "\n";
   provenance.close();
   if (!provenance)
     return absl::InternalError("writing puzzle provenance failed");

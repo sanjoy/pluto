@@ -2,6 +2,7 @@
 
 #include <cuda_runtime_api.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <iterator>
 #include <limits>
@@ -59,17 +60,56 @@ absl::Status CopyWeight(cuda::Executor& executor, const Buffer& from,
 
 }  // namespace
 
+absl::StatusOr<PuzzleReadoutParameterBudget>
+ResolvePuzzleReadoutParameterBudget(const Gpt2Config& config,
+                                    int requested_min_mlp_width) {
+  RETURN_IF_ERROR(config.Validate());
+  if (config.transformer_block_count < 3 || requested_min_mlp_width <= 0)
+    return absl::InvalidArgumentError(
+        "puzzle budget requires at least three blocks and positive MLP width");
+  const int64_t d = config.model_width;
+  const int64_t f = config.feed_forward_width;
+  // FC1/FC2 use 2*d*f matrix entries plus f+d biases. Each pre-LN
+  // contributes 2*d parameters. Attention has QKV and output projections.
+  // config.Validate() bounds each tensor, so these per-block sums fit int64.
+  const int64_t mlp_with_norm = (2 * d + 1) * f + 3 * d;
+  const int64_t attention_with_norm = 4 * d * d + 6 * d;
+  const int64_t block = mlp_with_norm + attention_with_norm;
+  const int64_t later_blocks = config.transformer_block_count - 3;
+  const int64_t initial_tail = mlp_with_norm + 2 * d;  // MLP3 and final LN.
+  if (later_blocks >
+      (std::numeric_limits<int64_t>::max() - initial_tail) / block)
+    return absl::InvalidArgumentError(
+        "puzzle source-tail parameter count overflows");
+  const int64_t source_tail = initial_tail + later_blocks * block;
+  // Bare replacement MLP: (2*d+1)*h+d. Round up without overflowing
+  // the source-tail count; trainable input/final LN are extra capacity.
+  const int64_t required = source_tail - d;
+  const int64_t per_hidden_unit = 2 * d + 1;
+  const int64_t minimum =
+      required / per_hidden_unit + (required % per_hidden_unit != 0);
+  if (minimum > std::numeric_limits<int>::max())
+    return absl::InvalidArgumentError(
+        "required puzzle MLP width exceeds int32");
+  const int width =
+      std::max(requested_min_mlp_width, static_cast<int>(minimum));
+  auto readout_config = config;
+  readout_config.feed_forward_width = width;
+  RETURN_IF_ERROR(readout_config.Validate());
+  const int64_t mlp = per_hidden_unit * width + d;
+  return PuzzleReadoutParameterBudget{static_cast<int>(minimum), width,
+                                      source_tail, mlp, mlp + 4 * d};
+}
+
 absl::StatusOr<PuzzleReadout> CreatePuzzleReadout(cuda::Executor& executor,
                                                   const Layer& source,
                                                   const Gpt2Config& config,
                                                   int mlp_width, int seed) {
-  RETURN_IF_ERROR(config.Validate());
-  if (mlp_width <= 0 || seed < 0)
-    return absl::InvalidArgumentError(
-        "readout MLP width must be positive and seed nonnegative");
-  auto readout_config = config;
-  readout_config.feed_forward_width = mlp_width;
-  RETURN_IF_ERROR(readout_config.Validate());
+  ASSIGN_OR_RETURN(auto budget,
+                   ResolvePuzzleReadoutParameterBudget(config, mlp_width));
+  mlp_width = budget.mlp_width;
+  if (seed < 0)
+    return absl::InvalidArgumentError("readout seed must be nonnegative");
   RETURN_IF_ERROR(ValidateSource(executor, source));
   const auto weights = source.weights();
   const size_t final_ln =
@@ -102,6 +142,15 @@ absl::StatusOr<PuzzleReadout> CreatePuzzleReadout(cuda::Executor& executor,
     if (weights[index].size_bytes() != elements[index] * sizeof(float))
       return absl::InvalidArgumentError(
           "source/config GPT-2 weight shape mismatch");
+
+  // Embeddings occupy two tensors; each block has six attention tensors and
+  // six MLP tensors. Start at MLP3 and stop before the final tied head alias.
+  int64_t actual_source_tail = 0;
+  for (size_t index = 2 + 2 * 12 + 6; index + 1 < weights.size(); ++index)
+    actual_source_tail += weights[index].size_bytes() / sizeof(float);
+  if (actual_source_tail != budget.source_tail_parameters)
+    return absl::InternalError(
+        "puzzle source parameter budget disagrees with weights");
 
   ASSIGN_OR_RETURN(
       auto embedding,
@@ -143,8 +192,14 @@ absl::StatusOr<PuzzleReadout> CreatePuzzleReadout(cuda::Executor& executor,
   RETURN_IF_ERROR(tail.add(std::move(trainable)));
   RETURN_IF_ERROR(tail.add(LanguageModelingHeadLayer::Create(embedding.get())));
   ASSIGN_OR_RETURN(auto model, tail.create("puzzle_readout"));
+  int64_t actual_trainable = 0;
+  for (const auto& weight : trainable_pointer->weights())
+    actual_trainable += weight.size_bytes() / sizeof(float);
+  if (actual_trainable != budget.trainable_parameters)
+    return absl::InternalError(
+        "puzzle readout parameter budget disagrees with weights");
   return PuzzleReadout{std::move(embedding), std::move(model),
-                       trainable_pointer};
+                       trainable_pointer, budget};
 }
 
 absl::StatusOr<PuzzleCapture> CaptureThirdAttention(cuda::Executor& executor,

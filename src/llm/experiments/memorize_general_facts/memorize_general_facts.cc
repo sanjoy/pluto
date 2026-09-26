@@ -64,7 +64,9 @@ ABSL_FLAG(std::string, puzzle_checkpoint, "",
 ABSL_FLAG(bool, train_mlp, false,
           "In puzzle, train an MLP on captured residual activations");
 ABSL_FLAG(int, mlp_width, 150,
-          "Hidden width of the puzzle MLP; requires --train_mlp");
+          "Minimum hidden width of the puzzle MLP; grows if needed so its "
+          "affine parameters cover the original post-A3 suffix. "
+          "Requires --train_mlp");
 ABSL_FLAG(std::string, prompt, "",
           "One nonempty prompt for infer_checkpoint; omit for an interactive "
           "prompt loop");

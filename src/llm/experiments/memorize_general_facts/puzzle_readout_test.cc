@@ -24,6 +24,85 @@
 namespace pluto::llm::memorize_general_facts {
 namespace {
 
+TEST(PuzzleReadoutParameterBudgetTest,
+     CountsTheEntireSourceTailAfterAttention3) {
+  Gpt2Config config{.transformer_block_count = 4,
+                    .model_width = 10,
+                    .attention_heads = 1,
+                    .feed_forward_width = 20,
+                    .vocabulary_size = 7,
+                    .pad_vocabulary = false,
+                    .context_length = 8};
+  struct Case {
+    int blocks;
+    int minimum_width;
+    int64_t tail_parameters;
+  };
+  for (const auto test :
+       {Case{3, 22, 470}, Case{4, 66, 1380}, Case{8, 239, 5020}}) {
+    SCOPED_TRACE(test.blocks);
+    config.transformer_block_count = test.blocks;
+    auto budget = ResolvePuzzleReadoutParameterBudget(config, 1);
+    ASSERT_TRUE(budget.ok()) << budget.status();
+    EXPECT_EQ(budget->source_tail_parameters, test.tail_parameters);
+    EXPECT_EQ(budget->minimum_mlp_width, test.minimum_width);
+    EXPECT_EQ(budget->mlp_width, test.minimum_width);
+    EXPECT_EQ(budget->mlp_parameters, 21 * test.minimum_width + 10);
+    EXPECT_EQ(budget->trainable_parameters, budget->mlp_parameters + 40);
+    // Matching the bare two affine layers is deliberately stricter than
+    // counting the replacement's two trainable LayerNorms toward its budget.
+    EXPECT_GE(budget->mlp_parameters, budget->source_tail_parameters);
+    EXPECT_LT(21 * (test.minimum_width - 1) + 10,
+              budget->source_tail_parameters);
+  }
+  config.transformer_block_count = 4;
+  auto preserved = ResolvePuzzleReadoutParameterBudget(config, 150);
+  ASSERT_TRUE(preserved.ok()) << preserved.status();
+  EXPECT_EQ(preserved->mlp_width, 150);
+  EXPECT_EQ(preserved->mlp_parameters, 3160);
+  EXPECT_EQ(preserved->trainable_parameters, 3200);
+  auto enlarged = ResolvePuzzleReadoutParameterBudget(config, 65);
+  ASSERT_TRUE(enlarged.ok()) << enlarged.status();
+  EXPECT_EQ(enlarged->mlp_width, 66);
+  EXPECT_EQ(enlarged->mlp_parameters, 1396);
+  EXPECT_EQ(enlarged->trainable_parameters, 1436);
+}
+
+TEST(PuzzleReadoutParameterBudgetTest, RejectsInvalidOrUnrepresentableBudgets) {
+  Gpt2Config config{.transformer_block_count = 4,
+                    .model_width = 10,
+                    .attention_heads = 1,
+                    .feed_forward_width = 20,
+                    .vocabulary_size = 7,
+                    .pad_vocabulary = false,
+                    .context_length = 8};
+  for (const int width : {-1, 0, std::numeric_limits<int>::max()})
+    EXPECT_FALSE(ResolvePuzzleReadoutParameterBudget(config, width).ok());
+  config.transformer_block_count = 2;
+  EXPECT_FALSE(ResolvePuzzleReadoutParameterBudget(config, 150).ok());
+  config.transformer_block_count = std::numeric_limits<int>::max();
+  EXPECT_FALSE(ResolvePuzzleReadoutParameterBudget(config, 150).ok());
+
+  // Each tensor fits the backend limit, but adding the suffix's parameters
+  // over this many blocks would overflow int64_t without checked arithmetic.
+  config.model_width = 26754;
+  config.feed_forward_width =
+      std::numeric_limits<int>::max() / config.model_width;
+  config.vocabulary_size = 1;
+  config.context_length = 1;
+  ASSERT_TRUE(config.Validate().ok());
+  EXPECT_FALSE(ResolvePuzzleReadoutParameterBudget(config, 150).ok());
+
+  // Even a representable inferred width must satisfy the activation limits;
+  // validating only the original narrow model is insufficient.
+  config.transformer_block_count = 10000;
+  config.model_width = 1;
+  config.feed_forward_width = 1;
+  config.context_length = 1000000;
+  ASSERT_TRUE(config.Validate().ok());
+  EXPECT_FALSE(ResolvePuzzleReadoutParameterBudget(config, 1).ok());
+}
+
 class PuzzleReadoutTest : public testing::Test {
  protected:
   void SetUp() override {
@@ -35,8 +114,9 @@ class PuzzleReadoutTest : public testing::Test {
     source_ = std::move(*source);
   }
   void TearDown() override {
-    if (executor_)
+    if (executor_) {
       EXPECT_TRUE(executor_->Synchronize().ok());
+    }
   }
 
   template <class T>
@@ -155,6 +235,42 @@ TEST_F(PuzzleReadoutTest,
   auto input = HiddenInput();
   ASSERT_TRUE(input.ok()) << input.status();
   EXPECT_TRUE(readout->model->fwd(*executor_, {&*input, 1}).ok());
+}
+
+TEST_F(PuzzleReadoutTest, AutoSizedBudgetMatchesActualSourceAndReadoutTensors) {
+  for (const int blocks : {3, 4, 8}) {
+    SCOPED_TRACE(blocks);
+    auto config = config_;
+    config.transformer_block_count = blocks;
+    auto source = CreateGpt2(*executor_, DataType::BF16, 17, config);
+    ASSERT_TRUE(source.ok()) << source.status();
+    auto readout = CreatePuzzleReadout(*executor_, **source, config, 1, 3);
+    ASSERT_TRUE(readout.ok()) << readout.status();
+    const auto source_weights = (*source)->weights();
+    int64_t source_tail_parameters = 0;
+    // Two embedding tensors, two full blocks, and the six attention tensors
+    // precede this boundary. The last tensor is the shared, frozen LM head.
+    for (size_t i = 2 + 2 * 12 + 6; i + 1 < source_weights.size(); ++i)
+      source_tail_parameters += source_weights[i].size_bytes() / sizeof(float);
+    EXPECT_EQ(source_tail_parameters,
+              readout->parameter_budget.source_tail_parameters);
+    int64_t trainable_parameters = 0;
+    int64_t mlp_parameters = 0;
+    const auto weights = readout->trainable->weights();
+    ASSERT_EQ(weights.size(), 8u);
+    for (size_t i = 0; i < weights.size(); ++i) {
+      const auto count = weights[i].size_bytes() / sizeof(float);
+      trainable_parameters += count;
+      if (i >= 2 && i < 6)
+        mlp_parameters += count;
+    }
+    EXPECT_EQ(trainable_parameters,
+              readout->parameter_budget.trainable_parameters);
+    EXPECT_EQ(mlp_parameters, readout->parameter_budget.mlp_parameters);
+    EXPECT_GE(mlp_parameters, source_tail_parameters);
+    EXPECT_EQ(weights[3].size_bytes() / sizeof(float),
+              static_cast<size_t>(readout->parameter_budget.mlp_width));
+  }
 }
 
 TEST_F(PuzzleReadoutTest,
