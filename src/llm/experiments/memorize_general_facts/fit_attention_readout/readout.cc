@@ -2,6 +2,7 @@
 
 #include <cuda_runtime_api.h>
 
+#include <cmath>
 #include <cstdint>
 #include <utility>
 
@@ -26,14 +27,38 @@ absl::Status CopyWeight(cuda::Executor& executor, const Buffer& from,
 
 }  // namespace
 
-absl::StatusOr<Readout> CreateReadout(cuda::Executor& executor,
-                                      const Layer& source,
-                                      const Gpt2Config& config, int block,
-                                      int random_seed, bool fresh_branch) {
+absl::StatusOr<Readout> CreateReadout(
+    cuda::Executor& executor, const Layer& source, const Gpt2Config& config,
+    int block, int random_seed, bool fresh_branch, int replacement_width,
+    bool train_final_norm, const ReadoutInitializationOptions& initialization) {
   RETURN_IF_ERROR(config.Validate());
   if (block < 0 || block >= config.transformer_block_count ||
       random_seed < -1 || (fresh_branch && random_seed < 0))
     return absl::InvalidArgumentError("invalid readout block or seed");
+  if (replacement_width < 0)
+    return absl::InvalidArgumentError(
+        "replacement MLP width must be nonnegative");
+  if (!std::isfinite(initialization.input_standard_deviation) ||
+      initialization.input_standard_deviation <= 0 ||
+      !std::isfinite(initialization.output_standard_deviation) ||
+      initialization.output_standard_deviation < 0)
+    return absl::InvalidArgumentError(
+        "readout initialization deviations must be finite; input must be "
+        "positive and output nonnegative");
+  if (random_seed < 0 && (initialization.input_standard_deviation != 0.2f ||
+                          initialization.output_standard_deviation != 0.1f ||
+                          initialization.scale_output_by_width))
+    return absl::InvalidArgumentError(
+        "custom matrix initialization requires a nonnegative random_seed");
+  if (initialization.fresh_final_norm && (!fresh_branch || !train_final_norm))
+    return absl::InvalidArgumentError(
+        "fresh final normalization requires fresh_branch and train_final_norm");
+  const int hidden_width =
+      replacement_width == 0 ? config.feed_forward_width : replacement_width;
+  if (hidden_width != config.feed_forward_width && !fresh_branch)
+    return absl::InvalidArgumentError(
+        "a different replacement MLP width requires fresh_branch and a "
+        "nonnegative random_seed; checkpoint branch shapes are incompatible");
   // GPT-2 exposes token and position embeddings, twelve tensors per block,
   // final LN's two tensors, and the tied embedding again at the head. Check
   // both count and aliasing so an unrelated graph cannot silently be loaded.
@@ -55,12 +80,12 @@ absl::StatusOr<Readout> CreateReadout(cuda::Executor& executor,
   RETURN_IF_ERROR(branch.add(
       LayerNormLayer::Create(executor, width, 1e-5f, type, sequence)));
   RETURN_IF_ERROR(branch.add(FullyConnectedLayer::Create(
-      executor, width, config.feed_forward_width, type, sequence)));
+      executor, width, hidden_width, type, sequence)));
   auto* input = static_cast<FullyConnectedLayer*>(branch.back());
-  RETURN_IF_ERROR(branch.add(
-      GeluLayer::Create(executor, config.feed_forward_width, type, sequence)));
+  RETURN_IF_ERROR(
+      branch.add(GeluLayer::Create(executor, hidden_width, type, sequence)));
   RETURN_IF_ERROR(branch.add(FullyConnectedLayer::Create(
-      executor, config.feed_forward_width, width, type, sequence)));
+      executor, hidden_width, width, type, sequence)));
   auto* output = static_cast<FullyConnectedLayer*>(branch.back());
   ASSIGN_OR_RETURN(auto mlp, branch.create("replacement_mlp"));
   // Within a block: LN1(2), QKV(2), attention projection(2), then the six
@@ -71,23 +96,53 @@ absl::StatusOr<Readout> CreateReadout(cuda::Executor& executor,
       RETURN_IF_ERROR(CopyWeight(executor, source_weights[first_mlp + i],
                                  mlp->weights()[i]));
   if (random_seed >= 0) {
-    RETURN_IF_ERROR(input->InitializeNormal(0.2f, random_seed));
-    RETURN_IF_ERROR(output->InitializeNormal(
-        0.1f, uint64_t{static_cast<uint32_t>(random_seed)} + 1));
+    RETURN_IF_ERROR(input->InitializeNormal(
+        initialization.input_standard_deviation, random_seed));
+    float output_deviation = initialization.output_standard_deviation;
+    if (initialization.scale_output_by_width)
+      output_deviation *= std::sqrt(
+          static_cast<float>(config.feed_forward_width) / hidden_width);
+    if (!std::isfinite(output_deviation))
+      return absl::InvalidArgumentError(
+          "width-scaled readout initialization deviation overflowed");
+    if (output_deviation == 0) {
+      // FullyConnectedLayer's normal initializer deliberately rejects zero.
+      // Zero only the matrix here: a non-fresh branch keeps its copied bias.
+      RETURN_IF_ERROR(cuda::CudaStatus(
+          cudaMemsetAsync(output->weights()[0].data(), 0,
+                          output->weights()[0].size_bytes(), executor.stream()),
+          "zero readout output matrix"));
+    } else {
+      RETURN_IF_ERROR(output->InitializeNormal(
+          output_deviation, uint64_t{static_cast<uint32_t>(random_seed)} + 1));
+    }
   }
   ASSIGN_OR_RETURN(auto residual, ResidualLayer::Create(std::move(mlp)));
-  Layer* trainable = residual.get();
-  ComposedLayerBuilder tail;
-  RETURN_IF_ERROR(tail.add(std::move(residual)));
+  Layer* residual_branch = residual.get();
+  Layer* trainable = residual_branch;
   ASSIGN_OR_RETURN(
       auto norm, LayerNormLayer::Create(executor, width, 1e-5f, type, sequence));
-  for (size_t i = 0; i < 2; ++i)
-    RETURN_IF_ERROR(
-        CopyWeight(executor, source_weights[final_ln + i], norm->weights()[i]));
-  RETURN_IF_ERROR(tail.add(std::move(norm)));
+  if (!initialization.fresh_final_norm)
+    for (size_t i = 0; i < 2; ++i)
+      RETURN_IF_ERROR(CopyWeight(executor, source_weights[final_ln + i],
+                                 norm->weights()[i]));
+  ComposedLayerBuilder tail;
+  if (train_final_norm) {
+    ComposedLayerBuilder suffix;
+    RETURN_IF_ERROR(suffix.add(std::move(residual)));
+    RETURN_IF_ERROR(suffix.add(std::move(norm)));
+    ASSIGN_OR_RETURN(auto trainable_suffix,
+                     suffix.create("replacement_mlp_and_final_norm"));
+    trainable = trainable_suffix.get();
+    RETURN_IF_ERROR(tail.add(std::move(trainable_suffix)));
+  } else {
+    RETURN_IF_ERROR(tail.add(std::move(residual)));
+    RETURN_IF_ERROR(tail.add(std::move(norm)));
+  }
   RETURN_IF_ERROR(tail.add(LanguageModelingHeadLayer::Create(embedding.get())));
   ASSIGN_OR_RETURN(auto model, tail.create("replacement_readout"));
-  return Readout{std::move(embedding), std::move(model), trainable};
+  return Readout{std::move(embedding), std::move(model), residual_branch,
+                 trainable};
 }
 
 }  // namespace pluto::llm::fit_attention_readout

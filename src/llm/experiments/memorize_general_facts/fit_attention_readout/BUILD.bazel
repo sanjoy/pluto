@@ -4,6 +4,111 @@ load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("@rules_cuda//cuda:defs.bzl", "cuda_library")
 
 cuda_library(
+    name = "fixed_preprocessing",
+    srcs = ["fixed_preprocessing.cc"],
+    hdrs = ["fixed_preprocessing.h"],
+    copts = ["--enable-tile", "-std=c++20"],
+    host_copts = ["-std=c++20"],
+    deps = [
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_test(
+    name = "fixed_preprocessing_test",
+    srcs = ["fixed_preprocessing_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":fixed_preprocessing",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "activation_graft",
+    srcs = ["activation_graft.cc"],
+    hdrs = ["activation_graft.h"],
+    deps = [
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cuda_library(
+    name = "subspace_graft",
+    srcs = ["subspace_graft.cc"],
+    hdrs = ["subspace_graft.h"],
+    copts = ["--enable-tile", "-std=c++20"],
+    host_copts = ["-std=c++20"],
+    deps = [
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_test(
+    name = "subspace_graft_test",
+    srcs = ["subspace_graft_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":activation_graft",
+        ":subspace_graft",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "activation_graft_test",
+    srcs = ["activation_graft_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":activation_graft",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cuda_library(
     name = "margin_loss",
     srcs = ["margin_loss.cc"],
     hdrs = ["margin_loss.h"],
@@ -42,8 +147,11 @@ cc_binary(
     name = "fit_attention_readout",
     srcs = ["fit_attention_readout.cc"],
     deps = [
+        ":activation_graft",
+        ":fixed_preprocessing",
         ":margin_loss",
         ":readout",
+        ":subspace_graft",
         "//src/cuda:buffer",
         "//src/cuda:executor",
         "//src/cuda:page_locked_host_array",
@@ -59,6 +167,7 @@ cc_binary(
         "//src/llm:layer_hooks",
         "//src/llm:optimizer",
         "//src/util:status_macros",
+        "@abseil-cpp//absl/container:flat_hash_map",
         "@abseil-cpp//absl/flags:flag",
         "@abseil-cpp//absl/flags:parse",
         "@abseil-cpp//absl/status",
@@ -97,6 +206,7 @@ cc_test(
         "//src/cuda:buffer",
         "//src/cuda:executor",
         "//src/cuda:page_locked_host_array",
+        "//src/llm:checkpoint",
         "//src/llm:gpt2",
         "//src/llm:layer_hooks",
         "//src/llm:norm",
