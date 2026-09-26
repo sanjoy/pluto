@@ -13,6 +13,7 @@ cc_binary(
         "//src/dataset:padded_line_dataset",
         "//src/llm:checkpoint",
         "//src/llm:layer",
+        "//src/llm:layer_hooks",
         "//src/llm:gpt2",
         "//src/llm/experiments/memorize_general_facts:puzzle_readout",
         "//src/util:status_macros",

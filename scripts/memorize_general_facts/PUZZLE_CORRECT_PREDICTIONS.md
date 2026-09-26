@@ -106,3 +106,49 @@ prediction and a machine-readable `summary.json`. The geometry companion
 accepts `--html` (the puzzle capture HTML) and `--predictions`; it requires NumPy
 and SciPy, joins on exact fact/position IDs, and prints JSON. Generated files
 and checkpoints are local artifacts, not tracked source.
+
+## Follow-up: neighbor agreement at A4
+
+Capture the post-attention residual before the MLP at both A3 and A4, with
+identical checkpoint, samples, positions, labels, and BF16 precision. The new
+A3 vectors exactly match the earlier capture and the prediction TSV is byte
+identical. No training was performed.
+
+For the strict lexical pool (7,755 queries and candidates, excluding EOS and
+punctuation), the fraction of neighbors with the correct target is:
+
+| Metric | A3 | A4 |
+|---|---:|---:|
+| Nearest neighbor, raw vectors | 7.17% | 17.87% |
+| Nearest neighbor, normalized vectors | 6.87% | 16.97% |
+| Mean agreement among 5 nearest, normalized | 6.03% | 12.67% |
+| Mean agreement among 25 nearest, normalized | 4.97% | 8.81% |
+
+Each query is excluded from its neighbors. Normalization uses the same
+per-vector mean/variance rule as above, without learned affine parameters.
+Of these rows, 1,844 have singleton targets and cannot have a matching neighbor.
+Considering only the other 5,911 queries (while retaining the same candidate
+pool), normalized nearest agreement rises from **9.02% to 22.26%**. Thus the
+increase is about 2.5x, but even A4 is far from pure same-answer clusters.
+
+The original A4 MLP, final LN, and head get all scored predictions right despite
+this low nearest-neighbor agreement. Euclidean neighborhood purity is therefore
+not a sufficient description of what makes this representation decodable.
+The A3-to-A4 comparison includes **both block 3's MLP and block 4's attention**;
+it does not isolate the causal contribution of attention 4 alone.
+
+Independent all-pairs Euclidean distance calculations reproduced the table.
+Excluding neighbors from the same fact changes almost nothing. There are no
+nearest-neighbor ties, and all full vectors are distinct at both boundaries.
+
+To reproduce, add `--attention_states_output=/tmp/a34_states.tsv` to the
+native prediction probe (with a fresh prediction output), then run:
+
+```sh
+python3 -B scripts/memorize_general_facts/compare_puzzle_attention_neighbors.py \
+  --states=/tmp/a34_states.tsv --predictions=/tmp/predictions.tsv \
+  --a3_capture_html=/path/to/puzzle.html > /tmp/a34_neighbors.json
+```
+
+The comparison requires NumPy/SciPy and verifies the new A3 vectors against
+the original HTML capture before computing any statistics.
