@@ -144,6 +144,7 @@ cc_library(
     name = "puzzle_readout",
     srcs = ["puzzle_readout.cc"],
     hdrs = ["puzzle_readout.h"],
+    visibility = ["//scripts/memorize_general_facts:__pkg__"],
     deps = [
         "//src/cuda:buffer",
         "//src/cuda:executor",

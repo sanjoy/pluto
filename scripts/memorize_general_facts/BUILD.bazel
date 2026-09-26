@@ -1,0 +1,27 @@
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+
+cc_binary(
+    name = "puzzle_prediction_probe",
+    srcs = ["puzzle_prediction_probe.cc"],
+    deps = [
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset",
+        "//src/dataset:compact_vocabulary",
+        "//src/dataset:gpt2_detokenizer",
+        "//src/dataset:gpt2_tokenizer",
+        "//src/dataset:padded_line_dataset",
+        "//src/llm:checkpoint",
+        "//src/llm:layer",
+        "//src/llm:gpt2",
+        "//src/llm/experiments/memorize_general_facts:puzzle_readout",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
