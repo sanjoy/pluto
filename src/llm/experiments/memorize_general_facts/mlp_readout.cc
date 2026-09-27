@@ -1,4 +1,4 @@
-#include "src/llm/experiments/memorize_general_facts/puzzle_readout.h"
+#include "src/llm/experiments/memorize_general_facts/mlp_readout.h"
 
 #include <cuda_runtime_api.h>
 
@@ -55,20 +55,19 @@ absl::Status CopyWeight(cuda::Executor& executor, const Buffer& from,
   return cuda::CudaStatus(
       cudaMemcpyAsync(to.data(), from.data(), to.size_bytes(),
                       cudaMemcpyDeviceToDevice, executor.stream()),
-      "copy puzzle readout weight");
+      "copy MLP readout weight");
 }
 
 }  // namespace
 
-absl::StatusOr<PuzzleReadoutParameterBudget>
-ResolvePuzzleReadoutParameterBudget(const Gpt2Config& config,
-                                    int requested_min_mlp_width, int mlp_depth,
-                                    bool match_parameter_budget) {
+absl::StatusOr<MlpReadoutParameterBudget> ResolveMlpReadoutParameterBudget(
+    const Gpt2Config& config, int requested_min_mlp_width, int mlp_depth,
+    bool match_parameter_budget) {
   RETURN_IF_ERROR(config.Validate());
   if (config.transformer_block_count < 3 || requested_min_mlp_width <= 0 ||
       mlp_depth <= 0)
     return absl::InvalidArgumentError(
-        "puzzle budget requires at least three source blocks and positive "
+        "MLP readout budget requires at least three source blocks and positive "
         "MLP width and depth");
   const int64_t d = config.model_width;
   const int64_t f = config.feed_forward_width;
@@ -83,7 +82,7 @@ ResolvePuzzleReadoutParameterBudget(const Gpt2Config& config,
   if (later_blocks >
       (std::numeric_limits<int64_t>::max() - initial_tail) / block)
     return absl::InvalidArgumentError(
-        "puzzle source-tail parameter count overflows");
+        "MLP readout source-tail parameter count overflows");
   const int64_t source_tail = initial_tail + later_blocks * block;
   // Each bare MLP has (2*d+1)*h+d parameters. Divide the source budget
   // across all blocks before rounding up the width, avoiding depth products
@@ -97,7 +96,7 @@ ResolvePuzzleReadoutParameterBudget(const Gpt2Config& config,
                required / per_hidden_unit + (required % per_hidden_unit != 0));
   if (minimum > std::numeric_limits<int>::max())
     return absl::InvalidArgumentError(
-        "required puzzle MLP width exceeds int32");
+        "required MLP readout width exceeds int32");
   const int width = match_parameter_budget ? std::max(requested_min_mlp_width,
                                                       static_cast<int>(minimum))
                                            : requested_min_mlp_width;
@@ -109,18 +108,18 @@ ResolvePuzzleReadoutParameterBudget(const Gpt2Config& config,
   if (mlp_depth >
       (std::numeric_limits<int64_t>::max() - 2 * d) / trainable_per_block)
     return absl::InvalidArgumentError(
-        "puzzle readout parameter count overflows");
+        "MLP readout parameter count overflows");
   const int64_t mlp = mlp_depth * affine_per_block;
-  return PuzzleReadoutParameterBudget{static_cast<int>(minimum), width,
-                                      source_tail, mlp,
-                                      mlp_depth * trainable_per_block + 2 * d};
+  return MlpReadoutParameterBudget{static_cast<int>(minimum), width,
+                                   source_tail, mlp,
+                                   mlp_depth * trainable_per_block + 2 * d};
 }
 
-absl::StatusOr<PuzzleReadout> CreatePuzzleReadout(
+absl::StatusOr<MlpReadout> CreateMlpReadout(
     cuda::Executor& executor, const Layer& source, const Gpt2Config& config,
     int mlp_width, int seed, int mlp_depth, bool match_parameter_budget) {
   ASSIGN_OR_RETURN(auto budget,
-                   ResolvePuzzleReadoutParameterBudget(
+                   ResolveMlpReadoutParameterBudget(
                        config, mlp_width, mlp_depth, match_parameter_budget));
   mlp_width = budget.mlp_width;
   if (seed < 0)
@@ -165,7 +164,7 @@ absl::StatusOr<PuzzleReadout> CreatePuzzleReadout(
     actual_source_tail += weights[index].size_bytes() / sizeof(float);
   if (actual_source_tail != budget.source_tail_parameters)
     return absl::InternalError(
-        "puzzle source parameter budget disagrees with weights");
+        "MLP readout source parameter budget disagrees with weights");
 
   ASSIGN_OR_RETURN(
       auto embedding,
@@ -194,7 +193,7 @@ absl::StatusOr<PuzzleReadout> CreatePuzzleReadout(
     // Keep the output projection scale fixed so depth is the only change.
     RETURN_IF_ERROR(static_cast<FullyConnectedLayer*>(branch.back())
                         ->InitializeNormal(0.1f, block_seed + 1));
-    ASSIGN_OR_RETURN(auto mlp, branch.create("puzzle_mlp"));
+    ASSIGN_OR_RETURN(auto mlp, branch.create("mlp_readout_block"));
     RETURN_IF_ERROR(suffix.add(ResidualLayer::Create(std::move(mlp))));
   }
   ASSIGN_OR_RETURN(
@@ -204,20 +203,20 @@ absl::StatusOr<PuzzleReadout> CreatePuzzleReadout(
     RETURN_IF_ERROR(CopyWeight(executor, weights[final_ln + index],
                                norm->weights()[index]));
   RETURN_IF_ERROR(suffix.add(std::move(norm)));
-  ASSIGN_OR_RETURN(auto trainable, suffix.create("puzzle_trainable"));
+  ASSIGN_OR_RETURN(auto trainable, suffix.create("mlp_readout_trainable"));
   Layer* trainable_pointer = trainable.get();
   ComposedLayerBuilder tail;
   RETURN_IF_ERROR(tail.add(std::move(trainable)));
   RETURN_IF_ERROR(tail.add(LanguageModelingHeadLayer::Create(embedding.get())));
-  ASSIGN_OR_RETURN(auto model, tail.create("puzzle_readout"));
+  ASSIGN_OR_RETURN(auto model, tail.create("mlp_readout"));
   int64_t actual_trainable = 0;
   for (const auto& weight : trainable_pointer->weights())
     actual_trainable += weight.size_bytes() / sizeof(float);
   if (actual_trainable != budget.trainable_parameters)
     return absl::InternalError(
-        "puzzle readout parameter budget disagrees with weights");
-  return PuzzleReadout{std::move(embedding), std::move(model),
-                       trainable_pointer, budget};
+        "MLP readout parameter budget disagrees with weights");
+  return MlpReadout{std::move(embedding), std::move(model), trainable_pointer,
+                    budget};
 }
 
 absl::StatusOr<PuzzleCapture> CaptureThirdAttention(cuda::Executor& executor,

@@ -28,7 +28,7 @@
 #include "src/dataset/tokenizer.h"
 #include "src/llm/adamw_optimizer.h"
 #include "src/llm/checkpoint.h"
-#include "src/llm/experiments/memorize_general_facts/puzzle_readout.h"
+#include "src/llm/experiments/memorize_general_facts/mlp_readout.h"
 #include "src/llm/experiments/memorize_general_facts/puzzle_report.h"
 #include "src/llm/extract_top1_ids.h"
 #include "src/llm/layers/cross_entropy_loss.h"
@@ -250,11 +250,10 @@ struct Metrics {
 
 // Measure teacher-forced accuracy and cross entropy across the cached corpus.
 // Score only suffix and EOS targets; reject empty or nonfinite loss results.
-absl::StatusOr<Metrics> EvaluateReadout(cuda::Executor& executor,
-                                        const Layer& readout, const Layer& loss,
-                                        const CapturedCorpus& cache,
-                                        const Gpt2Config& config, Batch& full,
-                                        std::optional<Batch>& partial) {
+absl::StatusOr<Metrics> EvaluateMlpReadout(
+    cuda::Executor& executor, const Layer& readout, const Layer& loss,
+    const CapturedCorpus& cache, const Gpt2Config& config, Batch& full,
+    std::optional<Batch>& partial) {
   const int samples = cache.report.facts.size();
   const int sequence = config.context_length;
   const int max_rows = full.samples * sequence;
@@ -355,21 +354,21 @@ absl::StatusOr<int> VerifyGreedy(cuda::Executor& executor, const Layer& source,
   return complete;
 }
 
-// Fit a replacement readout on cached states while preserving the tied head.
+// Fit an MLP readout on cached states while preserving the tied head.
 // Restore the best checkpoint and verify completions from actual prefixes.
-absl::Status FitReadout(cuda::Executor& executor, const Layer& source,
-                        const Gpt2Config& config, const CapturedCorpus& cache,
-                        const PaddedLineDataSetIterator& data, int eos,
-                        const PuzzleOptions& options, std::ostream& output) {
+absl::Status FitMlpReadout(cuda::Executor& executor, const Layer& source,
+                           const Gpt2Config& config,
+                           const CapturedCorpus& cache,
+                           const PaddedLineDataSetIterator& data, int eos,
+                           const PuzzleOptions& options, std::ostream& output) {
   const int depth = options.train_stacked_mlp ? kStackedMlpDepth : 1;
   const int width =
       options.train_stacked_mlp ? kStackedMlpWidth : options.mlp_width;
   // The stack is an exact reproduction of the 5 x 10/150/10 experiment, not
   // a minimum-width request that can silently grow with the source model.
-  ASSIGN_OR_RETURN(
-      auto readout,
-      CreatePuzzleReadout(executor, source, config, width, options.seed, depth,
-                          !options.train_stacked_mlp));
+  ASSIGN_OR_RETURN(auto readout, CreateMlpReadout(executor, source, config,
+                                                  width, options.seed, depth,
+                                                  !options.train_stacked_mlp));
   ASSIGN_OR_RETURN(auto frozen_head,
                    SnapshotWeights(executor, *readout.embedding));
   ASSIGN_OR_RETURN(auto loss, CrossEntropyLossLayer::Create(
@@ -430,8 +429,8 @@ absl::Status FitReadout(cuda::Executor& executor, const Layer& source,
   // Mean cross entropy breaks ties between readouts with equal error counts.
   auto evaluate = [&](int step) -> absl::Status {
     ASSIGN_OR_RETURN(auto metrics,
-                     EvaluateReadout(executor, *readout.model, *loss, cache,
-                                     config, full, partial));
+                     EvaluateMlpReadout(executor, *readout.model, *loss, cache,
+                                        config, full, partial));
     const double seconds = elapsed();
     output << absl::StrFormat(
                   "step=%d seconds=%.2f mean_ce=%.8f correct=%d/%d "
@@ -575,11 +574,11 @@ absl::Status RunPuzzle(cuda::Executor& executor,
   RETURN_IF_ERROR(config.Validate());
   // Resolve capacity before allocating/capturing the corpus. Snapshot-only
   // mode ignores readout settings, just as its CLI policy requires.
-  std::optional<PuzzleReadoutParameterBudget> budget;
+  std::optional<MlpReadoutParameterBudget> budget;
   if (train_readout) {
     ASSIGN_OR_RETURN(
-        budget, ResolvePuzzleReadoutParameterBudget(config, width, depth,
-                                                    !options.train_stacked_mlp));
+        budget, ResolveMlpReadoutParameterBudget(config, width, depth,
+                                                 !options.train_stacked_mlp));
   }
   ASSIGN_OR_RETURN(auto data, PaddedLineDataSetIterator::Create(
                                   executor, corpus.text(), *tokenizer,
@@ -646,8 +645,8 @@ absl::Status RunPuzzle(cuda::Executor& executor,
     return absl::InternalError("writing puzzle provenance failed");
   output << "Plots: " << html.string() << "\n" << std::flush;
   if (train_readout)
-    RETURN_IF_ERROR(FitReadout(executor, *source, config, captured, *data, eos,
-                               options, output));
+    RETURN_IF_ERROR(FitMlpReadout(executor, *source, config, captured, *data,
+                                  eos, options, output));
   RETURN_IF_ERROR(CheckUnchanged(executor, *source, frozen_source));
   output << "Frozen source parameters unchanged.\n" << std::flush;
   return output ? absl::OkStatus()

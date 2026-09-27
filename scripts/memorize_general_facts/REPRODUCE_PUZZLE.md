@@ -2,7 +2,7 @@
 
 This guide starts without a tokenizer or checkpoint. It trains the ordinary
 four-block model to memorize the corpus, verifies the saved checkpoint, and
-then fits a larger pointwise MLP to the third attention block's outputs.
+then fits a larger pointwise MLP readout to the third attention block's outputs.
 Everything needed beyond the machine prerequisites is downloaded or built by
 [`reproduce_puzzle.sh`](reproduce_puzzle.sh). No research branch or private
 experiment artifacts are needed.
@@ -161,12 +161,12 @@ It then performs the following stages, stopping on any failed check:
 3. **Capture third-attention activations and audit separation.** The frozen
    source model must still get every scored target right. Equal complete
    hidden-state vectors must never require different scored target tokens.
-4. **Fit the puzzle MLP for 300,000 steps**, reporting every 1,000 steps.
+4. **Fit the MLP readout for 300,000 steps**, reporting every 1,000 steps.
    Train a residual `10 -> 150 -> 10` MLP, its input LayerNorm, and the final
    LayerNorm; freeze the source transformer and the tied embedding projection.
    Use seed 3, batch size 32, and learning rate 0.01 decaying to 0.001.
 
-The replacement has **3,160 affine MLP parameters**, or **3,200** including its
+The MLP readout has **3,160 affine MLP parameters**, or **3,200** including its
 two trainable LayerNorms. That exceeds the original **1,380-parameter** path
 after attention 3, which includes MLP3, attention4, MLP4, and their LayerNorms.
 The frozen embedding/head is common to both paths and excluded from this
@@ -242,7 +242,7 @@ A from-scratch validation of this guide's default recipe on the tested GH200
 | Stage | Checkpoint/update | Correct scored tokens | Exact greedy facts |
 | --- | ---: | ---: | ---: |
 | Original source model | 89,600 | 10,002 / 10,002 | 1,024 / 1,024 |
-| Best replacement readout during 300,000 updates | 235,000 | 3,594 / 10,002 (35.93%) | 1 / 1,024 |
+| Best MLP readout during 300,000 updates | 235,000 | 3,594 / 10,002 (35.93%) | 1 / 1,024 |
 
 Source training took about 259 seconds; the 300,000-update readout fit took
 about 285 seconds, excluding setup and the initial build. All 10,002 scored
@@ -317,7 +317,7 @@ source_checkpoint="$(cat "$facts_run/checkpoint.txt")"
 ```
 
 Omit the `--prompt` line to type prompts interactively. This loads the original
-four-block model, not `best_mlp/`, which stores only the replacement readout's
+four-block model, not `best_mlp/`, which stores only the MLP readout's
 trainable tensors and is not a complete standalone language-model checkpoint.
 Exact completion is verified for the dataset's first-five-token prompts; it
 is not a guarantee for arbitrary wording.

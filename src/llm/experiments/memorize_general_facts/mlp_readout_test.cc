@@ -1,4 +1,4 @@
-#include "src/llm/experiments/memorize_general_facts/puzzle_readout.h"
+#include "src/llm/experiments/memorize_general_facts/mlp_readout.h"
 
 #include <cuda_runtime_api.h>
 
@@ -24,8 +24,7 @@
 namespace pluto::llm::memorize_general_facts {
 namespace {
 
-TEST(PuzzleReadoutParameterBudgetTest,
-     CountsTheEntireSourceTailAfterAttention3) {
+TEST(MlpReadoutParameterBudgetTest, CountsTheEntireSourceTailAfterAttention3) {
   Gpt2Config config{.transformer_block_count = 4,
                     .model_width = 10,
                     .attention_heads = 1,
@@ -42,7 +41,7 @@ TEST(PuzzleReadoutParameterBudgetTest,
        {Case{3, 22, 470}, Case{4, 66, 1380}, Case{8, 239, 5020}}) {
     SCOPED_TRACE(test.blocks);
     config.transformer_block_count = test.blocks;
-    auto budget = ResolvePuzzleReadoutParameterBudget(config, 1);
+    auto budget = ResolveMlpReadoutParameterBudget(config, 1);
     ASSERT_TRUE(budget.ok()) << budget.status();
     EXPECT_EQ(budget->source_tail_parameters, test.tail_parameters);
     EXPECT_EQ(budget->minimum_mlp_width, test.minimum_width);
@@ -56,19 +55,19 @@ TEST(PuzzleReadoutParameterBudgetTest,
               budget->source_tail_parameters);
   }
   config.transformer_block_count = 4;
-  auto preserved = ResolvePuzzleReadoutParameterBudget(config, 150);
+  auto preserved = ResolveMlpReadoutParameterBudget(config, 150);
   ASSERT_TRUE(preserved.ok()) << preserved.status();
   EXPECT_EQ(preserved->mlp_width, 150);
   EXPECT_EQ(preserved->mlp_parameters, 3160);
   EXPECT_EQ(preserved->trainable_parameters, 3200);
-  auto enlarged = ResolvePuzzleReadoutParameterBudget(config, 65);
+  auto enlarged = ResolveMlpReadoutParameterBudget(config, 65);
   ASSERT_TRUE(enlarged.ok()) << enlarged.status();
   EXPECT_EQ(enlarged->mlp_width, 66);
   EXPECT_EQ(enlarged->mlp_parameters, 1396);
   EXPECT_EQ(enlarged->trainable_parameters, 1436);
 }
 
-TEST(PuzzleReadoutParameterBudgetTest, RejectsInvalidOrUnrepresentableBudgets) {
+TEST(MlpReadoutParameterBudgetTest, RejectsInvalidOrUnrepresentableBudgets) {
   Gpt2Config config{.transformer_block_count = 4,
                     .model_width = 10,
                     .attention_heads = 1,
@@ -77,11 +76,11 @@ TEST(PuzzleReadoutParameterBudgetTest, RejectsInvalidOrUnrepresentableBudgets) {
                     .pad_vocabulary = false,
                     .context_length = 8};
   for (const int width : {-1, 0, std::numeric_limits<int>::max()})
-    EXPECT_FALSE(ResolvePuzzleReadoutParameterBudget(config, width).ok());
+    EXPECT_FALSE(ResolveMlpReadoutParameterBudget(config, width).ok());
   config.transformer_block_count = 2;
-  EXPECT_FALSE(ResolvePuzzleReadoutParameterBudget(config, 150).ok());
+  EXPECT_FALSE(ResolveMlpReadoutParameterBudget(config, 150).ok());
   config.transformer_block_count = std::numeric_limits<int>::max();
-  EXPECT_FALSE(ResolvePuzzleReadoutParameterBudget(config, 150).ok());
+  EXPECT_FALSE(ResolveMlpReadoutParameterBudget(config, 150).ok());
 
   // Each tensor fits the backend limit, but adding the suffix's parameters
   // over this many blocks would overflow int64_t without checked arithmetic.
@@ -91,7 +90,7 @@ TEST(PuzzleReadoutParameterBudgetTest, RejectsInvalidOrUnrepresentableBudgets) {
   config.vocabulary_size = 1;
   config.context_length = 1;
   ASSERT_TRUE(config.Validate().ok());
-  EXPECT_FALSE(ResolvePuzzleReadoutParameterBudget(config, 150).ok());
+  EXPECT_FALSE(ResolveMlpReadoutParameterBudget(config, 150).ok());
 
   // Even a representable inferred width must satisfy the activation limits;
   // validating only the original narrow model is insufficient.
@@ -100,10 +99,10 @@ TEST(PuzzleReadoutParameterBudgetTest, RejectsInvalidOrUnrepresentableBudgets) {
   config.feed_forward_width = 1;
   config.context_length = 1000000;
   ASSERT_TRUE(config.Validate().ok());
-  EXPECT_FALSE(ResolvePuzzleReadoutParameterBudget(config, 1).ok());
+  EXPECT_FALSE(ResolveMlpReadoutParameterBudget(config, 1).ok());
 }
 
-TEST(PuzzleReadoutParameterBudgetTest, MatchesAllBlocksOrPreservesExactWidth) {
+TEST(MlpReadoutParameterBudgetTest, MatchesAllBlocksOrPreservesExactWidth) {
   const Gpt2Config config{.transformer_block_count = 4,
                           .model_width = 10,
                           .attention_heads = 1,
@@ -114,8 +113,8 @@ TEST(PuzzleReadoutParameterBudgetTest, MatchesAllBlocksOrPreservesExactWidth) {
   const int minimum_widths[] = {66, 33, 22, 16, 13};
   for (int depth = 1; depth <= 5; ++depth) {
     SCOPED_TRACE(depth);
-    auto matched = ResolvePuzzleReadoutParameterBudget(config, 1, depth);
-    auto exact = ResolvePuzzleReadoutParameterBudget(config, 1, depth, false);
+    auto matched = ResolveMlpReadoutParameterBudget(config, 1, depth);
+    auto exact = ResolveMlpReadoutParameterBudget(config, 1, depth, false);
     ASSERT_TRUE(matched.ok()) << matched.status();
     ASSERT_TRUE(exact.ok()) << exact.status();
     EXPECT_EQ(matched->minimum_mlp_width, minimum_widths[depth - 1]);
@@ -135,15 +134,14 @@ TEST(PuzzleReadoutParameterBudgetTest, MatchesAllBlocksOrPreservesExactWidth) {
   }
   // Enough narrow blocks can exceed the budget even at the minimum legal
   // width; rounding must never yield a zero or negative hidden dimension.
-  auto deep = ResolvePuzzleReadoutParameterBudget(config, 1, 150);
+  auto deep = ResolveMlpReadoutParameterBudget(config, 1, 150);
   ASSERT_TRUE(deep.ok()) << deep.status();
   EXPECT_EQ(deep->minimum_mlp_width, 1);
   EXPECT_EQ(deep->mlp_width, 1);
   EXPECT_EQ(deep->mlp_parameters, 4650);
 }
 
-TEST(PuzzleReadoutParameterBudgetTest,
-     RejectsInvalidDepthAndAggregateOverflow) {
+TEST(MlpReadoutParameterBudgetTest, RejectsInvalidDepthAndAggregateOverflow) {
   Gpt2Config config{.transformer_block_count = 4,
                     .model_width = 1,
                     .attention_heads = 1,
@@ -153,26 +151,26 @@ TEST(PuzzleReadoutParameterBudgetTest,
                     .context_length = 1};
   for (int depth : {0, -1, std::numeric_limits<int>::min()})
     for (bool match : {false, true})
-      EXPECT_EQ(ResolvePuzzleReadoutParameterBudget(config, 1, depth, match)
+      EXPECT_EQ(ResolveMlpReadoutParameterBudget(config, 1, depth, match)
                     .status()
                     .code(),
                 absl::StatusCode::kInvalidArgument);
   // Every individual FC tensor fits the backend, but their aggregate count
   // across this many blocks exceeds int64_t. Reject before allocating any.
   const int limit = std::numeric_limits<int>::max();
-  auto valid = ResolvePuzzleReadoutParameterBudget(config, limit, 1, false);
+  auto valid = ResolveMlpReadoutParameterBudget(config, limit, 1, false);
   ASSERT_TRUE(valid.ok()) << valid.status();
   EXPECT_EQ(valid->mlp_width, limit);
   for (bool match : {false, true}) {
     auto overflow =
-        ResolvePuzzleReadoutParameterBudget(config, limit, limit, match);
+        ResolveMlpReadoutParameterBudget(config, limit, limit, match);
     EXPECT_EQ(overflow.status().code(), absl::StatusCode::kInvalidArgument);
     EXPECT_NE(overflow.status().message().find("parameter count overflows"),
               std::string::npos);
   }
 }
 
-class PuzzleReadoutTest : public testing::Test {
+class MlpReadoutTest : public testing::Test {
  protected:
   void SetUp() override {
     auto executor = cuda::Executor::Create();
@@ -197,7 +195,7 @@ class PuzzleReadoutTest : public testing::Test {
     RETURN_IF_ERROR(cuda::CudaStatus(
         cudaMemcpyAsync(device.data(), host.data(), host.size_bytes(),
                         cudaMemcpyHostToDevice, executor_->stream()),
-        "upload puzzle test input"));
+        "upload MLP readout test input"));
     return device;
   }
 
@@ -210,7 +208,7 @@ class PuzzleReadoutTest : public testing::Test {
       RETURN_IF_ERROR(cuda::CudaStatus(
           cudaMemcpyAsync(host.data(), buffer.data(), host.size_bytes(),
                           cudaMemcpyDeviceToHost, executor_->stream()),
-          "snapshot puzzle bytes"));
+          "snapshot MLP readout bytes"));
       RETURN_IF_ERROR(executor_->Synchronize());
       result.emplace_back(host.begin(), host.end());
     }
@@ -225,7 +223,7 @@ class PuzzleReadoutTest : public testing::Test {
     return cuda::CudaStatus(
         cudaMemcpyAsync(buffer.data(), host.data(), host.size_bytes(),
                         cudaMemcpyHostToDevice, executor_->stream()),
-        "fill distinctive puzzle tensor");
+        "fill distinctive MLP readout tensor");
   }
 
   absl::StatusOr<Buffer> HiddenInput() {
@@ -257,16 +255,16 @@ class PuzzleReadoutTest : public testing::Test {
   std::unique_ptr<ComposedLayer> source_;
 };
 
-TEST_F(PuzzleReadoutTest,
-       FreshWidth150Has3200ParametersAndIndependentFrozenHead) {
+TEST_F(MlpReadoutTest, FreshWidth150Has3200ParametersAndIndependentFrozenHead) {
   const size_t final_ln = 2 + 12 * config_.transformer_block_count;
   ASSERT_TRUE(Fill(source_->weights()[final_ln], 0.5f).ok());
   ASSERT_TRUE(Fill(source_->weights()[final_ln + 1], -0.25f).ok());
   auto source_before = Snapshot(source_->weights());
-  auto readout = CreatePuzzleReadout(*executor_, *source_, config_, 150, 3);
+  auto readout = CreateMlpReadout(*executor_, *source_, config_, 150, 3);
   ASSERT_TRUE(source_before.ok()) << source_before.status();
   ASSERT_TRUE(readout.ok()) << readout.status();
   ASSERT_NE(readout->trainable, nullptr);
+  EXPECT_EQ(readout->model->name(), "mlp_readout");
   ASSERT_EQ(readout->trainable->weights().size(), 8u);
   ASSERT_EQ(readout->model->weights().size(), 9u);
   const size_t extents[] = {10, 10, 1500, 150, 1500, 10, 10, 10};
@@ -306,14 +304,14 @@ TEST_F(PuzzleReadoutTest,
   EXPECT_TRUE(readout->model->fwd(*executor_, {&*input, 1}).ok());
 }
 
-TEST_F(PuzzleReadoutTest, AutoSizedBudgetMatchesActualSourceAndReadoutTensors) {
+TEST_F(MlpReadoutTest, AutoSizedBudgetMatchesActualSourceAndReadoutTensors) {
   for (const int blocks : {3, 4, 8}) {
     SCOPED_TRACE(blocks);
     auto config = config_;
     config.transformer_block_count = blocks;
     auto source = CreateGpt2(*executor_, DataType::BF16, 17, config);
     ASSERT_TRUE(source.ok()) << source.status();
-    auto readout = CreatePuzzleReadout(*executor_, **source, config, 1, 3);
+    auto readout = CreateMlpReadout(*executor_, **source, config, 1, 3);
     ASSERT_TRUE(readout.ok()) << readout.status();
     const auto source_weights = (*source)->weights();
     int64_t source_tail_parameters = 0;
@@ -342,13 +340,13 @@ TEST_F(PuzzleReadoutTest, AutoSizedBudgetMatchesActualSourceAndReadoutTensors) {
   }
 }
 
-TEST_F(PuzzleReadoutTest, ExplicitDepthOnePreservesDefaultWeightsAndOutput) {
+TEST_F(MlpReadoutTest, ExplicitDepthOnePreservesDefaultWeightsAndOutput) {
   for (int width : {1, 150}) {
     SCOPED_TRACE(width);
     auto original =
-        CreatePuzzleReadout(*executor_, *source_, config_, width, 3);
+        CreateMlpReadout(*executor_, *source_, config_, width, 3);
     auto explicit_depth =
-        CreatePuzzleReadout(*executor_, *source_, config_, width, 3, 1, true);
+        CreateMlpReadout(*executor_, *source_, config_, width, 3, 1, true);
     ASSERT_TRUE(original.ok()) << original.status();
     ASSERT_TRUE(explicit_depth.ok()) << explicit_depth.status();
     auto original_weights = Snapshot(original->model->weights());
@@ -374,7 +372,7 @@ TEST_F(PuzzleReadoutTest, ExplicitDepthOnePreservesDefaultWeightsAndOutput) {
   }
 }
 
-TEST_F(PuzzleReadoutTest, StackedBlocksHaveExactShapesAndIndependentSeeds) {
+TEST_F(MlpReadoutTest, StackedBlocksHaveExactShapesAndIndependentSeeds) {
   const size_t final_ln = 2 + 12 * config_.transformer_block_count;
   ASSERT_TRUE(Fill(source_->weights()[final_ln], 0.5f).ok());
   ASSERT_TRUE(Fill(source_->weights()[final_ln + 1], -0.25f).ok());
@@ -383,7 +381,7 @@ TEST_F(PuzzleReadoutTest, StackedBlocksHaveExactShapesAndIndependentSeeds) {
   for (int depth = 2; depth <= 5; ++depth) {
     SCOPED_TRACE(depth);
     auto readout =
-        CreatePuzzleReadout(*executor_, *source_, config_, 7, 3, depth, false);
+        CreateMlpReadout(*executor_, *source_, config_, 7, 3, depth, false);
     ASSERT_TRUE(readout.ok()) << readout.status();
     const auto weights = readout->trainable->weights();
     const auto gradients = readout->trainable->gradients();
@@ -410,8 +408,8 @@ TEST_F(PuzzleReadoutTest, StackedBlocksHaveExactShapesAndIndependentSeeds) {
       SCOPED_TRACE(block);
       // A block has exactly the old one-block initialization at its own seed,
       // including identity input LN, zero biases, and the fixed .1 FC2 scale.
-      auto single = CreatePuzzleReadout(*executor_, *source_, config_, 7,
-                                        3 + 2 * block, 1, false);
+      auto single = CreateMlpReadout(*executor_, *source_, config_, 7,
+                                     3 + 2 * block, 1, false);
       ASSERT_TRUE(single.ok()) << single.status();
       auto single_bytes = Snapshot(single->trainable->weights());
       ASSERT_TRUE(single_bytes.ok()) << single_bytes.status();
@@ -434,12 +432,12 @@ TEST_F(PuzzleReadoutTest, StackedBlocksHaveExactShapesAndIndependentSeeds) {
   EXPECT_EQ(*source_before, *source_after);
 }
 
-TEST_F(PuzzleReadoutTest,
+TEST_F(MlpReadoutTest,
        RealBackwardUpdatesEveryBlockAndLeavesSourceAndHeadFrozen) {
   for (int depth = 1; depth <= 5; ++depth) {
     SCOPED_TRACE(depth);
-    auto readout = CreatePuzzleReadout(*executor_, *source_, config_, 150, 3,
-                                       depth, false);
+    auto readout =
+        CreateMlpReadout(*executor_, *source_, config_, 150, 3, depth, false);
     ASSERT_TRUE(readout.ok()) << readout.status();
     auto source_before = Snapshot(source_->weights());
     auto before = Snapshot(readout->model->weights());
@@ -506,7 +504,7 @@ TEST_F(PuzzleReadoutTest,
   }
 }
 
-TEST_F(PuzzleReadoutTest, ProductionStackTrainsAll15920Parameters) {
+TEST_F(MlpReadoutTest, ProductionStackTrainsAll15920Parameters) {
   // Exercise the deployed batch, context, and compact vocabulary dimensions,
   // including the unaligned vocabulary and the real third-attention capture.
   auto config = config_;
@@ -522,8 +520,8 @@ TEST_F(PuzzleReadoutTest, ProductionStackTrainsAll15920Parameters) {
   ASSERT_TRUE(source.ok()) << source.status();
   auto source_before = Snapshot((*source)->weights());
   ASSERT_TRUE(source_before.ok()) << source_before.status();
-  auto readout = CreatePuzzleReadout(*executor_, **source, config, kWidth, 3,
-                                     kDepth, false);
+  auto readout =
+      CreateMlpReadout(*executor_, **source, config, kWidth, 3, kDepth, false);
   ASSERT_TRUE(readout.ok()) << readout.status();
   EXPECT_EQ(readout->parameter_budget.mlp_width, kWidth);
   EXPECT_EQ(readout->parameter_budget.mlp_parameters, 15800);
@@ -607,17 +605,17 @@ TEST_F(PuzzleReadoutTest, ProductionStackTrainsAll15920Parameters) {
   EXPECT_EQ(*source_before, *source_after);
 }
 
-TEST_F(PuzzleReadoutTest, StrictCheckpointRoundTripReproducesOutput) {
+TEST_F(MlpReadoutTest, StrictCheckpointRoundTripReproducesOutput) {
   for (int depth : {1, 5}) {
     SCOPED_TRACE(depth);
-    auto original = CreatePuzzleReadout(*executor_, *source_, config_, 150, 3,
-                                        depth, false);
-    auto restored = CreatePuzzleReadout(*executor_, *source_, config_, 150, 91,
-                                        depth, false);
-    auto wrong = CreatePuzzleReadout(*executor_, *source_, config_, 149, 3,
-                                     depth, false);
-    auto wrong_depth = CreatePuzzleReadout(*executor_, *source_, config_, 150,
-                                           3, depth == 1 ? 5 : 1, false);
+    auto original =
+        CreateMlpReadout(*executor_, *source_, config_, 150, 3, depth, false);
+    auto restored =
+        CreateMlpReadout(*executor_, *source_, config_, 150, 91, depth, false);
+    auto wrong =
+        CreateMlpReadout(*executor_, *source_, config_, 149, 3, depth, false);
+    auto wrong_depth = CreateMlpReadout(*executor_, *source_, config_, 150, 3,
+                                        depth == 1 ? 5 : 1, false);
     ASSERT_TRUE(original.ok()) << original.status();
     ASSERT_TRUE(restored.ok()) << restored.status();
     ASSERT_TRUE(wrong.ok()) << wrong.status();
@@ -627,7 +625,7 @@ TEST_F(PuzzleReadoutTest, StrictCheckpointRoundTripReproducesOutput) {
         Fill(original->trainable->weights()[6 * depth + 1], -0.25f).ok());
     const auto directory =
         std::filesystem::path(testing::TempDir()) /
-        ("puzzle-readout-round-trip-" + std::to_string(depth));
+        ("mlp-readout-round-trip-" + std::to_string(depth));
     ASSERT_TRUE(
         WriteToDirectory(*executor_, *original->trainable, directory).ok());
     ASSERT_TRUE(ReadFromDirectory(*executor_, *restored->trainable, directory,
@@ -660,7 +658,7 @@ TEST_F(PuzzleReadoutTest, StrictCheckpointRoundTripReproducesOutput) {
   }
 }
 
-TEST_F(PuzzleReadoutTest, CapturesThirdAttentionNotSecondOrThirdMlp) {
+TEST_F(MlpReadoutTest, CapturesThirdAttentionNotSecondOrThirdMlp) {
   auto tokens = Upload<int32_t>({0, 1, 2, 3, 4, 5, 6, 0});
   ASSERT_TRUE(tokens.ok()) << tokens.status();
   std::vector<std::string> scopes;
@@ -717,7 +715,7 @@ TEST_F(PuzzleReadoutTest, CapturesThirdAttentionNotSecondOrThirdMlp) {
   EXPECT_NE(*captured_logits, *changed_logits);
 }
 
-TEST_F(PuzzleReadoutTest, CapturePrefixIsBitwiseCausalAcrossFutureTokens) {
+TEST_F(MlpReadoutTest, CapturePrefixIsBitwiseCausalAcrossFutureTokens) {
   auto full = Upload<int32_t>({0, 1, 2, 3, 4, 5, 6, 1});
   auto prefix = Upload<int32_t>({0, 1, 2, 3, 4, 0, 0, 0});
   ASSERT_TRUE(full.ok());
@@ -737,14 +735,14 @@ TEST_F(PuzzleReadoutTest, CapturePrefixIsBitwiseCausalAcrossFutureTokens) {
   EXPECT_NE(*a_bytes, *b_bytes);
 }
 
-TEST_F(PuzzleReadoutTest, SeedReproducibilityAndSourceConfigurationValidation) {
+TEST_F(MlpReadoutTest, SeedReproducibilityAndSourceConfigurationValidation) {
   const int seed = std::numeric_limits<int>::max();
   for (int depth : {1, 5}) {
     SCOPED_TRACE(depth);
-    auto a = CreatePuzzleReadout(*executor_, *source_, config_, 150, seed,
-                                 depth, false);
-    auto b = CreatePuzzleReadout(*executor_, *source_, config_, 150, seed,
-                                 depth, false);
+    auto a = CreateMlpReadout(*executor_, *source_, config_, 150, seed, depth,
+                              false);
+    auto b = CreateMlpReadout(*executor_, *source_, config_, 150, seed, depth,
+                              false);
     ASSERT_TRUE(a.ok()) << a.status();
     ASSERT_TRUE(b.ok()) << b.status();
     auto a_bytes = Snapshot(a->model->weights());
@@ -755,13 +753,13 @@ TEST_F(PuzzleReadoutTest, SeedReproducibilityAndSourceConfigurationValidation) {
   }
   for (int invalid_width : {-1, 0, std::numeric_limits<int>::max()})
     EXPECT_EQ(
-        CreatePuzzleReadout(*executor_, *source_, config_, invalid_width, 3)
+        CreateMlpReadout(*executor_, *source_, config_, invalid_width, 3)
             .status()
             .code(),
         absl::StatusCode::kInvalidArgument);
   for (int invalid_depth : {-1, 0, std::numeric_limits<int>::min()})
-    EXPECT_EQ(CreatePuzzleReadout(*executor_, *source_, config_, 150, 3,
-                                  invalid_depth, false)
+    EXPECT_EQ(CreateMlpReadout(*executor_, *source_, config_, 150, 3,
+                               invalid_depth, false)
                   .status()
                   .code(),
               absl::StatusCode::kInvalidArgument);
@@ -770,12 +768,12 @@ TEST_F(PuzzleReadoutTest, SeedReproducibilityAndSourceConfigurationValidation) {
   overflowing.feed_forward_width = 1;
   overflowing.context_length = 1;
   const int limit = std::numeric_limits<int>::max();
-  auto rejected = CreatePuzzleReadout(*executor_, *source_, overflowing, limit,
-                                      3, limit, false);
+  auto rejected = CreateMlpReadout(*executor_, *source_, overflowing, limit, 3,
+                                   limit, false);
   EXPECT_EQ(rejected.status().code(), absl::StatusCode::kInvalidArgument);
   EXPECT_NE(rejected.status().message().find("parameter count overflows"),
             std::string::npos);
-  EXPECT_EQ(CreatePuzzleReadout(*executor_, *source_, config_, 150, -1)
+  EXPECT_EQ(CreateMlpReadout(*executor_, *source_, config_, 150, -1)
                 .status()
                 .code(),
             absl::StatusCode::kInvalidArgument);
@@ -793,7 +791,7 @@ TEST_F(PuzzleReadoutTest, SeedReproducibilityAndSourceConfigurationValidation) {
       wrong.context_length = 7;
     if (field == 5)
       wrong.pad_vocabulary = true;
-    EXPECT_EQ(CreatePuzzleReadout(*executor_, *source_, wrong, 150, 3)
+    EXPECT_EQ(CreateMlpReadout(*executor_, *source_, wrong, 150, 3)
                   .status()
                   .code(),
               absl::StatusCode::kInvalidArgument)
@@ -813,7 +811,7 @@ TEST_F(PuzzleReadoutTest, SeedReproducibilityAndSourceConfigurationValidation) {
   for (const Layer* invalid : {static_cast<const Layer*>(shallow->get()),
                                static_cast<const Layer*>(fp16->get()),
                                static_cast<const Layer*>(unrelated->get())}) {
-    EXPECT_EQ(CreatePuzzleReadout(*executor_, *invalid, config_, 150, 3)
+    EXPECT_EQ(CreateMlpReadout(*executor_, *invalid, config_, 150, 3)
                   .status()
                   .code(),
               absl::StatusCode::kInvalidArgument);
@@ -830,7 +828,7 @@ TEST_F(PuzzleReadoutTest, SeedReproducibilityAndSourceConfigurationValidation) {
   auto other = cuda::Executor::Create();
   ASSERT_TRUE(other.ok()) << other.status();
   EXPECT_EQ(
-      CreatePuzzleReadout(**other, *source_, config_, 150, 3).status().code(),
+      CreateMlpReadout(**other, *source_, config_, 150, 3).status().code(),
       absl::StatusCode::kInvalidArgument);
   EXPECT_EQ(CaptureThirdAttention(**other, *source_, *tokens).status().code(),
             absl::StatusCode::kInvalidArgument);

@@ -14,7 +14,7 @@ namespace pluto::llm::memorize_general_facts {
 // Compare all replacement affine layers against the entire original
 // suffix after A3. The shared frozen token embedding/head is excluded on both
 // sides; the source count includes every suffix bias and LayerNorm parameter.
-struct PuzzleReadoutParameterBudget {
+struct MlpReadoutParameterBudget {
   int minimum_mlp_width;  // Smallest positive width meeting the source budget.
   int mlp_width;          // Requested width, optionally widened to the minimum.
   int64_t source_tail_parameters;  // MLP3, later blocks, and final LayerNorm.
@@ -25,22 +25,20 @@ struct PuzzleReadoutParameterBudget {
 // Pure shape calculation, with overflow/backend-limit validation. A request
 // below the minimum is widened when match_parameter_budget is true. Otherwise
 // the requested width is used exactly, even below the source-suffix budget.
-absl::StatusOr<PuzzleReadoutParameterBudget>
-ResolvePuzzleReadoutParameterBudget(const Gpt2Config& config,
-                                    int requested_min_mlp_width,
-                                    int mlp_depth = 1,
-                                    bool match_parameter_budget = true);
+absl::StatusOr<MlpReadoutParameterBudget> ResolveMlpReadoutParameterBudget(
+    const Gpt2Config& config, int requested_min_mlp_width, int mlp_depth = 1,
+    bool match_parameter_budget = true);
 
 // The head is tied to an independent, frozen copy of the source embedding.
 // Its owner precedes model so the embedding outlives the head. Source need not
 // outlive this object; none of its buffers is changed or shared with training.
-struct PuzzleReadout {
+struct MlpReadout {
   std::unique_ptr<EmbeddingLookupLayer> embedding;
   std::unique_ptr<ComposedLayer> model;
   // Owned by model. Only this layer may be passed to the optimizer/checkpoint:
   // input LN, FC1, FC2 for each block, then one final LN (6*depth+2 tensors).
   Layer* trainable;
-  PuzzleReadoutParameterBudget parameter_budget;  // Actual allocated shape.
+  MlpReadoutParameterBudget parameter_budget;  // Actual allocated shape.
 };
 
 // Builds mlp_depth residual blocks x += FC2(GELU(FC1(input_LN(x)))), then
@@ -51,7 +49,7 @@ struct PuzzleReadout {
 // width 10, trainable parameters total depth*(21*mlp_width+30)+20.
 // parameter_budget reports any widening needed when matching the sum of all
 // affine MLPs to the original suffix; disabled matching preserves exact width.
-absl::StatusOr<PuzzleReadout> CreatePuzzleReadout(
+absl::StatusOr<MlpReadout> CreateMlpReadout(
     cuda::Executor& executor, const Layer& source, const Gpt2Config& config,
     int mlp_width, int seed, int mlp_depth = 1,
     bool match_parameter_budget = true);

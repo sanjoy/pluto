@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Train a fresh, fully verified source model before running the A3 readout puzzle.
+# Train a verified source model before running the A3 MLP-readout puzzle.
 # See REPRODUCE_PUZZLE.md for installation, interpretation, and output files.
 
 usage() {
@@ -205,7 +205,7 @@ PY
   local checkpoint
   checkpoint=$(select_verified_checkpoint "$run_dir/model")
   printf '%s\n' "$checkpoint" > "$run_dir/checkpoint.txt"
-  printf '\nVerified checkpoint: %s\nStarting the A3 readout puzzle...\n' "$checkpoint"
+  printf '\nVerified checkpoint: %s\nStarting the A3 MLP-readout puzzle...\n' "$checkpoint"
   # Use the driver's immutable executable and input snapshots for the puzzle,
   # even if another terminal rebuilds the checkout while training is running.
   "$run_dir/model/inputs/memorize_general_facts" \

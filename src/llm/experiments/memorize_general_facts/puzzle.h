@@ -10,7 +10,7 @@
 
 namespace pluto::llm::memorize_general_facts {
 
-// A focused reproduction of the frozen-third-attention readout puzzle.
+// A focused reproduction of the frozen-third-attention MLP-readout puzzle.
 // Source dimensions describe the checkpoint, not the replacement MLP.
 struct PuzzleOptions {
   std::string checkpoint;  // Complete, already-memorized GPT-2 checkpoint.

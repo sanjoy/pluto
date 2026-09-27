@@ -93,7 +93,7 @@ Its [`reproduce_puzzle.sh`](../../../../scripts/memorize_general_facts/reproduce
 trains a fresh source model and requires independently verified memorization
 before running the puzzle. The commands below are for an existing checkpoint.
 
-`--mode=puzzle` is a small, standalone reproduction of the readout experiment.
+`--mode=puzzle` is a small, standalone reproduction of the MLP readout experiment.
 It does not depend on the research branch, Python, or sweep utilities. Supply
 a complete memorized checkpoint and the same corpus/base tokenizer used to train it.
 All source-shape flags must match the checkpoint; the defaults match the
@@ -111,7 +111,7 @@ bazel-bin/src/llm/experiments/memorize_general_facts/memorize_general_facts \
   --tokenizer="$facts_tokenizer" \
   --output_dir=/tmp/facts_puzzle_capture
 
-# Repeat capture and then fit the replacement readout for 300,000 updates.
+# Repeat capture and then fit the MLP readout for 300,000 updates.
 bazel-bin/src/llm/experiments/memorize_general_facts/memorize_general_facts \
   --mode=puzzle --train_mlp \
   --puzzle_checkpoint="$facts_checkpoint" \
@@ -129,7 +129,7 @@ Capture takes the **post-attention residual of the third block**, before that
 block's MLP: the first `ResidualLayer` output inside `transformer_block_2`.
 The complete original model runs to verify that it still predicts all 10,002
 scored suffix/EOS targets correctly. Later blocks' activations are never passed
-to the replacement readout. Compact token IDs are loaded from the checkpoint's
+to the MLP readout. Compact token IDs are loaded from the checkpoint's
 `compact_vocabulary.tsv`, never rebuilt from the current corpus.
 
 The collision audit compares full vectors globally across all scored positions.
@@ -140,7 +140,7 @@ not a claim of linear separability or easy MLP fitting. Prompt-only targets
 and padding are excluded: shared five-token prompt prefixes need not predict
 the same next token before the completion starts.
 
-With `--train_mlp`, the replacement is:
+With `--train_mlp`, the MLP readout is:
 
 ```text
 x = frozen A3 residual
@@ -151,7 +151,7 @@ prediction = argmax(logits)
 
 `--mlp_width=150` requests a **minimum** FC1 expansion, independently of the
 source model's `--feed_forward_width=20`. The actual width is automatically
-raised when necessary so the replacement's two affine layers alone have at
+raised when necessary so the MLP readout's two affine layers alone have at
 least as many parameters as the **entire original path after A3**: MLP3,
 every later transformer block (including attention4), and final LayerNorm.
 Weights, biases, and source LayerNorm parameters count; the frozen embedding
@@ -174,7 +174,7 @@ frozen copy of the original token embedding. Neither the source transformer
 nor that head enters the optimizer; both are checked byte-for-byte afterward.
 
 Use `--train_stacked_mlp` **instead of** `--train_mlp` to train the five-block
-variant of this puzzle. It repeats the following pointwise operation five times
+variant of the MLP readout. It repeats the following pointwise operation five times
 with independently initialized weights and LayerNorm parameters:
 
 ```text

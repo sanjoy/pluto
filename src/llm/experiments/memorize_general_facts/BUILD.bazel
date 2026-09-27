@@ -98,9 +98,9 @@ cc_test(
 )
 
 cc_library(
-    name = "puzzle_readout",
-    srcs = ["puzzle_readout.cc"],
-    hdrs = ["puzzle_readout.h"],
+    name = "mlp_readout",
+    srcs = ["mlp_readout.cc"],
+    hdrs = ["mlp_readout.h"],
     deps = [
         "//src/cuda:buffer",
         "//src/cuda:executor",
@@ -120,11 +120,11 @@ cc_library(
 )
 
 cc_test(
-    name = "puzzle_readout_test",
-    srcs = ["puzzle_readout_test.cc"],
+    name = "mlp_readout_test",
+    srcs = ["mlp_readout_test.cc"],
     tags = ["requires-gpu"],
     deps = [
-        ":puzzle_readout",
+        ":mlp_readout",
         "//src/cuda:buffer",
         "//src/cuda:executor",
         "//src/cuda:page_locked_host_array",
@@ -147,7 +147,7 @@ cc_library(
     srcs = ["puzzle.cc"],
     hdrs = ["puzzle.h"],
     deps = [
-        ":puzzle_readout",
+        ":mlp_readout",
         ":puzzle_report",
         "//src/cuda:buffer",
         "//src/cuda:executor",
