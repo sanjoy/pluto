@@ -219,7 +219,7 @@ Pass `--context_length=27` for the current experiment. The standalone verifier
 does not inherit the training binary's context setting. Compact-vocabulary runs
 also write original GPT-2 IDs in their prediction TSVs, so the same verifier audits them.
 The search drivers also run native checkpoint inference in a fresh process.
-See the [experiment documentation](../../src/llm/experiments/memorize_general_facts/README.md)
+See the [experiment documentation](../../src/llm/experiments/memorize_general_facts/ai_slop/README.md)
 for direct training, checkpoint verification/conversion, and the scoring protocol.
 
 ## Tests

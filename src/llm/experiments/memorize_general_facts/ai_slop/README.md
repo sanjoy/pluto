@@ -9,7 +9,7 @@ Padding must never contribute to loss or accuracy. Checkpoints belong outside
 the repository under `~/checkpoints/`.
 
 An earlier search with wider models found that one block sufficed for the
-approved task. See [RESULTS.md](ai_slop/RESULTS.md) for that historical study;
+approved task. See [RESULTS.md](RESULTS.md) for that historical study;
 its checkpoints and parameter counts are not the current defaults.
 
 ## Default training configuration
@@ -45,13 +45,13 @@ library defaults are unchanged.
 
 ## Code and experiment utilities
 
-This directory contains the native C++ training/evaluation/inference binary
+The parent directory contains the native C++ training/evaluation/inference binary
 and its CLI tests. The reusable `GenerateGreedyContinuation` helper lives in
 `src/llm/generate_greedy_continuation.h`; other reusable components live in
 `src/dataset/` and `src/llm/`.
 Python sweep drivers, Pareto reporting,
 checkpoint conversion, corpus/prediction audits, and their tests live separately
-in [`scripts/memorize_general_facts`](../../../../scripts/memorize_general_facts).
+in [`scripts/memorize_general_facts`](../../../../../scripts/memorize_general_facts).
 The native implementation does not depend on those scripts; the drivers invoke
 the built binary.
 
@@ -60,7 +60,7 @@ provides per-sentence padding, prompt masking, and reproducible epoch shuffling.
 Exact masked top-1 predictions use `ExtractTop1Ids` in
 `src/llm/extract_top1_ids.h`, implemented with a deterministic cuTile kernel.
 
-Reports and analysis notes live in `ai_slop/`. They summarize past experiments,
+Reports and analysis notes live here in `ai_slop/`. They summarize past experiments,
 but generated `runs/` artifacts are
 local-only and ignored by Git. They are not required to build or test the code.
 Recorded commands in historical manifests may name old script locations; those
@@ -88,8 +88,8 @@ The runner does not infer or resize that table when loading weights.
 ## Reproduce the third-attention puzzle
 
 Starting without a tokenizer or checkpoint? Follow the
-[complete setup and reproduction guide](../../../../scripts/memorize_general_facts/REPRODUCE_PUZZLE.md).
-Its [`reproduce_puzzle.sh`](../../../../scripts/memorize_general_facts/reproduce_puzzle.sh)
+[complete setup and reproduction guide](../../../../../scripts/memorize_general_facts/REPRODUCE_PUZZLE.md).
+Its [`reproduce_puzzle.sh`](../../../../../scripts/memorize_general_facts/reproduce_puzzle.sh)
 trains a fresh source model and requires independently verified memorization
 before running the puzzle. The commands below are for an existing checkpoint.
 
@@ -528,7 +528,7 @@ information available to a zero-block model. There are 809 contradictory groups
 and at least 2,923 unavoidable errors: accuracy cannot exceed 70.7758%, even
 with perfect optimization. This rules out zero blocks. It does not establish
 whether one block can be trained successfully by itself; the completed training
-and independent verification in [RESULTS.md](ai_slop/RESULTS.md) provide that
+and independent verification in [RESULTS.md](RESULTS.md) provide that
 constructive result.
 
 For a finished run, independently retokenize the snapshots and verify every
@@ -572,14 +572,14 @@ Tokenizer snapshots are not committed. To verify the committed reports on
 another checkout, replace native `--tokenizer=RUN` with
 `--tokenizer=/path/to/gpt2`, and Python `--tokenizer=RUN/tokenizer.json` with
 `--tokenizer=/path/to/gpt2/tokenizer.json`. Use the tokenizer SHA-256 recorded in
-[RESULTS.md](ai_slop/RESULTS.md). Corpus snapshots and prediction TSVs are local
+[RESULTS.md](RESULTS.md). Corpus snapshots and prediction TSVs are local
 artifacts; copy them from the original run or generate them with a new run.
 
 The experiment's `--mode=infer_model --verify_checkpoint=PATH` supports every
 tested depth via `--layers=N`. The existing
 `gpt2_shakespeare_llm --mode=infer_model` CLI instead
 constructs eight blocks: it can run the eight-block smoke checks in
-[RESULTS.md](ai_slop/RESULTS.md),
+[RESULTS.md](RESULTS.md),
 but cannot load a shallower experiment checkpoint. Its decoder also emits
 exactly `--generation_tokens` tokens rather than stopping automatically at EOS.
 
@@ -632,7 +632,7 @@ bazel-bin/src/llm/experiments/memorize_general_facts/memorize_general_facts \
 
 Unlike tensor widths, the number of attention heads cannot be recovered from
 raw checkpoint file sizes, so preserve the run's configuration. See
-[WIDTH_DEPTH_RESULTS.md](ai_slop/WIDTH_DEPTH_RESULTS.md) for the search protocol,
+[WIDTH_DEPTH_RESULTS.md](WIDTH_DEPTH_RESULTS.md) for the search protocol,
 empirical frontier, and distinction between a training-budget failure and a
 capacity lower bound.
 
