@@ -19,7 +19,7 @@ namespace pluto::llm::memorize_general_facts {
 namespace {
 
 absl::Status Validate(const PuzzleReportData& data) {
-  if (data.model_width <= 0 || data.context_length <= 0 || data.facts.empty())
+  if (data.model_width == 0 || data.context_length == 0 || data.facts.empty())
     return absl::InvalidArgumentError(
         "puzzle report requires positive width, context length, and fact "
         "count");
@@ -36,7 +36,8 @@ absl::Status Validate(const PuzzleReportData& data) {
   for (const PuzzlePoint& point : data.points) {
     if (point.fact_index < 0 ||
         static_cast<size_t>(point.fact_index) >= data.facts.size() ||
-        point.position < 0 || point.position >= data.context_length)
+        point.position < 0 ||
+        static_cast<unsigned int>(point.position) >= data.context_length)
       return absl::InvalidArgumentError(
           "puzzle report fact or position is out of bounds");
     const size_t index =

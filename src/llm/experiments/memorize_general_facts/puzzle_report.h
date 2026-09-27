@@ -35,9 +35,9 @@ struct PuzzlePoint {
 // Retains every fact/position pair, including masked prompt and padding rows.
 struct PuzzleReportData {
   // Positive hidden dimension; every point has this many residual coordinates.
-  int model_width = 0;
+  unsigned int model_width = 0;
   // Positive number of input positions per fact, including padded positions.
-  int context_length = 0;
+  unsigned int context_length = 0;
   // Nonempty list of original sentences in dataset order, used as plot labels.
   std::vector<std::string> facts;
   // Exactly one point per (fact_index, position); vector order is unrestricted.

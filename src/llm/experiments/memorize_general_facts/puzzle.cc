@@ -163,8 +163,8 @@ absl::StatusOr<CapturedCorpus> CaptureCorpus(cuda::Executor& executor,
         "puzzle requires a checkpoint that memorizes all corpus completions");
 
   PuzzleReportData report;
-  report.model_width = config.model_width;
-  report.context_length = sequence;
+  report.model_width = static_cast<unsigned int>(config.model_width);
+  report.context_length = static_cast<unsigned int>(sequence);
   if (!text.empty() && text.back() == '\n')
     text.remove_suffix(1);
   report.facts = absl::StrSplit(text, '\n');

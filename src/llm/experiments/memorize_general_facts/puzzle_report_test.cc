@@ -8,6 +8,7 @@
 #include <limits>
 #include <string>
 #include <system_error>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -16,6 +17,11 @@
 
 namespace pluto::llm::memorize_general_facts {
 namespace {
+
+static_assert(
+    std::is_same_v<decltype(PuzzleReportData::model_width), unsigned int>);
+static_assert(
+    std::is_same_v<decltype(PuzzleReportData::context_length), unsigned int>);
 
 PuzzleReportData Example() {
   PuzzleReportData data;
@@ -149,7 +155,9 @@ TEST(PuzzleSeparationTest, RequiresExactFactPositionCoverage) {
 
 TEST(PuzzleSeparationTest, RejectsInvalidShapeAndBounds) {
   ExpectInvalid(PuzzleReportData{});
-  for (int invalid : {-1, 0}) {
+  for (unsigned int invalid :
+       {0u, static_cast<unsigned int>(std::numeric_limits<int>::max()) + 1u,
+        std::numeric_limits<unsigned int>::max()}) {
     PuzzleReportData data = Example();
     data.model_width = invalid;
     ExpectInvalid(data);
