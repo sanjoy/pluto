@@ -62,11 +62,19 @@ ABSL_FLAG(std::string, infer_checkpoint, "",
 ABSL_FLAG(std::string, puzzle_checkpoint, "",
           "In puzzle, load the frozen source-model checkpoint (required)");
 ABSL_FLAG(bool, train_mlp, false,
-          "In puzzle, train an MLP on captured residual activations");
+          "In puzzle, train one or more stacked MLPs on captured residual "
+          "activations");
 ABSL_FLAG(int, mlp_width, 150,
-          "Minimum hidden width of the puzzle MLP; grows if needed so its "
-          "affine parameters cover the original post-A3 suffix. "
-          "Requires --train_mlp");
+          "Hidden width of each puzzle MLP; with --match_mlp_parameter_budget, "
+          "grows if needed so the stacked MLPs' affine parameters cover the "
+          "original post-A3 suffix. Requires --mode=puzzle --train_mlp");
+ABSL_FLAG(int, mlp_depth, 1,
+          "Number of stacked puzzle MLPs (positive). "
+          "Requires --mode=puzzle --train_mlp");
+ABSL_FLAG(bool, match_mlp_parameter_budget, true,
+          "Increase puzzle MLP width if needed to match the original post-A3 "
+          "suffix parameter budget across the stacked MLPs; disable to use "
+          "the exact --mlp_width. Requires --mode=puzzle --train_mlp");
 ABSL_FLAG(std::string, prompt, "",
           "One nonempty prompt for infer_checkpoint; omit for an interactive "
           "prompt loop");
@@ -136,6 +144,8 @@ absl::StatusOr<Mode> RunModeFromFlags(CommandLineOptions& options) {
   AddIfExplicitlySet(FLAGS_puzzle_checkpoint, &explicitly_set);
   AddIfExplicitlySet(FLAGS_train_mlp, &explicitly_set);
   AddIfExplicitlySet(FLAGS_mlp_width, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_mlp_depth, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_match_mlp_parameter_budget, &explicitly_set);
   AddIfExplicitlySet(FLAGS_prompt, &explicitly_set);
   AddIfExplicitlySet(FLAGS_generation_tokens, &explicitly_set);
   AddIfExplicitlySet(FLAGS_print_attention_probs, &explicitly_set);
@@ -176,6 +186,9 @@ absl::StatusOr<Mode> RunModeFromFlags(CommandLineOptions& options) {
        .warmup_steps = absl::GetFlag(FLAGS_warmup_steps),
        .seed = absl::GetFlag(FLAGS_seed),
        .mlp_width = absl::GetFlag(FLAGS_mlp_width),
+       .mlp_depth = absl::GetFlag(FLAGS_mlp_depth),
+       .match_mlp_parameter_budget =
+           absl::GetFlag(FLAGS_match_mlp_parameter_budget),
        .train_mlp = absl::GetFlag(FLAGS_train_mlp),
        .learning_rate = absl::GetFlag(FLAGS_learning_rate),
        .training_seconds = absl::GetFlag(FLAGS_training_seconds)},
@@ -766,6 +779,8 @@ absl::StatusOr<bool> Run() {
         .compact_vocabulary = absl::GetFlag(FLAGS_compact_vocabulary),
         .train_mlp = options.train_mlp,
         .mlp_width = options.mlp_width,
+        .mlp_depth = options.mlp_depth,
+        .match_mlp_parameter_budget = options.match_mlp_parameter_budget,
         .steps = options.steps,
         .eval_every = options.eval_every,
         .batch_size = options.batch_size,

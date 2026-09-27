@@ -122,6 +122,10 @@ TEST_F(MemorizeGeneralFactsDefaultsTest, DefaultsMatchSmallestMemorizedModel) {
       {"seed", "1337"},
       {"warmup_steps", "100"},
       {"search", "false"},
+      {"train_mlp", "false"},
+      {"mlp_width", "150"},
+      {"mlp_depth", "1"},
+      {"match_mlp_parameter_budget", "true"},
       {"mode", "\"\""},
   };
   for (const auto& [name, value] : expected) {
@@ -150,6 +154,45 @@ TEST_F(MemorizeGeneralFactsDefaultsTest,
   EXPECT_NE(output_.find("--steps is not valid in --mode=infer_model"),
             std::string::npos)
       << output_;
+}
+
+TEST_F(MemorizeGeneralFactsDefaultsTest, StackedMlpFlagsRequirePuzzleTraining) {
+  const std::vector<std::string> paths[] = {
+      {"--mode=train_model"},
+      {"--mode=infer_model", "--infer_checkpoint=unused_checkpoint"},
+      {"--mode=infer_model", "--verify_checkpoint=unused_checkpoint"},
+      {"--mode=puzzle", "--puzzle_checkpoint=unused_checkpoint"},
+  };
+  // Explicit defaults and a disabled budget flag all count as supplied flags.
+  for (const auto& path : paths) {
+    SCOPED_TRACE(path.front());
+    for (const std::string flag :
+         {"--mlp_depth=1", "--match_mlp_parameter_budget=true",
+          "--match_mlp_parameter_budget=false"}) {
+      SCOPED_TRACE(flag);
+      auto arguments = path;
+      arguments.push_back(flag);
+      ASSERT_NO_FATAL_FAILURE(Run(std::move(arguments)));
+      EXPECT_EQ(exit_code_, 1) << output_;
+      EXPECT_NE(output_.find(flag.substr(0, flag.find('=')) +
+                             " is not valid in --mode="),
+                std::string::npos)
+          << output_;
+    }
+  }
+}
+
+TEST_F(MemorizeGeneralFactsDefaultsTest,
+       PuzzleRejectsNonpositiveMlpDepthBeforeOpeningCuda) {
+  for (const std::string depth : {"0", "-1"}) {
+    SCOPED_TRACE(depth);
+    ASSERT_NO_FATAL_FAILURE(
+        Run({"--mode=puzzle", "--train_mlp", "--tokenizer=unused_tokenizer",
+             "--puzzle_checkpoint=unused_checkpoint", "--mlp_depth=" + depth}));
+    EXPECT_EQ(exit_code_, 1) << output_;
+    EXPECT_NE(output_.find("--mlp_depth must be positive"), std::string::npos)
+        << output_;
+  }
 }
 
 }  // namespace

@@ -157,6 +157,8 @@ TEST(MemorizeGeneralFactsCliTest, FiltersEveryFlagByExecutionPath) {
       {"puzzle_checkpoint", false, false, false, true, true},
       {"train_mlp", false, false, false, true, true},
       {"mlp_width", false, false, false, false, true},
+      {"mlp_depth", false, false, false, false, true},
+      {"match_mlp_parameter_budget", false, false, false, false, true},
   };
   for (const auto& test : cases) {
     SCOPED_TRACE(test.flag);
@@ -597,6 +599,8 @@ TEST(MemorizeGeneralFactsCliTest, PuzzleDefaultsOnlyReplaceOmittedFlags) {
   EXPECT_DOUBLE_EQ(defaults.learning_rate, 0.01);
   EXPECT_EQ(defaults.seed, 3);
   EXPECT_EQ(defaults.mlp_width, 150);
+  EXPECT_EQ(defaults.mlp_depth, 1);
+  EXPECT_TRUE(defaults.match_mlp_parameter_budget);
   EXPECT_EQ(defaults.batch_size, options.batch_size);
 
   // Explicit values equal to the old training defaults must still win.
@@ -670,16 +674,63 @@ TEST(MemorizeGeneralFactsCliTest, PuzzleRequiresThreeBlocksAndPositiveWidths) {
 }
 
 TEST(MemorizeGeneralFactsCliTest,
+     StackedMlpFlagsRequirePuzzleTrainingEvenAtTheirDefaults) {
+  for (const auto& options :
+       {TrainingOptions(), GenerationOptions(), VerificationOptions(),
+        PuzzleCommandLineOptions()}) {
+    SCOPED_TRACE(options.mode);
+    SCOPED_TRACE(options.verify_checkpoint);
+    EXPECT_EQ(options.mlp_depth, 1);
+    EXPECT_TRUE(options.match_mlp_parameter_budget);
+    ExpectInvalid(ValidateOptions(options, {"mlp_depth"}),
+                  "--mlp_depth is not valid");
+    ExpectInvalid(ValidateOptions(options, {"match_mlp_parameter_budget"}),
+                  "--match_mlp_parameter_budget is not valid");
+  }
+}
+
+TEST(MemorizeGeneralFactsCliTest, PuzzleTrainingRequiresPositiveMlpDepth) {
+  auto options = PuzzleCommandLineOptions(true);
+  for (int depth : {std::numeric_limits<int>::min(), -1, 0}) {
+    SCOPED_TRACE(depth);
+    options.mlp_depth = depth;
+    ExpectInvalid(ValidateOptions(options, {"mlp_depth"}),
+                  "--mlp_depth must be positive");
+  }
+}
+
+TEST(MemorizeGeneralFactsCliTest, PuzzleAcceptsSmallExactWidthsAtAnyDepth) {
+  auto options = PuzzleCommandLineOptions(true);
+  options.mlp_width = 20;
+  options.match_mlp_parameter_budget = false;
+  const absl::string_view flags[] = {"mlp_width", "mlp_depth",
+                                     "match_mlp_parameter_budget"};
+  // The sweep uses depths 1 through 5, but the CLI has no sweep-specific cap.
+  for (int depth : {1, 2, 3, 4, 5, 6, std::numeric_limits<int>::max()}) {
+    SCOPED_TRACE(depth);
+    options.mlp_depth = depth;
+    const auto resolved = ResolveModeDefaults(options, flags);
+    EXPECT_EQ(resolved.mlp_width, 20);
+    EXPECT_EQ(resolved.mlp_depth, depth);
+    EXPECT_FALSE(resolved.match_mlp_parameter_budget);
+    const auto status = ParseAndValidateRunMode(resolved, flags).status();
+    EXPECT_TRUE(status.ok()) << status;
+  }
+}
+
+TEST(MemorizeGeneralFactsCliTest,
      PuzzleCaptureRejectsExplicitTrainingSettings) {
   auto options = PuzzleCommandLineOptions();
   options.steps = -1;
   options.eval_every = 0;
   options.mlp_width = 0;
+  options.mlp_depth = 0;
   options.learning_rate = std::numeric_limits<double>::quiet_NaN();
   EXPECT_TRUE(ValidateOptions(options).ok());
   // Presence, rather than truthiness or equality to defaults, controls policy.
   for (absl::string_view flag :
-       {"steps", "eval_every", "learning_rate", "seed", "mlp_width"}) {
+       {"steps", "eval_every", "learning_rate", "seed", "mlp_width",
+        "mlp_depth", "match_mlp_parameter_budget"}) {
     SCOPED_TRACE(flag);
     ExpectInvalid(ValidateOptions(options, {flag}), flag);
   }

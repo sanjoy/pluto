@@ -57,6 +57,8 @@ constexpr FlagRule kFlagRules[] = {
     {"puzzle_checkpoint", kPuzzle},
     {"train_mlp", kPuzzle},
     {"mlp_width", kPuzzleTrain},
+    {"mlp_depth", kPuzzleTrain},
+    {"match_mlp_parameter_budget", kPuzzleTrain},
 };
 
 const FlagRule* FindRule(absl::string_view name) {
@@ -105,6 +107,8 @@ absl::StatusOr<Mode> ParseAndValidateRunMode(
       return absl::InvalidArgumentError("--model_width must be positive");
     if (options.train_mlp && options.mlp_width <= 0)
       return absl::InvalidArgumentError("--mlp_width must be positive");
+    if (options.train_mlp && options.mlp_depth <= 0)
+      return absl::InvalidArgumentError("--mlp_depth must be positive");
     if (options.train_mlp && options.seed < 0)
       return absl::InvalidArgumentError("--seed must be nonnegative");
   }

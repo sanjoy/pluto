@@ -19,7 +19,9 @@ struct PuzzleOptions {
   Gpt2Config model_config;  // Vocabulary size is resolved from the tokenizer.
   bool compact_vocabulary = true;  // Load the checkpoint's saved ID mapping.
   bool train_mlp = false;          // Otherwise only capture, audit, and plot.
-  int mlp_width = 150;    // Minimum expansion; raised to cover the source tail.
+  int mlp_width = 150;  // Minimum expansion; raised to cover the source tail.
+  int mlp_depth = 1;    // Sequential pre-LN residual MLPs, no cross-token work.
+  bool match_mlp_parameter_budget = true;  // Otherwise use the exact width.
   int steps = 300000;     // Exact update budget; zero evaluates initialization.
   int eval_every = 1000;  // Full-corpus statistics cadence.
   int batch_size = 32;    // Facts per batch, not flattened token rows.
@@ -32,7 +34,7 @@ struct PuzzleOptions {
 // standalone coordinate-pair plot for every position. Only suffix/EOS targets
 // after five-token prompts enter the audit and training; padding is labeled
 // explicitly in plots. Optional fitting freezes the source and tied head and
-// trains a fresh residual MLP, its input LN, and the final LN using cached A3
+// trains fresh residual MLPs, their input LNs, and one final LN using cached A3
 // vectors. All GPU work and pinned-memory transfers use the supplied executor.
 absl::Status RunPuzzle(cuda::Executor& executor,
                        const tokenizer::Gpt2Tokenizer& base_tokenizer,

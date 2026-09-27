@@ -13,7 +13,7 @@ enum class Mode { kTrainModel, kInferModel, kPuzzle };
 
 // Snapshot of the flag values needed for command-line validation. The caller
 // supplies the actual values, including CLI defaults; these initializers are
-// only safe empty values, not a second set of flag defaults. Owning the strings
+// only safe values, not a second set of flag defaults. Owning the strings
 // keeps snapshots returned by absl::GetFlag alive throughout validation.
 struct CommandLineOptions {
   std::string mode;
@@ -36,6 +36,8 @@ struct CommandLineOptions {
   int warmup_steps = 0;
   int seed = 0;
   int mlp_width = 0;
+  int mlp_depth = 1;
+  bool match_mlp_parameter_budget = true;
   bool train_mlp = false;
   double learning_rate = 0;
   double training_seconds = 0;

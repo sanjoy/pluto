@@ -229,17 +229,20 @@ absl::Status LoadBatch(cuda::Executor& executor, const CapturedCorpus& cache,
 }
 
 struct Metrics {
-  int wrong = 0;       // Errors on scored suffix/EOS targets only.
-  int complete = 0;    // Facts with all teacher-forced targets correct.
-  int scored = 0;      // Denominator excluding prompt and padding.
-  double mean_ce = 0;  // Mean standard cross entropy over scored rows.
+  int wrong = 0;        // Errors on scored suffix/EOS targets only.
+  int complete = 0;     // Facts with all teacher-forced targets correct.
+  int scored = 0;       // Denominator excluding prompt and padding.
+  int eos_correct = 0;  // Correct EOS targets, not EOS-padding rows.
+  int eos_scored = 0;   // One real terminal target per fact.
+  double mean_ce = 0;   // Mean standard cross entropy over scored rows.
 };
 
 absl::StatusOr<Metrics> EvaluateReadout(cuda::Executor& executor,
                                         const Layer& readout, const Layer& loss,
                                         const CapturedCorpus& cache,
                                         const Gpt2Config& config, Batch& full,
-                                        std::optional<Batch>& partial) {
+                                        std::optional<Batch>& partial,
+                                        int eos) {
   const int samples = cache.report.facts.size();
   const int sequence = config.context_length;
   const int max_rows = full.samples * sequence;
@@ -281,6 +284,8 @@ absl::StatusOr<Metrics> EvaluateReadout(cuda::Executor& executor,
         ++metrics.scored;
         metrics.mean_ce += host_loss[local];
         metrics.wrong += host_ids[local] != target;
+        metrics.eos_scored += target == eos;
+        metrics.eos_correct += target == eos && host_ids[local] == target;
         complete &= host_ids[local] == target;
       }
       metrics.complete += complete;
@@ -344,9 +349,11 @@ absl::Status FitReadout(cuda::Executor& executor, const Layer& source,
                         const Gpt2Config& config, const CapturedCorpus& cache,
                         const PaddedLineDataSetIterator& data, int eos,
                         const PuzzleOptions& options, std::ostream& output) {
-  ASSIGN_OR_RETURN(auto readout,
-                   CreatePuzzleReadout(executor, source, config,
-                                       options.mlp_width, options.seed));
+  ASSIGN_OR_RETURN(
+      auto readout,
+      CreatePuzzleReadout(executor, source, config, options.mlp_width,
+                          options.seed, options.mlp_depth,
+                          options.match_mlp_parameter_budget));
   ASSIGN_OR_RETURN(auto frozen_head,
                    SnapshotWeights(executor, *readout.embedding));
   ASSIGN_OR_RETURN(auto loss, CrossEntropyLossLayer::Create(
@@ -374,7 +381,8 @@ absl::Status FitReadout(cuda::Executor& executor, const Layer& source,
                            "training.tsv");
   if (!statistics)
     return absl::InternalError("cannot create puzzle training statistics");
-  statistics << "step\tseconds\tmean_ce\tcorrect\tscored\tcomplete_facts\n";
+  statistics << "step\tseconds\tmean_ce\tcorrect\tscored\tcomplete_facts"
+                "\teos_correct\teos_scored\n";
   size_t parameters = 0;
   for (const auto& weight : readout.trainable->weights())
     parameters += weight.size_bytes() / sizeof(float);
@@ -385,10 +393,15 @@ absl::Status FitReadout(cuda::Executor& executor, const Layer& source,
          << "; requested_mlp_width=" << options.mlp_width
          << "; minimum_mlp_width=" << budget.minimum_mlp_width
          << "; resolved_mlp_width=" << budget.mlp_width
+         << "; mlp_depth=" << options.mlp_depth
+         << "; match_mlp_parameter_budget="
+         << options.match_mlp_parameter_budget
          << " (shared frozen embedding/head excluded)\n"
-         << "Trainable: residual " << config.model_width << " -> "
-         << budget.mlp_width << " -> " << config.model_width
-         << " MLP, input LN, final LN; parameters=" << parameters
+         << "Trainable: " << options.mlp_depth << " residual "
+         << config.model_width << " -> " << budget.mlp_width << " -> "
+         << config.model_width
+         << " MLP(s), each with input LN, one final LN; parameters="
+         << parameters
          << "; frozen: original transformer and tied embedding head\n"
          << "Adam: learning_rate=" << options.learning_rate
          << ", cosine final ratio=0.1, no clipping or weight decay\n";
@@ -404,7 +417,7 @@ absl::Status FitReadout(cuda::Executor& executor, const Layer& source,
   auto evaluate = [&](int step) -> absl::Status {
     ASSIGN_OR_RETURN(auto metrics,
                      EvaluateReadout(executor, *readout.model, *loss, cache,
-                                     config, full, partial));
+                                     config, full, partial, eos));
     const double seconds = elapsed();
     output << absl::StrFormat(
                   "step=%d seconds=%.2f mean_ce=%.8f correct=%d/%d "
@@ -414,10 +427,11 @@ absl::Status FitReadout(cuda::Executor& executor, const Layer& source,
                   100.0 * (metrics.scored - metrics.wrong) / metrics.scored,
                   metrics.complete, samples)
            << std::flush;
-    statistics << absl::StrFormat("%d\t%.2f\t%.8f\t%d\t%d\t%d\n", step, seconds,
-                                  metrics.mean_ce,
+    statistics << absl::StrFormat("%d\t%.2f\t%.8f\t%d\t%d\t%d\t%d\t%d\n", step,
+                                  seconds, metrics.mean_ce,
                                   metrics.scored - metrics.wrong,
-                                  metrics.scored, metrics.complete)
+                                  metrics.scored, metrics.complete,
+                                  metrics.eos_correct, metrics.eos_scored)
                << std::flush;
     if (!statistics || !output)
       return absl::InternalError("writing puzzle statistics failed");
@@ -492,6 +506,10 @@ absl::Status FitReadout(cuda::Executor& executor, const Layer& source,
              best.scored - best.wrong, best.scored,
              100.0 * (best.scored - best.wrong) / best.scored, complete,
              samples)
+      << "EOS breakdown: eos_correct=" << best.eos_correct
+      << " eos_scored=" << best.eos_scored
+      << " non_eos_correct=" << best.scored - best.wrong - best.eos_correct
+      << " non_eos_scored=" << best.scored - best.eos_scored << "\n"
       << "Best readout: " << best_path.string() << "\n"
       << std::flush;
   return output ? absl::OkStatus()
@@ -508,7 +526,7 @@ absl::Status RunPuzzle(cuda::Executor& executor,
       options.model_config.transformer_block_count < 3 ||
       (options.train_mlp &&
        (options.steps < 0 || options.eval_every <= 0 ||
-        options.mlp_width <= 0 || options.seed < 0 ||
+        options.mlp_width <= 0 || options.mlp_depth <= 0 || options.seed < 0 ||
         !std::isfinite(options.learning_rate) || options.learning_rate <= 0)))
     return absl::InvalidArgumentError("invalid puzzle options");
   std::error_code error;
@@ -537,8 +555,9 @@ absl::Status RunPuzzle(cuda::Executor& executor,
   // mode ignores readout settings, just as its CLI policy requires.
   std::optional<PuzzleReadoutParameterBudget> budget;
   if (options.train_mlp) {
-    ASSIGN_OR_RETURN(
-        budget, ResolvePuzzleReadoutParameterBudget(config, options.mlp_width));
+    ASSIGN_OR_RETURN(budget, ResolvePuzzleReadoutParameterBudget(
+                                 config, options.mlp_width, options.mlp_depth,
+                                 options.match_mlp_parameter_budget));
   }
   ASSIGN_OR_RETURN(auto data, PaddedLineDataSetIterator::Create(
                                   executor, corpus.text(), *tokenizer,
@@ -588,6 +607,9 @@ absl::Status RunPuzzle(cuda::Executor& executor,
              << "\ntrain_mlp=" << options.train_mlp
              << "\nrequested_mlp_width=" << options.mlp_width << "\nmlp_width="
              << (budget ? budget->mlp_width : options.mlp_width)
+             << "\nmlp_depth=" << options.mlp_depth
+             << "\nmatch_mlp_parameter_budget="
+             << options.match_mlp_parameter_budget
              << "\nsteps=" << options.steps
              << "\neval_every=" << options.eval_every
              << "\nbatch_size=" << options.batch_size

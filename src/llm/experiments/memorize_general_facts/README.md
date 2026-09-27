@@ -195,6 +195,21 @@ prompts using the saved readout. This differs from teacher-forced token
 accuracy; intermediate checkpoints are not separately greedily verified.
 `run.txt` records source paths, model shape, and training settings.
 
+For the stacked-readout experiment, `--mlp_depth=N` composes N independently
+initialized pre-LayerNorm residual MLPs at each position, followed by one final
+LayerNorm and the same frozen tied head. Every MLP uses `--mlp_width`; none can
+access another token's state. Depth one preserves the original experiment.
+The parameter floor now compares the aggregate affine parameters of the stack
+against the original post-A3 suffix. Set `--match_mlp_parameter_budget=false`
+to use an exact width, including intentionally smaller controls. Both new flags
+are valid only in `--mode=puzzle --train_mlp`.
+
+For residual width d, expansion h, and stack depth D, the trainable count is
+`D * ((2*d + 1)*h + 3*d) + 2*d`, including one LN per MLP and one final LN.
+The [stacked-MLP sweep driver](../../../../scripts/memorize_general_facts/STACKED_MLP_SWEEP.md)
+keeps artifacts outside Git and produces a live comparison table. Statistics
+also separate EOS from non-EOS targets; prompt and padding rows count in neither.
+
 The first end-to-end reproduction with the checkpoint above found **10,002
 distinct scored residual vectors** and 2,900 distinct target IDs. After all
 300,000 updates, the best observed readout (step 290,000) had **3,341/10,002
