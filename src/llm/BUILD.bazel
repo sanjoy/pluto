@@ -10,6 +10,50 @@ load(
 )
 
 cc_library(
+    name = "attention_probability_printer",
+    srcs = ["attention_probability_printer.cc"],
+    hdrs = ["attention_probability_printer.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":layer",
+        ":layer_hooks",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset:detokenizer",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/strings:str_format",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_test(
+    name = "attention_probability_printer_test",
+    srcs = ["attention_probability_printer_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":attention_probability_printer",
+        ":layer",
+        ":layer_hooks",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset:detokenizer",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "gpt2",
     srcs = ["gpt2.cc"],
     hdrs = ["gpt2.h"],

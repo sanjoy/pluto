@@ -1,4 +1,4 @@
-#include "src/llm/experiments/memorize_general_facts/attention_inspection.h"
+#include "src/llm/attention_probability_printer.h"
 
 #include <cuda_runtime_api.h>
 
@@ -15,7 +15,7 @@
 
 namespace pluto::llm {
 
-AttentionProbabilityInspector::AttentionProbabilityInspector(
+AttentionProbabilityPrinter::AttentionProbabilityPrinter(
     cuda::Executor& executor)
     : executor_(executor) {
   hooks_.attention_probabilities_hook =
@@ -39,7 +39,7 @@ AttentionProbabilityInspector::AttentionProbabilityInspector(
   };
 }
 
-absl::Status AttentionProbabilityInspector::ValidateExecutor(
+absl::Status AttentionProbabilityPrinter::ValidateExecutor(
     const cuda::Executor& executor) const {
   if (&executor != &executor_)
     return absl::InvalidArgumentError(
@@ -47,14 +47,14 @@ absl::Status AttentionProbabilityInspector::ValidateExecutor(
   return absl::OkStatus();
 }
 
-std::string AttentionProbabilityInspector::NextPath(absl::string_view name) {
+std::string AttentionProbabilityPrinter::NextPath(absl::string_view name) {
   if (scopes_.empty())
     return absl::StrCat(name, "[", next_root_++, "]");
   Scope& parent = scopes_.back();
   return absl::StrCat(parent.path, "/", name, "[", parent.next_child++, "]");
 }
 
-absl::Status AttentionProbabilityInspector::Record(
+absl::Status AttentionProbabilityPrinter::Record(
     cuda::Executor& executor, absl::string_view name,
     const ActivationType& type, const cuda::Buffer& probabilities) {
   RETURN_IF_ERROR(ValidateExecutor(executor));
@@ -87,7 +87,7 @@ absl::Status AttentionProbabilityInspector::Record(
   return absl::OkStatus();
 }
 
-absl::Status AttentionProbabilityInspector::Print(
+absl::Status AttentionProbabilityPrinter::Print(
     cuda::Executor& executor, const tokenizer::Detokenizer& detokenizer,
     absl::Span<const int> input_prefix, int produced_token,
     std::ostream& output) {

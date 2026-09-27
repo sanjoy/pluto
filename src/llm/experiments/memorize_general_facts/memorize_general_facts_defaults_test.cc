@@ -122,6 +122,9 @@ TEST_F(MemorizeGeneralFactsDefaultsTest, DefaultsMatchSmallestMemorizedModel) {
       {"seed", "1337"},
       {"warmup_steps", "100"},
       {"search", "false"},
+      {"train_mlp", "false"},
+      {"train_stacked_mlp", "false"},
+      {"mlp_width", "150"},
       {"mode", "\"\""},
   };
   for (const auto& [name, value] : expected) {
@@ -130,6 +133,7 @@ TEST_F(MemorizeGeneralFactsDefaultsTest, DefaultsMatchSmallestMemorizedModel) {
     ASSERT_TRUE(actual.has_value()) << output_;
     EXPECT_EQ(*actual, value);
   }
+  EXPECT_NE(output_.find("10/150/10"), std::string::npos) << output_;
 }
 
 TEST_F(MemorizeGeneralFactsDefaultsTest, ModeRemainsExplicitlyRequired) {
@@ -150,6 +154,48 @@ TEST_F(MemorizeGeneralFactsDefaultsTest,
   EXPECT_NE(output_.find("--steps is not valid in --mode=infer_model"),
             std::string::npos)
       << output_;
+}
+
+TEST_F(MemorizeGeneralFactsDefaultsTest,
+       OtherModesRejectExplicitStackedTrainingFlag) {
+  for (const char* mode : {"train_model", "infer_model"}) {
+    for (const char* value : {"false", "true"}) {
+      SCOPED_TRACE(mode);
+      SCOPED_TRACE(value);
+      std::vector<std::string> arguments = {
+          std::string("--mode=") + mode,
+          std::string("--train_stacked_mlp=") + value};
+      if (std::string_view(mode) == "infer_model")
+        arguments.push_back("--infer_checkpoint=unused_checkpoint");
+      ASSERT_NO_FATAL_FAILURE(Run(std::move(arguments)));
+      EXPECT_EQ(exit_code_, 1) << output_;
+      EXPECT_NE(output_.find("--train_stacked_mlp is not valid in --mode="),
+                std::string::npos)
+          << output_;
+    }
+  }
+}
+
+TEST_F(MemorizeGeneralFactsDefaultsTest,
+       StackedTrainingRejectsInvalidOptionsBeforeOpeningCuda) {
+  const std::pair<std::string_view, std::string_view> cases[] = {
+      {"--train_mlp", "mutually exclusive"},
+      {"--model_width=20", "--model_width must be 10"},
+      {"--mlp_width=150", "--mlp_width is not valid"},
+      {"--steps=-1", "--steps must be nonnegative"},
+      {"--eval_every=0", "--eval_every must be positive"},
+      {"--learning_rate=0", "--learning_rate must be finite and positive"},
+      {"--seed=-1", "--seed must be nonnegative"},
+  };
+  for (const auto& [argument, diagnostic] : cases) {
+    SCOPED_TRACE(argument);
+    ASSERT_NO_FATAL_FAILURE(
+        Run({"--mode=puzzle", "--train_stacked_mlp",
+             "--puzzle_checkpoint=unused_checkpoint",
+             "--tokenizer=unused_tokenizer", std::string(argument)}));
+    EXPECT_EQ(exit_code_, 1) << output_;
+    EXPECT_NE(output_.find(diagnostic), std::string::npos) << output_;
+  }
 }
 
 }  // namespace

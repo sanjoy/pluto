@@ -172,6 +172,30 @@ after attention 3, which includes MLP3, attention4, MLP4, and their LayerNorms.
 The frozen embedding/head is common to both paths and excluded from this
 comparison.
 
+### Optional: fit five stacked MLPs to the same source
+
+The reproduction script above keeps its original single-MLP experiment. After
+it finishes, reuse the verified source for the fixed five-block variant:
+
+```bash
+bazel build -c opt //src/llm/experiments/memorize_general_facts:memorize_general_facts
+checkpoint="$(<"$facts_run/checkpoint.txt")"
+bazel-bin/src/llm/experiments/memorize_general_facts/memorize_general_facts \
+  --mode=puzzle --train_stacked_mlp \
+  --puzzle_checkpoint="$checkpoint" \
+  --tokenizer="$facts_run/model/inputs" \
+  --corpus="$facts_run/model/inputs/corpus.txt" \
+  --output_dir="$facts_run/puzzle_stacked"
+```
+
+Use a new output directory for every invocation. Each of the five blocks is a
+pre-LN residual `10 -> 150 -> 10` GELU MLP, followed by one shared final LN and
+the frozen original embedding/head. Only the stack and its LayerNorms train:
+**15,920 parameters** total. This uses the same 300,000-step/seed-3/batch-32
+recipe by default; `--steps`, `--eval_every`, `--seed`, `--batch_size`, and
+`--learning_rate` remain configurable. Do not also pass `--train_mlp` or
+`--mlp_width`; the stack has a fixed shape and requires model width 10.
+
 The first build and downloads may dominate initial setup time. Training speed
 depends on the machine. Run in a persistent terminal session if disconnecting
 from a remote server. Do not stop after a periodic checkpoint appears: only a

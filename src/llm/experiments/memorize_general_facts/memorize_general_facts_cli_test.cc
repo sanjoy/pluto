@@ -17,11 +17,11 @@ absl::Status Validate(Mode mode, std::initializer_list<absl::string_view> flags,
                       absl::string_view tokenizer = "/tokenizer",
                       absl::string_view checkpoint_dir = "/checkpoints",
                       absl::string_view puzzle_checkpoint = "/puzzle",
-                      bool train_mlp = false) {
-  return ValidateModeFlags(mode,
-                           absl::MakeConstSpan(flags.begin(), flags.size()),
-                           tokenizer, checkpoint_dir, infer_checkpoint,
-                           verify_checkpoint, puzzle_checkpoint, train_mlp);
+                      bool train_mlp = false, bool train_stacked_mlp = false) {
+  return ValidateModeFlags(
+      mode, absl::MakeConstSpan(flags.begin(), flags.size()), tokenizer,
+      checkpoint_dir, infer_checkpoint, verify_checkpoint, puzzle_checkpoint,
+      train_mlp, train_stacked_mlp);
 }
 
 void ExpectInvalid(const absl::Status& status, absl::string_view diagnostic) {
@@ -66,7 +66,8 @@ CommandLineOptions VerificationOptions() {
   return options;
 }
 
-CommandLineOptions PuzzleCommandLineOptions(bool train_mlp = false) {
+CommandLineOptions PuzzleCommandLineOptions(bool train_mlp = false,
+                                            bool train_stacked_mlp = false) {
   auto options = TrainingOptions();
   options.mode = "puzzle";
   options.checkpoint_dir.clear();
@@ -75,6 +76,7 @@ CommandLineOptions PuzzleCommandLineOptions(bool train_mlp = false) {
   options.model_width = 10;
   options.mlp_width = 150;
   options.train_mlp = train_mlp;
+  options.train_stacked_mlp = train_stacked_mlp;
   return ResolveModeDefaults(options, {});
 }
 
@@ -156,6 +158,7 @@ TEST(MemorizeGeneralFactsCliTest, FiltersEveryFlagByExecutionPath) {
       {"verify_checkpoint", false, false, true, false, false},
       {"puzzle_checkpoint", false, false, false, true, true},
       {"train_mlp", false, false, false, true, true},
+      {"train_stacked_mlp", false, false, false, true, true},
       {"mlp_width", false, false, false, false, true},
   };
   for (const auto& test : cases) {
@@ -167,12 +170,17 @@ TEST(MemorizeGeneralFactsCliTest, FiltersEveryFlagByExecutionPath) {
         Validate(Mode::kPuzzle, {test.flag}),
         Validate(Mode::kPuzzle, {test.flag}, "", "", "/tokenizer", "",
                  "/puzzle", true),
+        Validate(Mode::kPuzzle, {test.flag}, "", "", "/tokenizer", "",
+                 "/puzzle", false, true),
     };
-    const bool allowed[] = {test.train, test.generate, test.verify,
-                            test.capture, test.train_mlp};
-    const absl::string_view paths[] = {"train", "generate", "verify", "capture",
-                                       "train_mlp"};
-    for (int i = 0; i < 5; ++i) {
+    const bool allowed[] = {
+        test.train,     test.generate,
+        test.verify,    test.capture,
+        test.train_mlp, test.train_mlp && test.flag != "mlp_width"};
+    const absl::string_view paths[] = {"train",     "generate",
+                                       "verify",    "capture",
+                                       "train_mlp", "train_stacked_mlp"};
+    for (int i = 0; i < 6; ++i) {
       SCOPED_TRACE(paths[i]);
       if (allowed[i])
         EXPECT_TRUE(statuses[i].ok()) << statuses[i];
@@ -329,7 +337,8 @@ TEST(MemorizeGeneralFactsCliTest, RejectsFlagsMissingFromThePolicy) {
 TEST(MemorizeGeneralFactsCliTest, ValidatesAndReturnsEachExecutionMode) {
   for (const auto& options :
        {TrainingOptions(), GenerationOptions(), VerificationOptions(),
-        PuzzleCommandLineOptions(), PuzzleCommandLineOptions(true)}) {
+        PuzzleCommandLineOptions(), PuzzleCommandLineOptions(true),
+        PuzzleCommandLineOptions(false, true)}) {
     SCOPED_TRACE(options.mode);
     SCOPED_TRACE(options.verify_checkpoint);
     const auto mode = ParseAndValidateRunMode(options, {});
@@ -585,38 +594,85 @@ TEST(MemorizeGeneralFactsCliTest, PuzzleRequiresItsCheckpoint) {
   EXPECT_TRUE(ValidateOptions(options, {"puzzle_checkpoint"}).ok());
 }
 
-TEST(MemorizeGeneralFactsCliTest, PuzzleDefaultsOnlyReplaceOmittedFlags) {
-  auto options = PuzzleCommandLineOptions(true);
-  options.steps = 120000;
-  options.eval_every = 256;
-  options.learning_rate = 0.0012;
-  options.seed = 1337;
-  const auto defaults = ResolveModeDefaults(options, {});
-  EXPECT_EQ(defaults.steps, 300000);
-  EXPECT_EQ(defaults.eval_every, 1000);
-  EXPECT_DOUBLE_EQ(defaults.learning_rate, 0.01);
-  EXPECT_EQ(defaults.seed, 3);
-  EXPECT_EQ(defaults.mlp_width, 150);
-  EXPECT_EQ(defaults.batch_size, options.batch_size);
+TEST(MemorizeGeneralFactsCliTest, PuzzleTrainingSelectorsAreExclusiveWhenTrue) {
+  auto options = PuzzleCommandLineOptions(true, true);
+  ExpectInvalid(ValidateOptions(options), "mutually exclusive");
+  ExpectInvalid(ValidateOptions(options, {"train_mlp", "train_stacked_mlp"}),
+                "mutually exclusive");
+  for (auto valid : {PuzzleCommandLineOptions(), PuzzleCommandLineOptions(true),
+                     PuzzleCommandLineOptions(false, true)}) {
+    // Explicit false selectors are allowed alongside the enabled selector.
+    EXPECT_TRUE(
+        ValidateOptions(valid, {"train_mlp", "train_stacked_mlp"}).ok());
+  }
+}
 
-  // Explicit values equal to the old training defaults must still win.
-  const absl::string_view flags[] = {"steps", "eval_every", "learning_rate",
-                                     "seed"};
-  const auto explicit_values = ResolveModeDefaults(options, flags);
-  EXPECT_EQ(explicit_values.steps, options.steps);
-  EXPECT_EQ(explicit_values.eval_every, options.eval_every);
-  EXPECT_DOUBLE_EQ(explicit_values.learning_rate, options.learning_rate);
-  EXPECT_EQ(explicit_values.seed, options.seed);
-  for (absl::string_view flag : flags) {
-    SCOPED_TRACE(flag);
-    const absl::string_view explicit_flag[] = {flag};
-    const auto resolved = ResolveModeDefaults(options, explicit_flag);
-    EXPECT_EQ(resolved.steps, flag == "steps" ? options.steps : 300000);
-    EXPECT_EQ(resolved.eval_every,
-              flag == "eval_every" ? options.eval_every : 1000);
-    EXPECT_DOUBLE_EQ(resolved.learning_rate,
-                     flag == "learning_rate" ? options.learning_rate : 0.01);
-    EXPECT_EQ(resolved.seed, flag == "seed" ? options.seed : 3);
+TEST(MemorizeGeneralFactsCliTest, StackedPuzzleTrainingHasFixedWidths) {
+  auto options = PuzzleCommandLineOptions(false, true);
+  for (int width : {-1, 0, 1, 9, 11, std::numeric_limits<int>::max()}) {
+    SCOPED_TRACE(width);
+    options.model_width = width;
+    ExpectInvalid(ValidateOptions(options), "--model_width must");
+  }
+  options.model_width = 10;
+  EXPECT_TRUE(ValidateOptions(options).ok());
+  for (int width : {-1, 0, 150, 300}) {
+    SCOPED_TRACE(width);
+    options.mlp_width = width;
+    // The stacked path uses its fixed hidden width, ignoring omitted values.
+    EXPECT_TRUE(ValidateOptions(options).ok());
+    ExpectInvalid(ValidateOptions(options, {"mlp_width"}),
+                  "--mlp_width is not valid");
+  }
+  options.train_stacked_mlp = false;
+  options.train_mlp = true;
+  options.model_width = 20;
+  options.mlp_width = 300;
+  EXPECT_TRUE(ValidateOptions(options, {"model_width", "mlp_width"}).ok());
+}
+
+TEST(MemorizeGeneralFactsCliTest, StackedPuzzleAloneConsumesTrainingSettings) {
+  const auto options = PuzzleCommandLineOptions(false, true);
+  EXPECT_TRUE(
+      ValidateOptions(options, {"train_stacked_mlp", "steps", "eval_every",
+                                "learning_rate", "seed", "batch_size"})
+          .ok());
+}
+
+TEST(MemorizeGeneralFactsCliTest, PuzzleDefaultsOnlyReplaceOmittedFlags) {
+  for (auto options : {PuzzleCommandLineOptions(true),
+                       PuzzleCommandLineOptions(false, true)}) {
+    options.steps = 120000;
+    options.eval_every = 256;
+    options.learning_rate = 0.0012;
+    options.seed = 1337;
+    const auto defaults = ResolveModeDefaults(options, {});
+    EXPECT_EQ(defaults.steps, 300000);
+    EXPECT_EQ(defaults.eval_every, 1000);
+    EXPECT_DOUBLE_EQ(defaults.learning_rate, 0.01);
+    EXPECT_EQ(defaults.seed, 3);
+    EXPECT_EQ(defaults.mlp_width, 150);
+    EXPECT_EQ(defaults.batch_size, options.batch_size);
+
+    // Explicit values equal to the old training defaults must still win.
+    const absl::string_view flags[] = {"steps", "eval_every", "learning_rate",
+                                       "seed"};
+    const auto explicit_values = ResolveModeDefaults(options, flags);
+    EXPECT_EQ(explicit_values.steps, options.steps);
+    EXPECT_EQ(explicit_values.eval_every, options.eval_every);
+    EXPECT_DOUBLE_EQ(explicit_values.learning_rate, options.learning_rate);
+    EXPECT_EQ(explicit_values.seed, options.seed);
+    for (absl::string_view flag : flags) {
+      SCOPED_TRACE(flag);
+      const absl::string_view explicit_flag[] = {flag};
+      const auto resolved = ResolveModeDefaults(options, explicit_flag);
+      EXPECT_EQ(resolved.steps, flag == "steps" ? options.steps : 300000);
+      EXPECT_EQ(resolved.eval_every,
+                flag == "eval_every" ? options.eval_every : 1000);
+      EXPECT_DOUBLE_EQ(resolved.learning_rate,
+                       flag == "learning_rate" ? options.learning_rate : 0.01);
+      EXPECT_EQ(resolved.seed, flag == "seed" ? options.seed : 3);
+    }
   }
 }
 
@@ -638,11 +694,14 @@ TEST(MemorizeGeneralFactsCliTest, ResolvingPuzzleDefaultsPreservesOtherModes) {
 
 TEST(MemorizeGeneralFactsCliTest,
      PuzzleDefaultsDoNotHideInvalidExplicitValues) {
-  auto options = PuzzleCommandLineOptions(true);
-  options.steps = -1;
-  const absl::string_view flags[] = {"steps"};
-  ExpectInvalid(ValidateOptions(ResolveModeDefaults(options, flags), {"steps"}),
-                "--steps must be nonnegative");
+  for (auto options : {PuzzleCommandLineOptions(true),
+                       PuzzleCommandLineOptions(false, true)}) {
+    options.steps = -1;
+    const absl::string_view flags[] = {"steps"};
+    ExpectInvalid(
+        ValidateOptions(ResolveModeDefaults(options, flags), {"steps"}),
+        "--steps must be nonnegative");
+  }
 }
 
 TEST(MemorizeGeneralFactsCliTest, PuzzleRequiresThreeBlocksAndPositiveWidths) {
@@ -683,41 +742,47 @@ TEST(MemorizeGeneralFactsCliTest,
     SCOPED_TRACE(flag);
     ExpectInvalid(ValidateOptions(options, {flag}), flag);
   }
-  EXPECT_TRUE(ValidateOptions(options, {"train_mlp", "batch_size"}).ok());
+  EXPECT_TRUE(
+      ValidateOptions(options, {"train_mlp", "train_stacked_mlp", "batch_size"})
+          .ok());
 }
 
 TEST(MemorizeGeneralFactsCliTest, PuzzleTrainingValidatesItsSchedule) {
-  auto options = PuzzleCommandLineOptions(true);
-  options.steps = -1;
-  ExpectInvalid(ValidateOptions(options), "--steps must be nonnegative");
-  options.steps = 0;
-  EXPECT_TRUE(ValidateOptions(options).ok());
-  for (int value : {-1, 0}) {
-    options.eval_every = value;
-    ExpectInvalid(ValidateOptions(options), "--eval_every must be positive");
+  for (auto options : {PuzzleCommandLineOptions(true),
+                       PuzzleCommandLineOptions(false, true)}) {
+    options.steps = -1;
+    ExpectInvalid(ValidateOptions(options), "--steps must be nonnegative");
+    options.steps = 0;
+    EXPECT_TRUE(ValidateOptions(options).ok());
+    for (int value : {-1, 0}) {
+      options.eval_every = value;
+      ExpectInvalid(ValidateOptions(options), "--eval_every must be positive");
+    }
+    options.eval_every = 1;
+    // These unrelated training settings are ignored unless supplied explicitly.
+    options.checkpoint_every = -1;
+    options.warmup_steps = -1;
+    options.training_seconds = std::numeric_limits<double>::quiet_NaN();
+    EXPECT_TRUE(ValidateOptions(options).ok());
+    for (absl::string_view flag :
+         {"checkpoint_every", "warmup_steps", "training_seconds"})
+      ExpectInvalid(ValidateOptions(options, {flag}), flag);
   }
-  options.eval_every = 1;
-  // These unrelated training settings are ignored unless supplied explicitly.
-  options.checkpoint_every = -1;
-  options.warmup_steps = -1;
-  options.training_seconds = std::numeric_limits<double>::quiet_NaN();
-  EXPECT_TRUE(ValidateOptions(options).ok());
-  for (absl::string_view flag :
-       {"checkpoint_every", "warmup_steps", "training_seconds"})
-    ExpectInvalid(ValidateOptions(options, {flag}), flag);
 }
 
 TEST(MemorizeGeneralFactsCliTest, OnlyPuzzleTrainingRequiresNonnegativeSeed) {
-  auto puzzle = PuzzleCommandLineOptions(true);
-  for (int seed : {std::numeric_limits<int>::min(), -1, 0, 3,
-                   std::numeric_limits<int>::max()}) {
-    SCOPED_TRACE(seed);
-    puzzle.seed = seed;
-    if (seed < 0)
-      ExpectInvalid(ValidateOptions(puzzle, {"seed"}),
-                    "--seed must be nonnegative");
-    else
-      EXPECT_TRUE(ValidateOptions(puzzle, {"seed"}).ok());
+  for (auto puzzle : {PuzzleCommandLineOptions(true),
+                      PuzzleCommandLineOptions(false, true)}) {
+    for (int seed : {std::numeric_limits<int>::min(), -1, 0, 3,
+                     std::numeric_limits<int>::max()}) {
+      SCOPED_TRACE(seed);
+      puzzle.seed = seed;
+      if (seed < 0)
+        ExpectInvalid(ValidateOptions(puzzle, {"seed"}),
+                      "--seed must be nonnegative");
+      else
+        EXPECT_TRUE(ValidateOptions(puzzle, {"seed"}).ok());
+    }
   }
   for (auto options :
        {TrainingOptions(), GenerationOptions(), VerificationOptions()}) {
@@ -727,19 +792,21 @@ TEST(MemorizeGeneralFactsCliTest, OnlyPuzzleTrainingRequiresNonnegativeSeed) {
 }
 
 TEST(MemorizeGeneralFactsCliTest, PuzzleLearningRateMustBeUsableAsFloat) {
-  auto options = PuzzleCommandLineOptions(true);
-  for (double value : {-1.0, 0.0, std::numeric_limits<double>::quiet_NaN(),
-                       std::numeric_limits<double>::infinity(),
-                       std::numeric_limits<double>::max(),
-                       std::numeric_limits<double>::denorm_min()}) {
-    SCOPED_TRACE(value);
-    options.learning_rate = value;
-    ExpectInvalid(ValidateOptions(options), "--learning_rate must");
-  }
-  for (double value :
-       {static_cast<double>(std::numeric_limits<float>::min()), 0.01, 1.0}) {
-    options.learning_rate = value;
-    EXPECT_TRUE(ValidateOptions(options).ok());
+  for (auto options : {PuzzleCommandLineOptions(true),
+                       PuzzleCommandLineOptions(false, true)}) {
+    for (double value : {-1.0, 0.0, std::numeric_limits<double>::quiet_NaN(),
+                         std::numeric_limits<double>::infinity(),
+                         std::numeric_limits<double>::max(),
+                         std::numeric_limits<double>::denorm_min()}) {
+      SCOPED_TRACE(value);
+      options.learning_rate = value;
+      ExpectInvalid(ValidateOptions(options), "--learning_rate must");
+    }
+    for (double value :
+         {static_cast<double>(std::numeric_limits<float>::min()), 0.01, 1.0}) {
+      options.learning_rate = value;
+      EXPECT_TRUE(ValidateOptions(options).ok());
+    }
   }
 }
 

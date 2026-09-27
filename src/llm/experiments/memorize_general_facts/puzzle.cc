@@ -39,7 +39,12 @@ namespace {
 
 constexpr int kFactCount = 1024;
 constexpr int kPromptTokens = 5;
+constexpr int kStackedMlpDepth = 5;
+constexpr int kStackedMlpWidth = 150;
+constexpr int kStackedModelWidth = 10;
 
+// Enqueue a puzzle data transfer on the executor's stream and report errors.
+// Callers keep both buffers alive until the asynchronous copy completes.
 absl::Status Copy(cuda::Executor& executor, void* destination,
                   const void* source, size_t bytes, cudaMemcpyKind kind) {
   return cuda::CudaStatus(
@@ -69,6 +74,8 @@ absl::StatusOr<cuda::PageLockedHostArray<uint8_t>> SnapshotWeights(
   return result;
 }
 
+// Verify that every frozen tensor still matches its original byte snapshot.
+// Synchronizing the new snapshot makes pending device writes visible.
 absl::Status CheckUnchanged(cuda::Executor& executor, const Layer& layer,
                             const cuda::PageLockedHostArray<uint8_t>& before) {
   ASSIGN_OR_RETURN(auto after, SnapshotWeights(executor, layer));
@@ -87,6 +94,8 @@ struct CapturedCorpus {
   PuzzleReportData report;
 };
 
+// Capture exact third-attention states and targets for the complete corpus.
+// Require perfect source predictions and retain host data for the report.
 absl::StatusOr<CapturedCorpus> CaptureCorpus(cuda::Executor& executor,
                                              const Layer& source,
                                              const Gpt2Config& config,
@@ -195,6 +204,8 @@ struct Batch {
   int samples;
 };
 
+// Reserve reusable device storage for a batch of complete cached sequences.
+// Hidden states retain BF16 precision and targets retain their scoring masks.
 absl::StatusOr<Batch> AllocateBatch(cuda::Executor& executor,
                                     const Gpt2Config& config, int samples) {
   const size_t rows = static_cast<size_t>(samples) * config.context_length;
@@ -204,6 +215,8 @@ absl::StatusOr<Batch> AllocateBatch(cuda::Executor& executor,
   return Batch{std::move(hidden), std::move(targets), samples};
 }
 
+// Gather cached sequences in the requested order without host round trips.
+// The index count must exactly match the batch's preallocated sample count.
 absl::Status LoadBatch(cuda::Executor& executor, const CapturedCorpus& cache,
                        const Gpt2Config& config, absl::Span<const int> indices,
                        Batch& batch) {
@@ -235,6 +248,8 @@ struct Metrics {
   double mean_ce = 0;  // Mean standard cross entropy over scored rows.
 };
 
+// Measure teacher-forced accuracy and cross entropy across the cached corpus.
+// Score only suffix and EOS targets; reject empty or nonfinite loss results.
 absl::StatusOr<Metrics> EvaluateReadout(cuda::Executor& executor,
                                         const Layer& readout, const Layer& loss,
                                         const CapturedCorpus& cache,
@@ -340,13 +355,21 @@ absl::StatusOr<int> VerifyGreedy(cuda::Executor& executor, const Layer& source,
   return complete;
 }
 
+// Fit a replacement readout on cached states while preserving the tied head.
+// Restore the best checkpoint and verify completions from actual prefixes.
 absl::Status FitReadout(cuda::Executor& executor, const Layer& source,
                         const Gpt2Config& config, const CapturedCorpus& cache,
                         const PaddedLineDataSetIterator& data, int eos,
                         const PuzzleOptions& options, std::ostream& output) {
-  ASSIGN_OR_RETURN(auto readout,
-                   CreatePuzzleReadout(executor, source, config,
-                                       options.mlp_width, options.seed));
+  const int depth = options.train_stacked_mlp ? kStackedMlpDepth : 1;
+  const int width =
+      options.train_stacked_mlp ? kStackedMlpWidth : options.mlp_width;
+  // The stack is an exact reproduction of the 5 x 10/150/10 experiment, not
+  // a minimum-width request that can silently grow with the source model.
+  ASSIGN_OR_RETURN(
+      auto readout,
+      CreatePuzzleReadout(executor, source, config, width, options.seed, depth,
+                          !options.train_stacked_mlp));
   ASSIGN_OR_RETURN(auto frozen_head,
                    SnapshotWeights(executor, *readout.embedding));
   ASSIGN_OR_RETURN(auto loss, CrossEntropyLossLayer::Create(
@@ -382,13 +405,15 @@ absl::Status FitReadout(cuda::Executor& executor, const Layer& source,
   output << "Parameter budget: original post-A3 suffix="
          << budget.source_tail_parameters
          << "; replacement affine MLP=" << budget.mlp_parameters
-         << "; requested_mlp_width=" << options.mlp_width
+         << "; requested_mlp_width=" << width
          << "; minimum_mlp_width=" << budget.minimum_mlp_width
          << "; resolved_mlp_width=" << budget.mlp_width
+         << "; mlp_depth=" << depth
          << " (shared frozen embedding/head excluded)\n"
-         << "Trainable: residual " << config.model_width << " -> "
-         << budget.mlp_width << " -> " << config.model_width
-         << " MLP, input LN, final LN; parameters=" << parameters
+         << "Trainable: " << depth << " residual " << config.model_width
+         << " -> " << budget.mlp_width << " -> " << config.model_width
+         << " MLP(s), each with input LN, one final LN; parameters="
+         << parameters
          << "; frozen: original transformer and tied embedding head\n"
          << "Adam: learning_rate=" << options.learning_rate
          << ", cosine final ratio=0.1, no clipping or weight decay\n";
@@ -401,6 +426,8 @@ absl::Status FitReadout(cuda::Executor& executor, const Layer& source,
   Metrics best;
   best.wrong = std::numeric_limits<int>::max();
   int best_step = 0;
+  // Record full-corpus metrics and checkpoint each improvement in accuracy.
+  // Mean cross entropy breaks ties between readouts with equal error counts.
   auto evaluate = [&](int step) -> absl::Status {
     ASSIGN_OR_RETURN(auto metrics,
                      EvaluateReadout(executor, *readout.model, *loss, cache,
@@ -500,16 +527,29 @@ absl::Status FitReadout(cuda::Executor& executor, const Layer& source,
 
 }  // namespace
 
+// Audit a memorized corpus, write its separation report, and optionally fit.
+// Require a new output directory and verify that source weights stay frozen.
 absl::Status RunPuzzle(cuda::Executor& executor,
                        const tokenizer::Gpt2Tokenizer& base_tokenizer,
                        const PuzzleOptions& options, std::ostream& output) {
+  const bool train_readout = options.train_mlp || options.train_stacked_mlp;
+  const int depth = options.train_stacked_mlp ? kStackedMlpDepth : 1;
+  const int width =
+      options.train_stacked_mlp ? kStackedMlpWidth : options.mlp_width;
+  if (options.train_mlp && options.train_stacked_mlp)
+    return absl::InvalidArgumentError(
+        "train_mlp and train_stacked_mlp are mutually exclusive");
+  if (options.train_stacked_mlp &&
+      options.model_config.model_width != kStackedModelWidth)
+    return absl::InvalidArgumentError(
+        "train_stacked_mlp requires model_width=10");
   if (options.checkpoint.empty() || options.corpus.empty() ||
       options.output_directory.empty() || options.batch_size <= 0 ||
       options.model_config.transformer_block_count < 3 ||
-      (options.train_mlp &&
-       (options.steps < 0 || options.eval_every <= 0 ||
-        options.mlp_width <= 0 || options.seed < 0 ||
-        !std::isfinite(options.learning_rate) || options.learning_rate <= 0)))
+      (train_readout &&
+       (options.steps < 0 || options.eval_every <= 0 || width <= 0 ||
+        options.seed < 0 || !std::isfinite(options.learning_rate) ||
+        options.learning_rate <= 0)))
     return absl::InvalidArgumentError("invalid puzzle options");
   std::error_code error;
   if (std::filesystem::exists(options.output_directory, error))
@@ -536,9 +576,10 @@ absl::Status RunPuzzle(cuda::Executor& executor,
   // Resolve capacity before allocating/capturing the corpus. Snapshot-only
   // mode ignores readout settings, just as its CLI policy requires.
   std::optional<PuzzleReadoutParameterBudget> budget;
-  if (options.train_mlp) {
+  if (train_readout) {
     ASSIGN_OR_RETURN(
-        budget, ResolvePuzzleReadoutParameterBudget(config, options.mlp_width));
+        budget, ResolvePuzzleReadoutParameterBudget(config, width, depth,
+                                                    !options.train_stacked_mlp));
   }
   ASSIGN_OR_RETURN(auto data, PaddedLineDataSetIterator::Create(
                                   executor, corpus.text(), *tokenizer,
@@ -586,8 +627,9 @@ absl::Status RunPuzzle(cuda::Executor& executor,
              << "\ncontext_length=" << config.context_length
              << "\nvocabulary_size=" << config.vocabulary_size
              << "\ntrain_mlp=" << options.train_mlp
-             << "\nrequested_mlp_width=" << options.mlp_width << "\nmlp_width="
-             << (budget ? budget->mlp_width : options.mlp_width)
+             << "\ntrain_stacked_mlp=" << options.train_stacked_mlp
+             << "\nmlp_depth=" << depth << "\nrequested_mlp_width=" << width
+             << "\nmlp_width=" << (budget ? budget->mlp_width : width)
              << "\nsteps=" << options.steps
              << "\neval_every=" << options.eval_every
              << "\nbatch_size=" << options.batch_size
@@ -603,7 +645,7 @@ absl::Status RunPuzzle(cuda::Executor& executor,
   if (!provenance)
     return absl::InternalError("writing puzzle provenance failed");
   output << "Plots: " << html.string() << "\n" << std::flush;
-  if (options.train_mlp)
+  if (train_readout)
     RETURN_IF_ERROR(FitReadout(executor, *source, config, captured, *data, eos,
                                options, output));
   RETURN_IF_ERROR(CheckUnchanged(executor, *source, frozen_source));

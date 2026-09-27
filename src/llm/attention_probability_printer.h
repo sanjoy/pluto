@@ -21,14 +21,14 @@ namespace pluto::llm {
 // so one instance can be reused while generating successive tokens. Buffers
 // are retained by reference; the hooks never synchronize or modify GPU data.
 // The Executor must outlive this object and its captured callback references.
-class AttentionProbabilityInspector final {
+class AttentionProbabilityPrinter final {
  public:
-  explicit AttentionProbabilityInspector(cuda::Executor& executor);
-  AttentionProbabilityInspector(const AttentionProbabilityInspector&) = delete;
-  AttentionProbabilityInspector& operator=(
-      const AttentionProbabilityInspector&) = delete;
-  AttentionProbabilityInspector(AttentionProbabilityInspector&&) = delete;
-  AttentionProbabilityInspector& operator=(AttentionProbabilityInspector&&) =
+  explicit AttentionProbabilityPrinter(cuda::Executor& executor);
+  AttentionProbabilityPrinter(const AttentionProbabilityPrinter&) = delete;
+  AttentionProbabilityPrinter& operator=(const AttentionProbabilityPrinter&) =
+      delete;
+  AttentionProbabilityPrinter(AttentionProbabilityPrinter&&) = delete;
+  AttentionProbabilityPrinter& operator=(AttentionProbabilityPrinter&&) =
       delete;
 
   // Borrow for one complete model forward. Call Print only after that forward

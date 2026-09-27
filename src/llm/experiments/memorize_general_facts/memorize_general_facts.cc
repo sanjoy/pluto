@@ -34,9 +34,9 @@
 #include "src/dataset/padded_line_dataset.h"
 #include "src/dataset/tokenizer.h"
 #include "src/llm/adamw_optimizer.h"
+#include "src/llm/attention_probability_printer.h"
 #include "src/llm/batch_validation.h"
 #include "src/llm/checkpoint.h"
-#include "src/llm/experiments/memorize_general_facts/attention_inspection.h"
 #include "src/llm/experiments/memorize_general_facts/memorize_general_facts_cli.h"
 #include "src/llm/experiments/memorize_general_facts/puzzle.h"
 #include "src/llm/extract_top1_ids.h"
@@ -62,7 +62,12 @@ ABSL_FLAG(std::string, infer_checkpoint, "",
 ABSL_FLAG(std::string, puzzle_checkpoint, "",
           "In puzzle, load the frozen source-model checkpoint (required)");
 ABSL_FLAG(bool, train_mlp, false,
-          "In puzzle, train an MLP on captured residual activations");
+          "In puzzle, train an MLP on captured residual activations; mutually "
+          "exclusive with --train_stacked_mlp");
+ABSL_FLAG(bool, train_stacked_mlp, false,
+          "In puzzle, train five residual 10/150/10 MLPs on captured residual "
+          "activations; requires --model_width=10 and is mutually exclusive "
+          "with --train_mlp");
 ABSL_FLAG(int, mlp_width, 150,
           "Minimum hidden width of the puzzle MLP; grows if needed so its "
           "affine parameters cover the original post-A3 suffix. "
@@ -135,6 +140,7 @@ absl::StatusOr<Mode> RunModeFromFlags(CommandLineOptions& options) {
   AddIfExplicitlySet(FLAGS_infer_checkpoint, &explicitly_set);
   AddIfExplicitlySet(FLAGS_puzzle_checkpoint, &explicitly_set);
   AddIfExplicitlySet(FLAGS_train_mlp, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_train_stacked_mlp, &explicitly_set);
   AddIfExplicitlySet(FLAGS_mlp_width, &explicitly_set);
   AddIfExplicitlySet(FLAGS_prompt, &explicitly_set);
   AddIfExplicitlySet(FLAGS_generation_tokens, &explicitly_set);
@@ -177,6 +183,7 @@ absl::StatusOr<Mode> RunModeFromFlags(CommandLineOptions& options) {
        .seed = absl::GetFlag(FLAGS_seed),
        .mlp_width = absl::GetFlag(FLAGS_mlp_width),
        .train_mlp = absl::GetFlag(FLAGS_train_mlp),
+       .train_stacked_mlp = absl::GetFlag(FLAGS_train_stacked_mlp),
        .learning_rate = absl::GetFlag(FLAGS_learning_rate),
        .training_seconds = absl::GetFlag(FLAGS_training_seconds)},
       explicitly_set);
@@ -233,6 +240,8 @@ absl::StatusOr<cuda::PageLockedHostArray<T>> CopyD2H(cuda::Executor& executor,
   return host;
 }
 
+// Evaluate every corpus target once using teacher-forced top-1 accuracy and CE.
+// Skip prompt/padding masks; optionally write per-token original-ID audit rows.
 absl::StatusOr<Metrics> EvaluateExact(
     cuda::Executor& executor, const Layer& model, const Layer& loss,
     PaddedLineDataSetIterator& data, int vocabulary_size,
@@ -677,18 +686,18 @@ absl::Status RunInference(cuda::Executor& executor,
 
   const auto complete = [&](const std::string& prompt) -> absl::Status {
     ASSIGN_OR_RETURN(auto encoded, model_tokenizer->Encode(executor, prompt));
-    // A fresh inspector per prompt also discards a final EOS pass, whose
+    // A fresh printer per prompt also discards a final EOS pass, whose
     // attention must not be printed as though it produced continuation text.
-    AttentionProbabilityInspector inspection(executor);
+    AttentionProbabilityPrinter printer(executor);
     GreedyGenerationOptions options;
     if (absl::GetFlag(FLAGS_print_attention_probs)) {
-      options.layer_hooks = &inspection.layer_hooks();
+      options.layer_hooks = &printer.layer_hooks();
       options.on_token = [&](cuda::Executor& callback_executor,
                              absl::Span<const int> prefix,
                              int token) -> absl::Status {
         if (vocabulary == nullptr)
-          return inspection.Print(callback_executor, *detokenizer, prefix,
-                                  token, std::cout);
+          return printer.Print(callback_executor, *detokenizer, prefix, token,
+                               std::cout);
         // Attention indices use model positions, but labels must decode IDs
         // through the checkpoint's compact mapping, just like the response.
         ASSIGN_OR_RETURN(auto original_prefix,
@@ -698,9 +707,8 @@ absl::Status RunInference(cuda::Executor& executor,
           ASSIGN_OR_RETURN(id, vocabulary->OriginalId(id));
         }
         ASSIGN_OR_RETURN(auto original_token, vocabulary->OriginalId(token));
-        return inspection.Print(callback_executor, *detokenizer,
-                                original_prefix.span(), original_token,
-                                std::cout);
+        return printer.Print(callback_executor, *detokenizer,
+                             original_prefix.span(), original_token, std::cout);
       };
     }
     ASSIGN_OR_RETURN(
@@ -765,6 +773,7 @@ absl::StatusOr<bool> Run() {
             ModelConfiguration(options.layers, tokenizer->vocab_size()),
         .compact_vocabulary = absl::GetFlag(FLAGS_compact_vocabulary),
         .train_mlp = options.train_mlp,
+        .train_stacked_mlp = options.train_stacked_mlp,
         .mlp_width = options.mlp_width,
         .steps = options.steps,
         .eval_every = options.eval_every,

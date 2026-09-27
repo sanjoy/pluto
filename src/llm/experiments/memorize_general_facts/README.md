@@ -173,13 +173,47 @@ trainable parameters** at width 10/150/10. The head is tied to an independent
 frozen copy of the original token embedding. Neither the source transformer
 nor that head enters the optimizer; both are checked byte-for-byte afterward.
 
+Use `--train_stacked_mlp` **instead of** `--train_mlp` to train the five-block
+variant of this puzzle. It repeats the following pointwise operation five times
+with independently initialized weights and LayerNorm parameters:
+
+```text
+h = frozen A3 residual
+repeat 5 times:
+    h = h + FC2_150_to_10(GELU(FC1_10_to_150(trainable_input_LN(h))))
+logits = frozen_tied_embedding * trainable_final_LN(h)
+```
+
+This is exactly **five residual 10 -> 150 -> 10 MLPs**, plus one final LN:
+**15,920 trainable parameters** in 32 tensors. Each block's FC1/FC2 uses seeds
+`seed + 2*block` / `seed + 2*block + 1` and the same initialization scales as
+the single-MLP case. The source and tied head stay frozen; no extra attention
+or cross-token operation is introduced. This option requires `--model_width=10`
+and rejects `--mlp_width` overrides. The two training flags cannot both be true.
+
+For example, after building the binary and obtaining a verified checkpoint:
+
+```sh
+bazel-bin/src/llm/experiments/memorize_general_facts/memorize_general_facts \
+  --mode=puzzle --train_stacked_mlp \
+  --puzzle_checkpoint=/path/to/verified/checkpoint \
+  --tokenizer=/path/to/tokenizer \
+  --output_dir=/tmp/facts-puzzle-stacked-new
+```
+
+The default source shape and corpus are the four-block width-10 model and
+`testdata/general_facts_dataset.txt`. Supply matching shape/corpus flags if
+your checkpoint differs. As with the single-MLP fit, use a new output directory.
+
 Puzzle-training defaults are **300,000 steps**, statistics every **1,000 steps**,
 seed **3**, batch **32 facts**, and learning rate **0.01**, cosine-decayed to
 one tenth of its initial value. Override these with `--steps`, `--eval_every`,
 `--seed`, `--batch_size`, and `--learning_rate`. `--steps=0` evaluates the
-fresh readout. Ordinary train/infer defaults are unchanged. Optimizer flags
-and `--mlp_width` are rejected in snapshot-only puzzle mode, and unrelated
-training/inference selectors are rejected in either puzzle path.
+fresh readout. These defaults and controls apply to both readout variants.
+Ordinary train/infer defaults are unchanged. Optimizer flags and `--mlp_width`
+are rejected in snapshot-only puzzle mode; `--mlp_width` is supported only with
+`--train_mlp`. Unrelated training/inference selectors are rejected in every
+puzzle path.
 
 Fitting uses standard masked cross entropy, BF16 activations, FP32 master
 weights/Adam state, beta1=0.9, beta2=0.999, epsilon=1e-8, and no gradient

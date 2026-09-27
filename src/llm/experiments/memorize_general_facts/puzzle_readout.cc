@@ -62,11 +62,14 @@ absl::Status CopyWeight(cuda::Executor& executor, const Buffer& from,
 
 absl::StatusOr<PuzzleReadoutParameterBudget>
 ResolvePuzzleReadoutParameterBudget(const Gpt2Config& config,
-                                    int requested_min_mlp_width) {
+                                    int requested_min_mlp_width, int mlp_depth,
+                                    bool match_parameter_budget) {
   RETURN_IF_ERROR(config.Validate());
-  if (config.transformer_block_count < 3 || requested_min_mlp_width <= 0)
+  if (config.transformer_block_count < 3 || requested_min_mlp_width <= 0 ||
+      mlp_depth <= 0)
     return absl::InvalidArgumentError(
-        "puzzle budget requires at least three blocks and positive MLP width");
+        "puzzle budget requires at least three source blocks and positive "
+        "MLP width and depth");
   const int64_t d = config.model_width;
   const int64_t f = config.feed_forward_width;
   // FC1/FC2 use 2*d*f matrix entries plus f+d biases. Each pre-LN
@@ -82,31 +85,43 @@ ResolvePuzzleReadoutParameterBudget(const Gpt2Config& config,
     return absl::InvalidArgumentError(
         "puzzle source-tail parameter count overflows");
   const int64_t source_tail = initial_tail + later_blocks * block;
-  // Bare replacement MLP: (2*d+1)*h+d. Round up without overflowing
-  // the source-tail count; trainable input/final LN are extra capacity.
-  const int64_t required = source_tail - d;
+  // Each bare MLP has (2*d+1)*h+d parameters. Divide the source budget
+  // across all blocks before rounding up the width, avoiding depth products
+  // until the final count is checked. Input/final LNs are extra capacity.
+  const int64_t per_mlp =
+      source_tail / mlp_depth + (source_tail % mlp_depth != 0);
+  const int64_t required = std::max(int64_t{0}, per_mlp - d);
   const int64_t per_hidden_unit = 2 * d + 1;
   const int64_t minimum =
-      required / per_hidden_unit + (required % per_hidden_unit != 0);
+      std::max(int64_t{1},
+               required / per_hidden_unit + (required % per_hidden_unit != 0));
   if (minimum > std::numeric_limits<int>::max())
     return absl::InvalidArgumentError(
         "required puzzle MLP width exceeds int32");
-  const int width =
-      std::max(requested_min_mlp_width, static_cast<int>(minimum));
+  const int width = match_parameter_budget ? std::max(requested_min_mlp_width,
+                                                      static_cast<int>(minimum))
+                                           : requested_min_mlp_width;
   auto readout_config = config;
   readout_config.feed_forward_width = width;
   RETURN_IF_ERROR(readout_config.Validate());
-  const int64_t mlp = per_hidden_unit * width + d;
+  const int64_t affine_per_block = per_hidden_unit * width + d;
+  const int64_t trainable_per_block = affine_per_block + 2 * d;
+  if (mlp_depth >
+      (std::numeric_limits<int64_t>::max() - 2 * d) / trainable_per_block)
+    return absl::InvalidArgumentError(
+        "puzzle readout parameter count overflows");
+  const int64_t mlp = mlp_depth * affine_per_block;
   return PuzzleReadoutParameterBudget{static_cast<int>(minimum), width,
-                                      source_tail, mlp, mlp + 4 * d};
+                                      source_tail, mlp,
+                                      mlp_depth * trainable_per_block + 2 * d};
 }
 
-absl::StatusOr<PuzzleReadout> CreatePuzzleReadout(cuda::Executor& executor,
-                                                  const Layer& source,
-                                                  const Gpt2Config& config,
-                                                  int mlp_width, int seed) {
+absl::StatusOr<PuzzleReadout> CreatePuzzleReadout(
+    cuda::Executor& executor, const Layer& source, const Gpt2Config& config,
+    int mlp_width, int seed, int mlp_depth, bool match_parameter_budget) {
   ASSIGN_OR_RETURN(auto budget,
-                   ResolvePuzzleReadoutParameterBudget(config, mlp_width));
+                   ResolvePuzzleReadoutParameterBudget(
+                       config, mlp_width, mlp_depth, match_parameter_budget));
   mlp_width = budget.mlp_width;
   if (seed < 0)
     return absl::InvalidArgumentError("readout seed must be nonnegative");
@@ -158,33 +173,36 @@ absl::StatusOr<PuzzleReadout> CreatePuzzleReadout(cuda::Executor& executor,
           executor, config.vocabulary_size, config.model_width, DataType::BF16,
           config.context_length, config.pad_vocabulary));
   RETURN_IF_ERROR(CopyWeight(executor, weights[0], embedding->weight()));
-  ComposedLayerBuilder branch;
-  RETURN_IF_ERROR(branch.add(
-      LayerNormLayer::Create(executor, config.model_width, 1e-5f,
-                             DataType::BF16, config.context_length)));
-  RETURN_IF_ERROR(branch.add(
-      FullyConnectedLayer::Create(executor, config.model_width, mlp_width,
-                                  DataType::BF16, config.context_length)));
-  RETURN_IF_ERROR(static_cast<FullyConnectedLayer*>(branch.back())
-                      ->InitializeNormal(0.2f, static_cast<uint64_t>(seed)));
-  RETURN_IF_ERROR(branch.add(GeluLayer::Create(
-      executor, mlp_width, DataType::BF16, config.context_length)));
-  RETURN_IF_ERROR(branch.add(
-      FullyConnectedLayer::Create(executor, mlp_width, config.model_width,
-                                  DataType::BF16, config.context_length)));
-  RETURN_IF_ERROR(
-      static_cast<FullyConnectedLayer*>(branch.back())
-          ->InitializeNormal(0.1f, static_cast<uint64_t>(seed) + 1));
-  ASSIGN_OR_RETURN(auto mlp, branch.create("puzzle_mlp"));
-  ASSIGN_OR_RETURN(auto residual, ResidualLayer::Create(std::move(mlp)));
+  ComposedLayerBuilder suffix;
+  for (int block = 0; block < mlp_depth; ++block) {
+    const uint64_t block_seed =
+        static_cast<uint64_t>(seed) + 2 * static_cast<uint64_t>(block);
+    ComposedLayerBuilder branch;
+    RETURN_IF_ERROR(branch.add(
+        LayerNormLayer::Create(executor, config.model_width, 1e-5f,
+                               DataType::BF16, config.context_length)));
+    RETURN_IF_ERROR(branch.add(
+        FullyConnectedLayer::Create(executor, config.model_width, mlp_width,
+                                    DataType::BF16, config.context_length)));
+    RETURN_IF_ERROR(static_cast<FullyConnectedLayer*>(branch.back())
+                        ->InitializeNormal(0.2f, block_seed));
+    RETURN_IF_ERROR(branch.add(GeluLayer::Create(
+        executor, mlp_width, DataType::BF16, config.context_length)));
+    RETURN_IF_ERROR(branch.add(
+        FullyConnectedLayer::Create(executor, mlp_width, config.model_width,
+                                    DataType::BF16, config.context_length)));
+    // Keep the output projection scale fixed so depth is the only change.
+    RETURN_IF_ERROR(static_cast<FullyConnectedLayer*>(branch.back())
+                        ->InitializeNormal(0.1f, block_seed + 1));
+    ASSIGN_OR_RETURN(auto mlp, branch.create("puzzle_mlp"));
+    RETURN_IF_ERROR(suffix.add(ResidualLayer::Create(std::move(mlp))));
+  }
   ASSIGN_OR_RETURN(
       auto norm, LayerNormLayer::Create(executor, config.model_width, 1e-5f,
                                         DataType::BF16, config.context_length));
   for (size_t index = 0; index < 2; ++index)
     RETURN_IF_ERROR(CopyWeight(executor, weights[final_ln + index],
                                norm->weights()[index]));
-  ComposedLayerBuilder suffix;
-  RETURN_IF_ERROR(suffix.add(std::move(residual)));
   RETURN_IF_ERROR(suffix.add(std::move(norm)));
   ASSIGN_OR_RETURN(auto trainable, suffix.create("puzzle_trainable"));
   Layer* trainable_pointer = trainable.get();

@@ -19,7 +19,9 @@ constexpr uint8_t kTrain = 1 << 0;
 constexpr uint8_t kGenerate = 1 << 1;
 constexpr uint8_t kVerify = 1 << 2;
 constexpr uint8_t kPuzzleCapture = 1 << 3;
-constexpr uint8_t kPuzzleTrain = 1 << 4;
+constexpr uint8_t kPuzzleTrainMlp = 1 << 4;
+constexpr uint8_t kPuzzleTrainStackedMlp = 1 << 5;
+constexpr uint8_t kPuzzleTrain = kPuzzleTrainMlp | kPuzzleTrainStackedMlp;
 constexpr uint8_t kPuzzle = kPuzzleCapture | kPuzzleTrain;
 constexpr uint8_t kAll = kTrain | kGenerate | kVerify | kPuzzle;
 
@@ -56,7 +58,8 @@ constexpr FlagRule kFlagRules[] = {
     {"verify_checkpoint", kVerify},
     {"puzzle_checkpoint", kPuzzle},
     {"train_mlp", kPuzzle},
-    {"mlp_width", kPuzzleTrain},
+    {"train_stacked_mlp", kPuzzle},
+    {"mlp_width", kPuzzleTrainMlp},
 };
 
 const FlagRule* FindRule(absl::string_view name) {
@@ -95,7 +98,9 @@ absl::StatusOr<Mode> ParseAndValidateRunMode(
   RETURN_IF_ERROR(ValidateModeFlags(
       mode, explicitly_set_flags, options.tokenizer, options.checkpoint_dir,
       options.infer_checkpoint, options.verify_checkpoint,
-      options.puzzle_checkpoint, options.train_mlp));
+      options.puzzle_checkpoint, options.train_mlp, options.train_stacked_mlp));
+
+  const bool train_puzzle = options.train_mlp || options.train_stacked_mlp;
 
   if (mode == Mode::kPuzzle) {
     if (options.layers < 3)
@@ -103,9 +108,12 @@ absl::StatusOr<Mode> ParseAndValidateRunMode(
           "--layers must be at least 3 in --mode=puzzle");
     if (options.model_width <= 0)
       return absl::InvalidArgumentError("--model_width must be positive");
+    if (options.train_stacked_mlp && options.model_width != 10)
+      return absl::InvalidArgumentError(
+          "--model_width must be 10 with --train_stacked_mlp");
     if (options.train_mlp && options.mlp_width <= 0)
       return absl::InvalidArgumentError("--mlp_width must be positive");
-    if (options.train_mlp && options.seed < 0)
+    if (train_puzzle && options.seed < 0)
       return absl::InvalidArgumentError("--seed must be nonnegative");
   }
 
@@ -139,8 +147,7 @@ absl::StatusOr<Mode> ParseAndValidateRunMode(
       std::numeric_limits<int>::max())
     return absl::InvalidArgumentError(
         "--batch_size * --context_length exceeds the 32-bit token-count limit");
-  if (mode == Mode::kTrainModel ||
-      (mode == Mode::kPuzzle && options.train_mlp)) {
+  if (mode == Mode::kTrainModel || (mode == Mode::kPuzzle && train_puzzle)) {
     if (options.steps < 0)
       return absl::InvalidArgumentError("--steps must be nonnegative");
     if (options.eval_every <= 0)
@@ -194,7 +201,8 @@ absl::Status ValidateModeFlags(
     Mode mode, absl::Span<const absl::string_view> explicitly_set_flags,
     absl::string_view tokenizer, absl::string_view checkpoint_dir,
     absl::string_view infer_checkpoint, absl::string_view verify_checkpoint,
-    absl::string_view puzzle_checkpoint, bool train_mlp) {
+    absl::string_view puzzle_checkpoint, bool train_mlp,
+    bool train_stacked_mlp) {
   if (mode != Mode::kTrainModel && mode != Mode::kInferModel &&
       mode != Mode::kPuzzle)
     return absl::InvalidArgumentError("invalid --mode enum value");
@@ -211,8 +219,14 @@ absl::Status ValidateModeFlags(
   }
 
   uint8_t path = kTrain;
-  if (mode == Mode::kPuzzle)
-    path = train_mlp ? kPuzzleTrain : kPuzzleCapture;
+  if (mode == Mode::kPuzzle) {
+    if (train_mlp && train_stacked_mlp)
+      return absl::InvalidArgumentError(
+          "--train_mlp and --train_stacked_mlp are mutually exclusive");
+    path = train_mlp           ? kPuzzleTrainMlp
+           : train_stacked_mlp ? kPuzzleTrainStackedMlp
+                               : kPuzzleCapture;
+  }
   if (mode == Mode::kInferModel) {
     if (has_infer_checkpoint && has_verify_checkpoint)
       return absl::InvalidArgumentError(
@@ -228,12 +242,13 @@ absl::Status ValidateModeFlags(
   for (absl::string_view name : explicitly_set_flags) {
     if ((FindRule(name)->allowed_paths & path) != 0)
       continue;
-    return absl::InvalidArgumentError(
-        absl::StrCat("--", name, " is not valid in --mode=", ModeName(mode),
-                     path == kGenerate        ? " with --infer_checkpoint"
-                     : path == kVerify        ? " with --verify_checkpoint"
-                     : path == kPuzzleCapture ? " without --train_mlp"
-                                              : ""));
+    return absl::InvalidArgumentError(absl::StrCat(
+        "--", name, " is not valid in --mode=", ModeName(mode),
+        path == kGenerate        ? " with --infer_checkpoint"
+        : path == kVerify        ? " with --verify_checkpoint"
+        : path == kPuzzleCapture ? " without --train_mlp or --train_stacked_mlp"
+        : path == kPuzzleTrainStackedMlp ? " with --train_stacked_mlp"
+                                         : ""));
   }
   if (tokenizer.empty())
     return absl::InvalidArgumentError(

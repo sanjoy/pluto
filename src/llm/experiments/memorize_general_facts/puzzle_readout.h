@@ -11,22 +11,25 @@
 
 namespace pluto::llm::memorize_general_facts {
 
-// Compare the replacement's two affine layers against the entire original
+// Compare all replacement affine layers against the entire original
 // suffix after A3. The shared frozen token embedding/head is excluded on both
 // sides; the source count includes every suffix bias and LayerNorm parameter.
 struct PuzzleReadoutParameterBudget {
-  int minimum_mlp_width;  // Smallest width meeting the source-suffix budget.
-  int mlp_width;          // Maximum of that minimum and the requested width.
+  int minimum_mlp_width;  // Smallest positive width meeting the source budget.
+  int mlp_width;          // Requested width, optionally widened to the minimum.
   int64_t source_tail_parameters;  // MLP3, later blocks, and final LayerNorm.
-  int64_t mlp_parameters;          // FC1 and FC2, including their biases.
-  int64_t trainable_parameters;    // MLP plus input and final LayerNorms.
+  int64_t mlp_parameters;        // All FC1/FC2 layers, including their biases.
+  int64_t trainable_parameters;  // MLPs plus input and final LayerNorms.
 };
 
 // Pure shape calculation, with overflow/backend-limit validation. A request
-// below the minimum is widened, never allowed to undercut the normal suffix.
+// below the minimum is widened when match_parameter_budget is true. Otherwise
+// the requested width is used exactly, even below the source-suffix budget.
 absl::StatusOr<PuzzleReadoutParameterBudget>
 ResolvePuzzleReadoutParameterBudget(const Gpt2Config& config,
-                                    int requested_min_mlp_width);
+                                    int requested_min_mlp_width,
+                                    int mlp_depth = 1,
+                                    bool match_parameter_budget = true);
 
 // The head is tied to an independent, frozen copy of the source embedding.
 // Its owner precedes model so the embedding outlives the head. Source need not
@@ -35,22 +38,23 @@ struct PuzzleReadout {
   std::unique_ptr<EmbeddingLookupLayer> embedding;
   std::unique_ptr<ComposedLayer> model;
   // Owned by model. Only this layer may be passed to the optimizer/checkpoint:
-  // input LN, FC1, FC2, final LN (eight FP32 tensors, in that order).
+  // input LN, FC1, FC2 for each block, then one final LN (6*depth+2 tensors).
   Layer* trainable;
   PuzzleReadoutParameterBudget parameter_budget;  // Actual allocated shape.
 };
 
-// Builds head(final_LN(x + FC2(GELU(FC1(input_LN(x)))))). Input LN starts
-// at identity, biases at zero, FC1/FC2 at normal stddev .2/.1 using
-// seed/seed+1. Final LN is an independent, trainable copy of the source final
-// LN. The head follows the eight trainable tensors in model.weights(). For
-// model width 10, there are exactly 21 * mlp_width + 50 trainable parameters.
-// mlp_width is a requested minimum; parameter_budget reports any widening
-// needed so the affine MLP alone matches/exceeds the original suffix count.
-absl::StatusOr<PuzzleReadout> CreatePuzzleReadout(cuda::Executor& executor,
-                                                  const Layer& source,
-                                                  const Gpt2Config& config,
-                                                  int mlp_width, int seed);
+// Builds mlp_depth residual blocks x += FC2(GELU(FC1(input_LN(x)))), then
+// head(final_LN(x)). Input LNs start at identity, biases at zero, FC1/FC2 at
+// normal stddev .2/.1 using seed+2*i/seed+2*i+1 for block i. Initialization is
+// not depth-scaled. Final LN is an independent, trainable copy of the source
+// final LN. The frozen head follows the 6*depth+2 trainable tensors. At model
+// width 10, trainable parameters total depth*(21*mlp_width+30)+20.
+// parameter_budget reports any widening needed when matching the sum of all
+// affine MLPs to the original suffix; disabled matching preserves exact width.
+absl::StatusOr<PuzzleReadout> CreatePuzzleReadout(
+    cuda::Executor& executor, const Layer& source, const Gpt2Config& config,
+    int mlp_width, int seed, int mlp_depth = 1,
+    bool match_parameter_budget = true);
 
 struct PuzzleCapture {
   Buffer hidden;  // BF16 post-attention residual in transformer_block_2.
