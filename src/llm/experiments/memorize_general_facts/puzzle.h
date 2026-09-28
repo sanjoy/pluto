@@ -20,6 +20,7 @@ struct PuzzleOptions {
   bool compact_vocabulary = true;  // Load the checkpoint's saved ID mapping.
   bool train_mlp = false;  // Fit one residual MLP; exclusive with below.
   bool train_stacked_mlp = false;  // Fit five residual 10 -> 150 -> 10 MLPs.
+  bool mlp_residual_connections = true;  // False removes each readout's skip.
   int mlp_width = 150;  // Single-MLP minimum expansion; ignored for the stack.
   int steps = 300000;   // Exact update budget; zero evaluates initialization.
   int eval_every = 1000;        // Full-corpus statistics cadence.
@@ -33,10 +34,11 @@ struct PuzzleOptions {
 // standalone coordinate-pair plot for every position. Only suffix/EOS targets
 // after five-token prompts enter the audit and training; padding is labeled
 // explicitly in plots. Optional fitting freezes the source and tied head and
-// trains either one fresh residual MLP or the fixed five-MLP stack, each with
-// its own input LN, plus one final LN using cached A3 vectors. With neither
-// training flag set, only capture, audit, and plotting run. All GPU work and
-// pinned-memory transfers use the supplied executor.
+// trains either one fresh MLP or the fixed five-MLP stack, each with its own
+// input LN, plus one final LN using cached A3 vectors. Readout residuals can
+// be disabled independently; the frozen transformer's residuals stay intact.
+// With neither training flag set, only capture, audit, and plotting run. All
+// GPU work and pinned-memory transfers use the supplied executor.
 absl::Status RunPuzzle(cuda::Executor& executor,
                        const tokenizer::Gpt2Tokenizer& base_tokenizer,
                        const PuzzleOptions& options, std::ostream& output);

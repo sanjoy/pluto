@@ -60,6 +60,7 @@ constexpr FlagRule kFlagRules[] = {
     {"train_mlp", kPuzzle},
     {"train_stacked_mlp", kPuzzle},
     {"mlp_width", kPuzzleTrainMlp},
+    {"mlp_residual_connections", kPuzzleTrain},
 };
 
 const FlagRule* FindRule(absl::string_view name) {

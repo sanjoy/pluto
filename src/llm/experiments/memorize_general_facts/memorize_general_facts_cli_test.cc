@@ -111,6 +111,22 @@ TEST(MemorizeGeneralFactsCliTest, ParsesOnlyExactNamedModes) {
   }
 }
 
+TEST(MemorizeGeneralFactsCliTest, ResidualAblationRequiresReadoutTraining) {
+  EXPECT_TRUE(PuzzleCommandLineOptions(true).mlp_residual_connections);
+  for (bool stacked : {false, true}) {
+    auto options = PuzzleCommandLineOptions(!stacked, stacked);
+    options.mlp_residual_connections = false;
+    EXPECT_TRUE(ValidateOptions(options, {"mlp_residual_connections"}).ok());
+    auto resolved = ResolveModeDefaults(options, {"mlp_residual_connections"});
+    EXPECT_FALSE(resolved.mlp_residual_connections);
+  }
+  for (const auto& options :
+       {TrainingOptions(), GenerationOptions(), VerificationOptions(),
+        PuzzleCommandLineOptions()})
+    ExpectInvalid(ValidateOptions(options, {"mlp_residual_connections"}),
+                  "mlp_residual_connections");
+}
+
 TEST(MemorizeGeneralFactsCliTest, RejectsInvalidEnumValues) {
   for (int invalid : {-1, 3, 127}) {
     SCOPED_TRACE(invalid);

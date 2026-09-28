@@ -242,17 +242,19 @@ absl::Status LoadBatch(cuda::Executor& executor, const CapturedCorpus& cache,
 }
 
 struct Metrics {
-  int wrong = 0;       // Errors on scored suffix/EOS targets only.
-  int complete = 0;    // Facts with all teacher-forced targets correct.
-  int scored = 0;      // Denominator excluding prompt and padding.
-  double mean_ce = 0;  // Mean standard cross entropy over scored rows.
+  int wrong = 0;        // Errors on scored suffix/EOS targets only.
+  int complete = 0;     // Facts with all teacher-forced targets correct.
+  int scored = 0;       // Denominator excluding prompt and padding.
+  int eos_correct = 0;  // Correct EOS predictions, reported separately.
+  int eos_scored = 0;   // EOS targets among the scored rows.
+  double mean_ce = 0;   // Mean standard cross entropy over scored rows.
 };
 
 // Measure teacher-forced accuracy and cross entropy across the cached corpus.
 // Score only suffix and EOS targets; reject empty or nonfinite loss results.
 absl::StatusOr<Metrics> EvaluateMlpReadout(
     cuda::Executor& executor, const Layer& readout, const Layer& loss,
-    const CapturedCorpus& cache, const Gpt2Config& config, Batch& full,
+    const CapturedCorpus& cache, const Gpt2Config& config, int eos, Batch& full,
     std::optional<Batch>& partial) {
   const int samples = cache.report.facts.size();
   const int sequence = config.context_length;
@@ -293,6 +295,10 @@ absl::StatusOr<Metrics> EvaluateMlpReadout(
         if (!std::isfinite(host_loss[local]))
           return absl::DataLossError("nonfinite puzzle cross entropy");
         ++metrics.scored;
+        if (target == eos) {
+          ++metrics.eos_scored;
+          metrics.eos_correct += host_ids[local] == target;
+        }
         metrics.mean_ce += host_loss[local];
         metrics.wrong += host_ids[local] != target;
         complete &= host_ids[local] == target;
@@ -366,9 +372,11 @@ absl::Status FitMlpReadout(cuda::Executor& executor, const Layer& source,
       options.train_stacked_mlp ? kStackedMlpWidth : options.mlp_width;
   // The stack is an exact reproduction of the 5 x 10/150/10 experiment, not
   // a minimum-width request that can silently grow with the source model.
-  ASSIGN_OR_RETURN(auto readout, CreateMlpReadout(executor, source, config,
-                                                  width, options.seed, depth,
-                                                  !options.train_stacked_mlp));
+  ASSIGN_OR_RETURN(
+      auto readout,
+      CreateMlpReadout(executor, source, config, width, options.seed, depth,
+                       !options.train_stacked_mlp,
+                       options.mlp_residual_connections));
   ASSIGN_OR_RETURN(auto frozen_head,
                    SnapshotWeights(executor, *readout.embedding));
   ASSIGN_OR_RETURN(auto loss, CrossEntropyLossLayer::Create(
@@ -396,7 +404,8 @@ absl::Status FitMlpReadout(cuda::Executor& executor, const Layer& source,
                            "training.tsv");
   if (!statistics)
     return absl::InternalError("cannot create puzzle training statistics");
-  statistics << "step\tseconds\tmean_ce\tcorrect\tscored\tcomplete_facts\n";
+  statistics << "step\tseconds\tmean_ce\tcorrect\tscored\tcomplete_facts"
+                "\teos_correct\teos_scored\n";
   size_t parameters = 0;
   for (const auto& weight : readout.trainable->weights())
     parameters += weight.size_bytes() / sizeof(float);
@@ -409,8 +418,10 @@ absl::Status FitMlpReadout(cuda::Executor& executor, const Layer& source,
          << "; resolved_mlp_width=" << budget.mlp_width
          << "; mlp_depth=" << depth
          << " (shared frozen embedding/head excluded)\n"
-         << "Trainable: " << depth << " residual " << config.model_width
-         << " -> " << budget.mlp_width << " -> " << config.model_width
+         << "Trainable: " << depth
+         << (options.mlp_residual_connections ? " residual " : " non-residual ")
+         << config.model_width << " -> " << budget.mlp_width << " -> "
+         << config.model_width
          << " MLP(s), each with input LN, one final LN; parameters="
          << parameters
          << "; frozen: original transformer and tied embedding head\n"
@@ -430,20 +441,25 @@ absl::Status FitMlpReadout(cuda::Executor& executor, const Layer& source,
   auto evaluate = [&](int step) -> absl::Status {
     ASSIGN_OR_RETURN(auto metrics,
                      EvaluateMlpReadout(executor, *readout.model, *loss, cache,
-                                        config, full, partial));
+                                        config, eos, full, partial));
     const double seconds = elapsed();
     output << absl::StrFormat(
                   "step=%d seconds=%.2f mean_ce=%.8f correct=%d/%d "
-                  "token_accuracy=%.4f%% teacher_forced_complete=%d/%d\n",
+                  "token_accuracy=%.4f%% teacher_forced_complete=%d/%d "
+                  "eos_correct=%d/%d non_eos_correct=%d/%d\n",
                   step, seconds, metrics.mean_ce,
                   metrics.scored - metrics.wrong, metrics.scored,
                   100.0 * (metrics.scored - metrics.wrong) / metrics.scored,
-                  metrics.complete, samples)
+                  metrics.complete, samples, metrics.eos_correct,
+                  metrics.eos_scored,
+                  metrics.scored - metrics.wrong - metrics.eos_correct,
+                  metrics.scored - metrics.eos_scored)
            << std::flush;
-    statistics << absl::StrFormat("%d\t%.2f\t%.8f\t%d\t%d\t%d\n", step, seconds,
-                                  metrics.mean_ce,
+    statistics << absl::StrFormat("%d\t%.2f\t%.8f\t%d\t%d\t%d\t%d\t%d\n", step,
+                                  seconds, metrics.mean_ce,
                                   metrics.scored - metrics.wrong,
-                                  metrics.scored, metrics.complete)
+                                  metrics.scored, metrics.complete,
+                                  metrics.eos_correct, metrics.eos_scored)
                << std::flush;
     if (!statistics || !output)
       return absl::InternalError("writing puzzle statistics failed");
@@ -513,11 +529,14 @@ absl::Status FitMlpReadout(cuda::Executor& executor, const Layer& source,
       << absl::StrFormat(
              "BEST step=%d updates=%d seconds=%.2f mean_ce=%.8f correct=%d/%d "
              "token_accuracy=%.4f%% greedy_complete=%d/%d "
+             "eos_correct=%d/%d non_eos_correct=%d/%d "
              "frozen_head_unchanged=true\n",
              best_step, options.steps, elapsed(), best.mean_ce,
              best.scored - best.wrong, best.scored,
              100.0 * (best.scored - best.wrong) / best.scored, complete,
-             samples)
+             samples, best.eos_correct, best.eos_scored,
+             best.scored - best.wrong - best.eos_correct,
+             best.scored - best.eos_scored)
       << "Best readout: " << best_path.string() << "\n"
       << std::flush;
   return output ? absl::OkStatus()
@@ -627,7 +646,9 @@ absl::Status RunPuzzle(cuda::Executor& executor,
              << "\nvocabulary_size=" << config.vocabulary_size
              << "\ntrain_mlp=" << options.train_mlp
              << "\ntrain_stacked_mlp=" << options.train_stacked_mlp
-             << "\nmlp_depth=" << depth << "\nrequested_mlp_width=" << width
+             << "\nmlp_residual_connections="
+             << options.mlp_residual_connections << "\nmlp_depth=" << depth
+             << "\nrequested_mlp_width=" << width
              << "\nmlp_width=" << (budget ? budget->mlp_width : width)
              << "\nsteps=" << options.steps
              << "\neval_every=" << options.eval_every

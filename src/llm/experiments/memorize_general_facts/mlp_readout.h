@@ -49,10 +49,12 @@ struct MlpReadout {
 // width 10, trainable parameters total depth*(21*mlp_width+30)+20.
 // parameter_budget reports any widening needed when matching the sum of all
 // affine MLPs to the original suffix; disabled matching preserves exact width.
+// With residual_connections=false each block replaces x instead of adding to
+// it. This ablates only the skip path; weights, seeds, and tensor order match.
 absl::StatusOr<MlpReadout> CreateMlpReadout(
     cuda::Executor& executor, const Layer& source, const Gpt2Config& config,
     int mlp_width, int seed, int mlp_depth = 1,
-    bool match_parameter_budget = true);
+    bool match_parameter_budget = true, bool residual_connections = true);
 
 struct PuzzleCapture {
   Buffer hidden;  // BF16 post-attention residual in transformer_block_2.

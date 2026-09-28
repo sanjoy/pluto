@@ -107,8 +107,7 @@ absl::StatusOr<MlpReadoutParameterBudget> ResolveMlpReadoutParameterBudget(
   const int64_t trainable_per_block = affine_per_block + 2 * d;
   if (mlp_depth >
       (std::numeric_limits<int64_t>::max() - 2 * d) / trainable_per_block)
-    return absl::InvalidArgumentError(
-        "MLP readout parameter count overflows");
+    return absl::InvalidArgumentError("MLP readout parameter count overflows");
   const int64_t mlp = mlp_depth * affine_per_block;
   return MlpReadoutParameterBudget{static_cast<int>(minimum), width,
                                    source_tail, mlp,
@@ -117,7 +116,8 @@ absl::StatusOr<MlpReadoutParameterBudget> ResolveMlpReadoutParameterBudget(
 
 absl::StatusOr<MlpReadout> CreateMlpReadout(
     cuda::Executor& executor, const Layer& source, const Gpt2Config& config,
-    int mlp_width, int seed, int mlp_depth, bool match_parameter_budget) {
+    int mlp_width, int seed, int mlp_depth, bool match_parameter_budget,
+    bool residual_connections) {
   ASSIGN_OR_RETURN(auto budget,
                    ResolveMlpReadoutParameterBudget(
                        config, mlp_width, mlp_depth, match_parameter_budget));
@@ -194,7 +194,10 @@ absl::StatusOr<MlpReadout> CreateMlpReadout(
     RETURN_IF_ERROR(static_cast<FullyConnectedLayer*>(branch.back())
                         ->InitializeNormal(0.1f, block_seed + 1));
     ASSIGN_OR_RETURN(auto mlp, branch.create("mlp_readout_block"));
-    RETURN_IF_ERROR(suffix.add(ResidualLayer::Create(std::move(mlp))));
+    if (residual_connections)
+      RETURN_IF_ERROR(suffix.add(ResidualLayer::Create(std::move(mlp))));
+    else
+      RETURN_IF_ERROR(suffix.add(std::move(mlp)));
   }
   ASSIGN_OR_RETURN(
       auto norm, LayerNormLayer::Create(executor, config.model_width, 1e-5f,

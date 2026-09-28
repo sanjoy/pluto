@@ -72,6 +72,10 @@ ABSL_FLAG(int, mlp_width, 150,
           "Minimum hidden width of the puzzle MLP; grows if needed so its "
           "affine parameters cover the original post-A3 suffix. "
           "Requires --train_mlp");
+ABSL_FLAG(bool, mlp_residual_connections, true,
+          "In puzzle readout training, add the input around each MLP. Disable "
+          "to test whether skip connections impede fitting; changes neither "
+          "the parameter count nor the source transformer");
 ABSL_FLAG(std::string, prompt, "",
           "One nonempty prompt for infer_checkpoint; omit for an interactive "
           "prompt loop");
@@ -142,6 +146,7 @@ absl::StatusOr<Mode> RunModeFromFlags(CommandLineOptions& options) {
   AddIfExplicitlySet(FLAGS_train_mlp, &explicitly_set);
   AddIfExplicitlySet(FLAGS_train_stacked_mlp, &explicitly_set);
   AddIfExplicitlySet(FLAGS_mlp_width, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_mlp_residual_connections, &explicitly_set);
   AddIfExplicitlySet(FLAGS_prompt, &explicitly_set);
   AddIfExplicitlySet(FLAGS_generation_tokens, &explicitly_set);
   AddIfExplicitlySet(FLAGS_print_attention_probs, &explicitly_set);
@@ -184,6 +189,8 @@ absl::StatusOr<Mode> RunModeFromFlags(CommandLineOptions& options) {
        .mlp_width = absl::GetFlag(FLAGS_mlp_width),
        .train_mlp = absl::GetFlag(FLAGS_train_mlp),
        .train_stacked_mlp = absl::GetFlag(FLAGS_train_stacked_mlp),
+       .mlp_residual_connections =
+           absl::GetFlag(FLAGS_mlp_residual_connections),
        .learning_rate = absl::GetFlag(FLAGS_learning_rate),
        .training_seconds = absl::GetFlag(FLAGS_training_seconds)},
       explicitly_set);
@@ -774,6 +781,7 @@ absl::StatusOr<bool> Run() {
         .compact_vocabulary = absl::GetFlag(FLAGS_compact_vocabulary),
         .train_mlp = options.train_mlp,
         .train_stacked_mlp = options.train_stacked_mlp,
+        .mlp_residual_connections = options.mlp_residual_connections,
         .mlp_width = options.mlp_width,
         .steps = options.steps,
         .eval_every = options.eval_every,

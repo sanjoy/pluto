@@ -343,8 +343,7 @@ TEST_F(MlpReadoutTest, AutoSizedBudgetMatchesActualSourceAndReadoutTensors) {
 TEST_F(MlpReadoutTest, ExplicitDepthOnePreservesDefaultWeightsAndOutput) {
   for (int width : {1, 150}) {
     SCOPED_TRACE(width);
-    auto original =
-        CreateMlpReadout(*executor_, *source_, config_, width, 3);
+    auto original = CreateMlpReadout(*executor_, *source_, config_, width, 3);
     auto explicit_depth =
         CreateMlpReadout(*executor_, *source_, config_, width, 3, 1, true);
     ASSERT_TRUE(original.ok()) << original.status();
@@ -432,75 +431,196 @@ TEST_F(MlpReadoutTest, StackedBlocksHaveExactShapesAndIndependentSeeds) {
   EXPECT_EQ(*source_before, *source_after);
 }
 
+TEST_F(MlpReadoutTest, RemovingSkipsPreservesSeededWeightsAndChangesOnlyGraph) {
+  auto source_before = Snapshot(source_->weights());
+  ASSERT_TRUE(source_before.ok()) << source_before.status();
+  auto input = HiddenInput();
+  ASSERT_TRUE(input.ok()) << input.status();
+  for (int depth : {1, 5}) {
+    SCOPED_TRACE(depth);
+    auto residual =
+        CreateMlpReadout(*executor_, *source_, config_, 150, 3, depth, false);
+    auto plain = CreateMlpReadout(*executor_, *source_, config_, 150, 3, depth,
+                                  false, false);
+    ASSERT_TRUE(residual.ok()) << residual.status();
+    ASSERT_TRUE(plain.ok()) << plain.status();
+    EXPECT_EQ(residual->model->input_types(), plain->model->input_types());
+    EXPECT_EQ(residual->model->output_types(), plain->model->output_types());
+    EXPECT_EQ(residual->parameter_budget.trainable_parameters,
+              plain->parameter_budget.trainable_parameters);
+    EXPECT_EQ(residual->parameter_budget.mlp_parameters,
+              plain->parameter_budget.mlp_parameters);
+    auto residual_weights = Snapshot(residual->model->weights());
+    auto plain_weights = Snapshot(plain->model->weights());
+    ASSERT_TRUE(residual_weights.ok()) << residual_weights.status();
+    ASSERT_TRUE(plain_weights.ok()) << plain_weights.status();
+    EXPECT_EQ(*residual_weights, *plain_weights);
+    for (const auto& weight : plain->model->weights())
+      for (const auto& original : source_->weights())
+        EXPECT_NE(weight.data(), original.data());
+    for (bool with_skip : {true, false}) {
+      SCOPED_TRACE(with_skip);
+      auto& readout = with_skip ? *residual : *plain;
+      int residual_count = 0;
+      int mlp_count = 0;
+      LayerHooks hooks;
+      hooks.activation_hook = [&](auto&, auto name, auto, auto) {
+        residual_count += name == "ResidualLayer";
+        mlp_count += name == "mlp_readout_block";
+        return absl::OkStatus();
+      };
+      auto output = readout.model->fwd(*executor_, {&*input, 1}, &hooks);
+      ASSERT_TRUE(output.ok()) << output.status();
+      EXPECT_EQ(residual_count, with_skip ? depth : 0);
+      EXPECT_EQ(mlp_count, depth);
+    }
+  }
+  auto source_after = Snapshot(source_->weights());
+  ASSERT_TRUE(source_after.ok()) << source_after.status();
+  EXPECT_EQ(*source_before, *source_after);
+}
+
+TEST_F(MlpReadoutTest, ZeroBranchHasNoIdentityForwardOrBackwardWithoutSkip) {
+  auto input = HiddenInput();
+  ASSERT_TRUE(input.ok()) << input.status();
+  auto norm = LayerNormLayer::Create(*executor_, config_.model_width, 1e-5f,
+                                     DataType::BF16, config_.context_length);
+  ASSERT_TRUE(norm.ok()) << norm.status();
+  // GPT-2's source final LN starts with gamma=1 and beta=0. With the branch
+  // zeroed, only the residual variant forwards x into this final LayerNorm.
+  auto reference = (*norm)->fwd(*executor_, {&*input, 1});
+  ASSERT_TRUE(reference.ok()) << reference.status();
+  auto reference_bytes = Snapshot(reference->outputs);
+  ASSERT_TRUE(reference_bytes.ok()) << reference_bytes.status();
+  std::vector<float> values(config_.context_length * config_.model_width);
+  for (size_t i = 0; i < values.size(); ++i)
+    values[i] = (static_cast<int>(i % 7) - 3) / 8.0f;
+  auto upstream = Upload(values);
+  ASSERT_TRUE(upstream.ok()) << upstream.status();
+  auto reference_gradient =
+      (*norm)->bwd(*executor_, {&*upstream, 1}, std::move(reference->state));
+  ASSERT_TRUE(reference_gradient.ok()) << reference_gradient.status();
+  auto reference_gradient_bytes = Snapshot(*reference_gradient);
+  ASSERT_TRUE(reference_gradient_bytes.ok())
+      << reference_gradient_bytes.status();
+  bool has_nonzero = false;
+  for (uint8_t value : reference_gradient_bytes->front())
+    has_nonzero |= value != 0;
+  ASSERT_TRUE(has_nonzero);
+  for (bool residual_connections : {true, false}) {
+    SCOPED_TRACE(residual_connections);
+    auto readout = CreateMlpReadout(*executor_, *source_, config_, 150, 3, 1,
+                                    false, residual_connections);
+    ASSERT_TRUE(readout.ok()) << readout.status();
+    // FC2's weight and bias are zero, so its output and input derivative are
+    // identically zero. The upstream derivative can flow only through a skip.
+    for (size_t index : {4u, 5u}) {
+      const auto& weight = readout->trainable->weights()[index];
+      ASSERT_EQ(cudaMemsetAsync(weight.data(), 0, weight.size_bytes(),
+                                executor_->stream()),
+                cudaSuccess);
+    }
+    auto output = readout->trainable->fwd(*executor_, {&*input, 1});
+    ASSERT_TRUE(output.ok()) << output.status();
+    auto output_bytes = Snapshot(output->outputs);
+    ASSERT_TRUE(output_bytes.ok()) << output_bytes.status();
+    if (residual_connections)
+      EXPECT_EQ(*output_bytes, *reference_bytes);
+    else
+      for (uint8_t value : output_bytes->front())
+        EXPECT_EQ(value, 0);
+    auto gradient = readout->trainable->bwd(*executor_, {&*upstream, 1},
+                                            std::move(output->state));
+    ASSERT_TRUE(gradient.ok()) << gradient.status();
+    auto gradient_bytes = Snapshot(*gradient);
+    ASSERT_TRUE(gradient_bytes.ok()) << gradient_bytes.status();
+    if (residual_connections) {
+      EXPECT_EQ(*gradient_bytes, *reference_gradient_bytes);
+    } else {
+      for (size_t offset = 0; offset < gradient_bytes->front().size();
+           offset += sizeof(float)) {
+        float value;
+        std::memcpy(&value, gradient_bytes->front().data() + offset,
+                    sizeof(value));
+        EXPECT_EQ(value, 0);
+      }
+    }
+  }
+}
+
 TEST_F(MlpReadoutTest,
        RealBackwardUpdatesEveryBlockAndLeavesSourceAndHeadFrozen) {
-  for (int depth = 1; depth <= 5; ++depth) {
-    SCOPED_TRACE(depth);
-    auto readout =
-        CreateMlpReadout(*executor_, *source_, config_, 150, 3, depth, false);
-    ASSERT_TRUE(readout.ok()) << readout.status();
-    auto source_before = Snapshot(source_->weights());
-    auto before = Snapshot(readout->model->weights());
-    auto optimizer =
-        AdamWOptimizer::Create(*executor_, *readout->trainable,
-                               {.learning_rate = 0.001f, .weight_decay = 0});
-    ASSERT_TRUE(source_before.ok()) << source_before.status();
-    ASSERT_TRUE(before.ok()) << before.status();
-    ASSERT_TRUE(optimizer.ok()) << optimizer.status();
-    const size_t trainable_tensors = 6 * depth + 2;
-    EXPECT_EQ((*optimizer)->parameter_tensor_count(), trainable_tensors);
-    ASSERT_TRUE((*optimizer)->ZeroGrad().ok());
-    auto input = HiddenInput();
-    ASSERT_TRUE(input.ok()) << input.status();
-    auto output = readout->model->fwd(*executor_, {&*input, 1});
-    ASSERT_TRUE(output.ok()) << output.status();
-    ASSERT_EQ(output->outputs.size(), 1u);
-    EXPECT_EQ(output->outputs[0].size_bytes(), 8 * 16 * sizeof(float));
-    auto logit_bytes = Snapshot(output->outputs);
-    ASSERT_TRUE(logit_bytes.ok());
-    for (int row = 0; row < config_.context_length; ++row)
-      for (int column = 0; column < config_.vocabulary_size; ++column) {
-        float value;
-        std::memcpy(&value,
-                    logit_bytes->front().data() + (row * 16 + column) * 4, 4);
-        EXPECT_TRUE(std::isfinite(value));
+  for (bool residual_connections : {true, false}) {
+    SCOPED_TRACE(residual_connections);
+    for (int depth = 1; depth <= 5; ++depth) {
+      SCOPED_TRACE(depth);
+      auto readout = CreateMlpReadout(*executor_, *source_, config_, 150, 3,
+                                      depth, false, residual_connections);
+      ASSERT_TRUE(readout.ok()) << readout.status();
+      auto source_before = Snapshot(source_->weights());
+      auto before = Snapshot(readout->model->weights());
+      auto optimizer =
+          AdamWOptimizer::Create(*executor_, *readout->trainable,
+                                 {.learning_rate = 0.001f, .weight_decay = 0});
+      ASSERT_TRUE(source_before.ok()) << source_before.status();
+      ASSERT_TRUE(before.ok()) << before.status();
+      ASSERT_TRUE(optimizer.ok()) << optimizer.status();
+      const size_t trainable_tensors = 6 * depth + 2;
+      EXPECT_EQ((*optimizer)->parameter_tensor_count(), trainable_tensors);
+      ASSERT_TRUE((*optimizer)->ZeroGrad().ok());
+      auto input = HiddenInput();
+      ASSERT_TRUE(input.ok()) << input.status();
+      auto output = readout->model->fwd(*executor_, {&*input, 1});
+      ASSERT_TRUE(output.ok()) << output.status();
+      ASSERT_EQ(output->outputs.size(), 1u);
+      EXPECT_EQ(output->outputs[0].size_bytes(), 8 * 16 * sizeof(float));
+      auto logit_bytes = Snapshot(output->outputs);
+      ASSERT_TRUE(logit_bytes.ok());
+      for (int row = 0; row < config_.context_length; ++row)
+        for (int column = 0; column < config_.vocabulary_size; ++column) {
+          float value;
+          std::memcpy(&value,
+                      logit_bytes->front().data() + (row * 16 + column) * 4, 4);
+          EXPECT_TRUE(std::isfinite(value));
+        }
+      std::vector<float> upstream_values(8 * 16, 0);
+      for (size_t i = 0; i < upstream_values.size(); ++i)
+        if (i % 16 < 7)
+          upstream_values[i] = (static_cast<int>(i % 5) - 2) / 8.0f;
+      auto upstream = Upload(upstream_values);
+      ASSERT_TRUE(upstream.ok()) << upstream.status();
+      auto input_gradient = readout->model->bwd(*executor_, {&*upstream, 1},
+                                                std::move(output->state));
+      ASSERT_TRUE(input_gradient.ok()) << input_gradient.status();
+      ASSERT_EQ(input_gradient->size(), 1u);
+      EXPECT_EQ(input_gradient->front().size_bytes(), 8 * 10 * sizeof(float));
+      auto gradients = Snapshot(readout->trainable->gradients());
+      ASSERT_TRUE(gradients.ok()) << gradients.status();
+      ASSERT_EQ(gradients->size(), trainable_tensors);
+      for (const auto& bytes : *gradients) {
+        ExpectFinite(bytes);
+        bool nonzero = false;
+        for (size_t offset = 0; offset < bytes.size();
+             offset += sizeof(float)) {
+          float value;
+          std::memcpy(&value, bytes.data() + offset, sizeof(value));
+          nonzero |= value != 0;
+        }
+        EXPECT_TRUE(nonzero);
       }
-    std::vector<float> upstream_values(8 * 16, 0);
-    for (size_t i = 0; i < upstream_values.size(); ++i)
-      if (i % 16 < 7)
-        upstream_values[i] = (static_cast<int>(i % 5) - 2) / 8.0f;
-    auto upstream = Upload(upstream_values);
-    ASSERT_TRUE(upstream.ok()) << upstream.status();
-    auto input_gradient = readout->model->bwd(*executor_, {&*upstream, 1},
-                                              std::move(output->state));
-    ASSERT_TRUE(input_gradient.ok()) << input_gradient.status();
-    ASSERT_EQ(input_gradient->size(), 1u);
-    EXPECT_EQ(input_gradient->front().size_bytes(), 8 * 10 * sizeof(float));
-    auto gradients = Snapshot(readout->trainable->gradients());
-    ASSERT_TRUE(gradients.ok()) << gradients.status();
-    ASSERT_EQ(gradients->size(), trainable_tensors);
-    for (const auto& bytes : *gradients) {
-      ExpectFinite(bytes);
-      bool nonzero = false;
-      for (size_t offset = 0; offset < bytes.size(); offset += sizeof(float)) {
-        float value;
-        std::memcpy(&value, bytes.data() + offset, sizeof(value));
-        nonzero |= value != 0;
-      }
-      EXPECT_TRUE(nonzero);
+      auto input_gradient_bytes = Snapshot(*input_gradient);
+      ASSERT_TRUE(input_gradient_bytes.ok()) << input_gradient_bytes.status();
+      ExpectFinite(input_gradient_bytes->front());
+      ASSERT_TRUE((*optimizer)->ApplyStep().ok());
+      auto after = Snapshot(readout->model->weights());
+      auto source_after = Snapshot(source_->weights());
+      ASSERT_TRUE(after.ok()) << after.status();
+      ASSERT_TRUE(source_after.ok()) << source_after.status();
+      for (size_t i = 0; i < trainable_tensors; ++i)
+        EXPECT_NE((*before)[i], (*after)[i]) << "trainable tensor " << i;
+      EXPECT_EQ(before->back(), after->back());
+      EXPECT_EQ(*source_before, *source_after);
     }
-    auto input_gradient_bytes = Snapshot(*input_gradient);
-    ASSERT_TRUE(input_gradient_bytes.ok()) << input_gradient_bytes.status();
-    ExpectFinite(input_gradient_bytes->front());
-    ASSERT_TRUE((*optimizer)->ApplyStep().ok());
-    auto after = Snapshot(readout->model->weights());
-    auto source_after = Snapshot(source_->weights());
-    ASSERT_TRUE(after.ok()) << after.status();
-    ASSERT_TRUE(source_after.ok()) << source_after.status();
-    for (size_t i = 0; i < trainable_tensors; ++i)
-      EXPECT_NE((*before)[i], (*after)[i]) << "trainable tensor " << i;
-    EXPECT_EQ(before->back(), after->back());
-    EXPECT_EQ(*source_before, *source_after);
   }
 }
 
@@ -623,9 +743,8 @@ TEST_F(MlpReadoutTest, StrictCheckpointRoundTripReproducesOutput) {
     ASSERT_TRUE(Fill(original->trainable->weights()[6 * depth], 0.5f).ok());
     ASSERT_TRUE(
         Fill(original->trainable->weights()[6 * depth + 1], -0.25f).ok());
-    const auto directory =
-        std::filesystem::path(testing::TempDir()) /
-        ("mlp-readout-round-trip-" + std::to_string(depth));
+    const auto directory = std::filesystem::path(testing::TempDir()) /
+                           ("mlp-readout-round-trip-" + std::to_string(depth));
     ASSERT_TRUE(
         WriteToDirectory(*executor_, *original->trainable, directory).ok());
     ASSERT_TRUE(ReadFromDirectory(*executor_, *restored->trainable, directory,
@@ -752,11 +871,10 @@ TEST_F(MlpReadoutTest, SeedReproducibilityAndSourceConfigurationValidation) {
     EXPECT_EQ(*a_bytes, *b_bytes);
   }
   for (int invalid_width : {-1, 0, std::numeric_limits<int>::max()})
-    EXPECT_EQ(
-        CreateMlpReadout(*executor_, *source_, config_, invalid_width, 3)
-            .status()
-            .code(),
-        absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ(CreateMlpReadout(*executor_, *source_, config_, invalid_width, 3)
+                  .status()
+                  .code(),
+              absl::StatusCode::kInvalidArgument);
   for (int invalid_depth : {-1, 0, std::numeric_limits<int>::min()})
     EXPECT_EQ(CreateMlpReadout(*executor_, *source_, config_, 150, 3,
                                invalid_depth, false)
@@ -773,10 +891,9 @@ TEST_F(MlpReadoutTest, SeedReproducibilityAndSourceConfigurationValidation) {
   EXPECT_EQ(rejected.status().code(), absl::StatusCode::kInvalidArgument);
   EXPECT_NE(rejected.status().message().find("parameter count overflows"),
             std::string::npos);
-  EXPECT_EQ(CreateMlpReadout(*executor_, *source_, config_, 150, -1)
-                .status()
-                .code(),
-            absl::StatusCode::kInvalidArgument);
+  EXPECT_EQ(
+      CreateMlpReadout(*executor_, *source_, config_, 150, -1).status().code(),
+      absl::StatusCode::kInvalidArgument);
   for (int field = 0; field < 6; ++field) {
     auto wrong = config_;
     if (field == 0)
@@ -791,10 +908,9 @@ TEST_F(MlpReadoutTest, SeedReproducibilityAndSourceConfigurationValidation) {
       wrong.context_length = 7;
     if (field == 5)
       wrong.pad_vocabulary = true;
-    EXPECT_EQ(CreateMlpReadout(*executor_, *source_, wrong, 150, 3)
-                  .status()
-                  .code(),
-              absl::StatusCode::kInvalidArgument)
+    EXPECT_EQ(
+        CreateMlpReadout(*executor_, *source_, wrong, 150, 3).status().code(),
+        absl::StatusCode::kInvalidArgument)
         << field;
   }
   auto shallow_config = config_;
@@ -811,10 +927,9 @@ TEST_F(MlpReadoutTest, SeedReproducibilityAndSourceConfigurationValidation) {
   for (const Layer* invalid : {static_cast<const Layer*>(shallow->get()),
                                static_cast<const Layer*>(fp16->get()),
                                static_cast<const Layer*>(unrelated->get())}) {
-    EXPECT_EQ(CreateMlpReadout(*executor_, *invalid, config_, 150, 3)
-                  .status()
-                  .code(),
-              absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ(
+        CreateMlpReadout(*executor_, *invalid, config_, 150, 3).status().code(),
+        absl::StatusCode::kInvalidArgument);
     EXPECT_EQ(
         CaptureThirdAttention(*executor_, *invalid, *tokens).status().code(),
         absl::StatusCode::kInvalidArgument);

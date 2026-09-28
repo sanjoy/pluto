@@ -38,6 +38,7 @@ struct CommandLineOptions {
   int mlp_width = 0;
   bool train_mlp = false;
   bool train_stacked_mlp = false;
+  bool mlp_residual_connections = true;
   double learning_rate = 0;
   double training_seconds = 0;
 };
