@@ -825,6 +825,91 @@ test_suite(
     ],
 )
 
+# Block-coordinate training allocates FP32 optimizer state only for active
+# parameters; inactive resident weights still participate in the chain rule.
+cuda_library(
+    name = "block_parameter",
+    srcs = ["block_parameter.cc"],
+    hdrs = ["block_parameter.h"],
+    copts = ["--enable-tile", "-std=c++20"],
+    host_copts = ["-std=c++20"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":layer",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/memory",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_library(
+    name = "badam_optimizer",
+    srcs = ["badam_optimizer.cc"],
+    hdrs = ["badam_optimizer.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":block_parameter",
+        ":layer",
+        ":optimizer",
+        "//src/cuda:executor",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/memory",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+    ],
+)
+
+cc_test(
+    name = "badam_optimizer_test",
+    srcs = ["badam_optimizer_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":badam_optimizer",
+        ":block_parameter",
+        ":layer",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+layer_library("block_training", [":block_parameter", ":inference_ops"])
+layer_library("sequence_full_attention", [
+    ":block_parameter",
+    ":cached_attention_ops",
+    ":layer_hooks",
+])
+layer_library("sequence_delta_net", [":block_parameter", ":cached_attention_ops"])
+layer_test("block_training", [
+    ":block_parameter",
+    ":inference_ops",
+    "//src/util:status_macros",
+    "@abseil-cpp//absl/status",
+])
+layer_test("sequence_full_attention", [
+    ":block_parameter",
+    ":cached_attention_ops",
+    ":layer_hooks",
+    "//src/util:status_macros",
+    "@abseil-cpp//absl/status",
+])
+layer_test("sequence_delta_net", [
+    ":block_parameter",
+    ":cached_attention_ops",
+    "//src/util:status_macros",
+    "@abseil-cpp//absl/status",
+])
+
 # Imported-weight, batch-one inference layers. Unlike the trainable layers,
 # these retain BF16/FP8 checkpoint storage without FP32 masters or gradients.
 layer_library("inference", [":inference_ops"])

@@ -1,10 +1,12 @@
-# Qwen3.8-27B-FP8 text inference
+# Qwen3.8-27B-FP8 text inference and blockwise training
 
-This is a native, inference-only Pluto implementation of the text decoder in
+This is a native Pluto implementation of the text decoder in
 [`Qwen/Qwen3.8-27B-FP8`](https://huggingface.co/Qwen/Qwen3.8-27B-FP8).
 It uses Pluto's `cuda::Executor`, stream-ordered buffers, page-locked host
 transfers, and cuTile C++ kernels. Python, Transformers, and external inference
-servers are **not** used by the inference binary.
+servers are **not** used by the binaries. Cached FP8 inference is described
+below; [BAdam training](TRAINING.md) uses BF16 resident weights and optimizer
+state for only one parameter block at a time.
 
 ## Download, build, and run
 
@@ -93,9 +95,10 @@ bitwise equality with Transformers/vLLM is not promised.
 Prompt prefill and decode both consume one token at a time. This is a bounded
 memory correctness baseline, not a throughput-oriented server. Currently only
 batch-one text inference is supported: no vision/audio, multimodal positions,
-MTP/speculative decoding, training, sampling, or batched/chunked prefill. The
-download includes ancillary tensors, but only text-decoder tensors are loaded
-onto the GPU. Unsupported configurations fail explicitly.
+MTP/speculative decoding, sampling, or batched/chunked prefill. Training uses
+the separate full-sequence implementation described in [TRAINING.md](TRAINING.md).
+The download includes ancillary tensors, but only text-decoder tensors are
+loaded onto the GPU. Unsupported configurations fail explicitly.
 
 ## Verification
 

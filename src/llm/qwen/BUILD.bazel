@@ -2,6 +2,75 @@ load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 
+cc_library(
+    name = "training_model",
+    srcs = ["training_model.cc"],
+    hdrs = ["training_model.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":checkpoint",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/llm:badam_optimizer",
+        "//src/llm:block_parameter",
+        "//src/llm:block_training",
+        "//src/llm:combinators",
+        "//src/llm:layer",
+        "//src/llm:sequence_delta_net",
+        "//src/llm:sequence_full_attention",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/memory",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_binary(
+    name = "qwen_train",
+    srcs = ["qwen_train.cc"],
+    deps = [
+        ":checkpoint",
+        ":training_model",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset:qwen_tokenizer",
+        "//src/llm:badam_optimizer",
+        "//src/llm:checkpoint",
+        "//src/llm:cross_entropy_loss",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_test(
+    name = "training_model_test",
+    srcs = ["training_model_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":model",
+        ":training_model",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/llm:badam_optimizer",
+        "//src/llm:block_parameter",
+        "//src/llm:cross_entropy_loss",
+        "//src/llm:layer",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
 cc_test(
     name = "integration_test",
     size = "large",
