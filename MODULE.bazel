@@ -9,6 +9,14 @@ bazel_dep(name = "re2", version = "2025-11-05.bcr.1")
 bazel_dep(name = "rules_cc", version = "0.2.22")
 bazel_dep(name = "rules_cuda", version = "0.3.0")
 bazel_dep(name = "snappy", version = "1.2.2.bcr.3")
+bazel_dep(name = "utf8proc", version = "2.11.0")
+
+# The 2.11.0 registry BUILD predates Bazel 9's removal of native C++ rules.
+single_version_override(
+    module_name = "utf8proc",
+    patches = ["//third_party/utf8proc:bazel9.patch"],
+    patch_strip = 1,
+)
 
 cuda = use_extension("@rules_cuda//cuda:extensions.bzl", "toolchain")
 cuda.toolkit(

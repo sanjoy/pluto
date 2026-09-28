@@ -3,6 +3,44 @@ load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 
 cc_library(
+    name = "qwen_tokenizer",
+    srcs = ["qwen_tokenizer.cc"],
+    hdrs = ["qwen_tokenizer.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":detokenizer",
+        ":gpt2_tokenizer_vocabulary",
+        ":tokenizer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/base:core_headers",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/memory",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/synchronization",
+        "@abseil-cpp//absl/types:span",
+        "@re2//:re2",
+        "@utf8proc//:utf8proc",
+    ],
+)
+
+cc_test(
+    name = "qwen_tokenizer_test",
+    size = "small",
+    srcs = ["qwen_tokenizer_test.cc"],
+    deps = [
+        ":qwen_tokenizer",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "dataset",
     srcs = ["dataset.cc"],
     hdrs = ["dataset.h"],

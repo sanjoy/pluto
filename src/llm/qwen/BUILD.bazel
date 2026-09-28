@@ -1,0 +1,170 @@
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+load("@rules_cuda//cuda:defs.bzl", "cuda_library", "cuda_test")
+
+cc_test(
+    name = "integration_test",
+    size = "large",
+    srcs = ["integration_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":model",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset:qwen_tokenizer",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "model_test",
+    srcs = ["model_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":model",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cuda_test(
+    name = "ops_test",
+    srcs = ["ops_test.cc"],
+    copts = ["-std=c++20"],
+    host_copts = ["-std=c++20"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":ops",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "@abseil-cpp//absl/status",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "model",
+    srcs = ["model.cc"],
+    hdrs = ["model.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":attention_ops",
+        ":checkpoint",
+        ":ops",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/memory",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_binary(
+    name = "qwen_infer",
+    srcs = ["qwen_infer.cc"],
+    deps = [
+        ":model",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset:qwen_tokenizer",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/status",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_test(
+    name = "checkpoint_test",
+    srcs = ["checkpoint_test.cc"],
+    deps = [
+        ":checkpoint",
+        "@abseil-cpp//absl/status",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cuda_test(
+    name = "attention_ops_test",
+    srcs = ["attention_ops_test.cc"],
+    copts = ["-std=c++20"],
+    host_copts = ["-std=c++20"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":attention_ops",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "@abseil-cpp//absl/status",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "checkpoint",
+    srcs = ["checkpoint.cc"],
+    hdrs = ["checkpoint.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/memory",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cuda_library(
+    name = "ops",
+    srcs = ["ops.cc"],
+    hdrs = ["ops.h"],
+    copts = ["--enable-tile", "-std=c++20"],
+    host_copts = ["-std=c++20"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/cuda:executor",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cuda_library(
+    name = "attention_ops",
+    srcs = ["attention_ops.cc"],
+    hdrs = ["attention_ops.h"],
+    copts = ["--enable-tile", "-std=c++20"],
+    host_copts = ["-std=c++20"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/memory",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@cuda//:cuda_runtime",
+    ],
+)

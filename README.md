@@ -15,6 +15,8 @@ The repository includes:
 - GPT-2 and sparse-autoencoder experiments in
   [`src/llm/experiments/gpt2_shakespeare`](src/llm/experiments/gpt2_shakespeare),
   including training and inference on Shakespeare.
+- Native Qwen3.8-27B-FP8 text inference in [`src/llm/qwen`](src/llm/qwen),
+  with a Hugging Face checkpoint reader, tokenizer and cached cuTile decoder.
 - Standalone experimental tools in [`src/llm/experiments`](src/llm/experiments), including the
   MLP automaton readout.
 - Benchmark/sweep drivers and operational utilities in [`scripts`](scripts),
