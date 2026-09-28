@@ -117,11 +117,31 @@ previous five width-150 MLPs. Each run records all five resolved widths and the
 exact parameter difference in `run.txt`; seeded tensors and data order match
 between the residual and non-residual variants.
 
-The paired 300,000-step run was launched from commit `1028761` at
-2026-09-28 18:23 UTC. Its snapshotted binary, inputs, exact commands, logs,
-training curves, and checkpoints are in
-`/tmp/pluto-no-residual-iso-20260928-01/`. Results are pending; the single-block
-numbers above must not be attributed to this five-block experiment.
+The first pair at `/tmp/pluto-no-residual-iso-20260928-01/` stopped at
+132k/137k steps without final greedy evaluation. The completed replacement was
+launched from commit `fe94c20` at 2026-09-28 18:39:31 UTC using a detached
+launcher and copied binary. Its snapshotted binary, inputs, exact commands,
+logs, training curves, and best checkpoints are in
+`/tmp/pluto-no-residual-iso-20260928-02/`. Inputs and executable matched the
+first pair byte-for-byte; overlapping evaluation metrics also matched exactly.
+
+Both replacement runs completed all 300,000 updates and exited successfully,
+taking approximately 1,189 seconds (19.8 minutes) concurrently. At each run's
+best evaluated token-accuracy checkpoint:
+
+| Five-block readout | Best step | Correct scored tokens | Non-EOS accuracy | Mean CE | Greedy complete facts |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| With residuals | 292,000 | 3,463/10,002 (34.6231%) | 2,439/8,978 (27.1664%) | 3.43630624 | 1/1,024 |
+| Without residuals | 236,000 | 3,002/10,002 (30.0140%) | 1,979/8,978 (22.0428%) | 4.00066989 | 1/1,024 |
+
+EOS accuracy was 1,024/1,024 with skips and 1,023/1,024 without them. At the
+final step, token accuracy was 34.4631% versus 29.9640%. Both runs verified
+that the original source model and frozen tied head were unchanged.
+
+**Conclusion:** for this approximately iso-parameter five-MLP stack and this
+seed/recipe, removing skips reduced best token accuracy by 4.61 percentage
+points. Neither variant approached memorization. This does not establish that
+the stack cannot fit under other optimization recipes or initializations.
 
 Validation: all 74 Bazel test targets and 230 script tests passed. New tests
 exhaustively check nearest-budget selection over 630 small configurations,
