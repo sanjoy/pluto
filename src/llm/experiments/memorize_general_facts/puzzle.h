@@ -5,6 +5,7 @@
 
 #include "absl/status/status.h"
 #include "src/cuda/executor.h"
+#include "src/dataset/detokenizer.h"
 #include "src/dataset/gpt2_tokenizer.h"
 #include "src/llm/gpt2.h"
 
@@ -30,7 +31,10 @@ struct PuzzleOptions {
 
 // Capture the post-attention residual of transformer block 3 (one-based),
 // verify that exact states cannot have different scored targets, and write a
-// standalone coordinate-pair plot for every position. Only suffix/EOS targets
+// standalone coordinate-pair plot for every position and a histogram of the
+// minimum full-vector distance for every unordered target-class pair.
+// The matching base detokenizer labels target IDs in the distance report.
+// Only suffix/EOS targets
 // after five-token prompts enter the audit and training; padding is labeled
 // explicitly in plots. Optional fitting freezes the source and tied head and
 // trains either one fresh residual MLP or the fixed five-MLP stack, each with
@@ -39,6 +43,7 @@ struct PuzzleOptions {
 // pinned-memory transfers use the supplied executor.
 absl::Status RunPuzzle(cuda::Executor& executor,
                        const tokenizer::Gpt2Tokenizer& base_tokenizer,
+                       const tokenizer::Detokenizer& base_detokenizer,
                        const PuzzleOptions& options, std::ostream& output);
 
 }  // namespace pluto::llm::memorize_general_facts

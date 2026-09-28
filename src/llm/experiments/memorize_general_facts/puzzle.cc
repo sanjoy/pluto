@@ -28,6 +28,7 @@
 #include "src/dataset/tokenizer.h"
 #include "src/llm/adamw_optimizer.h"
 #include "src/llm/checkpoint.h"
+#include "src/llm/experiments/memorize_general_facts/class_distance.h"
 #include "src/llm/experiments/memorize_general_facts/mlp_readout.h"
 #include "src/llm/experiments/memorize_general_facts/puzzle_report.h"
 #include "src/llm/extract_top1_ids.h"
@@ -530,6 +531,7 @@ absl::Status FitMlpReadout(cuda::Executor& executor, const Layer& source,
 // Require a new output directory and verify that source weights stay frozen.
 absl::Status RunPuzzle(cuda::Executor& executor,
                        const tokenizer::Gpt2Tokenizer& base_tokenizer,
+                       const tokenizer::Detokenizer& base_detokenizer,
                        const PuzzleOptions& options, std::ostream& output) {
   const bool train_readout = options.train_mlp || options.train_stacked_mlp;
   const int depth = options.train_stacked_mlp ? kStackedMlpDepth : 1;
@@ -615,6 +617,23 @@ absl::Status RunPuzzle(cuda::Executor& executor,
   const auto html =
       std::filesystem::path(options.output_directory) / "puzzle.html";
   RETURN_IF_ERROR(WritePuzzleHtml(captured.report, separation, html.string()));
+  std::vector<std::string> token_labels;
+  token_labels.reserve(config.vocabulary_size);
+  for (int token = 0; token < config.vocabulary_size; ++token) {
+    int original = token;
+    if (compact) {
+      ASSIGN_OR_RETURN(original, compact->OriginalId(token));
+    }
+    ASSIGN_OR_RETURN(auto label, base_detokenizer.Decode({&original, 1}));
+    token_labels.push_back(std::move(label));
+  }
+  const auto distance_html =
+      std::filesystem::path(options.output_directory) / "class_distances.html";
+  RETURN_IF_ERROR(WriteClassDistanceHtml(captured.report, token_labels,
+                                         distance_html.string()));
+  output << "Class-pair minimum L2 histogram: " << distance_html.string()
+         << "\n"
+         << std::flush;
   std::ofstream provenance(std::filesystem::path(options.output_directory) /
                            "run.txt");
   provenance << "checkpoint=" << options.checkpoint

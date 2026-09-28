@@ -143,10 +143,37 @@ cc_test(
 )
 
 cc_library(
+    name = "class_distance",
+    srcs = ["class_distance.cc"],
+    hdrs = ["class_distance.h"],
+    deps = [
+        ":puzzle_report",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "class_distance_test",
+    srcs = ["class_distance_test.cc"],
+    deps = [
+        ":class_distance",
+        ":puzzle_report",
+        "@abseil-cpp//absl/status",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "puzzle",
     srcs = ["puzzle.cc"],
     hdrs = ["puzzle.h"],
     deps = [
+        ":class_distance",
         ":mlp_readout",
         ":puzzle_report",
         "//src/cuda:buffer",
@@ -154,6 +181,7 @@ cc_library(
         "//src/cuda:page_locked_host_array",
         "//src/dataset:compact_vocabulary",
         "//src/dataset:dataset",
+        "//src/dataset:detokenizer",
         "//src/dataset:gpt2_tokenizer",
         "//src/dataset:padded_line_dataset",
         "//src/dataset:tokenizer",

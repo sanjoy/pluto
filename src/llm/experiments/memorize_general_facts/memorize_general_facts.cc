@@ -765,6 +765,8 @@ absl::StatusOr<bool> Run() {
     return absl::InvalidArgumentError(
         "the experiment requires the full GPT-2 vocabulary");
   if (mode == Mode::kPuzzle) {
+    ASSIGN_OR_RETURN(auto detokenizer, tokenizer::Gpt2Detokenizer::Load(
+                                           absl::GetFlag(FLAGS_tokenizer)));
     const PuzzleOptions puzzle{
         .checkpoint = options.puzzle_checkpoint,
         .corpus = options.corpus,
@@ -780,7 +782,8 @@ absl::StatusOr<bool> Run() {
         .batch_size = options.batch_size,
         .seed = options.seed,
         .learning_rate = static_cast<float>(options.learning_rate)};
-    RETURN_IF_ERROR(RunPuzzle(*executor, *tokenizer, puzzle, std::cout));
+    RETURN_IF_ERROR(RunPuzzle(*executor, *tokenizer, *detokenizer, puzzle,
+                             std::cout));
     return true;
   }
   if (mode == Mode::kInferModel &&

@@ -16,9 +16,10 @@
 #include "absl/strings/str_cat.h"
 
 namespace pluto::llm::memorize_general_facts {
-namespace {
 
-absl::Status Validate(const PuzzleReportData& data) {
+// Validate the common capture format before computing any geometric report.
+// Cross-class collisions are allowed here so distance reports can count them.
+absl::Status ValidatePuzzleReportData(const PuzzleReportData& data) {
   if (data.model_width == 0 || data.context_length == 0 || data.facts.empty())
     return absl::InvalidArgumentError(
         "puzzle report requires positive width, context length, and fact "
@@ -65,6 +66,8 @@ absl::Status Validate(const PuzzleReportData& data) {
   }
   return absl::OkStatus();
 }
+
+namespace {
 
 struct CoordinatesHash {
   size_t operator()(const std::vector<float>& coordinates) const {
@@ -291,7 +294,7 @@ window.addEventListener('resize', () => charts.forEach(draw));
 
 absl::StatusOr<PuzzleSeparation> VerifyPuzzleSeparation(
     const PuzzleReportData& data) {
-  const absl::Status valid = Validate(data);
+  const absl::Status valid = ValidatePuzzleReportData(data);
   if (!valid.ok())
     return valid;
   absl::flat_hash_map<std::vector<float>, const PuzzlePoint*, CoordinatesHash>

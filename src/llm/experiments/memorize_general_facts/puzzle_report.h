@@ -56,6 +56,10 @@ struct PuzzleSeparation {
   int64_t distinct_targets = 0;
 };
 
+// Checks finite coordinates, token metadata, and complete fact/position
+// coverage without imposing any separation requirement on the hidden states.
+absl::Status ValidatePuzzleReportData(const PuzzleReportData& data);
+
 // Audits exact numerical equality of finite full-width vectors, treating +0
 // and -0 as equal. All scored positions share the same comparison domain:
 // identical vectors may have the same target but never different targets.
