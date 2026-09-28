@@ -23,7 +23,15 @@ from run_depth_search import _now, _read_result, _require_fields, _sha256, _writ
 from verify_predictions import _corpus_lines, verify_predictions
 
 
-def parameter_count(layers, width, ff, vocabulary=4475, context=27):
+def parameter_count(layers, width, ff, vocabulary=4475, context=27,
+                    *, a3_mlp_stack=False):
+    if a3_mlp_stack:
+        if layers != 4:
+            raise ValueError("A3 MLP stack requires reference layers=4")
+        # The prefix has A1/M1/A2/M2/A3; three MLPs replace the old suffix.
+        attention = 4 * width * width + 6 * width
+        mlp = (2 * width + 1) * ff + 3 * width
+        return (vocabulary + context + 2) * width + 3 * attention + 5 * mlp
     return (vocabulary + context + 2) * width + layers * (
         4 * width * width + 2 * width * ff + 9 * width + ff)
 
@@ -55,6 +63,8 @@ def parse_args(argv=None):
     parser.add_argument("--candidates", required=True,
                         help="Comma-separated L:W:FF:steps:LR entries, layers >=1")
     parser.add_argument("--seed", type=int, default=1337)
+    parser.add_argument("--a3_mlp_stack", action="store_true",
+                        help="Train the A3-prefix/three-MLP variant end to end; layers must be 4")
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--context_length", type=int, choices=(27,), default=27)
     parser.add_argument("--vocabulary", type=int, choices=(4475,), default=4475)
@@ -67,6 +77,8 @@ def parse_args(argv=None):
         args.candidates = [parse_candidate(item) for item in args.candidates.split(",")]
     except argparse.ArgumentTypeError as error:
         parser.error(str(error))
+    if args.a3_mlp_stack and any(item["layers"] != 4 for item in args.candidates):
+        parser.error("--a3_mlp_stack requires layers=4 for every candidate")
     if not math.isfinite(args.deadline_unix) or args.deadline_unix <= 0:
         parser.error("deadline_unix must be finite and positive")
     for name in ("verification_reserve", "max_training_seconds"):
@@ -209,7 +221,8 @@ def run_search(args, *, run_process=execute, loader=load_inputs, clock=time.time
                 break
             trial_dir = args.run_dir / f"trial_{index:03d}_L{candidate['layers']}_W{candidate['width']}_FF{candidate['feed_forward_width']}"
             trial_dir.mkdir()
-            active = {**candidate, "parameters": parameter_count(candidate["layers"], candidate["width"], candidate["feed_forward_width"], args.vocabulary, args.context_length),
+            active = {**candidate, "parameters": parameter_count(candidate["layers"], candidate["width"], candidate["feed_forward_width"], args.vocabulary, args.context_length, a3_mlp_stack=args.a3_mlp_stack),
+                      "architecture": "gpt2_a3_mlp_stack" if args.a3_mlp_stack else "gpt2",
                       "status": "running", "started_utc": _now(), "commands": [], "directory": str(trial_dir)}
             summary["trials"].append(active)
 
@@ -233,6 +246,8 @@ def run_search(args, *, run_process=execute, loader=load_inputs, clock=time.time
             shape = [f"--layers={candidate['layers']}", f"--model_width={candidate['width']}",
                      f"--feed_forward_width={candidate['feed_forward_width']}", "--attention_heads=1",
                      f"--context_length={args.context_length}", "--compact_vocabulary=true", f"--seed={args.seed}"]
+            if args.a3_mlp_stack:
+                shape.append("--a3_mlp_stack=true")
             output_parent = trial_dir / "training"
             output = output_parent / f"layers_{candidate['layers']}"
             checkpoints = trial_dir / "checkpoints"
@@ -249,6 +264,8 @@ def run_search(args, *, run_process=execute, loader=load_inputs, clock=time.time
             expected = {key: active[key] for key in ("layers", "width", "feed_forward_width", "parameters")}
             expected.update(heads=1, vocabulary=args.vocabulary, targets=10002,
                             context_length=args.context_length)
+            if args.a3_mlp_stack:
+                expected["architecture"] = active["architecture"]
             _require_fields(result, {**expected, "success": int(code == 0)}, output / "result.txt")
             step, errors = int(result["step"]), int(result["errors"])
             if not 0 <= step <= candidate["steps"] or not 0 <= errors <= 10002 or (errors == 0) != (code == 0):
@@ -260,6 +277,8 @@ def run_search(args, *, run_process=execute, loader=load_inputs, clock=time.time
             checkpoint = checkpoints / f"layers_{candidate['layers']}" / f"step_{step}"
             if Path(result["checkpoint"]).resolve() != checkpoint or not checkpoint.is_dir():
                 raise ValueError("Missing or unexpected final checkpoint")
+            if args.a3_mlp_stack and (checkpoint / "architecture.txt").read_text() != "gpt2_a3_mlp_stack\n":
+                raise ValueError("Checkpoint has the wrong architecture marker")
             for path in (output, checkpoint):
                 if parse_mapping((path / "compact_vocabulary.tsv").read_bytes()) != data["active"]:
                     raise ValueError("Compact mapping differs from independent tokenization")

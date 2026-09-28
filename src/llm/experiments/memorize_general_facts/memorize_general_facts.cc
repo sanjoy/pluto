@@ -95,6 +95,10 @@ ABSL_FLAG(int, layers, 4, "Initial transformer depth (nonnegative)");
 ABSL_FLAG(int, model_width, 10, "Residual-stream and embedding width");
 ABSL_FLAG(int, attention_heads, 1, "Number of attention heads per block");
 ABSL_FLAG(int, feed_forward_width, 20, "Inner GELU MLP width");
+ABSL_FLAG(bool, a3_mlp_stack, false,
+          "Train or infer the whole-network experiment with the prefix through "
+          "attention 3 followed by three residual MLPs; requires --layers=4 "
+          "and --search=false; invalid in puzzle mode");
 // The longest fact has 26 GPT-2 tokens; one more position accommodates EOS.
 ABSL_FLAG(int, context_length, 27,
           "Padded sequence length and learned position count; must match the "
@@ -156,6 +160,7 @@ absl::StatusOr<Mode> RunModeFromFlags(CommandLineOptions& options) {
   AddIfExplicitlySet(FLAGS_model_width, &explicitly_set);
   AddIfExplicitlySet(FLAGS_attention_heads, &explicitly_set);
   AddIfExplicitlySet(FLAGS_feed_forward_width, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_a3_mlp_stack, &explicitly_set);
   AddIfExplicitlySet(FLAGS_context_length, &explicitly_set);
   AddIfExplicitlySet(FLAGS_compact_vocabulary, &explicitly_set);
   AddIfExplicitlySet(FLAGS_search, &explicitly_set);
@@ -188,6 +193,8 @@ absl::StatusOr<Mode> RunModeFromFlags(CommandLineOptions& options) {
        .warmup_steps = absl::GetFlag(FLAGS_warmup_steps),
        .seed = absl::GetFlag(FLAGS_seed),
        .mlp_width = absl::GetFlag(FLAGS_mlp_width),
+       .a3_mlp_stack = absl::GetFlag(FLAGS_a3_mlp_stack),
+       .search = absl::GetFlag(FLAGS_search),
        .train_mlp = absl::GetFlag(FLAGS_train_mlp),
        .train_stacked_mlp = absl::GetFlag(FLAGS_train_stacked_mlp),
        .train_mlp_transformer = absl::GetFlag(FLAGS_train_mlp_transformer),
@@ -210,6 +217,50 @@ Gpt2Config ModelConfiguration(int layers, int vocabulary_size) {
           .context_length = absl::GetFlag(FLAGS_context_length)};
 }
 
+// Training and both inference paths must construct the identical architecture.
+// The experiment initializes all parameters freshly; it never uses a capture.
+absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateExperimentModel(
+    cuda::Executor& executor, const Gpt2Config& config) {
+  if (absl::GetFlag(FLAGS_a3_mlp_stack))
+    return CreateGpt2WithA3MlpStack(executor, DataType::BF16,
+                                    absl::GetFlag(FLAGS_seed), config);
+  return CreateGpt2(executor, DataType::BF16, absl::GetFlag(FLAGS_seed),
+                    config);
+}
+
+// The two architectures have the same tensor count, but different meanings.
+// Save a small identity marker so inference can diagnose a missing selector.
+absl::Status SaveArchitecture(const Layer& model,
+                              const std::filesystem::path& directory) {
+  std::ofstream identity(directory / "architecture.txt");
+  identity << model.name() << '\n';
+  identity.close();
+  return identity ? absl::OkStatus()
+                  : absl::InternalError("cannot save checkpoint architecture");
+}
+
+// Original checkpoints may predate the marker. The experimental architecture
+// always requires one, preventing accidental interpretation as ordinary GPT-2.
+absl::Status ValidateArchitecture(const Layer& model,
+                                  const std::filesystem::path& directory) {
+  const auto path = directory / "architecture.txt";
+  std::error_code error;
+  const bool exists = std::filesystem::exists(path, error);
+  if (error)
+    return absl::InternalError(error.message());
+  if (!exists && !absl::GetFlag(FLAGS_a3_mlp_stack))
+    return absl::OkStatus();
+  std::ifstream input(path);
+  std::string name;
+  if (!std::getline(input, name))
+    return absl::FailedPreconditionError(
+        "missing or unreadable checkpoint architecture.txt");
+  if (name != model.name())
+    return absl::FailedPreconditionError(
+        "checkpoint architecture mismatch: check --a3_mlp_stack");
+  return absl::OkStatus();
+}
+
 // The mapping is part of a compact checkpoint's meaning, not merely a training
 // diagnostic. Save it beside every checkpoint so a different same-sized corpus
 // cannot silently reinterpret the embedding rows on reload.
@@ -217,6 +268,7 @@ absl::Status SaveCheckpoint(cuda::Executor& executor, const Layer& model,
                             const std::filesystem::path& directory,
                             const CompactVocabularyTokenizer& vocabulary) {
   RETURN_IF_ERROR(WriteToDirectory(executor, model, directory));
+  RETURN_IF_ERROR(SaveArchitecture(model, directory));
   return vocabulary.SaveToFile(directory / "compact_vocabulary.tsv");
 }
 
@@ -421,9 +473,7 @@ absl::StatusOr<bool> TrainUntilMemorized(
                    PaddedLineDataSetIterator::Create(executor, corpus.text(),
                                                      tokenizer, options));
   const auto model_config = ModelConfiguration(layers, tokenizer.vocab_size());
-  ASSIGN_OR_RETURN(auto model,
-                   CreateGpt2(executor, DataType::BF16,
-                              absl::GetFlag(FLAGS_seed), model_config));
+  ASSIGN_OR_RETURN(auto model, CreateExperimentModel(executor, model_config));
   ASSIGN_OR_RETURN(auto loss, CrossEntropyLossLayer::Create(
                                   executor, tokenizer.vocab_size(),
                                   DataType::BF16, model_config.context_length));
@@ -436,6 +486,7 @@ absl::StatusOr<bool> TrainUntilMemorized(
                    AdamWOptimizer::Create(executor, *model, config));
   const int64_t parameters = ParameterCount(*model);
   manifest << "corpus=" << absl::GetFlag(FLAGS_corpus)
+           << "\narchitecture=" << model->name()
            << "\ntokenizer=" << absl::GetFlag(FLAGS_tokenizer)
            << "\nlayers=" << layers << "\nwidth=" << model_config.model_width
            << "\nheads=" << model_config.attention_heads << "\nhead_dimension="
@@ -460,7 +511,8 @@ absl::StatusOr<bool> TrainUntilMemorized(
            << "\nsamples=" << training->sample_count()
            << "\nscored_targets=" << training->supervised_row_count() << '\n';
   manifest.flush();
-  log << "layers=" << layers << " width=" << model_config.model_width
+  log << "architecture=" << model->name() << " layers=" << layers
+      << " width=" << model_config.model_width
       << " heads=" << model_config.attention_heads
       << " vocabulary=" << tokenizer.vocab_size()
       << " feed_forward_width=" << model_config.feed_forward_width
@@ -472,7 +524,8 @@ absl::StatusOr<bool> TrainUntilMemorized(
       [&](const std::filesystem::path& directory) -> absl::Status {
     if (vocabulary != nullptr)
       return SaveCheckpoint(executor, *model, directory, *vocabulary);
-    return WriteToDirectory(executor, *model, directory);
+    RETURN_IF_ERROR(WriteToDirectory(executor, *model, directory));
+    return SaveArchitecture(*model, directory);
   };
   RETURN_IF_ERROR(save_checkpoint(checkpoints / "step_0"));
   RETURN_IF_ERROR(executor.Synchronize());
@@ -541,7 +594,8 @@ absl::StatusOr<bool> TrainUntilMemorized(
   RETURN_IF_ERROR(save_checkpoint(final_checkpoint));
   // Reload the on-disk weights and repeat the full audit. This verifies that
   // success belongs to a usable checkpoint, not just an in-memory model.
-  RETURN_IF_ERROR(ReadFromDirectory(executor, *model, final_checkpoint));
+  RETURN_IF_ERROR(ValidateArchitecture(*model, final_checkpoint));
+  RETURN_IF_ERROR(ReadFromDirectory(executor, *model, final_checkpoint, false));
   std::ofstream details(output / "final_predictions.tsv");
   if (!details)
     return absl::InternalError("cannot write final prediction audit");
@@ -553,6 +607,7 @@ absl::StatusOr<bool> TrainUntilMemorized(
   report(completed, metrics);
   std::ofstream result(output / "result.txt");
   result << "success=" << (metrics.errors == 0) << "\nlayers=" << layers
+         << "\narchitecture=" << model->name()
          << "\nwidth=" << model_config.model_width
          << "\nheads=" << model_config.attention_heads
          << "\nfeed_forward_width=" << model_config.feed_forward_width
@@ -607,9 +662,7 @@ absl::StatusOr<bool> VerifyCheckpoint(
                                   executor, corpus.text(), tokenizer, options));
   const auto model_config =
       ModelConfiguration(absl::GetFlag(FLAGS_layers), tokenizer.vocab_size());
-  ASSIGN_OR_RETURN(auto model,
-                   CreateGpt2(executor, DataType::BF16,
-                              absl::GetFlag(FLAGS_seed), model_config));
+  ASSIGN_OR_RETURN(auto model, CreateExperimentModel(executor, model_config));
   ASSIGN_OR_RETURN(auto loss, CrossEntropyLossLayer::Create(
                                   executor, tokenizer.vocab_size(),
                                   DataType::BF16, model_config.context_length));
@@ -617,6 +670,8 @@ absl::StatusOr<bool> VerifyCheckpoint(
   // allowance: a smaller depth can otherwise mistake the next block's input
   // norm for its final norm. The reader counts unique allocations itself,
   // including the tied embedding/head only once.
+  RETURN_IF_ERROR(
+      ValidateArchitecture(*model, absl::GetFlag(FLAGS_verify_checkpoint)));
   RETURN_IF_ERROR(ReadFromDirectory(executor, *model,
                                     absl::GetFlag(FLAGS_verify_checkpoint),
                                     /*allow_prefix=*/false));
@@ -633,6 +688,7 @@ absl::StatusOr<bool> VerifyCheckpoint(
     return absl::InternalError("writing independent predictions failed");
   std::ofstream result(output / "result.txt");
   result << "checkpoint=" << absl::GetFlag(FLAGS_verify_checkpoint)
+         << "\narchitecture=" << model->name()
          << "\ncorpus=" << absl::GetFlag(FLAGS_corpus)
          << "\ntokenizer=" << absl::GetFlag(FLAGS_tokenizer)
          << "\nlayers=" << absl::GetFlag(FLAGS_layers)
@@ -680,11 +736,12 @@ absl::Status RunInference(cuda::Executor& executor,
                                          absl::GetFlag(FLAGS_tokenizer)));
   const auto config = ModelConfiguration(absl::GetFlag(FLAGS_layers),
                                          model_tokenizer->vocab_size());
-  ASSIGN_OR_RETURN(auto model, CreateGpt2(executor, DataType::BF16,
-                                          absl::GetFlag(FLAGS_seed), config));
+  ASSIGN_OR_RETURN(auto model, CreateExperimentModel(executor, config));
+  RETURN_IF_ERROR(ValidateArchitecture(*model, checkpoint));
   RETURN_IF_ERROR(ReadFromDirectory(executor, *model, checkpoint,
                                     /*allow_prefix=*/false));
   std::cerr << "checkpoint=" << checkpoint.string()
+            << " architecture=" << model->name()
             << " layers=" << config.transformer_block_count
             << " width=" << config.model_width
             << " heads=" << config.attention_heads

@@ -41,6 +41,7 @@ constexpr FlagRule kFlagRules[] = {
     {"feed_forward_width", kAll},
     {"context_length", kAll},
     {"compact_vocabulary", kAll},
+    {"a3_mlp_stack", kTrain | kGenerate | kVerify},
     {"seed", kTrain | kGenerate | kVerify | kPuzzleTrain},
     {"checkpoint_dir", kTrain},
     {"search", kTrain},
@@ -103,6 +104,15 @@ absl::StatusOr<Mode> ParseAndValidateRunMode(
       options.infer_checkpoint, options.verify_checkpoint,
       options.puzzle_checkpoint, options.train_mlp, options.train_stacked_mlp,
       options.train_mlp_transformer));
+
+  if (mode != Mode::kPuzzle && options.a3_mlp_stack) {
+    if (options.layers != 4)
+      return absl::InvalidArgumentError(
+          "--layers must be 4 with --a3_mlp_stack");
+    if (mode == Mode::kTrainModel && options.search)
+      return absl::InvalidArgumentError(
+          "--search=true is not supported with --a3_mlp_stack");
+  }
 
   const bool train_puzzle = options.train_mlp || options.train_stacked_mlp ||
                             options.train_mlp_transformer;

@@ -36,6 +36,8 @@ struct CommandLineOptions {
   int warmup_steps = 0;
   int seed = 0;
   int mlp_width = 0;
+  bool a3_mlp_stack = false;
+  bool search = false;
   bool train_mlp = false;
   bool train_stacked_mlp = false;
   bool train_mlp_transformer = false;

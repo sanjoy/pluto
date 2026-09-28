@@ -142,6 +142,7 @@ TEST(MemorizeGeneralFactsCliTest, FiltersEveryFlagByExecutionPath) {
       {"feed_forward_width", true, true, true, true, true},
       {"context_length", true, true, true, true, true},
       {"compact_vocabulary", true, true, true, true, true},
+      {"a3_mlp_stack", true, true, true, false, false},
       {"seed", true, true, true, false, true},
       {"checkpoint_dir", true, false, false, false, false},
       {"search", true, false, false, false, false},
@@ -204,42 +205,31 @@ TEST(MemorizeGeneralFactsCliTest, FiltersEveryFlagByExecutionPath) {
 }
 
 TEST(MemorizeGeneralFactsCliTest, AcceptsCompleteFlagSetsForEachPath) {
-  EXPECT_TRUE(Validate(Mode::kTrainModel, {"mode",
-                                           "tokenizer",
-                                           "layers",
-                                           "model_width",
-                                           "attention_heads",
-                                           "feed_forward_width",
-                                           "context_length",
-                                           "compact_vocabulary",
-                                           "seed",
-                                           "checkpoint_dir",
-                                           "search",
-                                           "steps",
-                                           "eval_every",
-                                           "checkpoint_every",
-                                           "learning_rate",
-                                           "warmup_steps",
-                                           "training_seconds",
-                                           "corpus",
-                                           "output_dir",
-                                           "batch_size"})
-                  .ok());
+  EXPECT_TRUE(
+      Validate(Mode::kTrainModel,
+               {"mode",           "tokenizer",          "layers",
+                "model_width",    "attention_heads",    "feed_forward_width",
+                "context_length", "compact_vocabulary", "a3_mlp_stack",
+                "seed",           "checkpoint_dir",     "search",
+                "steps",          "eval_every",         "checkpoint_every",
+                "learning_rate",  "warmup_steps",       "training_seconds",
+                "corpus",         "output_dir",         "batch_size"})
+          .ok());
   EXPECT_TRUE(
       Validate(Mode::kInferModel,
                {"mode", "tokenizer", "layers", "model_width", "attention_heads",
                 "feed_forward_width", "context_length", "compact_vocabulary",
-                "seed", "infer_checkpoint", "prompt", "generation_tokens",
-                "print_attention_probs"},
+                "a3_mlp_stack", "seed", "infer_checkpoint", "prompt",
+                "generation_tokens", "print_attention_probs"},
                "/model", "", "/tokenizer", "")
           .ok());
   EXPECT_TRUE(
-      Validate(
-          Mode::kInferModel,
-          {"mode", "tokenizer", "layers", "model_width", "attention_heads",
-           "feed_forward_width", "context_length", "compact_vocabulary", "seed",
-           "verify_checkpoint", "corpus", "output_dir", "batch_size"},
-          "", "/model", "/tokenizer", "")
+      Validate(Mode::kInferModel,
+               {"mode", "tokenizer", "layers", "model_width", "attention_heads",
+                "feed_forward_width", "context_length", "compact_vocabulary",
+                "seed", "a3_mlp_stack", "verify_checkpoint", "corpus",
+                "output_dir", "batch_size"},
+               "", "/model", "/tokenizer", "")
           .ok());
 }
 
@@ -367,6 +357,76 @@ TEST(MemorizeGeneralFactsCliTest, ValidatesAndReturnsEachExecutionMode) {
     EXPECT_EQ(*mode, options.mode == "train_model" ? Mode::kTrainModel
                      : options.mode == "puzzle"    ? Mode::kPuzzle
                                                    : Mode::kInferModel);
+  }
+}
+
+TEST(MemorizeGeneralFactsCliTest, A3MlpStackRequiresFourReferenceBlocks) {
+  for (auto options :
+       {TrainingOptions(), GenerationOptions(), VerificationOptions()}) {
+    SCOPED_TRACE(options.mode);
+    SCOPED_TRACE(options.verify_checkpoint);
+    options.a3_mlp_stack = true;
+    for (int layers : {std::numeric_limits<int>::min(), -1, 0, 1, 2, 3, 5,
+                       std::numeric_limits<int>::max()}) {
+      SCOPED_TRACE(layers);
+      options.layers = layers;
+      ExpectInvalid(ValidateOptions(options, {"a3_mlp_stack", "layers"}),
+                    "--layers must be 4 with --a3_mlp_stack");
+    }
+    options.layers = 4;
+    EXPECT_TRUE(ValidateOptions(options, {"a3_mlp_stack", "layers"}).ok());
+  }
+}
+
+TEST(MemorizeGeneralFactsCliTest,
+     DisabledA3MlpStackPreservesOtherArchitectures) {
+  for (auto options :
+       {TrainingOptions(), GenerationOptions(), VerificationOptions()}) {
+    SCOPED_TRACE(options.mode);
+    SCOPED_TRACE(options.verify_checkpoint);
+    EXPECT_FALSE(options.a3_mlp_stack);
+    for (int layers : {1, 3, 4, 5}) {
+      SCOPED_TRACE(layers);
+      options.layers = layers;
+      EXPECT_TRUE(ValidateOptions(options, {"a3_mlp_stack", "layers"}).ok());
+    }
+  }
+}
+
+TEST(MemorizeGeneralFactsCliTest,
+     PuzzleRejectsExplicitA3MlpStackEvenWhenFalse) {
+  for (auto options :
+       {PuzzleCommandLineOptions(), PuzzleCommandLineOptions(true),
+        PuzzleCommandLineOptions(false, true),
+        PuzzleCommandLineOptions(false, false, true)}) {
+    SCOPED_TRACE(options.train_mlp);
+    SCOPED_TRACE(options.train_stacked_mlp);
+    SCOPED_TRACE(options.train_mlp_transformer);
+    for (bool enabled : {false, true}) {
+      SCOPED_TRACE(enabled);
+      options.a3_mlp_stack = enabled;
+      ExpectInvalid(ValidateOptions(options, {"a3_mlp_stack"}),
+                    "--a3_mlp_stack is not valid in --mode=puzzle");
+    }
+  }
+}
+
+TEST(MemorizeGeneralFactsCliTest, A3MlpStackCannotEnableArchitectureSearch) {
+  auto options = TrainingOptions();
+  options.layers = 4;
+  for (bool a3_mlp_stack : {false, true}) {
+    for (bool search : {false, true}) {
+      SCOPED_TRACE(a3_mlp_stack);
+      SCOPED_TRACE(search);
+      options.a3_mlp_stack = a3_mlp_stack;
+      options.search = search;
+      const auto status = ValidateOptions(options, {"a3_mlp_stack", "search"});
+      if (a3_mlp_stack && search)
+        ExpectInvalid(status,
+                      "--search=true is not supported with --a3_mlp_stack");
+      else
+        EXPECT_TRUE(status.ok()) << status;
+    }
   }
 }
 

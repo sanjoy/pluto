@@ -51,6 +51,23 @@ class CompactSizeSweepTest(unittest.TestCase):
         self.assertEqual(parameter_count(4, 13, 26), 64532)
         self.assertEqual(parameter_count(4, 13, 26, context=27), 64532)
 
+    def test_a3_mlp_stack_parameter_count(self):
+        self.assertEqual(parameter_count(4, 10, 20), 48680)
+        self.assertEqual(parameter_count(4, 10, 20, a3_mlp_stack=True), 48670)
+        # Shared embeddings/final LN plus three attention and five MLP sublayers.
+        self.assertEqual(parameter_count(4, 12, 37, 17, 7, a3_mlp_stack=True),
+                         (17 + 7 + 2) * 12 + 3 * (4 * 12**2 + 6 * 12)
+                         + 5 * ((2 * 12 + 1) * 37 + 3 * 12))
+        with self.assertRaisesRegex(ValueError, "layers=4"):
+            parameter_count(3, 10, 20, a3_mlp_stack=True)
+
+    def test_a3_mlp_stack_requires_four_reference_blocks(self):
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            parse_args(self.arguments + ["--a3_mlp_stack"])
+        args = parse_args(self.arguments + ["--a3_mlp_stack",
+                                            "--candidates=4:10:20:120000:0.0012"])
+        self.assertTrue(args.a3_mlp_stack)
+
     def test_parameter_count_includes_each_unique_array_once(self):
         # Spell out the embedding, position embedding, two norms, attention
         # projections, feed-forward projections, and final norm independently.
@@ -154,9 +171,12 @@ class CompactSizeSweepTest(unittest.TestCase):
                              ("layers", "model_width", "feed_forward_width"))
         result = {"layers": layers, "width": width, "feed_forward_width": ff,
                   "parameters": parameter_count(layers, width, ff,
-                                                context=int(flags["context_length"])),
+                                                context=int(flags["context_length"]),
+                                                a3_mlp_stack=flags.get("a3_mlp_stack") == "true"),
                   "heads": 1, "context_length": int(flags["context_length"]),
                   "vocabulary": 4475, "targets": 10002, "errors": 0}
+        if flags.get("a3_mlp_stack") == "true":
+            result["architecture"] = "gpt2_a3_mlp_stack"
         output = Path(flags["output_dir"])
         if flags["mode"] == "train_model":
             self.assertEqual(flags["search"], "false")
@@ -164,6 +184,8 @@ class CompactSizeSweepTest(unittest.TestCase):
             output /= f"layers_{layers}"
             checkpoint = Path(flags["checkpoint_dir"]) / f"layers_{layers}" / "step_256"
             checkpoint.mkdir(parents=True)
+            if flags.get("a3_mlp_stack") == "true":
+                (checkpoint / "architecture.txt").write_text("gpt2_a3_mlp_stack\n")
             output.mkdir(parents=True)
             mapping = ("compact_vocabulary_v1\noriginal_vocab_size\t50257\n"
                        "original_eos_token\t50256\ncompact_vocab_size\t2\n"
@@ -201,6 +223,17 @@ class CompactSizeSweepTest(unittest.TestCase):
                                 clock=options.pop("clock", lambda: 100),
                                 **options)
         return status, json.loads((args.run_dir / "summary.json").read_text())
+
+    def test_a3_mlp_stack_is_used_in_training_and_both_verifications(self):
+        status, summary = self.run_fake(extra_arguments=[
+            "--a3_mlp_stack", "--candidates=4:10:20:120000:0.0012"])
+        self.assertEqual(status, 0)
+        self.assertEqual(summary["trials"][0]["status"], "verified")
+        self.assertEqual(summary["trials"][0]["parameters"], 48670)
+        self.assertEqual(summary["trials"][0]["architecture"], "gpt2_a3_mlp_stack")
+        self.assertEqual(len(self.calls), 3)
+        for command in self.calls:
+            self.assertIn("--a3_mlp_stack=true", command)
 
     def test_expired_deadline_never_launches_or_creates_run(self):
         args = parse_args(self.arguments)

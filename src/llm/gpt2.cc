@@ -26,27 +26,24 @@ namespace {
 constexpr float kLayerNormEpsilon = 1e-5f;
 constexpr float kInitializationStandardDeviation = 0.02f;
 
-// Builds one pre-LayerNorm GPT-2 transformer block:
-//
-//   x = x + W_o CausalMHA(W_qkv LayerNorm(x))
-//   x = x + W_2 GELU(W_1 LayerNorm(x))
-//
-// W_qkv maps the model width to three independent Q/K/V tensors. CausalMHA
-// uses online FP32 softmax statistics. The MLP expands the representation to
-// config.feed_forward_width. Dropout and attention dropout are exactly zero.
-// Every block receives independently initialized parameters.
-absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateTransformerBlock(
-    cuda::Executor& executor, DataType output_type, int initialization_seed,
-    int block_index, const Gpt2Config& config) {
+float ResidualInitializationStandardDeviation() {
   // Intentionally use the original eight-block scaling at every depth. Shared
   // blocks therefore initialize identically in depth comparisons, and adding
   // this configuration API does not change existing checkpoint trajectories.
-  const float residual_standard_deviation =
-      kInitializationStandardDeviation /
-      std::sqrt(2.0f * kGpt2TransformerBlockCount);
-  const uint64_t seed_base =
-      static_cast<uint64_t>(static_cast<uint32_t>(initialization_seed)) +
-      1'000 + static_cast<uint64_t>(block_index) * 100;
+  return kInitializationStandardDeviation /
+         std::sqrt(2.0f * kGpt2TransformerBlockCount);
+}
+
+uint64_t BlockSeedBase(int initialization_seed, int block_index) {
+  return static_cast<uint64_t>(static_cast<uint32_t>(initialization_seed)) +
+         1'000 + static_cast<uint64_t>(block_index) * 100;
+}
+
+// Pre-LayerNorm attention branch, without its outer residual addition.
+absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateAttentionBranch(
+    cuda::Executor& executor, DataType output_type, int initialization_seed,
+    int block_index, const Gpt2Config& config) {
+  const uint64_t seed_base = BlockSeedBase(initialization_seed, block_index);
 
   ComposedLayerBuilder attention_builder;
   RETURN_IF_ERROR(attention_builder.add(
@@ -68,8 +65,15 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateTransformerBlock(
   auto* attention_projection =
       static_cast<FullyConnectedLayer*>(attention_builder.back());
   RETURN_IF_ERROR(attention_projection->InitializeNormal(
-      residual_standard_deviation, seed_base + 2));
+      ResidualInitializationStandardDeviation(), seed_base + 2));
+  return attention_builder.create("attention");
+}
 
+// Pre-LayerNorm MLP branch, without its outer residual addition.
+absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateMlpBranch(
+    cuda::Executor& executor, DataType output_type, int initialization_seed,
+    int block_index, const Gpt2Config& config) {
+  const uint64_t seed_base = BlockSeedBase(initialization_seed, block_index);
   ComposedLayerBuilder mlp_builder;
   RETURN_IF_ERROR(mlp_builder.add(
       LayerNormLayer::Create(executor, config.model_width, kLayerNormEpsilon,
@@ -87,11 +91,22 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateTransformerBlock(
       executor, config.feed_forward_width, config.model_width, output_type,
       config.context_length)));
   auto* mlp_output = static_cast<FullyConnectedLayer*>(mlp_builder.back());
-  RETURN_IF_ERROR(
-      mlp_output->InitializeNormal(residual_standard_deviation, seed_base + 4));
+  RETURN_IF_ERROR(mlp_output->InitializeNormal(
+      ResidualInitializationStandardDeviation(), seed_base + 4));
+  return mlp_builder.create("mlp");
+}
 
-  ASSIGN_OR_RETURN(auto attention, attention_builder.create("attention"));
-  ASSIGN_OR_RETURN(auto mlp, mlp_builder.create("mlp"));
+// One ordinary GPT-2 block retains the historical topology, diagnostic names,
+// parameter order, and initialization seeds when sharing these branch helpers.
+absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateTransformerBlock(
+    cuda::Executor& executor, DataType output_type, int initialization_seed,
+    int block_index, const Gpt2Config& config) {
+  ASSIGN_OR_RETURN(auto attention, CreateAttentionBranch(executor, output_type,
+                                                         initialization_seed,
+                                                         block_index, config));
+  ASSIGN_OR_RETURN(auto mlp,
+                   CreateMlpBranch(executor, output_type, initialization_seed,
+                                   block_index, config));
   ComposedLayerBuilder block_builder;
   RETURN_IF_ERROR(
       block_builder.add(ResidualLayer::Create(std::move(attention))));
@@ -217,6 +232,37 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateGpt2(
   RETURN_IF_ERROR(
       builder.add(LanguageModelingHeadLayer::Create(embedding, token_order)));
   return builder.create("gpt2");
+}
+
+absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateGpt2WithA3MlpStack(
+    cuda::Executor& executor, DataType output_type, int seed,
+    const Gpt2Config& config, absl::Span<const int32_t> token_order) {
+  if (config.transformer_block_count != 4)
+    return absl::InvalidArgumentError(
+        "gpt2_a3_mlp_stack requires transformer_block_count == 4");
+  RETURN_IF_ERROR(config.Validate());
+  RETURN_IF_ERROR(ValidateTokenOrder(config.vocabulary_size, token_order));
+
+  ComposedLayerBuilder builder;
+  Gpt2Config prefix_config = config;
+  prefix_config.transformer_block_count = 2;
+  ASSIGN_OR_RETURN(auto* embedding,
+                   AddActivationGeneratorLayers(
+                       executor, builder, prefix_config, output_type, seed));
+  ASSIGN_OR_RETURN(auto attention, CreateAttentionBranch(executor, output_type,
+                                                         seed, 2, config));
+  RETURN_IF_ERROR(builder.add(ResidualLayer::Create(std::move(attention))));
+  for (int mlp_index = 2; mlp_index < 5; ++mlp_index) {
+    ASSIGN_OR_RETURN(auto mlp, CreateMlpBranch(executor, output_type, seed,
+                                               mlp_index, config));
+    RETURN_IF_ERROR(builder.add(ResidualLayer::Create(std::move(mlp))));
+  }
+  RETURN_IF_ERROR(builder.add(
+      LayerNormLayer::Create(executor, config.model_width, kLayerNormEpsilon,
+                             output_type, config.context_length)));
+  RETURN_IF_ERROR(
+      builder.add(LanguageModelingHeadLayer::Create(embedding, token_order)));
+  return builder.create("gpt2_a3_mlp_stack");
 }
 
 }  // namespace pluto::llm

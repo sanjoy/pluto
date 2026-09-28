@@ -98,6 +98,31 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "gpt2_mlp_stack_test",
+    size = "medium",
+    srcs = ["gpt2_mlp_stack_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":checkpoint",
+        ":cross_entropy_loss",
+        ":gpt2",
+        ":layer",
+        ":layer_hooks",
+        ":optimizer",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "token_order",
     srcs = ["token_order.cc"],

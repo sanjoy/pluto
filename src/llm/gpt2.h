@@ -112,4 +112,20 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateGpt2(
     cuda::Executor& executor, DataType output_type, int seed,
     const Gpt2Config& config, absl::Span<const int32_t> token_order = {});
 
+// Builds a fresh, fully trainable alternative to a four-block GPT-2:
+// embeddings -> A1 M1 A2 M2 A3 -> MLP -> MLP -> MLP -> final norm -> tied head.
+// Each A/MLP is a residual pre-LayerNorm branch. This has three attention
+// branches and five total MLPs, compared with four attention/four MLP branches
+// in CreateGpt2. Exactly three MLPs follow A3, at any configured width.
+// config.transformer_block_count must be four. The embeddings and first 32
+// parameter tensors match CreateGpt2 with the same config and seed; later
+// MLPs use the ordinary GPT-2 seeds for MLP indices 2, 3, and 4. Initialization
+// retains the native 0.02 input / 0.005 residual standard deviations.
+// No checkpoint or frozen source model is used. For width 10, FF width 20,
+// vocabulary 4475 without table padding, and context 27, this stores 48,670
+// unique trainable parameters, versus 48,680 in the four-block baseline.
+absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateGpt2WithA3MlpStack(
+    cuda::Executor& executor, DataType output_type, int seed,
+    const Gpt2Config& config, absl::Span<const int32_t> token_order = {});
+
 }  // namespace pluto::llm

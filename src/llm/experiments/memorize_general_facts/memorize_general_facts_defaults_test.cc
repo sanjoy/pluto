@@ -115,6 +115,7 @@ TEST_F(MemorizeGeneralFactsDefaultsTest, DefaultsMatchSmallestMemorizedModel) {
       {"feed_forward_width", "20"},
       {"context_length", "27"},
       {"compact_vocabulary", "true"},
+      {"a3_mlp_stack", "false"},
       {"batch_size", "32"},
       {"steps", "120000"},
       {"learning_rate", "0.0012"},
@@ -155,6 +156,90 @@ TEST_F(MemorizeGeneralFactsDefaultsTest,
   EXPECT_NE(output_.find("--steps is not valid in --mode=infer_model"),
             std::string::npos)
       << output_;
+}
+
+TEST_F(MemorizeGeneralFactsDefaultsTest,
+       A3MlpStackIsAcceptedForTrainingGenerationAndVerification) {
+  // A later invalid context length stops valid selectors before CUDA or I/O.
+  const std::vector<std::string> paths[] = {
+      {"--mode=train_model", "--checkpoint_dir=unused_checkpoints"},
+      {"--mode=infer_model", "--infer_checkpoint=unused_checkpoint"},
+      {"--mode=infer_model", "--verify_checkpoint=unused_checkpoint"},
+  };
+  for (const auto& path : paths) {
+    for (const char* value : {"false", "true"}) {
+      SCOPED_TRACE(path.front());
+      SCOPED_TRACE(path.back());
+      SCOPED_TRACE(value);
+      auto arguments = path;
+      arguments.push_back("--tokenizer=unused_tokenizer");
+      arguments.push_back(std::string("--a3_mlp_stack=") + value);
+      arguments.push_back("--context_length=0");
+      ASSERT_NO_FATAL_FAILURE(Run(std::move(arguments)));
+      EXPECT_EQ(exit_code_, 1) << output_;
+      EXPECT_NE(output_.find("--context_length must be positive"),
+                std::string::npos)
+          << output_;
+    }
+  }
+}
+
+TEST_F(MemorizeGeneralFactsDefaultsTest,
+       A3MlpStackRejectsOtherReferenceDepthsBeforeOpeningCuda) {
+  const std::vector<std::string> paths[] = {
+      {"--mode=train_model", "--checkpoint_dir=unused_checkpoints"},
+      {"--mode=infer_model", "--infer_checkpoint=unused_checkpoint"},
+      {"--mode=infer_model", "--verify_checkpoint=unused_checkpoint"},
+  };
+  for (const auto& path : paths) {
+    for (const char* value : {"-1", "3", "5"}) {
+      SCOPED_TRACE(path.front());
+      SCOPED_TRACE(path.back());
+      SCOPED_TRACE(value);
+      auto arguments = path;
+      arguments.push_back("--tokenizer=unused_tokenizer");
+      arguments.push_back("--a3_mlp_stack");
+      arguments.push_back(std::string("--layers=") + value);
+      ASSERT_NO_FATAL_FAILURE(Run(std::move(arguments)));
+      EXPECT_EQ(exit_code_, 1) << output_;
+      EXPECT_NE(output_.find("--layers must be 4 with --a3_mlp_stack"),
+                std::string::npos)
+          << output_;
+    }
+  }
+}
+
+TEST_F(MemorizeGeneralFactsDefaultsTest,
+       A3MlpStackRejectsArchitectureSearchBeforeOpeningCuda) {
+  ASSERT_NO_FATAL_FAILURE(
+      Run({"--mode=train_model", "--checkpoint_dir=unused_checkpoints",
+           "--tokenizer=unused_tokenizer", "--a3_mlp_stack", "--search"}));
+  EXPECT_EQ(exit_code_, 1) << output_;
+  EXPECT_NE(output_.find("--search=true is not supported with --a3_mlp_stack"),
+            std::string::npos)
+      << output_;
+}
+
+TEST_F(MemorizeGeneralFactsDefaultsTest,
+       PuzzleRejectsExplicitA3MlpStackEvenWhenFalse) {
+  for (const char* selector :
+       {"", "--train_mlp", "--train_stacked_mlp", "--train_mlp_transformer"}) {
+    for (const char* value : {"false", "true"}) {
+      SCOPED_TRACE(selector);
+      SCOPED_TRACE(value);
+      std::vector<std::string> arguments = {
+          "--mode=puzzle", "--puzzle_checkpoint=unused_checkpoint",
+          "--tokenizer=unused_tokenizer",
+          std::string("--a3_mlp_stack=") + value};
+      if (std::string_view(selector) != "")
+        arguments.push_back(selector);
+      ASSERT_NO_FATAL_FAILURE(Run(std::move(arguments)));
+      EXPECT_EQ(exit_code_, 1) << output_;
+      EXPECT_NE(output_.find("--a3_mlp_stack is not valid in --mode=puzzle"),
+                std::string::npos)
+          << output_;
+    }
+  }
 }
 
 TEST_F(MemorizeGeneralFactsDefaultsTest,
