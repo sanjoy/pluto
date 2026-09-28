@@ -274,6 +274,126 @@ absl::StatusOr<BufferVec> ComposedLayer::bwd_body(
   return gradients;
 }
 
+absl::StatusOr<std::unique_ptr<ParallelLayer>> ParallelLayer::Create(
+    std::string name, std::vector<std::unique_ptr<Layer>> layers) {
+  if (name.empty())
+    return absl::InvalidArgumentError("parallel layer name must not be empty");
+  if (layers.empty())
+    return absl::FailedPreconditionError(
+        "cannot create an empty ParallelLayer");
+  for (size_t i = 0; i < layers.size(); ++i) {
+    if (layers[i] == nullptr)
+      return absl::InvalidArgumentError("parallel child must not be null");
+    RETURN_IF_ERROR(internal::ValidateTypes(layers[i]->input_types()));
+    RETURN_IF_ERROR(internal::ValidateTypes(layers[i]->output_types()));
+    if (i != 0) {
+      const auto status = internal::ValidateTypeConnection(
+          layers.front()->input_types(), layers[i]->input_types());
+      if (!status.ok())
+        return absl::InvalidArgumentError(
+            absl::StrCat("parallel child ", i, ": ", status.message()));
+    }
+  }
+  return absl::WrapUnique(
+      new ParallelLayer(std::move(name), std::move(layers)));
+}
+
+ParallelLayer::ParallelLayer(std::string name,
+                             std::vector<std::unique_ptr<Layer>> layers)
+    : name_(std::move(name)), layers_(std::move(layers)) {
+  for (const auto& layer : layers_) {
+    const auto types = layer->output_types();
+    output_types_.insert(output_types_.end(), types.begin(), types.end());
+    for (const Buffer& weight : layer->weights())
+      weights_.push_back(weight);
+    for (const Buffer& gradient : layer->gradients())
+      gradients_.push_back(gradient);
+  }
+}
+
+absl::StatusOr<FwdResult> ParallelLayer::fwd_impl(
+    cuda::Executor& executor, absl::Span<const Buffer> inputs,
+    LayerHooks* hooks) const {
+  return WithCombinatorScope(executor, hooks, *this, &ParallelLayer::fwd_body,
+                             inputs);
+}
+
+absl::StatusOr<FwdResult> ParallelLayer::fwd_body(
+    cuda::Executor& executor, absl::Span<const Buffer> inputs,
+    LayerHooks* hooks) const {
+  if (inputs.size() != input_types().size())
+    return absl::InvalidArgumentError(
+        "ParallelLayer fwd received an incompatible input arity");
+  FwdResult result;
+  for (const auto& layer : layers_) {
+    ASSIGN_OR_RETURN(auto child, layer->fwd(executor, inputs, hooks));
+    if (child.outputs.size() != layer->output_types().size())
+      return absl::InvalidArgumentError(
+          "parallel child returned an incompatible output arity");
+    for (auto& output : child.outputs)
+      result.outputs.push_back(std::move(output));
+    result.state.children.push_back(std::move(child.state));
+  }
+  return result;
+}
+
+absl::StatusOr<BufferVec> ParallelLayer::bwd_impl(
+    cuda::Executor& executor, absl::Span<const Buffer> output_gradients,
+    BackwardState state, LayerHooks* hooks) {
+  return WithCombinatorScope(executor, hooks, *this, &ParallelLayer::bwd_body,
+                             output_gradients, std::move(state));
+}
+
+absl::StatusOr<BufferVec> ParallelLayer::bwd_body(
+    cuda::Executor& executor, absl::Span<const Buffer> output_gradients,
+    BackwardState state, LayerHooks* hooks) {
+  if (state.children.size() != layers_.size() ||
+      output_gradients.size() != output_types_.size())
+    return absl::InvalidArgumentError(
+        "ParallelLayer bwd received an incompatible gradient or state");
+  for (size_t i = 0; i < layers_.size(); ++i)
+    if (state.children[i].layer != layers_[i].get())
+      return absl::InvalidArgumentError(
+          "ParallelLayer bwd received a state from another child");
+
+  BufferVec gradients;
+  size_t offset = 0;
+  for (size_t i = 0; i < layers_.size(); ++i) {
+    const size_t count = layers_[i]->output_types().size();
+    ASSIGN_OR_RETURN(
+        auto child,
+        layers_[i]->bwd(executor, output_gradients.subspan(offset, count),
+                        std::move(state.children[i]), hooks));
+    offset += count;
+    if ((!child.empty() && child.size() != input_types().size()) ||
+        (i != 0 && child.size() != gradients.size()))
+      return absl::InvalidArgumentError(
+          "parallel child returned an incompatible input gradient arity");
+    for (size_t j = 0; j < child.size(); ++j) {
+      ASSIGN_OR_RETURN(int elements,
+                       ElementCount(executor, child[j], sizeof(float),
+                                    "parallel input gradient"));
+      if (i == 0)
+        continue;
+      if (gradients[j].size_bytes() != child[j].size_bytes())
+        return absl::InvalidArgumentError(
+            "parallel children returned different input gradient sizes");
+      ASSIGN_OR_RETURN(auto sum,
+                       Buffer::Allocate(executor, child[j].size_bytes()));
+      AddKernel<float><<<MaskedTileCount(elements), 1, 0, executor.stream()>>>(
+          static_cast<const float*>(gradients[j].data()),
+          static_cast<const float*>(child[j].data()), elements,
+          static_cast<float*>(sum.data()));
+      RETURN_IF_ERROR(CudaStatus(cudaGetLastError(),
+                                 "AddKernel(parallel gradient) launch"));
+      gradients[j] = std::move(sum);
+    }
+    if (i == 0)
+      gradients = std::move(child);
+  }
+  return gradients;
+}
+
 absl::Status ComposedLayerBuilder::add(std::unique_ptr<Layer> layer) {
   if (layer == nullptr) {
     return absl::InvalidArgumentError(

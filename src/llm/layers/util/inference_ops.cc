@@ -1,4 +1,4 @@
-#include "src/llm/qwen/ops.h"
+#include "src/llm/layers/util/inference_ops.h"
 
 #include <cuda_bf16.h>
 #include <cuda_fp8.h>
@@ -10,7 +10,7 @@
 
 #include "src/util/status_macros.h"
 
-namespace pluto::llm::qwen {
+namespace pluto::llm::inference_ops {
 namespace {
 
 namespace ct = ::cuda::tiles;
@@ -116,6 +116,27 @@ __tile_global__ void EmbeddingKernel(const T* weights, int token, int width,
                  ct::bid().x);
 }
 
+template <class T>
+__tile_global__ void DeviceEmbeddingKernel(const T* weights,
+                                           const int32_t* token, int vocab,
+                                           int width, float* output) {
+  auto index = ct::partition_view{ct::tensor_span{token, ct::extents{1}},
+                                  ct::shape{1_ic}};
+  auto y = ct::partition_view{ct::tensor_span{output, ct::extents{width}},
+                              ct::shape{256_ic}};
+  const int id = static_cast<int>(index.load(0));
+  if (id < 0 || id >= vocab) {
+    y.store_masked(ct::zeros<ct::tile<float, ct::shape<256>>>(), ct::bid().x);
+    return;
+  }
+  auto x = ct::partition_view{
+      ct::tensor_span{weights + static_cast<int64_t>(id) * width,
+                      ct::extents{width}},
+      ct::shape{256_ic}};
+  y.store_masked(ct::element_cast<float>(x.load_masked(ct::bid().x)),
+                 ct::bid().x);
+}
+
 absl::Status CheckElements(int n, const void* x, const void* y) {
   if (n <= 0 || x == nullptr || y == nullptr)
     return absl::InvalidArgumentError(
@@ -155,7 +176,7 @@ absl::Status MatVec(cuda::Executor& executor, const void* weights,
     default:
       return absl::InvalidArgumentError("unknown matrix storage type");
   }
-  return cuda::CudaStatus(cudaGetLastError(), "Qwen MatVecKernel");
+  return cuda::CudaStatus(cudaGetLastError(), "inference MatVecKernel");
 }
 
 absl::Status QuantizeFp8Input(cuda::Executor& executor, const float* input,
@@ -163,7 +184,7 @@ absl::Status QuantizeFp8Input(cuda::Executor& executor, const float* input,
   RETURN_IF_ERROR(CheckElements(elements, input, output));
   QuantizeKernel<<<1 + (elements - 1) / 128, 1, 0, executor.stream()>>>(
       input, elements, output);
-  return cuda::CudaStatus(cudaGetLastError(), "Qwen QuantizeKernel");
+  return cuda::CudaStatus(cudaGetLastError(), "inference QuantizeKernel");
 }
 
 absl::Status RmsNorm(cuda::Executor& executor, const float* input,
@@ -181,7 +202,7 @@ absl::Status RmsNorm(cuda::Executor& executor, const float* input,
   else
     NormKernel<16384><<<1, 1, 0, executor.stream()>>>(
         input, weight, width, epsilon, output, round_bf16);
-  return cuda::CudaStatus(cudaGetLastError(), "Qwen NormKernel");
+  return cuda::CudaStatus(cudaGetLastError(), "inference NormKernel");
 }
 
 absl::Status SwiGlu(cuda::Executor& executor, const float* gate,
@@ -192,7 +213,7 @@ absl::Status SwiGlu(cuda::Executor& executor, const float* gate,
   RETURN_IF_ERROR(CheckElements(elements, gate, output));
   BinaryKernel<true><<<1 + (elements - 1) / 256, 1, 0, executor.stream()>>>(
       gate, up, elements, output, round_bf16);
-  return cuda::CudaStatus(cudaGetLastError(), "Qwen SwiGlu");
+  return cuda::CudaStatus(cudaGetLastError(), "inference SwiGlu");
 }
 
 absl::Status ResidualAdd(cuda::Executor& executor, const float* input,
@@ -203,7 +224,7 @@ absl::Status ResidualAdd(cuda::Executor& executor, const float* input,
   RETURN_IF_ERROR(CheckElements(elements, input, output));
   BinaryKernel<false><<<1 + (elements - 1) / 256, 1, 0, executor.stream()>>>(
       input, update, elements, output, round_bf16);
-  return cuda::CudaStatus(cudaGetLastError(), "Qwen ResidualAdd");
+  return cuda::CudaStatus(cudaGetLastError(), "inference ResidualAdd");
 }
 
 absl::Status EmbeddingLookup(cuda::Executor& executor, const void* weights,
@@ -219,7 +240,25 @@ absl::Status EmbeddingLookup(cuda::Executor& executor, const void* weights,
         static_cast<const float*>(weights), token, width, output);
   else
     return absl::UnimplementedError("FP8 token embeddings are not supported");
-  return cuda::CudaStatus(cudaGetLastError(), "Qwen EmbeddingKernel");
+  return cuda::CudaStatus(cudaGetLastError(), "inference EmbeddingKernel");
 }
 
-}  // namespace pluto::llm::qwen
+absl::Status EmbeddingLookupDevice(cuda::Executor& executor,
+                                   const void* weights, MatrixStorage storage,
+                                   const int32_t* token, int vocab_size,
+                                   int width, float* output) {
+  if (!token || vocab_size <= 0 || width <= 0 || !weights || !output)
+    return absl::InvalidArgumentError("invalid device embedding lookup");
+  if (storage == MatrixStorage::kBFloat16)
+    DeviceEmbeddingKernel<<<1 + (width - 1) / 256, 1, 0, executor.stream()>>>(
+        static_cast<const __nv_bfloat16*>(weights), token, vocab_size, width,
+        output);
+  else if (storage == MatrixStorage::kFloat32)
+    DeviceEmbeddingKernel<<<1 + (width - 1) / 256, 1, 0, executor.stream()>>>(
+        static_cast<const float*>(weights), token, vocab_size, width, output);
+  else
+    return absl::UnimplementedError("FP8 token embeddings are not supported");
+  return cuda::CudaStatus(cudaGetLastError(), "DeviceEmbeddingKernel");
+}
+
+}  // namespace pluto::llm::inference_ops

@@ -13,12 +13,12 @@ Use the Hugging Face CLI (`hf`) to download the pinned, public checkpoint:
 ```sh
 hf download Qwen/Qwen3.8-27B-FP8 \
   --revision 017b9c7af6b5689d5dd426a76e0bc077eb5ca20a \
-  --local-dir /home/ubuntu/datasets/models/Qwen3.8-27B-FP8
+  --local-dir /home/ubuntu/checkpoints/models/Qwen3.8-27B-FP8
 
 bazel build -c opt //src/llm/qwen:qwen_infer
 
 bazel-bin/src/llm/qwen/qwen_infer \
-  --checkpoint=/home/ubuntu/datasets/models/Qwen3.8-27B-FP8 \
+  --checkpoint=/home/ubuntu/checkpoints/models/Qwen3.8-27B-FP8 \
   --prompt='What is 2 + 2? Reply with just the number.' \
   --max_new_tokens=12 --context_length=128
 ```
@@ -48,14 +48,30 @@ embedding and language-model output projection are **not tied**.
 - `checkpoint.{h,cc}` validates and memory-maps Hugging Face safetensors,
   including sharded indices, shapes, byte ranges and configuration constraints.
   It reads data only. No pickle or remote code is used.
-- `ops.{h,cc}` implements block-scaled FP8 matrix-vector products, dynamic
-  per-128-element activation quantization, zero-centered RMSNorm, SwiGLU,
-  residual addition and embedding lookup.
-- `attention_ops.{h,cc}` implements cached full attention and recurrent
-  GatedDeltaNet, with scalar CPU-formula comparisons in its tests.
-- `model.{h,cc}` loads the text weights and runs the decoder. `Step(token)`
-  consumes a token; `Logits()` predicts its successor; `Reset()` starts a new
-  sequence without reloading weights. The executor must outlive the model.
+- `model.{h,cc}` is a checkpoint loader and model recipe. Every decoder block
+  is a named `ComposedLayer` containing two ordinary `ResidualLayer` branches:
+  `RmsNorm -> attention/projections` and `RmsNorm -> SwiGLU MLP`. A generic
+  `ParallelLayer` fans out the Q/K/V or gate/up projections.
+- `src/llm/layers/full_attention.{h,cc}` and `delta_net.{h,cc}` are separate
+  stateful `Layer` implementations. The former supports cached GQA, rotary
+  positions, Q/K normalization, and gating; the latter owns recurrent and
+  convolution history. These contracts differ from the existing full-sequence,
+  equal-head, trainable `AttentionLayer`.
+- `src/llm/layers/inference.{h,cc}` contains imported-weight linear and embedding
+  layers, zero-centered RMSNorm, and SwiGLU. Unlike the existing trainable
+  projections/embeddings, these accept checkpoint storage/layouts directly,
+  without allocating FP32 master weights, biases, or gradients.
+- The cuTile kernels live under `src/llm/layers/util/` in `inference_ops.*` and
+  `cached_attention_ops.*`; their scalar CPU comparisons remain separate tests.
+- `Step(token, hooks)` consumes a token through the decoder graph;
+  `Logits(hooks)` runs the final norm and untied projection. Both accept the
+  standard optional `LayerHooks`. Projection, normalization, attention, gating,
+  residual and block outputs are observable/intervenable. Cached full-attention
+  probabilities have shape `[1, heads, 1, history_length]`.
+- `Reset()` starts a new sequence without reloading weights. A failed Step,
+  including a hook failure, requires Reset before continuing: some earlier
+  caches may already have advanced. Calls on one model cannot run concurrently.
+  The executor must outlive the model and all retained output buffers.
 - `src/dataset/qwen_tokenizer.{h,cc}` implements checkpoint-driven byte BPE,
   Qwen's pre-tokenization, added tokens and NFC normalization via utf8proc.
 
@@ -63,10 +79,15 @@ FP8 E4M3 weights remain compressed on the GPU. BF16 checkpoint block scales
 are expanded to FP32, as are small scalar tensors. For FP8 projections, inputs
 are dynamically quantized into E4M3 groups, then products and reductions are
 computed in FP32 with block scaling. These are simple cuTile GEMV kernels,
-**not an optimized FP8 tensor-core GEMM implementation**. Activations are kept
-in FP32 buffers but rounded to BF16 at operation boundaries. Full-attention
-softmax and recurrent state calculations retain FP32 precision. Floating-point
-reduction and recurrent-prefill ordering can differ from other runtimes;
+**not an optimized FP8 tensor-core GEMM implementation**. Layer activations use
+physical BF16 buffers; internal operator scratch, reductions, full-attention
+softmax and recurrent state calculations retain FP32 precision. Conversion
+kernels currently bridge BF16 layer boundaries to the FP32 kernel interfaces.
+Imported inference layers expose weights but no gradients and reject backward;
+the existing trainable layers and their backward implementations are unchanged.
+The Qwen recipe requires BF16 token embeddings, as in the official checkpoint;
+other embedding dtypes fail explicitly instead of silently changing precision.
+Floating-point reduction and recurrent-prefill ordering can differ from other runtimes;
 bitwise equality with Transformers/vLLM is not promised.
 
 Prompt prefill and decode both consume one token at a time. This is a bounded
@@ -82,7 +103,10 @@ Run synthetic operator, loader, cache and tokenizer tests without downloading
 weights:
 
 ```sh
-bazel test -c opt //src/llm/qwen:all //src/dataset:qwen_tokenizer_test
+bazel test -c opt //src/llm/qwen:all //src/dataset:qwen_tokenizer_test \
+  //src/llm:inference_test //src/llm:inference_ops_test \
+  //src/llm:cached_attention_test //src/llm:cached_attention_ops_test \
+  //src/llm:combinators_test
 ```
 
 Enable additional checks against the downloaded checkpoint and the tokenizer's
@@ -90,8 +114,8 @@ Hugging Face reference token IDs:
 
 ```sh
 bazel test -c opt //src/llm/qwen:all //src/dataset:qwen_tokenizer_test \
-  --test_env=PLUTO_QWEN_CHECKPOINT_DIR=/home/ubuntu/datasets/models/Qwen3.8-27B-FP8 \
-  --test_env=PLUTO_QWEN_TOKENIZER_DIR=/home/ubuntu/datasets/models/Qwen3.8-27B-FP8
+  --test_env=PLUTO_QWEN_CHECKPOINT_DIR=/home/ubuntu/checkpoints/models/Qwen3.8-27B-FP8 \
+  --test_env=PLUTO_QWEN_TOKENIZER_DIR=/home/ubuntu/checkpoints/models/Qwen3.8-27B-FP8
 ```
 
 Verified on GH200 with the pinned revision:
@@ -102,9 +126,8 @@ Verified on GH200 with the pinned revision:
 | `What is 2 + 2? Reply with just the number.` | Chat, no thinking | `4`, then EOS |
 | `In one sentence, why does ice float on water?` | Chat, no thinking | Explained lower density due to crystalline structure; 30 tokens, then EOS |
 
-The loaded text weights occupy 29,476,263,936 device bytes. Initial observed
-load-plus-inference times were 5.68 seconds and 6.58 seconds respectively;
-these are smoke-test observations, not a controlled benchmark.
+The loaded text weights occupy 29,476,263,936 device bytes; refcounted layer and
+combinator handles share those allocations rather than copying the weights.
 
 The GPU operator tests also pass Compute Sanitizer memcheck with
 `--report-api-errors explicit`. The default extended API diagnostics flag the

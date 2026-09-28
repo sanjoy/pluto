@@ -1,4 +1,4 @@
-#include "src/llm/qwen/attention_ops.h"
+#include "src/llm/layers/util/cached_attention_ops.h"
 
 #include <cuda_bf16.h>
 #include <cuda_runtime.h>
@@ -13,7 +13,7 @@
 #include "absl/memory/memory.h"
 #include "src/util/status_macros.h"
 
-namespace pluto::llm::qwen {
+namespace pluto::llm::cached_attention_ops {
 namespace {
 
 template <class Tile>
@@ -123,6 +123,58 @@ __tile_global__ void FullAttentionKernel(const float* queries,
   auto gated =
       Activation(Activation(result / denominator, round) * sigmoid, round);
   ct::store_masked(output + head * dim + channel, gated, channel < dim);
+}
+
+// Inspection reconstructs the current query's attention distribution without
+// changing the cached inference path. The first pass finds stable softmax
+// statistics; the second writes probabilities in head-major order.
+__tile_global__ void AttentionProbabilitiesKernel(const float* queries,
+                                                  const float* keys,
+                                                  int query_heads, int kv_heads,
+                                                  int dim, int length,
+                                                  float scale, float* output) {
+  namespace ct = ::cuda::tiles;
+  using namespace ct::literals;
+  const int head = ct::bid().x;
+  const int kv_head = head / (query_heads / kv_heads);
+  auto channel = ct::iota<ct::tile<int, ct::shape<1, 256>>>();
+  auto rows = ct::iota<ct::tile<int, ct::shape<32, 1>>>();
+  auto query = ct::load_masked(queries + head * dim + channel, channel < dim);
+  auto maximum = ct::full<ct::tile<float, ct::shape<1, 1>>>(-3.402823466e+38f);
+  auto denominator = ct::zeros<ct::tile<float, ct::shape<1, 1>>>();
+  for (int start = 0; start < length; start += 32) {
+    auto token = rows + start;
+    auto offsets =
+        (ct::element_cast<size_t>(token) * static_cast<size_t>(kv_heads) +
+         static_cast<size_t>(kv_head)) *
+            static_cast<size_t>(dim) +
+        ct::element_cast<size_t>(channel);
+    auto key =
+        ct::load_masked(keys + offsets, (token < length) && (channel < dim));
+    auto score = ct::sum(key * query, 1_ic) * scale;
+    score = ct::select(token < length, score,
+                       ct::full<decltype(score)>(-3.402823466e+38f));
+    auto next_maximum = ct::max(maximum, ct::reduce_max(score, 0_ic));
+    auto probability = ct::select(token < length, ct::exp(score - next_maximum),
+                                  ct::zeros<decltype(score)>());
+    denominator = denominator * ct::exp(maximum - next_maximum) +
+                  ct::sum(probability, 0_ic);
+    maximum = next_maximum;
+  }
+  for (int start = 0; start < length; start += 32) {
+    auto token = rows + start;
+    auto offsets =
+        (ct::element_cast<size_t>(token) * static_cast<size_t>(kv_heads) +
+         static_cast<size_t>(kv_head)) *
+            static_cast<size_t>(dim) +
+        ct::element_cast<size_t>(channel);
+    auto key =
+        ct::load_masked(keys + offsets, (token < length) && (channel < dim));
+    auto score = ct::sum(key * query, 1_ic) * scale;
+    auto probability = ct::exp(score - maximum) / denominator;
+    ct::store_masked(output + static_cast<size_t>(head) * length + token,
+                     probability, token < length);
+  }
 }
 
 __tile_global__ void ConvolutionKernel(const float* input, const float* weight,
@@ -265,7 +317,8 @@ absl::StatusOr<std::unique_ptr<FullAttentionState>> FullAttentionState::Create(
 
 absl::Status FullAttentionState::Step(const float* q_gate, const float* k,
                                       const float* v, const float* q_norm,
-                                      const float* k_norm, float* output) {
+                                      const float* k_norm, float* output,
+                                      float* probabilities) {
   if (!q_gate || !k || !v || !q_norm || !k_norm || !output)
     return absl::InvalidArgumentError(
         "attention requires non-null device pointers");
@@ -290,6 +343,15 @@ absl::Status FullAttentionState::Step(const float* q_gate, const float* k,
       1.0f / std::sqrt(static_cast<float>(p.head_dim)), p.round_to_bfloat16,
       output);
   RETURN_IF_ERROR(cuda::CudaStatus(cudaGetLastError(), "Qwen full attention"));
+  if (probabilities) {
+    AttentionProbabilitiesKernel<<<p.query_heads, 1, 0, executor_.stream()>>>(
+        static_cast<const float*>(queries_.data()),
+        static_cast<const float*>(keys_.data()), p.query_heads,
+        p.key_value_heads, p.head_dim, length_ + 1,
+        1.0f / std::sqrt(static_cast<float>(p.head_dim)), probabilities);
+    RETURN_IF_ERROR(cuda::CudaStatus(cudaGetLastError(),
+                                     "inspect cached attention probabilities"));
+  }
   ++length_;
   return absl::OkStatus();
 }
@@ -389,4 +451,4 @@ absl::Status DeltaNetState::Reset() {
       "reset Qwen recurrent state");
 }
 
-}  // namespace pluto::llm::qwen
+}  // namespace pluto::llm::cached_attention_ops

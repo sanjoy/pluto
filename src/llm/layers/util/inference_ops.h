@@ -6,7 +6,7 @@
 #include "absl/status/status.h"
 #include "src/cuda/executor.h"
 
-namespace pluto::llm::qwen {
+namespace pluto::llm::inference_ops {
 
 // Small, inference-only cuTile operators. All activation pointers address
 // FP32 storage on executor; round_bf16 preserves the checkpoint's BF16 compute
@@ -16,7 +16,7 @@ enum class MatrixStorage { kBFloat16, kFloat32, kFp8E4M3 };
 
 // Row-major [output_dim, input_dim] matrix times a single input vector. FP8
 // matrices use multiplicative FP32 scales shaped [ceil(output_dim/128),
-// ceil(input_dim/128)]. FP8 input quantization, if requested, uses independent
+// ceil(input_dim/128)]. Call QuantizeFp8Input separately to quantize inputs in
 // dynamic 128-element groups. Accumulation and the final reduction are FP32.
 absl::Status MatVec(cuda::Executor& executor, const void* weights,
                     MatrixStorage storage, const float* scales,
@@ -39,4 +39,11 @@ absl::Status EmbeddingLookup(cuda::Executor& executor, const void* weights,
                              MatrixStorage storage, int token, int vocab_size,
                              int width, float* output);
 
-}  // namespace pluto::llm::qwen
+// Device-resident token variant. Invalid token IDs produce an all-zero vector;
+// callers that need an error must validate IDs before submitting inference.
+absl::Status EmbeddingLookupDevice(cuda::Executor& executor,
+                                   const void* weights, MatrixStorage storage,
+                                   const int32_t* token, int vocab_size,
+                                   int width, float* output);
+
+}  // namespace pluto::llm::inference_ops

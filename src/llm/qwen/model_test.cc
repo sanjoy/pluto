@@ -21,6 +21,9 @@
 #include "gtest/gtest.h"
 #include "src/cuda/executor.h"
 #include "src/cuda/page_locked_host_array.h"
+#include "src/llm/layer.h"
+#include "src/llm/layer_hooks.h"
+#include "src/util/status_macros.h"
 
 namespace pluto::llm::qwen {
 namespace {
@@ -565,6 +568,138 @@ TEST_F(QwenModelTest, NonzeroHybridMatchesCpuAcrossHistoryAndReset) {
   EXPECT_GT(branch_difference, 0.05f);
 }
 
+TEST_F(QwenModelTest, RunsNativeLayerGraphWithBalancedScopesAndTypedHooks) {
+  MakeNonzeroHybrid();
+  InferenceOptions options;
+  options.context_length = 8;
+  auto model = Model::Load(*executor_, directory_, options);
+  ASSERT_TRUE(model.ok()) << model.status();
+  LayerHooks hooks;
+  std::vector<std::string> scopes;
+  std::map<std::string, int> activations;
+  int probability_calls = 0;
+  hooks.enter_combinator = [&](cuda::Executor&, absl::string_view name) {
+    scopes.emplace_back(name);
+    return absl::OkStatus();
+  };
+  hooks.exit_combinator = [&](cuda::Executor&) {
+    EXPECT_FALSE(scopes.empty());
+    if (!scopes.empty())
+      scopes.pop_back();
+    return absl::OkStatus();
+  };
+  hooks.activation_hook = [&](cuda::Executor& executor, absl::string_view name,
+                              absl::Span<const ActivationType> types,
+                              absl::Span<Buffer> buffers) {
+    EXPECT_EQ(&executor, executor_.get());
+    EXPECT_EQ(types.size(), buffers.size());
+    for (size_t i = 0; i < types.size(); ++i) {
+      EXPECT_EQ(types[i].data_type(), DataType::BF16);
+      EXPECT_EQ(types[i].dimensions()[0], ActivationType::kBatchDimension);
+      EXPECT_EQ(types[i].dimensions()[1], 1);
+      EXPECT_EQ(buffers[i].size_bytes(), size_t(types[i].dimensions()[2]) * 2);
+    }
+    ++activations[std::string(name)];
+    return absl::OkStatus();
+  };
+  hooks.attention_probabilities_hook =
+      [&](cuda::Executor&, absl::string_view name, const ActivationType& type,
+          const Buffer& probabilities) {
+        EXPECT_EQ(name, "FullAttentionLayer");
+        EXPECT_EQ(type, ActivationType(DataType::FP32, {1, 2, 1, 1}));
+        EXPECT_EQ(probabilities.size_bytes(), 2 * sizeof(float));
+        EXPECT_NE(std::find(scopes.begin(), scopes.end(), "QwenBlock1"),
+                  scopes.end());
+        ++probability_calls;
+        return absl::OkStatus();
+      };
+  ASSERT_TRUE((*model)->Step(0, &hooks).ok());
+  ASSERT_TRUE((*model)->Logits(&hooks).ok());
+  EXPECT_TRUE(scopes.empty());
+  EXPECT_EQ(activations["QwenDecoder"], 1);
+  EXPECT_EQ(activations["QwenBlock0"], 1);
+  EXPECT_EQ(activations["QwenBlock1"], 1);
+  EXPECT_EQ(activations["ResidualLayer"], 4);
+  EXPECT_EQ(activations["DeltaNetLayer"], 1);
+  EXPECT_EQ(activations["FullAttentionLayer"], 1);
+  EXPECT_EQ(activations["InferenceEmbeddingLayer"], 1);
+  EXPECT_EQ(activations["InferenceLinearLayer"], 16);
+  EXPECT_EQ(activations["SwiGluLayer"], 2);
+  EXPECT_EQ(activations["RmsNormLayer"], 5);
+  EXPECT_EQ(activations["LanguageModelingHead"], 1);
+  EXPECT_EQ(probability_calls, 1);
+  TinyHistory reference;
+  auto expected = ReferenceStep(0, &reference);
+  auto actual = CopyLogits(**model);
+  for (size_t i = 0; i < expected.size(); ++i)
+    EXPECT_NEAR(actual[i], expected[i], 0.02);
+}
+
+TEST_F(QwenModelTest, ActivationInterventionsAffectDownstreamLayers) {
+  InferenceOptions options;
+  options.context_length = 2;
+  auto model = Model::Load(*executor_, directory_, options);
+  ASSERT_TRUE(model.ok()) << model.status();
+  LayerHooks hooks;
+  hooks.activation_hook = [&](cuda::Executor& executor, absl::string_view name,
+                              absl::Span<const ActivationType>,
+                              absl::Span<Buffer> buffers) -> absl::Status {
+    if (name != "InferenceEmbeddingLayer")
+      return absl::OkStatus();
+    ASSIGN_OR_RETURN(auto zeros,
+                     Buffer::Allocate(executor, buffers[0].size_bytes()));
+    RETURN_IF_ERROR(cuda::CudaStatus(
+        cudaMemsetAsync(zeros.data(), 0, zeros.size_bytes(), executor.stream()),
+        "zero replacement embedding"));
+    buffers[0] = std::move(zeros);
+    return absl::OkStatus();
+  };
+  ASSERT_TRUE((*model)->Step(2, &hooks).ok());
+  EXPECT_EQ(CopyLogits(**model), std::vector<float>(4, 0));
+  ASSERT_TRUE((*model)->Reset().ok());
+  ASSERT_TRUE((*model)->Step(2).ok());
+  ExpectOneHotLogits(CopyLogits(**model), 2);
+}
+
+TEST_F(QwenModelTest, FailedHooksRequireResetAndDoNotPublishMixedHistory) {
+  MakeNonzeroHybrid();
+  InferenceOptions options;
+  options.context_length = 8;
+  auto model = Model::Load(*executor_, directory_, options);
+  ASSERT_TRUE(model.ok()) << model.status();
+  LayerHooks hooks;
+  int depth = 0;
+  hooks.enter_combinator = [&](cuda::Executor&, absl::string_view) {
+    ++depth;
+    return absl::OkStatus();
+  };
+  hooks.exit_combinator = [&](cuda::Executor&) {
+    --depth;
+    return absl::OkStatus();
+  };
+  hooks.activation_hook = [&](cuda::Executor&, absl::string_view name,
+                              absl::Span<const ActivationType>,
+                              absl::Span<Buffer>) {
+    // The DeltaNet cache has advanced, but full attention has not.
+    return name == "DeltaNetLayer"
+               ? absl::AbortedError("intentional hook failure")
+               : absl::OkStatus();
+  };
+  EXPECT_EQ((*model)->Step(0, &hooks).code(), absl::StatusCode::kAborted);
+  EXPECT_EQ(depth, 0);
+  EXPECT_EQ((*model)->position(), 0);
+  EXPECT_EQ((*model)->Step(1).code(), absl::StatusCode::kFailedPrecondition);
+  EXPECT_EQ((*model)->Logits().status().code(),
+            absl::StatusCode::kFailedPrecondition);
+  ASSERT_TRUE((*model)->Reset().ok());
+  ASSERT_TRUE((*model)->Step(1).ok());
+  TinyHistory reference;
+  const auto expected = ReferenceStep(1, &reference);
+  const auto actual = CopyLogits(**model);
+  for (size_t i = 0; i < actual.size(); ++i)
+    EXPECT_NEAR(actual[i], expected[i], 0.02);
+}
+
 TEST_F(QwenModelTest, RejectsInvalidContextBeforeUploadingWeights) {
   for (int context : {-1, 0, 9}) {
     InferenceOptions options;
@@ -572,6 +707,17 @@ TEST_F(QwenModelTest, RejectsInvalidContextBeforeUploadingWeights) {
     EXPECT_EQ(Model::Load(*executor_, directory_, options).status().code(),
               absl::StatusCode::kInvalidArgument);
   }
+}
+
+TEST_F(QwenModelTest,
+       RejectsNonBFloat16EmbeddingInsteadOfChangingItsPrecision) {
+  Add("model.language_model.embed_tokens.weight", {4, 8}, "F32",
+      std::vector<float>(32, 1.001f), true);
+  WriteCheckpoint();
+  InferenceOptions options;
+  options.context_length = 8;
+  EXPECT_EQ(Model::Load(*executor_, directory_, options).status().code(),
+            absl::StatusCode::kUnimplemented);
 }
 
 TEST_F(QwenModelTest, RejectsMissingFp8Scale) {

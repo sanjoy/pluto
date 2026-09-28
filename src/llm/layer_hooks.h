@@ -83,19 +83,24 @@ struct LayerHooks {
       enter_combinator;
   std::function<absl::Status(cuda::Executor& executor)> exit_combinator;
 
-  // Observe AttentionLayer's causal softmax(Q*K^T/sqrt(head_dimension)) before
+  // Observe causal softmax(Q*K^T/sqrt(head_dimension)) before
   // its activation_hook. The buffer is contiguous FP32, shaped
   // [batch_size, num_heads, query_position, key_position], with concrete
-  // dimensions and exactly zero values above the causal diagonal. Each row
+  // dimensions. Full-sequence attention zeros the upper causal triangle;
+  // cached attention reports just the current query against all cached keys,
+  // with shape [1, num_heads, 1, history_length]. Each row
   // contains the weights applied to V, not logits or the weighted V output.
   // This is read-only: do not change either the handle or its device bytes.
   // Retain a Buffer copy to extend its lifetime; all work is on executor.
   //
-  // An installed callback incurs a quadratic allocation and an additional
-  // cuTile pass that reconstructs probabilities from FlashAttention's saved
-  // softmax statistics. An empty callback adds no allocation/kernel. Ordinary
-  // forward and backward still use FlashAttention and their original state.
-  // A callback failure fails fwd, before any activation_hook is invoked.
+  // For full-sequence attention, a callback incurs a quadratic allocation and
+  // an additional cuTile pass that reconstructs probabilities from
+  // FlashAttention's saved softmax statistics. An empty callback adds no
+  // allocation/kernel. Ordinary forward and backward still use FlashAttention
+  // and their original state. Cached attention instead materializes one
+  // probability row per head; its output and cache updates do not depend on
+  // whether this hook is set. A callback failure fails fwd, before any
+  // activation_hook is invoked.
   std::function<absl::Status(cuda::Executor& executor,
                              absl::string_view layer_name,
                              const ActivationType& probabilities_type,

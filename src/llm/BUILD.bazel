@@ -1,6 +1,6 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
-load("@rules_cuda//cuda:defs.bzl", "cuda_library")
+load("@rules_cuda//cuda:defs.bzl", "cuda_library", "cuda_test")
 load(
     "//src/llm:layers/defs.bzl",
     "layer_library",
@@ -760,6 +760,7 @@ layer_test("attention", [
     "@abseil-cpp//absl/status",
 ])
 layer_test("combinators", [
+    ":layer_hooks",
     ":fully_connected",
     ":gelu",
     "//src/util:status_macros",
@@ -821,5 +822,115 @@ test_suite(
         ":gelu_reference_test",
         ":norm_reference_test",
         ":sparse_autoencoder_reference_test",
+    ],
+)
+
+# Imported-weight, batch-one inference layers. Unlike the trainable layers,
+# these retain BF16/FP8 checkpoint storage without FP32 masters or gradients.
+layer_library("inference", [":inference_ops"])
+layer_library("full_attention", [
+    ":cached_attention_ops",
+    ":inference",
+    ":layer_hooks",
+])
+layer_library("delta_net", [
+    ":cached_attention_ops",
+    ":inference",
+    ":layer_hooks",
+])
+
+layer_test("inference", [
+    ":inference_ops",
+    ":layer_hooks",
+    "//src/util:status_macros",
+    "@abseil-cpp//absl/status",
+])
+
+cc_test(
+    name = "cached_attention_test",
+    srcs = ["layers/cached_attention_test.cc"],
+    copts = ["-std=c++20"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":cached_attention_ops",
+        ":delta_net",
+        ":full_attention",
+        ":inference",
+        ":layer",
+        ":layer_hooks",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cuda_library(
+    name = "inference_ops",
+    srcs = ["layers/util/inference_ops.cc"],
+    hdrs = ["layers/util/inference_ops.h"],
+    copts = ["--enable-tile", "-std=c++20"],
+    host_copts = ["-std=c++20"],
+    deps = [
+        "//src/cuda:executor",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cuda_library(
+    name = "cached_attention_ops",
+    srcs = ["layers/util/cached_attention_ops.cc"],
+    hdrs = ["layers/util/cached_attention_ops.h"],
+    copts = ["--enable-tile", "-std=c++20"],
+    host_copts = ["-std=c++20"],
+    deps = [
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/memory",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cuda_test(
+    name = "inference_ops_test",
+    srcs = ["layers/util/inference_ops_test.cc"],
+    copts = ["-std=c++20"],
+    host_copts = ["-std=c++20"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":inference_ops",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "@abseil-cpp//absl/status",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cuda_test(
+    name = "cached_attention_ops_test",
+    srcs = ["layers/util/cached_attention_ops_test.cc"],
+    copts = ["-std=c++20"],
+    host_copts = ["-std=c++20"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":cached_attention_ops",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "@abseil-cpp//absl/status",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
     ],
 )

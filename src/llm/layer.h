@@ -113,7 +113,7 @@ struct FwdResult {
   BackwardState state;
 };
 
-// A differentiable GPU layer.
+// A typed GPU layer. Inference-only implementations may reject backward.
 class Layer {
  public:
   virtual ~Layer() = default;
@@ -137,6 +137,8 @@ class Layer {
   // borrowed only for this call and passed to all nested layers. A nullptr
   // skips all instrumentation; empty callbacks are skipped individually.
   // activation_hook processes successful outputs before they are published.
+  // Cached inference layers may advance their internal history even if a
+  // subsequent hook fails; follow the concrete layer's reset/concurrency rules.
   // See layer_hooks.h for replacement/aliasing rules.
   absl::StatusOr<FwdResult> fwd(cuda::Executor& executor,
                                 absl::Span<const Buffer> inputs,
@@ -167,6 +169,8 @@ class Layer {
   // FP32 gradient accumulators corresponding one-for-one with weights().
   // Stateless layers return an empty span. Optimizers clear these buffers
   // before backward and update the FP32 master weights after backward.
+  // Inference-only layers expose their imported weights but no gradients,
+  // and reject backward with Unimplemented; optimizers reject such layers.
   virtual absl::Span<Buffer> gradients() { return {}; }
   virtual DataType output_type() const = 0;
 

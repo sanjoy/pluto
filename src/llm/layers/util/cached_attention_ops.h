@@ -7,7 +7,7 @@
 #include "src/cuda/buffer.h"
 #include "src/cuda/executor.h"
 
-namespace pluto::llm::qwen {
+namespace pluto::llm::cached_attention_ops {
 
 struct FullAttentionParameters {
   int query_heads = 24;
@@ -36,8 +36,11 @@ class FullAttentionState final {
   // head_dim], and q_norm/k_norm are [head_dim]. Norm weights are zero-centered
   // (the multiplier is 1 + weight). Output is [query_heads, head_dim], after
   // sigmoid gating but before the output projection.
+  // Optional probabilities has room for [query_heads, length() + 1] FP32
+  // entries and receives this new query's softmax weights over all cached keys.
   absl::Status Step(const float* q_gate, const float* k, const float* v,
-                    const float* q_norm, const float* k_norm, float* output);
+                    const float* q_norm, const float* k_norm, float* output,
+                    float* probabilities = nullptr);
   absl::Status Reset();
   int length() const { return length_; }
 
@@ -95,4 +98,4 @@ class DeltaNetState final {
   cuda::Buffer core_output_;
 };
 
-}  // namespace pluto::llm::qwen
+}  // namespace pluto::llm::cached_attention_ops

@@ -1,4 +1,4 @@
-#include "src/llm/qwen/ops.h"
+#include "src/llm/layers/util/inference_ops.h"
 
 #include <cuda_bf16.h>
 #include <cuda_fp8.h>
@@ -17,7 +17,7 @@
 #include "src/cuda/executor.h"
 #include "src/cuda/page_locked_host_array.h"
 
-namespace pluto::llm::qwen {
+namespace pluto::llm::inference_ops {
 namespace {
 
 float Bfloat16(float x) { return static_cast<float>(__nv_bfloat16(x)); }
@@ -340,4 +340,4 @@ TEST_F(OpsTest, InvalidArgumentsAreRejectedBeforeLaunch) {
 }
 
 }  // namespace
-}  // namespace pluto::llm::qwen
+}  // namespace pluto::llm::inference_ops

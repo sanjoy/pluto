@@ -106,6 +106,56 @@ class ComposedLayer final : public Layer {
   std::vector<Buffer> gradients_;
 };
 
+// Sends the complete input vector to every child and concatenates their
+// outputs in child order. Backward splits that vector and sums corresponding
+// FP32 input gradients without modifying the buffers returned by a child.
+// Children must have identical input signatures; output signatures may differ.
+// Children consuming nondifferentiable inputs may all return no gradients.
+class ParallelLayer final : public Layer {
+ public:
+  absl::string_view name() const override { return name_; }
+
+  // Owns the nonempty name and at least one non-null child. output_type() is
+  // the final child compute policy; output_types() describes every buffer.
+  static absl::StatusOr<std::unique_ptr<ParallelLayer>> Create(
+      std::string name, std::vector<std::unique_ptr<Layer>> layers);
+
+  absl::Span<Buffer> weights() override { return absl::MakeSpan(weights_); }
+  absl::Span<Buffer> gradients() override { return absl::MakeSpan(gradients_); }
+  DataType output_type() const override {
+    return layers_.back()->output_type();
+  }
+  absl::Span<const ActivationType> input_types() const override {
+    return layers_.front()->input_types();
+  }
+  absl::Span<const ActivationType> output_types() const override {
+    return output_types_;
+  }
+
+ private:
+  ParallelLayer(std::string name, std::vector<std::unique_ptr<Layer>> layers);
+
+  absl::StatusOr<FwdResult> fwd_impl(cuda::Executor& executor,
+                                     absl::Span<const Buffer> inputs,
+                                     LayerHooks* hooks) const override;
+  absl::StatusOr<BufferVec> bwd_impl(cuda::Executor& executor,
+                                     absl::Span<const Buffer> output_gradients,
+                                     BackwardState state,
+                                     LayerHooks* hooks) override;
+  absl::StatusOr<FwdResult> fwd_body(cuda::Executor& executor,
+                                     absl::Span<const Buffer> inputs,
+                                     LayerHooks* hooks) const;
+  absl::StatusOr<BufferVec> bwd_body(cuda::Executor& executor,
+                                     absl::Span<const Buffer> output_gradients,
+                                     BackwardState state, LayerHooks* hooks);
+
+  std::string name_;
+  std::vector<std::unique_ptr<Layer>> layers_;
+  std::vector<ActivationType> output_types_;
+  std::vector<Buffer> weights_;
+  std::vector<Buffer> gradients_;
+};
+
 // Incrementally assembles a ComposedLayer while retaining ownership of every
 // child. Pointers returned by back() remain valid when more children are added
 // and after create() transfers the children into the resulting layer.

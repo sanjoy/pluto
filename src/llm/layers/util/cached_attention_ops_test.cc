@@ -1,4 +1,4 @@
-#include "src/llm/qwen/attention_ops.h"
+#include "src/llm/layers/util/cached_attention_ops.h"
 
 #include <cuda_runtime.h>
 
@@ -18,7 +18,7 @@
 #include "src/cuda/page_locked_host_array.h"
 #include "src/util/status_macros.h"
 
-namespace pluto::llm::qwen {
+namespace pluto::llm::cached_attention_ops {
 namespace {
 
 float RoundBfloat16(float value) {
@@ -85,6 +85,7 @@ class AttentionReference {
     for (float& x : values_.back())
       x = Round(x);
     std::vector<float> output(queries.size());
+    probabilities_.resize(p_.query_heads * keys_.size());
     for (int h = 0; h < p_.query_heads; ++h) {
       const int kv = h / (p_.query_heads / p_.key_value_heads);
       std::vector<double> probabilities(keys_.size());
@@ -102,6 +103,8 @@ class AttentionReference {
         probability = std::exp(probability - maximum);
         normalizer += probability;
       }
+      for (size_t t = 0; t < probabilities.size(); ++t)
+        probabilities_[h * keys_.size() + t] = probabilities[t] / normalizer;
       for (int d = 0; d < p_.head_dim; ++d) {
         double sum = 0;
         for (size_t t = 0; t < probabilities.size(); ++t)
@@ -114,6 +117,8 @@ class AttentionReference {
     return output;
   }
 
+  const std::vector<float>& probabilities() const { return probabilities_; }
+
  private:
   float Round(float x) const {
     return p_.round_to_bfloat16 ? RoundBfloat16(x) : x;
@@ -121,6 +126,7 @@ class AttentionReference {
   FullAttentionParameters p_;
   std::vector<std::vector<float>> keys_;
   std::vector<std::vector<float>> values_;
+  std::vector<float> probabilities_;
 };
 
 class DeltaReference {
@@ -306,15 +312,20 @@ TEST_F(AttentionOpsTest, GqaPartialRopeGatingAndCacheMatchScalarAcrossTiles) {
         auto dq = Upload(q);
         auto dk = Upload(k);
         auto dv = Upload(v);
+        auto probabilities =
+            Upload(std::vector<float>(p.query_heads * (t + 1)));
         ASSERT_TRUE(dq.ok());
         ASSERT_TRUE(dk.ok());
         ASSERT_TRUE(dv.ok());
+        ASSERT_TRUE(probabilities.ok());
         ASSERT_TRUE((*state)
                         ->Step(Data(*dq), Data(*dk), Data(*dv), Data(*dqnorm),
-                               Data(*dknorm), Data(*output))
+                               Data(*dknorm), Data(*output),
+                               Data(*probabilities))
                         .ok());
         const auto actual = Read(*output);
         ExpectNear(actual, reference.Step(q, k, v, qnorm, knorm), round);
+        ExpectNear(Read(*probabilities), reference.probabilities(), round);
         if (t == 0)
           first = actual;
         EXPECT_EQ((*state)->length(), t + 1);
@@ -448,6 +459,37 @@ TEST_F(AttentionOpsTest, DeltaNetConvolutionRecurrenceAndResetMatchScalar) {
   }
 }
 
+TEST_F(AttentionOpsTest, InspectedProbabilitiesNormalizeAcrossCacheTiles) {
+  FullAttentionParameters p;
+  p.query_heads = 2;
+  p.key_value_heads = 1;
+  p.head_dim = 4;
+  p.rotary_dim = 2;
+  p.capacity = 35;
+  auto state = FullAttentionState::Create(*executor_, p);
+  auto q = Upload(std::vector<float>(16));
+  auto k = Upload({1, 1, 1, 1});
+  auto v = Upload({1, 2, 3, 4});
+  auto norm = Upload({0, 0, 0, 0});
+  auto output = Upload(std::vector<float>(8));
+  ASSERT_TRUE(state.ok());
+  ASSERT_TRUE(q.ok());
+  ASSERT_TRUE(k.ok());
+  ASSERT_TRUE(v.ok());
+  ASSERT_TRUE(norm.ok());
+  ASSERT_TRUE(output.ok());
+  for (int length = 1; length <= p.capacity; ++length) {
+    auto probabilities = Upload(std::vector<float>(2 * length));
+    ASSERT_TRUE(probabilities.ok());
+    ASSERT_TRUE((*state)
+                    ->Step(Data(*q), Data(*k), Data(*v), Data(*norm),
+                           Data(*norm), Data(*output), Data(*probabilities))
+                    .ok());
+    for (float value : Read(*probabilities))
+      EXPECT_NEAR(value, 1.0f / length, 1e-7f);
+  }
+}
+
 TEST_F(AttentionOpsTest, RejectsUnsupportedShapesAndNullInputs) {
   FullAttentionParameters full;
   full.query_heads = 5;
@@ -473,4 +515,4 @@ TEST_F(AttentionOpsTest, RejectsUnsupportedShapesAndNullInputs) {
 }
 
 }  // namespace
-}  // namespace pluto::llm::qwen
+}  // namespace pluto::llm::cached_attention_ops
