@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 #include "absl/status/statusor.h"
 #include "src/llm/gpt2.h"
@@ -11,23 +12,28 @@
 
 namespace pluto::llm::memorize_general_facts {
 
-// Compare all replacement affine layers against the entire original
-// suffix after A3. The shared frozen token embedding/head is excluded on both
-// sides; the source count includes every suffix bias and LayerNorm parameter.
+// Compare the replacement against the entire original suffix after A3. The
+// frozen embedding/head is excluded on both sides. Ordinary matching budgets
+// only replacement affine layers; iso matching includes their LayerNorms too.
 struct MlpReadoutParameterBudget {
-  int minimum_mlp_width;  // Smallest positive width meeting the source budget.
-  int mlp_width;          // Requested width, optionally widened to the minimum.
+  int minimum_mlp_width;  // Uniform width meeting this mode's source budget.
+  int mlp_width;          // Maximum block width; uniform outside iso mode.
   int64_t source_tail_parameters;  // MLP3, later blocks, and final LayerNorm.
   int64_t mlp_parameters;        // All FC1/FC2 layers, including their biases.
   int64_t trainable_parameters;  // MLPs plus input and final LayerNorms.
+  std::vector<int> mlp_widths;   // Width of each block, in execution order.
 };
 
 // Pure shape calculation, with overflow/backend-limit validation. A request
 // below the minimum is widened when match_parameter_budget is true. Otherwise
 // the requested width is used exactly, even below the source-suffix budget.
+// iso_parameter_budget overrides both options: ignore the requested width and
+// choose positive widths differing by at most one to match TOTAL trainable
+// parameters as closely as integer widths permit, including all LayerNorms.
+// Wider blocks come first; minimum_mlp_width still describes a uniform stack.
 absl::StatusOr<MlpReadoutParameterBudget> ResolveMlpReadoutParameterBudget(
     const Gpt2Config& config, int requested_min_mlp_width, int mlp_depth = 1,
-    bool match_parameter_budget = true);
+    bool match_parameter_budget = true, bool iso_parameter_budget = false);
 
 // The head is tied to an independent, frozen copy of the source embedding.
 // Its owner precedes model so the embedding outlives the head. Source need not
@@ -46,15 +52,18 @@ struct MlpReadout {
 // normal stddev .2/.1 using seed+2*i/seed+2*i+1 for block i. Initialization is
 // not depth-scaled. Final LN is an independent, trainable copy of the source
 // final LN. The frozen head follows the 6*depth+2 trainable tensors. At model
-// width 10, trainable parameters total depth*(21*mlp_width+30)+20.
+// width 10, trainable parameters total 21*sum(mlp_widths)+30*depth+20.
 // parameter_budget reports any widening needed when matching the sum of all
 // affine MLPs to the original suffix; disabled matching preserves exact width.
 // With residual_connections=false each block replaces x instead of adding to
 // it. This ablates only the skip path; weights, seeds, and tensor order match.
+// iso_parameter_budget chooses balanced widths matching the TOTAL source
+// suffix budget, rather than counting only the replacement's affine layers.
 absl::StatusOr<MlpReadout> CreateMlpReadout(
     cuda::Executor& executor, const Layer& source, const Gpt2Config& config,
     int mlp_width, int seed, int mlp_depth = 1,
-    bool match_parameter_budget = true, bool residual_connections = true);
+    bool match_parameter_budget = true, bool residual_connections = true,
+    bool iso_parameter_budget = false);
 
 struct PuzzleCapture {
   Buffer hidden;  // BF16 post-attention residual in transformer_block_2.

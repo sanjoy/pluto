@@ -39,6 +39,7 @@ struct CommandLineOptions {
   bool train_mlp = false;
   bool train_stacked_mlp = false;
   bool mlp_residual_connections = true;
+  bool mlp_iso_parameters = false;
   double learning_rate = 0;
   double training_seconds = 0;
 };

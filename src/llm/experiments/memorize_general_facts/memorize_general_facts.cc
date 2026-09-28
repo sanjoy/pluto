@@ -76,6 +76,10 @@ ABSL_FLAG(bool, mlp_residual_connections, true,
           "In puzzle readout training, add the input around each MLP. Disable "
           "to test whether skip connections impede fitting; changes neither "
           "the parameter count nor the source transformer");
+ABSL_FLAG(bool, mlp_iso_parameters, false,
+          "With --train_stacked_mlp, balance hidden widths to match the full "
+          "post-A3 suffix parameter count as closely as integer widths allow, "
+          "including all trainable LayerNorms; overrides the usual width 150");
 ABSL_FLAG(std::string, prompt, "",
           "One nonempty prompt for infer_checkpoint; omit for an interactive "
           "prompt loop");
@@ -147,6 +151,7 @@ absl::StatusOr<Mode> RunModeFromFlags(CommandLineOptions& options) {
   AddIfExplicitlySet(FLAGS_train_stacked_mlp, &explicitly_set);
   AddIfExplicitlySet(FLAGS_mlp_width, &explicitly_set);
   AddIfExplicitlySet(FLAGS_mlp_residual_connections, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_mlp_iso_parameters, &explicitly_set);
   AddIfExplicitlySet(FLAGS_prompt, &explicitly_set);
   AddIfExplicitlySet(FLAGS_generation_tokens, &explicitly_set);
   AddIfExplicitlySet(FLAGS_print_attention_probs, &explicitly_set);
@@ -191,6 +196,7 @@ absl::StatusOr<Mode> RunModeFromFlags(CommandLineOptions& options) {
        .train_stacked_mlp = absl::GetFlag(FLAGS_train_stacked_mlp),
        .mlp_residual_connections =
            absl::GetFlag(FLAGS_mlp_residual_connections),
+       .mlp_iso_parameters = absl::GetFlag(FLAGS_mlp_iso_parameters),
        .learning_rate = absl::GetFlag(FLAGS_learning_rate),
        .training_seconds = absl::GetFlag(FLAGS_training_seconds)},
       explicitly_set);
@@ -782,6 +788,7 @@ absl::StatusOr<bool> Run() {
         .train_mlp = options.train_mlp,
         .train_stacked_mlp = options.train_stacked_mlp,
         .mlp_residual_connections = options.mlp_residual_connections,
+        .mlp_iso_parameters = options.mlp_iso_parameters,
         .mlp_width = options.mlp_width,
         .steps = options.steps,
         .eval_every = options.eval_every,

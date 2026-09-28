@@ -21,6 +21,8 @@ struct PuzzleOptions {
   bool train_mlp = false;  // Fit one residual MLP; exclusive with below.
   bool train_stacked_mlp = false;  // Fit five residual 10 -> 150 -> 10 MLPs.
   bool mlp_residual_connections = true;  // False removes each readout's skip.
+  bool mlp_iso_parameters =
+      false;            // Balance stack widths to match suffix size.
   int mlp_width = 150;  // Single-MLP minimum expansion; ignored for the stack.
   int steps = 300000;   // Exact update budget; zero evaluates initialization.
   int eval_every = 1000;        // Full-corpus statistics cadence.

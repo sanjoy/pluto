@@ -23,6 +23,10 @@ Both jobs run concurrently by default; compare accuracy, not concurrent timing.
   --seed N                Same initialization and data-order seed for both (3).
   --learning_rate RATE    Same Adam initial rate and 0.1 cosine floor (0.01).
   --stacked               Use five 10/150/10 MLPs instead of one.
+  --iso_params            Requires --stacked; match the original suffix's total
+                          parameter count, including input/final LayerNorms.
+                          Widths 12,12,12,11,11 give 1388 vs. 1380 parameters;
+                          integer widths round the budget upward by 8.
   --serial                Run one condition after the other.
   --help                  Print this message without building or using a GPU.
 
@@ -41,17 +45,21 @@ main() {
   local tokenizer=${PLUTO_GPT2_TOKENIZER_DIR:-"$HOME/datasets/tokenizer/gpt2"}
   local corpus="$repo_root/testdata/general_facts_dataset.txt"
   local steps=300000 eval_every=1000 batch_size=32 mlp_width=150 seed=3
-  local learning_rate=0.01 stacked=0 serial=0 option value
+  local learning_rate=0.01 stacked=0 iso_params=0 serial=0 option value
   while (($#)); do
     option=${1%%=*}
     case "$option" in
       --help|-h) usage; return 0 ;;
-      --stacked|--serial)
+      --stacked|--iso_params|--serial)
         if [[ $1 == *=* ]]; then
           printf '%s does not take a value.\n' "$option" >&2
           return 2
         fi
-        if [[ $option == --stacked ]]; then stacked=1; else serial=1; fi
+        case "$option" in
+          --stacked) stacked=1 ;;
+          --iso_params) iso_params=1 ;;
+          --serial) serial=1 ;;
+        esac
         shift ;;
       --checkpoint|--run_dir|--tokenizer|--corpus|--steps|--eval_every|--batch_size|--mlp_width|--seed|--learning_rate)
         if [[ $1 == *=* ]]; then
@@ -96,6 +104,10 @@ main() {
   fi
   if ((stacked && mlp_width != 150)); then
     printf 'The fixed five-MLP stack requires --mlp_width=150.\n' >&2
+    return 2
+  fi
+  if ((iso_params && !stacked)); then
+    printf '%s\n' '--iso_params requires --stacked.' >&2
     return 2
   fi
   if [[ ! $learning_rate =~ ^[0-9]+([.][0-9]+)?([eE][-+]?[0-9]+)?$ ]] ||
@@ -146,7 +158,8 @@ main() {
     git status --short
     printf 'source_checkpoint=%s\nsource_tokenizer=%s\nsource_corpus=%s\n' \
       "$checkpoint" "$tokenizer" "$corpus"
-    printf 'concurrent=%s\nstacked=%s\n' "$((1 - serial))" "$stacked"
+    printf 'concurrent=%s\nstacked=%s\niso_params=%s\n' \
+      "$((1 - serial))" "$stacked" "$iso_params"
     printf 'Only replacement MLP residual connections differ between jobs.\n'
     nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv
     df -h -- "$run_dir"
@@ -175,6 +188,7 @@ main() {
     "--steps=$steps" "--eval_every=$eval_every"
     "--seed=$seed" "--learning_rate=$learning_rate")
   if ((!stacked)); then common+=("--mlp_width=$mlp_width"); fi
+  if ((iso_params)); then common+=(--mlp_iso_parameters=true); fi
   local condition enabled
   local -a pids=() conditions=()
   # Terminate only children launched by this script when its caller cancels it.

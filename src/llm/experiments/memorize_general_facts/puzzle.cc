@@ -370,13 +370,14 @@ absl::Status FitMlpReadout(cuda::Executor& executor, const Layer& source,
   const int depth = options.train_stacked_mlp ? kStackedMlpDepth : 1;
   const int width =
       options.train_stacked_mlp ? kStackedMlpWidth : options.mlp_width;
-  // The stack is an exact reproduction of the 5 x 10/150/10 experiment, not
-  // a minimum-width request that can silently grow with the source model.
+  // Preserve the original 5 x 10/150/10 experiment unless explicitly matching
+  // total suffix capacity; that mode balances integer widths across blocks.
   ASSIGN_OR_RETURN(
       auto readout,
       CreateMlpReadout(executor, source, config, width, options.seed, depth,
                        !options.train_stacked_mlp,
-                       options.mlp_residual_connections));
+                       options.mlp_residual_connections,
+                       options.mlp_iso_parameters));
   ASSIGN_OR_RETURN(auto frozen_head,
                    SnapshotWeights(executor, *readout.embedding));
   ASSIGN_OR_RETURN(auto loss, CrossEntropyLossLayer::Create(
@@ -417,11 +418,16 @@ absl::Status FitMlpReadout(cuda::Executor& executor, const Layer& source,
          << "; minimum_mlp_width=" << budget.minimum_mlp_width
          << "; resolved_mlp_width=" << budget.mlp_width
          << "; mlp_depth=" << depth
+         << "; iso_parameters=" << options.mlp_iso_parameters
+         << "; total_parameter_delta="
+         << budget.trainable_parameters - budget.source_tail_parameters
          << " (shared frozen embedding/head excluded)\n"
          << "Trainable: " << depth
          << (options.mlp_residual_connections ? " residual " : " non-residual ")
-         << config.model_width << " -> " << budget.mlp_width << " -> "
-         << config.model_width
+         << config.model_width << " -> [";
+  for (size_t i = 0; i < budget.mlp_widths.size(); ++i)
+    output << (i == 0 ? "" : ",") << budget.mlp_widths[i];
+  output << "] -> " << config.model_width
          << " MLP(s), each with input LN, one final LN; parameters="
          << parameters
          << "; frozen: original transformer and tied embedding head\n"
@@ -557,6 +563,9 @@ absl::Status RunPuzzle(cuda::Executor& executor,
   if (options.train_mlp && options.train_stacked_mlp)
     return absl::InvalidArgumentError(
         "train_mlp and train_stacked_mlp are mutually exclusive");
+  if (options.mlp_iso_parameters && !options.train_stacked_mlp)
+    return absl::InvalidArgumentError(
+        "mlp_iso_parameters requires train_stacked_mlp");
   if (options.train_stacked_mlp &&
       options.model_config.model_width != kStackedModelWidth)
     return absl::InvalidArgumentError(
@@ -597,7 +606,8 @@ absl::Status RunPuzzle(cuda::Executor& executor,
   if (train_readout) {
     ASSIGN_OR_RETURN(
         budget, ResolveMlpReadoutParameterBudget(config, width, depth,
-                                                 !options.train_stacked_mlp));
+                                                 !options.train_stacked_mlp,
+                                                 options.mlp_iso_parameters));
   }
   ASSIGN_OR_RETURN(auto data, PaddedLineDataSetIterator::Create(
                                   executor, corpus.text(), *tokenizer,
@@ -647,20 +657,27 @@ absl::Status RunPuzzle(cuda::Executor& executor,
              << "\ntrain_mlp=" << options.train_mlp
              << "\ntrain_stacked_mlp=" << options.train_stacked_mlp
              << "\nmlp_residual_connections="
-             << options.mlp_residual_connections << "\nmlp_depth=" << depth
-             << "\nrequested_mlp_width=" << width
+             << options.mlp_residual_connections
+             << "\nmlp_iso_parameters=" << options.mlp_iso_parameters
+             << "\nmlp_depth=" << depth << "\nrequested_mlp_width=" << width
              << "\nmlp_width=" << (budget ? budget->mlp_width : width)
              << "\nsteps=" << options.steps
              << "\neval_every=" << options.eval_every
              << "\nbatch_size=" << options.batch_size
              << "\nseed=" << options.seed
              << "\nlearning_rate=" << options.learning_rate << "\n";
-  if (budget)
+  if (budget) {
     provenance << "minimum_mlp_width=" << budget->minimum_mlp_width
                << "\nsource_tail_parameters=" << budget->source_tail_parameters
                << "\nmlp_parameters=" << budget->mlp_parameters
                << "\ntrainable_parameters=" << budget->trainable_parameters
-               << "\n";
+               << "\ntotal_parameter_delta="
+               << budget->trainable_parameters - budget->source_tail_parameters
+               << "\nmlp_widths=";
+    for (size_t i = 0; i < budget->mlp_widths.size(); ++i)
+      provenance << (i == 0 ? "" : ",") << budget->mlp_widths[i];
+    provenance << "\n";
+  }
   provenance.close();
   if (!provenance)
     return absl::InternalError("writing puzzle provenance failed");

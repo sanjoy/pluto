@@ -170,6 +170,145 @@ TEST(MlpReadoutParameterBudgetTest, RejectsInvalidDepthAndAggregateOverflow) {
   }
 }
 
+TEST(MlpReadoutParameterBudgetTest,
+     IsoBudgetBalancesWidthsAndCountsLayerNorms) {
+  Gpt2Config config{.transformer_block_count = 4,
+                    .model_width = 10,
+                    .attention_heads = 1,
+                    .feed_forward_width = 20,
+                    .vocabulary_size = 7,
+                    .pad_vocabulary = false,
+                    .context_length = 8};
+  auto ordinary = ResolveMlpReadoutParameterBudget(config, 1, 5);
+  ASSERT_TRUE(ordinary.ok()) << ordinary.status();
+  EXPECT_EQ(ordinary->mlp_widths, std::vector<int>({13, 13, 13, 13, 13}));
+  struct Case {
+    int source_blocks;
+    std::vector<int> widths;
+    int64_t trainable_parameters;
+  };
+  // Both rounding directions matter: matching counts as closely as possible
+  // is not the old "round every block up to at least the affine budget" rule.
+  for (const auto& test :
+       {Case{3, {3, 3, 3, 3, 2}, 464}, Case{4, {12, 12, 12, 11, 11}, 1388},
+        Case{8, {47, 46, 46, 46, 46}, 5021}}) {
+    SCOPED_TRACE(test.source_blocks);
+    config.transformer_block_count = test.source_blocks;
+    for (bool match : {false, true})
+      for (int ignored_width : {-1, 0, 1, 150}) {
+        auto budget = ResolveMlpReadoutParameterBudget(config, ignored_width, 5,
+                                                       match, true);
+        ASSERT_TRUE(budget.ok()) << budget.status();
+        EXPECT_EQ(budget->mlp_widths, test.widths);
+        EXPECT_EQ(budget->mlp_width, test.widths.front());
+        EXPECT_EQ(budget->trainable_parameters, test.trainable_parameters);
+        EXPECT_EQ(budget->mlp_parameters + 6 * 2 * config.model_width,
+                  budget->trainable_parameters);
+        // Changing the sum of widths by one costs 21 parameters. Neither
+        // adjacent total can improve on the selected integer budget.
+        const int64_t delta =
+            budget->trainable_parameters - budget->source_tail_parameters;
+        EXPECT_LE(std::abs(delta), std::abs(delta - 21));
+        EXPECT_LE(std::abs(delta), std::abs(delta + 21));
+      }
+  }
+  config.transformer_block_count = 4;
+  auto depth_five =
+      ResolveMlpReadoutParameterBudget(config, 150, 5, true, true);
+  ASSERT_TRUE(depth_five.ok()) << depth_five.status();
+  EXPECT_EQ(depth_five->minimum_mlp_width, 12);
+  EXPECT_EQ(depth_five->mlp_parameters, 1268);
+  EXPECT_EQ(depth_five->source_tail_parameters, 1380);
+  // At excessive depth even width one is larger than the desired budget;
+  // positive widths take precedence, never manufacturing zero-width layers.
+  auto deep = ResolveMlpReadoutParameterBudget(config, 150, 150, true, true);
+  ASSERT_TRUE(deep.ok()) << deep.status();
+  EXPECT_EQ(deep->mlp_widths, std::vector<int>(150, 1));
+  EXPECT_EQ(deep->minimum_mlp_width, 1);
+  EXPECT_EQ(deep->trainable_parameters, 7670);
+}
+
+TEST(MlpReadoutParameterBudgetTest, IsoBudgetValidatesBoundsBeforeAllocation) {
+  Gpt2Config config{.transformer_block_count = 3,
+                    .model_width = 1,
+                    .attention_heads = 1,
+                    .feed_forward_width = std::numeric_limits<int>::max(),
+                    .vocabulary_size = 1,
+                    .pad_vocabulary = false,
+                    .context_length = 1};
+  // Affine-only matching would overflow the width for this extreme shape,
+  // whereas including LayerNorm exactly matches the existing one-block tail.
+  auto maximum = ResolveMlpReadoutParameterBudget(config, 0, 1, false, true);
+  ASSERT_TRUE(maximum.ok()) << maximum.status();
+  EXPECT_EQ(maximum->mlp_widths,
+            std::vector<int>({std::numeric_limits<int>::max()}));
+  EXPECT_EQ(maximum->trainable_parameters, maximum->source_tail_parameters);
+  for (int depth : {0, -1, std::numeric_limits<int>::min()})
+    EXPECT_FALSE(
+        ResolveMlpReadoutParameterBudget(config, 0, depth, false, true).ok());
+  config.transformer_block_count = std::numeric_limits<int>::max();
+  EXPECT_FALSE(ResolveMlpReadoutParameterBudget(config, 1, 5, true, true).ok());
+  config.transformer_block_count = 10000;
+  config.feed_forward_width = 1;
+  config.context_length = 1000000;
+  ASSERT_TRUE(config.Validate().ok());
+  // Matching a huge tail must still respect each generated FC activation's
+  // backend limit, even when its width fits the host integer representation.
+  EXPECT_FALSE(ResolveMlpReadoutParameterBudget(config, 1, 5, true, true).ok());
+}
+
+TEST(MlpReadoutParameterBudgetTest,
+     IsoBudgetMinimizesTotalParameterDifference) {
+  Gpt2Config config{.transformer_block_count = 3,
+                    .model_width = 1,
+                    .attention_heads = 1,
+                    .feed_forward_width = 1,
+                    .vocabulary_size = 7,
+                    .pad_vocabulary = false,
+                    .context_length = 8};
+  for (int width = 1; width <= 5; ++width)
+    for (int source_hidden = 1; source_hidden <= 6; ++source_hidden)
+      for (int blocks = 3; blocks <= 5; ++blocks)
+        for (int depth = 1; depth <= 7; ++depth) {
+          SCOPED_TRACE(width);
+          SCOPED_TRACE(source_hidden);
+          SCOPED_TRACE(blocks);
+          SCOPED_TRACE(depth);
+          config.model_width = width;
+          config.feed_forward_width = source_hidden;
+          config.transformer_block_count = blocks;
+          auto budget =
+              ResolveMlpReadoutParameterBudget(config, 0, depth, false, true);
+          ASSERT_TRUE(budget.ok()) << budget.status();
+          ASSERT_EQ(budget->mlp_widths.size(), static_cast<size_t>(depth));
+          EXPECT_TRUE(std::is_sorted(budget->mlp_widths.rbegin(),
+                                     budget->mlp_widths.rend()));
+          EXPECT_GT(budget->mlp_widths.back(), 0);
+          EXPECT_LE(budget->mlp_widths.front() - budget->mlp_widths.back(), 1);
+          const int64_t unit_parameters = 2 * width + 1;
+          const int64_t overhead = depth * 3 * width + 2 * width;
+          int64_t sum = 0;
+          for (int hidden : budget->mlp_widths)
+            sum += hidden;
+          EXPECT_EQ(budget->trainable_parameters,
+                    sum * unit_parameters + overhead);
+          // Every positive width assignment has some sum >= depth, and its
+          // parameter count depends only on that sum. Search all sums through
+          // one beyond the target without using the resolver's rounding rule.
+          int64_t best = std::numeric_limits<int64_t>::max();
+          for (int64_t candidate_sum = depth;
+               candidate_sum <=
+               budget->source_tail_parameters / unit_parameters + depth + 1;
+               ++candidate_sum)
+            best = std::min(
+                best, std::abs(candidate_sum * unit_parameters + overhead -
+                               budget->source_tail_parameters));
+          EXPECT_EQ(std::abs(budget->trainable_parameters -
+                             budget->source_tail_parameters),
+                    best);
+        }
+}
+
 class MlpReadoutTest : public testing::Test {
  protected:
   void SetUp() override {
@@ -546,6 +685,83 @@ TEST_F(MlpReadoutTest, ZeroBranchHasNoIdentityForwardOrBackwardWithoutSkip) {
       }
     }
   }
+}
+
+TEST_F(MlpReadoutTest, IsoStackPreservesSeedParityAndTrainsAll1388Parameters) {
+  auto residual = CreateMlpReadout(*executor_, *source_, config_, 150, 3, 5,
+                                   true, true, true);
+  auto plain = CreateMlpReadout(*executor_, *source_, config_, 150, 3, 5, true,
+                                false, true);
+  ASSERT_TRUE(residual.ok()) << residual.status();
+  ASSERT_TRUE(plain.ok()) << plain.status();
+  EXPECT_EQ(residual->parameter_budget.mlp_widths,
+            std::vector<int>({12, 12, 12, 11, 11}));
+  EXPECT_EQ(residual->parameter_budget.trainable_parameters, 1388);
+  EXPECT_EQ(residual->parameter_budget.source_tail_parameters, 1380);
+  auto residual_weights = Snapshot(residual->model->weights());
+  auto plain_weights = Snapshot(plain->model->weights());
+  auto source_before = Snapshot(source_->weights());
+  ASSERT_TRUE(residual_weights.ok()) << residual_weights.status();
+  ASSERT_TRUE(plain_weights.ok()) << plain_weights.status();
+  ASSERT_TRUE(source_before.ok()) << source_before.status();
+  EXPECT_EQ(*residual_weights, *plain_weights);
+  for (int block = 0; block < 5; ++block) {
+    const int width = residual->parameter_budget.mlp_widths[block];
+    auto single = CreateMlpReadout(*executor_, *source_, config_, width,
+                                   3 + 2 * block, 1, false);
+    ASSERT_TRUE(single.ok()) << single.status();
+    auto single_weights = Snapshot(single->trainable->weights());
+    ASSERT_TRUE(single_weights.ok()) << single_weights.status();
+    for (int tensor = 0; tensor < 6; ++tensor)
+      EXPECT_EQ((*residual_weights)[6 * block + tensor],
+                (*single_weights)[tensor]);
+  }
+  auto input = HiddenInput();
+  ASSERT_TRUE(input.ok()) << input.status();
+  std::vector<float> upstream_values(config_.context_length * 16);
+  for (size_t i = 0; i < upstream_values.size(); ++i)
+    if (i % 16 < static_cast<size_t>(config_.vocabulary_size))
+      upstream_values[i] = (static_cast<int>(i % 5) - 2) / 8.0f;
+  auto upstream = Upload(upstream_values);
+  ASSERT_TRUE(upstream.ok()) << upstream.status();
+  for (bool with_skip : {true, false}) {
+    SCOPED_TRACE(with_skip);
+    auto& readout = with_skip ? *residual : *plain;
+    auto before = Snapshot(readout.model->weights());
+    ASSERT_TRUE(before.ok()) << before.status();
+    ASSERT_EQ(readout.trainable->weights().size(), 32u);
+    size_t parameter_count = 0;
+    for (const auto& weight : readout.trainable->weights())
+      parameter_count += weight.size_bytes() / sizeof(float);
+    EXPECT_EQ(parameter_count, 1388u);
+    auto optimizer =
+        AdamWOptimizer::Create(*executor_, *readout.trainable,
+                               {.learning_rate = 0.001f, .weight_decay = 0});
+    ASSERT_TRUE(optimizer.ok()) << optimizer.status();
+    EXPECT_EQ((*optimizer)->parameter_tensor_count(), 32u);
+    ASSERT_TRUE((*optimizer)->ZeroGrad().ok());
+    auto forward = readout.model->fwd(*executor_, {&*input, 1});
+    ASSERT_TRUE(forward.ok()) << forward.status();
+    auto backward = readout.model->bwd(*executor_, {&*upstream, 1},
+                                       std::move(forward->state));
+    ASSERT_TRUE(backward.ok()) << backward.status();
+    auto gradients = Snapshot(readout.trainable->gradients());
+    auto input_gradient = Snapshot(*backward);
+    ASSERT_TRUE(gradients.ok()) << gradients.status();
+    ASSERT_TRUE(input_gradient.ok()) << input_gradient.status();
+    ExpectFinite(input_gradient->front());
+    for (const auto& bytes : *gradients)
+      ExpectFinite(bytes);
+    ASSERT_TRUE((*optimizer)->ApplyStep().ok());
+    auto after = Snapshot(readout.model->weights());
+    ASSERT_TRUE(after.ok()) << after.status();
+    for (size_t tensor = 0; tensor < 32; ++tensor)
+      EXPECT_NE((*before)[tensor], (*after)[tensor]) << tensor;
+    EXPECT_EQ(before->back(), after->back());
+  }
+  auto source_after = Snapshot(source_->weights());
+  ASSERT_TRUE(source_after.ok()) << source_after.status();
+  EXPECT_EQ(*source_before, *source_after);
 }
 
 TEST_F(MlpReadoutTest,

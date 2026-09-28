@@ -94,7 +94,30 @@ the plain readout depends only on its normalized input. Thus this is not a test
 of every possible non-residual architecture (for example, one without that
 input normalization).
 
-## Validation and provenance
+## Five-block, approximately iso-parameter follow-up
+
+The original experiment above used **one** MLP, not five. The follow-up uses
+five sequential MLPs with hidden widths `12,12,12,11,11`, with and without
+their skips. Each has its own trainable input LayerNorm; a trainable final
+LayerNorm precedes the frozen tied head. The same 300,000-step recipe applies.
+
+The replaced source suffix contains MLP3 + block4 + final LayerNorm:
+`450 + (460 + 450) + 20 = 1,380` parameters. The replacement has
+`21 * sum(widths) + 30 * 5 + 20 = 1,388` parameters. This includes **all**
+trainable biases and LayerNorms on both sides, not just affine matrices.
+An exact match is impossible using positive integer hidden widths in this
+architecture: the nearest smaller choice has 1,367 parameters. The selected
+stack is the nearest possible match, eight parameters (0.58%) larger.
+
+Reproduce this pair by adding `--stacked --iso_params` to the runner command
+above. The underlying binary flags are
+`--train_stacked_mlp --mlp_iso_parameters=true`, plus
+`--mlp_residual_connections=true|false`. Ordinary stacked mode retains its
+previous five width-150 MLPs. Each run records all five resolved widths and the
+exact parameter difference in `run.txt`; seeded tensors and data order match
+between the residual and non-residual variants.
+
+## Single-block validation and provenance
 
 - 74 Bazel test targets and 223 existing script tests passed.
 - New GPU tests verify identical seeded weights/parameter counts, disappearance

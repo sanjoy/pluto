@@ -62,10 +62,10 @@ absl::Status CopyWeight(cuda::Executor& executor, const Buffer& from,
 
 absl::StatusOr<MlpReadoutParameterBudget> ResolveMlpReadoutParameterBudget(
     const Gpt2Config& config, int requested_min_mlp_width, int mlp_depth,
-    bool match_parameter_budget) {
+    bool match_parameter_budget, bool iso_parameter_budget) {
   RETURN_IF_ERROR(config.Validate());
-  if (config.transformer_block_count < 3 || requested_min_mlp_width <= 0 ||
-      mlp_depth <= 0)
+  if (config.transformer_block_count < 3 || mlp_depth <= 0 ||
+      (!iso_parameter_budget && requested_min_mlp_width <= 0))
     return absl::InvalidArgumentError(
         "MLP readout budget requires at least three source blocks and positive "
         "MLP width and depth");
@@ -84,13 +84,58 @@ absl::StatusOr<MlpReadoutParameterBudget> ResolveMlpReadoutParameterBudget(
     return absl::InvalidArgumentError(
         "MLP readout source-tail parameter count overflows");
   const int64_t source_tail = initial_tail + later_blocks * block;
+  const int64_t per_hidden_unit = 2 * d + 1;
+  if (iso_parameter_budget) {
+    // Each block contributes d FC2 biases and 2*d input-LN parameters,
+    // independently of width; the shared final LN contributes another 2*d.
+    // Every additional hidden unit then costs exactly 2*d+1 parameters, so
+    // rounding the total hidden width gives the closest total-size match.
+    const int64_t per_block_overhead = 3 * d;
+    if (mlp_depth >
+        (std::numeric_limits<int64_t>::max() - 2 * d) / per_block_overhead)
+      return absl::InvalidArgumentError(
+          "MLP readout parameter count overflows");
+    const int64_t overhead = mlp_depth * per_block_overhead + 2 * d;
+    const int64_t remaining = std::max(int64_t{0}, source_tail - overhead);
+    const int64_t quotient = remaining / per_hidden_unit;
+    const int64_t remainder = remaining % per_hidden_unit;
+    // The per-unit price is odd, so there is no exactly tied rounding case.
+    const int64_t total_width = std::max(
+        int64_t{mlp_depth}, quotient + (remainder > per_hidden_unit / 2));
+    const int64_t rounded_up = quotient + (remainder != 0);
+    const int64_t minimum = std::max(
+        int64_t{1}, rounded_up / mlp_depth + (rounded_up % mlp_depth != 0));
+    const int64_t lower_width = total_width / mlp_depth;
+    const int64_t wider_blocks = total_width % mlp_depth;
+    const int64_t width = lower_width + (wider_blocks != 0);
+    if (width > std::numeric_limits<int>::max() ||
+        minimum > std::numeric_limits<int>::max())
+      return absl::InvalidArgumentError(
+          "required MLP readout width exceeds int32");
+    auto readout_config = config;
+    readout_config.feed_forward_width = static_cast<int>(width);
+    RETURN_IF_ERROR(readout_config.Validate());
+    if (total_width >
+        (std::numeric_limits<int64_t>::max() - overhead) / per_hidden_unit)
+      return absl::InvalidArgumentError(
+          "MLP readout parameter count overflows");
+    const int64_t variable_parameters = total_width * per_hidden_unit;
+    std::vector<int> widths(mlp_depth, static_cast<int>(lower_width));
+    for (int64_t index = 0; index < wider_blocks; ++index)
+      ++widths[index];
+    return MlpReadoutParameterBudget{static_cast<int>(minimum),
+                                     static_cast<int>(width),
+                                     source_tail,
+                                     variable_parameters + mlp_depth * d,
+                                     variable_parameters + overhead,
+                                     std::move(widths)};
+  }
   // Each bare MLP has (2*d+1)*h+d parameters. Divide the source budget
   // across all blocks before rounding up the width, avoiding depth products
   // until the final count is checked. Input/final LNs are extra capacity.
   const int64_t per_mlp =
       source_tail / mlp_depth + (source_tail % mlp_depth != 0);
   const int64_t required = std::max(int64_t{0}, per_mlp - d);
-  const int64_t per_hidden_unit = 2 * d + 1;
   const int64_t minimum =
       std::max(int64_t{1},
                required / per_hidden_unit + (required % per_hidden_unit != 0));
@@ -109,19 +154,22 @@ absl::StatusOr<MlpReadoutParameterBudget> ResolveMlpReadoutParameterBudget(
       (std::numeric_limits<int64_t>::max() - 2 * d) / trainable_per_block)
     return absl::InvalidArgumentError("MLP readout parameter count overflows");
   const int64_t mlp = mlp_depth * affine_per_block;
-  return MlpReadoutParameterBudget{static_cast<int>(minimum), width,
-                                   source_tail, mlp,
-                                   mlp_depth * trainable_per_block + 2 * d};
+  return MlpReadoutParameterBudget{static_cast<int>(minimum),
+                                   width,
+                                   source_tail,
+                                   mlp,
+                                   mlp_depth * trainable_per_block + 2 * d,
+                                   std::vector<int>(mlp_depth, width)};
 }
 
 absl::StatusOr<MlpReadout> CreateMlpReadout(
     cuda::Executor& executor, const Layer& source, const Gpt2Config& config,
     int mlp_width, int seed, int mlp_depth, bool match_parameter_budget,
-    bool residual_connections) {
+    bool residual_connections, bool iso_parameter_budget) {
   ASSIGN_OR_RETURN(auto budget,
                    ResolveMlpReadoutParameterBudget(
-                       config, mlp_width, mlp_depth, match_parameter_budget));
-  mlp_width = budget.mlp_width;
+                       config, mlp_width, mlp_depth, match_parameter_budget,
+                       iso_parameter_budget));
   if (seed < 0)
     return absl::InvalidArgumentError("readout seed must be nonnegative");
   RETURN_IF_ERROR(ValidateSource(executor, source));
@@ -174,6 +222,7 @@ absl::StatusOr<MlpReadout> CreateMlpReadout(
   RETURN_IF_ERROR(CopyWeight(executor, weights[0], embedding->weight()));
   ComposedLayerBuilder suffix;
   for (int block = 0; block < mlp_depth; ++block) {
+    const int block_width = budget.mlp_widths[block];
     const uint64_t block_seed =
         static_cast<uint64_t>(seed) + 2 * static_cast<uint64_t>(block);
     ComposedLayerBuilder branch;
@@ -181,14 +230,14 @@ absl::StatusOr<MlpReadout> CreateMlpReadout(
         LayerNormLayer::Create(executor, config.model_width, 1e-5f,
                                DataType::BF16, config.context_length)));
     RETURN_IF_ERROR(branch.add(
-        FullyConnectedLayer::Create(executor, config.model_width, mlp_width,
+        FullyConnectedLayer::Create(executor, config.model_width, block_width,
                                     DataType::BF16, config.context_length)));
     RETURN_IF_ERROR(static_cast<FullyConnectedLayer*>(branch.back())
                         ->InitializeNormal(0.2f, block_seed));
     RETURN_IF_ERROR(branch.add(GeluLayer::Create(
-        executor, mlp_width, DataType::BF16, config.context_length)));
+        executor, block_width, DataType::BF16, config.context_length)));
     RETURN_IF_ERROR(branch.add(
-        FullyConnectedLayer::Create(executor, mlp_width, config.model_width,
+        FullyConnectedLayer::Create(executor, block_width, config.model_width,
                                     DataType::BF16, config.context_length)));
     // Keep the output projection scale fixed so depth is the only change.
     RETURN_IF_ERROR(static_cast<FullyConnectedLayer*>(branch.back())

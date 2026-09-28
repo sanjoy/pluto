@@ -127,6 +127,20 @@ TEST(MemorizeGeneralFactsCliTest, ResidualAblationRequiresReadoutTraining) {
                   "mlp_residual_connections");
 }
 
+TEST(MemorizeGeneralFactsCliTest, IsoParametersRequiresStackedReadoutTraining) {
+  auto options = PuzzleCommandLineOptions(false, true);
+  EXPECT_FALSE(options.mlp_iso_parameters);
+  options.mlp_iso_parameters = true;
+  EXPECT_TRUE(ValidateOptions(options, {"mlp_iso_parameters"}).ok());
+  EXPECT_TRUE(
+      ResolveModeDefaults(options, {"mlp_iso_parameters"}).mlp_iso_parameters);
+  for (const auto& invalid :
+       {TrainingOptions(), GenerationOptions(), VerificationOptions(),
+        PuzzleCommandLineOptions(), PuzzleCommandLineOptions(true)})
+    ExpectInvalid(ValidateOptions(invalid, {"mlp_iso_parameters"}),
+                  "mlp_iso_parameters");
+}
+
 TEST(MemorizeGeneralFactsCliTest, RejectsInvalidEnumValues) {
   for (int invalid : {-1, 3, 127}) {
     SCOPED_TRACE(invalid);
