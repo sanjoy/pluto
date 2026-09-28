@@ -38,6 +38,7 @@ struct CommandLineOptions {
   int mlp_width = 0;
   bool train_mlp = false;
   bool train_stacked_mlp = false;
+  bool train_mlp_transformer = false;
   double learning_rate = 0;
   double training_seconds = 0;
 };
@@ -73,14 +74,15 @@ absl::string_view ModeName(Mode mode);
 // enables prompt generation, while verify_checkpoint enables a corpus audit.
 // Supplying both selectors explicitly is invalid even when one value is empty.
 // Puzzle requires puzzle_checkpoint and consumes optimizer settings only when
-// train_mlp or train_stacked_mlp is enabled. These training selectors are
-// mutually exclusive when enabled; mlp_width applies only to train_mlp.
+// train_mlp, train_stacked_mlp, or train_mlp_transformer is enabled. These
+// training selectors are mutually exclusive when enabled; mlp_width applies
+// only to train_mlp.
 // This helper performs no I/O, CUDA initialization, or numeric validation.
 absl::Status ValidateModeFlags(
     Mode mode, absl::Span<const absl::string_view> explicitly_set_flags,
     absl::string_view tokenizer, absl::string_view checkpoint_dir,
     absl::string_view infer_checkpoint, absl::string_view verify_checkpoint,
     absl::string_view puzzle_checkpoint = "", bool train_mlp = false,
-    bool train_stacked_mlp = false);
+    bool train_stacked_mlp = false, bool train_mlp_transformer = false);
 
 }  // namespace pluto::llm::memorize_general_facts

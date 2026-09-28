@@ -17,11 +17,12 @@ absl::Status Validate(Mode mode, std::initializer_list<absl::string_view> flags,
                       absl::string_view tokenizer = "/tokenizer",
                       absl::string_view checkpoint_dir = "/checkpoints",
                       absl::string_view puzzle_checkpoint = "/puzzle",
-                      bool train_mlp = false, bool train_stacked_mlp = false) {
+                      bool train_mlp = false, bool train_stacked_mlp = false,
+                      bool train_mlp_transformer = false) {
   return ValidateModeFlags(
       mode, absl::MakeConstSpan(flags.begin(), flags.size()), tokenizer,
       checkpoint_dir, infer_checkpoint, verify_checkpoint, puzzle_checkpoint,
-      train_mlp, train_stacked_mlp);
+      train_mlp, train_stacked_mlp, train_mlp_transformer);
 }
 
 void ExpectInvalid(const absl::Status& status, absl::string_view diagnostic) {
@@ -66,8 +67,9 @@ CommandLineOptions VerificationOptions() {
   return options;
 }
 
-CommandLineOptions PuzzleCommandLineOptions(bool train_mlp = false,
-                                            bool train_stacked_mlp = false) {
+CommandLineOptions PuzzleCommandLineOptions(
+    bool train_mlp = false, bool train_stacked_mlp = false,
+    bool train_mlp_transformer = false) {
   auto options = TrainingOptions();
   options.mode = "puzzle";
   options.checkpoint_dir.clear();
@@ -77,6 +79,7 @@ CommandLineOptions PuzzleCommandLineOptions(bool train_mlp = false,
   options.mlp_width = 150;
   options.train_mlp = train_mlp;
   options.train_stacked_mlp = train_stacked_mlp;
+  options.train_mlp_transformer = train_mlp_transformer;
   return ResolveModeDefaults(options, {});
 }
 
@@ -159,6 +162,7 @@ TEST(MemorizeGeneralFactsCliTest, FiltersEveryFlagByExecutionPath) {
       {"puzzle_checkpoint", false, false, false, true, true},
       {"train_mlp", false, false, false, true, true},
       {"train_stacked_mlp", false, false, false, true, true},
+      {"train_mlp_transformer", false, false, false, true, true},
       {"mlp_width", false, false, false, false, true},
   };
   for (const auto& test : cases) {
@@ -172,15 +176,24 @@ TEST(MemorizeGeneralFactsCliTest, FiltersEveryFlagByExecutionPath) {
                  "/puzzle", true),
         Validate(Mode::kPuzzle, {test.flag}, "", "", "/tokenizer", "",
                  "/puzzle", false, true),
+        Validate(Mode::kPuzzle, {test.flag}, "", "", "/tokenizer", "",
+                 "/puzzle", false, false, true),
     };
-    const bool allowed[] = {
-        test.train,     test.generate,
-        test.verify,    test.capture,
-        test.train_mlp, test.train_mlp && test.flag != "mlp_width"};
-    const absl::string_view paths[] = {"train",     "generate",
-                                       "verify",    "capture",
-                                       "train_mlp", "train_stacked_mlp"};
-    for (int i = 0; i < 6; ++i) {
+    const bool allowed[] = {test.train,
+                            test.generate,
+                            test.verify,
+                            test.capture,
+                            test.train_mlp,
+                            test.train_mlp && test.flag != "mlp_width",
+                            test.train_mlp && test.flag != "mlp_width"};
+    const absl::string_view paths[] = {"train",
+                                       "generate",
+                                       "verify",
+                                       "capture",
+                                       "train_mlp",
+                                       "train_stacked_mlp",
+                                       "train_mlp_transformer"};
+    for (int i = 0; i < 7; ++i) {
       SCOPED_TRACE(paths[i]);
       if (allowed[i])
         EXPECT_TRUE(statuses[i].ok()) << statuses[i];
@@ -325,6 +338,13 @@ TEST(MemorizeGeneralFactsCliTest, RejectsFlagsMissingFromThePolicy) {
         Validate(Mode::kTrainModel, {unknown}),
         Validate(Mode::kInferModel, {unknown}, "/model"),
         Validate(Mode::kInferModel, {unknown}, "", "/model"),
+        Validate(Mode::kPuzzle, {unknown}),
+        Validate(Mode::kPuzzle, {unknown}, "", "", "/tokenizer", "", "/puzzle",
+                 true),
+        Validate(Mode::kPuzzle, {unknown}, "", "", "/tokenizer", "", "/puzzle",
+                 false, true),
+        Validate(Mode::kPuzzle, {unknown}, "", "", "/tokenizer", "", "/puzzle",
+                 false, false, true),
     };
     for (const auto& status : statuses) {
       EXPECT_EQ(status.code(), absl::StatusCode::kInternal) << status;
@@ -338,7 +358,8 @@ TEST(MemorizeGeneralFactsCliTest, ValidatesAndReturnsEachExecutionMode) {
   for (const auto& options :
        {TrainingOptions(), GenerationOptions(), VerificationOptions(),
         PuzzleCommandLineOptions(), PuzzleCommandLineOptions(true),
-        PuzzleCommandLineOptions(false, true)}) {
+        PuzzleCommandLineOptions(false, true),
+        PuzzleCommandLineOptions(false, false, true)}) {
     SCOPED_TRACE(options.mode);
     SCOPED_TRACE(options.verify_checkpoint);
     const auto mode = ParseAndValidateRunMode(options, {});
@@ -595,16 +616,82 @@ TEST(MemorizeGeneralFactsCliTest, PuzzleRequiresItsCheckpoint) {
 }
 
 TEST(MemorizeGeneralFactsCliTest, PuzzleTrainingSelectorsAreExclusiveWhenTrue) {
-  auto options = PuzzleCommandLineOptions(true, true);
-  ExpectInvalid(ValidateOptions(options), "mutually exclusive");
-  ExpectInvalid(ValidateOptions(options, {"train_mlp", "train_stacked_mlp"}),
-                "mutually exclusive");
-  for (auto valid : {PuzzleCommandLineOptions(), PuzzleCommandLineOptions(true),
-                     PuzzleCommandLineOptions(false, true)}) {
-    // Explicit false selectors are allowed alongside the enabled selector.
-    EXPECT_TRUE(
-        ValidateOptions(valid, {"train_mlp", "train_stacked_mlp"}).ok());
+  for (bool train_mlp : {false, true}) {
+    for (bool train_stacked_mlp : {false, true}) {
+      for (bool train_mlp_transformer : {false, true}) {
+        SCOPED_TRACE(train_mlp);
+        SCOPED_TRACE(train_stacked_mlp);
+        SCOPED_TRACE(train_mlp_transformer);
+        const auto options = PuzzleCommandLineOptions(
+            train_mlp, train_stacked_mlp, train_mlp_transformer);
+        const absl::Status statuses[] = {
+            ValidateOptions(options),
+            ValidateOptions(options, {"train_mlp", "train_stacked_mlp",
+                                      "train_mlp_transformer"}),
+        };
+        for (const auto& status : statuses)
+          if (train_mlp + train_stacked_mlp + train_mlp_transformer > 1)
+            ExpectInvalid(status, "mutually exclusive");
+          else
+            // Explicit false selectors are allowed with the enabled selector.
+            EXPECT_TRUE(status.ok()) << status;
+      }
+    }
   }
+}
+
+TEST(MemorizeGeneralFactsCliTest, MlpTransformerSelectorIsPuzzleOnly) {
+  for (auto options :
+       {TrainingOptions(), GenerationOptions(), VerificationOptions()}) {
+    for (bool enabled : {false, true}) {
+      options.train_mlp_transformer = enabled;
+      ExpectInvalid(ValidateOptions(options, {"train_mlp_transformer"}),
+                    "--train_mlp_transformer is not valid");
+    }
+  }
+}
+
+TEST(MemorizeGeneralFactsCliTest, MlpTransformerRequiresExactlyFourBlocks) {
+  auto options = PuzzleCommandLineOptions(false, false, true);
+  for (int layers : {std::numeric_limits<int>::min(), -1, 0, 1, 2, 3, 5,
+                     std::numeric_limits<int>::max()}) {
+    SCOPED_TRACE(layers);
+    options.layers = layers;
+    ExpectInvalid(ValidateOptions(options),
+                  "--layers must be 4 with --train_mlp_transformer");
+  }
+  options.layers = 4;
+  EXPECT_TRUE(ValidateOptions(options, {"layers"}).ok());
+}
+
+TEST(MemorizeGeneralFactsCliTest, MlpTransformerUsesSourceWidths) {
+  auto options = PuzzleCommandLineOptions(false, false, true);
+  for (int width : {-1, 0, 1, 10, 20}) {
+    SCOPED_TRACE(width);
+    options.model_width = width;
+    const auto status = ValidateOptions(
+        options, {"model_width", "feed_forward_width", "attention_heads"});
+    if (width <= 0)
+      ExpectInvalid(status, "--model_width must be positive");
+    else
+      EXPECT_TRUE(status.ok()) << status;
+  }
+  for (int width : {-1, 0, 150, 300}) {
+    SCOPED_TRACE(width);
+    options.mlp_width = width;
+    // Its MLPs use the source feed-forward width, not the single-MLP setting.
+    EXPECT_TRUE(ValidateOptions(options).ok());
+    ExpectInvalid(ValidateOptions(options, {"mlp_width"}),
+                  "--mlp_width is not valid");
+  }
+}
+
+TEST(MemorizeGeneralFactsCliTest, MlpTransformerAloneConsumesTrainingSettings) {
+  const auto options = PuzzleCommandLineOptions(false, false, true);
+  EXPECT_TRUE(
+      ValidateOptions(options, {"train_mlp_transformer", "steps", "eval_every",
+                                "learning_rate", "seed", "batch_size"})
+          .ok());
 }
 
 TEST(MemorizeGeneralFactsCliTest, StackedPuzzleTrainingHasFixedWidths) {
@@ -640,8 +727,9 @@ TEST(MemorizeGeneralFactsCliTest, StackedPuzzleAloneConsumesTrainingSettings) {
 }
 
 TEST(MemorizeGeneralFactsCliTest, PuzzleDefaultsOnlyReplaceOmittedFlags) {
-  for (auto options : {PuzzleCommandLineOptions(true),
-                       PuzzleCommandLineOptions(false, true)}) {
+  for (auto options :
+       {PuzzleCommandLineOptions(true), PuzzleCommandLineOptions(false, true),
+        PuzzleCommandLineOptions(false, false, true)}) {
     options.steps = 120000;
     options.eval_every = 256;
     options.learning_rate = 0.0012;
@@ -694,8 +782,9 @@ TEST(MemorizeGeneralFactsCliTest, ResolvingPuzzleDefaultsPreservesOtherModes) {
 
 TEST(MemorizeGeneralFactsCliTest,
      PuzzleDefaultsDoNotHideInvalidExplicitValues) {
-  for (auto options : {PuzzleCommandLineOptions(true),
-                       PuzzleCommandLineOptions(false, true)}) {
+  for (auto options :
+       {PuzzleCommandLineOptions(true), PuzzleCommandLineOptions(false, true),
+        PuzzleCommandLineOptions(false, false, true)}) {
     options.steps = -1;
     const absl::string_view flags[] = {"steps"};
     ExpectInvalid(
@@ -742,14 +831,15 @@ TEST(MemorizeGeneralFactsCliTest,
     SCOPED_TRACE(flag);
     ExpectInvalid(ValidateOptions(options, {flag}), flag);
   }
-  EXPECT_TRUE(
-      ValidateOptions(options, {"train_mlp", "train_stacked_mlp", "batch_size"})
-          .ok());
+  EXPECT_TRUE(ValidateOptions(options, {"train_mlp", "train_stacked_mlp",
+                                        "train_mlp_transformer", "batch_size"})
+                  .ok());
 }
 
 TEST(MemorizeGeneralFactsCliTest, PuzzleTrainingValidatesItsSchedule) {
-  for (auto options : {PuzzleCommandLineOptions(true),
-                       PuzzleCommandLineOptions(false, true)}) {
+  for (auto options :
+       {PuzzleCommandLineOptions(true), PuzzleCommandLineOptions(false, true),
+        PuzzleCommandLineOptions(false, false, true)}) {
     options.steps = -1;
     ExpectInvalid(ValidateOptions(options), "--steps must be nonnegative");
     options.steps = 0;
@@ -771,8 +861,9 @@ TEST(MemorizeGeneralFactsCliTest, PuzzleTrainingValidatesItsSchedule) {
 }
 
 TEST(MemorizeGeneralFactsCliTest, OnlyPuzzleTrainingRequiresNonnegativeSeed) {
-  for (auto puzzle : {PuzzleCommandLineOptions(true),
-                      PuzzleCommandLineOptions(false, true)}) {
+  for (auto puzzle :
+       {PuzzleCommandLineOptions(true), PuzzleCommandLineOptions(false, true),
+        PuzzleCommandLineOptions(false, false, true)}) {
     for (int seed : {std::numeric_limits<int>::min(), -1, 0, 3,
                      std::numeric_limits<int>::max()}) {
       SCOPED_TRACE(seed);
@@ -792,8 +883,9 @@ TEST(MemorizeGeneralFactsCliTest, OnlyPuzzleTrainingRequiresNonnegativeSeed) {
 }
 
 TEST(MemorizeGeneralFactsCliTest, PuzzleLearningRateMustBeUsableAsFloat) {
-  for (auto options : {PuzzleCommandLineOptions(true),
-                       PuzzleCommandLineOptions(false, true)}) {
+  for (auto options :
+       {PuzzleCommandLineOptions(true), PuzzleCommandLineOptions(false, true),
+        PuzzleCommandLineOptions(false, false, true)}) {
     for (double value : {-1.0, 0.0, std::numeric_limits<double>::quiet_NaN(),
                          std::numeric_limits<double>::infinity(),
                          std::numeric_limits<double>::max(),

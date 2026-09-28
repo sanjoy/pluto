@@ -35,8 +35,9 @@ absl::StatusOr<MlpReadoutParameterBudget> ResolveMlpReadoutParameterBudget(
 struct MlpReadout {
   std::unique_ptr<EmbeddingLookupLayer> embedding;
   std::unique_ptr<ComposedLayer> model;
-  // Owned by model. Only this layer may be passed to the optimizer/checkpoint:
-  // input LN, FC1, FC2 for each block, then one final LN (6*depth+2 tensors).
+  // Owned by model. Only this suffix may enter the optimizer/checkpoint.
+  // CreateMlpReadout gives 6*depth+2 tensors; the experimental transformer
+  // builder also includes an attention sublayer and its input LayerNorm.
   Layer* trainable;
   MlpReadoutParameterBudget parameter_budget;  // Actual allocated shape.
 };

@@ -143,12 +143,59 @@ cc_test(
 )
 
 cc_library(
+    name = "transformer_readout",
+    srcs = ["transformer_readout.cc"],
+    hdrs = ["transformer_readout.h"],
+    deps = [
+        ":mlp_readout",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/llm:attention",
+        "//src/llm:combinators",
+        "//src/llm:embedding",
+        "//src/llm:fully_connected",
+        "//src/llm:gelu",
+        "//src/llm:gpt2",
+        "//src/llm:layer",
+        "//src/llm:norm",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_test(
+    name = "transformer_readout_test",
+    srcs = ["transformer_readout_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":mlp_readout",
+        ":transformer_readout",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/llm:cross_entropy_loss",
+        "//src/llm:fully_connected",
+        "//src/llm:gpt2",
+        "//src/llm:optimizer",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "puzzle",
     srcs = ["puzzle.cc"],
     hdrs = ["puzzle.h"],
     deps = [
         ":mlp_readout",
         ":puzzle_report",
+        ":transformer_readout",
         "//src/cuda:buffer",
         "//src/cuda:executor",
         "//src/cuda:page_locked_host_array",

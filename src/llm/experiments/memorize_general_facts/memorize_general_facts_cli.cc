@@ -21,7 +21,9 @@ constexpr uint8_t kVerify = 1 << 2;
 constexpr uint8_t kPuzzleCapture = 1 << 3;
 constexpr uint8_t kPuzzleTrainMlp = 1 << 4;
 constexpr uint8_t kPuzzleTrainStackedMlp = 1 << 5;
-constexpr uint8_t kPuzzleTrain = kPuzzleTrainMlp | kPuzzleTrainStackedMlp;
+constexpr uint8_t kPuzzleTrainMlpTransformer = 1 << 6;
+constexpr uint8_t kPuzzleTrain =
+    kPuzzleTrainMlp | kPuzzleTrainStackedMlp | kPuzzleTrainMlpTransformer;
 constexpr uint8_t kPuzzle = kPuzzleCapture | kPuzzleTrain;
 constexpr uint8_t kAll = kTrain | kGenerate | kVerify | kPuzzle;
 
@@ -59,6 +61,7 @@ constexpr FlagRule kFlagRules[] = {
     {"puzzle_checkpoint", kPuzzle},
     {"train_mlp", kPuzzle},
     {"train_stacked_mlp", kPuzzle},
+    {"train_mlp_transformer", kPuzzle},
     {"mlp_width", kPuzzleTrainMlp},
 };
 
@@ -98,11 +101,16 @@ absl::StatusOr<Mode> ParseAndValidateRunMode(
   RETURN_IF_ERROR(ValidateModeFlags(
       mode, explicitly_set_flags, options.tokenizer, options.checkpoint_dir,
       options.infer_checkpoint, options.verify_checkpoint,
-      options.puzzle_checkpoint, options.train_mlp, options.train_stacked_mlp));
+      options.puzzle_checkpoint, options.train_mlp, options.train_stacked_mlp,
+      options.train_mlp_transformer));
 
-  const bool train_puzzle = options.train_mlp || options.train_stacked_mlp;
+  const bool train_puzzle = options.train_mlp || options.train_stacked_mlp ||
+                            options.train_mlp_transformer;
 
   if (mode == Mode::kPuzzle) {
+    if (options.train_mlp_transformer && options.layers != 4)
+      return absl::InvalidArgumentError(
+          "--layers must be 4 with --train_mlp_transformer");
     if (options.layers < 3)
       return absl::InvalidArgumentError(
           "--layers must be at least 3 in --mode=puzzle");
@@ -201,8 +209,8 @@ absl::Status ValidateModeFlags(
     Mode mode, absl::Span<const absl::string_view> explicitly_set_flags,
     absl::string_view tokenizer, absl::string_view checkpoint_dir,
     absl::string_view infer_checkpoint, absl::string_view verify_checkpoint,
-    absl::string_view puzzle_checkpoint, bool train_mlp,
-    bool train_stacked_mlp) {
+    absl::string_view puzzle_checkpoint, bool train_mlp, bool train_stacked_mlp,
+    bool train_mlp_transformer) {
   if (mode != Mode::kTrainModel && mode != Mode::kInferModel &&
       mode != Mode::kPuzzle)
     return absl::InvalidArgumentError("invalid --mode enum value");
@@ -220,12 +228,14 @@ absl::Status ValidateModeFlags(
 
   uint8_t path = kTrain;
   if (mode == Mode::kPuzzle) {
-    if (train_mlp && train_stacked_mlp)
+    if (train_mlp + train_stacked_mlp + train_mlp_transformer > 1)
       return absl::InvalidArgumentError(
-          "--train_mlp and --train_stacked_mlp are mutually exclusive");
-    path = train_mlp           ? kPuzzleTrainMlp
-           : train_stacked_mlp ? kPuzzleTrainStackedMlp
-                               : kPuzzleCapture;
+          "--train_mlp, --train_stacked_mlp, and --train_mlp_transformer "
+          "are mutually exclusive");
+    path = train_mlp               ? kPuzzleTrainMlp
+           : train_stacked_mlp     ? kPuzzleTrainStackedMlp
+           : train_mlp_transformer ? kPuzzleTrainMlpTransformer
+                                   : kPuzzleCapture;
   }
   if (mode == Mode::kInferModel) {
     if (has_infer_checkpoint && has_verify_checkpoint)
@@ -244,11 +254,14 @@ absl::Status ValidateModeFlags(
       continue;
     return absl::InvalidArgumentError(absl::StrCat(
         "--", name, " is not valid in --mode=", ModeName(mode),
-        path == kGenerate        ? " with --infer_checkpoint"
-        : path == kVerify        ? " with --verify_checkpoint"
-        : path == kPuzzleCapture ? " without --train_mlp or --train_stacked_mlp"
-        : path == kPuzzleTrainStackedMlp ? " with --train_stacked_mlp"
-                                         : ""));
+        path == kGenerate ? " with --infer_checkpoint"
+        : path == kVerify ? " with --verify_checkpoint"
+        : path == kPuzzleCapture
+            ? " without --train_mlp, --train_stacked_mlp, or "
+              "--train_mlp_transformer"
+        : path == kPuzzleTrainStackedMlp     ? " with --train_stacked_mlp"
+        : path == kPuzzleTrainMlpTransformer ? " with --train_mlp_transformer"
+                                             : ""));
   }
   if (tokenizer.empty())
     return absl::InvalidArgumentError(

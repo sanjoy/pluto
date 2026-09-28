@@ -63,11 +63,16 @@ ABSL_FLAG(std::string, puzzle_checkpoint, "",
           "In puzzle, load the frozen source-model checkpoint (required)");
 ABSL_FLAG(bool, train_mlp, false,
           "In puzzle, train an MLP on captured residual activations; mutually "
-          "exclusive with --train_stacked_mlp");
+          "exclusive with --train_stacked_mlp and --train_mlp_transformer");
 ABSL_FLAG(bool, train_stacked_mlp, false,
           "In puzzle, train five residual 10/150/10 MLPs on captured residual "
           "activations; requires --model_width=10 and is mutually exclusive "
-          "with --train_mlp");
+          "with --train_mlp and --train_mlp_transformer");
+ABSL_FLAG(bool, train_mlp_transformer, false,
+          "In puzzle, train the source post-A3 suffix architecture: one "
+          "residual MLP, one full transformer block, and final layer norm, "
+          "using the source widths and attention heads; requires --layers=4 "
+          "and is mutually exclusive with --train_mlp and --train_stacked_mlp");
 ABSL_FLAG(int, mlp_width, 150,
           "Minimum hidden width of the puzzle MLP; grows if needed so its "
           "affine parameters cover the original post-A3 suffix. "
@@ -141,6 +146,7 @@ absl::StatusOr<Mode> RunModeFromFlags(CommandLineOptions& options) {
   AddIfExplicitlySet(FLAGS_puzzle_checkpoint, &explicitly_set);
   AddIfExplicitlySet(FLAGS_train_mlp, &explicitly_set);
   AddIfExplicitlySet(FLAGS_train_stacked_mlp, &explicitly_set);
+  AddIfExplicitlySet(FLAGS_train_mlp_transformer, &explicitly_set);
   AddIfExplicitlySet(FLAGS_mlp_width, &explicitly_set);
   AddIfExplicitlySet(FLAGS_prompt, &explicitly_set);
   AddIfExplicitlySet(FLAGS_generation_tokens, &explicitly_set);
@@ -184,6 +190,7 @@ absl::StatusOr<Mode> RunModeFromFlags(CommandLineOptions& options) {
        .mlp_width = absl::GetFlag(FLAGS_mlp_width),
        .train_mlp = absl::GetFlag(FLAGS_train_mlp),
        .train_stacked_mlp = absl::GetFlag(FLAGS_train_stacked_mlp),
+       .train_mlp_transformer = absl::GetFlag(FLAGS_train_mlp_transformer),
        .learning_rate = absl::GetFlag(FLAGS_learning_rate),
        .training_seconds = absl::GetFlag(FLAGS_training_seconds)},
       explicitly_set);
@@ -774,6 +781,7 @@ absl::StatusOr<bool> Run() {
         .compact_vocabulary = absl::GetFlag(FLAGS_compact_vocabulary),
         .train_mlp = options.train_mlp,
         .train_stacked_mlp = options.train_stacked_mlp,
+        .train_mlp_transformer = options.train_mlp_transformer,
         .mlp_width = options.mlp_width,
         .steps = options.steps,
         .eval_every = options.eval_every,

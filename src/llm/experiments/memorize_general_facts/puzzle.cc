@@ -30,6 +30,7 @@
 #include "src/llm/checkpoint.h"
 #include "src/llm/experiments/memorize_general_facts/mlp_readout.h"
 #include "src/llm/experiments/memorize_general_facts/puzzle_report.h"
+#include "src/llm/experiments/memorize_general_facts/transformer_readout.h"
 #include "src/llm/extract_top1_ids.h"
 #include "src/llm/layers/cross_entropy_loss.h"
 #include "src/util/status_macros.h"
@@ -354,21 +355,27 @@ absl::StatusOr<int> VerifyGreedy(cuda::Executor& executor, const Layer& source,
   return complete;
 }
 
-// Fit an MLP readout on cached states while preserving the tied head.
+// Fit a replacement suffix on cached sequences while preserving the tied head.
 // Restore the best checkpoint and verify completions from actual prefixes.
 absl::Status FitMlpReadout(cuda::Executor& executor, const Layer& source,
                            const Gpt2Config& config,
                            const CapturedCorpus& cache,
                            const PaddedLineDataSetIterator& data, int eos,
                            const PuzzleOptions& options, std::ostream& output) {
-  const int depth = options.train_stacked_mlp ? kStackedMlpDepth : 1;
-  const int width =
-      options.train_stacked_mlp ? kStackedMlpWidth : options.mlp_width;
+  const int depth = options.train_mlp_transformer ? 2
+                    : options.train_stacked_mlp   ? kStackedMlpDepth
+                                                  : 1;
+  const int width = options.train_mlp_transformer ? config.feed_forward_width
+                    : options.train_stacked_mlp   ? kStackedMlpWidth
+                                                  : options.mlp_width;
   // The stack is an exact reproduction of the 5 x 10/150/10 experiment, not
   // a minimum-width request that can silently grow with the source model.
-  ASSIGN_OR_RETURN(auto readout, CreateMlpReadout(executor, source, config,
-                                                  width, options.seed, depth,
-                                                  !options.train_stacked_mlp));
+  ASSIGN_OR_RETURN(
+      auto readout,
+      options.train_mlp_transformer
+          ? CreateMlpTransformerReadout(executor, source, config, options.seed)
+          : CreateMlpReadout(executor, source, config, width, options.seed,
+                             depth, !options.train_stacked_mlp));
   ASSIGN_OR_RETURN(auto frozen_head,
                    SnapshotWeights(executor, *readout.embedding));
   ASSIGN_OR_RETURN(auto loss, CrossEntropyLossLayer::Create(
@@ -390,8 +397,32 @@ absl::Status FitMlpReadout(cuda::Executor& executor, const Layer& source,
     ASSIGN_OR_RETURN(partial,
                      AllocateBatch(executor, config, samples % batch_size));
   }
+  if (options.train_mlp_transformer) {
+    // This independent suffix is a constructive control, not initialization
+    // for the experiment. Discard its learned weights before fitting random
+    // ones.
+    output << "Checking original-weight suffix control...\n" << std::flush;
+    ASSIGN_OR_RETURN(auto control,
+                     CreateMlpTransformerReadout(executor, source, config,
+                                                 options.seed, true));
+    ASSIGN_OR_RETURN(auto control_metrics,
+                     EvaluateMlpReadout(executor, *control.model, *loss, cache,
+                                        config, full, partial));
+    ASSIGN_OR_RETURN(
+        auto control_complete,
+        VerifyGreedy(executor, source, *control.model, config, data, eos));
+    output << "Original-weight suffix control: correct="
+           << control_metrics.scored - control_metrics.wrong << "/"
+           << control_metrics.scored << " greedy_complete=" << control_complete
+           << "/" << samples << "\n"
+           << std::flush;
+    if (control_metrics.wrong != 0 || control_complete != samples)
+      return absl::FailedPreconditionError(
+          "original-weight transformer suffix must reproduce memorization");
+  }
   const auto best_path =
-      std::filesystem::path(options.output_directory) / "best_mlp";
+      std::filesystem::path(options.output_directory) /
+      (options.train_mlp_transformer ? "best_mlp_transformer" : "best_mlp");
   std::ofstream statistics(std::filesystem::path(options.output_directory) /
                            "training.tsv");
   if (!statistics)
@@ -411,8 +442,11 @@ absl::Status FitMlpReadout(cuda::Executor& executor, const Layer& source,
          << " (shared frozen embedding/head excluded)\n"
          << "Trainable: " << depth << " residual " << config.model_width
          << " -> " << budget.mlp_width << " -> " << config.model_width
-         << " MLP(s), each with input LN, one final LN; parameters="
-         << parameters
+         << " MLP(s), each with input LN, "
+         << (options.train_mlp_transformer
+                 ? "one intervening causal attention sublayer with pre-LN, "
+                 : "")
+         << "one final LN; parameters=" << parameters
          << "; frozen: original transformer and tied embedding head\n"
          << "Adam: learning_rate=" << options.learning_rate
          << ", cosine final ratio=0.1, no clipping or weight decay\n";
@@ -531,13 +565,25 @@ absl::Status FitMlpReadout(cuda::Executor& executor, const Layer& source,
 absl::Status RunPuzzle(cuda::Executor& executor,
                        const tokenizer::Gpt2Tokenizer& base_tokenizer,
                        const PuzzleOptions& options, std::ostream& output) {
-  const bool train_readout = options.train_mlp || options.train_stacked_mlp;
-  const int depth = options.train_stacked_mlp ? kStackedMlpDepth : 1;
-  const int width =
-      options.train_stacked_mlp ? kStackedMlpWidth : options.mlp_width;
-  if (options.train_mlp && options.train_stacked_mlp)
+  const bool train_readout = options.train_mlp || options.train_stacked_mlp ||
+                             options.train_mlp_transformer;
+  const int depth = options.train_mlp_transformer ? 2
+                    : options.train_stacked_mlp   ? kStackedMlpDepth
+                                                  : 1;
+  const int width = options.train_mlp_transformer
+                        ? options.model_config.feed_forward_width
+                    : options.train_stacked_mlp ? kStackedMlpWidth
+                                                : options.mlp_width;
+  if (static_cast<int>(options.train_mlp) + options.train_stacked_mlp +
+          options.train_mlp_transformer >
+      1)
     return absl::InvalidArgumentError(
-        "train_mlp and train_stacked_mlp are mutually exclusive");
+        "train_mlp, train_stacked_mlp, and train_mlp_transformer are mutually "
+        "exclusive");
+  if (options.train_mlp_transformer &&
+      options.model_config.transformer_block_count != 4)
+    return absl::InvalidArgumentError(
+        "train_mlp_transformer requires exactly four source blocks");
   if (options.train_stacked_mlp &&
       options.model_config.model_width != kStackedModelWidth)
     return absl::InvalidArgumentError(
@@ -577,8 +623,10 @@ absl::Status RunPuzzle(cuda::Executor& executor,
   std::optional<MlpReadoutParameterBudget> budget;
   if (train_readout) {
     ASSIGN_OR_RETURN(
-        budget, ResolveMlpReadoutParameterBudget(config, width, depth,
-                                                 !options.train_stacked_mlp));
+        budget, options.train_mlp_transformer
+                    ? ResolveMlpTransformerReadoutParameterBudget(config)
+                    : ResolveMlpReadoutParameterBudget(
+                          config, width, depth, !options.train_stacked_mlp));
   }
   ASSIGN_OR_RETURN(auto data, PaddedLineDataSetIterator::Create(
                                   executor, corpus.text(), *tokenizer,
@@ -627,6 +675,7 @@ absl::Status RunPuzzle(cuda::Executor& executor,
              << "\nvocabulary_size=" << config.vocabulary_size
              << "\ntrain_mlp=" << options.train_mlp
              << "\ntrain_stacked_mlp=" << options.train_stacked_mlp
+             << "\ntrain_mlp_transformer=" << options.train_mlp_transformer
              << "\nmlp_depth=" << depth << "\nrequested_mlp_width=" << width
              << "\nmlp_width=" << (budget ? budget->mlp_width : width)
              << "\nsteps=" << options.steps
