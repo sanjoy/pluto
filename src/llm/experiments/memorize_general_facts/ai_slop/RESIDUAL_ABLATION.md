@@ -117,6 +117,19 @@ previous five width-150 MLPs. Each run records all five resolved widths and the
 exact parameter difference in `run.txt`; seeded tensors and data order match
 between the residual and non-residual variants.
 
+The paired 300,000-step run was launched from commit `1028761` at
+2026-09-28 18:23 UTC. Its snapshotted binary, inputs, exact commands, logs,
+training curves, and checkpoints are in
+`/tmp/pluto-no-residual-iso-20260928-01/`. Results are pending; the single-block
+numbers above must not be attributed to this five-block experiment.
+
+Validation: all 74 Bazel test targets and 230 script tests passed. New tests
+exhaustively check nearest-budget selection over 630 small configurations,
+verify the actual GPU tensor count and initialization parity, exercise updates
+to all 32 trainable tensors, and verify frozen source/head weights. The paired
+one-step smoke run at `/tmp/pluto-no-residual-iso-smoke-20260928-01/` exited
+successfully for both conditions and the launcher.
+
 ## Single-block validation and provenance
 
 - 74 Bazel test targets and 223 existing script tests passed.
