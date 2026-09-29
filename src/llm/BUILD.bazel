@@ -826,6 +826,7 @@ test_suite(
         ":layer_util_test",
         ":norm_test",
         ":optimizer_test",
+        ":qwen_attention_test",
         ":rms_norm_test",
         ":sparse_autoencoder_test",
         ":swiglu_test",
@@ -905,11 +906,6 @@ cc_test(
 )
 
 layer_library("block_training", [":block_parameter", ":matrix_common"])
-layer_library("sequence_full_attention", [
-    ":block_parameter",
-    ":cached_attention_ops",
-    ":layer_hooks",
-])
 layer_library("sequence_delta_net", [":block_parameter", ":cached_attention_ops"])
 layer_test("block_training", [
     ":block_parameter",
@@ -917,9 +913,10 @@ layer_test("block_training", [
     "//src/util:status_macros",
     "@abseil-cpp//absl/status",
 ])
-layer_test("sequence_full_attention", [
+layer_test("qwen_attention", [
     ":block_parameter",
     ":cached_attention_ops",
+    ":key_value_cache",
     ":layer_hooks",
     "//src/util:status_macros",
     "@abseil-cpp//absl/status",
@@ -962,7 +959,9 @@ cc_test(
 layer_library("rms_norm")
 layer_library("swiglu")
 layer_library("qwen_attention", [
+    ":block_parameter",
     ":cached_attention_ops",
+    ":key_value_cache",
     ":layer_hooks",
 ])
 layer_library("delta_net", [
@@ -1017,6 +1016,7 @@ cc_test(
     tags = ["requires-gpu"],
     deps = [
         ":cached_attention_ops",
+        ":key_value_cache",
         ":delta_net",
         ":qwen_attention",
         ":layer",
@@ -1059,6 +1059,7 @@ cuda_test(
     tags = ["requires-gpu"],
     deps = [
         ":cached_attention_ops",
+        ":key_value_cache",
         "//src/cuda:buffer",
         "//src/cuda:executor",
         "//src/cuda:page_locked_host_array",

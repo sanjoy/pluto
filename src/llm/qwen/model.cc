@@ -14,6 +14,7 @@
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "src/cuda/page_locked_host_array.h"
+#include "src/llm/key_value_cache.h"
 #include "src/llm/layers/combinators.h"
 #include "src/llm/layers/delta_net.h"
 #include "src/llm/layers/embedding.h"
@@ -175,7 +176,8 @@ class LayerLoader {
 // distinct layers: normal LayerHooks can inspect/intervene at each boundary.
 absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateAttentionBranch(
     cuda::Executor& executor, const Config& config, int index, int capacity,
-    LayerLoader& loader, std::vector<QwenAttentionLayer*>& full_attention,
+    LayerLoader& loader,
+    std::vector<std::unique_ptr<KeyValueCache>>& key_value_caches,
     std::vector<DeltaNetLayer*>& delta_net) {
   const std::string prefix =
       absl::StrCat("model.language_model.layers.", index, ".");
@@ -213,10 +215,13 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateAttentionBranch(
     p.capacity = capacity;
     p.rms_norm_epsilon = config.rms_norm_eps;
     p.rope_theta = config.rope_theta;
-    ASSIGN_OR_RETURN(auto attention,
-                     QwenAttentionLayer::Create(executor, p, std::move(q_norm),
-                                                std::move(k_norm)));
-    full_attention.push_back(attention.get());
+    ASSIGN_OR_RETURN(
+        auto cache, KeyValueCache::Create(executor, capacity, p.key_value_heads,
+                                          p.head_dim));
+    ASSIGN_OR_RETURN(auto attention, QwenAttentionLayer::Create(
+                                         executor, p, std::move(q_norm),
+                                         std::move(k_norm), 1, cache.get()));
+    key_value_caches.push_back(std::move(cache));
     RETURN_IF_ERROR(builder.add(std::move(attention)));
     RETURN_IF_ERROR(
         builder.add(loader.Linear(prefix + "self_attn.o_proj.weight", q, d)));
@@ -275,11 +280,12 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateAttentionBranch(
 // Existing combinators check shapes, route hooks, and perform BF16 additions.
 absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateTransformerBlock(
     cuda::Executor& executor, const Config& config, int index, int capacity,
-    LayerLoader& loader, std::vector<QwenAttentionLayer*>& full_attention,
+    LayerLoader& loader,
+    std::vector<std::unique_ptr<KeyValueCache>>& key_value_caches,
     std::vector<DeltaNetLayer*>& delta_net) {
   ASSIGN_OR_RETURN(auto attention,
                    CreateAttentionBranch(executor, config, index, capacity,
-                                         loader, full_attention, delta_net));
+                                         loader, key_value_caches, delta_net));
   ComposedLayerBuilder block;
   RETURN_IF_ERROR(block.add(ResidualLayer::Create(std::move(attention))));
   const std::string prefix =
@@ -319,11 +325,13 @@ struct Model::Impl {
   int position = 0;
   bool poisoned = false;
   size_t weight_bytes = 0;
-  // Graphs own the parameters and caches. Raw pointers are only reset handles;
-  // execution always runs through the ordinary Layer graph.
+  // Layers borrow these caches. Declare their owners before the graphs so
+  // graph destruction happens first and never leaves a dangling cache pointer.
+  std::vector<std::unique_ptr<KeyValueCache>> key_value_caches;
+  // Graphs own parameters and DeltaNet state; execution always uses Layers.
   std::unique_ptr<ComposedLayer> decoder;
   std::unique_ptr<ComposedLayer> head;
-  std::vector<QwenAttentionLayer*> full_attention;
+  // Non-owning handles used only to reset recurrent state.
   std::vector<DeltaNetLayer*> delta_net;
   Buffer token;
   std::optional<Buffer> hidden;
@@ -382,9 +390,9 @@ absl::StatusOr<std::unique_ptr<Model>> Model::Load(
       head.add(loader.Linear("lm_head.weight", d, config.vocab_size)));
   ASSIGN_OR_RETURN(impl->head, head.create("LanguageModelingHead"));
   for (int i = 0; i < config.num_hidden_layers; ++i) {
-    RETURN_IF_ERROR(decoder.add(
-        CreateTransformerBlock(executor, config, i, options.context_length,
-                               loader, impl->full_attention, impl->delta_net)));
+    RETURN_IF_ERROR(decoder.add(CreateTransformerBlock(
+        executor, config, i, options.context_length, loader,
+        impl->key_value_caches, impl->delta_net)));
     if (options.load_progress)
       options.load_progress(i + 1, config.num_hidden_layers);
   }
@@ -434,8 +442,8 @@ absl::StatusOr<Buffer> Model::Logits(LayerHooks* hooks) {
 absl::Status Model::Reset() {
   // A failed reset can leave only a prefix of the caches cleared.
   impl_->poisoned = true;
-  for (auto* attention : impl_->full_attention)
-    RETURN_IF_ERROR(attention->Reset());
+  for (const auto& cache : impl_->key_value_caches)
+    cache->Reset();
   for (auto* delta : impl_->delta_net)
     RETURN_IF_ERROR(delta->Reset());
   impl_->hidden.reset();

@@ -1,4 +1,4 @@
-#include "src/llm/layers/sequence_full_attention.h"
+#include "src/llm/layers/qwen_attention.h"
 
 #include <cuda_bf16.h>
 #include <cuda_runtime.h>
@@ -10,6 +10,7 @@
 
 #include "gtest/gtest.h"
 #include "src/cuda/page_locked_host_array.h"
+#include "src/llm/key_value_cache.h"
 #include "src/llm/layer_hooks.h"
 #include "src/util/status_macros.h"
 
@@ -100,7 +101,7 @@ std::vector<double> Values(int n, double phase) {
   return result;
 }
 
-class SequenceFullAttentionTest : public testing::Test {
+class QwenAttentionTest : public testing::Test {
  protected:
   void SetUp() override {
     auto result = cuda::Executor::Create();
@@ -151,7 +152,7 @@ class SequenceFullAttentionTest : public testing::Test {
   std::unique_ptr<cuda::Executor> executor_;
 };
 
-TEST_F(SequenceFullAttentionTest, ForwardMatchesCachedAttentionAndCausalHook) {
+TEST_F(QwenAttentionTest, ForwardMatchesCachedAttentionAndCausalHook) {
   // Includes partial/non-power-of-two heads, grouped heads, real Qwen width,
   // and a prefix spanning two 32-token online-softmax tiles.
   for (int d : {3, 256}) {
@@ -167,8 +168,7 @@ TEST_F(SequenceFullAttentionTest, ForwardMatchesCachedAttentionAndCausalHook) {
     auto qw = Parameter(Values(d, .2)), kw = Parameter(Values(d, .4));
     ASSERT_TRUE(qw.ok());
     ASSERT_TRUE(kw.ok());
-    auto layer =
-        SequenceFullAttentionLayer::Create(*executor_, p, *qw, *kw, length);
+    auto layer = QwenAttentionLayer::Create(*executor_, p, *qw, *kw, length);
     ASSERT_TRUE(layer.ok()) << layer.status();
     auto qgb = Upload<__nv_bfloat16>(qg), kb = Upload<__nv_bfloat16>(k),
          vb = Upload<__nv_bfloat16>(v);
@@ -200,28 +200,26 @@ TEST_F(SequenceFullAttentionTest, ForwardMatchesCachedAttentionAndCausalHook) {
     ASSERT_TRUE(fwd.ok()) << fwd.status();
     EXPECT_EQ(hook_calls, 1);
     auto actual = Read<__nv_bfloat16>(fwd->outputs[0]);
-    auto cache =
-        cached_attention_ops::FullAttentionState::Create(*executor_, p);
+    auto cache = KeyValueCache::Create(*executor_, p.capacity,
+                                       p.key_value_heads, p.head_dim);
     ASSERT_TRUE(cache.ok());
+    auto cached_layer =
+        QwenAttentionLayer::Create(*executor_, p, *qw, *kw, 1, cache->get());
+    ASSERT_TRUE(cached_layer.ok()) << cached_layer.status();
     for (int row = 0; row < length; ++row) {
-      auto qi = Upload<float>(
+      auto qi = Upload<__nv_bfloat16>(
           {qg.begin() + row * 4 * d, qg.begin() + (row + 1) * 4 * d});
-      auto ki = Upload<float>({k.begin() + row * d, k.begin() + (row + 1) * d});
-      auto vi = Upload<float>({v.begin() + row * d, v.begin() + (row + 1) * d});
-      auto output = Buffer::Allocate(*executor_, 2 * d * sizeof(float));
+      auto ki = Upload<__nv_bfloat16>(
+          {k.begin() + row * d, k.begin() + (row + 1) * d});
+      auto vi = Upload<__nv_bfloat16>(
+          {v.begin() + row * d, v.begin() + (row + 1) * d});
       ASSERT_TRUE(qi.ok());
       ASSERT_TRUE(ki.ok());
       ASSERT_TRUE(vi.ok());
+      auto output = (*cached_layer)->fwd(*executor_, {*qi, *ki, *vi});
       ASSERT_TRUE(output.ok());
-      ASSERT_TRUE((*cache)
-                      ->Step(static_cast<const float*>(qi->data()),
-                             static_cast<const float*>(ki->data()),
-                             static_cast<const float*>(vi->data()),
-                             static_cast<const float*>((*qw)->value().data()),
-                             static_cast<const float*>((*kw)->value().data()),
-                             static_cast<float*>(output->data()))
-                      .ok());
-      auto expected = Read<float>(*output);
+      EXPECT_EQ((*cache)->position(), row + 1);
+      auto expected = Read<__nv_bfloat16>(output->outputs[0]);
       for (int c = 0; c < 2 * d; ++c)
         EXPECT_EQ(actual[row * 2 * d + c], expected[c])
             << "d=" << d << " row=" << row << " c=" << c;
@@ -229,8 +227,7 @@ TEST_F(SequenceFullAttentionTest, ForwardMatchesCachedAttentionAndCausalHook) {
   }
 }
 
-TEST_F(SequenceFullAttentionTest,
-       FullBackwardMatchesIndependentFiniteDifference) {
+TEST_F(QwenAttentionTest, FullBackwardMatchesIndependentFiniteDifference) {
   for (bool use_bf16_rounding : {false, true}) {
     SCOPED_TRACE(use_bf16_rounding);
     FullAttentionParameters p;
@@ -248,7 +245,7 @@ TEST_F(SequenceFullAttentionTest,
     ASSERT_TRUE(kw.ok());
     ASSERT_TRUE((*qw)->Activate().ok());
     ASSERT_TRUE((*kw)->Activate().ok());
-    auto layer = SequenceFullAttentionLayer::Create(*executor_, p, *qw, *kw, t);
+    auto layer = QwenAttentionLayer::Create(*executor_, p, *qw, *kw, t);
     ASSERT_TRUE(layer.ok());
     auto qgb = Upload<__nv_bfloat16>(values[0]),
          kb = Upload<__nv_bfloat16>(values[1]),
@@ -304,7 +301,7 @@ TEST_F(SequenceFullAttentionTest,
   }
 }
 
-TEST_F(SequenceFullAttentionTest, FrozenNormsStillPropagateToEarlierTokens) {
+TEST_F(QwenAttentionTest, FrozenNormsStillPropagateToEarlierTokens) {
   FullAttentionParameters p;
   p.query_heads = 2;
   p.key_value_heads = 1;
@@ -313,7 +310,7 @@ TEST_F(SequenceFullAttentionTest, FrozenNormsStillPropagateToEarlierTokens) {
   auto qw = Parameter(Values(4, .2)), kw = Parameter(Values(4, .4));
   ASSERT_TRUE(qw.ok());
   ASSERT_TRUE(kw.ok());
-  auto layer = SequenceFullAttentionLayer::Create(*executor_, p, *qw, *kw, 3);
+  auto layer = QwenAttentionLayer::Create(*executor_, p, *qw, *kw, 3);
   ASSERT_TRUE(layer.ok());
   auto q = Upload<__nv_bfloat16>(Values(48, .1)),
        k = Upload<__nv_bfloat16>(Values(12, 1.2)),
@@ -341,11 +338,159 @@ TEST_F(SequenceFullAttentionTest, FrozenNormsStillPropagateToEarlierTokens) {
   EXPECT_FALSE((*qw)->active());
   EXPECT_FALSE((*kw)->active());
   EXPECT_FALSE((*layer)->fwd(*executor_, {*q, *k}).ok());
-  EXPECT_FALSE(
-      SequenceFullAttentionLayer::Create(*executor_, p, *qw, *kw, 129).ok());
+  EXPECT_FALSE(QwenAttentionLayer::Create(*executor_, p, *qw, *kw, 129).ok());
   auto other = cuda::Executor::Create();
   ASSERT_TRUE(other.ok());
   EXPECT_FALSE((*layer)->fwd(**other, {*q, *k, *v}).ok());
+}
+
+TEST_F(QwenAttentionTest, CachePointerSelectsBackwardContractAtLengthOne) {
+  FullAttentionParameters p;
+  p.query_heads = 2;
+  p.key_value_heads = 1;
+  p.head_dim = 4;
+  p.rotary_dim = 2;
+  p.capacity = 2;
+  auto qw = Parameter(Values(4, .2)), kw = Parameter(Values(4, .4));
+  ASSERT_TRUE(qw.ok());
+  ASSERT_TRUE(kw.ok());
+  ASSERT_TRUE((*qw)->Activate().ok());
+  ASSERT_TRUE((*kw)->Activate().ok());
+  auto cache = KeyValueCache::Create(*executor_, p.capacity, p.key_value_heads,
+                                     p.head_dim);
+  ASSERT_TRUE(cache.ok());
+  auto sequence = QwenAttentionLayer::Create(*executor_, p, *qw, *kw, 1);
+  auto cached =
+      QwenAttentionLayer::Create(*executor_, p, *qw, *kw, 1, cache->get());
+  ASSERT_TRUE(sequence.ok()) << sequence.status();
+  ASSERT_TRUE(cached.ok()) << cached.status();
+  EXPECT_EQ((*sequence)->input_types()[0], (*cached)->input_types()[0]);
+  EXPECT_EQ((*sequence)->output_types()[0], (*cached)->output_types()[0]);
+  auto q = Upload<__nv_bfloat16>(Values(16, .1));
+  auto k = Upload<__nv_bfloat16>(Values(4, 1.2));
+  auto v = Upload<__nv_bfloat16>(Values(4, 2.3));
+  auto dy = Upload<float>(Values(8, .7));
+  ASSERT_TRUE(q.ok());
+  ASSERT_TRUE(k.ok());
+  ASSERT_TRUE(v.ok());
+  ASSERT_TRUE(dy.ok());
+  auto sf = (*sequence)->fwd(*executor_, {*q, *k, *v});
+  auto cf = (*cached)->fwd(*executor_, {*q, *k, *v});
+  ASSERT_TRUE(sf.ok()) << sf.status();
+  ASSERT_TRUE(cf.ok()) << cf.status();
+  EXPECT_EQ(Read<__nv_bfloat16>(sf->outputs[0]),
+            Read<__nv_bfloat16>(cf->outputs[0]));
+  EXPECT_EQ((*cache)->position(), 1);
+
+  // Active BlockParameters do not turn cached decoding into training: the
+  // explicit cache pointer alone selects the forward/backward contract.
+  EXPECT_EQ(
+      (*cached)->bwd(*executor_, {*dy}, std::move(cf->state)).status().code(),
+      absl::StatusCode::kUnimplemented);
+  for (float gradient : Read<float>((*qw)->gradient()))
+    EXPECT_EQ(gradient, 0);
+  for (float gradient : Read<float>((*kw)->gradient()))
+    EXPECT_EQ(gradient, 0);
+  auto backward = (*sequence)->bwd(*executor_, {*dy}, std::move(sf->state));
+  ASSERT_TRUE(backward.ok()) << backward.status();
+  ASSERT_EQ(backward->size(), 3);
+  float value_magnitude = 0;
+  for (float gradient : Read<float>((*backward)[2])) {
+    EXPECT_TRUE(std::isfinite(gradient));
+    value_magnitude += std::abs(gradient);
+  }
+  EXPECT_GT(value_magnitude, 0);
+  EXPECT_EQ((*cache)->position(), 1);
+}
+
+TEST_F(QwenAttentionTest,
+       NullCacheWithRawNormsRemainsStatelessAndDifferentiable) {
+  FullAttentionParameters p;
+  p.query_heads = 2;
+  p.key_value_heads = 1;
+  p.head_dim = 4;
+  p.rotary_dim = 2;
+  p.capacity = 0;  // A sequence-only layer has no cache capacity to validate.
+  auto qw = Parameter(Values(4, .2)), kw = Parameter(Values(4, .4));
+  ASSERT_TRUE(qw.ok());
+  ASSERT_TRUE(kw.ok());
+  auto reference = QwenAttentionLayer::Create(*executor_, p, *qw, *kw, 3);
+  auto raw = QwenAttentionLayer::Create(*executor_, p, (*qw)->value(),
+                                        (*kw)->value(), 3, nullptr);
+  ASSERT_TRUE(reference.ok()) << reference.status();
+  ASSERT_TRUE(raw.ok()) << raw.status();
+  EXPECT_EQ((*raw)->weights()[0].data(), (*qw)->value().data());
+  EXPECT_EQ((*raw)->weights()[1].data(), (*kw)->value().data());
+  EXPECT_TRUE((*raw)->gradients().empty());
+  auto q = Upload<__nv_bfloat16>(Values(48, .1));
+  auto k = Upload<__nv_bfloat16>(Values(12, 1.2));
+  auto v = Upload<__nv_bfloat16>(Values(12, 2.3));
+  auto dy = Upload<float>(Values(24, .7));
+  ASSERT_TRUE(q.ok());
+  ASSERT_TRUE(k.ok());
+  ASSERT_TRUE(v.ok());
+  ASSERT_TRUE(dy.ok());
+  auto expected = (*reference)->fwd(*executor_, {*q, *k, *v});
+  ASSERT_TRUE(expected.ok());
+  auto expected_gradients =
+      (*reference)->bwd(*executor_, {*dy}, std::move(expected->state));
+  ASSERT_TRUE(expected_gradients.ok());
+  // Repeated sequence forwards restart at position zero, unlike decoding.
+  for (int repetition = 0; repetition < 2; ++repetition) {
+    auto actual = (*raw)->fwd(*executor_, {*q, *k, *v});
+    ASSERT_TRUE(actual.ok()) << actual.status();
+    EXPECT_EQ(Read<__nv_bfloat16>(actual->outputs[0]),
+              Read<__nv_bfloat16>(expected->outputs[0]));
+    auto gradients = (*raw)->bwd(*executor_, {*dy}, std::move(actual->state));
+    ASSERT_TRUE(gradients.ok()) << gradients.status();
+    ASSERT_EQ(gradients->size(), 3);
+    for (size_t i = 0; i < gradients->size(); ++i)
+      EXPECT_EQ(Read<float>((*gradients)[i]),
+                Read<float>((*expected_gradients)[i]));
+  }
+}
+
+TEST_F(QwenAttentionTest, EitherNormMayBeActiveWhileTheOtherRemainsFrozen) {
+  for (bool train_query : {false, true}) {
+    SCOPED_TRACE(train_query);
+    FullAttentionParameters p;
+    p.query_heads = 2;
+    p.key_value_heads = 1;
+    p.head_dim = 4;
+    p.rotary_dim = 2;
+    auto qw = Parameter(Values(4, .2)), kw = Parameter(Values(4, .4));
+    ASSERT_TRUE(qw.ok());
+    ASSERT_TRUE(kw.ok());
+    const auto& active = train_query ? *qw : *kw;
+    const auto& frozen = train_query ? *kw : *qw;
+    ASSERT_TRUE(active->Activate().ok());
+    auto layer = QwenAttentionLayer::Create(*executor_, p, *qw, *kw, 3);
+    ASSERT_TRUE(layer.ok());
+    auto q = Upload<__nv_bfloat16>(Values(48, .1));
+    auto k = Upload<__nv_bfloat16>(Values(12, 1.2));
+    auto v = Upload<__nv_bfloat16>(Values(12, 2.3));
+    auto dy = Upload<float>(Values(24, .7));
+    ASSERT_TRUE(q.ok());
+    ASSERT_TRUE(k.ok());
+    ASSERT_TRUE(v.ok());
+    ASSERT_TRUE(dy.ok());
+    auto forward = (*layer)->fwd(*executor_, {*q, *k, *v});
+    ASSERT_TRUE(forward.ok());
+    auto backward = (*layer)->bwd(*executor_, {*dy}, std::move(forward->state));
+    ASSERT_TRUE(backward.ok()) << backward.status();
+    ASSERT_EQ(backward->size(), 3);
+    for (const Buffer& gradient : *backward)
+      for (float value : Read<float>(gradient))
+        EXPECT_TRUE(std::isfinite(value));
+    float magnitude = 0;
+    for (float value : Read<float>(active->gradient())) {
+      EXPECT_TRUE(std::isfinite(value));
+      magnitude += std::abs(value);
+    }
+    EXPECT_GT(magnitude, 1e-5);
+    EXPECT_FALSE(frozen->active());
+    EXPECT_TRUE((*layer)->gradients().empty());
+  }
 }
 
 }  // namespace

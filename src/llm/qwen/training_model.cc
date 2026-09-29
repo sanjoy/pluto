@@ -14,8 +14,8 @@
 #include "src/cuda/page_locked_host_array.h"
 #include "src/llm/layers/block_training.h"
 #include "src/llm/layers/combinators.h"
+#include "src/llm/layers/qwen_attention.h"
 #include "src/llm/layers/sequence_delta_net.h"
-#include "src/llm/layers/sequence_full_attention.h"
 #include "src/util/status_macros.h"
 
 namespace pluto::llm::qwen {
@@ -179,8 +179,9 @@ absl::StatusOr<std::unique_ptr<Layer>> DecoderBlock(cuda::Executor& executor,
     p.capacity = sequence;
     p.rms_norm_epsilon = c.rms_norm_eps;
     p.rope_theta = c.rope_theta;
-    RETURN_IF_ERROR(attention.add(SequenceFullAttentionLayer::Create(
-        executor, p, q_norm, k_norm, sequence)));
+    // A null KV cache selects full-sequence forward and backward.
+    RETURN_IF_ERROR(attention.add(QwenAttentionLayer::Create(
+        executor, p, q_norm, k_norm, sequence, nullptr)));
     RETURN_IF_ERROR(
         attention.add(loader.Linear(root + "self_attn.o_proj.weight", q, d)));
   } else {

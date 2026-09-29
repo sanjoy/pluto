@@ -11,6 +11,7 @@
 #include "absl/status/status.h"
 #include "gtest/gtest.h"
 #include "src/cuda/page_locked_host_array.h"
+#include "src/llm/key_value_cache.h"
 #include "src/llm/layer_hooks.h"
 #include "src/llm/layers/delta_net.h"
 #include "src/llm/layers/qwen_attention.h"
@@ -89,7 +90,11 @@ TEST_F(CachedAttentionLayerTest,
   p.capacity = 2;
   auto norm = Upload(std::vector<float>(4));
   ASSERT_TRUE(norm.ok());
-  auto layer = QwenAttentionLayer::Create(*executor_, p, *norm, *norm);
+  auto cache = KeyValueCache::Create(*executor_, p.capacity, p.key_value_heads,
+                                     p.head_dim);
+  ASSERT_TRUE(cache.ok());
+  auto layer =
+      QwenAttentionLayer::Create(*executor_, p, *norm, *norm, 1, cache->get());
   ASSERT_TRUE(layer.ok()) << layer.status();
   EXPECT_EQ((*layer)->weights().size(), 2);
   EXPECT_TRUE((*layer)->gradients().empty());
@@ -136,7 +141,7 @@ TEST_F(CachedAttentionLayerTest,
       };
   auto first = (*layer)->fwd(*executor_, {*q, *k, *v1}, &hooks);
   ASSERT_TRUE(first.ok()) << first.status();
-  EXPECT_EQ((*layer)->length(), 1);
+  EXPECT_EQ((*cache)->position(), 1);
   const auto saved_first = Read<uint16_t>(first->outputs[0]);
   const std::vector<float> expected_first{1, 2, -1, -2, 1, 2, -1, -2};
   for (size_t i = 0; i < saved_first.size(); ++i)
@@ -150,15 +155,78 @@ TEST_F(CachedAttentionLayerTest,
   for (size_t i = 0; i < actual.size(); ++i)
     EXPECT_EQ(Float(actual[i]), expected_second[i]);
   EXPECT_EQ(Read<uint16_t>(first->outputs[0]), saved_first);
+  const auto full_keys = Read<float>((*cache)->keys());
+  const auto full_values = Read<float>((*cache)->values());
   EXPECT_EQ((*layer)->fwd(*executor_, {*q, *k, *v1}).status().code(),
             absl::StatusCode::kResourceExhausted);
+  EXPECT_EQ((*cache)->position(), 2);
+  EXPECT_EQ(Read<float>((*cache)->keys()), full_keys);
+  EXPECT_EQ(Read<float>((*cache)->values()), full_values);
   EXPECT_EQ(
       (*layer)->bwd(*executor_, {}, std::move(first->state)).status().code(),
       absl::StatusCode::kUnimplemented);
-  ASSERT_TRUE((*layer)->Reset().ok());
+  (*cache)->Reset();
   auto replay = (*layer)->fwd(*executor_, {*q, *k, *v1});
   ASSERT_TRUE(replay.ok());
   EXPECT_EQ(Read<uint16_t>(replay->outputs[0]), saved_first);
+
+  // The layer only borrows the cache. Destroy it, then continue the same
+  // sequence through a replacement layer with the same norm weights.
+  layer->reset();
+  EXPECT_EQ((*cache)->position(), 1);
+  auto replacement =
+      QwenAttentionLayer::Create(*executor_, p, *norm, *norm, 1, cache->get());
+  ASSERT_TRUE(replacement.ok());
+  auto continued = (*replacement)->fwd(*executor_, {*q, *k, *v2});
+  ASSERT_TRUE(continued.ok());
+  EXPECT_EQ((*cache)->position(), 2);
+  EXPECT_EQ(Read<uint16_t>(continued->outputs[0]), actual);
+}
+
+TEST_F(CachedAttentionLayerTest, RejectsIncompatibleCacheAndSequenceContracts) {
+  FullAttentionParameters p;
+  p.query_heads = 2;
+  p.key_value_heads = 1;
+  p.head_dim = 4;
+  p.rotary_dim = 2;
+  p.capacity = 3;
+  auto norm = Upload(std::vector<float>(4));
+  ASSERT_TRUE(norm.ok());
+  auto cache = KeyValueCache::Create(*executor_, p.capacity, p.key_value_heads,
+                                     p.head_dim);
+  ASSERT_TRUE(cache.ok());
+  for (int sequence_length : {0, 2})
+    EXPECT_EQ(QwenAttentionLayer::Create(*executor_, p, *norm, *norm,
+                                         sequence_length, cache->get())
+                  .status()
+                  .code(),
+              absl::StatusCode::kInvalidArgument);
+
+  // The cache's physical row shape, maximum prefix, and owning executor must
+  // agree with the layer rather than silently reinterpreting its storage.
+  for (int mismatch = 0; mismatch < 3; ++mismatch) {
+    auto incompatible = KeyValueCache::Create(
+        *executor_, p.capacity + (mismatch == 0),
+        p.key_value_heads + (mismatch == 1), p.head_dim + (mismatch == 2));
+    ASSERT_TRUE(incompatible.ok());
+    EXPECT_EQ(QwenAttentionLayer::Create(*executor_, p, *norm, *norm, 1,
+                                         incompatible->get())
+                  .status()
+                  .code(),
+              absl::StatusCode::kInvalidArgument);
+    EXPECT_EQ((*incompatible)->position(), 0);
+  }
+  auto other = cuda::Executor::Create();
+  ASSERT_TRUE(other.ok());
+  auto foreign =
+      KeyValueCache::Create(**other, p.capacity, p.key_value_heads, p.head_dim);
+  ASSERT_TRUE(foreign.ok());
+  EXPECT_EQ(
+      QwenAttentionLayer::Create(*executor_, p, *norm, *norm, 1, foreign->get())
+          .status()
+          .code(),
+      absl::StatusCode::kInvalidArgument);
+  EXPECT_EQ((*foreign)->position(), 0);
 }
 
 TEST_F(CachedAttentionLayerTest,
@@ -173,7 +241,11 @@ TEST_F(CachedAttentionLayerTest,
   ASSERT_TRUE(norm.ok());
   ASSERT_TRUE(q.ok());
   ASSERT_TRUE(kv.ok());
-  auto layer = QwenAttentionLayer::Create(*executor_, p, *norm, *norm);
+  auto cache = KeyValueCache::Create(*executor_, p.capacity, p.key_value_heads,
+                                     p.head_dim);
+  ASSERT_TRUE(cache.ok());
+  auto layer =
+      QwenAttentionLayer::Create(*executor_, p, *norm, *norm, 1, cache->get());
   ASSERT_TRUE(layer.ok());
   EXPECT_EQ((*layer)->fwd(*executor_, {*q, *kv}).status().code(),
             absl::StatusCode::kInvalidArgument);
@@ -187,8 +259,10 @@ TEST_F(CachedAttentionLayerTest,
   ASSERT_TRUE(foreign.ok());
   EXPECT_EQ((*layer)->fwd(*executor_, {*q, *kv, *foreign}).status().code(),
             absl::StatusCode::kInvalidArgument);
-  EXPECT_EQ((*layer)->length(), 0);
-  EXPECT_EQ(QwenAttentionLayer::Create(*executor_, p, *q, *kv).status().code(),
+  EXPECT_EQ((*cache)->position(), 0);
+  EXPECT_EQ(QwenAttentionLayer::Create(*executor_, p, *q, *kv, 1, cache->get())
+                .status()
+                .code(),
             absl::StatusCode::kInvalidArgument);
 
   LayerHooks hooks;
@@ -199,8 +273,8 @@ TEST_F(CachedAttentionLayerTest,
   };
   EXPECT_EQ((*layer)->fwd(*executor_, {*q, *kv, *kv}, &hooks).status().code(),
             absl::StatusCode::kAborted);
-  ASSERT_TRUE((*layer)->Reset().ok());
-  EXPECT_EQ((*layer)->length(), 0);
+  (*cache)->Reset();
+  EXPECT_EQ((*cache)->position(), 0);
   EXPECT_TRUE((*layer)->fwd(*executor_, {*q, *kv, *kv}).ok());
 }
 
@@ -322,13 +396,16 @@ TEST_F(CachedAttentionLayerTest,
   full.key_value_heads = 1;
   full.head_dim = full.rotary_dim = 2;
   full.capacity = 1;
+  auto cache = KeyValueCache::Create(*executor_, full.capacity,
+                                     full.key_value_heads, full.head_dim);
+  ASSERT_TRUE(cache.ok());
   // Q plus gate reaches this layer's limit exactly; the next head exceeds it.
-  auto supported_full =
-      QwenAttentionLayer::Create(*executor_, full, *norm, *norm);
+  auto supported_full = QwenAttentionLayer::Create(*executor_, full, *norm,
+                                                   *norm, 1, cache->get());
   ASSERT_TRUE(supported_full.ok()) << supported_full.status();
   ++full.query_heads;
-  auto rejected_full =
-      QwenAttentionLayer::Create(*executor_, full, *norm, *norm);
+  auto rejected_full = QwenAttentionLayer::Create(*executor_, full, *norm,
+                                                  *norm, 1, cache->get());
   EXPECT_EQ(rejected_full.status().code(), absl::StatusCode::kInvalidArgument);
   EXPECT_EQ(rejected_full.status().message(),
             "QwenAttentionLayer activation exceeds the layer dimension limit");
@@ -362,7 +439,8 @@ TEST_F(CachedAttentionLayerTest,
   // or trying to reserve a huge cache, even when imported weights are tiny.
   full.query_heads = full.key_value_heads = full.head_dim =
       std::numeric_limits<int>::max();
-  EXPECT_EQ(QwenAttentionLayer::Create(*executor_, full, *norm, *norm)
+  EXPECT_EQ(QwenAttentionLayer::Create(*executor_, full, *norm, *norm, 1,
+                                       cache->get())
                 .status()
                 .code(),
             absl::StatusCode::kInvalidArgument);

@@ -48,6 +48,11 @@ full attention differentiates through all causal query/key/value contributions.
 Later frozen blocks still propagate input gradients. Saved state is discarded
 only for the prefix preceding the active block.
 
+Training and cached inference use the same `QwenAttentionLayer`. Training
+passes a null `KeyValueCache*`, so forward saves the full-sequence state needed
+by backward. Supplying a cache instead selects one-token inference and makes
+backward return an error; the caller owns and resets that cache.
+
 `BlockParameter` keeps a stable resident tensor shared by its layers and
 checkpoint views. Imported FP8 matrices are dequantized once to BF16; norm and
 recurrence parameters stay FP32. Training does not use inference's dynamic FP8
@@ -96,7 +101,7 @@ only calls `ZeroGrad` once at startup, including Pluto's current generic
 ```sh
 bazel test -c opt \
   //src/llm:block_training_test \
-  //src/llm:sequence_full_attention_test \
+  //src/llm:qwen_attention_test \
   //src/llm:sequence_delta_net_test \
   //src/llm:badam_optimizer_test \
   //src/llm/qwen:training_model_test

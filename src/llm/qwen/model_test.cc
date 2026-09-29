@@ -677,27 +677,33 @@ TEST_F(QwenModelTest, FailedHooksRequireResetAndDoNotPublishMixedHistory) {
     --depth;
     return absl::OkStatus();
   };
-  hooks.activation_hook = [&](cuda::Executor&, absl::string_view name,
-                              absl::Span<const ActivationType>,
-                              absl::Span<Buffer>) {
-    // The DeltaNet cache has advanced, but full attention has not.
-    return name == "DeltaNetLayer"
-               ? absl::AbortedError("intentional hook failure")
-               : absl::OkStatus();
-  };
-  EXPECT_EQ((*model)->Step(0, &hooks).code(), absl::StatusCode::kAborted);
-  EXPECT_EQ(depth, 0);
-  EXPECT_EQ((*model)->position(), 0);
-  EXPECT_EQ((*model)->Step(1).code(), absl::StatusCode::kFailedPrecondition);
-  EXPECT_EQ((*model)->Logits().status().code(),
-            absl::StatusCode::kFailedPrecondition);
-  ASSERT_TRUE((*model)->Reset().ok());
-  ASSERT_TRUE((*model)->Step(1).ok());
-  TinyHistory reference;
-  const auto expected = ReferenceStep(1, &reference);
-  const auto actual = CopyLogits(**model);
-  for (size_t i = 0; i < actual.size(); ++i)
-    EXPECT_NEAR(actual[i], expected[i], 0.02);
+  for (absl::string_view failing_layer :
+       {"DeltaNetLayer", "QwenAttentionLayer"}) {
+    SCOPED_TRACE(failing_layer);
+    ASSERT_TRUE((*model)->Reset().ok());
+    hooks.activation_hook = [&](cuda::Executor&, absl::string_view name,
+                                absl::Span<const ActivationType>,
+                                absl::Span<Buffer>) {
+      // Fail once with only recurrent state advanced, and once after the
+      // externally owned K/V cache has advanced as well.
+      return name == failing_layer
+                 ? absl::AbortedError("intentional hook failure")
+                 : absl::OkStatus();
+    };
+    EXPECT_EQ((*model)->Step(0, &hooks).code(), absl::StatusCode::kAborted);
+    EXPECT_EQ(depth, 0);
+    EXPECT_EQ((*model)->position(), 0);
+    EXPECT_EQ((*model)->Step(1).code(), absl::StatusCode::kFailedPrecondition);
+    EXPECT_EQ((*model)->Logits().status().code(),
+              absl::StatusCode::kFailedPrecondition);
+    ASSERT_TRUE((*model)->Reset().ok());
+    ASSERT_TRUE((*model)->Step(1).ok());
+    TinyHistory reference;
+    const auto expected = ReferenceStep(1, &reference);
+    const auto actual = CopyLogits(**model);
+    for (size_t i = 0; i < actual.size(); ++i)
+      EXPECT_NEAR(actual[i], expected[i], 0.02);
+  }
 }
 
 TEST_F(QwenModelTest, RejectsInvalidContextBeforeUploadingWeights) {
@@ -729,6 +735,28 @@ TEST_F(QwenModelTest, RejectsMissingFp8Scale) {
   auto model = Model::Load(*executor_, directory_, options);
   ASSERT_FALSE(model.ok());
   EXPECT_EQ(model.status().code(), absl::StatusCode::kNotFound);
+}
+
+TEST_F(QwenModelTest, LoadFailureAfterCacheCreationCleansUpBorrowingLayers) {
+  // The second block transfers its K/V cache into the model before loading
+  // this projection. Failure must destroy the borrowing graph before its cache.
+  const std::string projection =
+      "model.language_model.layers.1.self_attn.o_proj.weight";
+  tensors_.erase(projection);
+  WriteCheckpoint();
+  InferenceOptions options;
+  options.context_length = 3;
+  auto failed = Model::Load(*executor_, directory_, options);
+  ASSERT_FALSE(failed.ok());
+  EXPECT_EQ(failed.status().code(), absl::StatusCode::kNotFound);
+  ASSERT_TRUE(executor_->Synchronize().ok());
+
+  Fp8(projection, 8, 8);
+  WriteCheckpoint();
+  auto repaired = Model::Load(*executor_, directory_, options);
+  ASSERT_TRUE(repaired.ok()) << repaired.status();
+  ASSERT_TRUE((*repaired)->Step(2).ok());
+  ExpectOneHotLogits(CopyLogits(**repaired), 2);
 }
 
 TEST_F(QwenModelTest, RejectsNonpositiveFp8Scale) {

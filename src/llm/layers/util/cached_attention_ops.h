@@ -21,40 +21,30 @@ struct FullAttentionParameters {
   bool round_to_bfloat16 = true;
 };
 
-// Batch-one causal attention. All pointers are contiguous device FP32 arrays;
-// BF16 activations can be represented exactly in those arrays. Each Step queues
-// one token on the creating executor and advances its position by one. Prefill
-// is the same operation repeated over prompt tokens. The executor must outlive
-// the state; methods must not be called concurrently.
-class FullAttentionState final {
- public:
-  FullAttentionState(const FullAttentionState&) = delete;
-  FullAttentionState& operator=(const FullAttentionState&) = delete;
-  static absl::StatusOr<std::unique_ptr<FullAttentionState>> Create(
-      cuda::Executor& executor, FullAttentionParameters parameters);
+// Checks the cached kernel's parameter limits and requires the cache's
+// Executor, KV shape, and capacity to match. A full cache is still compatible;
+// only an attempt to append to it fails. This performs no GPU work.
+absl::Status ValidateCachedAttention(cuda::Executor& executor,
+                                     const FullAttentionParameters& parameters,
+                                     const KeyValueCache& cache);
 
-  // q_gate is [query_heads, 2, head_dim], k/v are [key_value_heads,
-  // head_dim], and q_norm/k_norm are [head_dim]. Norm weights are zero-centered
-  // (the multiplier is 1 + weight). Output is [query_heads, head_dim], after
-  // sigmoid gating but before the output projection.
-  // Optional probabilities has room for [query_heads, length() + 1] FP32
-  // entries and receives this new query's softmax weights over all cached keys.
-  absl::Status Step(const float* q_gate, const float* k, const float* v,
-                    const float* q_norm, const float* k_norm, float* output,
-                    float* probabilities = nullptr);
-  absl::Status Reset();
-  int length() const { return cache_->position(); }
-
- private:
-  FullAttentionState(cuda::Executor& executor,
-                     FullAttentionParameters parameters,
-                     std::unique_ptr<KeyValueCache> cache,
-                     cuda::Buffer queries);
-  cuda::Executor& executor_;
-  FullAttentionParameters parameters_;
-  std::unique_ptr<KeyValueCache> cache_;
-  cuda::Buffer queries_;
-};
+// Queues one token's batch-one causal attention using an externally owned
+// cache, whose position is the only sequence counter. All pointers refer to
+// contiguous device FP32 arrays (BF16 values are represented exactly).
+// q_gate is [query_heads, 2, head_dim], k/v are [key_value_heads, head_dim],
+// and q_norm/k_norm are [head_dim] zero-centered weights (multiplier 1+w).
+// Output is [query_heads, head_dim], after sigmoid gating and before the output
+// projection. Optional probabilities receives [query_heads, position()+1].
+// Validates pointers and remaining capacity before GPU work; advances the cache
+// once after all launches succeed. Temporary query storage is stream ordered.
+// Serialize calls on the creating Executor and reset the cache after any GPU
+// failure or before a new sequence. Prefill repeats this call for each token.
+absl::Status CachedAttentionStep(cuda::Executor& executor,
+                                 const FullAttentionParameters& parameters,
+                                 KeyValueCache& cache, const float* q_gate,
+                                 const float* k, const float* v,
+                                 const float* q_norm, const float* k_norm,
+                                 float* output, float* probabilities = nullptr);
 
 struct DeltaNetParameters {
   int key_heads = 16;

@@ -144,11 +144,14 @@ embedding and language-model output projection are **not tied**.
   is a named `ComposedLayer` containing two ordinary `ResidualLayer` branches:
   `RmsNorm -> attention/projections` and `RmsNorm -> SwiGLU MLP`. A generic
   `ParallelLayer` fans out the Q/K/V or gate/up projections.
-- `src/llm/layers/qwen_attention.{h,cc}` and `delta_net.{h,cc}` are separate
-  stateful `Layer` implementations. The former supports cached GQA, rotary
-  positions, Q/K normalization, and gating; the latter owns recurrent and
-  convolution history. These contracts differ from the existing full-sequence,
-  equal-head, trainable `AttentionLayer`.
+- `src/llm/layers/qwen_attention.{h,cc}` implements GQA, rotary positions, Q/K
+  normalization, and gating for both training and inference. A null
+  `KeyValueCache*` selects full-sequence forward/backward; a supplied cache
+  selects single-token cached inference and rejects backward. The model owns
+  each cache, which contains only K/V buffers, shape metadata and position,
+  and keeps it alive longer than its borrowing layer. `delta_net.{h,cc}` owns
+  its separate recurrent and convolution history. These contracts differ from
+  the existing equal-head `AttentionLayer`.
 - `FullyConnectedLayer` and `EmbeddingLookupLayer` have imported-weight factory
   overloads in `fully_connected.{h,cc}` and `embedding.{h,cc}`. These share
   checkpoint storage/layouts directly, without allocating FP32 master weights,
@@ -202,6 +205,7 @@ weights:
 bazel test -c opt //src/llm/qwen:all //src/dataset:qwen_tokenizer_test \
   //src/llm:fully_connected_imported_test //src/llm:embedding_imported_test \
   //src/llm:rms_norm_test //src/llm:swiglu_test //src/llm:layer_util_test \
+  //src/llm:qwen_attention_test //src/llm:key_value_cache_test \
   //src/llm:cached_attention_test //src/llm:cached_attention_ops_test \
   //src/llm:combinators_test
 ```

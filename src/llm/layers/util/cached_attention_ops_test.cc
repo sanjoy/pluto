@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -292,8 +293,10 @@ TEST_F(AttentionOpsTest, GqaPartialRopeGatingAndCacheMatchScalarAcrossTiles) {
       p.capacity = 35;
       p.rope_theta = dim == 6 ? 73.0f : 10000000.0f;
       p.round_to_bfloat16 = round;
-      auto state = FullAttentionState::Create(*executor_, p);
-      ASSERT_TRUE(state.ok()) << state.status();
+      auto cache = KeyValueCache::Create(*executor_, p.capacity,
+                                         p.key_value_heads, p.head_dim);
+      ASSERT_TRUE(cache.ok()) << cache.status();
+      ASSERT_TRUE(ValidateCachedAttention(*executor_, p, **cache).ok());
       auto output = Upload(std::vector<float>(p.query_heads * p.head_dim));
       auto qnorm = Values(p.head_dim, 0.2f, 0.3f);
       auto knorm = Values(p.head_dim, 0.8f, 0.4f);
@@ -318,36 +321,41 @@ TEST_F(AttentionOpsTest, GqaPartialRopeGatingAndCacheMatchScalarAcrossTiles) {
         ASSERT_TRUE(dk.ok());
         ASSERT_TRUE(dv.ok());
         ASSERT_TRUE(probabilities.ok());
-        ASSERT_TRUE((*state)
-                        ->Step(Data(*dq), Data(*dk), Data(*dv), Data(*dqnorm),
-                               Data(*dknorm), Data(*output),
-                               Data(*probabilities))
+        ASSERT_TRUE(CachedAttentionStep(*executor_, p, **cache, Data(*dq),
+                                        Data(*dk), Data(*dv), Data(*dqnorm),
+                                        Data(*dknorm), Data(*output),
+                                        Data(*probabilities))
                         .ok());
         const auto actual = Read(*output);
         ExpectNear(actual, reference.Step(q, k, v, qnorm, knorm), round);
         ExpectNear(Read(*probabilities), reference.probabilities(), round);
         if (t == 0)
           first = actual;
-        EXPECT_EQ((*state)->length(), t + 1);
-        if (t + 1 == p.capacity)
-          EXPECT_EQ((*state)
-                        ->Step(Data(*dq), Data(*dk), Data(*dv), Data(*dqnorm),
-                               Data(*dknorm), Data(*output))
+        EXPECT_EQ((*cache)->position(), t + 1);
+        if (t + 1 == p.capacity) {
+          EXPECT_TRUE(ValidateCachedAttention(*executor_, p, **cache).ok());
+          EXPECT_EQ(CachedAttentionStep(*executor_, p, **cache, Data(*dq),
+                                        Data(*dk), Data(*dv), Data(*dqnorm),
+                                        Data(*dknorm), Data(*output))
                         .code(),
                     absl::StatusCode::kResourceExhausted);
+          EXPECT_EQ((*cache)->position(), p.capacity);
+          EXPECT_EQ(Read(*output), actual);
+        }
       }
-      ASSERT_TRUE((*state)->Reset().ok());
-      EXPECT_EQ((*state)->length(), 0);
+      (*cache)->Reset();
+      EXPECT_EQ((*cache)->position(), 0);
       auto dq = Upload(Values(p.query_heads * 2 * p.head_dim, 0.15f));
       auto dk = Upload(Values(p.key_value_heads * p.head_dim, 0.78f));
       auto dv = Upload(Values(p.key_value_heads * p.head_dim, -0.31f));
       ASSERT_TRUE(dq.ok());
       ASSERT_TRUE(dk.ok());
       ASSERT_TRUE(dv.ok());
-      ASSERT_TRUE((*state)
-                      ->Step(Data(*dq), Data(*dk), Data(*dv), Data(*dqnorm),
-                             Data(*dknorm), Data(*output))
+      ASSERT_TRUE(CachedAttentionStep(*executor_, p, **cache, Data(*dq),
+                                      Data(*dk), Data(*dv), Data(*dqnorm),
+                                      Data(*dknorm), Data(*output))
                       .ok());
+      EXPECT_EQ((*cache)->position(), 1);
       EXPECT_EQ(Read(*output), first);
     }
   }
@@ -359,8 +367,9 @@ TEST_F(AttentionOpsTest, FullAttentionBfloat16OutputUsesPerHeadSigmoidGates) {
   p.key_value_heads = 1;
   p.head_dim = 4;
   p.rotary_dim = 2;
-  auto state = FullAttentionState::Create(*executor_, p);
-  ASSERT_TRUE(state.ok());
+  auto cache = KeyValueCache::Create(*executor_, p.capacity, p.key_value_heads,
+                                     p.head_dim);
+  ASSERT_TRUE(cache.ok());
   const std::vector<float> q = {1, 2, 3, 4, -2, 0,  1, 3,
                                 4, 3, 2, 1, 2,  -1, 0, -3};
   const std::vector<float> value = {0.31f, -0.9f, 1.2f, 2.7f};
@@ -374,10 +383,11 @@ TEST_F(AttentionOpsTest, FullAttentionBfloat16OutputUsesPerHeadSigmoidGates) {
   ASSERT_TRUE(dv.ok());
   ASSERT_TRUE(norm.ok());
   ASSERT_TRUE(output.ok());
-  ASSERT_TRUE((*state)
-                  ->Step(Data(*dq), Data(*dk), Data(*dv), Data(*norm),
-                         Data(*norm), Data(*output))
+  ASSERT_TRUE(CachedAttentionStep(*executor_, p, **cache, Data(*dq), Data(*dk),
+                                  Data(*dv), Data(*norm), Data(*norm),
+                                  Data(*output))
                   .ok());
+  EXPECT_EQ((*cache)->position(), 1);
   std::vector<float> expected(8);
   for (int h = 0; h < 2; ++h)
     for (int d = 0; d < 4; ++d)
@@ -466,13 +476,14 @@ TEST_F(AttentionOpsTest, InspectedProbabilitiesNormalizeAcrossCacheTiles) {
   p.head_dim = 4;
   p.rotary_dim = 2;
   p.capacity = 35;
-  auto state = FullAttentionState::Create(*executor_, p);
+  auto cache = KeyValueCache::Create(*executor_, p.capacity, p.key_value_heads,
+                                     p.head_dim);
   auto q = Upload(std::vector<float>(16));
   auto k = Upload({1, 1, 1, 1});
   auto v = Upload({1, 2, 3, 4});
   auto norm = Upload({0, 0, 0, 0});
   auto output = Upload(std::vector<float>(8));
-  ASSERT_TRUE(state.ok());
+  ASSERT_TRUE(cache.ok());
   ASSERT_TRUE(q.ok());
   ASSERT_TRUE(k.ok());
   ASSERT_TRUE(v.ok());
@@ -481,24 +492,134 @@ TEST_F(AttentionOpsTest, InspectedProbabilitiesNormalizeAcrossCacheTiles) {
   for (int length = 1; length <= p.capacity; ++length) {
     auto probabilities = Upload(std::vector<float>(2 * length));
     ASSERT_TRUE(probabilities.ok());
-    ASSERT_TRUE((*state)
-                    ->Step(Data(*q), Data(*k), Data(*v), Data(*norm),
-                           Data(*norm), Data(*output), Data(*probabilities))
+    ASSERT_TRUE(CachedAttentionStep(*executor_, p, **cache, Data(*q), Data(*k),
+                                    Data(*v), Data(*norm), Data(*norm),
+                                    Data(*output), Data(*probabilities))
                     .ok());
+    EXPECT_EQ((*cache)->position(), length);
     for (float value : Read(*probabilities))
       EXPECT_NEAR(value, 1.0f / length, 1e-7f);
   }
 }
 
-TEST_F(AttentionOpsTest, RejectsUnsupportedShapesAndNullInputs) {
-  FullAttentionParameters full;
-  full.query_heads = 5;
-  EXPECT_EQ(FullAttentionState::Create(*executor_, full).status().code(),
-            absl::StatusCode::kInvalidArgument);
-  full.query_heads = 24;
-  full.rotary_dim = 3;
-  EXPECT_EQ(FullAttentionState::Create(*executor_, full).status().code(),
-            absl::StatusCode::kInvalidArgument);
+TEST_F(AttentionOpsTest, CachedAttentionRejectsInvalidParametersBeforeWork) {
+  const FullAttentionParameters p{.query_heads = 2,
+                                  .key_value_heads = 1,
+                                  .head_dim = 4,
+                                  .rotary_dim = 2,
+                                  .capacity = 2};
+  auto cache = KeyValueCache::Create(*executor_, p.capacity, p.key_value_heads,
+                                     p.head_dim);
+  auto output = Upload(std::vector<float>(16, -13.f));
+  ASSERT_TRUE(cache.ok());
+  ASSERT_TRUE(output.ok());
+  const auto check_invalid = [&](const FullAttentionParameters& invalid) {
+    EXPECT_TRUE(absl::IsInvalidArgument(
+        ValidateCachedAttention(*executor_, invalid, **cache)));
+    EXPECT_TRUE(absl::IsInvalidArgument(CachedAttentionStep(
+        *executor_, invalid, **cache, Data(*output), Data(*output),
+        Data(*output), Data(*output), Data(*output), Data(*output))));
+    EXPECT_EQ((*cache)->position(), 0);
+  };
+  for (int count : {0, -1, std::numeric_limits<int>::max()}) {
+    auto invalid = p;
+    invalid.query_heads = count;
+    check_invalid(invalid);
+    invalid = p;
+    invalid.key_value_heads = count;
+    check_invalid(invalid);
+  }
+  auto invalid = p;
+  invalid.query_heads = 3;
+  invalid.key_value_heads = 2;
+  check_invalid(invalid);
+  for (int dim : {0, -1, 257, std::numeric_limits<int>::max()}) {
+    invalid = p;
+    invalid.head_dim = dim;
+    check_invalid(invalid);
+  }
+  for (int dim : {0, -1, 3, 6}) {
+    invalid = p;
+    invalid.rotary_dim = dim;
+    check_invalid(invalid);
+  }
+  for (int capacity : {0, -1, std::numeric_limits<int>::max()}) {
+    invalid = p;
+    invalid.capacity = capacity;
+    check_invalid(invalid);
+  }
+  for (float value : {0.f, -1.f, std::numeric_limits<float>::infinity(),
+                      std::numeric_limits<float>::quiet_NaN()}) {
+    invalid = p;
+    invalid.rope_theta = value;
+    check_invalid(invalid);
+    invalid = p;
+    invalid.rms_norm_epsilon = value;
+    check_invalid(invalid);
+  }
+  EXPECT_EQ(Read(*output), (std::vector<float>(16, -13.f)));
+}
+
+TEST_F(AttentionOpsTest, CachedAttentionRejectsMismatchedCacheBeforeWork) {
+  const FullAttentionParameters p{.query_heads = 2,
+                                  .key_value_heads = 1,
+                                  .head_dim = 4,
+                                  .rotary_dim = 2,
+                                  .capacity = 2};
+  auto output = Upload(std::vector<float>(16, -17.f));
+  ASSERT_TRUE(output.ok());
+  const int wrong_shapes[][3] = {{3, 1, 4}, {2, 2, 4}, {2, 1, 6}};
+  for (const auto& shape : wrong_shapes) {
+    auto cache =
+        KeyValueCache::Create(*executor_, shape[0], shape[1], shape[2]);
+    ASSERT_TRUE(cache.ok());
+    EXPECT_TRUE(absl::IsInvalidArgument(
+        ValidateCachedAttention(*executor_, p, **cache)));
+    EXPECT_TRUE(absl::IsInvalidArgument(CachedAttentionStep(
+        *executor_, p, **cache, Data(*output), Data(*output), Data(*output),
+        Data(*output), Data(*output), Data(*output))));
+    EXPECT_EQ((*cache)->position(), 0);
+  }
+  auto other = cuda::Executor::Create();
+  ASSERT_TRUE(other.ok());
+  auto foreign_cache =
+      KeyValueCache::Create(**other, p.capacity, p.key_value_heads, p.head_dim);
+  ASSERT_TRUE(foreign_cache.ok());
+  EXPECT_TRUE(absl::IsInvalidArgument(
+      ValidateCachedAttention(*executor_, p, **foreign_cache)));
+  EXPECT_TRUE(absl::IsInvalidArgument(CachedAttentionStep(
+      *executor_, p, **foreign_cache, Data(*output), Data(*output),
+      Data(*output), Data(*output), Data(*output), Data(*output))));
+  EXPECT_EQ((*foreign_cache)->position(), 0);
+  EXPECT_EQ(Read(*output), (std::vector<float>(16, -17.f)));
+  EXPECT_TRUE((*other)->Synchronize().ok());
+}
+
+TEST_F(AttentionOpsTest, CachedAttentionRejectsNullPointersWithoutAdvancing) {
+  const FullAttentionParameters p{.query_heads = 2,
+                                  .key_value_heads = 1,
+                                  .head_dim = 4,
+                                  .rotary_dim = 2,
+                                  .capacity = 2};
+  auto cache = KeyValueCache::Create(*executor_, p.capacity, p.key_value_heads,
+                                     p.head_dim);
+  auto output = Upload(std::vector<float>(16, -19.f));
+  ASSERT_TRUE(cache.ok());
+  ASSERT_TRUE(output.ok());
+  for (int missing = 0; missing < 6; ++missing) {
+    SCOPED_TRACE(missing);
+    float* pointers[6];
+    std::fill_n(pointers, 6, Data(*output));
+    pointers[missing] = nullptr;
+    EXPECT_TRUE(absl::IsInvalidArgument(CachedAttentionStep(
+        *executor_, p, **cache, pointers[0], pointers[1], pointers[2],
+        pointers[3], pointers[4], pointers[5])));
+    EXPECT_EQ((*cache)->position(), 0);
+  }
+  EXPECT_EQ(Read(*output), (std::vector<float>(16, -19.f)));
+}
+
+TEST_F(AttentionOpsTest, DeltaNetRejectsUnsupportedShapesAndNullInputs) {
   DeltaNetParameters delta;
   delta.key_head_dim = 129;
   EXPECT_EQ(DeltaNetState::Create(*executor_, delta).status().code(),
