@@ -35,6 +35,7 @@ constexpr FlagRule kFlagRules[] = {
     {"resume_weights", FlagMode::kTrain},
     {"save_weights", FlagMode::kTrain},
     {"expression", FlagMode::kEmbeddingAlgebra},
+    {"top_n", FlagMode::kEmbeddingAlgebra},
 };
 
 const FlagRule* FindRule(absl::string_view name) {
@@ -82,6 +83,8 @@ absl::StatusOr<Mode> ParseAndValidateRunMode(
     return absl::InvalidArgumentError("--checkpoint is required");
 
   if (mode == Mode::kEmbeddingAlgebra) {
+    if (options.top_n <= 0)
+      return absl::InvalidArgumentError("--top_n must be positive");
     if (expression_is_explicit &&
         absl::StripAsciiWhitespace(options.expression).empty())
       return absl::InvalidArgumentError("--expression must not be empty");

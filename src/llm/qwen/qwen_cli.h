@@ -31,11 +31,13 @@ struct CommandLineOptions {
   std::string resume_weights;
   std::string save_weights;
   std::string expression;
+  int top_n = 0;
 };
 
 // Requires an exact infer_model/train_model/embedding_algebra mode and a
 // nonempty checkpoint. Embedding algebra is interactive when no expression is
-// supplied; explicitly supplying an empty expression is an error.
+// supplied; explicitly supplying an empty expression is an error. top_n must
+// be positive in embedding-algebra mode.
 // Validates only the selected mode's values, but rejects every explicitly set
 // flag belonging to another mode, even when its value is empty or default.
 // Names in explicitly_set_flags have no leading "--"; an unknown name is an

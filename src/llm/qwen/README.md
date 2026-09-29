@@ -52,7 +52,7 @@ values. The old `qwen_infer` and `qwen_train` binaries are removed.
 | --- | --- |
 | `infer_model` | `prompt`, `max_new_tokens`, `context_length`, `raw_prompt`, `thinking` |
 | `train_model` | `text`, `sequence_length`, `batch_size`, `steps`, `switch_every`, `start_block`, `learning_rate`, `max_active_gib`, `resume_weights`, `save_weights` |
-| `embedding_algebra` | `expression` (omit for the interactive prompt) |
+| `embedding_algebra` | `expression` (omit for the interactive prompt), `top_n` |
 
 `--raw_prompt` and `--thinking` cannot both be enabled. Training remains
 batch-one, short-sequence BAdam; see [training commands and limits](TRAINING.md).
@@ -83,6 +83,8 @@ king - queen + boy raw
 ```
 
 To run one expression and exit, add `--expression='king - queen + boy'`.
+Set `--top_n=10` to print ten matches instead of the default three; the count
+must be positive and applies to both single-expression and interactive use.
 The mode also accepts one expression per line on piped stdin, without prompts
 or terminal escapes. Invalid lines report errors and the session continues;
 any invalid line makes a piped session exit nonzero.
@@ -95,14 +97,16 @@ any invalid line makes a piped session exit nonzero.
   are `\\`, `\"`, `\'`, `\/`, `\n`, `\r`, and `\t`. `raw` is reserved at either
   end; quote `"raw"` to use that vocabulary token. Only `+`/`-` and unary signs
   are supported, not parentheses, multiplication, or arbitrary code execution.
-- Default output contains the three nearest token rows by **cosine similarity**
+- Output contains up to `--top_n` nearest token rows (default three)
+  by **cosine similarity**
   (range −1 to 1; larger is closer), with token IDs, escaped decoded spellings
   and ordinary L2 distance (smaller is closer). Cosine is not a probability or
   softmax. Expression inputs remain candidates, padded rows are excluded, zero
   rows are skipped, and exact score ties prefer the smaller token ID.
 - `raw` prints all 5,120 FP32 result components, without normalization or
-  truncation. A zero result is valid in raw mode but has no cosine direction,
-  so nearest-neighbor mode reports an error for `king - king`.
+  truncation; `--top_n` does not change raw output. A zero result is valid in
+  raw mode but has no cosine direction, so nearest-neighbor mode reports an
+  error for `king - king`.
 - [Linenoise](https://github.com/antirez/linenoise) supplies terminal line
   editing, multiline display and Up/Down history for the last 1,000 session
   commands. Ctrl-C cancels a line; Ctrl-D on an empty line or `:quit` exits.

@@ -11,7 +11,8 @@ namespace pluto::llm::qwen {
 // Loads only the tokenizer and input embedding table, never decoder weights.
 // Piped input also works; failed lines are reported without discarding later
 // lines, and any failure makes the noninteractive session return an error.
+// top_n selects up to that many nearest nonzero embeddings; raw ignores it.
 absl::Status RunEmbeddingAlgebra(const std::filesystem::path& checkpoint,
-                                 absl::string_view expression);
+                                 absl::string_view expression, int top_n);
 
 }  // namespace pluto::llm::qwen

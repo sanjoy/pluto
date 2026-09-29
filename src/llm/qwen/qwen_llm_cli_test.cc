@@ -139,6 +139,28 @@ TEST_F(QwenLlmCliTest, ExpressionIsAllowedOnlyInEmbeddingAlgebra) {
     }
 }
 
+TEST_F(QwenLlmCliTest, TopNIsAllowedOnlyInEmbeddingAlgebra) {
+  for (const char* mode : {"infer_model", "train_model"})
+    for (const char* argument : {"--top_n=0", "--top_n=3", "--top_n=7"}) {
+      SCOPED_TRACE(mode);
+      SCOPED_TRACE(argument);
+      ASSERT_NO_FATAL_FAILURE(
+          Run({std::string("--mode=") + mode, "--checkpoint=unused_checkpoint",
+               argument}));
+      ExpectInvalid("--top_n");
+    }
+}
+
+TEST_F(QwenLlmCliTest, EmbeddingAlgebraRejectsInvalidTopNBeforeLoadingModel) {
+  for (const char* argument :
+       {"--top_n=0", "--top_n=-1", "--top_n=-2147483648"}) {
+    SCOPED_TRACE(argument);
+    ASSERT_NO_FATAL_FAILURE(Run({"--mode=embedding_algebra",
+                                 "--checkpoint=unused_checkpoint", argument}));
+    ExpectInvalid("--top_n");
+  }
+}
+
 TEST_F(QwenLlmCliTest, EmbeddingAlgebraRejectsExplicitEmptyExpression) {
   for (const char* argument : {"--expression=", "--expression= \t "}) {
     ASSERT_NO_FATAL_FAILURE(Run({"--mode=embedding_algebra",
@@ -247,7 +269,7 @@ TEST_F(QwenLlmCliTest, HelpDescribesAllModesWithoutLoadingModel) {
   for (const char* text :
        {"infer_model", "train_model", "embedding_algebra", "--mode", "--prompt",
         "--max_new_tokens", "--text", "--switch_every", "--resume_weights",
-        "--save_weights", "--expression"})
+        "--save_weights", "--expression", "--top_n"})
     EXPECT_NE(output_.find(text), std::string::npos) << text << '\n' << output_;
   EXPECT_EQ(output_.find("INVALID_ARGUMENT"), std::string::npos) << output_;
 }

@@ -51,7 +51,7 @@ absl::StatusOr<PreparedExpression> PrepareExpression(
 // affects ranking: it is not a softmax, probability or language-model output.
 absl::Status PrintResult(const PreparedExpression& expression,
                          EmbeddingAlgebraTable& table,
-                         const tokenizer::QwenTokenizer& tokenizer) {
+                         const tokenizer::QwenTokenizer& tokenizer, int top_n) {
   ASSIGN_OR_RETURN(auto vector, table.Evaluate(expression.terms));
   if (expression.raw) {
     // Nine significant decimal digits round-trip every finite FP32 element;
@@ -61,7 +61,7 @@ absl::Status PrintResult(const PreparedExpression& expression,
       std::cout << (i == 0 ? "" : ", ") << absl::StrFormat("%.9g", vector[i]);
     std::cout << "]\n";
   } else {
-    ASSIGN_OR_RETURN(auto matches, table.Nearest(vector.span(), 3));
+    ASSIGN_OR_RETURN(auto matches, table.Nearest(vector.span(), top_n));
     std::cout << "Top " << matches.size()
               << " by cosine similarity (1 = identical direction; not a "
                  "probability):\n";
@@ -88,7 +88,8 @@ void PrintHelp() {
          "  Quote exact token text, e.g. \" king\"; each symbol must encode "
          "as one token.\n"
          "  + and - are supported; quotes preserve spaces/operators.\n"
-         "  Neighbors use cosine similarity, not LM-head probabilities.\n"
+         "  Neighbors use cosine similarity, not LM-head probabilities; "
+         "--top_n sets their count.\n"
          "  Up/Down: session history; Ctrl-C: cancel line; Ctrl-D: exit.\n"
          "  :help shows this message; :quit exits. No history is saved "
          "to disk.\n"
@@ -98,7 +99,7 @@ void PrintHelp() {
 // Linenoise provides terminal editing/history. Plain stdin avoids terminal
 // escapes and prompts, which also makes scripted sessions easy to compose.
 absl::Status RunSession(EmbeddingAlgebraTable& table,
-                        const tokenizer::QwenTokenizer& tokenizer) {
+                        const tokenizer::QwenTokenizer& tokenizer, int top_n) {
   const bool interactive = isatty(STDIN_FILENO) && isatty(STDOUT_FILENO);
   if (interactive) {
     linenoiseSetMultiLine(1);
@@ -141,8 +142,9 @@ absl::Status RunSession(EmbeddingAlgebraTable& table,
       continue;
     }
     auto prepared = PrepareExpression(input, tokenizer);
-    const auto status = prepared.ok() ? PrintResult(*prepared, table, tokenizer)
-                                      : prepared.status();
+    const auto status = prepared.ok()
+                            ? PrintResult(*prepared, table, tokenizer, top_n)
+                            : prepared.status();
     if (!status.ok()) {
       std::cerr << "Error: " << status << '\n';
       failed = true;
@@ -156,7 +158,9 @@ absl::Status RunSession(EmbeddingAlgebraTable& table,
 }  // namespace
 
 absl::Status RunEmbeddingAlgebra(const std::filesystem::path& checkpoint,
-                                 absl::string_view expression) {
+                                 absl::string_view expression, int top_n) {
+  if (top_n <= 0)
+    return absl::InvalidArgumentError("top_n must be positive");
   ASSIGN_OR_RETURN(auto tokenizer, tokenizer::QwenTokenizer::Load(checkpoint));
   // Fail malformed/multi-token one-shot inputs before loading GPU weights.
   std::optional<PreparedExpression> prepared;
@@ -170,8 +174,8 @@ absl::Status RunEmbeddingAlgebra(const std::filesystem::path& checkpoint,
   std::cerr << "Loaded only input embeddings: " << table->vocab_size() << " x "
             << table->dimensions() << "; searching " << tokenizer->vocab_size()
             << " token IDs\n";
-  return prepared ? PrintResult(*prepared, *table, *tokenizer)
-                  : RunSession(*table, *tokenizer);
+  return prepared ? PrintResult(*prepared, *table, *tokenizer, top_n)
+                  : RunSession(*table, *tokenizer, top_n);
 }
 
 }  // namespace pluto::llm::qwen

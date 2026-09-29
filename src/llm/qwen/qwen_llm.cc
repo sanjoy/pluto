@@ -31,6 +31,8 @@ ABSL_FLAG(
     "Required execution mode: infer_model, train_model, or embedding_algebra");
 ABSL_FLAG(std::string, expression, "",
           "Embedding-algebra expression; omit for an interactive prompt");
+ABSL_FLAG(int, top_n, 3,
+          "Number of embedding-algebra nearest matches; must be positive");
 ABSL_FLAG(std::string, checkpoint, "",
           "Downloaded Qwen3.8-27B-FP8 HF directory");
 ABSL_FLAG(std::string, prompt, "What is the capital of France? Answer briefly.",
@@ -322,6 +324,7 @@ absl::Status Run() {
   ReadFlag(FLAGS_resume_weights, options.resume_weights, explicitly_set);
   ReadFlag(FLAGS_save_weights, options.save_weights, explicitly_set);
   ReadFlag(FLAGS_expression, options.expression, explicitly_set);
+  ReadFlag(FLAGS_top_n, options.top_n, explicitly_set);
   ASSIGN_OR_RETURN(auto mode, pluto::llm::qwen::ParseAndValidateRunMode(
                                   options, explicitly_set));
   switch (mode) {
@@ -330,8 +333,8 @@ absl::Status Run() {
     case pluto::llm::qwen::Mode::kTrainModel:
       return RunTraining(options);
     case pluto::llm::qwen::Mode::kEmbeddingAlgebra:
-      return pluto::llm::qwen::RunEmbeddingAlgebra(options.checkpoint,
-                                                   options.expression);
+      return pluto::llm::qwen::RunEmbeddingAlgebra(
+          options.checkpoint, options.expression, options.top_n);
   }
   return absl::InternalError("invalid run mode");
 }

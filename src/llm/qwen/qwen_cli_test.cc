@@ -38,6 +38,7 @@ CommandLineOptions EmbeddingAlgebraOptions() {
   options.mode = "embedding_algebra";
   options.checkpoint = "/checkpoint/need-not-exist";
   options.expression = "king - queen + boy";
+  options.top_n = 3;
   return options;
 }
 
@@ -110,6 +111,7 @@ TEST(QwenCliTest, FiltersEveryFlagEvenIfItsValueIsEmptyOrDefault) {
       {"resume_weights", false, true, false},
       {"save_weights", false, true, false},
       {"expression", false, false, true},
+      {"top_n", false, false, true},
   };
   for (const Case& test : cases) {
     SCOPED_TRACE(test.name);
@@ -142,8 +144,8 @@ TEST(QwenCliTest, AcceptsCompleteFlagSets) {
                 "steps", "switch_every", "start_block", "learning_rate",
                 "max_active_gib", "resume_weights", "save_weights"});
   EXPECT_TRUE(training.ok()) << training;
-  const auto algebra =
-      Validate(EmbeddingAlgebraOptions(), {"mode", "checkpoint", "expression"});
+  const auto algebra = Validate(EmbeddingAlgebraOptions(),
+                                {"mode", "checkpoint", "expression", "top_n"});
   EXPECT_TRUE(algebra.ok()) << algebra;
 }
 
@@ -166,12 +168,14 @@ TEST(QwenCliTest, IgnoresUnselectedModesValuesWhenNotExplicit) {
   inference.learning_rate = std::numeric_limits<double>::quiet_NaN();
   inference.max_active_gib = std::numeric_limits<double>::infinity();
   inference.start_block = -200;
+  inference.top_n = -1;
   EXPECT_TRUE(Validate(inference).ok());
   auto training = TrainingOptions();
   training.max_new_tokens = -1;
   training.context_length = -1;
   training.raw_prompt = true;
   training.thinking = true;
+  training.top_n = -1;
   EXPECT_TRUE(Validate(training).ok());
   auto algebra = EmbeddingAlgebraOptions();
   algebra.max_new_tokens = -1;
@@ -196,6 +200,34 @@ TEST(QwenCliTest, EmbeddingAlgebraAllowsInteractiveOrNonemptyExpression) {
        {"king", "king - queen + boy", "raw king - queen + boy"}) {
     options.expression = std::string(expression);
     EXPECT_TRUE(Validate(options, {"expression"}).ok());
+  }
+}
+
+TEST(QwenCliTest, EmbeddingAlgebraRequiresPositiveTopN) {
+  for (int value : {std::numeric_limits<int>::min(), -1, 0}) {
+    SCOPED_TRACE(value);
+    auto options = EmbeddingAlgebraOptions();
+    options.top_n = value;
+    ExpectInvalid(Validate(options), "--top_n");
+    ExpectInvalid(Validate(options, {"top_n"}), "--top_n");
+  }
+  for (int value : {1, 3, 7, std::numeric_limits<int>::max()}) {
+    SCOPED_TRACE(value);
+    auto options = EmbeddingAlgebraOptions();
+    options.top_n = value;
+    EXPECT_TRUE(Validate(options, {"top_n"}).ok());
+  }
+}
+
+TEST(QwenCliTest, TopNIsRejectedInOtherModesEvenAtDefaultValue) {
+  for (auto options : {InferenceOptions(), TrainingOptions()}) {
+    SCOPED_TRACE(options.mode);
+    for (int value : {0, 3, 7}) {
+      SCOPED_TRACE(value);
+      options.top_n = value;
+      EXPECT_TRUE(Validate(options).ok());
+      ExpectInvalid(Validate(options, {"top_n"}), "--top_n");
+    }
   }
 }
 
