@@ -6,6 +6,7 @@
 #include "absl/status/statusor.h"
 #include "src/cuda/buffer.h"
 #include "src/cuda/executor.h"
+#include "src/llm/key_value_cache.h"
 
 namespace pluto::llm::cached_attention_ops {
 
@@ -42,18 +43,17 @@ class FullAttentionState final {
                     const float* q_norm, const float* k_norm, float* output,
                     float* probabilities = nullptr);
   absl::Status Reset();
-  int length() const { return length_; }
+  int length() const { return cache_->position(); }
 
  private:
   FullAttentionState(cuda::Executor& executor,
-                     FullAttentionParameters parameters, cuda::Buffer keys,
-                     cuda::Buffer values, cuda::Buffer queries);
+                     FullAttentionParameters parameters,
+                     std::unique_ptr<KeyValueCache> cache,
+                     cuda::Buffer queries);
   cuda::Executor& executor_;
   FullAttentionParameters parameters_;
-  cuda::Buffer keys_;
-  cuda::Buffer values_;
+  std::unique_ptr<KeyValueCache> cache_;
   cuda::Buffer queries_;
-  int length_ = 0;
 };
 
 struct DeltaNetParameters {

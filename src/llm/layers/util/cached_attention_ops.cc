@@ -282,12 +282,11 @@ absl::StatusOr<cuda::Buffer> AllocateFloats(cuda::Executor& executor,
 
 FullAttentionState::FullAttentionState(cuda::Executor& executor,
                                        FullAttentionParameters parameters,
-                                       cuda::Buffer keys, cuda::Buffer values,
+                                       std::unique_ptr<KeyValueCache> cache,
                                        cuda::Buffer queries)
     : executor_(executor),
       parameters_(parameters),
-      keys_(std::move(keys)),
-      values_(std::move(values)),
+      cache_(std::move(cache)),
       queries_(std::move(queries)) {}
 
 absl::StatusOr<std::unique_ptr<FullAttentionState>> FullAttentionState::Create(
@@ -303,16 +302,14 @@ absl::StatusOr<std::unique_ptr<FullAttentionState>> FullAttentionState::Create(
       p.query_heads > std::numeric_limits<int>::max() - p.key_value_heads)
     return absl::InvalidArgumentError(
         "invalid full-attention dimensions or parameters");
-  const size_t count = static_cast<size_t>(p.capacity) * p.key_value_heads;
-  if (count > std::numeric_limits<size_t>::max() / p.head_dim)
-    return absl::ResourceExhaustedError("attention cache size overflows");
-  ASSIGN_OR_RETURN(auto keys, AllocateFloats(executor, count * p.head_dim));
-  ASSIGN_OR_RETURN(auto values, AllocateFloats(executor, count * p.head_dim));
+  ASSIGN_OR_RETURN(
+      auto cache, KeyValueCache::Create(executor, p.capacity, p.key_value_heads,
+                                        p.head_dim));
   ASSIGN_OR_RETURN(
       auto queries,
       AllocateFloats(executor, static_cast<size_t>(p.query_heads) * p.head_dim));
-  return absl::WrapUnique(new FullAttentionState(
-      executor, p, std::move(keys), std::move(values), std::move(queries)));
+  return absl::WrapUnique(new FullAttentionState(executor, p, std::move(cache),
+                                                 std::move(queries)));
 }
 
 absl::Status FullAttentionState::Step(const float* q_gate, const float* k,
@@ -322,43 +319,43 @@ absl::Status FullAttentionState::Step(const float* q_gate, const float* k,
   if (!q_gate || !k || !v || !q_norm || !k_norm || !output)
     return absl::InvalidArgumentError(
         "attention requires non-null device pointers");
-  if (length_ >= parameters_.capacity)
+  if (cache_->position() >= cache_->capacity())
     return absl::ResourceExhaustedError(
         "full-attention cache capacity reached");
   const auto& p = parameters_;
   PrepareAttentionKernel<<<p.query_heads + p.key_value_heads, 1, 0,
                            executor_.stream()>>>(
       q_gate, k, v, q_norm, k_norm, p.query_heads, p.key_value_heads,
-      p.head_dim, p.rotary_dim, length_, p.rms_norm_epsilon,
+      p.head_dim, p.rotary_dim, cache_->position(), p.rms_norm_epsilon,
       std::log(p.rope_theta), p.round_to_bfloat16,
-      static_cast<float*>(queries_.data()), static_cast<float*>(keys_.data()),
-      static_cast<float*>(values_.data()));
+      static_cast<float*>(queries_.data()),
+      static_cast<float*>(cache_->keys().data()),
+      static_cast<float*>(cache_->values().data()));
   RETURN_IF_ERROR(
       cuda::CudaStatus(cudaGetLastError(), "prepare Qwen attention"));
   FullAttentionKernel<<<p.query_heads, 1, 0, executor_.stream()>>>(
       static_cast<const float*>(queries_.data()), q_gate,
-      static_cast<const float*>(keys_.data()),
-      static_cast<const float*>(values_.data()), p.query_heads,
-      p.key_value_heads, p.head_dim, length_ + 1,
+      static_cast<const float*>(cache_->keys().data()),
+      static_cast<const float*>(cache_->values().data()), p.query_heads,
+      p.key_value_heads, p.head_dim, cache_->position() + 1,
       1.0f / std::sqrt(static_cast<float>(p.head_dim)), p.round_to_bfloat16,
       output);
   RETURN_IF_ERROR(cuda::CudaStatus(cudaGetLastError(), "Qwen full attention"));
   if (probabilities) {
     AttentionProbabilitiesKernel<<<p.query_heads, 1, 0, executor_.stream()>>>(
         static_cast<const float*>(queries_.data()),
-        static_cast<const float*>(keys_.data()), p.query_heads,
-        p.key_value_heads, p.head_dim, length_ + 1,
+        static_cast<const float*>(cache_->keys().data()), p.query_heads,
+        p.key_value_heads, p.head_dim, cache_->position() + 1,
         1.0f / std::sqrt(static_cast<float>(p.head_dim)), probabilities);
     RETURN_IF_ERROR(cuda::CudaStatus(cudaGetLastError(),
                                      "inspect cached attention probabilities"));
   }
-  ++length_;
-  return absl::OkStatus();
+  return cache_->Advance();
 }
 
 absl::Status FullAttentionState::Reset() {
   // Every visible cache entry is overwritten before it can be read again.
-  length_ = 0;
+  cache_->Reset();
   return absl::OkStatus();
 }
 

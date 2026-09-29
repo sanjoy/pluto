@@ -931,6 +931,33 @@ layer_test("sequence_delta_net", [
     "@abseil-cpp//absl/status",
 ])
 
+cc_library(
+    name = "key_value_cache",
+    srcs = ["key_value_cache.cc"],
+    hdrs = ["key_value_cache.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/memory",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+    ],
+)
+
+cc_test(
+    name = "key_value_cache_test",
+    srcs = ["key_value_cache_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":key_value_cache",
+        "//src/cuda:page_locked_host_array",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
 # Frozen normalization and gating for imported single-token models.
 layer_library("rms_norm")
 layer_library("swiglu")
@@ -1013,6 +1040,7 @@ cuda_library(
     copts = ["--enable-tile", "-std=c++20"],
     host_copts = ["-std=c++20"],
     deps = [
+        ":key_value_cache",
         "//src/cuda:buffer",
         "//src/cuda:executor",
         "//src/util:status_macros",
