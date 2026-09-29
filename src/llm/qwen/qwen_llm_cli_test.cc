@@ -98,14 +98,52 @@ TEST_F(QwenLlmCliTest, RequiresExplicitSupportedMode) {
     ExpectInvalid("--mode");
     EXPECT_NE(output_.find("infer_model"), std::string::npos) << output_;
     EXPECT_NE(output_.find("train_model"), std::string::npos) << output_;
+    EXPECT_NE(output_.find("embedding_algebra"), std::string::npos) << output_;
   }
 }
 
-TEST_F(QwenLlmCliTest, BothModesRequireCheckpoint) {
-  for (const char* mode : {"infer_model", "train_model"}) {
+TEST_F(QwenLlmCliTest, AllModesRequireCheckpoint) {
+  for (const char* mode : {"infer_model", "train_model", "embedding_algebra"}) {
     SCOPED_TRACE(mode);
     ASSERT_NO_FATAL_FAILURE(Run({std::string("--mode=") + mode}));
     ExpectInvalid("--checkpoint");
+  }
+}
+
+TEST_F(QwenLlmCliTest, EmbeddingAlgebraRejectsInferenceAndTrainingFlags) {
+  for (const char* argument :
+       {"--prompt=", "--max_new_tokens=32", "--context_length=512",
+        "--raw_prompt=false", "--thinking=false", "--nothinking",
+        "--text=", "--sequence_length=8", "--batch_size=1", "--steps=2",
+        "--switch_every=50", "--start_block=-1", "--learning_rate=1e-5",
+        "--max_active_gib=0", "--resume_weights=", "--save_weights="}) {
+    SCOPED_TRACE(argument);
+    ASSERT_NO_FATAL_FAILURE(Run({"--mode=embedding_algebra",
+                                 "--checkpoint=unused_checkpoint", argument}));
+    const std::string_view flag = argument;
+    ExpectInvalid(flag == "--nothinking" ? "--thinking"
+                                         : flag.substr(0, flag.find('=')));
+    EXPECT_NE(output_.find("embedding_algebra"), std::string::npos) << output_;
+  }
+}
+
+TEST_F(QwenLlmCliTest, ExpressionIsAllowedOnlyInEmbeddingAlgebra) {
+  for (const char* mode : {"infer_model", "train_model"})
+    for (const char* argument : {"--expression=", "--expression=king"}) {
+      SCOPED_TRACE(mode);
+      SCOPED_TRACE(argument);
+      ASSERT_NO_FATAL_FAILURE(
+          Run({std::string("--mode=") + mode, "--checkpoint=unused_checkpoint",
+               argument}));
+      ExpectInvalid("--expression");
+    }
+}
+
+TEST_F(QwenLlmCliTest, EmbeddingAlgebraRejectsExplicitEmptyExpression) {
+  for (const char* argument : {"--expression=", "--expression= \t "}) {
+    ASSERT_NO_FATAL_FAILURE(Run({"--mode=embedding_algebra",
+                                 "--checkpoint=unused_checkpoint", argument}));
+    ExpectInvalid("--expression");
   }
 }
 
@@ -140,7 +178,7 @@ TEST_F(QwenLlmCliTest, TrainingRejectsExplicitInferenceFlags) {
 }
 
 TEST_F(QwenLlmCliTest, RejectsPositionalArguments) {
-  for (const char* mode : {"infer_model", "train_model"}) {
+  for (const char* mode : {"infer_model", "train_model", "embedding_algebra"}) {
     SCOPED_TRACE(mode);
     ASSERT_NO_FATAL_FAILURE(
         Run({std::string("--mode=") + mode, "--checkpoint=unused_checkpoint",
@@ -202,13 +240,14 @@ TEST_F(QwenLlmCliTest, FlagsFromFileObeyModePolicyEvenAtDefaultValue) {
   EXPECT_NE(output_.find("infer_model"), std::string::npos) << output_;
 }
 
-TEST_F(QwenLlmCliTest, HelpDescribesBothModesWithoutLoadingModel) {
+TEST_F(QwenLlmCliTest, HelpDescribesAllModesWithoutLoadingModel) {
   ASSERT_NO_FATAL_FAILURE(Run({"--helpfull"}));
   // Abseil deliberately exits with status 1 after printing help.
   EXPECT_EQ(exit_code_, 1) << output_;
   for (const char* text :
-       {"infer_model", "train_model", "--mode", "--prompt", "--max_new_tokens",
-        "--text", "--switch_every", "--resume_weights", "--save_weights"})
+       {"infer_model", "train_model", "embedding_algebra", "--mode", "--prompt",
+        "--max_new_tokens", "--text", "--switch_every", "--resume_weights",
+        "--save_weights", "--expression"})
     EXPECT_NE(output_.find(text), std::string::npos) << text << '\n' << output_;
   EXPECT_EQ(output_.find("INVALID_ARGUMENT"), std::string::npos) << output_;
 }

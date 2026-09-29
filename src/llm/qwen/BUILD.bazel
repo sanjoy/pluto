@@ -1,6 +1,7 @@
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
+load("@rules_cuda//cuda:defs.bzl", "cuda_library")
 
 cc_library(
     name = "training_model",
@@ -33,6 +34,7 @@ cc_binary(
     srcs = ["qwen_llm.cc"],
     deps = [
         ":checkpoint",
+        ":embedding_algebra",
         ":model",
         ":qwen_cli",
         ":training_model",
@@ -50,6 +52,88 @@ cc_binary(
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings",
         "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_library(
+    name = "embedding_algebra",
+    srcs = ["embedding_algebra.cc"],
+    hdrs = ["embedding_algebra.h"],
+    deps = [
+        ":embedding_algebra_expression",
+        ":embedding_algebra_table",
+        "//src/cuda:executor",
+        "//src/dataset:qwen_tokenizer",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/strings:str_format",
+        "@linenoise//:linenoise",
+    ],
+)
+
+cc_library(
+    name = "embedding_algebra_expression",
+    srcs = ["embedding_algebra_expression.cc"],
+    hdrs = ["embedding_algebra_expression.h"],
+    deps = [
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+    ],
+)
+
+cc_test(
+    name = "embedding_algebra_expression_test",
+    srcs = ["embedding_algebra_expression_test.cc"],
+    deps = [
+        ":embedding_algebra_expression",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cuda_library(
+    name = "embedding_algebra_table",
+    srcs = ["embedding_algebra_table.cc"],
+    hdrs = ["embedding_algebra_table.h"],
+    copts = ["--enable-tile", "-std=c++20"],
+    host_copts = ["-std=c++20"],
+    deps = [
+        ":checkpoint",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/memory",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_test(
+    name = "embedding_algebra_table_test",
+    srcs = ["embedding_algebra_table_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":embedding_algebra_table",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
     ],
 )
 

@@ -3,12 +3,13 @@
 #include <cmath>
 
 #include "absl/status/status.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 
 namespace pluto::llm::qwen {
 namespace {
 
-enum class FlagMode { kBoth, kInfer, kTrain };
+enum class FlagMode { kAll, kInfer, kTrain, kEmbeddingAlgebra };
 
 struct FlagRule {
   absl::string_view name;
@@ -16,8 +17,8 @@ struct FlagRule {
 };
 
 constexpr FlagRule kFlagRules[] = {
-    {"mode", FlagMode::kBoth},
-    {"checkpoint", FlagMode::kBoth},
+    {"mode", FlagMode::kAll},
+    {"checkpoint", FlagMode::kAll},
     {"prompt", FlagMode::kInfer},
     {"max_new_tokens", FlagMode::kInfer},
     {"context_length", FlagMode::kInfer},
@@ -33,6 +34,7 @@ constexpr FlagRule kFlagRules[] = {
     {"max_active_gib", FlagMode::kTrain},
     {"resume_weights", FlagMode::kTrain},
     {"save_weights", FlagMode::kTrain},
+    {"expression", FlagMode::kEmbeddingAlgebra},
 };
 
 const FlagRule* FindRule(absl::string_view name) {
@@ -52,23 +54,39 @@ absl::StatusOr<Mode> ParseAndValidateRunMode(
     mode = Mode::kInferModel;
   else if (options.mode == "train_model")
     mode = Mode::kTrainModel;
+  else if (options.mode == "embedding_algebra")
+    mode = Mode::kEmbeddingAlgebra;
   else
     return absl::InvalidArgumentError(
-        "--mode is required and must be one of: infer_model, train_model");
+        "--mode is required and must be one of: infer_model, train_model, "
+        "embedding_algebra");
 
-  const FlagMode allowed =
-      mode == Mode::kInferModel ? FlagMode::kInfer : FlagMode::kTrain;
+  FlagMode allowed = FlagMode::kEmbeddingAlgebra;
+  if (mode == Mode::kInferModel)
+    allowed = FlagMode::kInfer;
+  else if (mode == Mode::kTrainModel)
+    allowed = FlagMode::kTrain;
+  bool expression_is_explicit = false;
   for (absl::string_view flag : explicitly_set_flags) {
     const FlagRule* rule = FindRule(flag);
     if (rule == nullptr)
       return absl::InternalError(
           absl::StrCat("missing mode policy for --", flag));
-    if (rule->mode != FlagMode::kBoth && rule->mode != allowed)
+    if (rule->mode != FlagMode::kAll && rule->mode != allowed)
       return absl::InvalidArgumentError(
           absl::StrCat("--", flag, " is not valid in --mode=", options.mode));
+    if (flag == "expression")
+      expression_is_explicit = true;
   }
   if (options.checkpoint.empty())
     return absl::InvalidArgumentError("--checkpoint is required");
+
+  if (mode == Mode::kEmbeddingAlgebra) {
+    if (expression_is_explicit &&
+        absl::StripAsciiWhitespace(options.expression).empty())
+      return absl::InvalidArgumentError("--expression must not be empty");
+    return mode;
+  }
 
   if (mode == Mode::kInferModel) {
     if (options.max_new_tokens <= 0)

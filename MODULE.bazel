@@ -11,6 +11,18 @@ bazel_dep(name = "rules_cuda", version = "0.3.0")
 bazel_dep(name = "snappy", version = "1.2.2.bcr.3")
 bazel_dep(name = "utf8proc", version = "2.11.0")
 
+# Small BSD-licensed line editor for the embedding-algebra prompt. Pin both
+# revision and archive digest so interactive support builds reproducibly.
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_archive(
+    name = "linenoise",
+    build_file = "//third_party/linenoise:linenoise.BUILD.bazel",
+    sha256 = "3db03aba739bc96f3da3133b9615ccc43246ba2c3628b403b00a470abd3b6a8d",
+    strip_prefix = "linenoise-a473823d74b93eab2ba83480df16ed37617493f2",
+    type = "tar.gz",
+    urls = ["https://codeload.github.com/antirez/linenoise/tar.gz/a473823d74b93eab2ba83480df16ed37617493f2"],
+)
+
 # The 2.11.0 registry BUILD predates Bazel 9's removal of native C++ rules.
 single_version_override(
     module_name = "utf8proc",

@@ -35,14 +35,16 @@ contexts; the tested machine is an NVIDIA GH200 with approximately 96 GB VRAM.
 In `--mode=infer_model`, inference applies the checkpoint's single-user chat
 template with thinking disabled. `--thinking` enables its thinking template.
 `--raw_prompt` passes text without a chat wrapper. Generation is greedy, stops
-on either EOS token, and is bounded by `--max_new_tokens`. `--context_length` bounds the whole
-prompt plus continuation and sizes the KV cache; the default is 512.
+on either EOS token, and is bounded by `--max_new_tokens`. `--context_length`
+bounds the whole prompt plus continuation and sizes the KV cache; the default
+is 512.
 
 ## Execution modes
 
-The single `qwen_llm` binary requires `--mode=infer_model` or
-`--mode=train_model`. `--checkpoint` selects the original HF directory in both
-modes. Flags specific to the other mode are rejected before opening files or
+The single `qwen_llm` binary requires `--mode=infer_model`,
+`--mode=train_model`, or `--mode=embedding_algebra`. `--checkpoint` selects the
+original HF directory in all modes. Flags specific to another mode are
+rejected before opening files or
 initializing CUDA, even if explicitly set to their default, false, or empty
 values. The old `qwen_infer` and `qwen_train` binaries are removed.
 
@@ -50,11 +52,76 @@ values. The old `qwen_infer` and `qwen_train` binaries are removed.
 | --- | --- |
 | `infer_model` | `prompt`, `max_new_tokens`, `context_length`, `raw_prompt`, `thinking` |
 | `train_model` | `text`, `sequence_length`, `batch_size`, `steps`, `switch_every`, `start_block`, `learning_rate`, `max_active_gib`, `resume_weights`, `save_weights` |
+| `embedding_algebra` | `expression` (omit for the interactive prompt) |
 
 `--raw_prompt` and `--thinking` cannot both be enabled. Training remains
 batch-one, short-sequence BAdam; see [training commands and limits](TRAINING.md).
 Combining the entry points does not convert trained resident-weight checkpoints
 to the FP8 format expected by inference.
+
+## Embedding algebra
+
+Explore addition/subtraction of the **input token embeddings**, without loading
+or executing transformer blocks, the final norm, or the LM head:
+
+```sh
+bazel build -c opt //src/llm/qwen:qwen_llm
+bazel-bin/src/llm/qwen/qwen_llm \
+  --mode=embedding_algebra \
+  --checkpoint=/home/ubuntu/checkpoints/models/Qwen3.8-27B-FP8
+```
+
+At the prompt, try:
+
+```text
+king - queen + boy
+raw king - queen + boy
+king - queen + boy raw
+" king" - " queen" + " boy"
+:help
+:quit
+```
+
+To run one expression and exit, add `--expression='king - queen + boy'`.
+The mode also accepts one expression per line on piped stdin, without prompts
+or terminal escapes. Invalid lines report errors and the session continues;
+any invalid line makes a piped session exit nonzero.
+
+- Each symbol is tokenized independently as literal text; exactly **one token**
+  is required. Multi-token symbols produce an error naming the symbol and token
+  count. No spaces are automatically prepended. Quote leading spaces and
+  punctuation to distinguish, for example, `king` from `" king"`.
+- Single/double quotes preserve literal spaces/operators. Supported escapes
+  are `\\`, `\"`, `\'`, `\/`, `\n`, `\r`, and `\t`. `raw` is reserved at either
+  end; quote `"raw"` to use that vocabulary token. Only `+`/`-` and unary signs
+  are supported, not parentheses, multiplication, or arbitrary code execution.
+- Default output contains the three nearest token rows by **cosine similarity**
+  (range −1 to 1; larger is closer), with token IDs, escaped decoded spellings
+  and ordinary L2 distance (smaller is closer). Cosine is not a probability or
+  softmax. Expression inputs remain candidates, padded rows are excluded, zero
+  rows are skipped, and exact score ties prefer the smaller token ID.
+- `raw` prints all 5,120 FP32 result components, without normalization or
+  truncation. A zero result is valid in raw mode but has no cosine direction,
+  so nearest-neighbor mode reports an error for `king - king`.
+- [Linenoise](https://github.com/antirez/linenoise) supplies terminal line
+  editing, multiline display and Up/Down history for the last 1,000 session
+  commands. Ctrl-C cancels a line; Ctrl-D on an empty line or `:quit` exits.
+  History is not saved to disk. The BSD-licensed dependency is pinned by revision and SHA-256 in
+  `MODULE.bazel`; no system readline development package is required.
+
+Only the BF16 embedding table (about 2.37 GiB for this checkpoint) is copied
+to the GPU. Arithmetic and dot-product/distance reductions use FP32 cuTile
+kernels; small result arrays cross through pinned host memory. Nearest-neighbor
+ranking uses the original embedding rows, not the untied LM projection weights.
+
+Parser/token-count tests and tiny GPU reference tests run without the large
+checkpoint:
+
+```sh
+bazel test -c opt //src/llm/qwen:embedding_algebra_expression_test \
+  //src/llm/qwen:embedding_algebra_table_test \
+  //src/llm/qwen:qwen_cli_test //src/llm/qwen:qwen_llm_cli_test
+```
 
 ## Implementation
 

@@ -1,0 +1,9 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
+# Upstream is self-contained C and retains its BSD license in the archive.
+cc_library(
+    name = "linenoise",
+    srcs = ["linenoise.c"],
+    hdrs = ["linenoise.h"],
+    visibility = ["//visibility:public"],
+)

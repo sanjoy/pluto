@@ -20,13 +20,17 @@
 #include "src/llm/checkpoint.h"
 #include "src/llm/layers/cross_entropy_loss.h"
 #include "src/llm/qwen/checkpoint.h"
+#include "src/llm/qwen/embedding_algebra.h"
 #include "src/llm/qwen/model.h"
 #include "src/llm/qwen/qwen_cli.h"
 #include "src/llm/qwen/training_model.h"
 #include "src/util/status_macros.h"
 
-ABSL_FLAG(std::string, mode, "",
-          "Required execution mode: infer_model or train_model");
+ABSL_FLAG(
+    std::string, mode, "",
+    "Required execution mode: infer_model, train_model, or embedding_algebra");
+ABSL_FLAG(std::string, expression, "",
+          "Embedding-algebra expression; omit for an interactive prompt");
 ABSL_FLAG(std::string, checkpoint, "",
           "Downloaded Qwen3.8-27B-FP8 HF directory");
 ABSL_FLAG(std::string, prompt, "What is the capital of France? Answer briefly.",
@@ -317,10 +321,19 @@ absl::Status Run() {
   ReadFlag(FLAGS_max_active_gib, options.max_active_gib, explicitly_set);
   ReadFlag(FLAGS_resume_weights, options.resume_weights, explicitly_set);
   ReadFlag(FLAGS_save_weights, options.save_weights, explicitly_set);
+  ReadFlag(FLAGS_expression, options.expression, explicitly_set);
   ASSIGN_OR_RETURN(auto mode, pluto::llm::qwen::ParseAndValidateRunMode(
                                   options, explicitly_set));
-  return mode == pluto::llm::qwen::Mode::kInferModel ? RunInference(options)
-                                                     : RunTraining(options);
+  switch (mode) {
+    case pluto::llm::qwen::Mode::kInferModel:
+      return RunInference(options);
+    case pluto::llm::qwen::Mode::kTrainModel:
+      return RunTraining(options);
+    case pluto::llm::qwen::Mode::kEmbeddingAlgebra:
+      return pluto::llm::qwen::RunEmbeddingAlgebra(options.checkpoint,
+                                                   options.expression);
+  }
+  return absl::InternalError("invalid run mode");
 }
 
 }  // namespace
@@ -329,7 +342,8 @@ int main(int argc, char** argv) {
   if (absl::ParseCommandLine(argc, argv).size() != 1) {
     std::cerr << absl::InvalidArgumentError(
                      "positional arguments are not supported; use --prompt "
-                     "(infer_model) or --text (train_model) for input")
+                     "(infer_model), --text (train_model), or --expression "
+                     "(embedding_algebra) for input")
               << '\n';
     return 1;
   }

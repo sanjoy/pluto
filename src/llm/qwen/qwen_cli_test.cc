@@ -33,6 +33,14 @@ CommandLineOptions TrainingOptions() {
   return options;
 }
 
+CommandLineOptions EmbeddingAlgebraOptions() {
+  CommandLineOptions options;
+  options.mode = "embedding_algebra";
+  options.checkpoint = "/checkpoint/need-not-exist";
+  options.expression = "king - queen + boy";
+  return options;
+}
+
 absl::Status Validate(const CommandLineOptions& options,
                       std::initializer_list<absl::string_view> flags = {}) {
   return ParseAndValidateRunMode(
@@ -53,10 +61,13 @@ TEST(QwenCliTest, ParsesOnlyExactNamedModes) {
   const auto training = ParseAndValidateRunMode(TrainingOptions(), {});
   ASSERT_TRUE(training.ok()) << training.status();
   EXPECT_EQ(*training, Mode::kTrainModel);
+  const auto algebra = ParseAndValidateRunMode(EmbeddingAlgebraOptions(), {});
+  ASSERT_TRUE(algebra.ok()) << algebra.status();
+  EXPECT_EQ(*algebra, Mode::kEmbeddingAlgebra);
   for (absl::string_view mode :
        {"", " ", "train", "infer", "TRAIN_MODEL", "Infer_model", " train_model",
-        "infer_model ", "infer_model\n", "train_sae",
-        "train_model,infer_model"}) {
+        "infer_model ", "infer_model\n", "train_sae", "train_model,infer_model",
+        "algebra", "Embedding_Algebra", "embedding_algebra "}) {
     SCOPED_TRACE(mode);
     auto options = InferenceOptions();
     options.mode = std::string(mode);
@@ -64,8 +75,9 @@ TEST(QwenCliTest, ParsesOnlyExactNamedModes) {
   }
 }
 
-TEST(QwenCliTest, RequiresCheckpointInBothModes) {
-  for (auto options : {InferenceOptions(), TrainingOptions()}) {
+TEST(QwenCliTest, RequiresCheckpointInEveryMode) {
+  for (auto options :
+       {InferenceOptions(), TrainingOptions(), EmbeddingAlgebraOptions()}) {
     SCOPED_TRACE(options.mode);
     options.checkpoint.clear();
     ExpectInvalid(Validate(options), "--checkpoint");
@@ -77,30 +89,33 @@ TEST(QwenCliTest, FiltersEveryFlagEvenIfItsValueIsEmptyOrDefault) {
     absl::string_view name;
     bool inference;
     bool training;
+    bool algebra;
   };
   const Case cases[] = {
-      {"mode", true, true},
-      {"checkpoint", true, true},
-      {"prompt", true, false},
-      {"max_new_tokens", true, false},
-      {"context_length", true, false},
-      {"raw_prompt", true, false},
-      {"thinking", true, false},
-      {"text", false, true},
-      {"sequence_length", false, true},
-      {"batch_size", false, true},
-      {"steps", false, true},
-      {"switch_every", false, true},
-      {"start_block", false, true},
-      {"learning_rate", false, true},
-      {"max_active_gib", false, true},
-      {"resume_weights", false, true},
-      {"save_weights", false, true},
+      {"mode", true, true, true},
+      {"checkpoint", true, true, true},
+      {"prompt", true, false, false},
+      {"max_new_tokens", true, false, false},
+      {"context_length", true, false, false},
+      {"raw_prompt", true, false, false},
+      {"thinking", true, false, false},
+      {"text", false, true, false},
+      {"sequence_length", false, true, false},
+      {"batch_size", false, true, false},
+      {"steps", false, true, false},
+      {"switch_every", false, true, false},
+      {"start_block", false, true, false},
+      {"learning_rate", false, true, false},
+      {"max_active_gib", false, true, false},
+      {"resume_weights", false, true, false},
+      {"save_weights", false, true, false},
+      {"expression", false, false, true},
   };
   for (const Case& test : cases) {
     SCOPED_TRACE(test.name);
     const auto inference = Validate(InferenceOptions(), {test.name});
     const auto training = Validate(TrainingOptions(), {test.name});
+    const auto algebra = Validate(EmbeddingAlgebraOptions(), {test.name});
     if (test.inference)
       EXPECT_TRUE(inference.ok()) << inference;
     else
@@ -109,6 +124,10 @@ TEST(QwenCliTest, FiltersEveryFlagEvenIfItsValueIsEmptyOrDefault) {
       EXPECT_TRUE(training.ok()) << training;
     else
       ExpectInvalid(training, test.name);
+    if (test.algebra)
+      EXPECT_TRUE(algebra.ok()) << algebra;
+    else
+      ExpectInvalid(algebra, test.name);
   }
 }
 
@@ -123,10 +142,14 @@ TEST(QwenCliTest, AcceptsCompleteFlagSets) {
                 "steps", "switch_every", "start_block", "learning_rate",
                 "max_active_gib", "resume_weights", "save_weights"});
   EXPECT_TRUE(training.ok()) << training;
+  const auto algebra =
+      Validate(EmbeddingAlgebraOptions(), {"mode", "checkpoint", "expression"});
+  EXPECT_TRUE(algebra.ok()) << algebra;
 }
 
 TEST(QwenCliTest, UnknownPolicyNamesAreInternalErrors) {
-  for (const auto& options : {InferenceOptions(), TrainingOptions()})
+  for (const auto& options :
+       {InferenceOptions(), TrainingOptions(), EmbeddingAlgebraOptions()})
     for (absl::string_view name : {"unregistered", "--prompt", ""}) {
       SCOPED_TRACE(options.mode);
       SCOPED_TRACE(name);
@@ -150,6 +173,30 @@ TEST(QwenCliTest, IgnoresUnselectedModesValuesWhenNotExplicit) {
   training.raw_prompt = true;
   training.thinking = true;
   EXPECT_TRUE(Validate(training).ok());
+  auto algebra = EmbeddingAlgebraOptions();
+  algebra.max_new_tokens = -1;
+  algebra.context_length = -1;
+  algebra.raw_prompt = true;
+  algebra.thinking = true;
+  algebra.learning_rate = std::numeric_limits<double>::quiet_NaN();
+  algebra.max_active_gib = std::numeric_limits<double>::infinity();
+  algebra.start_block = -200;
+  EXPECT_TRUE(Validate(algebra).ok());
+}
+
+TEST(QwenCliTest, EmbeddingAlgebraAllowsInteractiveOrNonemptyExpression) {
+  auto options = EmbeddingAlgebraOptions();
+  options.expression.clear();
+  EXPECT_TRUE(Validate(options, {"mode", "checkpoint"}).ok());
+  for (absl::string_view expression : {"", " ", "\t\r\n"}) {
+    options.expression = std::string(expression);
+    ExpectInvalid(Validate(options, {"expression"}), "--expression");
+  }
+  for (absl::string_view expression :
+       {"king", "king - queen + boy", "raw king - queen + boy"}) {
+    options.expression = std::string(expression);
+    EXPECT_TRUE(Validate(options, {"expression"}).ok());
+  }
 }
 
 TEST(QwenCliTest, RejectsNonpositiveInferenceLimits) {
