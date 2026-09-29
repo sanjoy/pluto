@@ -4,7 +4,7 @@ This is a native Pluto implementation of the text decoder in
 [`Qwen/Qwen3.8-27B-FP8`](https://huggingface.co/Qwen/Qwen3.8-27B-FP8).
 It uses Pluto's `cuda::Executor`, stream-ordered buffers, page-locked host
 transfers, and cuTile C++ kernels. Python, Transformers, and external inference
-servers are **not** used by the binaries. Cached FP8 inference is described
+servers are **not** used by the binary. Cached FP8 inference is described
 below; [BAdam training](TRAINING.md) uses BF16 resident weights and optimizer
 state for only one parameter block at a time.
 
@@ -17,9 +17,10 @@ hf download Qwen/Qwen3.8-27B-FP8 \
   --revision 017b9c7af6b5689d5dd426a76e0bc077eb5ca20a \
   --local-dir /home/ubuntu/checkpoints/models/Qwen3.8-27B-FP8
 
-bazel build -c opt //src/llm/qwen:qwen_infer
+bazel build -c opt //src/llm/qwen:qwen_llm
 
-bazel-bin/src/llm/qwen/qwen_infer \
+bazel-bin/src/llm/qwen/qwen_llm \
+  --mode=infer_model \
   --checkpoint=/home/ubuntu/checkpoints/models/Qwen3.8-27B-FP8 \
   --prompt='What is 2 + 2? Reply with just the number.' \
   --max_new_tokens=12 --context_length=128
@@ -31,11 +32,29 @@ cuTile C++, and a GPU supported by the repository's CUDA toolchain are required.
 Allow about 31 GB of disk and at least 32 GB of available GPU memory for short
 contexts; the tested machine is an NVIDIA GH200 with approximately 96 GB VRAM.
 
-Default inference applies the checkpoint's single-user chat template with
-thinking disabled. `--thinking` enables its thinking template. `--raw_prompt`
-passes text without a chat wrapper. Generation is greedy, stops on either EOS
-token, and is bounded by `--max_new_tokens`. `--context_length` bounds the whole
+In `--mode=infer_model`, inference applies the checkpoint's single-user chat
+template with thinking disabled. `--thinking` enables its thinking template.
+`--raw_prompt` passes text without a chat wrapper. Generation is greedy, stops
+on either EOS token, and is bounded by `--max_new_tokens`. `--context_length` bounds the whole
 prompt plus continuation and sizes the KV cache; the default is 512.
+
+## Execution modes
+
+The single `qwen_llm` binary requires `--mode=infer_model` or
+`--mode=train_model`. `--checkpoint` selects the original HF directory in both
+modes. Flags specific to the other mode are rejected before opening files or
+initializing CUDA, even if explicitly set to their default, false, or empty
+values. The old `qwen_infer` and `qwen_train` binaries are removed.
+
+| Mode | Mode-specific flags |
+| --- | --- |
+| `infer_model` | `prompt`, `max_new_tokens`, `context_length`, `raw_prompt`, `thinking` |
+| `train_model` | `text`, `sequence_length`, `batch_size`, `steps`, `switch_every`, `start_block`, `learning_rate`, `max_active_gib`, `resume_weights`, `save_weights` |
+
+`--raw_prompt` and `--thinking` cannot both be enabled. Training remains
+batch-one, short-sequence BAdam; see [training commands and limits](TRAINING.md).
+Combining the entry points does not convert trained resident-weight checkpoints
+to the FP8 format expected by inference.
 
 ## Implementation
 

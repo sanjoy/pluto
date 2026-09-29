@@ -1,17 +1,19 @@
 # Memory-bounded Qwen training
 
-`qwen_train` implements short-sequence, full-parameter text fine-tuning using
-block-coordinate Adam (BAdam). It is not LoRA: every text-decoder parameter can
-be updated over a complete cycle, but only one parameter group is active at a
-time. This implementation and its tests are AI-generated and not human reviewed.
+`qwen_llm --mode=train_model` implements short-sequence, full-parameter text
+fine-tuning using block-coordinate Adam (BAdam). It is not LoRA: every
+text-decoder parameter can be updated over a complete cycle, but only one
+parameter group is active at a time. This implementation and its tests are
+AI-generated and not human reviewed.
 
 ## Quick smoke run
 
 Use the checkpoint downloaded in [README.md](README.md), then run:
 
 ```sh
-bazel build -c opt //src/llm/qwen:qwen_train
-bazel-bin/src/llm/qwen/qwen_train \
+bazel build -c opt //src/llm/qwen:qwen_llm
+bazel-bin/src/llm/qwen/qwen_llm \
+  --mode=train_model \
   --checkpoint=/home/ubuntu/checkpoints/models/Qwen3.8-27B-FP8 \
   --batch_size=1 --sequence_length=8 \
   --text='The capital of France is Paris. The capital of Greece is Athens.' \
@@ -86,7 +88,8 @@ only calls `ZeroGrad` once at startup, including Pluto's current generic
   original checkpoint architecture. Adam state, schedule position and step
   count are **not** restored; this starts a fresh optimizer cycle.
 - Saved weights are not an HF FP8 export and cannot be passed directly to the
-  existing FP8 `qwen_infer` loader. Requantization/export is not implemented.
+  FP8 loader in `qwen_llm --mode=infer_model`. Requantization/export is not
+  implemented; `--resume_weights` is valid only in training mode.
 
 ## Verification
 
@@ -124,5 +127,7 @@ embedding. Resident weights occupy 53,797,287,936 bytes (50.10 GiB). Active
 working state is about 5.55–5.71 GiB for decoder blocks and 18.95 GiB for the
 embedding/head. Device use is sampled after synchronized updates and includes
 allocator reservations and other device use; it is not a measured transient
-peak. Both runs completed without OOM or non-finite loss. The 87-target test
-suite also passes.
+peak. Both runs completed without OOM or non-finite loss. The unified binary's
+89-target test suite also passes; its `train_model` smoke run reproduces the
+first row, and `infer_model` still answers `4` to the chat prompt `What is 2 + 2?
+Reply with just the number.`

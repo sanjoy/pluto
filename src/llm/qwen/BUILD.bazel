@@ -29,10 +29,12 @@ cc_library(
 )
 
 cc_binary(
-    name = "qwen_train",
-    srcs = ["qwen_train.cc"],
+    name = "qwen_llm",
+    srcs = ["qwen_llm.cc"],
     deps = [
         ":checkpoint",
+        ":model",
+        ":qwen_cli",
         ":training_model",
         "//src/cuda:buffer",
         "//src/cuda:executor",
@@ -44,8 +46,43 @@ cc_binary(
         "//src/util:status_macros",
         "@abseil-cpp//absl/flags:flag",
         "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
         "@cuda//:cuda_runtime",
     ],
+)
+
+cc_library(
+    name = "qwen_cli",
+    srcs = ["qwen_cli.cc"],
+    hdrs = ["qwen_cli.h"],
+    deps = [
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "qwen_cli_test",
+    srcs = ["qwen_cli_test.cc"],
+    deps = [
+        ":qwen_cli",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "qwen_llm_cli_test",
+    srcs = ["qwen_llm_cli_test.cc"],
+    data = [":qwen_llm"],
+    deps = ["@googletest//:gtest_main"],
 )
 
 cc_test(
@@ -130,22 +167,6 @@ cc_library(
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings",
         "@abseil-cpp//absl/types:span",
-        "@cuda//:cuda_runtime",
-    ],
-)
-
-cc_binary(
-    name = "qwen_infer",
-    srcs = ["qwen_infer.cc"],
-    deps = [
-        ":model",
-        "//src/cuda:executor",
-        "//src/cuda:page_locked_host_array",
-        "//src/dataset:qwen_tokenizer",
-        "//src/util:status_macros",
-        "@abseil-cpp//absl/flags:flag",
-        "@abseil-cpp//absl/flags:parse",
-        "@abseil-cpp//absl/status",
         "@cuda//:cuda_runtime",
     ],
 )

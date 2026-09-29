@@ -11,16 +11,32 @@
 
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "src/cuda/executor.h"
 #include "src/cuda/page_locked_host_array.h"
 #include "src/dataset/qwen_tokenizer.h"
 #include "src/llm/badam_optimizer.h"
 #include "src/llm/checkpoint.h"
 #include "src/llm/layers/cross_entropy_loss.h"
+#include "src/llm/qwen/checkpoint.h"
+#include "src/llm/qwen/model.h"
+#include "src/llm/qwen/qwen_cli.h"
 #include "src/llm/qwen/training_model.h"
 #include "src/util/status_macros.h"
 
-ABSL_FLAG(std::string, checkpoint, "", "Original Hugging Face Qwen checkpoint");
+ABSL_FLAG(std::string, mode, "",
+          "Required execution mode: infer_model or train_model");
+ABSL_FLAG(std::string, checkpoint, "",
+          "Downloaded Qwen3.8-27B-FP8 HF directory");
+ABSL_FLAG(std::string, prompt, "What is the capital of France? Answer briefly.",
+          "Text prompt");
+ABSL_FLAG(int, max_new_tokens, 32, "Maximum greedy continuation tokens");
+ABSL_FLAG(int, context_length, 512,
+          "Maximum total prompt plus generated tokens");
+ABSL_FLAG(bool, raw_prompt, false, "Do not apply the model's chat template");
+ABSL_FLAG(bool, thinking, false, "Enable the chat template's thinking mode");
+
 ABSL_FLAG(
     std::string, text,
     "The capital of France is Paris. The capital of Greece is Athens.",
@@ -44,6 +60,81 @@ ABSL_FLAG(
     "Optional NEW Pluto resident-weight directory to write after training");
 
 namespace {
+
+using pluto::llm::qwen::CommandLineOptions;
+
+// Keep the command intentionally small: native tokenization, cached decoder
+// steps, and greedy selection. No Python runtime or external serving engine.
+absl::Status RunInference(const CommandLineOptions& options) {
+  ASSIGN_OR_RETURN(auto tokenizer,
+                   pluto::tokenizer::QwenTokenizer::Load(options.checkpoint));
+  std::string prompt = options.prompt;
+  if (!options.raw_prompt)
+    prompt =
+        pluto::tokenizer::QwenTokenizer::ChatPrompt(prompt, options.thinking);
+  ASSIGN_OR_RETURN(auto tokens, tokenizer->Encode(prompt));
+  if (tokens.empty() || tokens.size() + size_t(options.max_new_tokens) >
+                            size_t(options.context_length))
+    return absl::InvalidArgumentError(
+        "prompt plus requested continuation exceeds --context_length");
+  ASSIGN_OR_RETURN(auto executor, pluto::cuda::Executor::Create());
+  pluto::llm::qwen::InferenceOptions model_options;
+  model_options.context_length = options.context_length;
+  model_options.load_progress = [](int loaded, int total) {
+    if (loaded % 8 == 0 || loaded == total)
+      std::cerr << "Loaded decoder blocks " << loaded << '/' << total << '\n';
+  };
+  auto start = std::chrono::steady_clock::now();
+  ASSIGN_OR_RETURN(auto model,
+                   pluto::llm::qwen::Model::Load(*executor, options.checkpoint,
+                                                 model_options));
+  if (tokenizer->vocab_size() > model->config().vocab_size)
+    return absl::InvalidArgumentError("tokenizer exceeds model vocabulary");
+  std::cerr << "GPU weight storage: " << model->weight_bytes()
+            << " bytes; prompt: " << tokens.size() << " tokens\n";
+  for (int token : tokens)
+    RETURN_IF_ERROR(model->Step(token));
+  ASSIGN_OR_RETURN(auto scores,
+                   pluto::cuda::PageLockedHostArray<float>::Allocate(
+                       *executor, model->config().vocab_size));
+  std::vector<int> continuation;
+  bool eos = false;
+  for (int step = 0; step < options.max_new_tokens; ++step) {
+    ASSIGN_OR_RETURN(auto logits, model->Logits());
+    RETURN_IF_ERROR(pluto::cuda::CudaStatus(
+        cudaMemcpyAsync(scores.data(), logits.data(), scores.size_bytes(),
+                        cudaMemcpyDeviceToHost, executor->stream()),
+        "copy Qwen logits"));
+    RETURN_IF_ERROR(executor->Synchronize());
+    for (float score : scores)
+      if (!std::isfinite(score))
+        return absl::DataLossError("non-finite Qwen logits");
+    // Padded head rows have no token spelling and cannot be generated.
+    int next = static_cast<int>(
+        std::max_element(scores.begin(),
+                         scores.begin() + tokenizer->vocab_size()) -
+        scores.begin());
+    if (next == tokenizer->eos_token_id() ||
+        next == model->config().eos_token_id) {
+      eos = true;
+      break;
+    }
+    // Concatenate token bytes before printing, since byte-BPE tokens can end
+    // inside a Unicode scalar. This also keeps diagnostic output on stderr.
+    continuation.push_back(next);
+    if (step + 1 < options.max_new_tokens)
+      RETURN_IF_ERROR(model->Step(next));
+  }
+  ASSIGN_OR_RETURN(auto text, tokenizer->Decode(continuation));
+  std::cout << text << '\n';
+  double seconds =
+      std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
+          .count();
+  std::cerr << "Generated " << continuation.size() << " tokens; "
+            << (eos ? "EOS" : "token limit") << "; load + inference " << seconds
+            << " seconds\n";
+  return absl::OkStatus();
+}
 
 // Transfer through pinned memory, on the same executor as every model buffer.
 // Host storage remains alive until the training/evaluation synchronization.
@@ -74,23 +165,13 @@ absl::StatusOr<double> MeanLoss(pluto::cuda::Executor& executor,
 
 // Load once and repeatedly optimize a short batch, switching whole parameter
 // blocks. No optimizer tensors are allocated for frozen blocks.
-absl::Status Run() {
+absl::Status RunTraining(const CommandLineOptions& options) {
   using namespace pluto::llm;
-  const int sequence = absl::GetFlag(FLAGS_sequence_length);
-  const int steps = absl::GetFlag(FLAGS_steps);
-  const double rate = absl::GetFlag(FLAGS_learning_rate);
-  const double cap = absl::GetFlag(FLAGS_max_active_gib);
-  if (absl::GetFlag(FLAGS_checkpoint).empty() || sequence <= 0 ||
-      sequence > 128 || steps <= 0 || absl::GetFlag(FLAGS_batch_size) != 1 ||
-      absl::GetFlag(FLAGS_switch_every) <= 0 ||
-      absl::GetFlag(FLAGS_start_block) < -1 || !(rate > 0) ||
-      !std::isfinite(rate) || rate > 1 || !std::isfinite(cap) || cap < 0 ||
-      cap > 1024)
-    return absl::InvalidArgumentError(
-        "require checkpoint, batch_size=1, sequence_length in [1,128], "
-        "positive steps/rate/switch_every, start_block >= -1 and valid memory "
-        "cap");
-  const auto save = absl::GetFlag(FLAGS_save_weights);
+  const int sequence = options.sequence_length;
+  const int steps = options.steps;
+  const double rate = options.learning_rate;
+  const double cap = options.max_active_gib;
+  const auto save = options.save_weights;
   if (!save.empty()) {
     std::error_code error;
     const bool exists = std::filesystem::exists(save, error);
@@ -101,36 +182,36 @@ absl::Status Run() {
       return absl::AlreadyExistsError("save_weights must be a new directory");
   }
   ASSIGN_OR_RETURN(const auto architecture,
-                   qwen::LoadConfig(absl::GetFlag(FLAGS_checkpoint)));
-  if (absl::GetFlag(FLAGS_start_block) > architecture.num_hidden_layers + 1)
+                   qwen::LoadConfig(options.checkpoint));
+  if (options.start_block > architecture.num_hidden_layers + 1)
     return absl::InvalidArgumentError("start_block exceeds model block count");
-  ASSIGN_OR_RETURN(auto tokenizer, pluto::tokenizer::QwenTokenizer::Load(
-                                       absl::GetFlag(FLAGS_checkpoint)));
-  ASSIGN_OR_RETURN(auto tokens, tokenizer->Encode(absl::GetFlag(FLAGS_text)));
+  ASSIGN_OR_RETURN(auto tokenizer,
+                   pluto::tokenizer::QwenTokenizer::Load(options.checkpoint));
+  ASSIGN_OR_RETURN(auto tokens, tokenizer->Encode(options.text));
   if (tokens.size() < static_cast<size_t>(sequence) + 1)
     return absl::InvalidArgumentError(
         "training text needs sequence_length+1 tokens");
   ASSIGN_OR_RETURN(auto executor, pluto::cuda::Executor::Create());
-  qwen::TrainingModelOptions options;
-  options.sequence_length = sequence;
-  options.load_progress = [](int done, int total) {
+  qwen::TrainingModelOptions model_options;
+  model_options.sequence_length = sequence;
+  model_options.load_progress = [](int done, int total) {
     if (done % 8 == 0 || done == total)
       std::cout << "Loaded training decoder blocks " << done << '/' << total
                 << '\n'
                 << std::flush;
   };
-  ASSIGN_OR_RETURN(auto model,
-                   qwen::TrainingModel::Load(
-                       *executor, absl::GetFlag(FLAGS_checkpoint), options));
-  if (!absl::GetFlag(FLAGS_resume_weights).empty())
-    RETURN_IF_ERROR(ReadFromDirectory(
-        *executor, *model, absl::GetFlag(FLAGS_resume_weights), false));
+  ASSIGN_OR_RETURN(
+      auto model,
+      qwen::TrainingModel::Load(*executor, options.checkpoint, model_options));
+  if (!options.resume_weights.empty())
+    RETURN_IF_ERROR(
+        ReadFromDirectory(*executor, *model, options.resume_weights, false));
   BAdamConfig config;
   config.adam.learning_rate = rate;
   config.adam.beta2 = 0.999f;
   config.adam.weight_decay = 0;
-  config.switch_every = absl::GetFlag(FLAGS_switch_every);
-  config.start_block = absl::GetFlag(FLAGS_start_block);
+  config.switch_every = options.switch_every;
+  config.start_block = options.start_block;
   config.max_active_bytes = static_cast<size_t>(cap * 1024 * 1024 * 1024);
   ASSIGN_OR_RETURN(
       auto optimizer,
@@ -204,11 +285,52 @@ absl::Status Run() {
   return absl::OkStatus();
 }
 
+// Capture actual defaults and explicit presence together. In particular,
+// an explicitly default-valued flag still participates in mode validation.
+template <class T>
+void ReadFlag(const absl::Flag<T>& flag, T& value,
+              std::vector<absl::string_view>& explicitly_set) {
+  value = absl::GetFlag(flag);
+  if (flag.IsSpecifiedOnCommandLine())
+    explicitly_set.push_back(flag.Name());
+}
+
+// Validate all mode-specific options before accessing files or creating an
+// executor, then run just the requested path with its immutable snapshot.
+absl::Status Run() {
+  CommandLineOptions options;
+  std::vector<absl::string_view> explicitly_set;
+  ReadFlag(FLAGS_mode, options.mode, explicitly_set);
+  ReadFlag(FLAGS_checkpoint, options.checkpoint, explicitly_set);
+  ReadFlag(FLAGS_prompt, options.prompt, explicitly_set);
+  ReadFlag(FLAGS_max_new_tokens, options.max_new_tokens, explicitly_set);
+  ReadFlag(FLAGS_context_length, options.context_length, explicitly_set);
+  ReadFlag(FLAGS_raw_prompt, options.raw_prompt, explicitly_set);
+  ReadFlag(FLAGS_thinking, options.thinking, explicitly_set);
+  ReadFlag(FLAGS_text, options.text, explicitly_set);
+  ReadFlag(FLAGS_sequence_length, options.sequence_length, explicitly_set);
+  ReadFlag(FLAGS_batch_size, options.batch_size, explicitly_set);
+  ReadFlag(FLAGS_steps, options.steps, explicitly_set);
+  ReadFlag(FLAGS_switch_every, options.switch_every, explicitly_set);
+  ReadFlag(FLAGS_start_block, options.start_block, explicitly_set);
+  ReadFlag(FLAGS_learning_rate, options.learning_rate, explicitly_set);
+  ReadFlag(FLAGS_max_active_gib, options.max_active_gib, explicitly_set);
+  ReadFlag(FLAGS_resume_weights, options.resume_weights, explicitly_set);
+  ReadFlag(FLAGS_save_weights, options.save_weights, explicitly_set);
+  ASSIGN_OR_RETURN(auto mode, pluto::llm::qwen::ParseAndValidateRunMode(
+                                  options, explicitly_set));
+  return mode == pluto::llm::qwen::Mode::kInferModel ? RunInference(options)
+                                                     : RunTraining(options);
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
   if (absl::ParseCommandLine(argc, argv).size() != 1) {
-    std::cerr << "Use --text for training input\n";
+    std::cerr << absl::InvalidArgumentError(
+                     "positional arguments are not supported; use --prompt "
+                     "(infer_model) or --text (train_model) for input")
+              << '\n';
     return 1;
   }
   const auto status = Run();
