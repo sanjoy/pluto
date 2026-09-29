@@ -13,7 +13,7 @@
 #include "src/cuda/page_locked_host_array.h"
 #include "src/llm/layer_hooks.h"
 #include "src/llm/layers/delta_net.h"
-#include "src/llm/layers/full_attention.h"
+#include "src/llm/layers/qwen_attention.h"
 #include "src/util/status_macros.h"
 
 namespace pluto::llm {
@@ -89,7 +89,7 @@ TEST_F(CachedAttentionLayerTest,
   p.capacity = 2;
   auto norm = Upload(std::vector<float>(4));
   ASSERT_TRUE(norm.ok());
-  auto layer = FullAttentionLayer::Create(*executor_, p, *norm, *norm);
+  auto layer = QwenAttentionLayer::Create(*executor_, p, *norm, *norm);
   ASSERT_TRUE(layer.ok()) << layer.status();
   EXPECT_EQ((*layer)->weights().size(), 2);
   EXPECT_TRUE((*layer)->gradients().empty());
@@ -117,7 +117,7 @@ TEST_F(CachedAttentionLayerTest,
                               absl::Span<const ActivationType> types,
                               absl::Span<Buffer> outputs) {
     EXPECT_EQ(&executor, executor_.get());
-    EXPECT_EQ(name, "FullAttentionLayer");
+    EXPECT_EQ(name, "QwenAttentionLayer");
     EXPECT_EQ(types[0], (*layer)->output_types()[0]);
     EXPECT_EQ(outputs[0].size_bytes(), 8 * sizeof(uint16_t));
     ++activation_calls;
@@ -127,7 +127,7 @@ TEST_F(CachedAttentionLayerTest,
       [&](cuda::Executor&, absl::string_view name, const ActivationType& type,
           const Buffer& probabilities) {
         ++probability_calls;
-        EXPECT_EQ(name, "FullAttentionLayer");
+        EXPECT_EQ(name, "QwenAttentionLayer");
         EXPECT_EQ(type,
                   ActivationType(DataType::FP32, {1, 2, 1, probability_calls}));
         for (float value : Read<float>(probabilities))
@@ -173,7 +173,7 @@ TEST_F(CachedAttentionLayerTest,
   ASSERT_TRUE(norm.ok());
   ASSERT_TRUE(q.ok());
   ASSERT_TRUE(kv.ok());
-  auto layer = FullAttentionLayer::Create(*executor_, p, *norm, *norm);
+  auto layer = QwenAttentionLayer::Create(*executor_, p, *norm, *norm);
   ASSERT_TRUE(layer.ok());
   EXPECT_EQ((*layer)->fwd(*executor_, {*q, *kv}).status().code(),
             absl::StatusCode::kInvalidArgument);
@@ -188,7 +188,7 @@ TEST_F(CachedAttentionLayerTest,
   EXPECT_EQ((*layer)->fwd(*executor_, {*q, *kv, *foreign}).status().code(),
             absl::StatusCode::kInvalidArgument);
   EXPECT_EQ((*layer)->length(), 0);
-  EXPECT_EQ(FullAttentionLayer::Create(*executor_, p, *q, *kv).status().code(),
+  EXPECT_EQ(QwenAttentionLayer::Create(*executor_, p, *q, *kv).status().code(),
             absl::StatusCode::kInvalidArgument);
 
   LayerHooks hooks;
@@ -318,20 +318,20 @@ TEST_F(CachedAttentionLayerTest,
   auto norm = Upload(std::vector<float>(2));
   ASSERT_TRUE(norm.ok());
   FullAttentionParameters full;
-  full.query_heads = FullAttentionLayer::kMaximumDimension / 4;
+  full.query_heads = QwenAttentionLayer::kMaximumDimension / 4;
   full.key_value_heads = 1;
   full.head_dim = full.rotary_dim = 2;
   full.capacity = 1;
   // Q plus gate reaches this layer's limit exactly; the next head exceeds it.
   auto supported_full =
-      FullAttentionLayer::Create(*executor_, full, *norm, *norm);
+      QwenAttentionLayer::Create(*executor_, full, *norm, *norm);
   ASSERT_TRUE(supported_full.ok()) << supported_full.status();
   ++full.query_heads;
   auto rejected_full =
-      FullAttentionLayer::Create(*executor_, full, *norm, *norm);
+      QwenAttentionLayer::Create(*executor_, full, *norm, *norm);
   EXPECT_EQ(rejected_full.status().code(), absl::StatusCode::kInvalidArgument);
   EXPECT_EQ(rejected_full.status().message(),
-            "FullAttentionLayer activation exceeds the layer dimension limit");
+            "QwenAttentionLayer activation exceeds the layer dimension limit");
 
   DeltaNetParameters delta;
   delta.key_heads = delta.value_heads = DeltaNetLayer::kMaximumDimension / 3;
@@ -362,7 +362,7 @@ TEST_F(CachedAttentionLayerTest,
   // or trying to reserve a huge cache, even when imported weights are tiny.
   full.query_heads = full.key_value_heads = full.head_dim =
       std::numeric_limits<int>::max();
-  EXPECT_EQ(FullAttentionLayer::Create(*executor_, full, *norm, *norm)
+  EXPECT_EQ(QwenAttentionLayer::Create(*executor_, full, *norm, *norm)
                 .status()
                 .code(),
             absl::StatusCode::kInvalidArgument);

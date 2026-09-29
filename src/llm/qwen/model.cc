@@ -17,8 +17,8 @@
 #include "src/llm/layers/combinators.h"
 #include "src/llm/layers/delta_net.h"
 #include "src/llm/layers/embedding.h"
-#include "src/llm/layers/full_attention.h"
 #include "src/llm/layers/fully_connected.h"
+#include "src/llm/layers/qwen_attention.h"
 #include "src/llm/layers/rms_norm.h"
 #include "src/llm/layers/swiglu.h"
 #include "src/llm/layers/util.h"
@@ -175,7 +175,7 @@ class LayerLoader {
 // distinct layers: normal LayerHooks can inspect/intervene at each boundary.
 absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateAttentionBranch(
     cuda::Executor& executor, const Config& config, int index, int capacity,
-    LayerLoader& loader, std::vector<FullAttentionLayer*>& full_attention,
+    LayerLoader& loader, std::vector<QwenAttentionLayer*>& full_attention,
     std::vector<DeltaNetLayer*>& delta_net) {
   const std::string prefix =
       absl::StrCat("model.language_model.layers.", index, ".");
@@ -214,7 +214,7 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateAttentionBranch(
     p.rms_norm_epsilon = config.rms_norm_eps;
     p.rope_theta = config.rope_theta;
     ASSIGN_OR_RETURN(auto attention,
-                     FullAttentionLayer::Create(executor, p, std::move(q_norm),
+                     QwenAttentionLayer::Create(executor, p, std::move(q_norm),
                                                 std::move(k_norm)));
     full_attention.push_back(attention.get());
     RETURN_IF_ERROR(builder.add(std::move(attention)));
@@ -275,7 +275,7 @@ absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateAttentionBranch(
 // Existing combinators check shapes, route hooks, and perform BF16 additions.
 absl::StatusOr<std::unique_ptr<ComposedLayer>> CreateTransformerBlock(
     cuda::Executor& executor, const Config& config, int index, int capacity,
-    LayerLoader& loader, std::vector<FullAttentionLayer*>& full_attention,
+    LayerLoader& loader, std::vector<QwenAttentionLayer*>& full_attention,
     std::vector<DeltaNetLayer*>& delta_net) {
   ASSIGN_OR_RETURN(auto attention,
                    CreateAttentionBranch(executor, config, index, capacity,
@@ -323,7 +323,7 @@ struct Model::Impl {
   // execution always runs through the ordinary Layer graph.
   std::unique_ptr<ComposedLayer> decoder;
   std::unique_ptr<ComposedLayer> head;
-  std::vector<FullAttentionLayer*> full_attention;
+  std::vector<QwenAttentionLayer*> full_attention;
   std::vector<DeltaNetLayer*> delta_net;
   Buffer token;
   std::optional<Buffer> hidden;

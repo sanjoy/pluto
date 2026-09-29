@@ -18,16 +18,16 @@ using FullAttentionParameters = cached_attention_ops::FullAttentionParameters;
 // call it concurrently, keep its Executor alive, and Reset after any failed
 // forward (including hooks) or before starting a new sequence. There is
 // deliberately no training backward.
-class FullAttentionLayer final : public Layer {
+class QwenAttentionLayer final : public Layer {
  public:
   // Bound per-token projection scratch before allocating a persistent KV cache.
   static constexpr int kMaximumDimension = 1048576;
 
-  static absl::StatusOr<std::unique_ptr<FullAttentionLayer>> Create(
+  static absl::StatusOr<std::unique_ptr<QwenAttentionLayer>> Create(
       cuda::Executor& executor, FullAttentionParameters parameters,
       Buffer q_norm, Buffer k_norm);
 
-  absl::string_view name() const override { return "FullAttentionLayer"; }
+  absl::string_view name() const override { return "QwenAttentionLayer"; }
   DataType output_type() const override { return DataType::BF16; }
   absl::Span<Buffer> weights() override { return weights_; }
   absl::Span<const ActivationType> input_types() const override {
@@ -40,7 +40,7 @@ class FullAttentionLayer final : public Layer {
   int length() const { return cache_->length(); }
 
  private:
-  FullAttentionLayer(
+  QwenAttentionLayer(
       cuda::Executor& executor, FullAttentionParameters parameters,
       Buffer q_norm, Buffer k_norm,
       std::unique_ptr<cached_attention_ops::FullAttentionState> cache);

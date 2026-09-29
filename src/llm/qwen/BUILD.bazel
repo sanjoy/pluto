@@ -242,7 +242,7 @@ cc_library(
         "//src/cuda:page_locked_host_array",
         "//src/llm:combinators",
         "//src/llm:delta_net",
-        "//src/llm:full_attention",
+        "//src/llm:qwen_attention",
         "//src/llm:embedding",
         "//src/llm:fully_connected",
         "//src/llm:rms_norm",

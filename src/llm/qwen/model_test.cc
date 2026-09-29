@@ -605,7 +605,7 @@ TEST_F(QwenModelTest, RunsNativeLayerGraphWithBalancedScopesAndTypedHooks) {
   hooks.attention_probabilities_hook =
       [&](cuda::Executor&, absl::string_view name, const ActivationType& type,
           const Buffer& probabilities) {
-        EXPECT_EQ(name, "FullAttentionLayer");
+        EXPECT_EQ(name, "QwenAttentionLayer");
         EXPECT_EQ(type, ActivationType(DataType::FP32, {1, 2, 1, 1}));
         EXPECT_EQ(probabilities.size_bytes(), 2 * sizeof(float));
         EXPECT_NE(std::find(scopes.begin(), scopes.end(), "QwenBlock1"),
@@ -621,7 +621,7 @@ TEST_F(QwenModelTest, RunsNativeLayerGraphWithBalancedScopesAndTypedHooks) {
   EXPECT_EQ(activations["QwenBlock1"], 1);
   EXPECT_EQ(activations["ResidualLayer"], 4);
   EXPECT_EQ(activations["DeltaNetLayer"], 1);
-  EXPECT_EQ(activations["FullAttentionLayer"], 1);
+  EXPECT_EQ(activations["QwenAttentionLayer"], 1);
   EXPECT_EQ(activations["EmbeddingLookupLayer"], 1);
   EXPECT_EQ(activations["FullyConnectedLayer"], 16);
   EXPECT_EQ(activations["SwiGluLayer"], 2);

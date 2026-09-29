@@ -1,4 +1,4 @@
-#include "src/llm/layers/full_attention.h"
+#include "src/llm/layers/qwen_attention.h"
 
 #include <cstdint>
 #include <optional>
@@ -11,7 +11,7 @@
 
 namespace pluto::llm {
 
-FullAttentionLayer::FullAttentionLayer(
+QwenAttentionLayer::QwenAttentionLayer(
     cuda::Executor& executor, FullAttentionParameters parameters, Buffer q_norm,
     Buffer k_norm,
     std::unique_ptr<cached_attention_ops::FullAttentionState> cache)
@@ -32,7 +32,7 @@ FullAttentionLayer::FullAttentionLayer(
                      {ActivationType::kBatchDimension, 1,
                       1LL * parameters.query_heads * parameters.head_dim}}} {}
 
-absl::StatusOr<std::unique_ptr<FullAttentionLayer>> FullAttentionLayer::Create(
+absl::StatusOr<std::unique_ptr<QwenAttentionLayer>> QwenAttentionLayer::Create(
     cuda::Executor& executor, FullAttentionParameters parameters, Buffer q_norm,
     Buffer k_norm) {
   // Check all converted activation extents before allocating a KV cache. Use
@@ -40,35 +40,35 @@ absl::StatusOr<std::unique_ptr<FullAttentionLayer>> FullAttentionLayer::Create(
   if (parameters.query_heads <= 0 || parameters.key_value_heads <= 0 ||
       parameters.head_dim <= 0)
     return absl::InvalidArgumentError(
-        "FullAttentionLayer dimensions must be positive");
+        "QwenAttentionLayer dimensions must be positive");
   const int64_t query_width =
       1LL * parameters.query_heads * parameters.head_dim;
   const int64_t key_width =
       1LL * parameters.key_value_heads * parameters.head_dim;
   if (query_width > kMaximumDimension / 2 || key_width > kMaximumDimension)
     return absl::InvalidArgumentError(
-        "FullAttentionLayer activation exceeds the layer dimension limit");
+        "QwenAttentionLayer activation exceeds the layer dimension limit");
   if (parameters.head_dim <= 0 ||
       q_norm.size_bytes() !=
           static_cast<size_t>(parameters.head_dim) * sizeof(float) ||
       k_norm.size_bytes() != q_norm.size_bytes() ||
       &q_norm.executor() != &executor || &k_norm.executor() != &executor)
     return absl::InvalidArgumentError(
-        "FullAttentionLayer expects two FP32 head-width norm weights on its "
+        "QwenAttentionLayer expects two FP32 head-width norm weights on its "
         "Executor");
   ASSIGN_OR_RETURN(auto cache, cached_attention_ops::FullAttentionState::Create(
                                    executor, parameters));
   return absl::WrapUnique(
-      new FullAttentionLayer(executor, parameters, std::move(q_norm),
+      new QwenAttentionLayer(executor, parameters, std::move(q_norm),
                              std::move(k_norm), std::move(cache)));
 }
 
-absl::StatusOr<FwdResult> FullAttentionLayer::fwd_impl(
+absl::StatusOr<FwdResult> QwenAttentionLayer::fwd_impl(
     cuda::Executor& executor, absl::Span<const Buffer> inputs,
     LayerHooks* hooks) const {
   if (&executor != &executor_)
     return absl::InvalidArgumentError(
-        "FullAttentionLayer used with a different Executor");
+        "QwenAttentionLayer used with a different Executor");
   const auto& p = parameters_;
   const int output_width = p.query_heads * p.head_dim;
   const int counts[] = {2 * output_width, p.key_value_heads * p.head_dim,
@@ -110,14 +110,14 @@ absl::StatusOr<FwdResult> FullAttentionLayer::fwd_impl(
   return FwdResult{{std::move(result)}, {}};
 }
 
-absl::StatusOr<BufferVec> FullAttentionLayer::bwd_impl(cuda::Executor&,
+absl::StatusOr<BufferVec> QwenAttentionLayer::bwd_impl(cuda::Executor&,
                                                        absl::Span<const Buffer>,
                                                        BackwardState,
                                                        LayerHooks*) {
   return absl::UnimplementedError(
-      "FullAttentionLayer supports cached inference only");
+      "QwenAttentionLayer supports cached inference only");
 }
 
-absl::Status FullAttentionLayer::Reset() { return cache_->Reset(); }
+absl::Status QwenAttentionLayer::Reset() { return cache_->Reset(); }
 
 }  // namespace pluto::llm

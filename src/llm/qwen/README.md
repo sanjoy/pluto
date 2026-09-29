@@ -144,7 +144,7 @@ embedding and language-model output projection are **not tied**.
   is a named `ComposedLayer` containing two ordinary `ResidualLayer` branches:
   `RmsNorm -> attention/projections` and `RmsNorm -> SwiGLU MLP`. A generic
   `ParallelLayer` fans out the Q/K/V or gate/up projections.
-- `src/llm/layers/full_attention.{h,cc}` and `delta_net.{h,cc}` are separate
+- `src/llm/layers/qwen_attention.{h,cc}` and `delta_net.{h,cc}` are separate
   stateful `Layer` implementations. The former supports cached GQA, rotary
   positions, Q/K normalization, and gating; the latter owns recurrent and
   convolution history. These contracts differ from the existing full-sequence,
