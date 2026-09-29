@@ -327,7 +327,7 @@ TEST_F(BlockTrainingTest, SwiGluUsesRoundedSiluWithStraightThroughDerivative) {
 }
 
 TEST_F(BlockTrainingTest, DequantizeRespectsBothScaleBlockBoundaries) {
-  using Storage = inference_ops::MatrixStorage;
+  using Storage = MatrixStorage;
   std::vector<__nv_fp8_e4m3> values(129 * 129, __nv_fp8_e4m3(0.5f));
   auto input = Upload(values);
   auto scales = Upload<float>({1, 2, 3, 4});

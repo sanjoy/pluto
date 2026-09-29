@@ -88,7 +88,7 @@ class TrainingLoader {
     std::optional<Buffer> resident;
     if (matrix) {
       ASSIGN_OR_RETURN(auto raw, Upload(tensor.bytes));
-      using inference_ops::MatrixStorage;
+      using ::pluto::llm::MatrixStorage;
       const auto storage =
           tensor.dtype == TensorDType::kBF16  ? MatrixStorage::kBFloat16
           : tensor.dtype == TensorDType::kF32 ? MatrixStorage::kFloat32

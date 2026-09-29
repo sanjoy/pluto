@@ -280,17 +280,13 @@ void LaunchRms(cuda::Executor& executor, const Buffer& input,
 
 absl::StatusOr<Buffer> DequantizeMatrix(cuda::Executor& executor,
                                         const Buffer& input,
-                                        inference_ops::MatrixStorage storage,
+                                        MatrixStorage storage,
                                         const std::optional<Buffer>& scales,
                                         int rows, int cols) {
-  using Storage = inference_ops::MatrixStorage;
-  const size_t size = storage == Storage::kBFloat16  ? 2
-                      : storage == Storage::kFloat32 ? 4
-                                                     : 1;
-  if (rows <= 0 || cols <= 0 || rows > 1048576 || cols > 1048576 ||
-      (storage != Storage::kBFloat16 && storage != Storage::kFloat32 &&
-       storage != Storage::kFp8E4M3))
-    return absl::InvalidArgumentError("invalid imported matrix shape/storage");
+  using Storage = MatrixStorage;
+  if (rows <= 0 || cols <= 0 || rows > 1048576 || cols > 1048576)
+    return absl::InvalidArgumentError("invalid imported matrix shape");
+  ASSIGN_OR_RETURN(size_t size, MatrixElementBytes(storage));
   RETURN_IF_ERROR(
       CheckBuffer(executor, input, static_cast<size_t>(rows) * cols * size));
   if (storage == Storage::kFp8E4M3) {

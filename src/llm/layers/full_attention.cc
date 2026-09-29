@@ -6,7 +6,7 @@
 
 #include "absl/memory/memory.h"
 #include "src/llm/layer_hooks.h"
-#include "src/llm/layers/inference.h"
+#include "src/llm/layers/util.h"
 #include "src/util/status_macros.h"
 
 namespace pluto::llm {
@@ -45,10 +45,9 @@ absl::StatusOr<std::unique_ptr<FullAttentionLayer>> FullAttentionLayer::Create(
       1LL * parameters.query_heads * parameters.head_dim;
   const int64_t key_width =
       1LL * parameters.key_value_heads * parameters.head_dim;
-  if (query_width > inference_internal::kMaximumDimension / 2 ||
-      key_width > inference_internal::kMaximumDimension)
+  if (query_width > kMaximumDimension / 2 || key_width > kMaximumDimension)
     return absl::InvalidArgumentError(
-        "FullAttentionLayer activation exceeds the inference dimension limit");
+        "FullAttentionLayer activation exceeds the layer dimension limit");
   if (parameters.head_dim <= 0 ||
       q_norm.size_bytes() !=
           static_cast<size_t>(parameters.head_dim) * sizeof(float) ||
@@ -74,18 +73,16 @@ absl::StatusOr<FwdResult> FullAttentionLayer::fwd_impl(
   const int output_width = p.query_heads * p.head_dim;
   const int counts[] = {2 * output_width, p.key_value_heads * p.head_dim,
                         p.key_value_heads * p.head_dim};
-  RETURN_IF_ERROR(inference_internal::ValidateInputs(executor, inputs, counts));
+  RETURN_IF_ERROR(internal::ValidateBFloat16Inputs(executor, inputs, counts));
   if (cache_->length() >= p.capacity)
     return absl::ResourceExhaustedError(
         "full-attention cache capacity reached");
   ASSIGN_OR_RETURN(auto q_gate,
-                   inference_internal::ToFloat(executor, inputs[0], counts[0]));
-  ASSIGN_OR_RETURN(auto k,
-                   inference_internal::ToFloat(executor, inputs[1], counts[1]));
-  ASSIGN_OR_RETURN(auto v,
-                   inference_internal::ToFloat(executor, inputs[2], counts[2]));
-  ASSIGN_OR_RETURN(auto output, inference_internal::AllocateFloatVector(
-                                    executor, output_width));
+                   internal::ToFloat(executor, inputs[0], counts[0]));
+  ASSIGN_OR_RETURN(auto k, internal::ToFloat(executor, inputs[1], counts[1]));
+  ASSIGN_OR_RETURN(auto v, internal::ToFloat(executor, inputs[2], counts[2]));
+  ASSIGN_OR_RETURN(auto output,
+                   internal::AllocateFloatVector(executor, output_width));
   std::optional<Buffer> probabilities;
   const int length = cache_->length() + 1;
   if (hooks && hooks->attention_probabilities_hook) {
@@ -108,8 +105,8 @@ absl::StatusOr<FwdResult> FullAttentionLayer::fwd_impl(
     RETURN_IF_ERROR(hooks->attention_probabilities_hook(executor, name(), type,
                                                         *probabilities));
   }
-  ASSIGN_OR_RETURN(auto result, inference_internal::ToBFloat16(executor, output,
-                                                               output_width));
+  ASSIGN_OR_RETURN(auto result,
+                   internal::ToBFloat16(executor, output, output_width));
   return FwdResult{{std::move(result)}, {}};
 }
 

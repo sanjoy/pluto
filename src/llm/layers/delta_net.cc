@@ -4,7 +4,7 @@
 #include <utility>
 
 #include "absl/memory/memory.h"
-#include "src/llm/layers/inference.h"
+#include "src/llm/layers/util.h"
 #include "src/util/status_macros.h"
 
 namespace pluto::llm {
@@ -46,11 +46,10 @@ absl::StatusOr<std::unique_ptr<DeltaNetLayer>> DeltaNetLayer::Create(
         "DeltaNetLayer dimensions must be positive");
   const int64_t key_width = 1LL * p.key_heads * p.key_head_dim;
   const int64_t value_width = 1LL * p.value_heads * p.value_head_dim;
-  if (key_width > inference_internal::kMaximumDimension / 2 ||
-      value_width > inference_internal::kMaximumDimension ||
-      2 * key_width + value_width > inference_internal::kMaximumDimension)
+  if (key_width > kMaximumDimension / 2 || value_width > kMaximumDimension ||
+      2 * key_width + value_width > kMaximumDimension)
     return absl::InvalidArgumentError(
-        "DeltaNetLayer activation exceeds the inference dimension limit");
+        "DeltaNetLayer activation exceeds the layer dimension limit");
   const int64_t channels = 2 * key_width + value_width;
   const Buffer weights[] = {convolution, a_log, dt_bias, norm};
   const int64_t counts[] = {channels * p.conv_kernel_dim, p.value_heads,
@@ -78,15 +77,15 @@ absl::StatusOr<FwdResult> DeltaNetLayer::fwd_impl(
   const int output_width = p.value_heads * p.value_head_dim;
   const int counts[] = {2 * p.key_heads * p.key_head_dim + output_width,
                         output_width, p.value_heads, p.value_heads};
-  RETURN_IF_ERROR(inference_internal::ValidateInputs(executor, inputs, counts));
+  RETURN_IF_ERROR(internal::ValidateBFloat16Inputs(executor, inputs, counts));
   BufferVec converted;
   for (int i = 0; i < 4; ++i) {
-    ASSIGN_OR_RETURN(auto buffer, inference_internal::ToFloat(
-                                      executor, inputs[i], counts[i]));
+    ASSIGN_OR_RETURN(auto buffer,
+                     internal::ToFloat(executor, inputs[i], counts[i]));
     converted.push_back(std::move(buffer));
   }
-  ASSIGN_OR_RETURN(auto output, inference_internal::AllocateFloatVector(
-                                    executor, output_width));
+  ASSIGN_OR_RETURN(auto output,
+                   internal::AllocateFloatVector(executor, output_width));
   RETURN_IF_ERROR(cache_->Step(static_cast<const float*>(converted[0].data()),
                                static_cast<const float*>(converted[1].data()),
                                static_cast<const float*>(converted[2].data()),
@@ -96,8 +95,8 @@ absl::StatusOr<FwdResult> DeltaNetLayer::fwd_impl(
                                static_cast<const float*>(weights_[2].data()),
                                static_cast<const float*>(weights_[3].data()),
                                static_cast<float*>(output.data())));
-  ASSIGN_OR_RETURN(auto result, inference_internal::ToBFloat16(executor, output,
-                                                               output_width));
+  ASSIGN_OR_RETURN(auto result,
+                   internal::ToBFloat16(executor, output, output_width));
   return FwdResult{{std::move(result)}, {}};
 }
 

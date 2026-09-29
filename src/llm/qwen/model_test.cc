@@ -622,8 +622,8 @@ TEST_F(QwenModelTest, RunsNativeLayerGraphWithBalancedScopesAndTypedHooks) {
   EXPECT_EQ(activations["ResidualLayer"], 4);
   EXPECT_EQ(activations["DeltaNetLayer"], 1);
   EXPECT_EQ(activations["FullAttentionLayer"], 1);
-  EXPECT_EQ(activations["InferenceEmbeddingLayer"], 1);
-  EXPECT_EQ(activations["InferenceLinearLayer"], 16);
+  EXPECT_EQ(activations["EmbeddingLookupLayer"], 1);
+  EXPECT_EQ(activations["FullyConnectedLayer"], 16);
   EXPECT_EQ(activations["SwiGluLayer"], 2);
   EXPECT_EQ(activations["RmsNormLayer"], 5);
   EXPECT_EQ(activations["LanguageModelingHead"], 1);
@@ -644,7 +644,7 @@ TEST_F(QwenModelTest, ActivationInterventionsAffectDownstreamLayers) {
   hooks.activation_hook = [&](cuda::Executor& executor, absl::string_view name,
                               absl::Span<const ActivationType>,
                               absl::Span<Buffer> buffers) -> absl::Status {
-    if (name != "InferenceEmbeddingLayer")
+    if (name != "EmbeddingLookupLayer")
       return absl::OkStatus();
     ASSIGN_OR_RETURN(auto zeros,
                      Buffer::Allocate(executor, buffers[0].size_bytes()));

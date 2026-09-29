@@ -14,6 +14,23 @@
 
 namespace pluto::llm::internal {
 
+// Shared activation conversions used by imported projections, normalization,
+// and cached attention. Each result owns fresh storage on executor; conversion
+// is stream ordered and does not synchronize. Layers enforce their own shape
+// limits; these helpers only require a positive, exactly sized vector.
+absl::StatusOr<Buffer> AllocateFloatVector(cuda::Executor& executor,
+                                           int elements);
+absl::StatusOr<Buffer> ToFloat(cuda::Executor& executor, const Buffer& input,
+                               int elements);
+absl::StatusOr<Buffer> ToBFloat16(cuda::Executor& executor, const Buffer& input,
+                                  int elements);
+
+// Checks input count, positive element counts, BF16 byte sizes, and executor
+// ownership before any layer kernel is launched.
+absl::Status ValidateBFloat16Inputs(cuda::Executor& executor,
+                                    absl::Span<const Buffer> inputs,
+                                    absl::Span<const int> element_counts);
+
 // Matrix math uses 16-wide cuTile MMA operands. Tensor extents remain runtime
 // values; this is a compute-tile constraint, not a model-shape specialization.
 inline constexpr int kDenseTile = 16;

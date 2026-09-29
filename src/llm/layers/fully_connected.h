@@ -2,19 +2,21 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "src/llm/layer.h"
+#include "src/llm/layers/matrix_common.h"
 
 namespace pluto::llm {
 
-// A bias-bearing rectangular projection. Activations use the selected compute
-// type, MMA reductions accumulate in FP32, and parameters/gradients remain
-// FP32 master buffers for the external optimizer. Positive row counts and
-// feature widths need not be multiples of the compute-tile dimensions.
+// A rectangular projection. Trainable projections have a bias and FP32 master
+// parameters/gradients; imported projections share frozen, output-major weights
+// without allocating optimizer storage. Both accumulate reductions in FP32.
+// Positive feature widths need not be multiples of the compute-tile dimensions.
 class FullyConnectedLayer final : public Layer {
  public:
   absl::string_view name() const override { return "FullyConnectedLayer"; }
@@ -32,6 +34,20 @@ class FullyConnectedLayer final : public Layer {
     return Create(executor, model_width, model_width, data_type,
                   sequence_length);
   }
+
+  // Imports a biasless [output_dim, input_dim] matrix without copying it.
+  // BF16/FP32 weights have no scales; FP8 requires FP32 block scales with shape
+  // [ceil(output_dim/128), ceil(input_dim/128)]. This frozen single-token path
+  // consumes/produces BF16 [1, 1, width] activations and dynamically quantizes
+  // its FP8 input in independent groups of 128 elements. It has no gradients
+  // and rejects initialization and backward instead of mutating the checkpoint.
+  static absl::StatusOr<std::unique_ptr<FullyConnectedLayer>> Create(
+      cuda::Executor& executor, Buffer weights, MatrixStorage storage,
+      int input_dim, int output_dim,
+      std::optional<Buffer> scales = std::nullopt);
+
+  // Bound for the imported single-token kernels; not a trainable-layer limit.
+  static constexpr int kMaximumDimension = 1048576;
 
   // Initializes the rectangular matrix to a scaled identity on its available
   // diagonal and clears the bias.
@@ -64,6 +80,10 @@ class FullyConnectedLayer final : public Layer {
                       DataType data_type, Buffer matrix, Buffer bias,
                       Buffer matrix_gradient, Buffer bias_gradient,
                       int sequence_length);
+  FullyConnectedLayer(cuda::Executor& executor, int input_dim, int output_dim,
+                      BufferVec weights, MatrixStorage storage);
+  absl::StatusOr<FwdResult> ImportedForward(
+      cuda::Executor& executor, absl::Span<const Buffer> inputs) const;
 
   int input_dim_;
   int output_dim_;
@@ -72,6 +92,8 @@ class FullyConnectedLayer final : public Layer {
   cuda::Executor& executor_;
   BufferVec weights_;
   BufferVec gradients_;
+  // Engaged only for the frozen output-major checkpoint representation.
+  std::optional<MatrixStorage> imported_storage_;
   // Shapes retain the sequence axis; the batch sentinel only matches itself.
   const ActivationType input_type_{
       ActivationDataType(output_type_),

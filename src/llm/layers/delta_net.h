@@ -19,6 +19,9 @@ using DeltaNetParameters = cached_attention_ops::DeltaNetParameters;
 // forward, including failures in hooks. Backward is intentionally unsupported.
 class DeltaNetLayer final : public Layer {
  public:
+  // Bound per-token projection scratch before allocating recurrent state.
+  static constexpr int kMaximumDimension = 1048576;
+
   // All four imported weights use FP32 storage: convolution [QKV, kernel],
   // A_log [value_heads], dt_bias [value_heads], and RMS multiplier [value_dim].
   static absl::StatusOr<std::unique_ptr<DeltaNetLayer>> Create(

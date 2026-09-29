@@ -16,15 +16,19 @@
 #include "src/cuda/page_locked_host_array.h"
 #include "src/llm/layers/combinators.h"
 #include "src/llm/layers/delta_net.h"
+#include "src/llm/layers/embedding.h"
 #include "src/llm/layers/full_attention.h"
-#include "src/llm/layers/inference.h"
+#include "src/llm/layers/fully_connected.h"
+#include "src/llm/layers/rms_norm.h"
+#include "src/llm/layers/swiglu.h"
+#include "src/llm/layers/util.h"
 #include "src/util/status_macros.h"
 
 namespace pluto::llm::qwen {
 namespace {
 
 using cuda::Buffer;
-using inference_ops::MatrixStorage;
+using ::pluto::llm::MatrixStorage;
 
 struct DeviceTensor {
   // Raw matrix storage (BF16/FP8), or FP32 storage for small scalar tensors.
@@ -139,13 +143,13 @@ class LayerLoader {
               Uploader& uploader)
       : executor_(executor), checkpoint_(checkpoint), uploader_(uploader) {}
 
-  absl::StatusOr<std::unique_ptr<InferenceLinearLayer>> Linear(
+  absl::StatusOr<std::unique_ptr<FullyConnectedLayer>> Linear(
       const std::string& name, int input_dim, int output_dim) {
     ASSIGN_OR_RETURN(auto tensor, LoadTensor(checkpoint_, uploader_, name,
                                              {output_dim, input_dim}, true));
-    return InferenceLinearLayer::Create(executor_, std::move(tensor.data),
-                                        tensor.storage, input_dim, output_dim,
-                                        std::move(tensor.scales));
+    return FullyConnectedLayer::Create(executor_, std::move(tensor.data),
+                                       tensor.storage, input_dim, output_dim,
+                                       std::move(tensor.scales));
   }
 
   absl::StatusOr<Buffer> Scalar(const std::string& name,
@@ -368,9 +372,9 @@ absl::StatusOr<std::unique_ptr<Model>> Model::Load(
   if (embedding.storage != MatrixStorage::kBFloat16)
     return absl::UnimplementedError("Qwen token embeddings must be BF16");
   ComposedLayerBuilder decoder;
-  RETURN_IF_ERROR(decoder.add(InferenceEmbeddingLayer::Create(
-      executor, std::move(embedding.data), embedding.storage, config.vocab_size,
-      d)));
+  RETURN_IF_ERROR(decoder.add(
+      EmbeddingLookupLayer::Create(executor, std::move(embedding.data),
+                                   embedding.storage, config.vocab_size, d)));
   ComposedLayerBuilder head;
   RETURN_IF_ERROR(
       head.add(loader.Norm(root + "norm.weight", d, config.rms_norm_eps)));
@@ -423,8 +427,8 @@ absl::StatusOr<Buffer> Model::Logits(LayerHooks* hooks) {
   ASSIGN_OR_RETURN(auto result, m.head->fwd(m.executor, {*m.hidden}, hooks));
   // Keep the public FP32-logits API. Graph boundaries are physical BF16 so
   // the existing residual combinator rounds additions exactly as before.
-  return inference_internal::ToFloat(m.executor, result.outputs[0],
-                                     m.config.vocab_size);
+  return ::pluto::llm::internal::ToFloat(m.executor, result.outputs[0],
+                                         m.config.vocab_size);
 }
 
 absl::Status Model::Reset() {

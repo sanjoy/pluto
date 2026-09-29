@@ -535,18 +535,34 @@ cc_test(
     ],
 )
 
-cc_library(
+cuda_library(
     name = "layer_util",
+    srcs = ["layers/util.cc"],
     hdrs = ["layers/util.h"],
+    copts = ["--enable-tile", "-std=c++20"],
+    host_copts = ["-std=c++20"],
     visibility = ["//src/llm:__subpackages__"],
     deps = [
         ":layer",
         "//src/cuda:buffer",
         "//src/cuda:executor",
+        "//src/util:status_macros",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
         "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_library(
+    name = "matrix_common",
+    srcs = ["layers/matrix_common.cc"],
+    hdrs = ["layers/matrix_common.h"],
+    visibility = ["//src/llm:__subpackages__"],
+    deps = [
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
     ],
 )
 
@@ -582,8 +598,8 @@ layer_library("combinators", [
     ":layer_type_check",
 ])
 layer_library("cross_entropy_loss", [":token_order"])
-layer_library("embedding", [":token_order"])
-layer_library("fully_connected")
+layer_library("embedding", [":token_order", ":matrix_common"])
+layer_library("fully_connected", [":matrix_common"])
 layer_library("gelu")
 layer_library("norm")
 layer_library("sparse_autoencoder")
@@ -591,8 +607,8 @@ layer_library("sparse_autoencoder")
 layer_reference_library("attention")
 layer_reference_library("combinators", [":layer_type_check"])
 layer_reference_library("cross_entropy_loss", [":token_order"])
-layer_reference_library("embedding", [":token_order"])
-layer_reference_library("fully_connected")
+layer_reference_library("embedding", [":token_order", ":matrix_common"])
+layer_reference_library("fully_connected", [":matrix_common"])
 layer_reference_library("gelu")
 layer_reference_library("norm")
 layer_reference_library("sparse_autoencoder")
@@ -803,11 +819,16 @@ test_suite(
         ":combinators_test",
         ":cross_entropy_loss_test",
         ":embedding_test",
+        ":embedding_imported_test",
         ":fully_connected_test",
+        ":fully_connected_imported_test",
         ":gelu_test",
+        ":layer_util_test",
         ":norm_test",
         ":optimizer_test",
+        ":rms_norm_test",
         ":sparse_autoencoder_test",
+        ":swiglu_test",
     ],
 )
 
@@ -883,7 +904,7 @@ cc_test(
     ],
 )
 
-layer_library("block_training", [":block_parameter", ":inference_ops"])
+layer_library("block_training", [":block_parameter", ":matrix_common"])
 layer_library("sequence_full_attention", [
     ":block_parameter",
     ":cached_attention_ops",
@@ -892,7 +913,7 @@ layer_library("sequence_full_attention", [
 layer_library("sequence_delta_net", [":block_parameter", ":cached_attention_ops"])
 layer_test("block_training", [
     ":block_parameter",
-    ":inference_ops",
+    ":matrix_common",
     "//src/util:status_macros",
     "@abseil-cpp//absl/status",
 ])
@@ -910,26 +931,57 @@ layer_test("sequence_delta_net", [
     "@abseil-cpp//absl/status",
 ])
 
-# Imported-weight, batch-one inference layers. Unlike the trainable layers,
-# these retain BF16/FP8 checkpoint storage without FP32 masters or gradients.
-layer_library("inference", [":inference_ops"])
+# Frozen normalization and gating for imported single-token models.
+layer_library("rms_norm")
+layer_library("swiglu")
 layer_library("full_attention", [
     ":cached_attention_ops",
-    ":inference",
     ":layer_hooks",
 ])
 layer_library("delta_net", [
     ":cached_attention_ops",
-    ":inference",
     ":layer_hooks",
 ])
 
-layer_test("inference", [
-    ":inference_ops",
-    ":layer_hooks",
-    "//src/util:status_macros",
-    "@abseil-cpp//absl/status",
-])
+layer_test("rms_norm", [":layer_hooks", "//src/util:status_macros"])
+layer_test("swiglu", [":layer_hooks", "//src/util:status_macros"])
+
+[
+    cuda_test(
+        name = layer + "_imported_test",
+        srcs = ["layers/" + layer + "_imported_test.cc"],
+        copts = ["-std=c++20"],
+        host_copts = ["-std=c++20"],
+        tags = ["requires-gpu"],
+        deps = [
+            ":" + layer,
+            ":layer_hooks",
+            ":matrix_common",
+            "//src/cuda:page_locked_host_array",
+            "//src/util:status_macros",
+            "@abseil-cpp//absl/status",
+            "@cuda//:cuda_runtime",
+            "@googletest//:gtest_main",
+        ],
+    )
+    for layer in ["embedding", "fully_connected"]
+]
+
+cuda_test(
+    name = "layer_util_test",
+    srcs = ["layers/util_test.cc"],
+    copts = ["-std=c++20"],
+    host_copts = ["-std=c++20"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":layer_util",
+        ":layer_test_util",
+        ":matrix_common",
+        "//src/cuda:page_locked_host_array",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
 
 cc_test(
     name = "cached_attention_test",
@@ -940,7 +992,6 @@ cc_test(
         ":cached_attention_ops",
         ":delta_net",
         ":full_attention",
-        ":inference",
         ":layer",
         ":layer_hooks",
         "//src/cuda:buffer",
@@ -952,20 +1003,6 @@ cc_test(
         "@abseil-cpp//absl/types:span",
         "@cuda//:cuda_runtime",
         "@googletest//:gtest_main",
-    ],
-)
-
-cuda_library(
-    name = "inference_ops",
-    srcs = ["layers/util/inference_ops.cc"],
-    hdrs = ["layers/util/inference_ops.h"],
-    copts = ["--enable-tile", "-std=c++20"],
-    host_copts = ["-std=c++20"],
-    deps = [
-        "//src/cuda:executor",
-        "//src/util:status_macros",
-        "@abseil-cpp//absl/status",
-        "@cuda//:cuda_runtime",
     ],
 )
 
@@ -983,23 +1020,6 @@ cuda_library(
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
         "@cuda//:cuda_runtime",
-    ],
-)
-
-cuda_test(
-    name = "inference_ops_test",
-    srcs = ["layers/util/inference_ops_test.cc"],
-    copts = ["-std=c++20"],
-    host_copts = ["-std=c++20"],
-    tags = ["requires-gpu"],
-    deps = [
-        ":inference_ops",
-        "//src/cuda:buffer",
-        "//src/cuda:executor",
-        "//src/cuda:page_locked_host_array",
-        "@abseil-cpp//absl/status",
-        "@cuda//:cuda_runtime",
-        "@googletest//:gtest_main",
     ],
 )
 

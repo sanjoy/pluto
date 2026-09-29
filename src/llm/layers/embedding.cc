@@ -31,6 +31,34 @@ template <class Activation>
 using MmaType = std::conditional_t<std::is_same_v<Activation, float>, __half,
                                    __nv_bfloat16>;
 
+// The imported table stays in its checkpoint storage format. Reading the
+// device ID here avoids a host transfer; masking invalid IDs guarantees that
+// malformed input cannot address memory outside the shared table.
+template <class Weight>
+__tile_global__ void ImportedEmbeddingKernel(const Weight* weights,
+                                             const int32_t* token, int vocab,
+                                             int width, __nv_bfloat16* output) {
+  namespace ct = ::cuda::tiles;
+  using namespace ct::literals;
+  auto index = ct::partition_view{ct::tensor_span{token, ct::extents{1}},
+                                  ct::shape{1_ic}};
+  auto result = ct::partition_view{ct::tensor_span{output, ct::extents{width}},
+                                   ct::shape{256_ic}};
+  const int id = static_cast<int>(index.load(0));
+  if (id < 0 || id >= vocab) {
+    result.store_masked(ct::zeros<ct::tile<__nv_bfloat16, ct::shape<256>>>(),
+                        ct::bid().x);
+    return;
+  }
+  auto row = ct::partition_view{
+      ct::tensor_span{weights + static_cast<int64_t>(id) * width,
+                      ct::extents{width}},
+      ct::shape{256_ic}};
+  result.store_masked(
+      ct::element_cast<__nv_bfloat16>(row.load_masked(ct::bid().x)),
+      ct::bid().x);
+}
+
 template <class Activation>
 __tile_global__ void EmbeddingForwardKernel(const int* __restrict__ tokens,
                                             const float* __restrict__ table,
@@ -426,7 +454,8 @@ absl::Status CopyNormalInitialization(cuda::Executor& executor, Buffer& weight,
 EmbeddingLookupLayer::EmbeddingLookupLayer(
     cuda::Executor& executor, int vocab_size, int padded_vocab_size,
     int stored_vocab_size, int embedding_dim, DataType data_type, Buffer weight,
-    Buffer gradient, int sequence_length)
+    std::optional<Buffer> gradient, int sequence_length,
+    std::optional<MatrixStorage> imported_storage)
     : vocab_size_(vocab_size),
       padded_vocab_size_(padded_vocab_size),
       stored_vocab_size_(stored_vocab_size),
@@ -435,7 +464,8 @@ EmbeddingLookupLayer::EmbeddingLookupLayer(
       output_type_(data_type),
       executor_(executor),
       weight_(std::move(weight)),
-      gradient_(std::move(gradient)) {}
+      gradient_(std::move(gradient)),
+      imported_storage_(imported_storage) {}
 
 absl::StatusOr<std::unique_ptr<EmbeddingLookupLayer>>
 EmbeddingLookupLayer::Create(cuda::Executor& executor, int vocab_size,
@@ -472,7 +502,31 @@ EmbeddingLookupLayer::Create(cuda::Executor& executor, int vocab_size,
       data_type, std::move(weight), std::move(gradient), sequence_length));
 }
 
+absl::StatusOr<std::unique_ptr<EmbeddingLookupLayer>>
+EmbeddingLookupLayer::Create(cuda::Executor& executor, Buffer weights,
+                             MatrixStorage storage, int vocab_size,
+                             int embedding_dim) {
+  if (vocab_size <= 0 || vocab_size > kMaximumDimension || embedding_dim <= 0 ||
+      embedding_dim > kMaximumDimension)
+    return absl::InvalidArgumentError(
+        "imported embedding dimensions must be in [1, 1048576]");
+  if (storage != MatrixStorage::kBFloat16 && storage != MatrixStorage::kFloat32)
+    return absl::InvalidArgumentError(
+        "imported embedding requires BF16 or FP32 weights");
+  ASSIGN_OR_RETURN(size_t element_bytes, MatrixElementBytes(storage));
+  RETURN_IF_ERROR(internal::ValidateBuffer(
+      executor, weights, size_t(vocab_size) * embedding_dim * element_bytes,
+      "imported embedding weights"));
+  const int padded_vocab_size = (vocab_size + 15) / 16 * 16;
+  return absl::WrapUnique(new EmbeddingLookupLayer(
+      executor, vocab_size, padded_vocab_size, vocab_size, embedding_dim,
+      DataType::BF16, std::move(weights), std::nullopt, 1, storage));
+}
+
 absl::Status EmbeddingLookupLayer::InitializeIdentity(float scale) {
+  if (imported_storage_)
+    return absl::UnimplementedError(
+        "cannot initialize a frozen imported embedding table");
   ASSIGN_OR_RETURN(
       auto values,
       cuda::PageLockedHostArray<float>::Allocate(
@@ -489,6 +543,9 @@ absl::Status EmbeddingLookupLayer::InitializeIdentity(float scale) {
 
 absl::Status EmbeddingLookupLayer::InitializeNormal(float standard_deviation,
                                                     uint64_t seed) {
+  if (imported_storage_)
+    return absl::UnimplementedError(
+        "cannot initialize a frozen imported embedding table");
   return CopyNormalInitialization(executor_, weight_, standard_deviation, seed,
                                   "cudaMemcpyAsync(normal embedding)");
 }
@@ -502,6 +559,29 @@ absl::StatusOr<FwdResult> EmbeddingLookupLayer::fwd_impl(
   if (inputs.size() != 1) {
     return absl::InvalidArgumentError(
         "EmbeddingLookupLayer fwd expects token IDs");
+  }
+  if (imported_storage_) {
+    RETURN_IF_ERROR(internal::ValidateBuffer(executor, inputs[0],
+                                             sizeof(int32_t),
+                                             "imported embedding token input"));
+    ASSIGN_OR_RETURN(auto output,
+                     Buffer::Allocate(executor, size_t(embedding_dim_) *
+                                                    sizeof(__nv_bfloat16)));
+    const int blocks = 1 + (embedding_dim_ - 1) / 256;
+    if (*imported_storage_ == MatrixStorage::kBFloat16) {
+      ImportedEmbeddingKernel<<<blocks, 1, 0, executor.stream()>>>(
+          static_cast<const __nv_bfloat16*>(weight_.data()),
+          static_cast<const int32_t*>(inputs[0].data()), vocab_size_,
+          embedding_dim_, static_cast<__nv_bfloat16*>(output.data()));
+    } else {
+      ImportedEmbeddingKernel<<<blocks, 1, 0, executor.stream()>>>(
+          static_cast<const float*>(weight_.data()),
+          static_cast<const int32_t*>(inputs[0].data()), vocab_size_,
+          embedding_dim_, static_cast<__nv_bfloat16*>(output.data()));
+    }
+    RETURN_IF_ERROR(
+        cuda::CudaStatus(cudaGetLastError(), "ImportedEmbeddingKernel launch"));
+    return FwdResult{{std::move(output)}, {}};
   }
   ASSIGN_OR_RETURN(int rows,
                    internal::ElementCount(executor, inputs[0], sizeof(int),
@@ -535,6 +615,9 @@ absl::StatusOr<BufferVec> EmbeddingLookupLayer::bwd_impl(
     BackwardState state, LayerHooks*) {
   RETURN_IF_ERROR(
       internal::ValidateExecutor(executor_, executor, "EmbeddingLookupLayer"));
+  if (imported_storage_)
+    return absl::UnimplementedError(
+        "frozen imported embeddings do not support backward");
   if (output_gradients.size() != 1 || state.intermediates.size() != 1) {
     return absl::InvalidArgumentError(
         "EmbeddingLookupLayer bwd received an incompatible gradient or state");
@@ -573,7 +656,7 @@ absl::StatusOr<BufferVec> EmbeddingLookupLayer::bwd_impl(
                             0, executor.stream()>>>(
       keys_ptr, static_cast<const float*>(output_gradients[0].data()), rows,
       stored_vocab_size_, embedding_dim_,
-      static_cast<float*>(gradient_.data()));
+      static_cast<float*>(gradient_->data()));
   RETURN_IF_ERROR(
       cuda::CudaStatus(cudaGetLastError(), "EmbeddingBackwardKernel launch"));
   return BufferVec{};
@@ -586,6 +669,10 @@ LanguageModelingHeadLayer::Create(EmbeddingLookupLayer* embedding,
     return absl::InvalidArgumentError(
         "LanguageModelingHeadLayer requires a non-null embedding");
   }
+  if (embedding->imported_storage_)
+    return absl::UnimplementedError(
+        "LanguageModelingHeadLayer requires trainable FP32 master embeddings; "
+        "use an imported linear layer for a frozen output projection");
   ASSIGN_OR_RETURN(auto device_order,
                    CopyTokenOrderToDevice(embedding->executor_,
                                           embedding->vocab_size_, token_order));
@@ -693,7 +780,7 @@ absl::StatusOr<BufferVec> LanguageModelingHeadLayer::bwd_impl(
             static_cast<const float*>(output_gradients[0].data()), rows,
             embedding_->padded_vocab_size_, embedding_->stored_vocab_size_,
             embedding_->embedding_dim_,
-            static_cast<float*>(embedding_->gradient_.data()));
+            static_cast<float*>(embedding_->gradient_->data()));
   } else {
     if (token_order_) {
       LanguageModelingHeadInputGradientKernel<float, true>
@@ -721,7 +808,7 @@ absl::StatusOr<BufferVec> LanguageModelingHeadLayer::bwd_impl(
             static_cast<const float*>(output_gradients[0].data()), rows,
             embedding_->padded_vocab_size_, embedding_->stored_vocab_size_,
             embedding_->embedding_dim_,
-            static_cast<float*>(embedding_->gradient_.data()));
+            static_cast<float*>(embedding_->gradient_->data()));
   }
   RETURN_IF_ERROR(cuda::CudaStatus(cudaGetLastError(),
                                    "language-modeling-head backward launch"));

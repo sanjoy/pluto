@@ -2,6 +2,7 @@
 
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
+#include <cuda_fp8.h>
 #include <cuda_runtime.h>
 #include <cuda_tile.h>
 
@@ -35,6 +36,58 @@ using MmaType = std::conditional_t<std::is_same_v<Activation, float>, __half,
 // every partial tile, including arbitrary positive row counts.
 constexpr int kMatrixTile = 64;
 constexpr int kBiasRows = 256;
+
+// Imported matrices are output-major, unlike the trainable MMA path below.
+// Eight output rows share one 128-column input group, which also aligns with
+// the checkpoint's FP8 scale blocks. All arithmetic before the public BF16
+// output boundary is FP32, preserving the checkpoint's inference compute rule.
+template <class T>
+__tile_global__ void ImportedMatVecKernel(const T* weights, const float* scales,
+                                          const float* input, int cols,
+                                          int rows, __nv_bfloat16* output) {
+  namespace ct = ::cuda::tiles;
+  using namespace ct::literals;
+  auto w = ct::partition_view{ct::tensor_span{weights, ct::extents{rows, cols}},
+                              ct::shape{8_ic, 128_ic}};
+  auto x = ct::partition_view{ct::tensor_span{input, ct::extents{cols}},
+                              ct::shape{128_ic}};
+  auto s = ct::partition_view{
+      ct::tensor_span{scales,
+                      ct::extents{(rows + 127) / 128, (cols + 127) / 128}},
+      ct::shape{1_ic, 1_ic}};
+  auto y = ct::partition_view{ct::tensor_span{output, ct::extents{rows}},
+                              ct::shape{8_ic}};
+  const int row = ct::bid().x;
+  auto sum = ct::zeros<ct::tile<float, ct::shape<8, 128>>>();
+  for (int col = 0; col < (cols + 127) / 128; ++col) {
+    auto value = ct::element_cast<float>(w.load_masked(row, col));
+    if constexpr (std::is_same_v<T, __nv_fp8_e4m3>)
+      value = value * s.load(row / 16, col);
+    sum = sum +
+          value * ct::broadcast(x.load_masked(col), ct::shape{8_ic, 128_ic});
+  }
+  const auto result = ct::reshape(ct::sum(sum, 1_ic), ct::shape{8_ic});
+  y.store_masked(ct::element_cast<__nv_bfloat16>(result), row);
+}
+
+// Dynamic fine-grained FP8 quantization is part of imported FP8 projection,
+// not a change to the incoming BF16 activation's storage. Each group gets its
+// own scale. Guard only the quantization divisor: dequantization must retain
+// the original scale, including the all-zero and tiny-value cases.
+__tile_global__ void QuantizeImportedInputKernel(const float* input, int n,
+                                                 float* output) {
+  namespace ct = ::cuda::tiles;
+  using namespace ct::literals;
+  auto x = ct::partition_view{ct::tensor_span{input, ct::extents{n}},
+                              ct::shape{128_ic}};
+  auto y = ct::partition_view{ct::tensor_span{output, ct::extents{n}},
+                              ct::shape{128_ic}};
+  const int block = ct::bid().x;
+  auto v = x.load_masked(block);
+  auto scale = ct::reduce_max(ct::max(v, -v), 0_ic) / 448.0f;
+  auto quantized = ct::element_cast<__nv_fp8_e4m3>(v / ct::max(scale, 1e-12f));
+  y.store_masked(ct::element_cast<float>(quantized) * scale, block);
+}
 
 int MatrixTileCount(int extent) {
   return (extent + kMatrixTile - 1) / kMatrixTile;
@@ -199,6 +252,94 @@ FullyConnectedLayer::FullyConnectedLayer(cuda::Executor& executor,
       weights_{std::move(matrix), std::move(bias)},
       gradients_{std::move(matrix_gradient), std::move(bias_gradient)} {}
 
+FullyConnectedLayer::FullyConnectedLayer(cuda::Executor& executor,
+                                         int input_dim, int output_dim,
+                                         BufferVec weights,
+                                         MatrixStorage storage)
+    : input_dim_(input_dim),
+      output_dim_(output_dim),
+      sequence_length_(1),
+      output_type_(DataType::BF16),
+      executor_(executor),
+      weights_(std::move(weights)),
+      imported_storage_(storage) {}
+
+absl::StatusOr<std::unique_ptr<FullyConnectedLayer>>
+FullyConnectedLayer::Create(cuda::Executor& executor, Buffer weights,
+                            MatrixStorage storage, int input_dim,
+                            int output_dim, std::optional<Buffer> scales) {
+  if (input_dim <= 0 || input_dim > kMaximumDimension || output_dim <= 0 ||
+      output_dim > kMaximumDimension)
+    return absl::InvalidArgumentError(
+        "imported linear dimensions must be in [1, 1048576]");
+  ASSIGN_OR_RETURN(size_t element_bytes, MatrixElementBytes(storage));
+  RETURN_IF_ERROR(internal::ValidateBuffer(
+      executor, weights, size_t(input_dim) * output_dim * element_bytes,
+      "imported linear weights"));
+  if ((storage == MatrixStorage::kFp8E4M3) != scales.has_value())
+    return absl::InvalidArgumentError(
+        "only FP8 linear weights require block scales");
+  BufferVec buffers{std::move(weights)};
+  if (scales) {
+    RETURN_IF_ERROR(internal::ValidateBuffer(executor, *scales,
+                                             size_t((input_dim + 127) / 128) *
+                                                 ((output_dim + 127) / 128) *
+                                                 sizeof(float),
+                                             "imported linear block scales"));
+    buffers.push_back(std::move(*scales));
+  }
+  return absl::WrapUnique(new FullyConnectedLayer(
+      executor, input_dim, output_dim, std::move(buffers), storage));
+}
+
+absl::StatusOr<FwdResult> FullyConnectedLayer::ImportedForward(
+    cuda::Executor& executor, absl::Span<const Buffer> inputs) const {
+  RETURN_IF_ERROR(
+      internal::ValidateBFloat16Inputs(executor, inputs, {input_dim_}));
+  ASSIGN_OR_RETURN(Buffer input,
+                   internal::ToFloat(executor, inputs[0], input_dim_));
+  if (*imported_storage_ == MatrixStorage::kFp8E4M3) {
+    ASSIGN_OR_RETURN(Buffer quantized,
+                     internal::AllocateFloatVector(executor, input_dim_));
+    QuantizeImportedInputKernel<<<(input_dim_ + 127) / 128, 1, 0,
+                                  executor.stream()>>>(
+        static_cast<const float*>(input.data()), input_dim_,
+        static_cast<float*>(quantized.data()));
+    RETURN_IF_ERROR(cuda::CudaStatus(cudaGetLastError(),
+                                     "QuantizeImportedInputKernel launch"));
+    input = std::move(quantized);
+  }
+  ASSIGN_OR_RETURN(
+      Buffer output,
+      Buffer::Allocate(executor, size_t(output_dim_) * sizeof(__nv_bfloat16)));
+  const float* scales = weights_.size() == 2
+                            ? static_cast<const float*>(weights_[1].data())
+                            : nullptr;
+  const float* x = static_cast<const float*>(input.data());
+  auto* y = static_cast<__nv_bfloat16*>(output.data());
+  const int grid = (output_dim_ + 7) / 8;
+  switch (*imported_storage_) {
+    case MatrixStorage::kBFloat16:
+      ImportedMatVecKernel<<<grid, 1, 0, executor.stream()>>>(
+          static_cast<const __nv_bfloat16*>(weights_[0].data()), scales, x,
+          input_dim_, output_dim_, y);
+      break;
+    case MatrixStorage::kFloat32:
+      ImportedMatVecKernel<<<grid, 1, 0, executor.stream()>>>(
+          static_cast<const float*>(weights_[0].data()), scales, x, input_dim_,
+          output_dim_, y);
+      break;
+    case MatrixStorage::kFp8E4M3:
+      ImportedMatVecKernel<<<grid, 1, 0, executor.stream()>>>(
+          static_cast<const __nv_fp8_e4m3*>(weights_[0].data()), scales, x,
+          input_dim_, output_dim_, y);
+      break;
+  }
+  RETURN_IF_ERROR(
+      cuda::CudaStatus(cudaGetLastError(), "ImportedMatVecKernel launch"));
+  return FwdResult{{std::move(output)}, {}};
+}
+
 absl::StatusOr<std::unique_ptr<FullyConnectedLayer>>
 FullyConnectedLayer::Create(cuda::Executor& executor, int input_dim,
                             int output_dim, DataType data_type,
@@ -229,6 +370,9 @@ FullyConnectedLayer::Create(cuda::Executor& executor, int input_dim,
 }
 
 absl::Status FullyConnectedLayer::InitializeIdentity(float scale) {
+  if (imported_storage_)
+    return absl::FailedPreconditionError(
+        "cannot initialize frozen imported linear weights");
   ASSIGN_OR_RETURN(auto matrix, cuda::PageLockedHostArray<float>::Allocate(
                                     executor_, static_cast<size_t>(input_dim_) *
                                                    output_dim_));
@@ -246,6 +390,9 @@ absl::Status FullyConnectedLayer::InitializeIdentity(float scale) {
 
 absl::Status FullyConnectedLayer::InitializeNormal(float standard_deviation,
                                                    uint64_t seed) {
+  if (imported_storage_)
+    return absl::FailedPreconditionError(
+        "cannot initialize frozen imported linear weights");
   if (!(standard_deviation > 0.0f)) {
     return absl::InvalidArgumentError(
         "dense initialization standard deviation must be positive");
@@ -271,6 +418,8 @@ absl::StatusOr<FwdResult> FullyConnectedLayer::fwd_impl(
   BackwardState state;
   RETURN_IF_ERROR(
       internal::ValidateExecutor(executor_, executor, "FullyConnectedLayer"));
+  if (imported_storage_)
+    return ImportedForward(executor, inputs);
   if (inputs.size() != 1) {
     return absl::InvalidArgumentError(
         "FullyConnectedLayer fwd expects one input");
@@ -309,6 +458,9 @@ absl::StatusOr<BufferVec> FullyConnectedLayer::bwd_impl(
     BackwardState state, LayerHooks*) {
   RETURN_IF_ERROR(
       internal::ValidateExecutor(executor_, executor, "FullyConnectedLayer"));
+  if (imported_storage_)
+    return absl::UnimplementedError(
+        "imported linear weights do not support backward");
   if (output_gradients.size() != 1 || state.intermediates.size() != 1) {
     return absl::InvalidArgumentError(
         "FullyConnectedLayer bwd received an incompatible gradient or state");

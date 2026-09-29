@@ -10,10 +10,12 @@
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "src/llm/layer.h"
+#include "src/llm/layers/matrix_common.h"
 
 namespace pluto::llm {
 
-// Token embedding with an FP32 master table and FP32 accumulated gradient.
+// Token embedding with either a trainable FP32 master table and accumulated
+// gradient, or a shared frozen BF16/FP32 table imported from a checkpoint.
 // By default the table includes padding rows for checkpoint compatibility.
 // With pad_vocabulary=false it stores exactly vocab_size() trainable rows;
 // masked compute tiles and padded LM-head outputs add no parameters.
@@ -30,12 +32,21 @@ class EmbeddingLookupLayer final : public Layer {
       cuda::Executor& executor, int vocab_size, int embedding_dim,
       DataType data_type, int sequence_length = 1, bool pad_vocabulary = true);
 
+  // Shares a frozen row-major table without allocating master weights or
+  // gradients. This single-token path reads one INT32 ID from device memory
+  // and returns a BF16 embedding, with invalid IDs producing zeros. It does
+  // not synchronize the stream; callers should validate their token IDs.
+  // Initialization, backward, and the trainable tied LM head are unsupported.
+  static absl::StatusOr<std::unique_ptr<EmbeddingLookupLayer>> Create(
+      cuda::Executor& executor, Buffer weights, MatrixStorage storage,
+      int vocab_size, int embedding_dim);
+
   absl::Status InitializeIdentity(float scale = 1.0f);
   absl::Status InitializeNormal(float standard_deviation, uint64_t seed);
 
   absl::Span<Buffer> weights() override { return absl::MakeSpan(&weight_, 1); }
   absl::Span<Buffer> gradients() override {
-    return absl::MakeSpan(&gradient_, 1);
+    return gradient_ ? absl::MakeSpan(&*gradient_, 1) : absl::Span<Buffer>{};
   }
   DataType output_type() const override { return output_type_; }
 
@@ -65,9 +76,13 @@ class EmbeddingLookupLayer final : public Layer {
   EmbeddingLookupLayer(cuda::Executor& executor, int vocab_size,
                        int padded_vocab_size, int stored_vocab_size,
                        int embedding_dim, DataType data_type, Buffer weight,
-                       Buffer gradient, int sequence_length);
+                       std::optional<Buffer> gradient, int sequence_length,
+                       std::optional<MatrixStorage> imported_storage = {});
 
   friend class LanguageModelingHeadLayer;
+
+  // Bounds the single-token imported lookup's tile grid and index arithmetic.
+  static constexpr int kMaximumDimension = 1 << 20;
 
   int vocab_size_;
   int padded_vocab_size_;
@@ -77,7 +92,9 @@ class EmbeddingLookupLayer final : public Layer {
   DataType output_type_;
   cuda::Executor& executor_;
   Buffer weight_;
-  Buffer gradient_;
+  std::optional<Buffer> gradient_;
+  // Absent for FP32 master weights; present only for a frozen imported table.
+  std::optional<MatrixStorage> imported_storage_;
   // Shapes retain the sequence axis; the batch sentinel only matches itself.
   const ActivationType input_type_{
       DataType::INT32, {ActivationType::kBatchDimension, sequence_length_}};

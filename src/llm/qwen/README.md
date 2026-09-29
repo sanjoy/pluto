@@ -149,12 +149,15 @@ embedding and language-model output projection are **not tied**.
   positions, Q/K normalization, and gating; the latter owns recurrent and
   convolution history. These contracts differ from the existing full-sequence,
   equal-head, trainable `AttentionLayer`.
-- `src/llm/layers/inference.{h,cc}` contains imported-weight linear and embedding
-  layers, zero-centered RMSNorm, and SwiGLU. Unlike the existing trainable
-  projections/embeddings, these accept checkpoint storage/layouts directly,
-  without allocating FP32 master weights, biases, or gradients.
-- The cuTile kernels live under `src/llm/layers/util/` in `inference_ops.*` and
-  `cached_attention_ops.*`; their scalar CPU comparisons remain separate tests.
+- `FullyConnectedLayer` and `EmbeddingLookupLayer` have imported-weight factory
+  overloads in `fully_connected.{h,cc}` and `embedding.{h,cc}`. These share
+  checkpoint storage/layouts directly, without allocating FP32 master weights,
+  biases, or gradients. Their original trainable factories are unchanged.
+- Zero-centered RMSNorm and SwiGLU live in `rms_norm.{h,cc}` and `swiglu.{h,cc}`.
+  Each layer owns its kernels and dimension limits; `layers/util.{h,cc}` shares
+  activation conversion/validation, and `matrix_common.{h,cc}` describes
+  imported matrix storage. Cached attention kernels remain in
+  `layers/util/cached_attention_ops.*`.
 - `Step(token, hooks)` consumes a token through the decoder graph;
   `Logits(hooks)` runs the final norm and untied projection. Both accept the
   standard optional `LayerHooks`. Projection, normalization, attention, gating,
@@ -197,7 +200,8 @@ weights:
 
 ```sh
 bazel test -c opt //src/llm/qwen:all //src/dataset:qwen_tokenizer_test \
-  //src/llm:inference_test //src/llm:inference_ops_test \
+  //src/llm:fully_connected_imported_test //src/llm:embedding_imported_test \
+  //src/llm:rms_norm_test //src/llm:swiglu_test //src/llm:layer_util_test \
   //src/llm:cached_attention_test //src/llm:cached_attention_ops_test \
   //src/llm:combinators_test
 ```

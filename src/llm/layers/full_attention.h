@@ -20,6 +20,9 @@ using FullAttentionParameters = cached_attention_ops::FullAttentionParameters;
 // deliberately no training backward.
 class FullAttentionLayer final : public Layer {
  public:
+  // Bound per-token projection scratch before allocating a persistent KV cache.
+  static constexpr int kMaximumDimension = 1048576;
+
   static absl::StatusOr<std::unique_ptr<FullAttentionLayer>> Create(
       cuda::Executor& executor, FullAttentionParameters parameters,
       Buffer q_norm, Buffer k_norm);

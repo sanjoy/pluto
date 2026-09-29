@@ -14,7 +14,6 @@
 #include "src/llm/layer_hooks.h"
 #include "src/llm/layers/delta_net.h"
 #include "src/llm/layers/full_attention.h"
-#include "src/llm/layers/inference.h"
 #include "src/util/status_macros.h"
 
 namespace pluto::llm {
@@ -316,15 +315,14 @@ TEST_F(CachedAttentionLayerTest,
 
 TEST_F(CachedAttentionLayerTest,
        FactoriesRejectActivationExtentsBeforeAllocatingCaches) {
-  constexpr int maximum = inference_internal::kMaximumDimension;
   auto norm = Upload(std::vector<float>(2));
   ASSERT_TRUE(norm.ok());
   FullAttentionParameters full;
-  full.query_heads = maximum / 4;
+  full.query_heads = FullAttentionLayer::kMaximumDimension / 4;
   full.key_value_heads = 1;
   full.head_dim = full.rotary_dim = 2;
   full.capacity = 1;
-  // Q plus gate reaches the conversion limit exactly; the next head exceeds it.
+  // Q plus gate reaches this layer's limit exactly; the next head exceeds it.
   auto supported_full =
       FullAttentionLayer::Create(*executor_, full, *norm, *norm);
   ASSERT_TRUE(supported_full.ok()) << supported_full.status();
@@ -332,12 +330,11 @@ TEST_F(CachedAttentionLayerTest,
   auto rejected_full =
       FullAttentionLayer::Create(*executor_, full, *norm, *norm);
   EXPECT_EQ(rejected_full.status().code(), absl::StatusCode::kInvalidArgument);
-  EXPECT_EQ(
-      rejected_full.status().message(),
-      "FullAttentionLayer activation exceeds the inference dimension limit");
+  EXPECT_EQ(rejected_full.status().message(),
+            "FullAttentionLayer activation exceeds the layer dimension limit");
 
   DeltaNetParameters delta;
-  delta.key_heads = delta.value_heads = maximum / 3;
+  delta.key_heads = delta.value_heads = DeltaNetLayer::kMaximumDimension / 3;
   delta.key_head_dim = delta.value_head_dim = delta.conv_kernel_dim = 1;
   auto convolution =
       Buffer::Allocate(*executor_, 3ULL * delta.key_heads * sizeof(float));
@@ -359,7 +356,7 @@ TEST_F(CachedAttentionLayerTest,
                             *head_weights, *delta_norm);
   EXPECT_EQ(rejected_delta.status().code(), absl::StatusCode::kInvalidArgument);
   EXPECT_EQ(rejected_delta.status().message(),
-            "DeltaNetLayer activation exceeds the inference dimension limit");
+            "DeltaNetLayer activation exceeds the layer dimension limit");
 
   // Extreme int parameters must reject without overflowing intermediate sums
   // or trying to reserve a huge cache, even when imported weights are tiny.

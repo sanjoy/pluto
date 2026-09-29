@@ -4,7 +4,7 @@
 #include <optional>
 
 #include "src/llm/block_parameter.h"
-#include "src/llm/layers/util/inference_ops.h"
+#include "src/llm/layers/matrix_common.h"
 
 namespace pluto::llm {
 
@@ -14,7 +14,7 @@ namespace pluto::llm {
 // asynchronous.
 absl::StatusOr<Buffer> DequantizeMatrix(cuda::Executor& executor,
                                         const Buffer& input,
-                                        inference_ops::MatrixStorage storage,
+                                        MatrixStorage storage,
                                         const std::optional<Buffer>& scales,
                                         int rows, int cols);
 
