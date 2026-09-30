@@ -13,6 +13,10 @@ kernel, and native analysis-tool implementations live in `src/`.
 - `download-datasets.sh`, `download-gpt2-tokenizer.py`, and
   `test-gpt2-tokenizer.py`: data/tokenizer setup and interactive inspection.
 - `gzip_old_checkpoints.py`: checkpoint archival, with its unit test alongside it.
+- `generate_finite_state_machine_data.py`: deterministic FSM interpretation
+  datasets (4,096 training / 128 test sentences), with an independent interpreter
+  test alongside it. Run with Python 3 to regenerate the checked-in `testdata/`
+  files; `--help` describes the format and sampling choices.
 
 Run command examples from the repository root. Each utility documents its own
 arguments and dependencies; use `--help` where supported. Put new benchmark and

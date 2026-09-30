@@ -1,4 +1,6 @@
 exports_files([
+    "finite_state_machine_test_data.txt",
+    "finite_state_machine_training_data.txt",
     "general_facts_dataset.txt",
     "shakespeare_dataset.txt",
 ])
