@@ -1,0 +1,106 @@
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+
+cc_library(
+    name = "dataset",
+    srcs = ["dataset.cc"],
+    hdrs = ["dataset.h"],
+    deps = [
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset",
+        "//src/dataset:tokenizer",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/memory",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_binary(
+    name = "finite_state_machine",
+    srcs = ["finite_state_machine.cc"],
+    data = [
+        "//testdata:finite_state_machine_test_data.txt",
+        "//testdata:finite_state_machine_training_data.txt",
+    ],
+    deps = [
+        ":dataset",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset",
+        "//src/dataset:gpt2_tokenizer",
+        "//src/llm:checkpoint",
+        "//src/llm:cross_entropy_loss",
+        "//src/llm:gpt2",
+        "//src/llm:layer",
+        "//src/llm:optimizer",
+        "//src/llm:trainer",
+        "//src/util:status_macros",
+        "//src/util:tee_stream",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/time",
+        "@cuda//:cuda_runtime",
+    ],
+)
+
+cc_test(
+    name = "dataset_test",
+    srcs = ["dataset_test.cc"],
+    data = [
+        "//testdata:finite_state_machine_test_data.txt",
+        "//testdata:finite_state_machine_training_data.txt",
+    ],
+    tags = ["requires-gpu"],
+    deps = [
+        ":dataset",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset",
+        "//src/dataset:gpt2_tokenizer",
+        "//src/dataset:plain_text_tokenizer",
+        "//src/dataset:tokenizer",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "training_test",
+    srcs = ["training_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":dataset",
+        "//src/cuda:buffer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset",
+        "//src/dataset:plain_text_tokenizer",
+        "//src/llm:checkpoint",
+        "//src/llm:cross_entropy_loss",
+        "//src/llm:gpt2",
+        "//src/llm:layer",
+        "//src/llm:optimizer",
+        "//src/llm:trainer",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@cuda//:cuda_runtime",
+        "@googletest//:gtest_main",
+    ],
+)
