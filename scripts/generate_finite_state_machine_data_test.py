@@ -12,13 +12,15 @@ import generate_finite_state_machine_data as generator
 
 def parse_and_check(line: str) -> tuple[tuple, str, str]:
     """Check each answer without calling the generator's evaluator."""
-    fields = line.split(";")
-    assert len(fields) >= 3
-    input_text, answer = fields[-2:]
+    assert line.count(">") == 1
+    description_and_input, answer = line.split(">")
+    fields = description_and_input.split(";")
+    assert len(fields) >= 2
+    input_text = fields[-1]
     assert re.fullmatch(r"[A-Z]{1,24}", input_text), line
     assert re.fullmatch(r"[0-9]{3}|ERR", answer), line
     transitions, states = {}, set()
-    for edge in fields[:-2]:
+    for edge in fields[:-1]:
         assert re.fullmatch(r"[0-9]{3}[A-Z][0-9]{3}", edge), edge
         source, letter, destination = edge[:3], edge[3], edge[4:]
         assert (source, letter) not in transitions, edge

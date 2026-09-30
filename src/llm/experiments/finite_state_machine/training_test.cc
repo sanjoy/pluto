@@ -9,10 +9,10 @@
 #include "absl/status/statusor.h"
 #include "gtest/gtest.h"
 #include "src/cuda/page_locked_host_array.h"
-#include "src/dataset/plain_text_tokenizer.h"
 #include "src/llm/adamw_optimizer.h"
 #include "src/llm/checkpoint.h"
 #include "src/llm/experiments/finite_state_machine/dataset.h"
+#include "src/llm/experiments/finite_state_machine/tokenizer.h"
 #include "src/llm/gpt2.h"
 #include "src/llm/layers/cross_entropy_loss.h"
 #include "src/llm/trainer.h"
@@ -68,12 +68,11 @@ TEST_F(FsmTrainingTest, SharedTrainerLearnsMaskedAnswersAndCheckpointRestores) {
   constexpr int kContext = 24;
   constexpr int kSteps = 20;
   constexpr absl::string_view kCorpus =
-      "000A001;A;001\n000B002;B;002\n000A001;B;ERR";
-  tokenizer::PlainTextTokenizer tokenizer;
+      "000A001;A>001\n000B002;B>002\n000A001;B>ERR";
+  FsmTokenizer tokenizer;
   DataSetOptions options;
   options.batch_size = 2;
   options.context_length = kContext;
-  options.eos_token = 255;
   auto training =
       FsmDataSetIterator::Create(*executor_, kCorpus, tokenizer, options);
   auto evaluation =
@@ -81,7 +80,7 @@ TEST_F(FsmTrainingTest, SharedTrainerLearnsMaskedAnswersAndCheckpointRestores) {
   ASSERT_TRUE(training.ok()) << training.status();
   ASSERT_TRUE(evaluation.ok()) << evaluation.status();
   ASSERT_EQ((*evaluation)->batches_per_epoch(), 2);
-  EXPECT_EQ((*evaluation)->supervised_row_count(), 12);
+  EXPECT_EQ((*evaluation)->supervised_row_count(), 3);
 
   Gpt2Config config;
   config.transformer_block_count = 1;
@@ -89,6 +88,7 @@ TEST_F(FsmTrainingTest, SharedTrainerLearnsMaskedAnswersAndCheckpointRestores) {
   config.attention_heads = 2;
   config.feed_forward_width = 32;
   config.vocabulary_size = tokenizer.vocab_size();
+  config.pad_vocabulary = false;
   config.context_length = kContext;
   auto model = CreateGpt2(*executor_, DataType::BF16, 17, config);
   ASSERT_TRUE(model.ok()) << model.status();
@@ -123,7 +123,7 @@ TEST_F(FsmTrainingTest, SharedTrainerLearnsMaskedAnswersAndCheckpointRestores) {
       }
     }
   }
-  ASSERT_EQ(supervised, 12);
+  ASSERT_EQ(supervised, 3);
   auto before = EvaluateLoss(**model, **loss, **evaluation);
   ASSERT_TRUE(before.ok()) << before.status();
   ASSERT_TRUE(std::isfinite(*before));

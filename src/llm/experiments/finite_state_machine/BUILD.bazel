@@ -3,10 +3,44 @@ load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 
 cc_library(
+    name = "tokenizer",
+    srcs = ["tokenizer.cc"],
+    hdrs = ["tokenizer.h"],
+    deps = [
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "//src/dataset:detokenizer",
+        "//src/dataset:tokenizer",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "tokenizer_test",
+    srcs = ["tokenizer_test.cc"],
+    tags = ["requires-gpu"],
+    deps = [
+        ":tokenizer",
+        "//src/cuda:executor",
+        "//src/cuda:page_locked_host_array",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "dataset",
     srcs = ["dataset.cc"],
     hdrs = ["dataset.h"],
     deps = [
+        ":tokenizer",
         "//src/cuda:buffer",
         "//src/cuda:executor",
         "//src/cuda:page_locked_host_array",
@@ -30,11 +64,11 @@ cc_binary(
     ],
     deps = [
         ":dataset",
+        ":tokenizer",
         "//src/cuda:buffer",
         "//src/cuda:executor",
         "//src/cuda:page_locked_host_array",
         "//src/dataset",
-        "//src/dataset:gpt2_tokenizer",
         "//src/llm:checkpoint",
         "//src/llm:cross_entropy_loss",
         "//src/llm:gpt2",
@@ -64,12 +98,11 @@ cc_test(
     tags = ["requires-gpu"],
     deps = [
         ":dataset",
+        ":tokenizer",
         "//src/cuda:buffer",
         "//src/cuda:executor",
         "//src/cuda:page_locked_host_array",
         "//src/dataset",
-        "//src/dataset:gpt2_tokenizer",
-        "//src/dataset:plain_text_tokenizer",
         "//src/dataset:tokenizer",
         "//src/util:status_macros",
         "@abseil-cpp//absl/status",
@@ -86,11 +119,11 @@ cc_test(
     tags = ["requires-gpu"],
     deps = [
         ":dataset",
+        ":tokenizer",
         "//src/cuda:buffer",
         "//src/cuda:executor",
         "//src/cuda:page_locked_host_array",
         "//src/dataset",
-        "//src/dataset:plain_text_tokenizer",
         "//src/llm:checkpoint",
         "//src/llm:cross_entropy_loss",
         "//src/llm:gpt2",

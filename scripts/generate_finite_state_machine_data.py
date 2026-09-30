@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate reproducible finite-state-machine interpretation datasets.
 
-Format: transition[;transition...];input;output, without headers or spaces.
+Format: transition[;transition...];input>output, without headers or spaces.
 Transitions have three source digits, one A-Z letter, and three destination
 digits. Execution starts at 000; output is the final state or ERR at the first
 missing edge. There are no accepting states: every completed walk is valid.
@@ -89,8 +89,8 @@ def make_pair(rng: random.Random, transitions: TransitionMap) -> tuple[str, str]
     assert evaluate(transitions, input_text) == f"{state:03d}"
     assert evaluate(transitions, failed_input) == "ERR"
     return (
-        f"{description};{input_text};{state:03d}",
-        f"{description};{failed_input};ERR",
+        f"{description};{input_text}>{state:03d}",
+        f"{description};{failed_input}>ERR",
     )
 
 

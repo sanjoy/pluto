@@ -10,7 +10,7 @@
 #include "absl/strings/string_view.h"
 #include "src/cuda/buffer.h"
 #include "src/dataset/dataset.h"
-#include "src/dataset/tokenizer.h"
+#include "src/llm/experiments/finite_state_machine/tokenizer.h"
 
 namespace pluto::llm::fsm {
 
@@ -19,17 +19,17 @@ struct DataSetOptions {
   int context_length = 1024;  // Right-padded width; overlong lines are errors.
   bool shuffle = false;     // Shuffle examples without replacement each epoch.
   uint64_t seed = 17;       // Reset restores this sampling sequence.
-  bool answer_only = true;  // Score only the final field plus EOS when true.
-  int eos_token =
-      50256;  // Also used as right-padding input, never a pad target.
+  bool answer_only = true;  // Score only the single answer token when true.
 };
 
 // Independently tokenized FSM sentences with per-sentence answer boundaries.
 // Every label is checked by executing its FSM before any training occurs.
 // With answer_only, descriptions and inputs are context, not prediction
-// targets: the last semicolon predicts the first answer token; the last answer
-// token predicts EOS. All earlier and padding targets are -1. This avoids
-// treating randomly generated transition descriptions as learnable output text.
+// targets: the > token predicts one state or ERR token. All earlier targets,
+// the final answer row, and padding targets are -1. There is no EOS token.
+// Inputs use state 000 (ID 0) as right padding, without extending the
+// vocabulary. With answer_only=false, every real next-token pair is scored,
+// ending at the answer token. The last real input row still has no target.
 //
 // Corpus and reusable batch buffers live on the GPU. Next() allocates nothing,
 // preserves sequence boundaries, and emits a smaller final batch each epoch.
@@ -39,7 +39,7 @@ class FsmDataSetIterator final : public DataSetIterator {
  public:
   static absl::StatusOr<std::unique_ptr<FsmDataSetIterator>> Create(
       cuda::Executor& executor, absl::string_view corpus_text,
-      const tokenizer::Tokenizer& tokenizer, DataSetOptions options);
+      const FsmTokenizer& tokenizer, DataSetOptions options);
 
   absl::StatusOr<DataBatch> Next() override;
   absl::Status Reset() override;

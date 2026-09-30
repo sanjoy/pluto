@@ -28,15 +28,26 @@ int StateNumber(absl::string_view text) {
   return 100 * (text[0] - '0') + 10 * (text[1] - '0') + text[2] - '0';
 }
 
-// Parse and execute the line independently of the generator. Return the byte
-// length of the prompt (through the final semicolon), used to mask its tokens.
-absl::StatusOr<size_t> ValidateSentence(absl::string_view line) {
-  const std::vector<absl::string_view> fields = absl::StrSplit(line, ';');
-  if (fields.size() < 3)
-    return absl::InvalidArgumentError("expected transitions;input;output");
+struct Sentence {
+  size_t prompt_bytes;
+  int answer_token;
+};
+
+// Parse and execute the line independently of the generator. The prompt ends
+// immediately after >; its next token is the single checked state or ERR.
+absl::StatusOr<Sentence> ValidateSentence(absl::string_view line) {
+  const size_t separator = line.find('>');
+  if (separator == absl::string_view::npos ||
+      line.find('>', separator + 1) != absl::string_view::npos)
+    return absl::InvalidArgumentError(
+        "expected exactly one > in transitions;input>output");
+  const std::vector<absl::string_view> fields =
+      absl::StrSplit(line.substr(0, separator), ';');
+  if (fields.size() < 2)
+    return absl::InvalidArgumentError("expected transitions;input>output");
   std::array<int, 1000 * 26> transitions;
   transitions.fill(-1);
-  for (size_t i = 0; i + 2 < fields.size(); ++i) {
+  for (size_t i = 0; i + 1 < fields.size(); ++i) {
     const auto edge = fields[i];
     if (edge.size() != 7 || !Digits(edge.substr(0, 3)) ||
         !Digits(edge.substr(4, 3)) || edge[3] < 'A' || edge[3] > 'Z')
@@ -48,8 +59,8 @@ absl::StatusOr<size_t> ValidateSentence(absl::string_view line) {
       return absl::InvalidArgumentError("duplicate state/symbol transition");
     target = StateNumber(edge.substr(4, 3));
   }
-  const auto input = fields[fields.size() - 2];
-  const auto answer = fields.back();
+  const auto input = fields.back();
+  const auto answer = line.substr(separator + 1);
   if (input.empty() || !std::all_of(input.begin(), input.end(), [](char c) {
         return c >= 'A' && c <= 'Z';
       }))
@@ -66,23 +77,20 @@ absl::StatusOr<size_t> ValidateSentence(absl::string_view line) {
   if ((state < 0 && answer != "ERR") ||
       (state >= 0 && (answer == "ERR" || StateNumber(answer) != state)))
     return absl::InvalidArgumentError("output does not match FSM execution");
-  return line.size() - answer.size();
+  return Sentence{separator + 1, state < 0 ? kErrorToken : state};
 }
 
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<FsmDataSetIterator>> FsmDataSetIterator::Create(
     cuda::Executor& executor, absl::string_view corpus_text,
-    const tokenizer::Tokenizer& tokenizer, DataSetOptions options) {
+    const FsmTokenizer& tokenizer, DataSetOptions options) {
   // Tokenizer IDs use int while dataset device storage uses int32_t.
   static_assert(sizeof(int) == sizeof(int32_t));
   if (options.batch_size <= 0 || options.context_length <= 0 ||
       int64_t{options.batch_size} * options.context_length >
           std::numeric_limits<int>::max())
     return absl::InvalidArgumentError("invalid FSM batch/context dimensions");
-  if (options.eos_token < 0 || options.eos_token >= tokenizer.vocab_size())
-    return absl::InvalidArgumentError(
-        "EOS is outside the tokenizer vocabulary");
   if (corpus_text.empty())
     return absl::InvalidArgumentError("FSM corpus must not be empty");
   if (corpus_text.back() == '\n')
@@ -97,7 +105,7 @@ absl::StatusOr<std::unique_ptr<FsmDataSetIterator>> FsmDataSetIterator::Create(
                    cuda::PageLockedHostArray<int>::Allocate(executor, rows));
   ASSIGN_OR_RETURN(auto host_targets,
                    cuda::PageLockedHostArray<int>::Allocate(executor, rows));
-  std::fill(host_inputs.begin(), host_inputs.end(), options.eos_token);
+  std::fill(host_inputs.begin(), host_inputs.end(), 0);
   std::fill(host_targets.begin(), host_targets.end(), -1);
   std::vector<int> supervised_rows;
   supervised_rows.reserve(lines.size());
@@ -106,23 +114,26 @@ absl::StatusOr<std::unique_ptr<FsmDataSetIterator>> FsmDataSetIterator::Create(
     auto line = lines[i];
     if (!line.empty() && line.back() == '\r')
       line.remove_suffix(1);
-    auto prefix_bytes = ValidateSentence(line);
-    if (!prefix_bytes.ok())
+    auto sentence = ValidateSentence(line);
+    if (!sentence.ok())
       return absl::InvalidArgumentError(
-          absl::StrCat("line ", i + 1, ": ", prefix_bytes.status().message()));
+          absl::StrCat("line ", i + 1, ": ", sentence.status().message()));
     ASSIGN_OR_RETURN(auto tokens, tokenizer.Encode(executor, line));
-    ASSIGN_OR_RETURN(auto prompt,
-                     tokenizer.Encode(executor, line.substr(0, *prefix_bytes)));
+    ASSIGN_OR_RETURN(
+        auto prompt,
+        tokenizer.Encode(executor, line.substr(0, sentence->prompt_bytes)));
     if (tokens.size() > static_cast<size_t>(options.context_length))
       return absl::InvalidArgumentError(
           absl::StrCat("line ", i + 1, " has ", tokens.size(),
                        " tokens; context_length is ", options.context_length));
-    // Verify the tokenizer does not merge across the answer delimiter. This
-    // prevents a prompt token from accidentally revealing part of the answer.
-    if (prompt.empty() || prompt.size() >= tokens.size() ||
+    // The answer occupies exactly one token after >. Verify the full-line
+    // encoding preserves its prompt and matches the independently run FSM.
+    if (prompt.empty() || prompt.size() + 1 != tokens.size() ||
+        prompt[prompt.size() - 1] != kOutputSeparatorToken ||
+        tokens[tokens.size() - 1] != sentence->answer_token ||
         !std::equal(prompt.begin(), prompt.end(), tokens.begin()))
       return absl::InvalidArgumentError(
-          "tokenizer must preserve the final semicolon token boundary");
+          "FSM tokenizer must encode exactly one answer token after >");
     if (std::any_of(tokens.begin(), tokens.end(), [&](int token) {
           return token < 0 || token >= tokenizer.vocab_size();
         }))
@@ -133,8 +144,8 @@ absl::StatusOr<std::unique_ptr<FsmDataSetIterator>> FsmDataSetIterator::Create(
     const size_t first_target = options.answer_only ? prompt.size() - 1 : 0;
     for (size_t row = first_target; row + 1 < tokens.size(); ++row)
       host_targets[base + row] = tokens[row + 1];
-    host_targets[base + tokens.size() - 1] = options.eos_token;
-    supervised_rows.push_back(static_cast<int>(tokens.size() - first_target));
+    supervised_rows.push_back(
+        static_cast<int>(tokens.size() - 1 - first_target));
     max_tokens = std::max(max_tokens, static_cast<int>(tokens.size()));
   }
   ASSIGN_OR_RETURN(auto inputs,
