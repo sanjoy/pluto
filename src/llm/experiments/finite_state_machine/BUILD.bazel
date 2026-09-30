@@ -89,6 +89,14 @@ cc_binary(
 )
 
 cc_test(
+    name = "cli_test",
+    size = "small",
+    srcs = ["cli_test.cc"],
+    data = [":finite_state_machine"],
+    deps = ["@googletest//:gtest_main"],
+)
+
+cc_test(
     name = "dataset_test",
     srcs = ["dataset_test.cc"],
     data = [

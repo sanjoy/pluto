@@ -1,11 +1,12 @@
 # Finite-state-machine language-model experiment
 
-This trains the same transformer as the Shakespeare experiment from scratch:
+By default, this trains the same transformer as Shakespeare from scratch:
 8 pre-LayerNorm transformer blocks, width 512, 8 attention heads, MLP width
 2,048, GELU, learned absolute positions, context 1,024, no dropout, and a tied
 1,029-token FSM embedding/head. There are exactly 1,029 stored embedding rows;
 only intermediate logits are tile-padded. The model has 26,271,232 parameters.
 Activations use BF16; master weights, AdamW state, reductions, and losses use FP32.
+`--layers=N` changes only the number of transformer blocks; the default is 8.
 
 Each dataset line is `transition[;transition...];input>output`. Every transition
 is `000X093`: source state, letter, destination state. Execution starts at 000;
@@ -51,6 +52,14 @@ every 100 updates, and the final update. AdamW moments are not checkpointed.
 A nonempty checkpoint directory is rejected to avoid overwriting another run.
 The binary intentionally has no resume or inference mode yet.
 
+To try the larger 16-block model, use the same invocation with `--layers=16`
+and a fresh `--checkpoint_dir`, for example
+`/home/ubuntu/checkpoints/finite_state_machine/simple_tokens_16_layers_0/checkpoints`.
+This has 51,490,304 parameters. Width, heads, MLP width, context, tokenizer,
+AdamW settings, batch size, data order, and evaluation coverage stay unchanged.
+The shared GPT-2 recipe keeps its existing residual initialization scaling;
+this experiment changes depth, not the initialization recipe or learning rate.
+
 Each evaluation reports mean cross entropy in **nats per answer** with the
 default objective, not answer accuracy. Losses are not directly comparable to
 the older GPT-2-tokenizer run, which also scored EOS and sometimes multiple
@@ -74,9 +83,10 @@ bazel test -c opt //src/llm/experiments/finite_state_machine:all \
   --test_output=errors
 ```
 
-Tests cover every vocabulary entry, exact tokenization, decoding, ERR ambiguity,
+Tests cover depth selection and invalid CLI arguments, every vocabulary entry,
+exact tokenization, decoding, ERR ambiguity,
 syntax/execution validation, prompt/padding masks, exact loss counts, partial
 batches, deterministic shuffling, buffer reuse, real-corpus tokenization without
 external dependencies, and a small GPT-2 training and
 checkpoint round trip. The small test model does not change the binary's fixed
-Shakespeare-size configuration.
+default Shakespeare-size configuration.

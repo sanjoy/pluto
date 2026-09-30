@@ -55,6 +55,9 @@ ABSL_FLAG(int, eval_samples, 128,
           "Training examples evaluated, rounded up to a full batch and capped "
           "at the dataset size; zero evaluates the entire training dataset");
 ABSL_FLAG(int, batch_size, 4, "Independent sequences per batch");
+ABSL_FLAG(
+    int, layers, pluto::llm::kGpt2TransformerBlockCount,
+    "Number of transformer blocks; width, heads, and MLP size are unchanged");
 ABSL_FLAG(int, steps, 10000,
           "Number of optimizer updates; zero evaluates only");
 ABSL_FLAG(double, learning_rate, 3e-4, "AdamW learning rate");
@@ -85,6 +88,8 @@ absl::Status FileSystemError(const char* operation,
 absl::Status ValidateFlags() {
   if (absl::GetFlag(FLAGS_checkpoint_dir).empty())
     return absl::InvalidArgumentError("--checkpoint_dir is required");
+  if (absl::GetFlag(FLAGS_layers) <= 0)
+    return absl::InvalidArgumentError("--layers must be positive");
   if (absl::GetFlag(FLAGS_steps) < 0)
     return absl::InvalidArgumentError("--steps must be non-negative");
   if (absl::GetFlag(FLAGS_checkpoint_every) < 0)
@@ -215,9 +220,11 @@ absl::Status TrainModel(cuda::Executor& executor,
                         util::TeeStream& logger) {
   const FsmTokenizer tokenizer;
   Gpt2Config model_config;
+  model_config.transformer_block_count = absl::GetFlag(FLAGS_layers);
   model_config.vocabulary_size = tokenizer.vocab_size();
-  // Keep the Shakespeare transformer unchanged, but store only our 1,029
-  // meaningful embedding rows; padded logit lanes are handled by the layers.
+  // Keep Shakespeare's per-block dimensions and initialization recipe, while
+  // allowing a deeper stack. Store only the 1,029 meaningful embedding rows;
+  // padded logit lanes are handled by the layers.
   model_config.pad_vocabulary = false;
   RETURN_IF_ERROR(model_config.Validate());
 
