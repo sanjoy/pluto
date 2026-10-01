@@ -3,10 +3,17 @@ load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 
 cc_library(
+    name = "token_ids",
+    hdrs = ["token_ids.h"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
     name = "tokenizer",
     srcs = ["tokenizer.cc"],
     hdrs = ["tokenizer.h"],
     deps = [
+        ":token_ids",
         "//src/cuda:executor",
         "//src/cuda:page_locked_host_array",
         "//src/dataset:detokenizer",

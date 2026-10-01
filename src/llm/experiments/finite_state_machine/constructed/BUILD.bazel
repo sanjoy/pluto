@@ -1,0 +1,67 @@
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+
+cc_library(
+    name = "numeric",
+    srcs = ["numeric.cc"],
+    hdrs = ["numeric.h"],
+    deps = ["@abseil-cpp//absl/types:span"],
+)
+
+cc_library(
+    name = "model",
+    srcs = ["model.cc"],
+    hdrs = ["model.h"],
+    deps = [
+        ":numeric",
+        "//src/llm/experiments/finite_state_machine:token_ids",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/memory",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/types:span",
+    ],
+)
+
+cc_binary(
+    name = "constructed_fsm",
+    srcs = ["main.cc"],
+    data = [
+        "//testdata:finite_state_machine_full_test_data.txt",
+        "//testdata:finite_state_machine_full_training_data.txt",
+    ],
+    deps = [
+        ":model",
+        "//src/util:status_macros",
+        "@abseil-cpp//absl/flags:flag",
+        "@abseil-cpp//absl/flags:parse",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+    ],
+)
+
+cc_test(
+    name = "numeric_test",
+    srcs = ["numeric_test.cc"],
+    deps = [
+        ":numeric",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "model_test",
+    size = "medium",
+    srcs = ["model_test.cc"],
+    data = [
+        "//testdata:finite_state_machine_full_test_data.txt",
+        "//testdata:finite_state_machine_full_training_data.txt",
+    ],
+    deps = [
+        ":model",
+        "@googletest//:gtest_main",
+    ],
+)

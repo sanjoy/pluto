@@ -9,15 +9,9 @@
 #include "src/cuda/page_locked_host_array.h"
 #include "src/dataset/detokenizer.h"
 #include "src/dataset/tokenizer.h"
+#include "src/llm/experiments/finite_state_machine/token_ids.h"
 
 namespace pluto::llm::fsm {
-
-inline constexpr int kStateCount = 1000;
-inline constexpr int kLetterOffset = kStateCount;
-inline constexpr int kSemicolonToken = kLetterOffset + 26;
-inline constexpr int kOutputSeparatorToken = kSemicolonToken + 1;
-inline constexpr int kErrorToken = kOutputSeparatorToken + 1;
-inline constexpr int kVocabularySize = kErrorToken + 1;
 
 // The complete FSM vocabulary is 000..999, A..Z, ';', '>', and ERR. State
 // tokens preserve all three digits, including leading zeroes. Numeric runs
