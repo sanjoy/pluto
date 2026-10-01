@@ -136,6 +136,39 @@ TEST_F(FiniteStateMachineCliTest, HelpExposesDepthWithOriginalDefault) {
   EXPECT_EQ(output_.find("--tokenizer_dir"), std::string::npos) << output_;
 }
 
+TEST_F(FiniteStateMachineCliTest,
+       HelpExposesAttentionHeadsWithOriginalDefault) {
+  ASSERT_NO_FATAL_FAILURE(Run({"--helpfull"}));
+  ASSERT_EQ(exit_code_, 1) << output_;
+  const auto attention_heads = DefaultValue("attention_heads");
+  ASSERT_TRUE(attention_heads.has_value()) << output_;
+  EXPECT_EQ(*attention_heads, "8");
+}
+
+TEST_F(FiniteStateMachineCliTest,
+       RejectsInvalidAttentionHeadsBeforeCreatingRun) {
+  for (const char* argument :
+       {"--attention_heads=0", "--attention_heads=-1", "--attention_heads=3",
+        "--attention_heads=1024"}) {
+    SCOPED_TRACE(argument);
+    ASSERT_NO_FATAL_FAILURE(ExpectInvalidFlags(
+        {argument},
+        "--attention_heads must be positive and divide model width 512"));
+  }
+}
+
+TEST_F(FiniteStateMachineCliTest, TwoHeadsPassesAttentionHeadValidation) {
+  // A later invalid option lets the requested two-head configuration pass
+  // validation without opening CUDA, creating a run, or starting training.
+  ASSERT_NO_FATAL_FAILURE(
+      ExpectInvalidFlags({"--attention_heads=2", "--batch_size=0"},
+                         "--batch_size must be positive and fit the context"));
+  EXPECT_EQ(output_.find("--attention_heads must be positive and divide model "
+                         "width 512"),
+            std::string::npos)
+      << output_;
+}
+
 TEST_F(FiniteStateMachineCliTest, RejectsNonpositiveDepthBeforeCreatingRun) {
   for (const char* argument : {"--layers=0", "--layers=-1"}) {
     SCOPED_TRACE(argument);

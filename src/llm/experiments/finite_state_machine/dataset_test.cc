@@ -63,14 +63,17 @@ class FsmDataSetTest : public testing::Test {
       auto tokens = tokenizer_.Encode(*executor_, lines[sample]);
       ASSERT_TRUE(tokens.ok()) << tokens.status();
       ASSERT_GE(tokens->size(), 2);
+      const auto separator =
+          std::find(tokens->begin(), tokens->end(), kOutputSeparatorToken);
+      ASSERT_NE(separator, tokens->end());
+      const size_t first_target = separator - tokens->begin();
       for (int row = 0; row < batch.sequence_length; ++row) {
         SCOPED_TRACE(testing::Message()
                      << "sample=" << sample << " row=" << row);
         const size_t index = sample * batch.sequence_length + row;
         EXPECT_EQ(inputs[index], row < tokens->size() ? (*tokens)[row] : 0);
         int expected_target = -1;
-        if (row + 1 < tokens->size() &&
-            (!answer_only || row + 2 == tokens->size())) {
+        if (row + 1 < tokens->size() && (!answer_only || row >= first_target)) {
           expected_target = (*tokens)[row + 1];
           ++supervised;
         }
@@ -117,6 +120,104 @@ TEST_F(FsmDataSetTest, AllTokenObjectiveScoresNextTokensWithoutEos) {
   ExpectSamples(*batch, {"000A001;A>001"}, false);
   EXPECT_EQ(Download(batch->targets),
             (std::vector<int>{1000, 1, 1026, 1000, 1027, 1, -1, -1, -1, -1}));
+}
+
+TEST_F(FsmDataSetTest, FullTracesScoreInitialStateEveryVisitAndTerminalErr) {
+  const std::vector<std::string> lines{"000X093;093A044;XA>000 093 044",
+                                       "000X093;093A044;XB>000 093 ERR"};
+  auto iterator = FsmDataSetIterator::Create(
+      *executor_, lines[0] + "\n" + lines[1], tokenizer_, Options(2, 16));
+  ASSERT_TRUE(iterator.ok()) << iterator.status();
+  EXPECT_EQ((*iterator)->max_tokens(), 14);
+  EXPECT_EQ((*iterator)->supervised_row_count(), 6);
+  auto batch = (*iterator)->Next();
+  ASSERT_TRUE(batch.ok()) << batch.status();
+  ExpectSamples(*batch, lines);
+  EXPECT_EQ(
+      Download(batch->targets),
+      (std::vector<int>{-1, -1, -1, -1, -1, -1, -1,          -1, -1, -1, 0,
+                        93, 44, -1, -1, -1, -1, -1,          -1, -1, -1, -1,
+                        -1, -1, -1, -1, 0,  93, kErrorToken, -1, -1, -1}));
+}
+
+TEST_F(FsmDataSetTest, FullTraceKeepsRepeatedStatesAndStopsAtFirstFailure) {
+  const std::vector<std::string> lines{"000A000;AAA>000 000 000 000",
+                                       "000A000;BAAA>000 ERR",
+                                       "000E001;001R001;ERR>000 001 001 001"};
+  auto iterator = FsmDataSetIterator::Create(
+      *executor_, lines[0] + "\n" + lines[1] + "\n" + lines[2], tokenizer_,
+      Options(3, 20));
+  ASSERT_TRUE(iterator.ok()) << iterator.status();
+  EXPECT_EQ((*iterator)->supervised_row_count(), 10);
+  auto batch = (*iterator)->Next();
+  ASSERT_TRUE(batch.ok()) << batch.status();
+  ExpectSamples(*batch, lines);
+}
+
+TEST_F(FsmDataSetTest, FullTraceAllTokenObjectiveAndExactContextMaskFinalRow) {
+  auto options = Options(1, 14);
+  options.answer_only = false;
+  const std::string line = "000X093;093A044;XA>000 093 044";
+  auto iterator =
+      FsmDataSetIterator::Create(*executor_, line, tokenizer_, options);
+  ASSERT_TRUE(iterator.ok()) << iterator.status();
+  EXPECT_EQ((*iterator)->max_tokens(), 14);
+  EXPECT_EQ((*iterator)->supervised_row_count(), 13);
+  auto batch = (*iterator)->Next();
+  ASSERT_TRUE(batch.ok()) << batch.status();
+  ExpectSamples(*batch, {line}, false);
+  EXPECT_EQ(Download(batch->targets).back(), -1);
+
+  options.context_length = 13;
+  auto truncated =
+      FsmDataSetIterator::Create(*executor_, line, tokenizer_, options);
+  ASSERT_FALSE(truncated.ok());
+  EXPECT_EQ(truncated.status().code(), absl::StatusCode::kInvalidArgument);
+}
+
+TEST_F(FsmDataSetTest, FullTracePartialBatchCountsOnlyItsOwnTargets) {
+  const std::vector<std::string> lines{"000X093;093A044;XA>000 093 044",
+                                       "000X093;093A044;XB>000 093 ERR",
+                                       "000X093;Y>000 ERR"};
+  auto iterator = FsmDataSetIterator::Create(
+      *executor_, lines[0] + "\n" + lines[1] + "\n" + lines[2], tokenizer_,
+      Options(2, 16));
+  ASSERT_TRUE(iterator.ok()) << iterator.status();
+  EXPECT_EQ((*iterator)->supervised_row_count(), 8);
+  EXPECT_EQ((*iterator)->batches_per_epoch(), 2);
+  for (int epoch = 0; epoch < 2; ++epoch) {
+    auto full = (*iterator)->Next();
+    ASSERT_TRUE(full.ok()) << full.status();
+    ExpectSamples(*full, {lines[0], lines[1]});
+    EXPECT_EQ(full->supervised_row_count, 6);
+    auto tail = (*iterator)->Next();
+    ASSERT_TRUE(tail.ok()) << tail.status();
+    ExpectSamples(*tail, {lines[2]});
+    EXPECT_EQ(tail->supervised_row_count, 2);
+    EXPECT_EQ(tail->inputs.size_bytes(), 16 * sizeof(int));
+  }
+}
+
+TEST_F(FsmDataSetTest, IgnoresAllAsciiSpacesBeforeValidationAndEncoding) {
+  const std::string spaced =
+      " 0 00 X 0 93 ; 09 3 A 04 4 ; X A > 0 00 09 3 0 44 \r\n"
+      "000 X 093 ; X B > E R R \n";
+  const std::vector<std::string> lines{"000X093;093A044;XA>000093044",
+                                       "000X093;XB>ERR"};
+  auto spaced_iterator = FsmDataSetIterator::Create(*executor_, spaced,
+                                                    tokenizer_, Options(2, 16));
+  ASSERT_TRUE(spaced_iterator.ok()) << spaced_iterator.status();
+  auto plain_iterator = FsmDataSetIterator::Create(
+      *executor_, lines[0] + "\n" + lines[1], tokenizer_, Options(2, 16));
+  ASSERT_TRUE(plain_iterator.ok()) << plain_iterator.status();
+  auto spaced_batch = (*spaced_iterator)->Next();
+  auto plain_batch = (*plain_iterator)->Next();
+  ASSERT_TRUE(spaced_batch.ok()) << spaced_batch.status();
+  ASSERT_TRUE(plain_batch.ok()) << plain_batch.status();
+  ExpectSamples(*spaced_batch, lines);
+  EXPECT_EQ(Download(spaced_batch->inputs), Download(plain_batch->inputs));
+  EXPECT_EQ(Download(spaced_batch->targets), Download(plain_batch->targets));
+  EXPECT_EQ(spaced_batch->supervised_row_count, 4);
 }
 
 TEST_F(FsmDataSetTest, StateAndErrAnswersEachOccupyOneToken) {
@@ -313,13 +414,11 @@ TEST_F(FsmDataSetTest, RejectsMalformedLinesOldSyntaxAndIncorrectLabels) {
                                          "000AA001;A>001",
                                          "000A001;a>ERR",
                                          "000A001;A1>ERR",
-                                         "000A001;A B>ERR",
                                          "000A001;A>01",
                                          "000A001;A>0001",
                                          "000A001;A>err",
                                          "000A001;A>0X1",
                                          "000A001;A>001;",
-                                         "000A001;A>001 ",
                                          "000A001;A>002",
                                          "000A001;A>ERR",
                                          "000A001;B>001",
@@ -337,6 +436,37 @@ TEST_F(FsmDataSetTest, RejectsMalformedLinesOldSyntaxAndIncorrectLabels) {
     SCOPED_TRACE(corpus);
     auto iterator = FsmDataSetIterator::Create(*executor_, corpus, tokenizer_,
                                                Options(1, 64));
+    ASSERT_FALSE(iterator.ok());
+    EXPECT_EQ(iterator.status().code(), absl::StatusCode::kInvalidArgument);
+  }
+}
+
+TEST_F(FsmDataSetTest, RejectsIncorrectIncompleteOrOverlongExecutionTraces) {
+  const std::vector<std::string> invalid{
+      "000X093;093A044;XA>093 044",          // Initial state missing.
+      "000X093;093A044;XA>001 093 044",      // Wrong initial state.
+      "000X093;093A044;XA>000 094 044",      // Wrong intermediate state.
+      "000X093;093A044;XA>000 044",          // Intermediate state omitted.
+      "000X093;093A044;XA>000 093",          // Final state omitted.
+      "000X093;093A044;XA>000 093 045",      // Wrong final state.
+      "000X093;093A044;XA>000 093 044 044",  // Extra state after success.
+      "000X093;093A044;XA>000 093 ERR",      // Spurious failed edge.
+      "000X093;093A044;XB>000 093 044",      // Missing failed edge.
+      "000X093;093A044;XB>000 ERR",          // Failure too early.
+      "000X093;093A044;XB>000 093",          // Missing terminal ERR.
+      "000X093;093A044;XB>000 093 ERR 000",  // Continuation after failure.
+      "000X093;093A044;XB>000 093 ERR ERR",  // Repeated terminal ERR.
+      "000X093;093A044;XB>ERR 093 ERR",      // Initial state is ERR.
+      "000A000;AAA>000 000",                 // Repeated visits omitted.
+      "000A000;BA>000 ERR 000",              // State after first failure.
+      "000A000;BA>000 000 ERR",              // Ignoring the first failure.
+      "000A001;A>000 00",                    // Incomplete state token.
+      "000A001;A>000 001\t",                 // Only spaces are ignored.
+  };
+  for (const auto& line : invalid) {
+    SCOPED_TRACE(line);
+    auto iterator = FsmDataSetIterator::Create(*executor_, line, tokenizer_,
+                                               Options(1, 32));
     ASSERT_FALSE(iterator.ok());
     EXPECT_EQ(iterator.status().code(), absl::StatusCode::kInvalidArgument);
   }
@@ -418,6 +548,76 @@ TEST_F(FsmDataSetTest,
     }
     EXPECT_EQ(samples, entry.second);
     EXPECT_EQ(supervised, entry.second);
+  }
+}
+
+TEST_F(FsmDataSetTest, FullTrainingAndTestCorporaScoreEveryVisitedState) {
+  for (const auto& entry :
+       {std::pair{"testdata/finite_state_machine_full_training_data.txt", 4096},
+        std::pair{"testdata/finite_state_machine_full_test_data.txt", 128}}) {
+    SCOPED_TRACE(entry.first);
+    auto corpus = LoadTextCorpus(entry.first);
+    ASSERT_TRUE(corpus.ok()) << corpus.status();
+    auto iterator = FsmDataSetIterator::Create(*executor_, corpus->text(),
+                                               tokenizer_, Options(31, 1024));
+    ASSERT_TRUE(iterator.ok()) << iterator.status();
+    EXPECT_EQ((*iterator)->sample_count(), entry.second);
+    EXPECT_LE((*iterator)->max_tokens(), 1024);
+    // Independently count the textual output symbols, including initial 000.
+    // Batch size 31 exercises a partial final batch for both published corpora.
+    int64_t expected_supervised = 0;
+    bool in_output = false;
+    for (char letter : corpus->text())
+      if (letter == '\n')
+        in_output = false;
+      else if (letter == '>')
+        in_output = true;
+      else if (in_output && letter != ' ' && letter != '\r')
+        ++expected_supervised;
+    ASSERT_EQ(expected_supervised % 3, 0);
+    expected_supervised /= 3;
+    EXPECT_EQ((*iterator)->supervised_row_count(), expected_supervised);
+    int samples = 0;
+    int64_t supervised = 0;
+    for (size_t index = 0; index < (*iterator)->batches_per_epoch(); ++index) {
+      auto batch = (*iterator)->Next();
+      ASSERT_TRUE(batch.ok()) << batch.status();
+      samples += batch->batch_size;
+      const auto inputs = Download(batch->inputs);
+      const auto targets = Download(batch->targets);
+      int batch_supervised = 0;
+      for (int sample = 0; sample < batch->batch_size; ++sample) {
+        const size_t base = sample * batch->sequence_length;
+        int output_rows = 0;
+        bool reached_output = false;
+        bool reached_end = false;
+        for (int row = 0; row < batch->sequence_length; ++row) {
+          if (targets[base + row] == -1) {
+            if (reached_output)
+              reached_end = true;
+            continue;
+          }
+          ASSERT_FALSE(reached_end);
+          if (!reached_output) {
+            EXPECT_EQ(inputs[base + row], kOutputSeparatorToken);
+            EXPECT_EQ(targets[base + row], 0);
+            reached_output = true;
+          }
+          ++output_rows;
+          ASSERT_LT(row + 1, batch->sequence_length);
+          EXPECT_EQ(inputs[base + row + 1], targets[base + row]);
+          EXPECT_TRUE(
+              (targets[base + row] >= 0 && targets[base + row] < kStateCount) ||
+              targets[base + row] == kErrorToken);
+        }
+        EXPECT_GE(output_rows, 2);
+        batch_supervised += output_rows;
+      }
+      EXPECT_EQ(batch->supervised_row_count, batch_supervised);
+      supervised += batch_supervised;
+    }
+    EXPECT_EQ(samples, entry.second);
+    EXPECT_EQ(supervised, expected_supervised);
   }
 }
 

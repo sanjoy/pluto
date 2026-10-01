@@ -13,8 +13,18 @@ namespace {
 
 bool IsDigit(char value) { return value >= '0' && value <= '9'; }
 
-absl::Status InvalidText(absl::string_view text, size_t offset,
+absl::Status InvalidText(absl::string_view text, size_t compact_offset,
                          absl::string_view reason) {
+  // Tokenization ignores spaces, but diagnostics still identify the original
+  // input byte. The extra scan occurs only when the input is invalid.
+  size_t offset = 0;
+  size_t nonspace_count = 0;
+  for (; offset < text.size(); ++offset) {
+    if (text[offset] == ' ')
+      continue;
+    if (nonspace_count++ == compact_offset)
+      break;
+  }
   return absl::InvalidArgumentError(
       absl::StrCat(reason, " at byte ", offset, ": \"",
                    absl::CEscape(text.substr(offset, 12)), "\""));
@@ -24,20 +34,32 @@ absl::Status InvalidText(absl::string_view text, size_t offset,
 
 absl::StatusOr<cuda::PageLockedHostArray<int>> FsmTokenizer::Encode(
     cuda::Executor& executor, absl::string_view text) const {
+  // Spaces only improve readability: removing them before lexing also handles
+  // spellings such as "0 0 0" and "E R R" consistently.
+  const absl::string_view original_text = text;
+  std::string compact_text;
+  compact_text.reserve(text.size());
+  for (const char value : text)
+    if (value != ' ')
+      compact_text.push_back(value);
+  text = compact_text;
+
   std::vector<int> tokens;
   tokens.reserve(text.size());
   size_t offset = 0;
+  bool in_output = false;
   while (offset < text.size()) {
     const char value = text[offset];
     if (IsDigit(value)) {
       if (text.size() - offset < 3 || !IsDigit(text[offset + 1]) ||
           !IsDigit(text[offset + 2])) {
-        return InvalidText(text, offset, "state token requires three digits");
+        return InvalidText(original_text, offset,
+                           "state token requires three digits");
       }
       tokens.push_back((value - '0') * 100 + (text[offset + 1] - '0') * 10 +
                        text[offset + 2] - '0');
       offset += 3;
-    } else if ((text == "ERR" || (offset > 0 && text[offset - 1] == '>')) &&
+    } else if ((text == "ERR" || in_output) &&
                text.substr(offset, 3) == "ERR") {
       tokens.push_back(kErrorToken);
       offset += 3;
@@ -49,9 +71,10 @@ absl::StatusOr<cuda::PageLockedHostArray<int>> FsmTokenizer::Encode(
       ++offset;
     } else if (value == '>') {
       tokens.push_back(kOutputSeparatorToken);
+      in_output = true;
       ++offset;
     } else {
-      return InvalidText(text, offset, "unsupported FSM character");
+      return InvalidText(original_text, offset, "unsupported FSM character");
     }
   }
   return cuda::PageLockedHostArray<int>::CopyFrom(executor, tokens);

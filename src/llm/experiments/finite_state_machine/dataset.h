@@ -17,19 +17,24 @@ namespace pluto::llm::fsm {
 struct DataSetOptions {
   int batch_size = 4;  // Independent FSM examples, not flattened token count.
   int context_length = 1024;  // Right-padded width; overlong lines are errors.
-  bool shuffle = false;     // Shuffle examples without replacement each epoch.
-  uint64_t seed = 17;       // Reset restores this sampling sequence.
-  bool answer_only = true;  // Score only the single answer token when true.
+  bool shuffle = false;  // Shuffle examples without replacement each epoch.
+  uint64_t seed = 17;    // Reset restores this sampling sequence.
+  bool answer_only =
+      true;  // Score only tokens after > (final answer or trace).
 };
 
 // Independently tokenized FSM sentences with per-sentence answer boundaries.
 // Every label is checked by executing its FSM before any training occurs.
+// Outputs can be one final state/ERR token, or the complete visited-state trace
+// beginning at 000 and ending at the final state or first missing edge's ERR.
+// ASCII spaces anywhere on a line are ignored; they do not become tokens.
 // With answer_only, descriptions and inputs are context, not prediction
-// targets: the > token predicts one state or ERR token. All earlier targets,
-// the final answer row, and padding targets are -1. There is no EOS token.
+// targets: > predicts the first output token, and each output token predicts
+// the next. All earlier targets, the final output row, and padding targets are
+// -1. There is no EOS token.
 // Inputs use state 000 (ID 0) as right padding, without extending the
 // vocabulary. With answer_only=false, every real next-token pair is scored,
-// ending at the answer token. The last real input row still has no target.
+// ending at the last output token. The last real input row has no target.
 //
 // Corpus and reusable batch buffers live on the GPU. Next() allocates nothing,
 // preserves sequence boundaries, and emits a smaller final batch each epoch.

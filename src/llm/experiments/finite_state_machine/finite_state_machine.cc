@@ -55,15 +55,18 @@ ABSL_FLAG(int, eval_samples, 128,
           "Training examples evaluated, rounded up to a full batch and capped "
           "at the dataset size; zero evaluates the entire training dataset");
 ABSL_FLAG(int, batch_size, 4, "Independent sequences per batch");
-ABSL_FLAG(
-    int, layers, pluto::llm::kGpt2TransformerBlockCount,
-    "Number of transformer blocks; width, heads, and MLP size are unchanged");
+ABSL_FLAG(int, layers, pluto::llm::kGpt2TransformerBlockCount,
+          "Number of transformer blocks; model and MLP widths are unchanged");
+ABSL_FLAG(int, attention_heads, pluto::llm::kGpt2AttentionHeads,
+          "Attention heads per block; must divide model width 512 (2 gives "
+          "256 dimensions per head)");
 ABSL_FLAG(int, steps, 10000,
           "Number of optimizer updates; zero evaluates only");
 ABSL_FLAG(double, learning_rate, 3e-4, "AdamW learning rate");
 ABSL_FLAG(int, seed, 17, "Model initialization and training shuffle seed");
 ABSL_FLAG(bool, answer_only, true,
-          "Train/evaluate only the single answer token after >; "
+          "Train/evaluate only output tokens after > (final answer or full "
+          "state trace); "
           "false supervises every next token in the sample (no EOS)");
 ABSL_FLAG(std::string, log_file, "",
           "New log file; defaults to checkpoint_dir/train.log");
@@ -90,6 +93,10 @@ absl::Status ValidateFlags() {
     return absl::InvalidArgumentError("--checkpoint_dir is required");
   if (absl::GetFlag(FLAGS_layers) <= 0)
     return absl::InvalidArgumentError("--layers must be positive");
+  const int attention_heads = absl::GetFlag(FLAGS_attention_heads);
+  if (attention_heads <= 0 || kGpt2ModelWidth % attention_heads != 0)
+    return absl::InvalidArgumentError(
+        "--attention_heads must be positive and divide model width 512");
   if (absl::GetFlag(FLAGS_steps) < 0)
     return absl::InvalidArgumentError("--steps must be non-negative");
   if (absl::GetFlag(FLAGS_checkpoint_every) < 0)
@@ -221,9 +228,12 @@ absl::Status TrainModel(cuda::Executor& executor,
   const FsmTokenizer tokenizer;
   Gpt2Config model_config;
   model_config.transformer_block_count = absl::GetFlag(FLAGS_layers);
+  model_config.attention_heads = absl::GetFlag(FLAGS_attention_heads);
   model_config.vocabulary_size = tokenizer.vocab_size();
-  // Keep Shakespeare's per-block dimensions and initialization recipe, while
-  // allowing a deeper stack. Store only the 1,029 meaningful embedding rows;
+  // Keep Shakespeare's model/MLP widths and initialization recipe, while
+  // allowing different depth and head partitioning. The projection weights
+  // have the same shapes regardless of the head count, so changing heads does
+  // not change the parameter count. Store 1,029 meaningful embedding rows;
   // padded logit lanes are handled by the layers.
   model_config.pad_vocabulary = false;
   RETURN_IF_ERROR(model_config.Validate());
@@ -281,41 +291,43 @@ absl::Status TrainModel(cuda::Executor& executor,
       .beta2 = 0.95f,
       .epsilon = 1e-8f,
       .weight_decay = 0.1f};
-  logger
-      << '[' << Timestamp() << "] initializing from scratch: GPT-2"
-      << " layers=" << model_config.transformer_block_count
-      << " width=" << model_config.model_width
-      << " heads=" << model_config.attention_heads
-      << " feed_forward=" << model_config.feed_forward_width
-      << " context=" << model_config.context_length
-      << " vocabulary=" << model_config.vocabulary_size
-      << " compute=BF16 parameters=FP32 seed=" << seed << '\n'
-      << "optimizer=AdamW learning_rate=" << optimizer_config.learning_rate
-      << " beta1=" << optimizer_config.beta1
-      << " beta2=" << optimizer_config.beta2
-      << " epsilon=" << optimizer_config.epsilon
-      << " weight_decay=" << optimizer_config.weight_decay << '\n'
-      << "batch_size=" << batch_size << " steps=" << absl::GetFlag(FLAGS_steps)
-      << " answer_only=" << (answer_only ? "true" : "false")
-      << " checkpoint_every=" << absl::GetFlag(FLAGS_checkpoint_every)
-      << " eval_every=" << absl::GetFlag(FLAGS_eval_every) << '\n'
-      << "tokenizer=FSM states=000..999 letters=A..Z symbols=;,>,ERR no_EOS\n"
-      << "training_data=" << training_path
-      << " samples=" << training_data->sample_count()
-      << " batches_per_epoch=" << training_data->batches_per_epoch()
-      << " max_tokens=" << training_data->max_tokens()
-      << " supervised_rows=" << training_data->supervised_row_count() << '\n'
-      << "test_data=" << test_path
-      << " samples=" << test_evaluation_data->sample_count()
-      << " batches_per_epoch=" << test_eval_batches
-      << " max_tokens=" << test_evaluation_data->max_tokens()
-      << " supervised_rows=" << test_evaluation_data->supervised_row_count()
-      << '\n'
-      << "evaluation: fixed_training_samples=" << actual_eval_samples
-      << " training_batches=" << training_eval_batches
-      << " test_samples=" << test_evaluation_data->sample_count()
-      << " test_batches=" << test_eval_batches
-      << " loss=mean_cross_entropy_per_supervised_token\n";
+  logger << '[' << Timestamp() << "] initializing from scratch: GPT-2"
+         << " layers=" << model_config.transformer_block_count
+         << " width=" << model_config.model_width
+         << " heads=" << model_config.attention_heads << " head_dim="
+         << model_config.model_width / model_config.attention_heads
+         << " feed_forward=" << model_config.feed_forward_width
+         << " context=" << model_config.context_length
+         << " vocabulary=" << model_config.vocabulary_size
+         << " compute=BF16 parameters=FP32 seed=" << seed << '\n'
+         << "optimizer=AdamW learning_rate=" << optimizer_config.learning_rate
+         << " beta1=" << optimizer_config.beta1
+         << " beta2=" << optimizer_config.beta2
+         << " epsilon=" << optimizer_config.epsilon
+         << " weight_decay=" << optimizer_config.weight_decay << '\n'
+         << "batch_size=" << batch_size
+         << " steps=" << absl::GetFlag(FLAGS_steps)
+         << " answer_only=" << (answer_only ? "true" : "false")
+         << " checkpoint_every=" << absl::GetFlag(FLAGS_checkpoint_every)
+         << " eval_every=" << absl::GetFlag(FLAGS_eval_every) << '\n'
+         << "tokenizer=FSM states=000..999 letters=A..Z symbols=;,>,ERR "
+            "spaces_ignored no_EOS\n"
+         << "training_data=" << training_path
+         << " samples=" << training_data->sample_count()
+         << " batches_per_epoch=" << training_data->batches_per_epoch()
+         << " max_tokens=" << training_data->max_tokens()
+         << " supervised_rows=" << training_data->supervised_row_count() << '\n'
+         << "test_data=" << test_path
+         << " samples=" << test_evaluation_data->sample_count()
+         << " batches_per_epoch=" << test_eval_batches
+         << " max_tokens=" << test_evaluation_data->max_tokens()
+         << " supervised_rows=" << test_evaluation_data->supervised_row_count()
+         << '\n'
+         << "evaluation: fixed_training_samples=" << actual_eval_samples
+         << " training_batches=" << training_eval_batches
+         << " test_samples=" << test_evaluation_data->sample_count()
+         << " test_batches=" << test_eval_batches
+         << " loss=mean_cross_entropy_per_supervised_token\n";
 
   ASSIGN_OR_RETURN(auto model,
                    CreateGpt2(executor, DataType::BF16, seed, model_config));

@@ -59,6 +59,8 @@ cc_binary(
     name = "finite_state_machine",
     srcs = ["finite_state_machine.cc"],
     data = [
+        "//testdata:finite_state_machine_full_test_data.txt",
+        "//testdata:finite_state_machine_full_training_data.txt",
         "//testdata:finite_state_machine_test_data.txt",
         "//testdata:finite_state_machine_training_data.txt",
     ],
@@ -100,6 +102,8 @@ cc_test(
     name = "dataset_test",
     srcs = ["dataset_test.cc"],
     data = [
+        "//testdata:finite_state_machine_full_test_data.txt",
+        "//testdata:finite_state_machine_full_training_data.txt",
         "//testdata:finite_state_machine_test_data.txt",
         "//testdata:finite_state_machine_training_data.txt",
     ],

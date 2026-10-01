@@ -204,6 +204,15 @@ TEST_F(AttentionReferenceTest, ThreeNarrowBf16HeadsMatchAndRepeat) {
   CheckConfiguration(DataType::BF16, 65, 3, 96, 2, 4.0f, 3);
 }
 
+TEST_F(AttentionReferenceTest, Two256DimensionalHeadsMatchAndRepeat) {
+  // The FSM head-count experiment keeps width 512 but partitions it into two
+  // heads. Scores must sum all four 64-channel tiles, use 1/sqrt(256), and
+  // preserve head/sequence isolation in forward and all dQ/dK/dV reductions.
+  for (DataType type : {DataType::FP16, DataType::BF16})
+    CheckConfiguration(type, 65, 2, 512, 2, 4.0f, 3);
+  CheckConfiguration(DataType::BF16, 1024, 2, 512, 1, 4.0f, 3);
+}
+
 TEST_F(LayerReferenceTest, FutureTokensAndOtherSequencesCannotAffectGradients) {
   constexpr int kContext = 65;
   constexpr int kHeads = 2;

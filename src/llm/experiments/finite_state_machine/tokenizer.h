@@ -22,13 +22,14 @@ inline constexpr int kVocabularySize = kErrorToken + 1;
 // The complete FSM vocabulary is 000..999, A..Z, ';', '>', and ERR. State
 // tokens preserve all three digits, including leading zeroes. Numeric runs
 // are grouped into triples, so adjacent state tokens also round-trip; leftover
-// one- or two-digit groups are rejected. Whitespace and other bytes are
-// invalid.
+// one- or two-digit groups are rejected. ASCII spaces are ignored everywhere,
+// including within a state or ERR; other whitespace and unsupported bytes are
+// invalid. Decoding returns the canonical spelling without spaces.
 //
-// ERR is one token only immediately after '>' or when encoding the standalone
-// string "ERR". Within an input sequence, its letters remain E, R, R. This
-// context rule makes e.g. "000X999;ERR>ERR" unambiguous without changing the
-// user's text. Full sentences and prompts ending in '>' are both supported.
+// ERR is one token anywhere after '>' or when encoding the standalone string
+// "ERR". Before '>', its letters remain E, R, R. Thus the answer can be either
+// one final state or a full execution trace such as ">000 093 ERR". Full
+// sentences and prompts ending at any complete token are both supported.
 //
 // No BOS, EOS, or padding token is added. Encoding is lexical; the dataset
 // validates the transition grammar and executes the FSM to check its answer.

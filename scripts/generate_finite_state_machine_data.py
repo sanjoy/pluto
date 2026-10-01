@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Generate reproducible finite-state-machine interpretation datasets.
 
-Format: transition[;transition...];input>output, without headers or spaces.
+Format: transition[;transition...];input>output, without headers.
 Transitions have three source digits, one A-Z letter, and three destination
 digits. Execution starts at 000; output is the final state or ERR at the first
-missing edge. There are no accepting states: every completed walk is valid.
+missing edge. With --full_trace, output lists 000 followed by each visited state,
+separated by spaces for readability, ending in ERR on the first missing edge.
+There are no accepting states: every completed walk is valid.
 
 Machines have 4-16 states. Each supplies one successful walk of 1-24 letters and
 one same-length input with one letter changed to force failure. Transition and
@@ -15,6 +17,7 @@ in-distribution test, not extrapolation to longer inputs or larger machines.
 
 Run from the repository root:
   python3 scripts/generate_finite_state_machine_data.py
+  python3 scripts/generate_finite_state_machine_data.py --full_trace
   python3 -m unittest discover -s scripts -p 'generate_finite_state_machine_data_test.py'
 """
 
@@ -28,15 +31,23 @@ DEFAULT_SEED = 20260930
 TransitionMap = dict[tuple[int, str], int]
 
 
-def evaluate(transitions: TransitionMap, input_text: str) -> str:
-    """Follow transitions from 000 until failure or end of input."""
+def execution_trace(transitions: TransitionMap, input_text: str) -> list[str]:
+    """Return 000 and every visited state, stopping at the first missing edge."""
     state = 0
+    trace = ["000"]
     for letter in input_text:
         destination = transitions.get((state, letter))
         if destination is None:
-            return "ERR"
+            trace.append("ERR")
+            break
         state = destination
-    return f"{state:03d}"
+        trace.append(f"{state:03d}")
+    return trace
+
+
+def evaluate(transitions: TransitionMap, input_text: str) -> str:
+    """Follow transitions from 000 until failure or end of input."""
+    return execution_trace(transitions, input_text)[-1]
 
 
 def make_machine(rng: random.Random) -> TransitionMap:
@@ -67,7 +78,9 @@ def make_machine(rng: random.Random) -> TransitionMap:
     return transitions
 
 
-def make_pair(rng: random.Random, transitions: TransitionMap) -> tuple[str, str]:
+def make_pair(
+    rng: random.Random, transitions: TransitionMap, full_trace: bool = False
+) -> tuple[str, str]:
     """Pair a valid walk with one mutation at a uniformly drawn input position."""
     state = 0
     visited, letters = [], []
@@ -88,14 +101,25 @@ def make_pair(rng: random.Random, transitions: TransitionMap) -> tuple[str, str]
     input_text, failed_input = "".join(letters), "".join(failed_letters)
     assert evaluate(transitions, input_text) == f"{state:03d}"
     assert evaluate(transitions, failed_input) == "ERR"
+    if full_trace:
+        answer = " ".join(execution_trace(transitions, input_text))
+        failed_answer = " ".join(execution_trace(transitions, failed_input))
+    else:
+        answer, failed_answer = f"{state:03d}", "ERR"
     return (
-        f"{description};{input_text}>{state:03d}",
-        f"{description};{failed_input}>ERR",
+        f"{description};{input_text}>{answer}",
+        f"{description};{failed_input}>{failed_answer}",
     )
 
 
-def generate(seed: int = DEFAULT_SEED) -> tuple[list[str], list[str]]:
-    """Return 4096 training and 128 test sentences with disjoint machines."""
+def generate(
+    seed: int = DEFAULT_SEED, full_trace: bool = False
+) -> tuple[list[str], list[str]]:
+    """Return 4096 training and 128 test sentences with disjoint machines.
+
+    Full traces do not consume randomness: a given seed produces exactly the
+    same machines, inputs and sentence order in either output format.
+    """
     rng = random.Random(seed)
     seen = set()
 
@@ -107,7 +131,7 @@ def generate(seed: int = DEFAULT_SEED) -> tuple[list[str], list[str]]:
             if signature in seen:
                 continue
             seen.add(signature)
-            lines.extend(make_pair(rng, transitions))
+            lines.extend(make_pair(rng, transitions, full_trace))
         rng.shuffle(lines)
         return lines
 
@@ -118,14 +142,19 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
     parser.add_argument(
+        "--full_trace", action="store_true",
+        help="Write full_ files with every visited state; leave final-answer files alone.",
+    )
+    parser.add_argument(
         "--output_dir", type=Path,
         default=Path(__file__).resolve().parents[1] / "testdata",
     )
     args = parser.parse_args()
-    training, test = generate(args.seed)
+    training, test = generate(args.seed, args.full_trace)
     args.output_dir.mkdir(parents=True, exist_ok=True)
     for name, lines in (("training", training), ("test", test)):
-        path = args.output_dir / f"finite_state_machine_{name}_data.txt"
+        prefix = "full_" if args.full_trace else ""
+        path = args.output_dir / f"finite_state_machine_{prefix}{name}_data.txt"
         path.write_text("\n".join(lines) + "\n", encoding="ascii")
         print(f"{path}: {len(lines)} sentences, {len(lines) // 2} machines")
 

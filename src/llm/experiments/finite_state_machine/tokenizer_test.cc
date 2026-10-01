@@ -34,7 +34,11 @@ class FsmTokenizerTest : public testing::Test {
       EXPECT_EQ((*encoded)[index], expected[index]) << "token index " << index;
     auto decoded = tokenizer_.Decode(encoded->span());
     ASSERT_TRUE(decoded.ok()) << decoded.status();
-    EXPECT_EQ(*decoded, text);
+    std::string canonical;
+    for (const char value : text)
+      if (value != ' ')
+        canonical.push_back(value);
+    EXPECT_EQ(*decoded, canonical);
   }
 
   std::unique_ptr<cuda::Executor> executor_;
@@ -60,6 +64,36 @@ TEST_F(FsmTokenizerTest, EncodesTheRequestedSuccessExampleWithoutExtraTokens) {
 
 TEST_F(FsmTokenizerTest, EncodesTheRequestedErrorExampleWithoutExtraTokens) {
   ExpectEncoding("000X999;Y>ERR", {0, 1023, 999, 1026, 1024, 1027, 1028});
+}
+
+TEST_F(FsmTokenizerTest, EncodesFullSuccessAndFailureTraces) {
+  ExpectEncoding(
+      "000X093;093A044;XA>000 093 044",
+      {0, 1023, 93, 1026, 93, 1000, 44, 1026, 1023, 1000, 1027, 0, 93, 44});
+  ExpectEncoding(
+      "000X093;093A044;XB>000 093 ERR",
+      {0, 1023, 93, 1026, 93, 1000, 44, 1026, 1023, 1001, 1027, 0, 93, 1028});
+  ExpectEncoding("000X999;Y>000 ERR",
+                 {0, 1023, 999, 1026, 1024, 1027, 0, 1028});
+}
+
+TEST_F(FsmTokenizerTest, IgnoresSpacesEverywhereWithoutChangingTokenIds) {
+  ExpectEncoding(" 0 0 0 X 9 9 9 ; Y > 0 0 0 E R R ",
+                 {0, 1023, 999, 1026, 1024, 1027, 0, 1028});
+  ExpectEncoding("  E R R  ", {1028});
+  ExpectEncoding("   ", {});
+  ExpectEncoding("000 007 042 999", {0, 7, 42, 999});
+  ExpectEncoding(" 000 X999 ;  X > 000 999 ",
+                 {0, 1023, 999, 1026, 1023, 1027, 0, 999});
+}
+
+TEST_F(FsmTokenizerTest, OnlyOutputTraceUsesAtomicErrTokens) {
+  ExpectEncoding("000E001;001R002;E R R>000 001 002 ERR",
+                 {0, 1004, 1, 1026, 1, 1017, 2, 1026, 1004, 1017, 1017, 1027, 0,
+                  1, 2, 1028});
+  // The tokenizer is lexical; the dataset validates whether an ERR suffix or
+  // further output symbols agree with an actual execution.
+  ExpectEncoding(">000ERRERR", {1027, 0, 1028, 1028});
 }
 
 TEST_F(FsmTokenizerTest, MapsEveryStateToItsNumberAndPreservesLeadingZeroes) {
@@ -101,7 +135,9 @@ TEST_F(FsmTokenizerTest, DistinguishesInputLettersErrFromTheErrorOutput) {
 TEST_F(FsmTokenizerTest, RoundTripsSentencesAndCompleteTokenPrefixes) {
   for (absl::string_view text :
        {"", "000", "000X", "000X999;", "000X999;X", "000X999;X>",
-        "000A001;001B002;AB>002", "000A001;001B002;ABC>ERR"}) {
+        "000A001;001B002;AB>002", "000A001;001B002;ABC>ERR",
+        "000A001;001B002;AB>000", "000A001;001B002;AB>000001",
+        "000A001;001B002;AB>000001002", "000A001;001B002;ABC>000001002ERR"}) {
     SCOPED_TRACE(text);
     auto encoded = tokenizer_.Encode(*executor_, text);
     ASSERT_TRUE(encoded.ok()) << encoded.status();
@@ -124,13 +160,26 @@ TEST_F(FsmTokenizerTest, RoundTripsAllVocabularyIdsTogether) {
 
 TEST_F(FsmTokenizerTest,
        RejectsIncompleteNumericTokensAndUnsupportedCharacters) {
-  const std::vector<std::string> invalid{
-      "0",           "00",          "0000",
-      "00000",       "000A01",      "000A001;A>01",
-      "000 A001",    "000A001\n",   "000A001\r",
-      "000A001\t",   "000a001",     "000A-01",
-      "000A001,",    "000A001:ERR", std::string("000\0A001", 8),
-      "000A\xc3\xa9"};
+  const std::vector<std::string> invalid{"0",
+                                         "00",
+                                         "0000",
+                                         "00000",
+                                         "000A01",
+                                         "000A001;A>01",
+                                         "000A001>0 0",
+                                         "000A001\n",
+                                         "000A001\r",
+                                         "000A001\t",
+                                         "000a001",
+                                         "000A-01",
+                                         "000A001,",
+                                         "000A001:ERR",
+                                         std::string("000\0A001", 8),
+                                         "000A\xc3\xa9",
+                                         "000A001;A>000 00",
+                                         "000A001;B>000\tERR",
+                                         "0 0 0 0",
+                                         "000X093;XB>000 093 E\tRR"};
   for (const std::string& text : invalid) {
     SCOPED_TRACE(text);
     auto encoded = tokenizer_.Encode(*executor_, text);
@@ -148,6 +197,14 @@ TEST_F(FsmTokenizerTest, ReportsTheBadOffsetAndEscapesItsSnippet) {
   const auto whitespace = tokenizer_.Encode(*executor_, "000\n");
   ASSERT_FALSE(whitespace.ok());
   EXPECT_NE(whitespace.status().message().find("at byte 3: \"\\n\""),
+            std::string::npos);
+  const auto spaced = tokenizer_.Encode(*executor_, " 000 A 0 1 ");
+  ASSERT_FALSE(spaced.ok());
+  EXPECT_NE(spaced.status().message().find("at byte 7: \"0 1 \""),
+            std::string::npos);
+  const auto spaced_tab = tokenizer_.Encode(*executor_, " 000 \t");
+  ASSERT_FALSE(spaced_tab.ok());
+  EXPECT_NE(spaced_tab.status().message().find("at byte 5: \"\\t\""),
             std::string::npos);
 }
 

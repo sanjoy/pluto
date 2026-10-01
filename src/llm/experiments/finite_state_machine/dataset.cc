@@ -6,6 +6,7 @@
 #include <array>
 #include <limits>
 #include <numeric>
+#include <string>
 #include <utility>
 
 #include "absl/memory/memory.h"
@@ -30,11 +31,12 @@ int StateNumber(absl::string_view text) {
 
 struct Sentence {
   size_t prompt_bytes;
-  int answer_token;
+  std::vector<int> output_tokens;
 };
 
-// Parse and execute the line independently of the generator. The prompt ends
-// immediately after >; its next token is the single checked state or ERR.
+// Execute the FSM independently of the generator, checking either the legacy
+// final answer or every visited state in a full trace. Spaces were removed by
+// the caller, so each output token occupies exactly three bytes.
 absl::StatusOr<Sentence> ValidateSentence(absl::string_view line) {
   const size_t separator = line.find('>');
   if (separator == absl::string_view::npos ||
@@ -65,19 +67,36 @@ absl::StatusOr<Sentence> ValidateSentence(absl::string_view line) {
         return c >= 'A' && c <= 'Z';
       }))
     return absl::InvalidArgumentError("input must be a nonempty A-Z string");
-  if (answer != "ERR" && !Digits(answer))
+  if (answer.empty() || answer.size() % 3 != 0)
     return absl::InvalidArgumentError(
-        "output must be a three-digit state or ERR");
+        "output must contain three-digit states or ERR");
+  std::vector<int> output_tokens;
+  for (size_t offset = 0; offset < answer.size(); offset += 3) {
+    const auto token = answer.substr(offset, 3);
+    if (token != "ERR" && !Digits(token))
+      return absl::InvalidArgumentError(
+          "output must contain three-digit states or ERR");
+    output_tokens.push_back(token == "ERR" ? kErrorToken : StateNumber(token));
+  }
   int state = 0;
+  std::vector<int> trace{state};
   for (char letter : input) {
     state = transitions[state * 26 + letter - 'A'];
+    trace.push_back(state < 0 ? kErrorToken : state);
     if (state < 0)
       break;
   }
-  if ((state < 0 && answer != "ERR") ||
-      (state >= 0 && (answer == "ERR" || StateNumber(answer) != state)))
-    return absl::InvalidArgumentError("output does not match FSM execution");
-  return Sentence{separator + 1, state < 0 ? kErrorToken : state};
+  // A nonempty input always produces at least two trace tokens (000 and one
+  // visited state or ERR), so one output token unambiguously selects legacy
+  // final-answer supervision. Do not erase repeated states from a full trace.
+  if (output_tokens.size() == 1) {
+    if (output_tokens.front() != trace.back())
+      return absl::InvalidArgumentError("output does not match FSM execution");
+  } else if (output_tokens != trace) {
+    return absl::InvalidArgumentError(
+        "output trace does not match FSM execution from state 000");
+  }
+  return Sentence{separator + 1, std::move(output_tokens)};
 }
 
 }  // namespace
@@ -111,9 +130,14 @@ absl::StatusOr<std::unique_ptr<FsmDataSetIterator>> FsmDataSetIterator::Create(
   supervised_rows.reserve(lines.size());
   int max_tokens = 0;
   for (size_t i = 0; i < lines.size(); ++i) {
-    auto line = lines[i];
-    if (!line.empty() && line.back() == '\r')
-      line.remove_suffix(1);
+    // Readability spaces are insignificant even inside states or transitions.
+    // Normalize before both validation and encoding so prompt offsets agree.
+    std::string normalized(lines[i]);
+    normalized.erase(std::remove(normalized.begin(), normalized.end(), ' '),
+                     normalized.end());
+    if (!normalized.empty() && normalized.back() == '\r')
+      normalized.pop_back();
+    const absl::string_view line = normalized;
     auto sentence = ValidateSentence(line);
     if (!sentence.ok())
       return absl::InvalidArgumentError(
@@ -126,14 +150,17 @@ absl::StatusOr<std::unique_ptr<FsmDataSetIterator>> FsmDataSetIterator::Create(
       return absl::InvalidArgumentError(
           absl::StrCat("line ", i + 1, " has ", tokens.size(),
                        " tokens; context_length is ", options.context_length));
-    // The answer occupies exactly one token after >. Verify the full-line
-    // encoding preserves its prompt and matches the independently run FSM.
-    if (prompt.empty() || prompt.size() + 1 != tokens.size() ||
+    // The full-line encoding must preserve the prompt and every checked trace
+    // token, not just its final state. The tokenizer must keep ERR atomic.
+    if (prompt.empty() ||
+        prompt.size() + sentence->output_tokens.size() != tokens.size() ||
         prompt[prompt.size() - 1] != kOutputSeparatorToken ||
-        tokens[tokens.size() - 1] != sentence->answer_token ||
-        !std::equal(prompt.begin(), prompt.end(), tokens.begin()))
+        !std::equal(prompt.begin(), prompt.end(), tokens.begin()) ||
+        !std::equal(sentence->output_tokens.begin(),
+                    sentence->output_tokens.end(),
+                    tokens.begin() + prompt.size()))
       return absl::InvalidArgumentError(
-          "FSM tokenizer must encode exactly one answer token after >");
+          "FSM tokenizer must preserve the checked output tokens after >");
     if (std::any_of(tokens.begin(), tokens.end(), [&](int token) {
           return token < 0 || token >= tokenizer.vocab_size();
         }))

@@ -16,7 +16,9 @@ kernel, and native analysis-tool implementations live in `src/`.
 - `generate_finite_state_machine_data.py`: deterministic FSM interpretation
   datasets (4,096 training / 128 test sentences), with an independent interpreter
   test alongside it. Run with Python 3 to regenerate the checked-in `testdata/`
-  files; `--help` describes the format and sampling choices.
+  files; `--full_trace` writes separate `finite_state_machine_full_*` copies
+  with all visited states, without changing the original prompts/splits.
+  `--help` describes the format and sampling choices.
 
 Run command examples from the repository root. Each utility documents its own
 arguments and dependencies; use `--help` where supported. Put new benchmark and

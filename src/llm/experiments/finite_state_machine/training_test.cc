@@ -21,7 +21,7 @@
 namespace pluto::llm::fsm {
 namespace {
 
-class FsmTrainingTest : public testing::Test {
+class FsmTrainingTest : public testing::TestWithParam<bool> {
  protected:
   void SetUp() override {
     auto executor = cuda::Executor::Create();
@@ -64,23 +64,27 @@ class FsmTrainingTest : public testing::Test {
   std::unique_ptr<cuda::Executor> executor_;
 };
 
-TEST_F(FsmTrainingTest, SharedTrainerLearnsMaskedAnswersAndCheckpointRestores) {
+TEST_P(FsmTrainingTest, SharedTrainerLearnsMaskedOutputsAndCheckpointRestores) {
   constexpr int kContext = 24;
   constexpr int kSteps = 20;
-  constexpr absl::string_view kCorpus =
-      "000A001;A>001\n000B002;B>002\n000A001;B>ERR";
+  const bool full_trace = GetParam();
+  const absl::string_view corpus =
+      full_trace ? "000A001;A>000 001\n000B002;002C003;BC>000 002 003\n"
+                   "000A001;B>000 ERR"
+                 : "000A001;A>001\n000B002;B>002\n000A001;B>ERR";
+  const int expected_supervised_rows = full_trace ? 7 : 3;
   FsmTokenizer tokenizer;
   DataSetOptions options;
   options.batch_size = 2;
   options.context_length = kContext;
   auto training =
-      FsmDataSetIterator::Create(*executor_, kCorpus, tokenizer, options);
+      FsmDataSetIterator::Create(*executor_, corpus, tokenizer, options);
   auto evaluation =
-      FsmDataSetIterator::Create(*executor_, kCorpus, tokenizer, options);
+      FsmDataSetIterator::Create(*executor_, corpus, tokenizer, options);
   ASSERT_TRUE(training.ok()) << training.status();
   ASSERT_TRUE(evaluation.ok()) << evaluation.status();
   ASSERT_EQ((*evaluation)->batches_per_epoch(), 2);
-  EXPECT_EQ((*evaluation)->supervised_row_count(), 3);
+  EXPECT_EQ((*evaluation)->supervised_row_count(), expected_supervised_rows);
 
   Gpt2Config config;
   config.transformer_block_count = 1;
@@ -98,6 +102,8 @@ TEST_F(FsmTrainingTest, SharedTrainerLearnsMaskedAnswersAndCheckpointRestores) {
 
   // Independently add the actual per-row losses for a full and partial batch.
   // This catches division by padded rows or an unweighted mean of batches.
+  // Trace samples also have unequal lengths; each output token, including the
+  // initial 000 and terminal ERR, contributes equally to the reported mean.
   double loss_sum = 0.0;
   int supervised = 0;
   for (size_t index = 0; index < (*evaluation)->batches_per_epoch(); ++index) {
@@ -123,7 +129,7 @@ TEST_F(FsmTrainingTest, SharedTrainerLearnsMaskedAnswersAndCheckpointRestores) {
       }
     }
   }
-  ASSERT_EQ(supervised, 3);
+  ASSERT_EQ(supervised, expected_supervised_rows);
   auto before = EvaluateLoss(**model, **loss, **evaluation);
   ASSERT_TRUE(before.ok()) << before.status();
   ASSERT_TRUE(std::isfinite(*before));
@@ -145,8 +151,10 @@ TEST_F(FsmTrainingTest, SharedTrainerLearnsMaskedAnswersAndCheckpointRestores) {
   ASSERT_TRUE(std::isfinite(*after));
   EXPECT_LT(*after, *before);
 
-  const auto checkpoint = std::filesystem::path(testing::TempDir()) /
-                          "fsm-tiny-training" / "step_20";
+  const auto checkpoint =
+      std::filesystem::path(testing::TempDir()) /
+      (full_trace ? "fsm-tiny-trace-training" : "fsm-tiny-training") /
+      "step_20";
   ASSERT_TRUE(WriteToDirectory(*executor_, **model, checkpoint).ok());
   auto restored = CreateGpt2(*executor_, DataType::BF16, 89, config);
   ASSERT_TRUE(restored.ok()) << restored.status();
@@ -165,6 +173,9 @@ TEST_F(FsmTrainingTest, SharedTrainerLearnsMaskedAnswersAndCheckpointRestores) {
   ASSERT_TRUE(restored_loss.ok()) << restored_loss.status();
   EXPECT_FLOAT_EQ(*restored_loss, *after);
 }
+
+INSTANTIATE_TEST_SUITE_P(FinalAnswerAndFullTrace, FsmTrainingTest,
+                         testing::Bool());
 
 }  // namespace
 }  // namespace pluto::llm::fsm
